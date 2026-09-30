@@ -1,0 +1,26 @@
+# Build output
+/build/
+/target/
+*.o
+*.a
+*.so
+*.dylib
+/third_party/bedstead/tools/dump_glyphs
+
+# Test corpus and captures: downloaded at test time, never committed (REQ-TST-022)
+/corpus/
+*.ts
+*.m2ts
+*.t42
+*.vbi
+*.tbc
+
+# Copyrighted source material must not be committed
+*.pdf
+*.PDF
+
+# Editor and OS files
+.DS_Store
+*.swp
+.vscode/
+.idea/
