@@ -23,6 +23,7 @@ This document has seven parts:
 - **Appendix A** is a glossary, and **Appendix B** lists the source documents.
 - The companion document `ARCHITECTURE.md` describes how the code is layered. REQ-ARCH-011 makes its rules mandatory.
 - **Appendix C** is the TTI Form Extension, version 3, which is normative.
+- **Appendix E** is the TTI Link Extension, which is normative.
 - **Appendix D** records the open questions: which were answered by research, with the evidence, and which remain open.
 
 Parts A to E are explanatory and not normative. Only Part F is normative, and a requirement in Part F wins over anything in Parts A to E.
@@ -1188,7 +1189,7 @@ When a displayed page has C5 or C6 set, the receiver automatically switches to b
 - When rendering on top of supplied video, the video shows through.
 
 **E.23 — Row 24.**
-By default, row 24 is displayed only when the page carries packet X/27/0 with the "display row 24" flag set (Annex H). The "SAA5246A" profile shows row 24 whenever the page carries packet X/24, like that chip's automatic Fastext row.
+By default, row 24 is displayed only when the page carries packet X/27/0 with the "display row 24" flag set (Annex H). Pages whose links come from the TTI Link Extension have their row 24 drawn by the receiver instead (decision E.36, REQ-NAV-011). The "SAA5246A" profile shows row 24 whenever the page carries packet X/24, like that chip's automatic Fastext row.
 
 **E.24 — Framing code tolerance in the software data slicer.**
 By default, a framing code that differs from 0x27 in one bit is accepted, but only if the two packet address bytes that follow both decode without an uncorrectable error. A "strict" option requires an exact framing code.
@@ -1384,6 +1385,31 @@ tellytxt.com adopts:
 
 Because RFC 6265bis is still a draft, REQ-WEB-006 shall be checked against the published RFC when it appears, and at each milestone's security review (REQ-SEC-023).
 
+**E.36 — Links are Fastext: four coloured links per page, drawn by the receiver.**
+tellytxt.com's only hyperlinks are the Fastext coloured keys.
+- **Up to four links.** Each page may carry at most four links, one per coloured key: red, green, yellow and cyan.
+- **Index.** The standard Index key is available as well. It goes to the service's index page, and is not a content link.
+- **Typing a page number** remains ordinary teletext navigation, not a hyperlink.
+
+No other link mechanism exists. The alternatives that were considered and rejected are:
+- links marked inside the page text;
+- link markers drawn by the page, such as `>>`, `[]` or `LINK<>`;
+- whole-row links;
+- numbered link hints;
+- further sets of links beyond four.
+
+*Reason:*
+- **Familiar.** Fastext is the link model teletext viewers already know.
+- **Remote-friendly.** It needs only the coloured keys, with no cursor and no mode.
+- **Compatible.** It is the link model a real Fastext television of the late 1980s supports, so a page broadcast through the page encoder keeps working links on old sets (REQ-INP-019).
+- **A useful limit.** Four links keep pages simple.
+- **Trustworthy:**
+  - **Markers.** Any marker a page draws, a malicious page can draw where there is no link. Bracket characters are also national option positions, which show as arrows or accented letters in some languages (decision E.31).
+  - **Prompts.** Instead, **the receiver draws row 24 itself** from the link data, as Table Of Pages decoders drew their own prompt row. The page supplies only targets and short labels. Each prompt is therefore always shown whole, in a fixed style the page cannot alter, and links that leave the service are always marked as such.
+  - **Destinations.** The first use of a link to another service needs confirmation.
+
+Pages received from broadcasts keep their transmitted row 24 (decision E.23). Their links can only lead to pages in the same service, so the destination is always fully determined by the packet X/27/0.
+
 ---
 
 # Part F — Requirements
@@ -1468,7 +1494,7 @@ Phase 1 is large, roughly 100 to 150 person-days, so it is delivered in mileston
 | **M2 — Web** | Fetch TTI and T42 pages over HTTP with caching, push over WebSocket and server-sent events, cookie sessions, and the zxnet live feed. | WEB-001 to WEB-009, WEB-013 to WEB-016, INP-022 |
 | **M3 — Broadcast** | Digital television transport streams, Linux sliced data, and the remaining page formats. | INP-003 to INP-011, INP-014 to INP-020, SVC |
 | **M4 — Raw video** | The software data slicer and its synthetic signal generator. | SLC, FSM-002, TST-060, TST-061 |
-| **M5 — Forms and viewer** | Interactive forms, form input, navigation and the viewer state machine. | WEB-010 to WEB-012, NAV (including history, REQ-NAV-010), FSM-005 |
+| **M5 — Forms, links and viewer** | Interactive forms, form input, links (Appendix E), navigation and the viewer state machine. | WEB-010 to WEB-012, NAV (including history, REQ-NAV-010), FSM-005 |
 
 M1 is expected to take 40 to 50 person-days. The order of M2 to M5 may be changed; each depends only on M1.
 
@@ -1686,6 +1712,16 @@ Third-party programs used as test oracles or for fuzzing shall run in containers
 - **Regression tests.** Every security fault found shall get a regression test.
 
 *Verification:* Inspection.
+
+
+**REQ-SEC-024 — Links are always shown whole and never disguised.**
+A link may be followed only while the receiver is showing its complete prompt in row 24. That prompt is drawn by the receiver for TTI Link Extension pages (REQ-NAV-011), or is the transmitted row 24 for broadcast pages. A page cannot:
+- hide, conceal, flash, overlap or partly draw a link prompt;
+- disguise a link to another service as a local one;
+- give a key a link it does not show.
+
+On pages where row 24 is not displayed, the coloured keys shall do nothing. That includes newsflash and subtitle pages shown boxed, and page zoom of the top half when row 24 is off screen. The only link mechanism is the coloured keys (decision E.36). Text on the page that looks like a link is only text.
+*Verification:* Test with hostile pages that try each of these.
 
 ---
 
@@ -2658,13 +2694,36 @@ The viewer shall be able to step to the next or previous page number. Two behavi
 Page 899 wraps to 100.
 *Verification:* Test.
 
-**REQ-NAV-003 — Fastext keys.**
-When the displayed page has a valid packet X/27/0:
-- the red, green, yellow and cyan keys shall request the pages given by links 1, 2, 3 and 4;
-- the Index key shall request the page given by link 6.
+**REQ-NAV-003 — Links: the four coloured keys and Index.**
+A page has at most four links, one for each coloured key, plus the Index key (decision E.36). The links come from either of two sources:
+- **Pages from broadcast or T42 sources:** packet X/27/0. Links 1 to 4 are the red, green, yellow and cyan keys, and link 6 is the Index key.
+- **Pages from TTI files and web services:** the link lines of the TTI Link Extension (Appendix E). The page encoder also turns these into packet X/27/0 (REQ-INP-019).
 
-A null link shall leave the key without effect. A link with sub-code 3F7F requests any sub-page; any other sub-code requests that sub-page. When the page has neither packet X/27/0 nor X/24, the coloured keys shall have no effect, and the Index key shall request the initial page (REQ-SVC-004, Annex H.4).
-*Verification:* Test.
+Pressing a coloured key requests that key's target. A null or absent link leaves the key without effect. A target with sub-code 3F7F requests any sub-page; any other sub-code requests that sub-page. When the page has no links at all, the coloured keys have no effect, and the Index key requests the initial page (REQ-SVC-004, Annex H.4). Link 5 of packet X/27/0 is used only for pre-fetching (REQ-NAV-004), never as a link the viewer can follow.
+*Verification:* Test for each key, each source and each null case.
+
+**REQ-NAV-011 — The receiver draws the link row.**
+For pages whose links come from the TTI Link Extension, the receiver shall draw row 24 itself, from the link data. Any row 24 the page transmits shall be ignored. The row is divided into four equal prompts of 10 columns each, in the order red, green, yellow and cyan. Each prompt consists of:
+- an alphanumeric colour attribute in the key's colour;
+- then the link's label, of at most 9 characters.
+
+A key with no link shows blank columns. A link to a page in another service shall begin its label with the receiver's mark for leaving the service: the right guillemet "»" from the G2 set. Its label then has at most 8 characters of the author's text.
+
+The row shall be drawn in the receiver's fixed style:
+- a black background;
+- the key colour for text;
+- no flash, conceal, double height or other attribute from the page.
+
+Because the receiver draws the row, every link prompt is always shown whole (REQ-SEC-024).
+*Verification:* Test that page attempts to alter row 24 have no effect, and that the drawn row matches the link data exactly.
+
+**REQ-NAV-012 — Following a link to another service.**
+When a coloured key's link leads to a different service (REQ-WEB-015), and that origin has not been confirmed before in this session, the link shall not be followed at once. Instead:
+- the receiver-owned status area shows that the receiver is asking (REQ-SEC-005);
+- the receiver redraws row 24 to show the destination service's name as the descriptor gives it, and its origin, with the instruction to press the same key again to go.
+
+Pressing the same key again follows the link and marks the origin as confirmed. Any other key cancels. Links within the same service, and the Index key, are followed at once.
+*Verification:* Test of confirmation, cancellation, and the already-confirmed case.
 
 **REQ-NAV-004 — Pre-fetching linked pages.**
 *Phase:* Phase 2 (whole requirement), because it depends on request mode (REQ-ACQ-006).
@@ -3107,6 +3166,7 @@ The commands shall be handled as follows:
 | `OL,n,text` | Output line for rows 0 to 25. |
 | `OL,26`, `OL,27`, `OL,28`, `OL,29` | Enhancement, link and magazine packets. The first character's low four bits are the designation code. Each following group of three characters carries 18 bits, six bits per character with the least significant character first. For link packets with designation codes 0 to 3, the characters carry four-bit values. |
 | `FL,` | Six three-digit hexadecimal Fastext links, where 0 and 8FF mean no link. |
+| `LN,key,target,label` | A link of the TTI Link Extension (Appendix E), which takes precedence over `FL`. |
 | `RE,h` | Region, which sets the character set group. |
 | `PF,f,c` | Page function and page coding. |
 | `DE,text` and `DS,text` | Description, kept as metadata. |
@@ -3173,6 +3233,7 @@ The page encoder shall produce correctly coded packets for:
 - rows with odd parity;
 - packets X/26 with Hamming 24/18;
 - packets X/27/0 with correct relative magazine bits and a checksum computed by REQ-ECC-007;
+- for pages with TTI Link Extension links, packet X/27/0 and a row 24 (packet X/24) generated as Appendix E.2 describes;
 - packets X/28/0 format 1.
 *Verification:* Test that decodes encoded packets back to the original page.
 
@@ -3412,6 +3473,7 @@ A command-line program named `ttx` shall provide these commands:
 | `ttx slice` | Convert raw sampled video to T42 with quality statistics. |
 | `ttx services` | List the teletext streams, languages and subtitle pages found in a transport stream. |
 | `ttx service-info` | Print the service data from packet 8/30: initial page, network identification, date, time and status message. |
+| `ttx check` | Check page files for authoring problems (REQ-CLI-006). |
 *Verification:* Demonstration; test of each command.
 
 **REQ-CLI-002 — Common options.**
@@ -3450,6 +3512,28 @@ The program shall exit with:
 - status 2 on invalid usage;
 - status 3 when the input could not be read or recognised.
 *Verification:* Test.
+
+**REQ-CLI-006 — The page checker.**
+`ttx check` shall read TTI page files and report problems that would make a page fail on some receivers, or behave unsafely. Each problem is reported as an error or a warning, with its file, page and line. It shall report:
+
+*Errors:*
+- **Too many links.** More than four coloured links, or a repeated key.
+- **Bad link targets.** Targets naming services missing from a given descriptor.
+- **Bad labels.** Labels too long for the prompt, or using characters the page's G0 set cannot show.
+- **Bad form fields.** Overlapping fields, fields outside the row, or version 2.0 form syntax.
+- **Withdrawn commands.** Use of the withdrawn `FH` command.
+
+*Warnings:*
+- **Page number not shown.** A link to a page in the same service whose page number does not appear in the page's text (Appendix E.2 rule 5).
+- **No other route.** A link to another service with no other route given in the text (Appendix E.2 rule 6).
+- **No broadcast fallback.** A form page with no fallback instruction for broadcast viewers (Appendix C.6).
+- **Unreliable placeholders.** Form placeholders using national option characters (Appendix C.4).
+- **Hidden content.** Content in row 24 of a page with links, which tellytxt.com will not display.
+
+A warning may be marked as considered with a line `CK,considered,<warning name>` in the page, so that it is not reported again. Other TTI readers ignore the line as an unknown command.
+
+Exit status is 0 when there are no errors, and 4 when there are errors. Warnings alone do not fail.
+*Verification:* Test with a set of pages, each containing one problem.
 
 ---
 
@@ -3783,7 +3867,10 @@ There shall be one instance of this machine for each viewer (area NAV). Reveal, 
 | Displaying | Page stale | Show "not recently received" in the status area | Displaying |
 | Displaying | Hold key | Stop applying updates | Holding |
 | Holding | Hold key | Apply updates received meanwhile | Displaying |
-| Displaying or Searching | Fastext, Index, Home, next or previous page | Request the target page (REQ-NAV-002, REQ-NAV-003 and REQ-NAV-008) | Searching |
+| Displaying or Searching | Coloured key with a link in the same service, Index, Home, next or previous page | Request the target page (REQ-NAV-002, REQ-NAV-003 and REQ-NAV-008) | Searching |
+| Displaying | Coloured key whose link leads to an unconfirmed other service | Show the confirmation in the status area and row 24 (REQ-NAV-012) | Confirming link |
+| Confirming link | The same key again | Mark the origin confirmed; request the target | Searching |
+| Confirming link | Any other key | Restore row 24 | Displaying |
 | Displaying | Next or previous sub-page | Show the neighbouring stored sub-page (REQ-NAV-005) | Displaying |
 | Displaying or Searching | Back or Forward, with an entry in that direction | Move in the history and request that page (REQ-NAV-010) | Searching |
 | Displaying or Searching | Back or Forward, with no entry in that direction | None | Unchanged |
@@ -3918,7 +4005,8 @@ A web teletext service shall be identified by the address of a small descriptor 
 - a page address template;
 - optionally, a push address and the push method (WebSocket or server-sent events);
 - optionally, a list of other origins that forms may submit to;
-- optionally, the default character set region (decision E.4).
+- optionally, the default character set region (decision E.4);
+- optionally, a list of other services that links may lead to (Appendix E). Each has a short name, a display name and the address of its own descriptor.
 
 The page address template uses the placeholders `{m}` (magazine), `{pp}` (page number as two hexadecimal digits), `{mpp}` and `{sub}` (sub-code as four hexadecimal digits), for example `https://example.org/ttx/pages/{mpp}`. The reader shall reject a descriptor with missing required members or unknown placeholders, with a clear diagnostic.
 *Reason:* A page number is teletext's address. The template maps it to a web address without making the page files themselves aware of the web.
@@ -4388,6 +4476,7 @@ The server remains the authority, and shall check everything again.
 - A decoder without form support shows the `OL` rows and ignores every other command in this appendix.
 - A version 2.0 form, which has no column or width, shall be shown as an ordinary page and not made interactive, with a diagnostic that it needs converting.
 - A conversion tool should convert version 2.0 forms to version 3 by finding the placeholders and writing their columns in. It should warn where a placeholder uses national option characters.
+- **Broadcast.** When a form page is encoded for broadcast (REQ-INP-019), the form commands are not transmitted, because a broadcast television has no way to send anything back. A form page should therefore say in its own rows how a viewer without tellytxt.com can respond, for example by a telephone number or a web address. The page checker (REQ-CLI-006) shall warn when a form page has no such text. It detects this only approximately, and the warning can be marked as considered (REQ-CLI-006).
 
 ## C.7 Example
 
@@ -4449,3 +4538,59 @@ This appendix lists the questions raised while writing this document. For each, 
 | Will RFC 6265bis change before it is published? | REQ-WEB-006 follows the draft of 30 September 2026 | Recheck at each milestone's security review, and when it is published as an RFC (decision E.35). |
 | Which Xtensa toolchain versions build correctly? | Espressif's fork 1.94 and 1.95 fail release builds (esp-rs/rust#277) | The pinned toolchain of REQ-GEN-001, re-tested when the issue closes. |
 | How does the SAA5246A behave where its datasheet is silent? For example, parity errors, serial mode and erase. | It limits how exactly the SAA5246A profile can be reproduced | Decisions E.6 to E.8 define the behaviour. A real SAA5246A-based television, observed with a generated stream, could settle the rest. |
+
+---
+
+# Appendix E — TTI Link Extension (normative)
+
+This appendix defines how a TTI page declares its links (decision E.36).
+
+## E.1 The link command
+
+```
+LN,key,target,label
+```
+
+- **`key`** is `R`, `G`, `Y` or `C` for the red, green, yellow and cyan keys, or `I` for Index. Each key may appear at most once on a page or sub-page.
+- **`target`** has one of these forms:
+  - `mpp` or `mpp:ssss`: a page, and optionally a sub-page, in the same service, in hexadecimal;
+  - `name:mpp` or `name:mpp:ssss`: a page in another service named in the service descriptor (REQ-WEB-002). Names are letters, digits and hyphens.
+
+  Addresses (URLs) never appear in pages.
+- **`label`** is the prompt text. It is at most 9 characters for a link in the same service and 8 for a link to another service, using characters the page's G0 set can show. It is ignored for `I`.
+
+`LN` lines apply to the page or sub-page of the most recent `PN` line.
+
+## E.2 Rules
+
+1. **At most four.** A page has at most four coloured links. A fifth coloured `LN` line, or a repeated key, makes the page's links invalid. The page is still displayed, with no links, and a diagnostic is given.
+2. **Unknown services.** A target naming a service not in the descriptor makes that link null.
+3. **Older decoders.** Older TTI readers ignore `LN` lines. A page that wants links on such readers may also carry an ordinary `FL` line. When both are present, `LN` wins in tellytxt.com.
+4. **Encoding for broadcast.** When the page encoder turns the page into packets (REQ-INP-019):
+   - it writes packet X/27/0 from the links to the same service, with links to other services written as null;
+   - it writes a row 24 (packet X/24) drawn as REQ-NAV-011 describes, with the "display row 24" flag set. The one difference is that a link to another service is written in white rather than its key's colour. The "»" mark still shows, but the prompt does not look like a key that works: a broadcast television cannot follow it.
+
+   A Fastext television therefore shows the same prompts and follows the same-service links.
+5. **Reachable without Fastext.** Televisions made before Fastext (before about 1987) can only follow a link by having the viewer type its page number. Every link to a page in the same service should therefore have its three-digit page number visible somewhere in the page's own rows, for example "Sport 140". The page checker (REQ-CLI-006) shall warn when one is not.
+6. **Honest about what cannot work.** A link to another service, or a destination outside teletext, cannot be followed on a broadcast-only television. Authors should give such destinations in a form a viewer can act on without the link: the channel or service name, a short address, or a QR code drawn in mosaic graphics. The page checker shall warn when a page's only route to another service is its link.
+
+## E.3 Example
+
+```
+PN,10000
+OL,1,NEWS INDEX
+OL,3,Headlines        ...
+LN,R,101,Headlines
+LN,G,140,Sport
+LN,Y,weather:400,Weather
+LN,C,190,TV guide
+LN,I,100,
+```
+
+Row 24 then shows:
+- red "Headlines";
+- green "Sport";
+- yellow "»Weather", because it leaves this service;
+- cyan "TV guide".
+
+On a broadcast Fastext television, the yellow prompt appears in white and its key does nothing, because that link leaves the service. The page checker would also warn unless the page's text gives the page numbers 101, 140 and 190, and some other way to reach the weather service.
