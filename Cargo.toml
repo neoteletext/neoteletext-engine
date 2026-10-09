@@ -1,0 +1,53 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/tellytxt-core",
+    "crates/tellytxt-formats",
+    "crates/tellytxt-slicer",
+    "crates/tellytxt-web",
+    "crates/tellytxt-image",
+    "crates/tellytxt-cli",
+    "xtask",
+]
+default-members = ["crates/tellytxt-cli"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+# REQ-GEN-001: at most three stable releases behind 1.99.
+rust-version = "1.96"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[workspace.dependencies]
+tellytxt-core = { path = "crates/tellytxt-core" }
+tellytxt-formats = { path = "crates/tellytxt-formats" }
+tellytxt-slicer = { path = "crates/tellytxt-slicer" }
+tellytxt-web = { path = "crates/tellytxt-web" }
+tellytxt-image = { path = "crates/tellytxt-image" }
+# Decision E.38: the only external crates a microcontroller crate may use.
+embedded-io = { version = "0.7.1", default-features = false }
+httparse = { version = "1.10.1", default-features = false }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+unused_qualifications = "warn"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+# Narrow, justified exceptions to pedantic (REQ-GEN-006):
+# teletext code is full of deliberate u8/u16/u32 narrowing after range checks.
+cast_possible_truncation = "allow"
+# Module and type names repeat by design (charset::Charset, packet::Packet).
+module_name_repetitions = "allow"
+# Error docs are written per type, not per function.
+missing_errors_doc = "allow"
+
+[profile.release]
+panic = "abort"
+lto = true
+codegen-units = 1
+
+[profile.dev]
+panic = "abort"

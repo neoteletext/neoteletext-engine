@@ -1,0 +1,3 @@
+//! Project automation.
+
+fn main() {}
