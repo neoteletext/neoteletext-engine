@@ -148,9 +148,10 @@ The Web user agent (L7) sits beside the lower layers rather than above them in t
 - **Owns:**
   - conversion of palette indices to RGB565, RGB888, RGBA8888, grey and 1-bit, with byte order, stride and rotation;
   - PNG and PPM writers;
-  - text and ANSI output, which always passes the sanitising rules of REQ-SEC-010.
+  - text and ANSI output, which always passes the sanitising rules of REQ-SEC-010;
+  - terminal graphics output in the kitty, Sixel and iTerm2 protocols, with detection and fallback to ANSI output (decision E.37).
 - **Must not know about:** teletext rules.
-- **Requirements:** RND-005 to RND-009, SEC-010.
+- **Requirements:** RND-005 to RND-009, RND-029, SEC-010.
 
 ### L6 Interaction — `tellytxt-core::{viewer, nav, forms}`
 

@@ -1232,9 +1232,20 @@ A search on 1 October 2026 found that no television channel publishes its live t
    - a replay of a capture of Channel 4 teletext.
 
    Each message carries the 40 data bytes of a packet exactly as transmitted, with parity and Hamming coding intact, but the messages are wrapped in a request-and-response protocol of JSON messages. This protocol is not formally documented. It was established by reading the viewer's public JavaScript and by connecting to the servers, so it may change without notice. REQ-INP-022 covers it and requires the reader to be tolerant of unknown messages.
-5. **Broadcaster page interfaces are not raw data.** For example, the Finnish broadcaster YLE and the Dutch NOS publish pages as JSON with control codes replaced by keywords or HTML. They are not supported.
+5. **Most broadcaster page interfaces are not raw data.** Most publish rendered pages:
+   - ZDF, ARD, ORF, SVT, WDR, NDR and others publish HTML;
+   - RAI Televideo publishes PNG images;
+   - the Finnish broadcaster YLE publishes XML behind an API key.
+
+   ZDF's site also runs a bot check, so it must not be read automatically. These interfaces are not supported.
 
 Live raw teletext from a real channel therefore needs a digital television receiver tuned to a European broadcast that still carries teletext. Its output is the transport stream format of item 1.
+
+*Amended on 10 October 2026* (research record: `research/answers-teletext-sources.md`). Two broadcasters do publish live pages with their teletext bytes intact, although as whole pages rather than packet streams:
+- **SRG SSR** (SRF, RTS and RSI): the public site `teletext.ch` loads each page from `api.teletext.ch` as JSON. The page is held in EP1 format: a header, 23 rows of 40 bytes, and a per-page teletext level field.
+- **NOS**: `teletekst-data.nos.nl/page/<page>` returns navigation lines followed by 25 rows of 40 bytes of Level 1 codes. NOS has already converted accented letters to ISO 8859-1, so they are not transmitted codes.
+
+Item 5's earlier statement about NOS was wrong for this address. No broadcaster was found publishing a live packet stream. The newest real broadcast packets found are off-air recordings of TVP (Poland, November 2023) and NPO (the Netherlands, June 2020). The zxnet feed named `ch4` is a real-time replay of a Channel 4 broadcast of 15 July 2007.
 
 **E.29 — How pixels are produced, and what earlier designs teach.**
 Producing pixels portably is a solved problem, and the rendering design copies the solutions.
@@ -1410,6 +1421,69 @@ No other link mechanism exists. The alternatives that were considered and reject
 
 Pages received from broadcasts keep their transmitted row 24 (decision E.23). Their links can only lead to pages in the same service, so the destination is always fully determined by the packet X/27/0.
 
+**E.37 — Terminal output: exact pixels where the terminal can show them, characters everywhere else.**
+A terminal can show a teletext page in two ways:
+- **As characters**, drawn by the terminal's own font with colour escape sequences (REQ-RND-009).
+- **As pixels**, rendered by the library and sent through a terminal graphics protocol (REQ-RND-029).
+
+Character output cannot be exact:
+- the shapes depend on the user's font, so SAA5050 rounding (decision E.13) is lost;
+- the separated mosaic characters (REQ-CHR-005) were added only in Unicode 16 and are missing from most fonts;
+- few terminals support the double-height line escape sequences;
+- many terminals ignore the blink attribute.
+
+The pixel output of the row renderer (REQ-RND-017) is exact by construction, and the same on every port (REQ-RND-015).
+
+The receiver therefore supports both, as separate output adapters (`ARCHITECTURE.md` layer L5). When the terminal offers one, a graphics protocol is used; otherwise the characters are used. The user can always force either. Three protocols are supported, in this order of preference:
+
+1. **The kitty graphics protocol**, supported by kitty, Ghostty, WezTerm and Konsole. It accepts compressed images, places them by terminal cell, and keeps transmitted images so that the terminal can switch between them. Both flash phases can therefore be sent once and swapped.
+2. **Sixel**, supported by xterm, foot, WezTerm, Windows Terminal, iTerm2 and mlterm. It has the widest support. Its colours are numbered registers, which match the palette indices of REQ-RND-023 directly.
+3. **The iTerm2 inline image protocol**, supported by iTerm2, WezTerm and Visual Studio Code. It is a fallback for terminals with neither of the others.
+
+The alternative of shipping a teletext font for the terminal to use was rejected:
+- it looks right only where the user has installed it;
+- it still cannot show double height or exact rounding;
+- glyphs in the Private Use Area would tie the text output to that one font.
+
+*Reason:*
+- **No new capability in the core.** Both forms are callers of the existing outputs: the cell grid for characters, and the row renderer for pixels. The core does not change, which confirms the boundary of decision E.29.
+- **Each form keeps its strength.** The pixel form is the faithful one. The character form works everywhere: over a serial line, in a terminal multiplexer, and as text that can be copied and searched.
+
+**E.38 — Dependencies are judged by the microcontroller, not by the desktop.**
+Running on microcontrollers is a critical requirement (REQ-GEN-002 and REQ-GEN-015). Every crate that runs there, which means every crate except the command-line program, the image file writers, `xtask` and the C interface, is therefore held to the rules of the smallest target, and so is everything it depends on.
+
+The project's own safeguards stop at its own source:
+- the panic lints (REQ-GEN-006);
+- the bans on floating point and atomic operations (REQ-GEN-016);
+- fuzzing (REQ-TST-040).
+
+A dependency can contain any of what they forbid, and each one adds to the 64 kilobyte flash budget of REQ-GEN-009.
+
+Eight candidate crates were tested on 10 October 2026. Each was built alone as `no_std` without allocation for `thumbv6m-none-eabi`, `riscv32imc-unknown-none-elf` and `xtensa-esp32-none-elf`. All eight built:
+- `heapless` 0.9.3;
+- `bitflags` 2.13.2;
+- `httparse` 1.10.1;
+- `embedded-io` 0.7.1;
+- `base64` 0.23.1;
+- `sha1` 0.11.0;
+- `serde-json-core` 0.7.0, with `serde`;
+- `embedded-websocket` 0.9.5.
+
+Building proves little, though. A first attempt to detect panic and floating-point code by reading the symbols of the unlinked libraries gave the same result for every crate, including one with no code, so it measured nothing. The reliable test is the linked image, with unused code removed (REQ-GEN-019).
+
+The decisions are:
+- **The core, the format readers and the slicer have no dependencies.** The fixed-capacity collections and bit flags the core needs are a few hundred lines in the Foundation layer, written and tested under the project's own lints.
+- **The web module uses only `embedded-io` and `httparse`.**
+  - `embedded-io` is a set of traits with no code, and it is how a port connects its own network stack (REQ-WEB-001).
+  - `httparse` is mature, small and has no dependencies of its own.
+- **The project writes its own WebSocket framing, SHA-1, base64 and descriptor reader.**
+  - `embedded-websocket` brings in five further crates, including copies of the other three.
+  - `serde-json-core` brings serde's generated code into the flash image to read one small document (REQ-WEB-002).
+  - Each replacement is short, bounded, and testable against the published vectors of its standard: RFC 6455 for WebSocket, RFC 3174 for SHA-1, RFC 4648 for base64 and RFC 8259 for JSON.
+- **Crates that never run on a microcontroller are judged normally.** These are crates such as `clap`, `png`, `ratatui` and `crossterm`.
+
+*Reason:* A dependency is code the project ships to a microcontroller but cannot lint, fuzz or budget. On the smallest targets the cost of writing a small, well-specified piece is lower than the cost of trusting it.
+
 ---
 
 # Part F — Requirements
@@ -1490,7 +1564,7 @@ Phase 1 is large, roughly 100 to 150 person-days, so it is delivered in mileston
 
 | Milestone | Delivers | Main requirements |
 |---|---|---|
-| **M1 — First light** | Set up the layers of `ARCHITECTURE.md` and their enforcement (REQ-ARCH-011). Read T42 and TTI files. Decode Level 1.0 and Level 1.5 into the cell grid. Write text, terminal and PNG output. The exhaustive error-code tests, the Level 1 and Level 1.5 tests, and the real-broadcast corpus decoding. | ECC, PKT, ACQ (cache mode), CHR (Latin), L1, L15, FSM-003, FSM-004, FSM-006, FSM-007, RND-016 to RND-024, INP-002, INP-013, CLI-001 (`list`, `text`, `render`), TST-001 to TST-022 |
+| **M1 — First light** | Set up the layers of `ARCHITECTURE.md` and their enforcement (REQ-ARCH-011). Read T42 and TTI files. Decode Level 1.0 and Level 1.5 into the cell grid. Write text, terminal and PNG output, and show pages in the terminal as exact pixels. The exhaustive error-code tests, the Level 1 and Level 1.5 tests, and the real-broadcast corpus decoding. | ECC, PKT, ACQ (cache mode), CHR (Latin), L1, L15, FSM-003, FSM-004, FSM-006, FSM-007, RND-001, RND-002, RND-004 to RND-024 (the raster, text and terminal renderers, the glyphs, rounding and the image writers), RND-029, INP-002, INP-013, CLI-001 (`list`, `text`, `render`, `show`), TST-001 to TST-022 |
 | **M2 — Web** | Fetch TTI and T42 pages over HTTP with caching, push over WebSocket and server-sent events, cookie sessions, and the zxnet live feed. | WEB-001 to WEB-009, WEB-013 to WEB-016, INP-022 |
 | **M3 — Broadcast** | Digital television transport streams, Linux sliced data, and the remaining page formats. | INP-003 to INP-011, INP-014 to INP-020, SVC |
 | **M4 — Raw video** | The software data slicer and its synthetic signal generator. | SLC, FSM-002, TST-060, TST-061 |
@@ -1601,7 +1675,7 @@ Plain HTTP is allowed for reading, cookies and forms (decision E.32). The follow
 *Verification:* Test.
 
 **REQ-SEC-010 — Safe text and terminal output.**
-- **Allow-list only.** The text and terminal renderers (REQ-RND-008 and REQ-RND-009) shall emit only an allow-list of printable characters.
+- **Allow-list only.** The text and terminal renderers (REQ-RND-008 and REQ-RND-009) shall emit only an allow-list of printable characters. The terminal graphics renderer (REQ-RND-029) writes no page text at all, only image data it encodes itself.
 - **Stripped characters.** Every C0 and C1 control character and DEL shall be removed, as shall every Unicode bidirectional control (U+061C, U+200E, U+200F, U+202A to U+202E and U+2066 to U+2069). Mapped characters from the Hebrew and Arabic sets are laid out by the renderer, not by embedded controls.
 - **Own escape sequences only.** The terminal renderer shall emit no escape sequences except those it generates itself, from a fixed list.
 - **Safe file names.** File names derived from received content, such as a service name or page title, shall be reduced to a safe character set and shall never contain path separators.
@@ -1737,7 +1811,7 @@ Each requirement below gives:
 **REQ-GEN-001 — Language and toolchain.**
 All code shall be written in Rust, edition 2024.
 
-- **Minimum supported Rust version.** The minimum supported Rust version shall be stated in the workspace manifest. It shall be kept at no more than three stable releases behind the current stable release, and shall be tested in continuous integration. At the time of writing, stable Rust is 1.98, so the minimum shall be no older than 1.95.
+- **Minimum supported Rust version.** The minimum supported Rust version shall be stated in the workspace manifest. It shall be kept at no more than three stable releases behind the current stable release, and shall be tested in continuous integration. On 10 October 2026, stable Rust is 1.99.0 (released on 1 October 2026), so the minimum shall be no older than 1.96.
 - **Stable Rust only.** The library shall use only stable Rust features. The one exception is the Xtensa targets (REQ-GEN-015), which need Espressif's fork of the toolchain and `build-std` (below).
 - **Pinning the Xtensa toolchain.** The Xtensa toolchain version shall be pinned in the repository and changed only deliberately. Espressif's fork versions 1.94 and 1.95 fail to compile release builds for Xtensa, an open issue (esp-rs/rust#277) as of 1 October 2026. Version 1.93 is known to work.
 
@@ -1906,17 +1980,34 @@ Code in the `no_std` crates shall follow these rules, because some targets lack 
 *Verification:* Inspection; the size check of REQ-GEN-009; the builds of REQ-GEN-015.
 
 **REQ-GEN-017 — Dependency policy.**
-- **The core.** `tellytxt-core` shall have no dependencies outside the Rust standard distribution, except small `no_std` crates approved in the repository. Examples are `heapless` for fixed-capacity collections and `bitflags`.
-- **Other crates.** They may use well-maintained crates where these save real work. Examples:
-  - `httparse`, `embedded-websocket` and `serde-json-core` for the sans-IO web protocols;
-  - `embedded-io` for the transport traits;
-  - `base64`;
-  - `png` for image writing;
-  - `clap` for the command line;
-  - `ratatui` and `crossterm` for the interactive viewer.
-- **Licences.** Every dependency shall have a licence compatible with the project's own: MIT, Apache 2.0, BSD, zlib, ISC or CC0. GPL-licensed crates are excluded (REQ-GEN-012). The rule shall be enforced with `cargo-deny`, which shall also check for security advisories.
+Dependencies are judged by the microcontroller, as decision E.38 describes.
 
-*Verification:* `cargo-deny` in continuous integration; inspection of the core's dependency list.
+- **Microcontroller crates.** These are the crates that run on bare-metal targets (REQ-GEN-015): `tellytxt-core`, `tellytxt-formats` without its `std` feature, `tellytxt-slicer`, `tellytxt-web` and the helpers of `tellytxt-image`.
+- **Crates with no dependencies.** `tellytxt-core`, `tellytxt-formats` and `tellytxt-slicer` shall have no dependencies outside the Rust distribution's `core` library. Fixed-capacity collections and bit flags shall be written in the Foundation layer.
+- **The web module.** `tellytxt-web` may depend only on `embedded-io` and `httparse`, both with default features off. WebSocket framing, SHA-1, base64 and the descriptor reader shall be written in the project, each tested against the published test vectors of its standard.
+- **Rules for any new dependency.** A new dependency of a microcontroller crate, direct or indirect, needs a decision recorded in Part E. It shall:
+  - build as `no_std` without allocation for `thumbv6m-none-eabi`, `riscv32imc-unknown-none-elf` and `xtensa-esp32-none-elf`;
+  - use no compare-and-swap atomic operations and no floating point;
+  - have no build script and no native code;
+  - have its flash cost measured by the size check of REQ-GEN-009;
+  - pass the symbol check of REQ-GEN-019.
+- **Other crates.** The command-line program, the image file writers, `xtask` and the C interface never run on a microcontroller. They may use well-maintained crates where these save real work, for example `png` for image writing, `clap` for the command line, and `ratatui` and `crossterm` for the interactive viewer.
+- **Licences.** Every dependency shall have a licence compatible with the project's own: MIT, Apache 2.0, BSD, zlib, ISC or CC0. GPL-licensed crates are excluded (REQ-GEN-012). The rule shall be enforced with `cargo-deny`, which shall also check for security advisories.
+- **Enforcing the list.** The permitted dependency list of each microcontroller crate shall be recorded in the repository. An `xtask` check shall compare it with the resolved dependency graph, and shall fail on any difference.
+
+*Verification:* `cargo-deny` and the `xtask` dependency check in continuous integration; the symbol check of REQ-GEN-019.
+
+**REQ-GEN-019 — Symbol check of the linked microcontroller image.**
+Continuous integration shall link a test image for `thumbv6m-none-eabi`. The image shall contain the microcontroller crates of REQ-GEN-017 and call every public entry point, so that no code is removed as unused. The image shall be built with `opt-level = "z"`, link-time optimisation and `panic = "abort"`.
+
+The check shall fail if the linked image contains:
+- any software floating-point routine, such as `__aeabi_fadd` or `__aeabi_dmul`, outside the slicer's floating-point feature (REQ-SLC-015);
+- any compare-and-swap atomic routine;
+- any reachable panic other than the image's own panic handler.
+
+The size check of REQ-GEN-009 shall measure the same image.
+*Reason:* The lints of REQ-GEN-006 and REQ-GEN-016 cover only the project's own source. Only the linked image shows what dependencies and the compiler actually brought in (decision E.38).
+*Verification:* Continuous integration, including a test that a deliberately added floating-point operation makes the check fail.
 
 **REQ-GEN-018 — Optional C interface.**
 *Phase:* Phase 2 (whole requirement).
@@ -2664,7 +2755,7 @@ All other triplet modes shall be ignored for display, apart from their effect on
 *Verification:* Test.
 
 **REQ-L15-008 — Overwrite rules.**
-Each character written by the Level 1.5 pass shall be placed in the cell grid according to all the rules of decision E.5 (a) to (i).
+Each character written by the Level 1.5 pass shall be placed in the cell grid according to all the rules of decision E.5 (a) to (j).
 *Verification:* Test for each rule.
 
 **REQ-L15-009 — Out-of-order triplets.**
@@ -2854,6 +2945,29 @@ A text renderer shall write a page as 25 lines of UTF-8 text. Characters shall b
 A terminal renderer shall write a page using ANSI terminal escape sequences, in both 24-bit colour and 8-colour modes. Flash shall use the terminal's blink attribute where available. Double height shall be approximated: top halves are drawn as normal characters and bottom halves as blank cells in the background colour, unless the terminal supports the double-height line escape sequences, in which case those may be used.
 All output shall pass the sanitising rules of REQ-SEC-010, and the renderer shall emit only its own escape sequences.
 *Verification:* Demonstration.
+
+**REQ-RND-029 — Terminal graphics output.**
+A terminal graphics renderer shall show a page as exact pixels inside a terminal, as decision E.37 describes. It shall be an ordinary caller of the row renderer (REQ-RND-017) and of the scaling helper (REQ-RND-024). It shall add nothing to the core.
+
+- **Protocols.** It shall write the kitty graphics protocol, Sixel, and the iTerm2 inline image protocol.
+- **Choosing a protocol.** By default it shall pick the first protocol the terminal supports, in the order of decision E.37. It shall fall back to the character renderer of REQ-RND-009 when the terminal supports none of them, or when the output is not a terminal. A command-line option shall force any one of the three protocols or the character renderer.
+- **Detection.** Support shall be found by querying the terminal:
+  - the kitty graphics query;
+  - the Sixel attribute in the response to Primary Device Attributes;
+  - the terminal identification, for iTerm2.
+
+  Every reply shall be treated as untrusted input (REQ-SEC-010): bounded in length, parsed strictly, and abandoned after a timeout. A terminal that does not reply shall be treated as having no graphics support.
+- **Size.** The page shall be drawn at the largest whole-number scale that fits the terminal, using the cell size the terminal reports in pixels. A command-line option shall set the scale instead. The 4:3 aspect correction of REQ-RND-004 shall be available as an option.
+- **Flash and reveal.**
+  - With the kitty protocol, the renderer shall transmit each flash phase once and switch between them.
+  - With the other protocols, it shall redraw only the rows that REQ-RND-019 marks as changed, where the protocol and the terminal allow a partial redraw, and the whole page otherwise.
+- **Terminal multiplexers.** When the renderer detects tmux or GNU screen and cannot confirm that graphics pass through them, it shall use the character renderer and say why in its diagnostics.
+- **Escape sequences.** It shall emit only the escape sequences it generates itself (REQ-SEC-010). Image data is encoded from the rendered pixels, so no byte of page content is ever written to the terminal directly.
+
+*Verification:*
+- Test that compares the output for a set of pages with recorded output, for each protocol.
+- Test that feeds the detection malformed, oversized and missing replies.
+- Demonstration in kitty, WezTerm, xterm in its VT340 mode, and iTerm2.
 
 **REQ-RND-010 — Glyph data.**
 *Phase:* Phase 1 for the listed Latin, supplementary and G3 coverage; Phase 2 for glyphs of the other sets.
@@ -3268,10 +3382,10 @@ The feeds known on 1 October 2026 shall be available by short name:
 | `nms-ceefax` | Ceefax recreation | `wss://internal.nathanmediaservices.co.uk/websockets/ceefax` |
 | `chunkytext` | ChunkyText | `wss://zxnet.co.uk/ws/chunkytext` |
 | `spark` | SPARK | `wss://zxnet.co.uk/ws/spark` |
-| `ch4` | Channel 4 capture | `wss://zxnet.co.uk/ws/ch4` |
+| `ch4` | Channel 4 capture: a real-time replay of a broadcast of 15 July 2007 | `wss://zxnet.co.uk/ws/ch4` |
 | `test` | Test service | `wss://zxnet.co.uk/ws/test` |
 
-A channel identifier or an address may also be given directly.
+A channel identifier or an address may also be given directly. The short name is only a label for the user. The service name sent to the server is the first string of the channel identifier, and it can differ from the short name: the `ch4` identifier carries the service name `channel4-capture`. Sending a different name draws a `wrongname` message.
 
 **Messages sent by the client.** Client messages are text frames holding comma-separated values, which is how the viewer's JavaScript sends its arrays. After connecting, the reader shall send:
 - `service` followed by the channel identifier;
@@ -3297,6 +3411,7 @@ When the server sends `apiver`, the reader shall reply with `apiver` and the pro
 | `clock` | Header clock characters | |
 | `pageExists` | A magazine and page number present in the service | Used to build the service's page list. |
 | `initialpage` | The initial page and the status message | |
+| `bsdp` | The 40 bytes of packet 8/30, bytes 6 to 45, in base64, sent about once a second (server protocol version 1 and later) | Rebuilt as a packet 8/30 in magazine 8 and decoded as service data (area SVC). Its date and time show whether a feed is live or a replay. |
 | `channelSettings`, `secondTick`, `wrongname` | Viewer settings, a timing tick, and a service-name mismatch | `wrongname` means stop reconnecting. |
 
 In the control bit number, C4 is 0x0010, C5 is 0x0020 and so on, up to C11 at 0x0800. The national option bits occupy 0x7000.
@@ -3304,6 +3419,8 @@ In the control bit number, C4 is 0x0010, C5 is 0x0020 and so on, up to C11 at 0x
 **Conversion to packets.** The reader shall rebuild each `header` and `row` message as a complete 42-byte packet in the internal form (REQ-ARCH-002) by Hamming-encoding the packet address from the magazine and packet number, and prepending it to the 40 received bytes. The packets then pass through normal acquisition (REQ-ARCH-004). The decoded fields that the server also sends in `header` messages shall be used only to cross-check the decoder, and any disagreement shall be reported.
 
 **Filtering.** The server sends rows only for the pages requested in `pagesearch` slots, so the feed is a filtered stream, not a whole-service stream. To capture a whole service, the reader shall offer a mode that walks the `pageExists` list, requesting pages in turn through the available slots.
+
+When tested on 10 October 2026, only slot 0 returned rows. A page then needed to be held for longer than one page cycle: requests that changed page every 3 seconds received headers but no rows. The walking mode shall therefore hold each page until its rows have arrived, or until a timeout. It shall keep to the pace of a person using the viewer, because these are hobby servers.
 
 **Tolerance and reconnection.** Unknown message types and extra fields shall be ignored. After a dropped connection the reader shall reconnect after 10 seconds, giving up after 5 failed attempts. It shall treat 5 seconds without a `clock` or `header` message as a dropped connection, as the viewer does.
 
@@ -3466,7 +3583,7 @@ A command-line program named `ttx` shall provide these commands:
 | Command | Purpose |
 |---|---|
 | `ttx list` | List the pages and sub-pages found in an input, with counts and error statistics. |
-| `ttx show` | Display one page in the terminal. |
+| `ttx show` | Display one page in the terminal, as exact pixels where the terminal supports a graphics protocol and as characters otherwise (decision E.37). |
 | `ttx render` | Write one page, or all pages, as image files. |
 | `ttx text` | Write one page, or all pages, as UTF-8 text. |
 | `ttx convert` | Convert between the input and output formats of area INP, for example from a transport stream to T42, or from TTI to T42. |
@@ -3639,6 +3756,17 @@ The tests shall use a corpus of real broadcast teletext. It shall be downloaded 
   - several broadcasters;
   - several decades;
   - both clean and noisy recoveries.
+- **Recent off-air recordings** from the TSDuck stream repository (`https://tsduck.io/streams/`). Each carries full teletext services, not only subtitles, as its published analysis file shows. They are the newest real broadcast packets found (research record: `research/answers-teletext-sources.md`).
+
+  | File | Recorded | Teletext services |
+  |---|---|---|
+  | `poland-dttv-warsaw/PL_DVB-T_2023-11-10_MUX3_522MHz.ts` | 10 November 2023 | TVP1 and three other TVP services |
+  | `netherlands-dttv/digitenne-482-2020-06-21.ts` | 21 June 2020 | NOS Teletekst on NPO 1, 2 and 3, and two more |
+  | `italy-sardinia-dttv/mux1rai.ts` | not stated | RAI Televideo |
+  | `hotbird-13.0E/hotbird130E-ts6000-2018-05-11.ts` | 11 May 2018 | Mediaset |
+
+  The same rules on ranged requests apply. The repository's licence shall be checked and recorded before the files are used.
+- **Restored pages with verified checksums** from the teletext-restoration repository (`https://github.com/teletext-restoration/teletext-restoration`). The restored single-page T42 files whose names carry neither `-maybe` nor `-nocrc` match the page checksum that was broadcast with them. They shall be used for the page checksum test of REQ-ECC-007. The full recordings behind them may be fetched only one at a time, as the maintainers ask.
 - **The raw sampled captures published with vhs-teletext**, for the slicer (REQ-TST-061).
 
 - **A local corpus of recovered broadcasts.** The workspace already holds T42 recoveries made by Dan Farrimond from VHS recordings, in `~/devel/jellytext/dan/`:
@@ -4530,6 +4658,8 @@ This appendix lists the questions raised while writing this document. For each, 
 | Question | Why it matters | How it will be settled |
 |---|---|---|
 | **What is the tellytxt.com product?** Who writes pages, what the server side is, and who the users are. | This document specifies the receiver and library only. The web-native design implies servers and an authoring workflow that are not specified. | A short product brief, written by the project owner, before milestone M2. |
+| Should the receiver read the live page feeds of SRG SSR (EP1 inside JSON) and NOS (Level 1 rows)? | They are the only live sources of a real broadcaster's teletext bytes found (decision E.28, amended 10 October 2026). They are whole pages, not packets, and the NOS form has already converted accented letters. | A decision in Part E, including the broadcasters' terms of use, before any reader is written. |
+| Where can raw teletext from German broadcasters, ZDF in particular, be obtained? | German public broadcasters are the main remaining users of Level 2.5, so their data best tests what lies beyond Level 1.5. Their websites publish only HTML, and ZDF's runs a bot check that must not be circumvented. Archives of the web pages (defgsus `teletext-archive-unicode` and its successors, from 2022) hold Unicode text, not teletext bytes. | A recording from a DVB receiver in Europe tuned to Astra 19.2°E or German DVB-T2. |
 | Does double-height rounding alternate its neighbour on every line (the datasheet's wording), or repeat each rounded line (all the emulators)? | Visible only on double-height diagonals | Comparison with photographs of a real SAA5050 (REQ-TST-030). E.13 follows the emulators until then. |
 | What are G2 diacritical marks 4/9 and 4/C exactly? | Rarely used; the references disagree | A real transmission that uses them (REQ-CHR-008). |
 | Is the zxnet live feed protocol stable? | It is undocumented and could change | The tolerant reader of REQ-INP-022, plus the recorded session of REQ-TST-063. The site's operator could also be asked. |

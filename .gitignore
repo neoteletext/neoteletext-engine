@@ -24,3 +24,6 @@
 *.swp
 .vscode/
 .idea/
+
+# Scratch work: probes, browser profile
+/tmp/
