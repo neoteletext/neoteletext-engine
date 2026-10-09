@@ -3,8 +3,7 @@
 //! PRF). Changing the configuration never requires re-acquiring pages.
 
 use crate::consts::{
-    FIELD_PERIOD_US, FLASH_FIELDS_HIDDEN, FLASH_FIELDS_SHOWN, MOMENTARY_REVEAL_US,
-    PAGE_COMPLETION_TIMEOUT_US,
+    FIELD_PERIOD_US, FLASH_FIELDS_HIDDEN, FLASH_FIELDS_SHOWN, MOMENTARY_REVEAL_US, PAGE_COMPLETION_TIMEOUT_US,
 };
 
 /// How characters that fail their parity check are shown (decision E.8).

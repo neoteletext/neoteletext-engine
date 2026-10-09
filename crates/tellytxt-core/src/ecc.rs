@@ -80,11 +80,7 @@ const fn hamming84_decode_slow(byte: u8) -> (u8, Status) {
     let abc_pass = a == 1 && b == 1 && c == 1;
     if d == 1 {
         // Overall parity correct: either no error, or a double error.
-        if abc_pass {
-            (hamming84_data(byte), Status::Clean)
-        } else {
-            (0, Status::Uncorrectable)
-        }
+        if abc_pass { (hamming84_data(byte), Status::Clean) } else { (0, Status::Uncorrectable) }
     } else if abc_pass {
         // Only test D failed: the error is in P4, the data is intact.
         (hamming84_data(byte), Status::Corrected)
@@ -165,10 +161,7 @@ fn test_parity(word: u32, test: Option<u32>) -> u32 {
 }
 
 fn triplet_data(word: u32) -> u32 {
-    TRIPLET_DATA_SHIFTS
-        .iter()
-        .enumerate()
-        .fold(0, |value, (index, &shift)| value | (((word >> shift) & 1) << index))
+    TRIPLET_DATA_SHIFTS.iter().enumerate().fold(0, |value, (index, &shift)| value | (((word >> shift) & 1) << index))
 }
 
 /// Encodes an 18-bit value as a Hamming 24/18 triplet (REQ-ECC-005), with
@@ -254,10 +247,7 @@ impl PageChecksum {
         while index > 0 {
             index = index.wrapping_sub(1);
             let input = u16::from((byte >> index) & 1);
-            let feedback = (self.register >> 15)
-                ^ (self.register >> 11)
-                ^ (self.register >> 8)
-                ^ (self.register >> 6);
+            let feedback = (self.register >> 15) ^ (self.register >> 11) ^ (self.register >> 8) ^ (self.register >> 6);
             self.register = (self.register << 1) | ((input ^ feedback) & 1);
         }
     }
@@ -282,10 +272,8 @@ mod tests {
     use super::*;
 
     /// REQ-ECC-003: the sixteen codes listed in the requirement.
-    const CODES: [u8; 16] = [
-        0x15, 0x02, 0x49, 0x5E, 0x64, 0x73, 0x38, 0x2F, 0xD0, 0xC7, 0x8C, 0x9B, 0xA1, 0xB6, 0xFD,
-        0xEA,
-    ];
+    const CODES: [u8; 16] =
+        [0x15, 0x02, 0x49, 0x5E, 0x64, 0x73, 0x38, 0x2F, 0xD0, 0xC7, 0x8C, 0x9B, 0xA1, 0xB6, 0xFD, 0xEA];
 
     #[test]
     fn hamming84_encodes_the_standard_codes() {

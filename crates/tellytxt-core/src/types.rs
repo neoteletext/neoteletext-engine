@@ -1,8 +1,7 @@
 //! Small shared types and fixed-capacity collections (Foundation).
 
 use crate::consts::{
-    DECIMAL_DIGIT_MAX, MAGAZINE_MASK, MAGAZINE_ZERO_MEANS, NIBBLE_MASK, PAGE_TIME_FILLING,
-    SUBCODE_ANY, SUBCODE_MASK,
+    DECIMAL_DIGIT_MAX, MAGAZINE_MASK, MAGAZINE_ZERO_MEANS, NIBBLE_MASK, PAGE_TIME_FILLING, SUBCODE_ANY, SUBCODE_MASK,
 };
 
 /// A magazine number, 1 to 8 (clause 7.1.2).
@@ -89,9 +88,7 @@ impl PageAddress {
     pub const fn from_mpp(mpp: u16) -> Option<Self> {
         let magazine_digit = (mpp >> 8) as u8;
         match Magazine::new(magazine_digit) {
-            Some(magazine) if mpp <= 0x8FF => {
-                Some(Self { magazine, page: PageNumber((mpp & 0xFF) as u8) })
-            }
+            Some(magazine) if mpp <= 0x8FF => Some(Self { magazine, page: PageNumber((mpp & 0xFF) as u8) }),
             _ => None,
         }
     }

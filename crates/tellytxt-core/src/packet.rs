@@ -6,13 +6,12 @@
 //! into typed fields and knows nothing about pages, time or characters.
 
 use crate::consts::{
-    ADDRESS_BYTE_0, ADDRESS_BYTE_1, DATA_BYTES, DATA_START, DESIGNATION_CODES,
-    HEADER_DISPLAY_BYTES, HEADER_DISPLAY_START, LINK_NULL_PAGE, LINK_NULL_SUBCODE, MAGAZINE_MASK,
-    PACKET_BYTES, PACKET_ENHANCEMENT, PACKET_FIRST_ROW, PACKET_HEADER,
-    PACKET_LINKS, PACKET_MAGAZINE_ENHANCEMENT, PACKET_NUMBER_LOW_BIT,
-    PACKET_PAGE_ENHANCEMENT, PACKET_ROW_25, PACKET_SERVICE, SERVICE_MAGAZINE,
-    STATUS_MESSAGE_BYTES, TRIPLET_ADDRESS_BITS, TRIPLET_ADDRESS_MASK, TRIPLET_BYTES,
-    TRIPLET_DATA_FIELD_MASK, TRIPLET_MODE_BITS, TRIPLET_MODE_MASK, TRIPLETS_PER_PACKET,
+    ADDRESS_BYTE_0, ADDRESS_BYTE_1, DATA_BYTES, DATA_START, DESIGNATION_CODES, HEADER_DISPLAY_BYTES,
+    HEADER_DISPLAY_START, LINK_NULL_PAGE, LINK_NULL_SUBCODE, MAGAZINE_MASK, PACKET_BYTES, PACKET_ENHANCEMENT,
+    PACKET_FIRST_ROW, PACKET_HEADER, PACKET_LINKS, PACKET_MAGAZINE_ENHANCEMENT, PACKET_NUMBER_LOW_BIT,
+    PACKET_PAGE_ENHANCEMENT, PACKET_ROW_25, PACKET_SERVICE, SERVICE_MAGAZINE, STATUS_MESSAGE_BYTES,
+    TRIPLET_ADDRESS_BITS, TRIPLET_ADDRESS_MASK, TRIPLET_BYTES, TRIPLET_DATA_FIELD_MASK, TRIPLET_MODE_BITS,
+    TRIPLET_MODE_MASK, TRIPLETS_PER_PACKET,
 };
 use crate::ecc::{hamming84, hamming2418, reverse_bits};
 use crate::types::{ControlBits, Magazine, PageNumber, SubCode};
@@ -158,8 +157,7 @@ impl Triplet {
         Self {
             address: (value & TRIPLET_ADDRESS_MASK) as u8,
             mode: ((value >> TRIPLET_ADDRESS_BITS) & TRIPLET_MODE_MASK) as u8,
-            data: ((value >> (TRIPLET_ADDRESS_BITS + TRIPLET_MODE_BITS)) & TRIPLET_DATA_FIELD_MASK)
-                as u8,
+            data: ((value >> (TRIPLET_ADDRESS_BITS + TRIPLET_MODE_BITS)) & TRIPLET_DATA_FIELD_MASK) as u8,
         }
     }
 
@@ -168,8 +166,7 @@ impl Triplet {
     pub const fn value(self) -> u32 {
         (self.address as u32 & TRIPLET_ADDRESS_MASK)
             | ((self.mode as u32 & TRIPLET_MODE_MASK) << TRIPLET_ADDRESS_BITS)
-            | ((self.data as u32 & TRIPLET_DATA_FIELD_MASK)
-                << (TRIPLET_ADDRESS_BITS + TRIPLET_MODE_BITS))
+            | ((self.data as u32 & TRIPLET_DATA_FIELD_MASK) << (TRIPLET_ADDRESS_BITS + TRIPLET_MODE_BITS))
     }
 
     /// True for a row address triplet (address 40 to 63).
@@ -314,18 +311,14 @@ pub fn decode(packet: &Packet) -> Result<Decoded, PacketError> {
     let magazine = address.magazine;
     let decoded = match address.number {
         PACKET_HEADER => Decoded::Header(decode_header(packet, magazine)),
-        PACKET_FIRST_ROW..=PACKET_ROW_25 => {
-            Decoded::Row(Row { magazine, row: address.number, bytes: packet.data() })
-        }
+        PACKET_FIRST_ROW..=PACKET_ROW_25 => Decoded::Row(Row { magazine, row: address.number, bytes: packet.data() }),
         PACKET_ENHANCEMENT => {
             let designation = designation_code(packet)?;
             Decoded::Enhancement(Enhancement { magazine, designation, triplets: triplets(packet) })
         }
         PACKET_LINKS => match designation_code(packet)? {
             0 => Decoded::Links(decode_links(packet, magazine)),
-            designation @ 1..=3 => {
-                Decoded::LinksRaw { magazine, designation, bytes: packet.data() }
-            }
+            designation @ 1..=3 => Decoded::LinksRaw { magazine, designation, bytes: packet.data() },
             // Designation codes 4 to 15 are Level 2.5 compositional links.
             _ => Decoded::Ignored(address),
         },
@@ -472,8 +465,7 @@ fn decode_links(packet: &Packet, magazine: Magazine) -> Links {
             Some(Link { magazine: linked, page, subcode })
         });
     }
-    let display_row_24 =
-        nibble(packet, LINK_CONTROL).is_some_and(|control| control & LINK_CONTROL_ROW_24 != 0);
+    let display_row_24 = nibble(packet, LINK_CONTROL).is_some_and(|control| control & LINK_CONTROL_ROW_24 != 0);
     let checksum_bytes = [packet.byte(LINK_CHECKSUM), packet.byte(LINK_CHECKSUM.saturating_add(1))];
     Links { magazine, links, display_row_24, checksum_bytes }
 }
@@ -533,14 +525,12 @@ fn decode_service(packet: &Packet, designation: u8) -> ServicePacket {
 /// [`decode`].
 pub mod encode {
     use super::{
-        HEADER_C7_C10, HEADER_C11_C14, HEADER_S1, HEADER_S2_C4, HEADER_S3, HEADER_S4_C5_C6,
-        HEADER_TENS, HEADER_UNITS, LINK_BYTES, LINK_CHECKSUM, LINK_CONTROL, LINK_CONTROL_ROW_24,
-        LINK_START, Packet, Triplet,
+        HEADER_C7_C10, HEADER_C11_C14, HEADER_S1, HEADER_S2_C4, HEADER_S3, HEADER_S4_C5_C6, HEADER_TENS, HEADER_UNITS,
+        LINK_BYTES, LINK_CHECKSUM, LINK_CONTROL, LINK_CONTROL_ROW_24, LINK_START, Packet, Triplet,
     };
     use crate::consts::{
-        ADDRESS_BYTE_0, ADDRESS_BYTE_1, DATA_BYTES, DATA_START, HEADER_DISPLAY_BYTES,
-        HEADER_DISPLAY_START, MAGAZINE_MASK, NIBBLE_MASK, PACKET_BYTES, TRIPLET_BYTES,
-        TRIPLETS_PER_PACKET,
+        ADDRESS_BYTE_0, ADDRESS_BYTE_1, DATA_BYTES, DATA_START, HEADER_DISPLAY_BYTES, HEADER_DISPLAY_START,
+        MAGAZINE_MASK, NIBBLE_MASK, PACKET_BYTES, TRIPLET_BYTES, TRIPLETS_PER_PACKET,
     };
     use crate::ecc::{hamming84_encode, hamming2418_encode};
     use crate::types::{ControlBits, Magazine, PageNumber, SubCode};
@@ -615,9 +605,7 @@ pub mod encode {
         let mut packet = address(magazine, number);
         set(&mut packet, DATA_START, hamming84_encode(designation & NIBBLE_MASK));
         for (index, triplet) in triplets.iter().enumerate() {
-            let start = DATA_START
-                .saturating_add(1)
-                .saturating_add(index.saturating_mul(TRIPLET_BYTES));
+            let start = DATA_START.saturating_add(1).saturating_add(index.saturating_mul(TRIPLET_BYTES));
             let [a, b, c] = hamming2418_encode(triplet.value());
             set(&mut packet, start, a);
             set(&mut packet, start.saturating_add(1), b);
@@ -682,8 +670,7 @@ pub mod encode {
     /// page: page function 0, page coding 0 (Table 4).
     #[must_use]
     pub fn designation_triplets(default_designation: u8, second_designation: u8) -> [Triplet; 2] {
-        let first = (u32::from(default_designation & 0x7F) << 7)
-            | (u32::from(second_designation & 0xF) << 14);
+        let first = (u32::from(default_designation & 0x7F) << 7) | (u32::from(second_designation & 0xF) << 14);
         let second = u32::from((second_designation >> 4) & 0x7);
         [Triplet::from_value(first), Triplet::from_value(second)]
     }

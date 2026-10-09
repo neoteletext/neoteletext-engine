@@ -7,22 +7,18 @@
 //! (decision E.29).
 
 use crate::acq::{MagazineData, StoredPage};
-use crate::charset::{
-    self, CharRef, CharSet, Designation, G0, designation_with_fallback, mosaic_pattern, second_g0,
-};
+use crate::charset::{self, CharRef, CharSet, Designation, G0, designation_with_fallback, mosaic_pattern, second_g0};
 use crate::config::{Config, ParityPolicy, Row24Policy};
 use crate::consts::{
-    ALPHA_BLACK, ALPHA_WHITE, ATTRIBUTE_LAST, BLACK_BACKGROUND, C5_NEWSFLASH, C6_SUBTITLE,
-    C7_SUPPRESS_HEADER, C10_INHIBIT_DISPLAY, CODE_MASK_7BIT, COLOUR_ATTRIBUTE_MASK, COLOUR_BLACK,
-    COLOUR_GREEN, COLOUR_WHITE, COLUMNS, CONCEAL, CONTIGUOUS_MOSAICS, DOUBLE_HEIGHT, END_BOX, ESC,
-    FLASH, HEADER_DISPLAY_BYTES, HEADER_DISPLAY_COLUMN, HOLD_MOSAICS, MOSAIC_BIT5, MOSAIC_BLACK, MOSAIC_WHITE, NATIONAL_INDEX_MASK, NEW_BACKGROUND, NORMAL_SIZE,
-    RELEASE_MOSAICS, ROWS, SEPARATED_MOSAICS, SPACE, START_BOX, STATUS_ATTRIBUTE_COLUMN,
-    STATUS_COLUMNS, STEADY,
+    ALPHA_BLACK, ALPHA_WHITE, ATTRIBUTE_LAST, BLACK_BACKGROUND, C5_NEWSFLASH, C6_SUBTITLE, C7_SUPPRESS_HEADER,
+    C10_INHIBIT_DISPLAY, CODE_MASK_7BIT, COLOUR_ATTRIBUTE_MASK, COLOUR_BLACK, COLOUR_GREEN, COLOUR_WHITE, COLUMNS,
+    CONCEAL, CONTIGUOUS_MOSAICS, DOUBLE_HEIGHT, END_BOX, ESC, FLASH, HEADER_DISPLAY_BYTES, HEADER_DISPLAY_COLUMN,
+    HOLD_MOSAICS, MOSAIC_BIT5, MOSAIC_BLACK, MOSAIC_WHITE, NATIONAL_INDEX_MASK, NEW_BACKGROUND, NORMAL_SIZE,
+    RELEASE_MOSAICS, ROWS, SEPARATED_MOSAICS, SPACE, START_BOX, STATUS_ATTRIBUTE_COLUMN, STATUS_COLUMNS, STEADY,
 };
-use crate::packet::EnhancementData;
 
 /// What a cell shows.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum Glyph {
     /// Nothing in the foreground.
     Space,
@@ -38,7 +34,7 @@ pub enum Glyph {
 }
 
 /// A cell's role in double height (REQ-L1-008).
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum Size {
     /// Normal height.
     Normal,
@@ -51,7 +47,7 @@ pub enum Size {
 /// One cell of the grid (REQ-L1-001).
 // The flags are the independent cell attributes REQ-L1-001 lists one by one.
 #[allow(clippy::struct_excessive_bools)]
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub struct Cell {
     /// What the cell shows.
     pub glyph: Glyph,
@@ -186,12 +182,9 @@ pub fn resolve_designation(
     magazine: &MagazineData,
     config: &Config,
 ) -> (Designation, Option<G0>, bool) {
-    let national = config
-        .fixed_national_index
-        .unwrap_or_else(|| page.map_or(0, |page| page.control.national_index()))
+    let national = config.fixed_national_index.unwrap_or_else(|| page.map_or(0, |page| page.control.national_index()))
         & NATIONAL_INDEX_MASK;
-    let enhancement: Option<EnhancementData> =
-        page.and_then(|page| page.page_data).filter(|data| data.page_function == 0).or(magazine.data);
+    let enhancement = page.and_then(|page| page.page_data).filter(|data| data.page_function == 0).or(magazine.data);
     let group = enhancement.map_or(config.default_region, |data| data.default_designation >> 3);
     let (designation, fallback) = designation_with_fallback((group << 3) | national);
     let second = enhancement.and_then(|data| second_g0(data.second_designation));
@@ -581,7 +574,8 @@ mod tests {
 
     #[test]
     fn held_mosaic_keeps_its_form_and_resets_on_mode_change() {
-        let cells = decode(&[MOSAIC_RED, SEPARATED_MOSAICS, 0x7F, HOLD_MOSAICS, CONTIGUOUS_MOSAICS, ALPHA_RED, MOSAIC_RED]);
+        let cells =
+            decode(&[MOSAIC_RED, SEPARATED_MOSAICS, 0x7F, HOLD_MOSAICS, CONTIGUOUS_MOSAICS, ALPHA_RED, MOSAIC_RED]);
         // Contiguous (set-at) in column 4: the held mosaic keeps its stored
         // separated form (decision E.16).
         assert_eq!(cells[4].glyph, Glyph::Mosaic { pattern: 0x3F, separated: true });

@@ -4,6 +4,8 @@
 //! a Unicode value (REQ-CHR-001). Conversion to Unicode happens only at the
 //! output stage, through [`to_unicode`].
 
+// Tables keep one source row per line, aligned as in the standard.
+#[rustfmt::skip]
 mod tables;
 
 use crate::consts::{CODE_MASK_7BIT, DIACRITIC_NONE};
@@ -186,11 +188,8 @@ pub fn second_g0(value: u8) -> Option<G0> {
 #[must_use]
 pub fn to_unicode(character: CharRef) -> Unicode {
     let base = tables::base_unicode(character.set, character.code);
-    let combining = if character.diacritic == DIACRITIC_NONE {
-        None
-    } else {
-        tables::diacritic_combining(character.diacritic)
-    };
+    let combining =
+        if character.diacritic == DIACRITIC_NONE { None } else { tables::diacritic_combining(character.diacritic) };
     Unicode { base, combining }
 }
 

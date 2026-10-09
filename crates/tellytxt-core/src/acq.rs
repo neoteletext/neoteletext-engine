@@ -7,19 +7,17 @@
 
 use crate::config::{Config, ParityPolicy};
 use crate::consts::{
-    C4_ERASE, C8_UPDATE, C9_INTERRUPTED, CLOCK_COLUMN, COLUMNS, DATA_BYTES,
-    DESIGNATION_CODES, HEADER_DISPLAY_BYTES, HEADER_DISPLAY_COLUMN, MAGAZINES, SPACE,
-    STORED_ROWS, TRIPLETS_PER_PACKET,
+    C4_ERASE, C8_UPDATE, C9_INTERRUPTED, CLOCK_COLUMN, COLUMNS, DATA_BYTES, DESIGNATION_CODES, HEADER_DISPLAY_BYTES,
+    HEADER_DISPLAY_COLUMN, MAGAZINES, SPACE, STORED_ROWS, TRIPLETS_PER_PACKET,
 };
 use crate::ecc::has_odd_parity;
 use crate::fsm::{
-    MagazineAction, MagazineEvent, MagazineState, PageAction, PageEvent, PageKey, PageState,
-    magazine_action_name, magazine_event_name, magazine_state_name, magazine_transition,
-    page_action_name, page_event_name, page_state_name, page_transition,
+    MagazineAction, MagazineEvent, MagazineState, PageAction, PageEvent, PageKey, PageState, magazine_action_name,
+    magazine_event_name, magazine_state_name, magazine_transition, page_action_name, page_event_name, page_state_name,
+    page_transition,
 };
 use crate::packet::{
-    Decoded, EnhancementData, Header, Links, Packet, PacketError, PacketMeta, ServicePacket,
-    Triplet, decode,
+    Decoded, EnhancementData, Header, Links, Packet, PacketError, PacketMeta, ServicePacket, Triplet, decode,
 };
 use crate::trace::{Machine, TraceEntry};
 use crate::types::{ControlBits, Instant, Magazine, PageAddress, PageNumber, SubCode};
@@ -625,11 +623,7 @@ impl<'a> Decoder<'a> {
             let event = if index == own.index() {
                 self.own_header_event(header)
             } else if self.serial {
-                if time_filling {
-                    MagazineEvent::TimeFillingHeader
-                } else {
-                    MagazineEvent::HeaderOfOtherMagazineSerial
-                }
+                if time_filling { MagazineEvent::TimeFillingHeader } else { MagazineEvent::HeaderOfOtherMagazineSerial }
             } else {
                 MagazineEvent::UnrelatedHeader
             };
@@ -668,8 +662,7 @@ impl<'a> Decoder<'a> {
             self.clock.copy_from_slice(clock);
         }
         let interrupted = control.has(C9_INTERRUPTED);
-        let wanted = self.serial
-            || self.requested.is_none_or(|requested| requested.magazine == header.magazine);
+        let wanted = self.serial || self.requested.is_none_or(|requested| requested.magazine == header.magazine);
         if self.config.rolling_header
             && !interrupted
             && wanted
@@ -795,7 +788,13 @@ impl<'a> Decoder<'a> {
     }
 
     /// Stores the header of the page just started.
-    fn store_header(&mut self, slot: usize, header_display: &[u8; HEADER_DISPLAY_BYTES], control: ControlBits, now: Instant) {
+    fn store_header(
+        &mut self,
+        slot: usize,
+        header_display: &[u8; HEADER_DISPLAY_BYTES],
+        control: ControlBits,
+        now: Instant,
+    ) {
         let policy = self.config.parity_policy;
         if let Some(page) = self.store.page_mut(slot) {
             page.control = control;

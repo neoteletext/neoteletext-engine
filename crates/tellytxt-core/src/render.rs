@@ -7,9 +7,8 @@
 
 use crate::config::{CellMode, Config};
 use crate::consts::{
-    CELL_FIELD_LINES, CELL_HEIGHT, CELL_HEIGHT_SMALL, CELL_WIDTH, COLOURS, COLUMNS, GLYPH_DOTS,
-    GLYPH_LINES, MOSAIC_ROW_TENTHS, PAGE_WIDTH, PALETTE_CONCEAL_BASE, PALETTE_FLASH_BASE,
-    PALETTE_SIZE, PALETTE_TRANSPARENT, ROWS,
+    CELL_FIELD_LINES, CELL_HEIGHT, CELL_HEIGHT_SMALL, CELL_WIDTH, COLOURS, COLUMNS, GLYPH_DOTS, GLYPH_LINES,
+    MOSAIC_ROW_TENTHS, PAGE_WIDTH, PALETTE_CONCEAL_BASE, PALETTE_FLASH_BASE, PALETTE_SIZE, PALETTE_TRANSPARENT, ROWS,
 };
 use crate::glyphs::GlyphSet;
 use crate::level1::{Cell, Glyph, Grid, Size};
@@ -102,9 +101,12 @@ pub fn background_index(cell: &Cell, grid: &Grid) -> u8 {
 /// Widens a 5-dot row to 10 half-dots in a 12-half-dot cell; the leftmost
 /// dot column of the cell stays blank.
 fn widen(dots: u8) -> u16 {
-    (0..GLYPH_DOTS).fold(0u16, |acc, dot| {
-        if (dots >> dot) & 1 == 1 { acc | (0b11 << dot.wrapping_mul(2)) } else { acc }
-    })
+    (0..GLYPH_DOTS).fold(
+        0u16,
+        |acc, dot| {
+            if (dots >> dot) & 1 == 1 { acc | (0b11 << dot.wrapping_mul(2)) } else { acc }
+        },
+    )
 }
 
 /// A glyph row as half-dots, empty outside the 9-row glyph (decision E.13:
@@ -130,7 +132,8 @@ fn glyph_line_20(glyph: &[u8; GLYPH_LINES], line: usize, rounding: bool) -> u16 
     }
     // Upper sub-line rounds against the row above, lower against the row
     // below.
-    let neighbour = if line.is_multiple_of(2) { row.and_then(|r| r.checked_sub(1)) } else { row.map(|r| r.saturating_add(1)) };
+    let neighbour =
+        if line.is_multiple_of(2) { row.and_then(|r| r.checked_sub(1)) } else { row.map(|r| r.saturating_add(1)) };
     round(a, glyph_row(glyph, neighbour)) & CELL_MASK
 }
 
@@ -244,7 +247,15 @@ pub struct IndexBuffer<'a> {
 }
 
 /// Writes one pixel row of 480 palette indices into `out`.
-fn write_line(grid: &Grid, row: usize, line: usize, glyphs: &GlyphSet, options: RenderOptions, format: IndexFormat, out: &mut [u8]) -> Result<(), RenderError> {
+fn write_line(
+    grid: &Grid,
+    row: usize,
+    line: usize,
+    glyphs: &GlyphSet,
+    options: RenderOptions,
+    format: IndexFormat,
+    out: &mut [u8],
+) -> Result<(), RenderError> {
     let needed = match format {
         IndexFormat::Bits8 => PAGE_WIDTH,
         IndexFormat::Bits4 => PAGE_WIDTH / 2,
@@ -310,7 +321,15 @@ pub fn render_row(
 
 /// Renders screen line `y` (0 to 499 in the 12-by-20 mode) into `out`,
 /// applying page zoom (REQ-L1-020).
-pub fn render_line(grid: &Grid, y: usize, zoom: Zoom, glyphs: &GlyphSet, options: RenderOptions, format: IndexFormat, out: &mut [u8]) -> Result<(), RenderError> {
+pub fn render_line(
+    grid: &Grid,
+    y: usize,
+    zoom: Zoom,
+    glyphs: &GlyphSet,
+    options: RenderOptions,
+    format: IndexFormat,
+    out: &mut [u8],
+) -> Result<(), RenderError> {
     let height = options.row_height();
     let (row, line) = match zoom {
         Zoom::Off => (y.checked_div(height).unwrap_or(0), y.checked_rem(height).unwrap_or(0)),
@@ -319,10 +338,7 @@ pub fn render_line(grid: &Grid, y: usize, zoom: Zoom, glyphs: &GlyphSet, options
             // a source line, the way double height does.
             let first = if zoom == Zoom::Top { 0 } else { ZOOM_ROWS };
             let doubled = y / 2;
-            (
-                first.saturating_add(doubled.checked_div(height).unwrap_or(0)),
-                doubled.checked_rem(height).unwrap_or(0),
-            )
+            (first.saturating_add(doubled.checked_div(height).unwrap_or(0)), doubled.checked_rem(height).unwrap_or(0))
         }
     };
     write_line(grid, row, line, glyphs, options, format, out)
@@ -400,26 +416,19 @@ fn mix(hash: u64, value: u64) -> u64 {
     (hash ^ value).wrapping_mul(FNV_PRIME)
 }
 
-fn cell_fingerprint(cell: &Cell) -> u64 {
-    let glyph = match cell.glyph {
-        Glyph::Space => 0,
-        Glyph::Mosaic { pattern, separated } => 0x100 | u64::from(pattern) | (u64::from(separated) << 7),
-        Glyph::Char(c) => {
-            let set = match c.set {
-                crate::charset::CharSet::G0(g0) => (g0.set as u64) << 4 | g0.national.map_or(0xF, |n| n as u64),
-                crate::charset::CharSet::G2(g2) => 0x100 | g2 as u64,
-                crate::charset::CharSet::G3 => 0x200,
-            };
-            0x10000 | (set << 16) | (u64::from(c.code) << 4) | u64::from(c.diacritic)
+/// An FNV-1a hasher for row fingerprints.
+struct Fnv(u64);
+
+impl core::hash::Hasher for Fnv {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        for &byte in bytes {
+            self.0 = mix(self.0, u64::from(byte));
         }
-    };
-    let flags = u64::from(cell.flash)
-        | u64::from(cell.conceal) << 1
-        | u64::from(cell.boxed) << 2
-        | (cell.size as u64) << 3
-        | u64::from(cell.foreground) << 8
-        | u64::from(cell.background) << 12;
-    glyph.wrapping_mul(FNV_PRIME) ^ flags
+    }
 }
 
 impl ChangeTracker {
@@ -435,13 +444,11 @@ impl ChangeTracker {
     pub fn changed_rows(&mut self, grid: &Grid, reveal: bool) -> u32 {
         let mut changed = 0u32;
         for (row, (cells, stored)) in grid.cells.iter().zip(self.hashes.iter_mut()).enumerate() {
-            let mut hash = FNV_OFFSET;
-            hash = mix(hash, u64::from(grid.boxed_mode) | u64::from(grid.mix) << 1);
-            let mut reveal_sensitive = false;
-            for cell in cells {
-                hash = mix(hash, cell_fingerprint(cell));
-                reveal_sensitive |= cell.flash && cell.conceal;
-            }
+            let mut hasher = Fnv(FNV_OFFSET);
+            core::hash::Hash::hash(&(grid.boxed_mode, grid.mix), &mut hasher);
+            core::hash::Hash::hash(cells, &mut hasher);
+            let hash = core::hash::Hasher::finish(&hasher);
+            let reveal_sensitive = cells.iter().any(|cell| cell.flash && cell.conceal);
             let bit = 1u32.checked_shl(row as u32).unwrap_or(0);
             if !self.primed || hash != *stored || (reveal != self.reveal && reveal_sensitive) {
                 changed |= bit;
@@ -464,7 +471,13 @@ impl ChangeTracker {
 
 /// Renders every row, or only changed rows, into a whole-screen framebuffer
 /// (REQ-RND-022). `rows` is a bitmask of rows to draw.
-pub fn render_screen(grid: &Grid, rows: u32, glyphs: &GlyphSet, options: RenderOptions, framebuffer: &mut IndexBuffer<'_>) -> Result<(), RenderError> {
+pub fn render_screen(
+    grid: &Grid,
+    rows: u32,
+    glyphs: &GlyphSet,
+    options: RenderOptions,
+    framebuffer: &mut IndexBuffer<'_>,
+) -> Result<(), RenderError> {
     let height = options.row_height();
     for row in 0..ROWS {
         if rows.checked_shr(row as u32).is_some_and(|bits| bits & 1 == 1) {

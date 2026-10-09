@@ -97,10 +97,7 @@ pub enum MagazineAction {
 // (REQ-FSM-001 traceability).
 #[allow(clippy::match_same_arms)]
 #[must_use]
-pub const fn magazine_transition(
-    state: MagazineState,
-    event: MagazineEvent,
-) -> (MagazineState, MagazineAction) {
+pub const fn magazine_transition(state: MagazineState, event: MagazineEvent) -> (MagazineState, MagazineAction) {
     use MagazineAction as A;
     use MagazineEvent as E;
     use MagazineState as S;
@@ -111,19 +108,13 @@ pub const fn magazine_transition(
         (S::Idle, E::Row) => (S::Idle, A::DiscardWithoutHeader),
         (
             S::Idle,
-            E::HeaderOfOtherMagazineSerial
-            | E::TimeFillingHeader
-            | E::BadHeader
-            | E::UnrelatedHeader
-            | E::Timeout,
+            E::HeaderOfOtherMagazineSerial | E::TimeFillingHeader | E::BadHeader | E::UnrelatedHeader | E::Timeout,
         ) => (S::Idle, A::None),
         (S::Idle, E::RowOfOtherMagazineSerial) => (S::Idle, A::DiscardOtherMagazine),
 
         // Receiving P.
         (S::Receiving(key), E::Row) => (S::Receiving(key), A::Store(key)),
-        (S::Receiving(key), E::RowOfOtherMagazineSerial) => {
-            (S::Receiving(key), A::DiscardOtherMagazine)
-        }
+        (S::Receiving(key), E::RowOfOtherMagazineSerial) => (S::Receiving(key), A::DiscardOtherMagazine),
         (S::Receiving(ended), E::StorableHeader { key, erase }) => {
             (S::Receiving(key), A::EndAndStart { ended, started: key, erase })
         }
@@ -138,14 +129,11 @@ pub const fn magazine_transition(
         // Receiving, with no "page completed" event.
         (S::Absorbing, E::Row) => (S::Absorbing, A::DiscardAbsorbed),
         (S::Absorbing, E::RowOfOtherMagazineSerial) => (S::Absorbing, A::DiscardOtherMagazine),
-        (S::Absorbing, E::StorableHeader { key, erase }) => {
-            (S::Receiving(key), A::Start { key, erase })
-        }
+        (S::Absorbing, E::StorableHeader { key, erase }) => (S::Receiving(key), A::Start { key, erase }),
         (S::Absorbing, E::NonStorableHeader) => (S::Absorbing, A::None),
-        (
-            S::Absorbing,
-            E::HeaderOfOtherMagazineSerial | E::TimeFillingHeader | E::BadHeader | E::Timeout,
-        ) => (S::Idle, A::None),
+        (S::Absorbing, E::HeaderOfOtherMagazineSerial | E::TimeFillingHeader | E::BadHeader | E::Timeout) => {
+            (S::Idle, A::None)
+        }
         (S::Absorbing, E::UnrelatedHeader) => (S::Absorbing, A::None),
     }
 }
@@ -259,24 +247,16 @@ pub const fn page_transition(state: PageState, event: PageEvent) -> (PageState, 
         (S::Empty, E::ReceptionStarted { .. }) => (S::Partial, A::Started),
         (S::Partial, E::RowStored(row)) => (S::Partial, A::Updated(row)),
         (S::Partial, E::ReceptionEnded) => (S::Complete, A::Completed),
-        (S::Complete | S::Stale, E::ReceptionStarted { erase: false }) => {
-            (S::Partial, A::MergeAndStart)
-        }
+        (S::Complete | S::Stale, E::ReceptionStarted { erase: false }) => (S::Partial, A::MergeAndStart),
         (S::Complete | S::Stale, E::ReceptionStarted { erase: true }) => (S::Partial, A::Erase),
         (S::Complete, E::UpdateIndicator) => (S::Complete, A::UpdateIndicator),
         (S::Complete, E::NotReceived) => (S::Stale, A::Stale),
         (S::Empty | S::Partial | S::Complete | S::Stale, E::Evicted) => (S::Empty, A::Release),
         // Combinations the table does not list change nothing.
-        (S::Empty, E::RowStored(_) | E::ReceptionEnded | E::UpdateIndicator | E::NotReceived) => {
-            (S::Empty, A::None)
-        }
-        (S::Partial, E::ReceptionStarted { .. } | E::UpdateIndicator | E::NotReceived) => {
-            (S::Partial, A::None)
-        }
+        (S::Empty, E::RowStored(_) | E::ReceptionEnded | E::UpdateIndicator | E::NotReceived) => (S::Empty, A::None),
+        (S::Partial, E::ReceptionStarted { .. } | E::UpdateIndicator | E::NotReceived) => (S::Partial, A::None),
         (S::Complete, E::RowStored(_) | E::ReceptionEnded) => (S::Complete, A::None),
-        (S::Stale, E::RowStored(_) | E::ReceptionEnded | E::UpdateIndicator | E::NotReceived) => {
-            (S::Stale, A::None)
-        }
+        (S::Stale, E::RowStored(_) | E::ReceptionEnded | E::UpdateIndicator | E::NotReceived) => (S::Stale, A::None),
     }
 }
 

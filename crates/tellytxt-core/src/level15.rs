@@ -1,15 +1,13 @@
 //! Level 1.5 presentation (area L15, layer L3): the triplet walk of
 //! REQ-FSM-007, applied to a grid already decoded at Level 1 (decision E.1).
 
-use crate::acq::StoredPage;
 use crate::charset::{CharRef, CharSet, Designation, G0};
 use crate::config::Config;
 use crate::consts::{
-    COLUMNS, DESIGNATION_CODES, LATIN_AT_SIGN, MODE_ADDRESS_ROW_0, MODE_COLUMN_PDC,
-    MODE_COLUMN_RESERVED_1, MODE_COLUMN_RESERVED_2, MODE_COLUMN_RESERVED_3, MODE_DIACRITIC_MASK,
-    MODE_FULL_ROW_COLOUR, MODE_G0_NO_DIACRITIC, MODE_G2, MODE_G3_LEVEL_15, MODE_SET_ACTIVE_POSITION,
-    MODE_TERMINATION, RECEIVER_COLUMNS, ROW_ADDRESS_BASE, ROW_ADDRESS_LAST, ROW_ADDRESS_ROW_24,
-    TRIPLET_AT_SIGN_CODE, TRIPLET_FIRST_CHARACTER,
+    COLUMNS, DESIGNATION_CODES, LATIN_AT_SIGN, MODE_ADDRESS_ROW_0, MODE_COLUMN_PDC, MODE_COLUMN_RESERVED_1,
+    MODE_COLUMN_RESERVED_2, MODE_COLUMN_RESERVED_3, MODE_DIACRITIC_MASK, MODE_FULL_ROW_COLOUR, MODE_G0_NO_DIACRITIC,
+    MODE_G2, MODE_G3_LEVEL_15, MODE_SET_ACTIVE_POSITION, MODE_TERMINATION, RECEIVER_COLUMNS, ROW_ADDRESS_BASE,
+    ROW_ADDRESS_LAST, ROW_ADDRESS_ROW_24, TRIPLET_AT_SIGN_CODE, TRIPLET_FIRST_CHARACTER,
 };
 use crate::level1::{Glyph, Grid, Size};
 use crate::packet::Triplet;
@@ -115,18 +113,22 @@ fn character(triplet: Triplet, context: WalkContext) -> CharRef {
     }
 }
 
-/// Applies a page's X/26 packets to its grid (REQ-L15-002 to 010).
-/// `include_row_0` is false while row 0 shows the rolling header (E.5 (i)).
-pub fn apply(grid: &mut Grid, page: &StoredPage, config: &Config, include_row_0: bool) {
+/// A page's packets X/26 by designation code, and which are present.
+pub type EnhancementPackets = [[Option<Triplet>; crate::consts::TRIPLETS_PER_PACKET]; DESIGNATION_CODES];
+
+/// Applies a page's X/26 packets to its grid (REQ-L15-002 to 010). Bit d of
+/// `present` marks designation code d as received. `include_row_0` is false
+/// while row 0 shows the rolling header (E.5 (i)).
+pub fn apply(grid: &mut Grid, packets: &EnhancementPackets, present: u16, config: &Config, include_row_0: bool) {
     if !config.level15 {
         return;
     }
     let context = WalkContext { designation: grid.designation, strict_row_setting: config.strict_row_setting };
     let mut state = WalkState::Start;
     let mut previous: Option<(u8, u8)> = None;
-    for (code, triplets) in page.enhancements.iter().enumerate().take(DESIGNATION_CODES) {
-        let present = page.enhancements_present.checked_shr(code as u32).is_some_and(|bits| bits & 1 == 1);
-        if !present || (code == usize::from(LAST_DESIGNATION) && !config.process_x26_15) {
+    for (code, triplets) in packets.iter().enumerate().take(DESIGNATION_CODES) {
+        let received = present.checked_shr(code as u32).is_some_and(|bits| bits & 1 == 1);
+        if !received || (code == usize::from(LAST_DESIGNATION) && !config.process_x26_15) {
             continue;
         }
         for &triplet in triplets {
@@ -201,9 +203,15 @@ mod tests {
     fn row_triplets_follow_annex_a3_by_default() {
         let walking = WalkState::Walking { row: 1, column: 5 };
         // Mode 00000 (reserved row mode) sets the row under Annex A.3 only.
-        assert_eq!(walk_transition(walking, t(45, 0x00, 0), context(false)).0, WalkState::Walking { row: 5, column: 0 });
+        assert_eq!(
+            walk_transition(walking, t(45, 0x00, 0), context(false)).0,
+            WalkState::Walking { row: 5, column: 0 }
+        );
         assert_eq!(walk_transition(walking, t(45, 0x00, 0), context(true)).0, walking);
-        assert_eq!(walk_transition(walking, t(40, 0x04, 0), context(true)).0, WalkState::Walking { row: 24, column: 0 });
+        assert_eq!(
+            walk_transition(walking, t(40, 0x04, 0), context(true)).0,
+            WalkState::Walking { row: 24, column: 0 }
+        );
         assert_eq!(walk_transition(walking, t(63, 0x07, 0), context(true)).0, WalkState::Walking { row: 0, column: 0 });
         assert_eq!(walk_transition(walking, t(63, 0x1F, 0), context(false)).0, WalkState::Terminated);
     }

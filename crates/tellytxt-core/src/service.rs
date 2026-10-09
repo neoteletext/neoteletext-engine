@@ -1,8 +1,7 @@
 //! Broadcast service data, packet 8/30 (area SVC, layer L2).
 
 use crate::consts::{
-    DEFAULT_INITIAL_PAGE, MJD_REFERENCE, NIBBLE_MASK, SERVICE_DIGIT_OFFSET, SERVICE_FORMAT_2_BIT,
-    STATUS_MESSAGE_BYTES,
+    DEFAULT_INITIAL_PAGE, MJD_REFERENCE, NIBBLE_MASK, SERVICE_DIGIT_OFFSET, SERVICE_FORMAT_2_BIT, STATUS_MESSAGE_BYTES,
 };
 use crate::packet::ServicePacket;
 use crate::types::{PageAddress, SubCode};
@@ -48,8 +47,7 @@ pub struct ServiceInfo {
 pub fn interpret(packet: &ServicePacket) -> ServiceInfo {
     let format2 = packet.designation & SERVICE_FORMAT_2_BIT != 0;
     let initial_page = packet.initial_page.and_then(|(magazine, page, subcode)| {
-        PageAddress::from_mpp((u16::from(magazine.number()) << 8) | u16::from(page.0))
-            .map(|address| (address, subcode))
+        PageAddress::from_mpp((u16::from(magazine.number()) << 8) | u16::from(page.0)).map(|address| (address, subcode))
     });
     let mut status = [0; STATUS_MESSAGE_BYTES];
     for (out, &byte) in status.iter_mut().zip(packet.status.iter()) {
@@ -73,10 +71,7 @@ pub fn interpret(packet: &ServicePacket) -> ServiceInfo {
 pub fn initial_page(info: Option<&ServiceInfo>) -> PageAddress {
     info.and_then(|info| info.initial_page.map(|(address, _)| address))
         .or_else(|| PageAddress::from_mpp(DEFAULT_INITIAL_PAGE))
-        .unwrap_or(PageAddress {
-            magazine: crate::types::Magazine::from_bits(1),
-            page: crate::types::PageNumber(0),
-        })
+        .unwrap_or(PageAddress { magazine: crate::types::Magazine::from_bits(1), page: crate::types::PageNumber(0) })
 }
 
 /// Bit 7 of the time offset byte marks a negative offset; bits 2 to 6 hold
@@ -148,9 +143,7 @@ fn civil_from_mjd(mjd: u32) -> Option<(i32, u8, u8)> {
             .checked_sub(year_of_era.checked_div(100)?)?,
     )?;
     let month_index = day_of_year.checked_mul(5)?.checked_add(2)?.checked_div(153)?;
-    let day = day_of_year
-        .checked_sub(month_index.checked_mul(153)?.checked_add(2)?.checked_div(5)?)?
-        .checked_add(1)?;
+    let day = day_of_year.checked_sub(month_index.checked_mul(153)?.checked_add(2)?.checked_div(5)?)?.checked_add(1)?;
     let month = if month_index < 10 { month_index.checked_add(3)? } else { month_index.checked_sub(9)? };
     let mut year = year_of_era.checked_add(era.checked_mul(400)?)?;
     if month <= 2 {
