@@ -242,6 +242,8 @@ pub const ATTRIBUTE_LAST: u8 = 0x1F;
 pub const ALPHA_BLACK: u8 = 0x00;
 /// Alpha Red; Alpha colours are 0/1 to 0/7.
 pub const ALPHA_RED: u8 = 0x01;
+/// Alpha Yellow.
+pub const ALPHA_YELLOW: u8 = 0x03;
 /// Alpha White.
 pub const ALPHA_WHITE: u8 = 0x07;
 /// Flash.
