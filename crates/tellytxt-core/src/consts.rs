@@ -873,6 +873,129 @@ pub const SERVICE_FULL_FIELD_BIT: u8 = 0x01;
 /// Designation codes 2 and 3 are format 2.
 pub const SERVICE_FORMAT_2_BIT: u8 = 0x02;
 
+// ---------------------------------------------------------------------------
+// Phase I2a: enhancement walk, objects and DRCS decoding
+// ---------------------------------------------------------------------------
+
+/// The columns of a screen row in scan order: the 40 of the main page,
+/// then the side-panel area of columns 40 to 71 (clause 12.5.3, Annex A.4).
+pub const SCREEN_COLUMNS: usize = COLUMNS + SIDE_PANEL_AREA_COLUMNS;
+/// The first row in which double height and double size take effect: they
+/// never do in rows 0, 23 and 24 (decision E.15, Annex C.3 rule 1).
+pub const DOUBLE_HEIGHT_FIRST_ROW: usize = 1;
+/// The last row in which double height and double size take effect.
+pub const DOUBLE_HEIGHT_LAST_ROW: usize = 22;
+/// The triplets of a page's packets X/26: sixteen packets of thirteen.
+pub const LOCAL_TRIPLETS: u16 = (DESIGNATION_CODES * TRIPLETS_PER_PACKET) as u16;
+/// An object is at most 507 triplets long (clause 13.1): the whole
+/// definition area of an object page, absolute triplets 0 to 506.
+pub const OBJECT_BODY_TRIPLETS: u16 = OBJECT_TRIPLET_LAST + 1;
+/// At most 127 invocations of each object type on one display page, side
+/// panels and default objects included (Annex A.8 item 1).
+pub const OBJECT_INVOCATIONS_PER_TYPE: u16 = 127;
+/// At most 15 objects open at one time (Annex A.8 item 2).
+pub const OBJECTS_OPEN_AT_ONCE: usize = 15;
+/// At most 15 objects opened in succession without a displayable character
+/// or attribute written in between (Annex A.8 item 3).
+pub const OBJECTS_OPENED_IN_SUCCESSION: u8 = 15;
+/// The object types: Active, Adaptive and Passive (Table 28).
+pub const OBJECT_TYPES: usize = 3;
+/// Default objects of a page: two through the GPOP link and two through the
+/// POP link of the Magazine Organization Table (clause 13.8).
+pub const DEFAULT_OBJECTS: usize = 4;
+/// The deepest walk: the local enhancement data, then an Active, an
+/// Adaptive and a Passive object, the only nesting clauses 13.3 to 13.5
+/// allow (decision E.51).
+pub const WALK_DEPTH: usize = 1 + OBJECT_TYPES;
+/// The pointer triplets of one object group of a pointer packet, one for
+/// each type, so that the pointer triplet is 1 + 3 × group + type
+/// (clause 10.5.1.2, Table 28).
+pub const OBJECT_POINTER_GROUP_TRIPLETS: u8 = OBJECT_TYPES as u8;
+/// Link functions of X/27/4 and X/27/5 links (Table 15): GPOP, POP, GDRCS
+/// and DRCS. Links 0 to 3 of X/27/4 carry them in this order (Table 16).
+pub const LINK_FUNCTION_GPOP: u8 = 0b00;
+/// The POP link function (Table 15).
+pub const LINK_FUNCTION_POP: u8 = 0b01;
+/// The GDRCS link function (Table 15).
+pub const LINK_FUNCTION_GDRCS: u8 = 0b10;
+/// The DRCS link function (Table 15).
+pub const LINK_FUNCTION_DRCS: u8 = 0b11;
+/// X/27/4 links 0 to 3 have fixed roles; links 4 and 5 of X/27/4 and 0 and
+/// 1 of X/27/5 take their role from their function bits at Level 3.5
+/// (Table 16).
+pub const LINKS_FIXED_ROLES: usize = 4;
+/// The links of X/27/5 that Level 3.5 uses (Table 16); the others are
+/// reserved.
+pub const LINKS_X27_5_USED: usize = 2;
+
+/// Flash mode codes, Table 29 mode 00111 data bits D1 D0: steady.
+pub const FLASH_MODE_STEADY: u8 = 0b00;
+/// Normal flash to the background colour.
+pub const FLASH_MODE_NORMAL: u8 = 0b01;
+/// Flash to the background colour in inverted phase.
+pub const FLASH_MODE_INVERTED: u8 = 0b10;
+/// Flash to the same entry of the adjacent CLUT.
+pub const FLASH_MODE_ADJACENT_CLUT: u8 = 0b11;
+/// Flash rate codes, Table 29 mode 00111 data bits D4 to D2: slow, 1 hertz.
+/// 110 and 111 are reserved.
+pub const FLASH_RATE_SLOW: u8 = 0b000;
+/// Fast, 2 hertz, phase 1.
+pub const FLASH_RATE_PHASE_1: u8 = 0b001;
+/// Fast, phase 2.
+pub const FLASH_RATE_PHASE_2: u8 = 0b010;
+/// Fast, phase 3.
+pub const FLASH_RATE_PHASE_3: u8 = 0b011;
+/// Fast, incremental: apparent movement to the right from phase 1.
+pub const FLASH_RATE_INCREMENTAL: u8 = 0b100;
+/// Fast, decremental: apparent movement to the left from phase 1.
+pub const FLASH_RATE_DECREMENTAL: u8 = 0b101;
+
+/// The undefined positions of the G3 set: 6/E, 6/F, 7/E and 7/F (Table 25,
+/// its "7/E and 7/E" read as 7/E and 7/F, decision E.54).
+pub const G3_UNDEFINED: [u8; 4] = [0x6E, 0x6F, 0x7E, 0x7F];
+/// The Latin G2 positions that should not be transmitted: 5/9, 5/A, 5/B and
+/// 6/5 (Table 37 note 5, decision E.50).
+pub const LATIN_G2_UNDEFINED: [u8; 4] = [0x59, 0x5A, 0x5B, 0x65];
+/// The G1 codes that a triplet reads as the current G0 set: columns 4 and 5
+/// (Table 47 note 3).
+pub const G1_G0_COLUMNS_FIRST: u8 = 0x40;
+/// The last code of G1 columns 4 and 5.
+pub const G1_G0_COLUMNS_LAST: u8 = 0x5F;
+
+/// The bytes of one Pattern Transfer Unit (clause 14.1).
+pub const DRCS_PTU_BYTES: usize = 20;
+/// Each packet X/1 to X/24 of a DRCS page carries two PTUs (Figure 27).
+pub const DRCS_PTUS_PER_PACKET: usize = 2;
+/// The lowest D-byte code, 4/0; D-bytes run to 7/F (clause 14.1).
+pub const DRCS_D_BYTE_FIRST: u8 = 0x40;
+/// The pattern bits of a D-byte, its six least significant (clause
+/// 14.2.1).
+pub const DRCS_D_BYTE_DOTS: usize = 6;
+/// Mask of the six pattern bits of a D-byte.
+pub const DRCS_D_BYTE_MASK: u8 = 0x3F;
+/// Mode identification code of X/28/3 (Table 9): mode 0, 12 by 10 by 1.
+pub const DRCS_MODE_12X10X1: u8 = 0b0000;
+/// Mode 1, 12 by 10 by 2.
+pub const DRCS_MODE_12X10X2: u8 = 0b0001;
+/// Mode 2, 12 by 10 by 4.
+pub const DRCS_MODE_12X10X4: u8 = 0b0010;
+/// Mode 3, 6 by 5 by 4.
+pub const DRCS_MODE_6X5X4: u8 = 0b0011;
+/// A further PTU of a mode 1 or mode 2 character.
+pub const DRCS_MODE_SUBSEQUENT: u8 = 0b1110;
+/// No data is transmitted for the character.
+pub const DRCS_MODE_NO_DATA: u8 = 0b1111;
+/// The PTUs of a 12 by 10 by 2 character (Table 31).
+pub const DRCS_PTUS_MODE_1: usize = 2;
+/// The PTUs of a 12 by 10 by 4 character (Table 31).
+pub const DRCS_PTUS_MODE_2: usize = 4;
+/// A 6 by 5 by 4 character has five rows of six pixels, each row four
+/// D-bytes, one per bit plane (clause 14.2.4).
+pub const DRCS_MODE_3_ROWS: usize = 5;
+/// Each 6 by 5 pixel covers 2 by 2 dots of the 12 by 10 matrix (decision
+/// E.54).
+pub const DRCS_MODE_3_SCALE: usize = 2;
+
 #[cfg(test)]
 mod tests {
     use super::*;
