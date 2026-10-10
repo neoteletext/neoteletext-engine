@@ -4,17 +4,14 @@
 
 use tellytxt_core::consts::{
     CODE_MASK_7BIT, COLUMNS, DOUBLE_HEIGHT, ESC, NIBBLE_MASK, PACKET_ENHANCEMENT, PACKET_LINKS,
-    PACKET_MAGAZINE_ENHANCEMENT, PACKET_PAGE_ENHANCEMENT, ROWS, STORED_ROWS, TRIPLETS_PER_PACKET,
-    TTI_DOUBLE_HEIGHT_ALIAS, TTI_ESCAPE_OFFSET,
+    PACKET_MAGAZINE_ENHANCEMENT, PACKET_PAGE_ENHANCEMENT, ROWS, STORED_ROWS, TTI_DOUBLE_HEIGHT_ALIAS,
+    TTI_ESCAPE_OFFSET,
 };
-use tellytxt_core::packet::{Decoded, PageEnhancement, PagePacket, Triplet, decode};
+use tellytxt_core::packet::{Decoded, PageEnhancement, PagePacket, decode};
 use tellytxt_core::types::{PageAddress, SubCode};
 
 use crate::check::Warning;
-use crate::consts::{
-    TTI_COMMAND_BYTES, TTI_FL_LINKS, TTI_FL_NO_LINK, TTI_FL_NULL_LINK, TTI_PACKED_CHARACTERS,
-    TTI_TRIPLET_CHARACTER_BITS, TTI_TRIPLET_CHARACTER_MASK,
-};
+use crate::consts::{TTI_COMMAND_BYTES, TTI_FL_LINKS, TTI_FL_NO_LINK, TTI_FL_NULL_LINK, TTI_PACKED_CHARACTERS};
 use crate::item::{Capacity, Diagnostic, DiagnosticKind, Item, Reader, offset_of};
 use crate::page::{
     EnhancementPacket, FastextLink, FieldKind, FormField, FormMethod, FormOption, IssueKind, LinkKey, LinkLine,
@@ -205,20 +202,6 @@ fn link_target(text: &[u8]) -> Option<(Text<SERVICE_NAME_BYTES>, PageAddress, Op
         }
         (Some(second), Some(third)) => Some((service_name(first)?, page_address(second)?, Some(subcode(third)?))),
     }
-}
-
-/// Splits the 39 values of a packed line into thirteen triplets: six bits per
-/// character, least significant character first.
-fn packed_triplets(values: &[u8]) -> [Triplet; TRIPLETS_PER_PACKET] {
-    let mut triplets = [Triplet::default(); TRIPLETS_PER_PACKET];
-    let (chunks, _) = values.as_chunks::<3>();
-    for (triplet, &[first, second, third]) in triplets.iter_mut().zip(chunks) {
-        let value = (u32::from(first) & TTI_TRIPLET_CHARACTER_MASK)
-            | ((u32::from(second) & TTI_TRIPLET_CHARACTER_MASK) << TTI_TRIPLET_CHARACTER_BITS)
-            | ((u32::from(third) & TTI_TRIPLET_CHARACTER_MASK) << (2 * TTI_TRIPLET_CHARACTER_BITS));
-        *triplet = Triplet::from_value(value);
-    }
-    triplets
 }
 
 /// The streaming TTI reader. It reports each sub-page as an
@@ -450,14 +433,15 @@ impl TtiReader {
 
     fn packed_line(&mut self, number: u8, text: &[u8], out: &mut dyn FnMut(Item<'_>)) {
         let decoded = decode_text(text, false, PACKED_LINE);
-        if decoded.count != PACKED_LINE || decoded.bad_escape {
+        // REQ-INP-023: exactly the designation code and 39 characters.
+        if decoded.count != PACKED_LINE || decoded.overflow || decoded.bad_escape {
             self.diagnostic(DiagnosticKind::BadArgument { command: *b"OL" }, out);
         }
         let designation = decoded.codes.first().copied().unwrap_or(0) & NIBBLE_MASK;
         let values = decoded.codes.get(1..).unwrap_or(&[]);
         let magazine = self.page.address.magazine;
         if number == PACKET_ENHANCEMENT {
-            let packet = EnhancementPacket { designation, triplets: packed_triplets(values) };
+            let packet = EnhancementPacket { designation, triplets: crate::encode::unpack_triplets(values) };
             let packets = self.page.enhancements.as_mut_slice();
             if let Some(existing) = packets.iter_mut().find(|packet| packet.designation == designation) {
                 *existing = packet;
@@ -476,7 +460,7 @@ impl TtiReader {
             }
             RawBody::Nibbles(values_4)
         } else {
-            RawBody::Triplets(packed_triplets(values))
+            RawBody::Triplets(crate::encode::unpack_triplets(values))
         };
         let raw = RawPacket { number, designation, body };
         let packet = crate::encode::raw_packet(magazine, &raw);
@@ -492,13 +476,20 @@ impl TtiReader {
             }
             return;
         }
+        // REQ-INP-023: X/28/0, X/28/3 and X/28/4 also set the page function
+        // and coding, overriding an earlier `PF` line.
         if number == PACKET_PAGE_ENHANCEMENT
-            && let Ok(Decoded::PageData {
-                packet: PagePacket::Format1(PageEnhancement { format: Some(format), .. }),
-                ..
-            }) = decode(&packet)
+            && let Ok(Decoded::PageData { packet, .. }) = decode(&packet)
         {
-            self.page.function = Some(PageFunction { function: format.function, coding: format.coding });
+            let format = match packet {
+                PagePacket::Format1(PageEnhancement { format, .. })
+                | PagePacket::Level35(PageEnhancement { format, .. }) => format,
+                PagePacket::DrcsModes(modes) => modes.format,
+                PagePacket::DrcsColours(_) => None,
+            };
+            if let Some(format) = format {
+                self.page.function = Some(PageFunction { function: format.function, coding: format.coding });
+            }
         }
         let packets = self.page.raw_packets.as_mut_slice();
         if let Some(existing) =
