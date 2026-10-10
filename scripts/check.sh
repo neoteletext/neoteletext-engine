@@ -3,8 +3,10 @@
 #   scripts/check.sh fast   formatting, lints, tests, architecture checks
 #   scripts/check.sh full   fast, plus the amd64 target builds, release
 #                           tests and, if TELLYTXT_REMOTE names a Linux
-#                           host, the x86_64 Linux tests and the fuzzing
-#                           targets run there (TELLYTXT_FUZZ_SECONDS each)
+#                           host, the x86_64 Linux tests, the build for
+#                           every target (scripts/build-targets.sh) and the
+#                           fuzzing targets run there (TELLYTXT_FUZZ_SECONDS
+#                           each)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 mode="${1:-fast}"
@@ -51,6 +53,9 @@ if [ "$mode" = "full" ]; then
         rsync -a --delete --exclude target --exclude .git --exclude tmp --exclude tletxt.com \
             --exclude fuzz/corpus --exclude fuzz/artifacts ./ "$TELLYTXT_REMOTE:tellytxt-check/"
         ssh "$TELLYTXT_REMOTE" 'cd tellytxt-check && . ~/.cargo/env && cargo test --workspace --all-features --quiet'
+
+        step "every target of REQ-GEN-015 on $TELLYTXT_REMOTE"
+        ssh "$TELLYTXT_REMOTE" 'cd tellytxt-check && scripts/build-targets.sh'
 
         if [ "$deny_done" = no ] && ssh "$TELLYTXT_REMOTE" '. ~/.cargo/env && command -v cargo-deny >/dev/null'; then
             step "cargo-deny on $TELLYTXT_REMOTE: licences and advisories (REQ-GEN-017, REQ-SEC-014)"

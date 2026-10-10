@@ -68,25 +68,41 @@ mod platform {
         }
     }
 
-    fn target_arch() -> Result<TargetArch, String> {
+    /// The architectures seccompiler can write filters for; `None` on the
+    /// others, such as 32-bit Arm (IMPLEMENTATION-LOG.md decision 38).
+    fn target_arch() -> Option<TargetArch> {
         if cfg!(target_arch = "x86_64") {
-            Ok(TargetArch::x86_64)
+            Some(TargetArch::x86_64)
         } else if cfg!(target_arch = "aarch64") {
-            Ok(TargetArch::aarch64)
+            Some(TargetArch::aarch64)
+        } else if cfg!(target_arch = "riscv64") {
+            Some(TargetArch::riscv64)
         } else {
-            Err("no seccomp filter for this architecture".to_string())
+            None
         }
     }
 
+    /// A system call number as seccompiler's rule key.
+    #[allow(clippy::useless_conversion, reason = "c_long is 64 bits here but 32 bits on 32-bit Arm")]
+    fn number(syscall: libc::c_long) -> i64 {
+        i64::from(syscall)
+    }
+
     fn seccomp(policy: Policy<'_>) -> Result<(), String> {
+        let Some(arch) = target_arch() else {
+            eprintln!(
+                "ttx: note: no seccomp filter exists for this architecture; only the Landlock sandbox applies (REQ-SEC-017)"
+            );
+            return Ok(());
+        };
         let mut rules: BTreeMap<i64, Vec<SeccompRule>> = BTreeMap::new();
         // Starting programs and debugging other processes.
         for syscall in [libc::SYS_execve, libc::SYS_execveat, libc::SYS_ptrace, libc::SYS_process_vm_writev] {
-            rules.insert(syscall, vec![]);
+            rules.insert(number(syscall), vec![]);
         }
         #[cfg(target_arch = "x86_64")]
         for syscall in [libc::SYS_fork, libc::SYS_vfork] {
-            rules.insert(syscall, vec![]);
+            rules.insert(number(syscall), vec![]);
         }
         // clone() is allowed only for threads (CLONE_THREAD set).
         let process_clone = SeccompRule::new(vec![
@@ -94,24 +110,22 @@ mod platform {
                 .map_err(|e| e.to_string())?,
         ])
         .map_err(|e| e.to_string())?;
-        rules.insert(libc::SYS_clone, vec![process_clone]);
+        rules.insert(number(libc::SYS_clone), vec![process_clone]);
         if !policy.network {
             for syscall in [libc::SYS_socket, libc::SYS_connect, libc::SYS_bind, libc::SYS_listen, libc::SYS_accept4] {
-                rules.insert(syscall, vec![]);
+                rules.insert(number(syscall), vec![]);
             }
         }
-        let filter =
-            SeccompFilter::new(rules, SeccompAction::Allow, SeccompAction::Errno(libc::EPERM as u32), target_arch()?)
-                .map_err(|e| e.to_string())?;
+        let filter = SeccompFilter::new(rules, SeccompAction::Allow, SeccompAction::Errno(libc::EPERM as u32), arch)
+            .map_err(|e| e.to_string())?;
         let program: BpfProgram = filter.try_into().map_err(|e: seccompiler::BackendError| e.to_string())?;
         seccompiler::apply_filter(&program).map_err(|e| e.to_string())?;
         // clone3 cannot be inspected; answering "not implemented" makes the
         // C library fall back to clone, which the rule above checks.
         let mut clone3 = BTreeMap::new();
-        clone3.insert(libc::SYS_clone3, vec![]);
-        let filter =
-            SeccompFilter::new(clone3, SeccompAction::Allow, SeccompAction::Errno(libc::ENOSYS as u32), target_arch()?)
-                .map_err(|e| e.to_string())?;
+        clone3.insert(number(libc::SYS_clone3), vec![]);
+        let filter = SeccompFilter::new(clone3, SeccompAction::Allow, SeccompAction::Errno(libc::ENOSYS as u32), arch)
+            .map_err(|e| e.to_string())?;
         let program: BpfProgram = filter.try_into().map_err(|e: seccompiler::BackendError| e.to_string())?;
         seccompiler::apply_filter(&program).map_err(|e| e.to_string())
     }

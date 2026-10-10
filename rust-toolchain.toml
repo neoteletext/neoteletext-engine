@@ -2,7 +2,8 @@
 # REQ-GEN-001: current stable on 10 October 2026.
 channel = "1.99.0"
 components = ["clippy", "rustfmt"]
-# REQ-GEN-015: the amd64 targets of this round (IMPLEMENTATION-LOG.md
-# decision 1); the other families of the table are not built yet.
+# REQ-GEN-015: the targets built on this machine. scripts/build-targets.sh
+# builds every other target of the table on the Linux build host and adds
+# their standard libraries there.
 targets = ["x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "x86_64-unknown-none"]
 profile = "minimal"
