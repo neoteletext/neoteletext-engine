@@ -16,6 +16,7 @@ use std::io::Write;
 use std::time::{Duration, Instant as StdInstant};
 use tellytxt_core::config::Config;
 use tellytxt_core::consts::{ALPHA_YELLOW, COLUMNS, SPACE, STATUS_COLUMNS};
+use tellytxt_core::enhance::EnhancementReport;
 use tellytxt_core::forms::{FormAction, FormKey, FormModel, Method};
 use tellytxt_core::fsm::PageState;
 use tellytxt_core::level1::Grid;
@@ -23,7 +24,7 @@ use tellytxt_core::nav::PageLinks;
 use tellytxt_core::service::initial_page;
 use tellytxt_core::types::{Instant, PageAddress, SubCode};
 use tellytxt_core::viewer::{
-    Action, ComposeContext, Key, KeyContext, SecurityIndicator, Viewer, ViewerEvent, ViewerState,
+    Action, ComposeContext, Composed, Key, KeyContext, SecurityIndicator, Viewer, ViewerEvent, ViewerState,
 };
 use tellytxt_image::palette::Rgba;
 
@@ -237,7 +238,14 @@ pub fn run(
     let mut pending: Option<Pending> = None;
     let mut prompt: Option<[u8; COLUMNS]> = None;
     let mut confirmed_services: HashSet<u8> = HashSet::new();
+    // The report of the last grid built. The page and store stay borrowed
+    // until the key is handled, so it is recorded at the start of the next
+    // pass, when nothing borrows the decoder.
+    let mut unrecorded: Option<EnhancementReport> = None;
     let result = loop {
+        if let Some(report) = unrecorded.take() {
+            session.decoder_mut().record_enhancement(report.build, &report.faults);
+        }
         let now = Instant(start.elapsed().as_micros().try_into().unwrap_or(u64::MAX));
         if live {
             live = source.poll(session, now);
@@ -374,7 +382,9 @@ pub fn run(
         let lookup = session.decoder().enhancement_lookup();
         let context =
             ComposeContext { magazine: &magazine, config: &config, rolling_header: &rolling, store, row24, lookup };
-        let _ = viewer.compose(&mut grid, page, &context);
+        if let Composed::Built(report) = viewer.compose(&mut grid, page, &context) {
+            unrecorded = report;
+        }
         if prompt.is_none()
             && let Some((_, marks)) = page_extras.as_ref().and_then(|extras| extras.row24.as_ref())
         {

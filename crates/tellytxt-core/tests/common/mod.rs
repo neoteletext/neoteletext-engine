@@ -406,18 +406,30 @@ impl Receiver {
 
     /// Feeds the packets, closes every page, and calls `f` with the decoder.
     pub fn run<R>(&mut self, packets: &[Packet], config: Config, f: impl FnOnce(&Decoder<'_>) -> R) -> R {
+        self.run_mut(packets, config, |decoder| f(decoder))
+    }
+
+    /// As [`Receiver::run`], with the decoder mutable, so that `f` can feed
+    /// more packets and record into its statistics.
+    pub fn run_mut<R>(&mut self, packets: &[Packet], config: Config, f: impl FnOnce(&mut Decoder<'_>) -> R) -> R {
         let store = EnhancementStore::new(&mut self.sub_pages, &mut self.packets);
         let mut decoder = Decoder::with_enhancement_store(&mut self.pages, store, config);
-        let mut all = packets.to_vec();
-        for magazine in 1..=MAGAZINES as u16 {
-            all.push(header(magazine << 8 | u16::from(PAGE_TIME_FILLING), 0, 0));
-        }
-        for (index, packet) in all.iter().enumerate() {
-            decoder.push(packet, &PacketMeta::default(), Instant(index as u64 * 64), &mut |_| {});
-        }
-        decoder.tick(Instant(1_000_000_000), &mut |_| {});
-        f(&decoder)
+        feed(&mut decoder, packets, 0);
+        f(&mut decoder)
     }
+}
+
+/// Feeds packets to a decoder from time `start`, then the time-filling
+/// headers that end every magazine's page, and lets the pages complete.
+pub fn feed(decoder: &mut Decoder<'_>, packets: &[Packet], start: u64) {
+    let mut all = packets.to_vec();
+    for magazine in 1..=MAGAZINES as u16 {
+        all.push(header(magazine << 8 | u16::from(PAGE_TIME_FILLING), 0, 0));
+    }
+    for (index, packet) in all.iter().enumerate() {
+        decoder.push(packet, &PacketMeta::default(), Instant(start + index as u64 * 64), &mut |_| {});
+    }
+    decoder.tick(Instant(start + 1_000_000_000), &mut |_| {});
 }
 
 /// The grid of page 100 as the viewer builds it, and at Levels 2.5 and 3.5

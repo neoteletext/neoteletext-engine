@@ -31,7 +31,7 @@
 //! stored enhancement pages only through `acq::EnhancementLookup`
 //! (REQ-ACQ-020).
 
-use crate::acq::{EnhancementKey, EnhancementLookup, MagazineData, StoredPage};
+use crate::acq::{EnhancementFaults, EnhancementKey, EnhancementLookup, MagazineData, PageBuild, StoredPage};
 use crate::charset::{self, CharRef, CharSet, G0, G0Set, G2Set, mosaic_pattern};
 use crate::colour::{self, ColourIndex, ColourMap, PagePresentation, PresentationSources, Remapping, SidePanels};
 use crate::config::{Config, PresentationLevel};
@@ -61,60 +61,28 @@ use crate::packet::{
 use crate::types::{DrcsCharacter, DrcsTable, FixedVec};
 
 /// What one build of a grid found, for the decoder's statistics and the
-/// trace (REQ-L25-051, REQ-ARCH-007, REQ-TST-019). Counts are of the
-/// page-level run of the walk, except `steps`, which counts every triplet
-/// read in every run.
+/// trace (REQ-L25-051, REQ-ARCH-007, REQ-TST-019). Fault counts are of the
+/// page-level run of the walk and of the row resolution; `steps` counts
+/// every triplet read in every run. Pass `build` and `faults` to
+/// `Decoder::record_enhancement` once the grid is built.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct EnhancementReport {
+    /// The page, reception and level the grid was built from.
+    pub build: PageBuild,
     /// The level the page was processed at: Level 2.5 when a Level 3.5
     /// decoder falls back to the table's Level 2.5 links (clause 10.6.1).
     pub level: PresentationLevel,
-    /// Triplets that failed their Hamming 24/18 check and were skipped.
-    pub damaged_triplets: u32,
-    /// Object invocations skipped by the nesting rules of REQ-OBJ-008 or
-    /// with an illegal source.
-    pub forbidden_invocations: u32,
-    /// Invocations whose object was absent: no link, no page, no pointer,
-    /// no matching definition, or a missing packet (REQ-OBJ-003 to
-    /// REQ-OBJ-006).
-    pub absent_objects: u32,
-    /// Invocations ignored because a limit of Annex A.8 was reached.
-    pub limited_invocations: u32,
+    /// The faults met, one count for each kind.
+    pub faults: EnhancementFaults,
     /// Objects run.
     pub objects: u32,
-    /// Characters and attributes discarded by REQ-OBJ-014 and REQ-L25-050.
-    pub discarded_writes: u32,
-    /// Modified designations ignored: reserved values, or a third pair at
-    /// Level 2.5 (REQ-L25-012).
-    pub ignored_designations: u32,
-    /// Cells showing a space for an undefined G2 or G3 position (decision
-    /// E.50).
-    pub undefined_characters: u32,
-    /// DRCS cells whose data is missing or not yet usable, including those
-    /// beyond the grid's pattern capacity (REQ-DRC-007, REQ-DRC-009).
-    pub drcs_missing: u32,
-    /// DRCS cells whose data is invalid (REQ-DRC-009).
-    pub drcs_invalid: u32,
     /// Triplets read, over every run of the walk.
     pub steps: u32,
 }
 
 impl EnhancementReport {
-    const fn new(level: PresentationLevel) -> Self {
-        Self {
-            level,
-            damaged_triplets: 0,
-            forbidden_invocations: 0,
-            absent_objects: 0,
-            limited_invocations: 0,
-            objects: 0,
-            discarded_writes: 0,
-            ignored_designations: 0,
-            undefined_characters: 0,
-            drcs_missing: 0,
-            drcs_invalid: 0,
-            steps: 0,
-        }
+    const fn new(build: PageBuild, level: PresentationLevel) -> Self {
+        Self { build, level, faults: EnhancementFaults::NONE, objects: 0, steps: 0 }
     }
 }
 
@@ -611,6 +579,7 @@ impl Collector {
 struct Inputs<'a, 's> {
     page: &'a StoredPage,
     lookup: &'a EnhancementLookup<'s>,
+    build: PageBuild,
     links: &'a EnhancementLinks,
     level: PresentationLevel,
     panels: SidePanels,
@@ -845,7 +814,7 @@ impl<'a, 's> Walker<'a, 's> {
             successive: 0,
             next_slot: 1,
             extra_pair: None,
-            report: EnhancementReport::new(inputs.level),
+            report: EnhancementReport::new(inputs.build, inputs.level),
         }
     }
 
@@ -926,7 +895,7 @@ impl<'a, 's> Walker<'a, 's> {
             inputs.level,
         );
         let Ok(object) = found else {
-            self.report.absent_objects = self.report.absent_objects.saturating_add(1);
+            self.report.faults.absent_objects = self.report.faults.absent_objects.saturating_add(1);
             return None;
         };
         self.accept(object, (0, 0), (0, 0))
@@ -958,7 +927,9 @@ impl<'a, 's> Walker<'a, 's> {
             WalkAction::Pop | WalkAction::ResetPosition => {
                 let _ = stack.pop();
             }
-            WalkAction::Skip => self.report.damaged_triplets = self.report.damaged_triplets.saturating_add(1),
+            WalkAction::Skip => {
+                self.report.faults.damaged_triplets = self.report.faults.damaged_triplets.saturating_add(1);
+            }
             WalkAction::EndSource => {
                 if let Some(frame) = stack.as_mut_slice().last_mut() {
                     frame.cursor = frame.end;
@@ -1041,7 +1012,7 @@ impl<'a, 's> Walker<'a, 's> {
         let receiver = row == 0 && column < RECEIVER_COLUMNS;
         let panel_row_0 = row == 0 && area != Area::Main;
         if row >= ROWS || area != frame.area || receiver || panel_row_0 {
-            self.report.discarded_writes = self.report.discarded_writes.saturating_add(1);
+            self.report.faults.discarded_writes = self.report.faults.discarded_writes.saturating_add(1);
             return None;
         }
         Some((row, column))
@@ -1139,7 +1110,7 @@ impl<'a, 's> Walker<'a, 's> {
                 || *self.extra_pair.get_or_insert(pair) == pair
         });
         if accepted.is_none() {
-            self.report.ignored_designations = self.report.ignored_designations.saturating_add(1);
+            self.report.faults.ignored_designations = self.report.faults.ignored_designations.saturating_add(1);
         }
         accepted
     }
@@ -1200,7 +1171,7 @@ impl<'a, 's> Walker<'a, 's> {
                 ObjectSource::Public | ObjectSource::Global => true,
             };
         if !allowed {
-            self.report.forbidden_invocations = self.report.forbidden_invocations.saturating_add(1);
+            self.report.faults.forbidden_invocations = self.report.faults.forbidden_invocations.saturating_add(1);
             return None;
         }
         let invocation = frame.position();
@@ -1220,7 +1191,7 @@ impl<'a, 's> Walker<'a, 's> {
             )
         };
         let Ok(object) = found else {
-            self.report.absent_objects = self.report.absent_objects.saturating_add(1);
+            self.report.faults.absent_objects = self.report.faults.absent_objects.saturating_add(1);
             return None;
         };
         let origin = (
@@ -1244,7 +1215,7 @@ impl<'a, 's> Walker<'a, 's> {
             || open >= OBJECTS_OPEN_AT_ONCE
             || self.successive >= OBJECTS_OPENED_IN_SUCCESSION
         {
-            self.report.limited_invocations = self.report.limited_invocations.saturating_add(1);
+            self.report.faults.limited_invocations = self.report.faults.limited_invocations.saturating_add(1);
             return false;
         }
         *count = count.saturating_add(1);
@@ -1262,7 +1233,7 @@ impl<'a, 's> Walker<'a, 's> {
         let scanned = objects::prescan(&object, self.inputs.page);
         let Ok(extent) = scanned else {
             self.report.steps = self.report.steps.saturating_add(u32::from(OBJECT_BODY_TRIPLETS));
-            self.report.absent_objects = self.report.absent_objects.saturating_add(1);
+            self.report.faults.absent_objects = self.report.faults.absent_objects.saturating_add(1);
             return None;
         };
         self.report.steps = self.report.steps.saturating_add(u32::from(extent.end.saturating_sub(object.first)));
@@ -1615,7 +1586,7 @@ fn resolve_segment(
             Some((character, sets, attrs, plane)) => {
                 let (glyph, undefined) = enhancement_glyph(character, sets, attrs.underline);
                 if undefined {
-                    report.undefined_characters = report.undefined_characters.saturating_add(1);
+                    report.faults.undefined_characters = report.faults.undefined_characters.saturating_add(1);
                 }
                 Some(cell_of(glyph, &attrs, plane.source(), column))
             }
@@ -1877,8 +1848,9 @@ pub fn apply<const DRCS: usize, const PANEL_ROWS: usize>(
     config: &Config,
     options: &DisplayOptions,
 ) -> EnhancementReport {
+    let build = PageBuild::of(page, config.level);
     if !config.level.is_enhanced() {
-        return EnhancementReport::new(config.level);
+        return EnhancementReport::new(build, config.level);
     }
     let links = objects::links(page, lookup, config.level);
     let level = links.level;
@@ -1889,7 +1861,7 @@ pub fn apply<const DRCS: usize, const PANEL_ROWS: usize>(
             row.fill(Cell::BLANK);
         }
         grid.double_height_rows = 0;
-        return EnhancementReport::new(level);
+        return EnhancementReport::new(build, level);
     }
     let (designation, second_g0, _) = resolve_designation(Some(page), magazine, &config);
     grid.designation = designation;
@@ -1907,8 +1879,15 @@ pub fn apply<const DRCS: usize, const PANEL_ROWS: usize>(
     let presentation = colour::resolve(&sources, level, &ColourMap::DEFAULT);
     // Panels need every panel row of the grid.
     let panels = if PANEL_ROWS >= SIDE_PANEL_ROWS { presentation.side_panels } else { SidePanels::NONE };
-    let inputs =
-        Inputs { page, lookup, links: &links, level, panels, default_sets: (designation.g0.set, designation.g2) };
+    let inputs = Inputs {
+        page,
+        lookup,
+        links: &links,
+        build,
+        level,
+        panels,
+        default_sets: (designation.g0.set, designation.g2),
+    };
     let row_24_shown = row_24_shown(page, &config) && options.row24.is_none();
     let last_colour_row = if row_24_shown { ROWS.saturating_sub(1) } else { ROWS.saturating_sub(2) };
 
@@ -2054,12 +2033,12 @@ fn fill_drcs<const DRCS: usize, const PANEL_ROWS: usize>(
                 Ok(pattern) => {
                     if !grid.drcs.push(pattern) {
                         // REQ-DRC-007: beyond the capacity, treated as missing.
-                        report.drcs_missing = report.drcs_missing.saturating_add(1);
+                        report.faults.drcs_missing = report.faults.drcs_missing.saturating_add(1);
                     }
                 }
-                Err(DrcsFault::Missing) => report.drcs_missing = report.drcs_missing.saturating_add(1),
+                Err(DrcsFault::Missing) => report.faults.drcs_missing = report.faults.drcs_missing.saturating_add(1),
                 Err(DrcsFault::Invalid) => {
-                    report.drcs_invalid = report.drcs_invalid.saturating_add(1);
+                    report.faults.drcs_invalid = report.faults.drcs_invalid.saturating_add(1);
                     let target = if index < ROWS {
                         grid.cells.get_mut(index).and_then(|row| row.get_mut(column))
                     } else {

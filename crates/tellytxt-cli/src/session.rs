@@ -6,7 +6,7 @@ use tellytxt_core::config::Config;
 use tellytxt_core::consts::{
     COLUMNS, ENHANCEMENT_PACKETS_LEVEL_35, HEADER_DISPLAY_BYTES, MAGAZINES, MOT_PACKETS, PAGE_COMPLETION_TIMEOUT_US,
 };
-use tellytxt_core::fsm::PageState;
+use tellytxt_core::fsm::{PageKey, PageState};
 use tellytxt_core::level1::{DisplayOptions, Grid, build_grid};
 use tellytxt_core::packet::{Packet, PacketMeta};
 use tellytxt_core::service::{ServiceInfo, interpret};
@@ -154,8 +154,11 @@ impl Session {
     /// The grid of a page as `ttx show`, `text` and `render` present it:
     /// row 0 with the status area showing the page number (decision E.10),
     /// Level 1 then the pass of the presentation level (REQ-PRF-006).
-    #[must_use]
-    pub fn grid(&self, page: &StoredPage, row24: Option<[u8; COLUMNS]>) -> Grid {
+    /// `None` when the page is not stored. At Levels 2.5 and 3.5 the faults
+    /// met are added to the decoder's statistics (REQ-L25-051).
+    pub fn grid(&mut self, key: PageKey, row24: Option<[u8; COLUMNS]>) -> Option<Grid> {
+        let store = self.decoder.store();
+        let page = store.find(key).and_then(|index| store.slot(index))?;
         let mut grid = Grid::EMPTY;
         let address = page.key.address;
         let mut status = [b' '; 7];
@@ -165,8 +168,11 @@ impl Session {
         let magazine = self.decoder.magazine_data(address.magazine);
         let config = self.decoder.config();
         build_grid(&mut grid, Some(page), &magazine, config, &options);
-        let _ = compose_level(&mut grid, page, &magazine, &self.decoder.enhancement_lookup(), config, &options);
-        grid
+        let report = compose_level(&mut grid, page, &magazine, &self.decoder.enhancement_lookup(), config, &options);
+        if let Some(report) = report {
+            self.decoder.record_enhancement(report.build, &report.faults);
+        }
+        Some(grid)
     }
 
     /// The rolling header text, for viewers searching for a page.
