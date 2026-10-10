@@ -48,11 +48,20 @@ fn bbc1_1991_decodes() {
     decoder.tick(Instant(u64::MAX / 2), &mut |_| {});
     let stored = decoder.store().pages().iter().filter(|p| p.state != PageState::Empty).count();
     let stats = decoder.statistics();
-    eprintln!("packets per magazine {:?}, pages stored {stored}, address failures {}, parity failures {}", stats.per_magazine, stats.address_failures, stats.parity_failures);
+    eprintln!(
+        "packets per magazine {:?}, pages stored {stored}, address failures {}, parity failures {}",
+        stats.per_magazine, stats.address_failures, stats.parity_failures
+    );
     let address = PageAddress::from_mpp(0x100).unwrap();
     let page = decoder.store().get(address, SubCode::ANY).expect("page 100");
     let mut grid = Grid::EMPTY;
-    build_grid(&mut grid, Some(page), &decoder.magazine_data(address.magazine), &Config::default(), &DisplayOptions::default());
+    build_grid(
+        &mut grid,
+        Some(page),
+        &decoder.magazine_data(address.magazine),
+        &Config::default(),
+        &DisplayOptions::default(),
+    );
     for row in 0..25 {
         eprintln!("{:2} |{}|", row, row_text(&grid, row));
     }

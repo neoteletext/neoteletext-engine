@@ -19,8 +19,8 @@ pub(super) const ENGLISH_DESIGNATION: Designation = Designation {
 };
 
 /// The 13 national option positions of Table 36.
-pub(super) const NATIONAL_POSITIONS: [u8; 13] =
-    [0x23, 0x24, 0x40, 0x5B, 0x5C, 0x5D, 0x5E, 0x5F, 0x60, 0x7B, 0x7C, 0x7D, 0x7E];
+pub(super) use crate::consts::NATIONAL_POSITIONS;
+use crate::consts::NO_SECOND_G0;
 
 /// Codes 2/0 to 7/F: six columns of sixteen.
 const SET_SIZE: usize = 96;
@@ -32,8 +32,6 @@ type CodeTable = [char; SET_SIZE];
 /// are the national option index (Table 32 note 1, decision E.21).
 const GROUP_SHIFT: u32 = 3;
 
-/// Table 33: 1111111 means "no second G0 set required".
-const NO_SECOND_G0: u8 = 0x7F;
 
 fn lookup(table: &CodeTable, code: u8) -> char {
     code.checked_sub(SPACE)

@@ -9,9 +9,9 @@ use crate::consts::{
     ADDRESS_BYTE_0, ADDRESS_BYTE_1, DATA_BYTES, DATA_START, DESIGNATION_CODES, HEADER_DISPLAY_BYTES,
     HEADER_DISPLAY_START, LINK_NULL_PAGE, LINK_NULL_SUBCODE, MAGAZINE_MASK, PACKET_BYTES, PACKET_ENHANCEMENT,
     PACKET_FIRST_ROW, PACKET_HEADER, PACKET_LINKS, PACKET_MAGAZINE_ENHANCEMENT, PACKET_NUMBER_LOW_BIT,
-    PACKET_PAGE_ENHANCEMENT, PACKET_ROW_25, PACKET_SERVICE, SERVICE_MAGAZINE, STATUS_MESSAGE_BYTES,
-    TRIPLET_ADDRESS_BITS, TRIPLET_ADDRESS_MASK, TRIPLET_BYTES, TRIPLET_DATA_FIELD_MASK, TRIPLET_MODE_BITS,
-    TRIPLET_MODE_MASK, TRIPLETS_PER_PACKET,
+    PACKET_PAGE_ENHANCEMENT, PACKET_ROW_25, PACKET_SERVICE, PAGE_CODING_MASK, PAGE_CODING_SHIFT, SERVICE_MAGAZINE,
+    STATUS_MESSAGE_BYTES, TRIPLET_ADDRESS_BITS, TRIPLET_ADDRESS_MASK, TRIPLET_BYTES, TRIPLET_DATA_FIELD_MASK,
+    TRIPLET_MODE_BITS, TRIPLET_MODE_MASK, TRIPLETS_PER_PACKET,
 };
 use crate::ecc::{hamming84, hamming2418, reverse_bits};
 use crate::types::{ControlBits, Magazine, PageNumber, SubCode};
@@ -477,7 +477,7 @@ fn enhancement_data(packet: &Packet) -> Option<EnhancementData> {
     let second = all.get(1).copied().flatten()?.value();
     Some(EnhancementData {
         page_function: (first & 0xF) as u8,
-        page_coding: ((first >> 4) & 0x7) as u8,
+        page_coding: ((first >> PAGE_CODING_SHIFT) & PAGE_CODING_MASK) as u8,
         default_designation: ((first >> 7) & 0x7F) as u8,
         second_designation: (((first >> 14) & 0xF) | ((second & 0x7) << 4)) as u8,
     })

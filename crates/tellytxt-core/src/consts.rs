@@ -252,6 +252,26 @@ pub const LATIN_AT_SIGN: u8 = 0x40;
 pub const DIACRITIC_NONE: u8 = 0;
 
 // ---------------------------------------------------------------------------
+// Character set designation (clause 15, Tables 3, 4, 32, 33, 36, 37)
+// ---------------------------------------------------------------------------
+
+/// Shift of the group in a 7-bit Table 32 designation value: the group is
+/// bits 4 to 7, the national option bits 1 to 3 (Table 32).
+pub const DESIGNATION_GROUP_SHIFT: u32 = 3;
+/// Table 33 value meaning "no second G0 set required".
+pub const NO_SECOND_G0: u8 = 0x7F;
+/// Shift of the page coding within triplet 1 of X/28/0 format 1: bits 5 to
+/// 7 (Table 3).
+pub const PAGE_CODING_SHIFT: u32 = 4;
+/// Mask of the 3-bit page coding.
+pub const PAGE_CODING_MASK: u32 = 0x7;
+/// The 13 national option positions of the Latin G0 set (Table 36).
+pub const NATIONAL_POSITIONS: [u8; 13] = [0x23, 0x24, 0x40, 0x5B, 0x5C, 0x5D, 0x5E, 0x5F, 0x60, 0x7B, 0x7C, 0x7D, 0x7E];
+/// The right guillemet "»" in the Latin G2 set (Table 37, position 3/B),
+/// the receiver's mark for a link leaving the service (REQ-NAV-011).
+pub const G2_RIGHT_GUILLEMET: u8 = 0x3B;
+
+// ---------------------------------------------------------------------------
 // Spacing attributes (clause 12.2, Table 26)
 // ---------------------------------------------------------------------------
 

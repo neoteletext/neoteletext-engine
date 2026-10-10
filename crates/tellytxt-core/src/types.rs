@@ -175,12 +175,21 @@ impl Instant {
 }
 
 /// A vector with fixed capacity, held inline: the Foundation's
-/// fixed-capacity collection (no allocation, REQ-GEN-002).
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+/// fixed-capacity collection (no allocation, REQ-GEN-002). Equality
+/// compares the items only, not the unused slots.
+#[derive(Clone, Copy, Debug)]
 pub struct FixedVec<T: Copy, const N: usize> {
     items: [T; N],
     len: usize,
 }
+
+impl<T: Copy + PartialEq, const N: usize> PartialEq for FixedVec<T, N> {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_slice() == other.as_slice()
+    }
+}
+
+impl<T: Copy + Eq, const N: usize> Eq for FixedVec<T, N> {}
 
 impl<T: Copy, const N: usize> FixedVec<T, N> {
     /// An empty vector whose unused slots hold `filler`.

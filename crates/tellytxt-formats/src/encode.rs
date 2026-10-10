@@ -16,11 +16,8 @@ use tellytxt_core::types::{FixedVec, Magazine, PageNumber, SubCode};
 use crate::consts::TTI_PACKED_CHARACTERS;
 use crate::page::{FASTEXT_LINKS, LinkKey, PageFile, RawBody, RawPacket};
 
-/// The right guillemet "»" in the Latin G2 set (EN 300 706 Table 37, code
-/// 3/B), the receiver's mark for a link that leaves the service
-/// (REQ-NAV-011). Not yet in `tellytxt_core::consts`; a test checks it
-/// against the core's character table.
-pub const G2_RIGHT_GUILLEMET: u8 = 0x3B;
+pub use tellytxt_core::consts::{DESIGNATION_GROUP_SHIFT, G2_RIGHT_GUILLEMET};
+use tellytxt_core::consts::{NO_SECOND_G0, PAGE_CODING_SHIFT};
 /// The Level 1 character written where the guillemet goes, for receivers
 /// without X/26: ">" is the same in every Latin national option.
 pub const GUILLEMET_FALLBACK: u8 = b'>';
@@ -31,18 +28,9 @@ pub const PROMPT_COLUMNS: usize = COLUMNS / 4;
 pub const LABEL_CHARACTERS: usize = PROMPT_COLUMNS - 1;
 /// Label characters of an other-service prompt, which also holds the mark.
 pub const OTHER_SERVICE_LABEL_CHARACTERS: usize = LABEL_CHARACTERS - 1;
-/// Table 32 note 1: the character set group occupies bits 3 to 6 of a
-/// designation value, above the national option index. The core keeps this
-/// private to its character tables.
-pub(crate) const DESIGNATION_GROUP_SHIFT: u32 = 3;
 /// Header bytes the page checksum covers: bytes 14 to 37, the display
 /// columns before the clock (clause 9.6.1, decision E.11).
 pub const CHECKSUM_HEADER_BYTES: usize = CLOCK_COLUMN - HEADER_DISPLAY_COLUMN;
-/// Table 33: 1111111 means "no second G0 set required". Private in the core.
-const NO_SECOND_G0: u8 = 0x7F;
-/// Table 4: page function is triplet 1 bits 1 to 4 and page coding bits 5
-/// to 7.
-const PAGE_CODING_SHIFT: u32 = 4;
 /// Triplets a page can carry in its sixteen X/26 packets.
 const PAGE_TRIPLETS: usize = DESIGNATION_CODES * TRIPLETS_PER_PACKET;
 

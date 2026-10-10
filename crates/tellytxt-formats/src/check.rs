@@ -2,8 +2,7 @@
 //! make a TTI page fail on some receivers or behave unsafely, reported per
 //! page with the line they were found on. The program adds the file name.
 
-use tellytxt_core::charset::is_national_position;
-use tellytxt_core::consts::{PACKET_ROW_24, SPACE};
+use tellytxt_core::consts::{NATIONAL_POSITIONS, PACKET_ROW_24, SPACE};
 use tellytxt_core::types::PageAddress;
 
 use crate::encode::{LABEL_CHARACTERS, OTHER_SERVICE_LABEL_CHARACTERS};
@@ -240,7 +239,9 @@ fn check_form(page: &PageFile, report: &mut dyn FnMut(Severity, Problem, u32)) {
         let mut national = false;
         placeholder_runs(page, index, field, &mut |row, column, width| {
             if let Some(cells) = page.row(row).and_then(|codes| codes.get(column..column.saturating_add(width))) {
-                national |= cells.iter().any(|&code| is_national_position(code));
+                national |= cells
+                    .iter()
+                    .any(|&code| NATIONAL_POSITIONS.contains(&(code & tellytxt_core::consts::CODE_MASK_7BIT)));
             }
         });
         if national {
