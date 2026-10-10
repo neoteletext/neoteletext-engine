@@ -8,10 +8,10 @@ use tellytxt_core::consts::{
 };
 use tellytxt_core::fsm::PageState;
 use tellytxt_core::level1::{DisplayOptions, Grid, build_grid};
-use tellytxt_core::level15;
 use tellytxt_core::packet::{Packet, PacketMeta};
 use tellytxt_core::service::{ServiceInfo, interpret};
 use tellytxt_core::types::{Instant, PageAddress, SubCode};
+use tellytxt_core::viewer::compose_level;
 
 /// Default number of stored pages and sub-pages.
 pub const DEFAULT_PAGES: usize = 4096;
@@ -153,7 +153,7 @@ impl Session {
 
     /// The grid of a page as `ttx show`, `text` and `render` present it:
     /// row 0 with the status area showing the page number (decision E.10),
-    /// Level 1 then Level 1.5.
+    /// Level 1 then the pass of the presentation level (REQ-PRF-006).
     #[must_use]
     pub fn grid(&self, page: &StoredPage, row24: Option<[u8; COLUMNS]>) -> Grid {
         let mut grid = Grid::EMPTY;
@@ -165,7 +165,7 @@ impl Session {
         let magazine = self.decoder.magazine_data(address.magazine);
         let config = self.decoder.config();
         build_grid(&mut grid, Some(page), &magazine, config, &options);
-        level15::apply(&mut grid, &page.enhancements, page.enhancements_present, config, true);
+        compose_level(&mut grid, page, &magazine, &self.decoder.enhancement_lookup(), config, &options);
         grid
     }
 
