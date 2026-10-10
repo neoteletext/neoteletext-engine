@@ -1271,8 +1271,11 @@ mod tests {
         let mut page = StoredPage::EMPTY;
         // C14 set: header national index 1.
         page.control = ControlBits(1 << 14);
-        let magazine =
-            MagazineData { data: Some(fields(0)), level35: Some(fields(0b0110_111)), ..MagazineData::default() };
+        let magazine = MagazineData {
+            data: Some(fields(0)),
+            level35: Some(fields(0b0110 << DESIGNATION_GROUP_SHIFT | 0b111)),
+            ..MagazineData::default()
+        };
         let option = |page: &StoredPage, level| {
             let config = Config { level, ..Config::default() };
             resolve_designation(Some(page), &magazine, &config).0.g0
@@ -1280,7 +1283,8 @@ mod tests {
         let latin = |national| G0 { set: charset::G0Set::Latin, national: Some(national) };
         // X/28/0 first; the header's option at 1.5, the designation's at 2.5.
         page.page_data = Some(PageEnhancement { format: basic, fields: fields(polish) });
-        page.page_data_level35 = Some(PageEnhancement { format: basic, fields: fields(0b0100_000) });
+        page.page_data_level35 =
+            Some(PageEnhancement { format: basic, fields: fields(0b0100 << DESIGNATION_GROUP_SHIFT) });
         assert_eq!(option(&page, Level::Level15), latin(charset::NationalOption::German));
         assert_eq!(option(&page, Level::Level25), latin(charset::NationalOption::Polish));
         assert_eq!(option(&page, Level::Level35), latin(charset::NationalOption::Polish));
