@@ -39,6 +39,10 @@ Each crate's optional parts are Cargo features, on by default, so a port or a sm
 
 `scripts/check.sh` runs the fast checks and `scripts/check.sh full` runs everything. The git hooks in `.githooks` run them before each commit and push. Tests that need the real broadcast corpus read it from `$TELLYTXT_CORPUS` (see `cargo xtask corpus`) and say so when it is absent.
 
+## Licence
+
+The project is licensed under the MIT licence; see [LICENSE](LICENSE). Bundled third-party material keeps its own licence, recorded beside it.
+
 ## Licensing of data
 
 No standards documents, character-generator ROM glyphs, GPL code or broadcast recordings are kept in this repository. The glyphs are temporarily taken from the Bedstead font; see `third_party/bedstead/PROVENANCE.md`.
