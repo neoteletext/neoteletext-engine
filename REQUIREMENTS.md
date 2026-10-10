@@ -1786,6 +1786,73 @@ The clauses for Levels 2.5 and 3.5 leave many details open. The research notes l
 
 *Reason:* Annexes A.1, B.6, E.1 and E.8, and clause 10.6 (`research/notes-level25-objects.md` sections 6 and 11, and section 14 item 39; `research/notes-level25-enhancement.md` ambiguity A-24). Object pages carry Hamming 24/18 triplets, whose bytes do not follow the odd parity rule, so a merge by parity would keep stale bytes or reject good ones.
 
+**E.57 — Points of the enhancement processor, objects and DRCS that decisions E.40 to E.56 leave open.**
+Recorded on 11 October 2026, when the processor was written (REQ-DOC-004). Each point is commented where the code applies it.
+- **Damaged triplets and the Origin Modifier.** A damaged triplet met while an Origin Modifier waits for its invocation discards the offsets.
+- **DRCS invocation and data below 2/0.** The rule that a character triplet whose data is below 2/0 writes nothing does not apply to the DRCS Character Invocation, because global DRCS characters 0 to 31 have data below 2/0.
+- **Counting invocations.** Every permitted invocation counts toward the limit of 127 per object type, whether or not its object is found, so that failed lookups also bound the work (REQ-OBJ-020).
+- **Objects open at once (Annex A.8).** Counted at the invocation point against the open areas of all earlier objects. An object's area runs from its invocation to the last position any of its moving triplets reaches. The count of successive opens restarts at any character or attribute actually placed.
+- **Tables without Level 3.5 links.** At Level 3.5, a stored Magazine Organization Table that lacks packet X/22 or X/24 makes the page fall back to Level 2.5 links, whatever X/27/4 says (clause 10.6.1).
+- **Links role by role.** X/27/4 and X/27/5 take precedence over the table one role at a time; a role they do not give comes from the table.
+- **Default objects** are found through the table's own GPOP and POP pages (clause 13.8). A table link to page FF gives no fallback bits and no default objects. A display triplet, which suppresses the default objects, is any character or attribute column triplet, screen or row colour, Address Display Row 0 or invocation met before the first Termination Marker or Object Definition (with decision E.53).
+- **An object's area.** An object writes only into the area of its origin column: the main page or one side panel. Elements that fall outside it are discarded, which covers an object that would cross from the page into a panel.
+- **Box codes at Levels 2.5 and 3.5.** On a page with neither C5 nor C6 set, both Level 1 box codes are ignored. On a boxed page, one boxed state is shared with the window bit of the Display Attributes triplet, and the later of the two wins.
+- **Side-panel rows** start with the re-mapped white foreground (decision E.14) and the row colour as their background.
+- **Overlapping Adaptive objects** keep one merged attribute record per cell, owned by the latest object to place there.
+- **Passive objects** apply their attributes in transmission order, as the walk meets them; this is scan order for streams that keep the order of Annex A.4. A Passive attribute at a discarded position is dropped.
+- **Incremental and decremental flash** count phases by column from the triplet's column, spaces included.
+- **Which rows are rebuilt.** Row 0 only when C7 is clear, always keeping columns 0 to 7. Row 24 only when it is shown and not drawn by the receiver. A page with C10 set, or with an X/28/0 page function other than basic text, keeps its Level 1 rows and gets no side panels.
+- **Enhancement pages shown as text (REQ-OBJ-041).** A page is taken as an enhancement page, and its rows 1 to 24 are blanked, when its number is xFE or its stored copy carries an X/28 page function of GPOP, POP, GDRCS, DRCS or MOT. A page named only by a link is still shown, so that a wrong link cannot hide a display page.
+- **DRCS faults (REQ-DRC-009).** An uncorrectable X/28/3 mode code counts as missing data, not invalid data. An invalid character shows as a space and is counted. A missing character keeps its DRCS reference with no pattern, and is drawn empty. Patterns beyond the grid's capacity count as missing.
+- **X/26/15** is always processed at Levels 2.5 and 3.5; the profile option of decision E.2 concerns Level 1.5 only.
+- **Lower-row fill cells** of double height take the background of the cell above and keep its box membership; flash and invert are cleared.
+- **Reporting.** `enhance::apply` returns an `EnhancementReport` that counts each kind of fault and the triplets read. The counts are not yet added to the decoder's statistics, and the walk records no trace entries (REQ-L25-051, REQ-FSM-010); see the implementation log.
+
+*Reason:* Clauses 12.3, 13 and 14, Annexes A and C, and the research notes' ambiguity lists (`research/notes-level25-enhancement.md`, `research/notes-level25-objects.md`, `research/notes-level25-drcs.md`). Each choice keeps the work bounded, keeps faults contained to the cell or object concerned (decision E.41), or takes the reading that never hides displayed text.
+
+**E.58 — Points of rendering at Levels 2.5 and 3.5 that decisions E.47 to E.55 leave open.**
+Recorded on 11 October 2026 (REQ-DOC-004).
+- **Choosing the colour mode.** `RenderOptions::from_config` keeps the palette mode at every level, so Level 1 output is unchanged; `RenderOptions::for_level` chooses the resolved mode at Levels 2.5 and 3.5, and the command-line program uses it. The palette mode refuses a grid it cannot draw (`RenderError::NeedsResolvedMode`), and the 4-bit format refuses indices above 15 in the resolved mode.
+- **Underline** is drawn on the last line of the cell, for G0 and G2 characters only, and on double height only on the bottom half, enlarged to two lines. It is not drawn on empty cells.
+- **Italic** uses the position of the normal-height line, so a double-height italic character is the normal one enlarged.
+- **Transparent pixels** of multi-colour DRCS characters show the plane below (the row colour or the picture, Table C.1), not the cell's background. A transparent colour in row 0, columns 0 to 7, shows the picture, never the row colour.
+- **Mix mode** makes gaps the picture; a dot hidden by flash or conceal therefore also shows the picture.
+- **Side panels.** Panel widths are clamped to 16 columns each. A grid with no panel storage but panels enabled shows the screen colour there. Borders are the caller's to fill, in the colour `border_index` gives.
+- **Still images** (`ttx show` and `ttx render`) are drawn at flash unit 0, in the "on" phase of every rate.
+- **G3 glyphs.** A pixel is set when its centre, nudged upwards by an infinitesimal amount, lies inside the shape, which makes mirrors and complements exact. 2/E and 3/E are drawn at half-dots 1–2 and 9–10; 4/8 to 4/B are straight diagonals; diagonal strokes are two half-dots wide; the checkerboard alternates per row of the 12×10 matrix. The generated glyphs are used at every level, so G3 characters at Level 1.5 also change from the temporary glyph source.
+- **Eight-colour terminals** show each primary when it is above half intensity.
+
+*Reason:* Table C.1, clauses 12.3 and 15, and the rendering requirements REQ-RND-030 to REQ-RND-041. Keeping the palette mode as the default of `from_config` keeps the golden rasters of Levels 1 and 1.5 unchanged (REQ-TST-030).
+
+**E.59 — Points of TTI files and the authoring builder that REQ-INP-023 to REQ-INP-025 leave open.**
+Recorded on 11 October 2026 (REQ-DOC-004).
+- **The page function in TTI files.** A function carried by an `OL,28` line (X/28/0, X/28/3 or X/28/4) wins over a `PF` line, and the lowest designation code wins among them, whatever the order of the lines, so that a page read, written and read again is unchanged.
+- **Building X/28/0 from `RE` and `PF`.** A function other than 0 gives the Table 6 form. A basic page with `RE`, or with a coding other than 0, gives the Table 4 form with every other field at its default, including the colours of Table 30. `PF,0,0` alone gives no packet, so that it does not override a magazine's M/29/0.
+- **The Table 6 marker** "11111111100" of bits 8 to 18 is read bit 8 first.
+- **Page codings 1, 4 and 5** are sent as parity text.
+- **Page mFF** carries the magazine packets: it is sent as a time-filling header after its M/29 packets, and converting a stream to TTI puts each magazine's stored M/29 packets back on it.
+- **Builder defaults.** Pages are sent with C4 set. Enhancement sub-codes follow Annex A.1, with the last packet sent in S4 and S3. DRCS pages pad unused PTUs with spaces and send X/28/3 unless told not to. A page with no local data sends no packet X/26 (clause 13.8: any X/26 cancels the default objects). Table entries for both levels repeat the Level 2.5 links in X/22 to X/24.
+- **Converting an enhancement page with no X/28** writes rows that all pass parity as parity text; otherwise the page is taken to be a POP with coding 2.
+
+*Reason:* Clauses 9.4, 10 and 13.8, Annexes A.1, B.2 and B.7, and the conventions of existing TTI files (vbit2 read as documentation only, decision E.31).
+
+**E.60 — zvbi as the oracle at Levels 2.5 and 3.5.**
+zvbi is the oracle of REQ-TST-023, compared cell by cell by `tests/oracles/run_cells.sh`. Tracing every difference on the authored stream with a debug build of zvbi 0.2.44 and 0.2.45 showed these zvbi faults, which `tests/oracles/zvbi-known-differences.txt` names page by page:
+- it does not store a sub-page when the next header in the magazine has the same page number (the test harness puts a time-filling header between them, which changes nothing for a decoder that follows clause 7.1.2);
+- it reads the page number of an X/27/4 or X/27/5 link one bit too high (EN 300 706 Table 15), so no such link is followed;
+- it starts a Local Object at its definition triplet and stops there, so Local Objects never draw;
+- it drops all of a page's enhancement at its first fault, such as one invalid DRCS character, where this receiver contains the fault (decision E.41);
+- it applies a Display Attributes size only to characters that enhancement data writes;
+- it flashes for the reserved flash rates;
+- it never invokes the default objects of the table's global link;
+- it lets M/29/0 beat X/28/4 (against decision E.44);
+- it takes page 1F0 to be the Basic TOP Table, so the authored stream puts its GPOP elsewhere;
+- its default colours differ from Table 30 at CLUT 1 entries 5 and 6 (decision E.40), so colours are compared as indices.
+
+Where zvbi follows a different reading from decisions E.45 (the full row colour behind substituted black backgrounds) and E.53 (X/26 with no displayed data), the page is listed with that reason. Authored pages 119 and 124 exercise DRCS and sizes without these faults, so zvbi can check them.
+
+*Reason:* REQ-TST-023 requires an independent oracle; recording its faults keeps the comparison strict everywhere else, since a page not in the list must agree in every compared cell.
+
 ---
 
 # Part F — Requirements
