@@ -130,7 +130,7 @@ Every command accepts these options. Each one changes a setting of REQUIREMENTS.
 | `--profile NAME` | The compatibility profile (area PRF). | `en300706` |
 | `--region N` | The character set group of Table 32, 0 to 15, used when the page does not give one (decision E.4). | From the transport stream's language, otherwise 0 |
 | `--parity keep-good\|space\|marker` | How characters that fail their parity check are shown (decision E.8). | `keep-good` |
-| `--level1-only` | Turns Level 1.5 enhancement packets off (REQ-L15-001). | Level 1.5 on |
+| `--level 1\|1.5\|2.5\|3.5` | The presentation level, overriding the profile's (REQ-CLI-007, decision E.40). | The profile's level |
 | `--no-rounding` | Turns character rounding off (REQ-RND-012). | Rounding on |
 | `--single-start-box` | Accepts a single Start Box code (decision E.17). | Two required |
 | `--pages N` | Pages and sub-pages kept in memory. | 4096 |
@@ -140,7 +140,7 @@ Every command accepts these options. Each one changes a setting of REQUIREMENTS.
 
 | Setting | `en300706` | `saa5050` | `saa5246a` |
 |---|---|---|---|
-| Level 1.5 (X/26) | On | Off | On |
+| Presentation level (E.40) | 3.5 | 1 | 1.5 |
 | X/26/15 processed (E.2) | Yes | Yes | No |
 | National option | From C12 to C14 | Fixed: English | From C12 to C14 |
 | Black colour codes 0/0 and 1/0 (E.18) | Black | No function | Black |
@@ -155,7 +155,7 @@ The library's `tellytxt_core::config::Config` holds every setting below. `ttx` e
 
 | Field | Decision | Default |
 |---|---|---|
-| `level15` | REQ-L15-001 | On |
+| `level` | REQ-PRF-006, E.40: Level 1, 1.5, 2.5 or 3.5 | Level 3.5 |
 | `process_x26_15` | E.2 | On |
 | `strict_row_setting` | E.3: the clause 12.3.2 rule instead of Annex A.3 | Off |
 | `ignore_out_of_order_triplets` | REQ-L15-009 | Off |

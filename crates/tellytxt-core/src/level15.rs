@@ -2,7 +2,7 @@
 //! REQ-FSM-007, applied to a grid already decoded at Level 1 (decision E.1).
 
 use crate::charset::{CharRef, CharSet, Designation, G0};
-use crate::config::Config;
+use crate::config::{Config, PresentationLevel};
 use crate::consts::{
     COLUMNS, DESIGNATION_CODES, LATIN_AT_SIGN, MODE_ADDRESS_ROW_0, MODE_COLUMN_PDC, MODE_COLUMN_RESERVED_1,
     MODE_COLUMN_RESERVED_2, MODE_COLUMN_RESERVED_3, MODE_DIACRITIC_MASK, MODE_FULL_ROW_COLOUR, MODE_G0_NO_DIACRITIC,
@@ -127,8 +127,12 @@ pub type EnhancementPackets = [[Option<Triplet>; crate::consts::TRIPLETS_PER_PAC
 /// Applies a page's X/26 packets to its grid (REQ-L15-002 to 010). Bit d of
 /// `present` marks designation code d as received. `include_row_0` is false
 /// while row 0 shows the rolling header (E.5 (i)).
+///
+/// REQ-L15-001: at Level 1 the packets are stored but not applied, so the
+/// pass does nothing. Choosing between this pass (Level 1.5) and the
+/// enhancement processor (Levels 2.5 and 3.5) is the caller's dispatch.
 pub fn apply(grid: &mut Grid, packets: &EnhancementPackets, present: u16, config: &Config, include_row_0: bool) {
-    if !config.level15 {
+    if config.level == PresentationLevel::Level1 {
         return;
     }
     let context = WalkContext { designation: grid.designation, strict_row_setting: config.strict_row_setting };
@@ -369,6 +373,21 @@ mod tests {
         let mut grid = Grid::EMPTY;
         apply(&mut grid, &packets, present, &Config::saa5246a(), true);
         assert_eq!([4, 6, 8].map(|column| glyph_code(&grid, column)), [Some(b'A'), None, None]);
+    }
+
+    /// REQ-L15-001, REQ-PRF-006: at Level 1 the stored packets are not
+    /// applied.
+    #[test]
+    fn level_1_applies_nothing() {
+        let mut packets: EnhancementPackets = [[None; crate::consts::TRIPLETS_PER_PACKET]; DESIGNATION_CODES];
+        packets[0][..2]
+            .copy_from_slice(&[t(ROW_ADDRESS_BASE + 3, MODE_SET_ACTIVE_POSITION, 0), t(4, MODE_G0_NO_DIACRITIC, b'A')]);
+        let mut grid = Grid::EMPTY;
+        apply(&mut grid, &packets, 1, &Config::saa5050(), true);
+        assert_eq!(grid, Grid::EMPTY);
+        let level15 = Config { level: PresentationLevel::Level15, ..Config::saa5050() };
+        apply(&mut grid, &packets, 1, &level15, true);
+        assert!(matches!(grid.cells[3][4].glyph, Glyph::Char(character) if character.code == b'A'));
     }
 
     /// REQ-L15-008, REQ-TST-014: rules (c), (d), (g) and (h) of decision

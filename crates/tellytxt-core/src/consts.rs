@@ -430,6 +430,27 @@ pub const PAGE_COMPLETION_TIMEOUT_US: u64 = 100_000;
 pub const MOMENTARY_REVEAL_US: u64 = 160_000;
 
 // ---------------------------------------------------------------------------
+// Flash at Levels 2.5 and 3.5 (decision E.48, Table 29 mode 00111)
+// ---------------------------------------------------------------------------
+
+/// One flash cycle at Levels 2.5 and 3.5 lasts one second (decision E.48).
+pub const FLASH_CYCLE_US: u64 = 1_000_000;
+/// The cycle is divided into twelve units of one twelfth of a second,
+/// numbered 0 to 11: twelve divides both rates and the three fast phases
+/// evenly (decision E.48).
+pub const FLASH_UNITS: u8 = 12;
+/// Slow flash (1 hertz) is on during units 0 to 8 and off during units 9
+/// to 11, the 3 to 1 ratio of decision E.12.
+pub const FLASH_SLOW_ON_UNITS: u8 = 9;
+/// Fast flash (2 hertz) treats each half-second of six units alike.
+pub const FLASH_FAST_HALF_UNITS: u8 = FLASH_UNITS / 2;
+/// The fast flash phases, 1 to 3.
+pub const FLASH_PHASES: u8 = 3;
+/// A fast flash character with phase p is off during the two units
+/// 2(p − 1) and 2p − 1 of each half-second.
+pub const FLASH_FAST_OFF_UNITS: u8 = 2;
+
+// ---------------------------------------------------------------------------
 // Broadcast service data (clause 9.8.1)
 // ---------------------------------------------------------------------------
 
@@ -461,6 +482,15 @@ mod tests {
         assert_eq!(CELL_HEIGHT, 2 * CELL_FIELD_LINES);
         assert_eq!(MOSAIC_ROW_TENTHS.iter().sum::<usize>(), 10);
         assert_eq!(PACKET_BITS, PACKET_BYTES * 8);
+    }
+
+    /// Decision E.48: the fast phases fill a half-second exactly, and slow
+    /// flash keeps the 3 to 1 ratio that decision E.12 measured.
+    #[test]
+    fn flash_units_agree_with_decisions_e12_and_e48() {
+        assert_eq!(FLASH_FAST_OFF_UNITS * FLASH_PHASES, FLASH_FAST_HALF_UNITS);
+        let slow_off = u64::from(FLASH_UNITS - FLASH_SLOW_ON_UNITS);
+        assert_eq!(u64::from(FLASH_SLOW_ON_UNITS) * FLASH_FIELDS_HIDDEN, slow_off * FLASH_FIELDS_SHOWN);
     }
 
     #[test]

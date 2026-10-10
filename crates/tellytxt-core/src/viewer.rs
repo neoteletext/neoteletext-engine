@@ -488,6 +488,9 @@ impl Viewer {
             boxed: false,
         };
         build_grid(grid, page, magazine, config, &options);
+        // REQ-PRF-006: the Level 1.5 pass does nothing at Level 1. Until the
+        // enhancement processor of area L25 exists, Levels 2.5 and 3.5 also
+        // run the Level 1.5 pass, so that their output is unchanged.
         if let Some(page) = page {
             level15::apply(grid, &page.enhancements, page.enhancements_present, config, true);
         }

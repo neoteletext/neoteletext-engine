@@ -32,7 +32,7 @@ pub mod exit {
     pub const CHECK_ERRORS: u8 = 4;
 }
 
-/// tellytxt: a software teletext receiver (ETSI EN 300 706 Levels 1.0 and 1.5).
+/// tellytxt: a software teletext receiver (ETSI EN 300 706 Levels 1.0, 1.5, 2.5 and 3.5).
 #[derive(Parser, Debug)]
 #[command(name = "ttx", version, about)]
 pub struct Cli {
@@ -69,9 +69,9 @@ pub struct Common {
     /// Parity failure policy (decision E.8).
     #[arg(long, value_enum)]
     pub parity: Option<ParityChoice>,
-    /// Turn Level 1.5 processing off (REQ-L15-001).
-    #[arg(long)]
-    pub level1_only: bool,
+    /// Presentation level, overriding the profile's (REQ-CLI-007).
+    #[arg(long, value_enum)]
+    pub level: Option<LevelChoice>,
     /// Turn character rounding off (REQ-RND-012).
     #[arg(long)]
     pub no_rounding: bool,
@@ -99,6 +99,23 @@ pub enum ParityChoice {
     Space,
     /// Show a visible error marker.
     Marker,
+}
+
+/// Presentation levels (REQ-CLI-007, decision E.40).
+#[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LevelChoice {
+    /// Level 1.0.
+    #[value(name = "1")]
+    Level1,
+    /// Level 1.5.
+    #[value(name = "1.5")]
+    Level15,
+    /// Level 2.5.
+    #[value(name = "2.5")]
+    Level25,
+    /// Level 3.5.
+    #[value(name = "3.5")]
+    Level35,
 }
 
 /// Terminal display choices (REQ-RND-029).
@@ -292,5 +309,41 @@ fn main() -> ExitCode {
             eprintln!("ttx: {message}");
             ExitCode::from(code)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(arguments: &[&str]) -> Result<Cli, clap::Error> {
+        Cli::try_parse_from(["ttx"].iter().chain(arguments))
+    }
+
+    fn level(arguments: &[&str]) -> Option<LevelChoice> {
+        match parse(arguments).map(|cli| cli.command) {
+            Ok(Command::List { common }) => common.level,
+            other => panic!("not a list command: {other:?}"),
+        }
+    }
+
+    /// REQ-CLI-007: each level is accepted, any other value is invalid
+    /// usage, and the former `--level1-only` option is gone.
+    #[test]
+    fn level_option_takes_the_four_levels() {
+        assert_eq!(level(&["list", "in.t42"]), None);
+        for (text, expected) in [
+            ("1", LevelChoice::Level1),
+            ("1.5", LevelChoice::Level15),
+            ("2.5", LevelChoice::Level25),
+            ("3.5", LevelChoice::Level35),
+        ] {
+            assert_eq!(level(&["list", "in.t42", "--level", text]), Some(expected), "{text}");
+        }
+        for invalid in ["2", "1.0", "4", "level1"] {
+            let error = parse(&["list", "in.t42", "--level", invalid]).unwrap_err();
+            assert!(error.use_stderr(), "{invalid} is invalid usage (exit status {})", exit::USAGE);
+        }
+        assert!(parse(&["list", "in.t42", "--level1-only"]).is_err());
     }
 }

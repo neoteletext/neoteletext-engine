@@ -5,12 +5,12 @@
 use crate::commands::{ConvertTarget, Failure};
 use crate::session::Session;
 use crate::view::Source;
-use crate::{Common, ParityChoice, exit};
+use crate::{Common, LevelChoice, ParityChoice, exit};
 use clap::ValueEnum;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::Path;
-use tellytxt_core::config::{Config, ParityPolicy};
+use tellytxt_core::config::{Config, ParityPolicy, PresentationLevel};
 use tellytxt_core::fsm::PageState;
 use tellytxt_core::types::PageAddress;
 use tellytxt_formats::Item;
@@ -91,8 +91,13 @@ pub fn config(common: &Common) -> Result<Config, Failure> {
     if let Some(region) = common.region {
         config.default_region = region;
     }
-    if common.level1_only {
-        config.level15 = false;
+    if let Some(level) = common.level {
+        config.level = match level {
+            LevelChoice::Level1 => PresentationLevel::Level1,
+            LevelChoice::Level15 => PresentationLevel::Level15,
+            LevelChoice::Level25 => PresentationLevel::Level25,
+            LevelChoice::Level35 => PresentationLevel::Level35,
+        };
     }
     if common.no_rounding {
         config.rounding = false;

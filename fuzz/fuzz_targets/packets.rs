@@ -5,7 +5,7 @@
 
 use libfuzzer_sys::fuzz_target;
 use tellytxt_core::acq::{Decoder, StoredPage};
-use tellytxt_core::config::{CellMode, Config};
+use tellytxt_core::config::{CellMode, Config, PresentationLevel};
 use tellytxt_core::consts::{PACKET_BYTES, PAGE_WIDTH, ROWS};
 use tellytxt_core::fsm::PageState;
 use tellytxt_core::glyphs::GlyphSet;
@@ -23,7 +23,12 @@ const LINE_US: u64 = 64;
 fuzz_target!(|data: &[u8]| {
     let [settings, body @ ..] = data else { return };
     let config = Config {
-        level15: settings & 1 != 0,
+        level: match settings & 0b0100_0001 {
+            0 => PresentationLevel::Level1,
+            1 => PresentationLevel::Level15,
+            0b0100_0000 => PresentationLevel::Level25,
+            _ => PresentationLevel::Level35,
+        },
         cell_mode: if settings & 2 != 0 { CellMode::Saa5246a } else { CellMode::Saa5050 },
         black_colour_codes: settings & 4 != 0,
         strict_row_setting: settings & 8 != 0,

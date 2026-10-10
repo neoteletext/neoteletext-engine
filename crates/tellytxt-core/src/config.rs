@@ -6,6 +6,39 @@ use crate::consts::{
     FIELD_PERIOD_US, FLASH_FIELDS_HIDDEN, FLASH_FIELDS_SHOWN, MOMENTARY_REVEAL_US, PAGE_COMPLETION_TIMEOUT_US,
 };
 
+/// The presentation level (decision E.40, REQ-PRF-006). EN 300 706 clause 12
+/// defines the levels as cumulative, so the variants are declared in level
+/// order and compare that way.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+pub enum PresentationLevel {
+    /// Level 1.0: the page is decoded from its Level 1 bytes alone, and
+    /// packets X/26 are stored but not applied (REQ-L15-001).
+    Level1,
+    /// Level 1.5: the Level 1.5 pass of area L15 runs.
+    Level15,
+    /// Level 2.5: the enhancement processor of area L25 runs, without the
+    /// features Tables 1, 25, 28 and 29 mark for Level 3.5 only.
+    Level25,
+    /// Level 3.5: the enhancement processor runs with every feature.
+    Level35,
+}
+
+impl PresentationLevel {
+    /// True at Levels 2.5 and 3.5, where the enhancement processor runs in
+    /// place of the Level 1.5 pass (REQ-L25-001).
+    #[must_use]
+    pub const fn is_enhanced(self) -> bool {
+        matches!(self, Self::Level25 | Self::Level35)
+    }
+
+    /// True at Level 3.5 only, for the packets, triplets and fields that
+    /// Tables 1, 25, 28 and 29 tick for Level 3.5 alone (decision E.40).
+    #[must_use]
+    pub const fn is_level35(self) -> bool {
+        matches!(self, Self::Level35)
+    }
+}
+
 /// How characters that fail their parity check are shown (decision E.8).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ParityPolicy {
@@ -62,8 +95,9 @@ pub enum CellMode {
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Config {
-    /// Apply packets X/26 (REQ-L15-001).
-    pub level15: bool,
+    /// The presentation level (REQ-PRF-006, decision E.40). It replaces the
+    /// former on and off switch for Level 1.5 (REQ-L15-001).
+    pub level: PresentationLevel,
     /// Process X/26/15 like the other designation codes (decision E.2).
     pub process_x26_15: bool,
     /// Use the clause 12.3.2 row-setting rule instead of Annex A.3 (E.3).
@@ -133,7 +167,8 @@ impl Config {
     #[must_use]
     pub const fn en_300_706() -> Self {
         Self {
-            level15: true,
+            // Decision E.40: the default profile presents at Level 3.5.
+            level: PresentationLevel::Level35,
             process_x26_15: true,
             strict_row_setting: false,
             ignore_out_of_order_triplets: false,
@@ -165,7 +200,7 @@ impl Config {
     #[must_use]
     pub const fn saa5050() -> Self {
         let mut config = Self::en_300_706();
-        config.level15 = false;
+        config.level = PresentationLevel::Level1;
         // English is national option index 0 in Table 32 group 0000.
         config.fixed_national_index = Some(0);
         // Decision E.18: the SAA5050 has no black colour codes.
@@ -175,10 +210,12 @@ impl Config {
         config
     }
 
-    /// The "SAA5246A" profile (REQ-PRF-003).
+    /// The "SAA5246A" profile (REQ-PRF-003): Level 1.5, as the chip
+    /// presented (decision E.40).
     #[must_use]
     pub const fn saa5246a() -> Self {
         let mut config = Self::en_300_706();
+        config.level = PresentationLevel::Level15;
         config.process_x26_15 = false;
         config.row24 = Row24Policy::WhenPresent;
         config.cell_mode = CellMode::Saa5246a;
@@ -213,11 +250,26 @@ mod tests {
     #[test]
     fn default_profile_matches_req_prf_001() {
         let config = Config::default();
-        assert!(config.level15 && config.process_x26_15 && !config.strict_row_setting);
+        assert!(config.process_x26_15 && !config.strict_row_setting);
+        assert_eq!(config.level, PresentationLevel::Level35, "decision E.40");
         assert!(config.double_start_box && config.black_colour_codes && config.rounding);
         assert_eq!(config.row24, Row24Policy::AnnexH);
         assert_eq!(config.flash_shown_us, 960_000);
         assert_eq!(config.flash_hidden_us, 320_000);
+    }
+
+    /// REQ-PRF-006: each profile selects its level, the levels are ordered
+    /// as clause 12 defines them, and the level can be overridden.
+    #[test]
+    fn profiles_select_their_presentation_level() {
+        assert_eq!(Config::saa5246a().level, PresentationLevel::Level15);
+        assert!(PresentationLevel::Level1 < PresentationLevel::Level15);
+        assert!(PresentationLevel::Level15 < PresentationLevel::Level25);
+        assert!(PresentationLevel::Level25 < PresentationLevel::Level35);
+        assert!(!PresentationLevel::Level15.is_enhanced() && PresentationLevel::Level25.is_enhanced());
+        assert!(!PresentationLevel::Level25.is_level35() && PresentationLevel::Level35.is_level35());
+        let config = Config { level: PresentationLevel::Level25, ..Config::saa5050() };
+        assert_eq!(config.level, PresentationLevel::Level25);
     }
 
     #[test]
@@ -231,7 +283,8 @@ mod tests {
     #[test]
     fn saa5050_profile_matches_req_prf_002() {
         let config = Config::saa5050();
-        assert!(!config.level15 && config.rounding);
+        assert!(config.rounding);
+        assert_eq!(config.level, PresentationLevel::Level1);
         assert_eq!(config.row24, Row24Policy::Never);
         assert_eq!(config.fixed_national_index, Some(0));
         assert_eq!(config.reveal, RevealStyle::Momentary);
