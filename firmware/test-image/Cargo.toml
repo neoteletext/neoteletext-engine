@@ -1,0 +1,39 @@
+# The linked microcontroller test image of REQ-GEN-009 and REQ-GEN-019,
+# built by `cargo xtask size`. Outside the workspace: it is a bare-metal
+# program with no `main`, which the host test run cannot link, and its
+# features choose the build being measured (decision E.61).
+[package]
+name = "tellytxt-test-image"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+tellytxt-core = { path = "../../crates/tellytxt-core", default-features = false }
+
+[features]
+# Each feature roots the entry points of one optional area, and enables it.
+level15 = ["tellytxt-core/level15"]
+level25 = ["tellytxt-core/level25"]
+render = ["tellytxt-core/render"]
+bedstead = ["render", "tellytxt-core/bedstead"]
+viewer = ["tellytxt-core/viewer"]
+forms = ["tellytxt-core/forms"]
+# REQ-GEN-019: a deliberate floating-point operation, so that the symbol
+# check can be shown to fail.
+float-probe = []
+
+[workspace]
+members = ["."]
+
+# REQ-GEN-009 and REQ-GEN-019: the image is measured as a port would ship it.
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+debug = false
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"

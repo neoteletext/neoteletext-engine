@@ -33,6 +33,9 @@ if [ "$mode" = "full" ]; then
     cargo build --quiet --target x86_64-unknown-none \
         -p tellytxt-core -p tellytxt-formats -p tellytxt-slicer -p tellytxt-web -p tellytxt-image
 
+    step "linked test image on the amd64 bare-metal target: every build links (decision E.61)"
+    cargo xtask size --target x86_64-unknown-none
+
     step "release tests, including the exhaustive error-code tests"
     cargo test --workspace --all-features --release --quiet
 
@@ -56,6 +59,9 @@ if [ "$mode" = "full" ]; then
 
         step "every target of REQ-GEN-015 on $TELLYTXT_REMOTE"
         ssh "$TELLYTXT_REMOTE" 'cd tellytxt-check && scripts/build-targets.sh'
+
+        step "linked Cortex-M0 test image on $TELLYTXT_REMOTE: size and symbols (REQ-GEN-009, REQ-GEN-019)"
+        ssh "$TELLYTXT_REMOTE" 'cd tellytxt-check && . ~/.cargo/env && cargo xtask size'
 
         if [ "$deny_done" = no ] && ssh "$TELLYTXT_REMOTE" '. ~/.cargo/env && command -v cargo-deny >/dev/null'; then
             step "cargo-deny on $TELLYTXT_REMOTE: licences and advisories (REQ-GEN-017, REQ-SEC-014)"

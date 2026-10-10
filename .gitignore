@@ -27,3 +27,6 @@
 
 # Scratch work: probes, browser profile
 /tmp/
+
+# The linked test image of REQ-GEN-009 is its own workspace (decision E.61).
+/firmware/test-image/target/
