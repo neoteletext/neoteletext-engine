@@ -1,6 +1,6 @@
 [package]
 name = "tellytxt-core"
-description = "World System Teletext Level 1.0 and 1.5 decoder core: no_std, no allocation"
+description = "World System Teletext Level 1.0 to 3.5 decoder core: no_std, no allocation"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

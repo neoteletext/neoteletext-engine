@@ -1,5 +1,5 @@
 //! The tellytxt decoder core: World System Teletext (ETSI EN 300 706)
-//! Presentation Levels 1.0 and 1.5.
+//! Presentation Levels 1.0, 1.5, 2.5 and 3.5.
 //!
 //! `no_std`, no allocation, no input or output and no clock (REQ-GEN-002).
 //! Every piece of state lives in memory the caller provides (REQ-GEN-003),
@@ -14,7 +14,7 @@
 //! - L1 packet decoding: [`packet`];
 //! - L2 acquisition: [`fsm`], [`acq`], [`service`];
 //! - L3 presentation model: [`charset`], [`level1`], [`level15`], and for
-//!   Levels 2.5 and 3.5 [`colour`] and [`drcs`];
+//!   Levels 2.5 and 3.5 [`colour`], [`drcs`], [`objects`] and [`enhance`];
 //! - L4 rendering: [`glyphs`], [`render`];
 //! - L6 interaction: [`viewer`], [`nav`], [`forms`];
 //! - L8 platform interface: [`port`];
@@ -50,8 +50,10 @@ pub mod service;
 pub mod charset;
 pub mod colour;
 pub mod drcs;
+pub mod enhance;
 pub mod level1;
 pub mod level15;
+pub mod objects;
 
 pub mod glyphs;
 pub mod render;
