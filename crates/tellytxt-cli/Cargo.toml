@@ -12,6 +12,16 @@ path = "src/main.rs"
 
 [dependencies]
 tellytxt-core.workspace = true
+tellytxt-formats = { workspace = true, features = ["std"] }
+tellytxt-slicer.workspace = true
+tellytxt-image = { workspace = true, features = ["std"] }
+clap = { version = "4.5.48", features = ["derive"] }
+crossterm = "0.29.0"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+landlock = "0.4.3"
+seccompiler = "0.5.0"
+libc = "0.2.177"
 
 [lints]
 workspace = true
