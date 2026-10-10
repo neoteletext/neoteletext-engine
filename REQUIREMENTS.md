@@ -1511,6 +1511,16 @@ The decisions are:
 
 *Reason:* A dependency is code the project ships to a microcontroller but cannot lint, fuzz or budget. On the smallest targets the cost of writing a small, well-specified piece is lower than the cost of trusting it.
 
+*Amended 11 October 2026:* `httparse` is no longer used. `embedded-io` is now the only crate from outside the project that a microcontroller crate depends on.
+- **Why.** The symbol check of the linked image (REQ-GEN-019) found two panic paths that `httparse` 1.10.1 brings into every web build: an `unreachable!()` in its SWAR scanner and a range index of a header value. No panic-free alternative exists. `ntex-httparse` inherits the same code, `reqwless` and `edge-http` are built on `httparse`, and `thhp` is unmaintained and full of unsafe code. This is the case the reason above describes.
+- **What replaces it.** On the owner's decision, the web module parses response heads with its own parser (`http::head`, RFC 9112 sections 2 to 5). It links no panic path, and is tested, fuzzed and compared with `httparse` on generated heads.
+- **Behaviour.** It accepts and rejects what `httparse` did, with one exception: a version `HTTP/x.y` other than 1.0 and 1.1 is now reported as an unsupported version rather than as a malformed head. Where RFC 9112 leaves the recipient a choice, it keeps the choices `httparse` made:
+  - a bare LF ends a line (RFC 9112 section 2.2);
+  - empty lines before the status line are skipped (section 2.2);
+  - the reason phrase may be missing together with the space before it (section 4).
+
+  Obsolete line folding is rejected (section 5.2, REQ-SEC-011).
+
 **E.39 — Details of the web protocols that the requirements leave open.**
 Decided while implementing `tellytxt-web` on 10 October 2026:
 
@@ -2416,7 +2426,8 @@ Dependencies are judged by the microcontroller, as decision E.38 describes.
 
 - **Microcontroller crates.** These are the crates that run on bare-metal targets (REQ-GEN-015): `tellytxt-core`, `tellytxt-formats` without its `std` feature, `tellytxt-slicer`, `tellytxt-web` and the helpers of `tellytxt-image`.
 - **Crates with no dependencies.** `tellytxt-core`, `tellytxt-formats` and `tellytxt-slicer` shall have no dependencies outside the Rust distribution's `core` library. Fixed-capacity collections and bit flags shall be written in the Foundation layer.
-- **The web module.** `tellytxt-web` may depend only on `embedded-io` and `httparse`, both with default features off. WebSocket framing, SHA-1, base64 and the descriptor reader shall be written in the project, each tested against the published test vectors of its standard.
+- **The web module.** `tellytxt-web` may depend only on `embedded-io`, with default features off. WebSocket framing, SHA-1, base64, the descriptor reader and the HTTP response-head parser shall be written in the project. Each shall be tested against the published test vectors of its standard, where the standard publishes them.
+  *Amended 11 October 2026:* `httparse` was previously permitted as well. It was removed because of its linked panic paths (decision E.38, as amended).
 - **Rules for any new dependency.** A new dependency of a microcontroller crate, direct or indirect, needs a decision recorded in Part E. It shall:
   - build as `no_std` without allocation for `thumbv6m-none-eabi`, `riscv32imc-unknown-none-elf` and `xtensa-esp32-none-elf`;
   - use no compare-and-swap atomic operations and no floating point;

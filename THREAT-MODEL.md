@@ -34,7 +34,7 @@ This is the threat model REQ-SEC-002 requires. Security overrides every other re
 | Links | 1 | Trust | Receiver-drawn link row, other services marked and confirmed (REQ-SEC-024, REQ-NAV-011, REQ-NAV-012). |
 | The `ttx` process | 1 | Host | No `unsafe` code; the library crates have no operating-system access (REQ-SEC-016); Landlock and seccomp on Linux after inputs and outputs are open (REQ-SEC-017). |
 | Fetcher to decoder (web mode) | 1, 2 | Host | Privilege separation (REQ-SEC-018): the fetcher process holds the network and TLS, the decoder holds the terminal and files. They speak a framed pipe protocol whose every frame is length-checked and validated by the receiver; the decoder ignores frame kinds only it may send. |
-| Dependencies and tools | 3 | Build | Microcontroller crates have no dependencies beyond `embedded-io` and `httparse` (decision E.38); `Cargo.lock` committed; toolchain pinned (REQ-SEC-014). |
+| Dependencies and tools | 3 | Build | Microcontroller crates have no dependencies beyond `embedded-io` (decision E.38, as amended); `Cargo.lock` committed; toolchain pinned (REQ-SEC-014). |
 
 ## Status at this milestone
 
