@@ -118,7 +118,7 @@ const PERMITTED: &[(&str, &[&str])] = &[
     ("tellytxt-core", &[]),
     ("tellytxt-formats", &["tellytxt-core"]),
     ("tellytxt-slicer", &["tellytxt-core"]),
-    ("tellytxt-web", &["tellytxt-core", "embedded-io", "httparse"]),
+    ("tellytxt-web", &["tellytxt-core", "embedded-io"]),
     ("tellytxt-image", &["tellytxt-core"]),
 ];
 

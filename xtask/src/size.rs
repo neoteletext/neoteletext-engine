@@ -89,20 +89,6 @@ const ATOMIC_MARKERS: &[&str] = &["__sync_", "__atomic_", "compare_exchange", "c
 /// functions (bounds, slice lengths, `unwrap`).
 const PANIC_MARKERS: &[&str] = &["4core9panicking", "_ZN4core9panicking", "panic_bounds_check"];
 
-/// Panic paths linked from a third-party dependency, accepted by build
-/// until the owner decides how to remove them, and reported on every run so
-/// they are never forgotten: the build, a part of the symbol, and why.
-const KNOWN_PANICS: &[(&str, &str, &str)] = &[
-    ("web", "4core9panicking", HTTPARSE),
-    ("web", "slice_index_fail", HTTPARSE),
-    ("web-all", "4core9panicking", HTTPARSE),
-    ("web-all", "slice_index_fail", HTTPARSE),
-];
-
-/// Why the web builds link panics (IMPLEMENTATION-LOG.md).
-const HTTPARSE: &str = "httparse 1.10.1 (decision E.38): unreachable!() in its SWAR scanner and a header-value range \
-     index, inlined into http::parse_head";
-
 /// What one image contains.
 struct Image {
     /// Code and constant data: allocated sections with contents.
@@ -134,10 +120,7 @@ pub fn run(root: &Path, args: &[String]) -> Result<(), String> {
             failures.push(format!("{}: flash {} bytes is over the budget of {budget}", build.name, image.flash));
         }
         for found in forbidden(&image.symbols) {
-            match KNOWN_PANICS.iter().find(|(name, marker, _)| *name == build.name && found.contains(marker)) {
-                Some((_, _, reason)) => println!("{}: known, not yet removed: {found}: {reason}", build.name),
-                None => failures.push(format!("{}: {found}", build.name)),
-            }
+            failures.push(format!("{}: {found}", build.name));
         }
     }
     if SOFT_FLOAT_TARGETS.contains(&target.as_str()) {

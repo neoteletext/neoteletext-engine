@@ -7,11 +7,10 @@ rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 
-# Decision E.38: `embedded-io` and `httparse` are the only external crates.
+# Decision E.38: `embedded-io` is the only external crate.
 [dependencies]
 tellytxt-core.workspace = true
 embedded-io.workspace = true
-httparse.workspace = true
 
 [features]
 # Decision E.61: each part of the user agent that a run-time choice reaches
