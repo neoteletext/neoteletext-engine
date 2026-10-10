@@ -28,7 +28,8 @@ fn packet_decoder_throughput() {
         eprintln!("SKIPPED: TELLYTXT_CORPUS with Dan's BBC1 capture is needed");
         return;
     };
-    let packets: Vec<Packet> = bytes.as_chunks::<PACKET_BYTES>().0.iter().map(|chunk| Packet { bytes: *chunk }).collect();
+    let packets: Vec<Packet> =
+        bytes.as_chunks::<PACKET_BYTES>().0.iter().map(|chunk| Packet { bytes: *chunk }).collect();
     let mut slots = vec![StoredPage::EMPTY; 4096];
     let mut decoder = Decoder::new(&mut slots, Config::default());
     let start = Clock::now();
@@ -37,7 +38,10 @@ fn packet_decoder_throughput() {
     }
     let seconds = start.elapsed().as_secs_f64();
     let rate = packets.len() as f64 / seconds;
-    println!("decoded {} packets in {seconds:.3} s: {rate:.0} packets per second (required {REQUIRED_PACKETS_PER_SECOND})", packets.len());
+    println!(
+        "decoded {} packets in {seconds:.3} s: {rate:.0} packets per second (required {REQUIRED_PACKETS_PER_SECOND})",
+        packets.len()
+    );
     assert!(rate >= REQUIRED_PACKETS_PER_SECOND);
 }
 
@@ -60,7 +64,13 @@ fn presentation_and_drawing_costs() {
     let rounds = 2000;
     let start = Clock::now();
     for _ in 0..rounds {
-        build_grid(&mut grid, Some(page), &decoder.magazine_data(address.magazine), &config, &DisplayOptions::default());
+        build_grid(
+            &mut grid,
+            Some(page),
+            &decoder.magazine_data(address.magazine),
+            &config,
+            &DisplayOptions::default(),
+        );
         level15::apply(&mut grid, &page.enhancements, page.enhancements_present, &config, true);
     }
     let grids = f64::from(rounds) / start.elapsed().as_secs_f64();
@@ -80,5 +90,7 @@ fn presentation_and_drawing_costs() {
         }
     }
     let rate = draws as f64 / start.elapsed().as_secs_f64();
-    println!("grids built per second: {grids:.0}; cell-line draws per second: {rate:.0} (a full redraw of every field needs 500,000; page width {PAGE_WIDTH}); {sink}");
+    println!(
+        "grids built per second: {grids:.0}; cell-line draws per second: {rate:.0} (a full redraw of every field needs 500,000; page width {PAGE_WIDTH}); {sink}"
+    );
 }

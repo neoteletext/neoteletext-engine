@@ -89,6 +89,7 @@ fn golden_rasters_match() {
         std::fs::write(&path, &actual).unwrap();
         return;
     }
-    let expected = std::fs::read_to_string(&path).expect("tests/golden/raster.txt; generate with TELLYTXT_UPDATE_GOLDEN=1");
+    let expected =
+        std::fs::read_to_string(&path).expect("tests/golden/raster.txt; generate with TELLYTXT_UPDATE_GOLDEN=1");
     assert_eq!(actual, expected, "rendering changed: if deliberate, raise FORMAT_VERSION and regenerate");
 }
