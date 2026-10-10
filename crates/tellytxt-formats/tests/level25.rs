@@ -266,6 +266,93 @@ fn authored_stream_keeps_the_transmission_order() {
     }
 }
 
+/// REQ-TST-024: between them the pages use every row mode of Table 28 and
+/// every column mode of Table 29, every object source and type, DRCS
+/// characters of every mode, and every variant of X/28 and M/29.
+#[test]
+fn authored_stream_uses_every_mode() {
+    use std::collections::BTreeSet;
+    use tellytxt_core::packet::{ObjectKind, ObjectSource};
+    let stream = streams::stream().unwrap();
+    let mut row_modes = BTreeSet::new();
+    let mut column_modes = BTreeSet::new();
+    let mut invocations = BTreeSet::new();
+    let mut packets_seen = BTreeSet::new();
+    let mut drcs_modes = BTreeSet::new();
+    let kind_name = |kind: ObjectKind| kind as u8;
+    let pages_and_packets = stream.pages().into_iter().flat_map(|page| {
+        let objects = transmission_class(page) == TransmissionClass::Objects;
+        encoded(page).into_iter().map(move |packet| (objects, packet))
+    });
+    for (objects, packet) in pages_and_packets {
+        let Ok(address) = decode_address(&packet) else { continue };
+        let triplets: Vec<_> = match decode(&packet) {
+            Ok(Decoded::Enhancement(enhancement)) => enhancement.triplets.iter().flatten().copied().collect(),
+            // The definition rows of object pages hold triplets too.
+            Ok(Decoded::Row(row)) if objects && row.row >= 3 => {
+                let object = ObjectPacket::new(&row.bytes);
+                assert!(object.triplets.iter().all(Option::is_some));
+                object.triplets.iter().flatten().copied().collect()
+            }
+            Ok(Decoded::PageData { packet: page_packet, .. }) => {
+                packets_seen.insert((address.number, packet_designation(&page_packet)));
+                if let PagePacket::DrcsModes(modes) = page_packet {
+                    drcs_modes.extend((0..48).filter_map(|ptu| modes.mode(ptu)));
+                }
+                Vec::new()
+            }
+            Ok(Decoded::Magazine { packet, .. }) => {
+                let designation = match packet {
+                    MagazinePacket::Data(_) => 0,
+                    MagazinePacket::DrcsColours(_) => 1,
+                    MagazinePacket::Level35(_) => 4,
+                };
+                packets_seen.insert((PACKET_MAGAZINE_ENHANCEMENT, designation));
+                Vec::new()
+            }
+            Ok(Decoded::CompositionalLinks { designation, .. }) => {
+                packets_seen.insert((PACKET_LINKS, designation));
+                Vec::new()
+            }
+            _ => Vec::new(),
+        };
+        for triplet in triplets {
+            if triplet.is_row_address() {
+                row_modes.insert(triplet.mode);
+            } else {
+                column_modes.insert(triplet.mode);
+            }
+            if let TripletFunction::ObjectInvocation { source, kind, .. } = triplet.function() {
+                invocations.insert((source as u8, kind_name(kind)));
+            }
+        }
+    }
+    assert_eq!(row_modes, (0..32).collect(), "row modes");
+    assert_eq!(column_modes, (0..32).collect(), "column modes");
+    let sources = [ObjectSource::Local, ObjectSource::Public, ObjectSource::Global];
+    let kinds = [ObjectKind::Active, ObjectKind::Adaptive, ObjectKind::Passive];
+    for source in sources {
+        for kind in kinds {
+            assert!(invocations.contains(&(source as u8, kind_name(kind))), "{source:?} {kind:?}");
+        }
+    }
+    for expected in [(27, 4), (27, 5), (28, 0), (28, 1), (28, 3), (28, 4), (29, 0), (29, 1), (29, 4)] {
+        assert!(packets_seen.contains(&expected), "{expected:?}");
+    }
+    for mode in [0, 1, 2, 3, 0xE, 0xF] {
+        assert!(drcs_modes.contains(&mode), "DRCS mode code {mode}");
+    }
+}
+
+fn packet_designation(packet: &PagePacket) -> u8 {
+    match packet {
+        PagePacket::Format1(_) => 0,
+        PagePacket::DrcsColours(_) => 1,
+        PagePacket::DrcsModes(_) => 3,
+        PagePacket::Level35(_) => 4,
+    }
+}
+
 /// REQ-INP-023 and REQ-TST-020: the stream written as TTI and read by the
 /// TTI reader, which encodes each page as it reads it, gives the same
 /// packets, and the per-page files hold the same pages.

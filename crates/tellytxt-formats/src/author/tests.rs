@@ -507,3 +507,107 @@ fn authored_stream_round_trips_through_tti() {
     assert!(classes.is_sorted());
     assert_eq!(classes[0], crate::encode::TransmissionClass::MagazinePackets);
 }
+
+fn authored_page(mpp: u16) -> PageFile {
+    let stream = streams::stream().unwrap();
+    *stream.pages().into_iter().find(|page| page.address.mpp() == mpp).unwrap()
+}
+
+fn decoded_packets(page: &PageFile) -> Vec<Decoded> {
+    packets_of(page).iter().map(|packet| decode(packet).unwrap()).collect()
+}
+
+/// REQ-TST-016, Annex C.2: in the third example foreground blue is the
+/// last triplet of X/26/0 and foreground yellow the first of X/26/1, both
+/// at the cell of the "A" after alpha red.
+#[test]
+fn annex_c2_examples_are_transmitted_as_the_annex_draws_them() {
+    use tellytxt_core::packet::ColourData;
+    let page = authored_page(0x120);
+    let packets = page.enhancements.as_slice();
+    let colour = |index| ColourData { index, high: 0 };
+    assert_eq!(packets[0].triplets[1].function(), TripletFunction::ForegroundColour { column: 9, colour: colour(4) });
+    assert_eq!(packets[0].triplets[3].function(), TripletFunction::ForegroundColour { column: 10, colour: colour(4) });
+    assert_eq!(packets[0].triplets[12].function(), TripletFunction::ForegroundColour { column: 10, colour: colour(4) });
+    assert_eq!(packets[1].triplets[0].function(), TripletFunction::ForegroundColour { column: 10, colour: colour(3) });
+    for row in [4, 8, 12] {
+        assert_eq!(&page.row(row).unwrap()[9..11], &[tellytxt_core::consts::ALPHA_RED, b'A']);
+    }
+}
+
+/// REQ-TST-016, clause 13.9: the Level 1 row and the object of the
+/// example, invoked as each type at the start of its row.
+#[test]
+fn clause_13_9_example_is_transmitted_as_the_clause_draws_it() {
+    use tellytxt_core::consts::{ALPHA_BLACK, ALPHA_RED, COLOUR_BLUE_BIT, COLOUR_GREEN_BIT};
+    let page = authored_page(0x117);
+    let row = page.row(4).unwrap();
+    assert_eq!(&row[1..17], b"THE FAST DOG AND");
+    let attributes = (ALPHA_BLACK | COLOUR_BLUE_BIT, ALPHA_RED, ALPHA_BLACK | COLOUR_GREEN_BIT);
+    assert_eq!((row[0], row[17], row[21]), attributes);
+    assert_eq!(&row[18..21], b"CAT");
+    assert_eq!(&row[22..28], b"RAN IN");
+    let triplets: Vec<TripletFunction> =
+        page.enhancements.as_slice().iter().flat_map(|packet| packet.triplets).map(Triplet::function).collect();
+    let definitions: Vec<(ObjectKind, usize)> = triplets
+        .iter()
+        .enumerate()
+        .filter_map(|(index, function)| match function {
+            TripletFunction::ObjectDefinition { kind, .. } => Some((*kind, index)),
+            _ => None,
+        })
+        .collect();
+    let kinds: Vec<ObjectKind> = definitions.iter().map(|(kind, _)| *kind).collect();
+    assert_eq!(kinds, [ObjectKind::Active, ObjectKind::Adaptive, ObjectKind::Passive]);
+    let pink = tellytxt_core::packet::ColourData { index: 16, high: 0 };
+    let yellow = tellytxt_core::packet::ColourData { index: 3, high: 0 };
+    for (_, start) in definitions {
+        let body: Vec<_> = triplets[start + 1..start + 18].to_vec();
+        let text: Vec<(u8, u8)> = body
+            .iter()
+            .filter_map(|function| match function {
+                TripletFunction::G0Diacritic { column, code, diacritic: 0 } => Some((*column, *code)),
+                _ => None,
+            })
+            .collect();
+        let expected: Vec<(u8, u8)> = [(5u8, &b"LAZY"[..]), (10, b"COW"), (18, b"FOX"), (22, b"SAT")]
+            .iter()
+            .flat_map(|(column, word)| (*column..).zip(word.iter().copied()))
+            .collect();
+        assert_eq!(text, expected);
+        assert!(body.contains(&TripletFunction::ForegroundColour { column: 10, colour: pink }));
+        assert!(body.contains(&TripletFunction::ForegroundColour { column: 22, colour: yellow }));
+    }
+}
+
+/// REQ-TST-016, Figures 27 and 28: the PTU layout of DRCS page 1B2 and the
+/// colour tables of page 115.
+#[test]
+fn figures_27_and_28_are_transmitted_as_drawn() {
+    let page = authored_page(0x1B2);
+    let modes = decoded_packets(&page)
+        .into_iter()
+        .find_map(|item| match item {
+            Decoded::PageData { packet: PagePacket::DrcsModes(modes), .. } => Some(modes),
+            _ => None,
+        })
+        .unwrap();
+    let codes: Vec<u8> = (0..9).map(|ptu| modes.mode(ptu).unwrap()).collect();
+    assert_eq!(codes, [0, 0, 1, 14, 2, 14, 14, 14, 15]);
+    // Character 4 spans packets X/3 and X/4.
+    assert!(page.has_row(3) && page.has_row(4) && !page.has_row(5));
+    let colours = decoded_packets(&authored_page(0x115))
+        .into_iter()
+        .find_map(|item| match item {
+            Decoded::PageData { packet: PagePacket::DrcsColours(data), .. } => Some(data),
+            _ => None,
+        })
+        .unwrap();
+    let figure = streams::figure_28_colours();
+    assert_eq!(colours.normal_16, Some([15, 5, 25, 10, 21, 8, 26, 11, 12, 4, 26, 28, 30, 3, 7, 24]));
+    assert_eq!(
+        (colours.global_4, colours.normal_4, colours.global_16),
+        (figure.global_4, figure.normal_4, figure.global_16)
+    );
+    assert_eq!(colours.global_4, Some([21, 3, 14, 31]));
+}

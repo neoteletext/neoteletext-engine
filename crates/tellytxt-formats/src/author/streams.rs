@@ -24,7 +24,7 @@ use std::vec::Vec;
 
 use tellytxt_core::consts::{
     ALPHA_BLACK, ALPHA_RED, ALPHA_WHITE, ALPHA_YELLOW, BLACK_BACKGROUND, COLOUR_BLUE_BIT, COLOUR_GREEN_BIT, CONCEAL,
-    DOUBLE_HEIGHT, END_BOX, FLASH, MOSAIC_WHITE, NEW_BACKGROUND, START_BOX,
+    DOUBLE_HEIGHT, END_BOX, FLASH, MODE_TERMINATION, MOSAIC_WHITE, NEW_BACKGROUND, ROW_ADDRESS_LAST, START_BOX,
 };
 use tellytxt_core::drcs::DrcsMode;
 use tellytxt_core::packet::{
@@ -731,12 +731,14 @@ fn every_mode() -> Result<DisplayPage> {
     for mode in 0b11001u8..=0b11110 {
         local.raw(Triplet { address: row_address(4)?, mode, data: 0 });
     }
-    local.raw(Triplet { address: 0x3E, mode: 0b11111, data: 0 });
     // Rows 5 to 7: an Origin Modifier and the three invocations, whose
     // definitions use row modes 10101 to 10111.
     local.position(5, 0)?.origin(0, 4).invoke_local(active);
     local.position(6, 0)?.origin(0, 8).invoke_local(adaptive);
     local.position(7, 0)?.origin(0, 12).invoke_local(passive);
+    // Mode 11111 with an address other than 63 is reserved (Table 28). It
+    // comes last, so that a decoder that ends the data on it loses nothing.
+    local.raw(Triplet { address: ROW_ADDRESS_LAST - 1, mode: MODE_TERMINATION, data: 0 });
     page.text(9, 0, b"ROW 0 COLUMN 30: ADDRESS DISPLAY ROW 0")?;
     Ok(page)
 }
@@ -1029,12 +1031,12 @@ fn links_over_the_table(stream: &mut Stream) -> Result<()> {
     invoke(&mut over)?;
     stream.push(over.build()?);
     // Decision E.52: a link whose function bits do not match its position,
-    // or whose Format 1 marker is wrong, is ignored and the table applies.
-    let mut mismatched = page(0x201, b"MISMATCHED LINK: THE MOT APPLIES")?;
+    // or whose Format 1 marker is wrong, is ignored.
+    let mut mismatched = page(0x201, b"X/27/4 POP LINK, GPOP FUNCTION")?;
     mismatched.compositional_link(4, 1, link(LinkFunction::Gpop, VALID_BOTH, right.address(), SUBPAGE_0))?;
     invoke(&mut mismatched)?;
     stream.push(mismatched.build()?);
-    let mut unmarked = page(0x202, b"NOT FORMAT 1: THE MOT APPLIES")?;
+    let mut unmarked = page(0x202, b"X/27/4 LINK NOT FORMAT 1")?;
     let mut bad = link(LinkFunction::Pop, VALID_BOTH, right.address(), SUBPAGE_0);
     bad.marker_first = false;
     unmarked.compositional_link(4, 1, bad)?;
