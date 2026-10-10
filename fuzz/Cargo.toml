@@ -39,6 +39,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "enhancement"
+path = "fuzz_targets/enhancement.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "packets"
 path = "fuzz_targets/packets.rs"
 test = false
