@@ -12,8 +12,30 @@ publish.workspace = true
 tellytxt-core.workspace = true
 
 [features]
-default = []
-# REQ-GEN-010: the T42 and TTI writers need `std::io`.
+# Decision E.61: each format beyond T42 is a feature, all on by default.
+# Ports turn the defaults off and name the formats they read; T42 is always
+# compiled.
+default = ["transport", "sliced", "pages", "tti", "ep1", "edittf", "dump", "check"]
+# MPEG-2 transport streams and raw PES files (REQ-INP-006 to 009).
+transport = []
+# Linux sliced VBI records (REQ-INP-010).
+sliced = []
+# Page files: the page encoder (REQ-ARCH-004, REQ-INP-019). Each page-file
+# reader needs it.
+pages = []
+# TTI page files (REQ-INP-013).
+tti = ["pages"]
+# EP1 page files (REQ-INP-015).
+ep1 = ["pages"]
+# edit.tf and zxnet page addresses (REQ-INP-016).
+edittf = ["pages"]
+# Raw screen dumps (REQ-INP-017).
+dump = ["pages"]
+# The TTI page checker (REQ-CLI-006).
+check = ["tti"]
+# REQ-GEN-010: the writers need `std::io`. It is not a default because the
+# crate is `no_std`. The page writers also need `pages`, the TTI writer and
+# the authoring module `tti`.
 std = []
 
 [dev-dependencies]
@@ -23,3 +45,20 @@ tellytxt-core = { workspace = true, features = ["default"] }
 
 [lints]
 workspace = true
+
+# The integration tests read page files and author test streams.
+[[test]]
+name = "corpus"
+required-features = ["pages"]
+
+[[test]]
+name = "golden"
+required-features = ["tti"]
+
+[[test]]
+name = "golden_level25"
+required-features = ["std", "tti"]
+
+[[test]]
+name = "level25"
+required-features = ["std", "tti"]

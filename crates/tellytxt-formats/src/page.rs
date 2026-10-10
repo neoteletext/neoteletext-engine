@@ -440,6 +440,60 @@ impl IssueKind {
     }
 }
 
+/// The warnings, which a page may mark as considered with
+/// `CK,considered,<name>` (REQ-CLI-006).
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub enum Warning {
+    /// A same-service link whose page number is not in the page text
+    /// (Appendix E.2 rule 5).
+    PageNumberNotShown,
+    /// A link to another service with no other route given (Appendix E.2
+    /// rule 6).
+    NoOtherRoute,
+    /// A form page with no fallback for broadcast viewers (Appendix C.6).
+    NoBroadcastFallback,
+    /// Form placeholders using national option characters (Appendix C.4).
+    UnreliablePlaceholders,
+    /// Content in row 24 of a page with links, which the receiver replaces
+    /// (REQ-NAV-011).
+    HiddenContent,
+}
+
+impl Warning {
+    /// Every warning.
+    pub const ALL: [Self; 5] = [
+        Self::PageNumberNotShown,
+        Self::NoOtherRoute,
+        Self::NoBroadcastFallback,
+        Self::UnreliablePlaceholders,
+        Self::HiddenContent,
+    ];
+
+    /// The name used in `CK` lines and reports.
+    #[must_use]
+    pub const fn name(self) -> &'static [u8] {
+        match self {
+            Self::PageNumberNotShown => b"page-number-not-shown",
+            Self::NoOtherRoute => b"no-other-route",
+            Self::NoBroadcastFallback => b"no-broadcast-fallback",
+            Self::UnreliablePlaceholders => b"unreliable-placeholders",
+            Self::HiddenContent => b"hidden-content",
+        }
+    }
+
+    /// The warning with a name, ignoring case.
+    #[must_use]
+    pub fn from_name(name: &[u8]) -> Option<Self> {
+        Self::ALL.into_iter().find(|warning| warning.name().eq_ignore_ascii_case(name))
+    }
+
+    /// The warning's bit in [`PageFile::considered`].
+    #[must_use]
+    pub const fn bit(self) -> u16 {
+        1 << (self as u16)
+    }
+}
+
 /// A problem and the line it was found on.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub struct PageIssue {

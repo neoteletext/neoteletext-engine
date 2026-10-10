@@ -8,17 +8,27 @@
 //! (REQ-INP-001 and REQ-INP-020). Memory use is fixed by each reader's type
 //! and does not depend on the input.
 //!
-//! - Packet streams: [`t42`] (REQ-INP-002 to 004), [`transport`] and [`pes`]
-//!   (REQ-INP-006 to 009), [`sliced`] (REQ-INP-010).
-//! - Page files: [`tti`] (REQ-INP-013), [`ep1`] (REQ-INP-015), [`edittf`]
-//!   (REQ-INP-016), [`dump`] (REQ-INP-017), all producing a [`page::PageFile`].
-//! - [`encode`]: page files to packets (REQ-ARCH-004, REQ-INP-019).
+//! - Packet streams: [`t42`] (REQ-INP-002 to 004, always compiled),
+//!   `transport` and `pes` (feature `transport`, REQ-INP-006 to 009),
+//!   `sliced` (feature `sliced`, REQ-INP-010).
+//! - Page files, all producing a [`page::PageFile`]: `tti` (REQ-INP-013),
+//!   `ep1` (REQ-INP-015), `edittf` (REQ-INP-016) and `dump` (REQ-INP-017),
+//!   each under the feature of its name.
+//! - `encode` (feature `pages`): page files to packets (REQ-ARCH-004,
+//!   REQ-INP-019).
 //! - [`detect`]: format detection and the [`detect::AutoReader`]
-//!   (REQ-INP-005).
-//! - [`check`]: the TTI page checker behind `ttx check` (REQ-CLI-006).
-//! - `write` (feature `std`): the T42 and TTI writers (REQ-INP-014 and 018).
-//! - `author` (feature `std`): the builder for Level 2.5 and 3.5 test pages
-//!   and the authored test streams (REQ-INP-025, REQ-TST-024).
+//!   (REQ-INP-005), over the formats compiled in.
+//! - `check` (feature `check`): the TTI page checker behind `ttx check`
+//!   (REQ-CLI-006).
+//! - `write` (feature `std`): the T42 writer (REQ-INP-018) and, with `tti`,
+//!   the TTI writer (REQ-INP-014).
+//! - `author` (features `std` and `tti`): the builder for Level 2.5 and 3.5
+//!   test pages and the authored test streams (REQ-INP-025, REQ-TST-024).
+//!
+//! Decision E.61: every format but T42 is a Cargo feature, all on by
+//! default. Detection recognises only the formats compiled in, and a format
+//! asked for that is not compiled in is reported as
+//! [`DiagnosticKind::FormatNotCompiled`].
 //!
 //! Raw sampled video (REQ-INP-011) is read by `tellytxt-slicer`.
 //!
@@ -46,25 +56,36 @@ pub mod consts;
 pub mod item;
 pub mod text;
 
+// Decision E.61: the readers, the encoder and the checker are features; the
+// data types they report (formats, configurations, items, pages) are
+// always compiled, so that enabling a feature breaks no code written
+// without it.
+#[cfg(feature = "transport")]
 pub mod pes;
 pub mod sliced;
 pub mod t42;
 pub mod transport;
 
+#[cfg(feature = "dump")]
 pub mod dump;
+#[cfg(feature = "edittf")]
 pub mod edittf;
+#[cfg(feature = "ep1")]
 pub mod ep1;
 pub mod page;
+#[cfg(feature = "tti")]
 pub mod tti;
 
+#[cfg(feature = "check")]
 pub mod check;
 pub mod detect;
+#[cfg(feature = "pages")]
 pub mod encode;
 
 #[cfg(feature = "std")]
 pub mod write;
 
-#[cfg(feature = "std")]
+#[cfg(all(feature = "std", feature = "tti"))]
 pub mod author;
 
 #[cfg(test)]

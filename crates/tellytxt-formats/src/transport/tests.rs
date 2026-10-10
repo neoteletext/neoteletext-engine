@@ -9,7 +9,11 @@
 )]
 
 use super::*;
-use crate::consts::DATA_UNIT_TELETEXT;
+use crate::consts::{
+    CRC32_INITIAL, DATA_UNIT_TELETEXT, DESCRIPTOR_TELETEXT, PID_PAT, STREAM_TYPE_PRIVATE_PES, TABLE_ID_PAT,
+    TABLE_ID_PMT, TS_HEADER_BYTES, TS_SYNC_BYTE, TS_TRANSPORT_ERROR,
+};
+use crate::item::{Diagnostic, DiagnosticKind};
 use crate::pes::tests::{data_unit, pes_packet};
 use crate::testing::{Owned, diagnostics, packets, run, same_in_any_chunks};
 use std::vec::Vec;

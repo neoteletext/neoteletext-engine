@@ -20,7 +20,7 @@ pub enum Item<'a> {
         meta: PacketMeta,
     },
     /// A complete page or sub-page read from a page file. Convert it with
-    /// [`crate::encode::encode_page`] to pass it to the decoder
+    /// `encode::encode_page` (feature `pages`) to pass it to the decoder
     /// (REQ-ARCH-004).
     Page(&'a PageFile),
     /// The format chosen by detection (REQ-INP-005).
@@ -202,6 +202,12 @@ pub enum DiagnosticKind {
     },
     /// The format could not be detected.
     UnknownFormat,
+    /// The format was asked for but its reader is not compiled into this
+    /// build (decision E.61); the input was ignored.
+    FormatNotCompiled {
+        /// The format asked for.
+        format: Format,
+    },
 }
 
 /// The fixed capacities a page or reader can run out of.

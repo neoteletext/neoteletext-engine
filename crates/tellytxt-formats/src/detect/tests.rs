@@ -1,5 +1,7 @@
 //! Detection tests for every format, including corrupted starts
-//! (REQ-INP-005), and the automatic reader.
+//! (REQ-INP-005), and the automatic reader. The tests of a format run when
+//! its feature is compiled in; the tests of formats left out check that
+//! they are reported, not read (decision E.61).
 #![allow(
     clippy::unwrap_used,
     clippy::indexing_slicing,
@@ -63,6 +65,103 @@ fn detects_each_t42_layout_even_with_a_corrupted_start() {
     assert_eq!(detect(&short, true), Detection::Found { format: Format::T42(T42Variant::Plain), skip: 0 });
 }
 
+/// Every format detection can choose.
+fn every_format() -> Vec<Format> {
+    let mut formats: Vec<Format> = T42Variant::ALL.into_iter().map(Format::T42).collect();
+    formats.extend(TsPacketSize::ALL.map(Format::TransportStream));
+    formats.extend([
+        Format::Pes,
+        Format::Sliced(ByteOrder::Little),
+        Format::Sliced(ByteOrder::Big),
+        Format::Tti,
+        Format::Ep1,
+        Format::EditTf,
+        Format::ScreenDump,
+    ]);
+    formats
+}
+
+/// Sliced records of teletext packets.
+#[cfg(feature = "sliced")]
+fn sliced_stream(order: ByteOrder) -> Vec<u8> {
+    let mut stream = Vec::new();
+    for (index, packet) in sample_packets(40).iter().enumerate() {
+        let words = [SLICED_TELETEXT_B, (index % 2) as u32, 7, 0];
+        for word in words {
+            stream.extend_from_slice(&match order {
+                ByteOrder::Little => word.to_le_bytes(),
+                ByteOrder::Big => word.to_be_bytes(),
+            });
+        }
+        stream.extend_from_slice(&packet.bytes);
+        stream.extend_from_slice(&[0; SLICED_RECORD_BYTES - SLICED_HEADER_BYTES - PACKET_BYTES]);
+    }
+    stream
+}
+
+/// With every format compiled in, each format is compiled, read by its own
+/// reader and found by detection in a sample of it. The match is
+/// exhaustive, so a new format needs a sample here.
+#[cfg(all(
+    feature = "transport",
+    feature = "sliced",
+    feature = "tti",
+    feature = "ep1",
+    feature = "edittf",
+    feature = "dump"
+))]
+#[test]
+fn detection_finds_every_format() {
+    let transport =
+        |prefix, suffix| crate::transport::tests::flatten(&crate::transport::tests::stream(), prefix, suffix);
+    for format in every_format() {
+        let sample = match format {
+            Format::T42(variant) => serialise(variant, &sample_packets(DETECTION_PACKETS)),
+            Format::TransportStream(TsPacketSize::Standard) => transport(0, 0),
+            Format::TransportStream(TsPacketSize::M2ts) => transport(4, 0),
+            Format::TransportStream(TsPacketSize::Fec) => transport(0, 16),
+            Format::Pes => crate::pes::tests::pes_packet(0, &[]),
+            Format::Sliced(order) => sliced_stream(order),
+            Format::Tti => b"DE,page\nPN,10000\n".to_vec(),
+            Format::Ep1 => crate::ep1::tests::ep1_file(0x09, &[]),
+            Format::EditTf => b"https://edit.tf/#0:QIECBAg".to_vec(),
+            Format::ScreenDump => std::vec![tellytxt_core::consts::SPACE; DUMP_BYTES_25],
+        };
+        assert!(format.is_compiled(), "{format:?}");
+        assert!(!matches!(AnyReader::new(format, 0, &AutoConfig::default()), AnyReader::NotCompiled(_)), "{format:?}");
+        assert_eq!(detect(&sample, true), Detection::Found { format, skip: 0 }, "{format:?}");
+    }
+}
+
+/// A format asked for that is not compiled in is reported once, and its
+/// input ignored; a compiled format is never reported missing.
+#[test]
+fn formats_not_compiled_are_reported() {
+    for format in every_format() {
+        let config = AutoConfig { format: Some(format), encode_pages: true, ..AutoConfig::default() };
+        let items = same_in_any_chunks(|| AutoReader::new(config), b"PN,10000\nOL,1,text\n");
+        let missing = Diagnostic::at(0, DiagnosticKind::FormatNotCompiled { format });
+        if format.is_compiled() {
+            assert!(!diagnostics(&items).contains(&missing), "{format:?}");
+        } else {
+            assert_eq!(items, [Owned::Diagnostic(missing)], "{format:?}");
+        }
+    }
+}
+
+/// Without the TTI reader, TTI text is not taken for TTI.
+#[cfg(not(feature = "tti"))]
+#[test]
+fn tti_is_not_detected_without_its_reader() {
+    let text = b"DE,page\nPN,10000\nOL,1,text\n";
+    assert!(!Format::Tti.is_compiled());
+    assert!(!matches!(detect(text, true), Detection::Found { format: Format::Tti, .. }));
+    let items = same_in_any_chunks(|| AutoReader::new(AutoConfig::default()), text);
+    assert!(!items.iter().any(|item| matches!(item, Owned::Other(text) if text.contains("Tti"))));
+    assert_eq!(pages(&items), []);
+}
+
+#[cfg(all(feature = "transport", feature = "tti", feature = "ep1", feature = "edittf", feature = "dump"))]
 #[test]
 fn detects_signatures() {
     let transport = crate::transport::tests::flatten(&crate::transport::tests::stream(), 0, 0);
@@ -93,21 +192,11 @@ fn detects_signatures() {
     assert_eq!(detect(&std::vec![uncorrectable(); 20_000], true), Detection::Unknown);
 }
 
+#[cfg(feature = "sliced")]
 #[test]
 fn detects_sliced_records_in_both_byte_orders() {
     for order in [ByteOrder::Little, ByteOrder::Big] {
-        let mut stream = Vec::new();
-        for (index, packet) in sample_packets(40).iter().enumerate() {
-            let words = [SLICED_TELETEXT_B, (index % 2) as u32, 7, 0];
-            for word in words {
-                stream.extend_from_slice(&match order {
-                    ByteOrder::Little => word.to_le_bytes(),
-                    ByteOrder::Big => word.to_be_bytes(),
-                });
-            }
-            stream.extend_from_slice(&packet.bytes);
-            stream.extend_from_slice(&[0; 48 - PACKET_BYTES]);
-        }
+        let stream = sliced_stream(order);
         assert_eq!(detect(&stream, true), Detection::Found { format: Format::Sliced(order), skip: 0 }, "{order:?}");
     }
 }
@@ -123,6 +212,7 @@ fn auto_reader_detects_then_reads_in_any_chunks() {
     assert_eq!(diagnostics(&items), []);
 }
 
+#[cfg(feature = "tti")]
 #[test]
 fn auto_reader_encodes_pages_when_asked() {
     let text = crate::tti::tests::FORM_EXAMPLE;

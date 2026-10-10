@@ -1,23 +1,39 @@
 //! Format detection (REQ-INP-005) and the [`AutoReader`] that detects the
 //! format and then reads with the matching reader.
+//!
+//! Detection recognises only the formats compiled into the build (decision
+//! E.61, [`Format::is_compiled`]); a format asked for by the configuration
+//! that is not compiled in is reported as
+//! [`DiagnosticKind::FormatNotCompiled`].
 
 use tellytxt_core::consts::{ADDRESS_BYTE_0, ADDRESS_BYTE_1, PACKET_BYTES_WITH_RUN_IN};
 use tellytxt_core::ecc::{Status, hamming84_decode};
+#[cfg(feature = "pages")]
 use tellytxt_core::packet::PacketMeta;
 
 use crate::consts::{
     BASE64URL_ALPHABET, DUMP_BYTES_24, DUMP_BYTES_25, EP1_SIGNATURE, PES_START_CODE, SLICED_HEADER_BYTES,
     SLICED_RECORD_BYTES, SLICED_TELETEXT_B, STREAM_ID_PRIVATE_1, TS_SYNC_BYTE,
 };
+#[cfg(feature = "dump")]
 use crate::dump::DumpReader;
+#[cfg(feature = "edittf")]
 use crate::edittf::EditTfReader;
+#[cfg(feature = "pages")]
 use crate::encode::encode_page;
+#[cfg(feature = "ep1")]
 use crate::ep1::Ep1Reader;
 use crate::item::{Diagnostic, DiagnosticKind, Item, Reader};
+#[cfg(feature = "transport")]
 use crate::pes::PesReader;
-use crate::sliced::{ByteOrder, SlicedReader};
+use crate::sliced::ByteOrder;
+#[cfg(feature = "sliced")]
+use crate::sliced::SlicedReader;
 use crate::t42::{T42Reader, T42Variant};
-use crate::transport::{TsConfig, TsPacketSize, TsReader};
+#[cfg(feature = "transport")]
+use crate::transport::TsReader;
+use crate::transport::{TsConfig, TsPacketSize};
+#[cfg(feature = "tti")]
 use crate::tti::TtiReader;
 
 /// Packets examined when choosing among the headerless binary layouts:
@@ -54,6 +70,23 @@ pub enum Format {
     EditTf,
     /// A raw screen dump (REQ-INP-017).
     ScreenDump,
+}
+
+impl Format {
+    /// True when this build has the format's reader (decision E.61). T42 is
+    /// always compiled; each other format needs its feature.
+    #[must_use]
+    pub const fn is_compiled(self) -> bool {
+        match self {
+            Self::T42(_) => true,
+            Self::TransportStream(_) | Self::Pes => cfg!(feature = "transport"),
+            Self::Sliced(_) => cfg!(feature = "sliced"),
+            Self::Tti => cfg!(feature = "tti"),
+            Self::Ep1 => cfg!(feature = "ep1"),
+            Self::EditTf => cfg!(feature = "edittf"),
+            Self::ScreenDump => cfg!(feature = "dump"),
+        }
+    }
 }
 
 /// What detection decided.
@@ -190,6 +223,9 @@ fn detect_binary(prefix: &[u8]) -> Option<Detection> {
         }
     }
     for order in [ByteOrder::Little, ByteOrder::Big] {
+        if !Format::Sliced(order).is_compiled() {
+            continue;
+        }
         let (usable, clean, examined) = score_sliced(prefix, order);
         // Sliced records need at least one teletext record as evidence.
         if clean > 0 || usable > 0 && examined > 0 && order.word(prefix, 0) == Some(SLICED_TELETEXT_B) {
@@ -202,7 +238,8 @@ fn detect_binary(prefix: &[u8]) -> Option<Detection> {
 /// Detects the format of an input from its first bytes (REQ-INP-005).
 /// `complete` is true when `prefix` is the whole input. Signatures are
 /// tried first; then the headerless binary layouts are scored, which needs
-/// [`DETECTION_BYTES`] or the whole input.
+/// [`DETECTION_BYTES`] or the whole input. Only the formats compiled in are
+/// recognised ([`Format::is_compiled`]).
 #[must_use]
 pub fn detect(prefix: &[u8], complete: bool) -> Detection {
     // Every decision waits until the bytes it rests on have all arrived, so
@@ -211,18 +248,21 @@ pub fn detect(prefix: &[u8], complete: bool) -> Detection {
     let text = without_bom(prefix);
     let found = |format: Format| Detection::Found { format, skip: prefix.len().saturating_sub(text.len()) };
     if enough || text.contains(&b'\n') {
-        if looks_like_edittf(text) {
+        if Format::EditTf.is_compiled() && looks_like_edittf(text) {
             return found(Format::EditTf);
         }
-        if looks_like_tti(text) {
+        if Format::Tti.is_compiled() && looks_like_tti(text) {
             return found(Format::Tti);
         }
     }
     if enough || prefix.len() > PES_START_CODE.len() {
-        if prefix.starts_with(&EP1_SIGNATURE) {
+        if Format::Ep1.is_compiled() && prefix.starts_with(&EP1_SIGNATURE) {
             return Detection::Found { format: Format::Ep1, skip: 0 };
         }
-        if prefix.starts_with(&PES_START_CODE) && prefix.get(PES_START_CODE.len()) == Some(&STREAM_ID_PRIVATE_1) {
+        if Format::Pes.is_compiled()
+            && prefix.starts_with(&PES_START_CODE)
+            && prefix.get(PES_START_CODE.len()) == Some(&STREAM_ID_PRIVATE_1)
+        {
             return Detection::Found { format: Format::Pes, skip: 0 };
         }
     }
@@ -231,11 +271,12 @@ pub fn detect(prefix: &[u8], complete: bool) -> Detection {
     }
     for size in TsPacketSize::ALL {
         // The reader finds the first sync byte itself.
-        if transport_offset(prefix, size.bytes(), complete).is_some() {
+        if Format::TransportStream(size).is_compiled() && transport_offset(prefix, size.bytes(), complete).is_some() {
             return Detection::Found { format: Format::TransportStream(size), skip: 0 };
         }
     }
-    if complete && (prefix.len() == DUMP_BYTES_25 || prefix.len() == DUMP_BYTES_24) {
+    if Format::ScreenDump.is_compiled() && complete && (prefix.len() == DUMP_BYTES_25 || prefix.len() == DUMP_BYTES_24)
+    {
         return Detection::Found { format: Format::ScreenDump, skip: 0 };
     }
     detect_binary(prefix).unwrap_or(Detection::Unknown)
@@ -247,7 +288,9 @@ pub struct AutoConfig {
     /// An explicit format, which overrides detection (REQ-INP-005).
     pub format: Option<Format>,
     /// Follow each page item with the packets of the encoded page
-    /// (REQ-ARCH-004).
+    /// (REQ-ARCH-004). Pages come only from the page-file readers, each of
+    /// which brings in the `pages` feature that encodes them, so a build
+    /// without it has no pages to encode.
     pub encode_pages: bool,
     /// Transport stream selection.
     pub transport: TsConfig,
@@ -255,59 +298,135 @@ pub struct AutoConfig {
     pub source: Option<u8>,
 }
 
-/// Any of the readers.
+/// The stand-in for a reader that is not compiled in (decision E.61): it
+/// reports [`DiagnosticKind::FormatNotCompiled`] once and ignores the input.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct NotCompiledReader {
+    format: Format,
+    reported: bool,
+}
+
+impl NotCompiledReader {
+    /// The stand-in for a format.
+    #[must_use]
+    pub const fn new(format: Format) -> Self {
+        Self { format, reported: false }
+    }
+
+    fn report(&mut self, out: &mut dyn FnMut(Item<'_>)) {
+        if !self.reported {
+            self.reported = true;
+            out(Item::Diagnostic(Diagnostic::at(0, DiagnosticKind::FormatNotCompiled { format: self.format })));
+        }
+    }
+}
+
+impl Reader for NotCompiledReader {
+    fn feed(&mut self, _bytes: &[u8], out: &mut dyn FnMut(Item<'_>)) {
+        self.report(out);
+    }
+
+    fn finish(&mut self, out: &mut dyn FnMut(Item<'_>)) {
+        self.report(out);
+    }
+}
+
+/// Any of the readers compiled in. The variants depend on the features, so
+/// the enumeration is not exhaustive (decision E.61).
 #[derive(Clone, Debug)]
 // The variants differ greatly in size by design: each holds its own fixed
 // buffers, and boxing is not available without allocation.
 #[allow(clippy::large_enum_variant)]
+#[non_exhaustive]
 pub enum AnyReader {
     /// Headerless packets.
     T42(T42Reader),
     /// Transport streams.
+    #[cfg(feature = "transport")]
     Transport(TsReader),
     /// Raw PES files.
+    #[cfg(feature = "transport")]
     Pes(PesReader),
     /// Sliced records.
+    #[cfg(feature = "sliced")]
     Sliced(SlicedReader),
     /// TTI files.
+    #[cfg(feature = "tti")]
     Tti(TtiReader),
     /// EP1 files.
+    #[cfg(feature = "ep1")]
     Ep1(Ep1Reader),
     /// edit.tf addresses.
+    #[cfg(feature = "edittf")]
     EditTf(EditTfReader),
     /// Screen dumps.
+    #[cfg(feature = "dump")]
     Dump(DumpReader),
+    /// A format whose reader is not compiled in.
+    NotCompiled(NotCompiledReader),
 }
 
 impl AnyReader {
-    /// The reader for a format.
+    /// The reader for a format, or the [`NotCompiledReader`] when the
+    /// format's reader is not compiled in.
     #[must_use]
     pub fn new(format: Format, skip: usize, config: &AutoConfig) -> Self {
-        match format {
-            Format::T42(variant) => Self::T42(T42Reader::with_skip(variant, config.source, skip)),
-            Format::TransportStream(size) => {
-                let transport = TsConfig { packet_size: Some(size), source: config.source, ..config.transport };
-                Self::Transport(TsReader::new(transport))
-            }
-            Format::Pes => Self::Pes(PesReader::new(config.source)),
-            Format::Sliced(order) => Self::Sliced(SlicedReader::new(order, config.source)),
-            Format::Tti => Self::Tti(TtiReader::new()),
-            Format::Ep1 => Self::Ep1(Ep1Reader::new()),
-            Format::EditTf => Self::EditTf(EditTfReader::new()),
-            Format::ScreenDump => Self::Dump(DumpReader::new()),
+        // One `if` per format, compiled with its reader, so that a build
+        // without a format names nothing of its reader; a match would need
+        // a wildcard arm that is unreachable when every format is compiled.
+        if let Format::T42(variant) = format {
+            return Self::T42(T42Reader::with_skip(variant, config.source, skip));
         }
+        #[cfg(feature = "transport")]
+        if let Format::TransportStream(size) = format {
+            let transport = TsConfig { packet_size: Some(size), source: config.source, ..config.transport };
+            return Self::Transport(TsReader::new(transport));
+        }
+        #[cfg(feature = "transport")]
+        if format == Format::Pes {
+            return Self::Pes(PesReader::new(config.source));
+        }
+        #[cfg(feature = "sliced")]
+        if let Format::Sliced(order) = format {
+            return Self::Sliced(SlicedReader::new(order, config.source));
+        }
+        #[cfg(feature = "tti")]
+        if format == Format::Tti {
+            return Self::Tti(TtiReader::new());
+        }
+        #[cfg(feature = "ep1")]
+        if format == Format::Ep1 {
+            return Self::Ep1(Ep1Reader::new());
+        }
+        #[cfg(feature = "edittf")]
+        if format == Format::EditTf {
+            return Self::EditTf(EditTfReader::new());
+        }
+        #[cfg(feature = "dump")]
+        if format == Format::ScreenDump {
+            return Self::Dump(DumpReader::new());
+        }
+        Self::NotCompiled(NotCompiledReader::new(format))
     }
 
     fn reader(&mut self) -> &mut dyn Reader {
         match self {
             Self::T42(reader) => reader,
+            #[cfg(feature = "transport")]
             Self::Transport(reader) => reader,
+            #[cfg(feature = "transport")]
             Self::Pes(reader) => reader,
+            #[cfg(feature = "sliced")]
             Self::Sliced(reader) => reader,
+            #[cfg(feature = "tti")]
             Self::Tti(reader) => reader,
+            #[cfg(feature = "ep1")]
             Self::Ep1(reader) => reader,
+            #[cfg(feature = "edittf")]
             Self::EditTf(reader) => reader,
+            #[cfg(feature = "dump")]
             Self::Dump(reader) => reader,
+            Self::NotCompiled(reader) => reader,
         }
     }
 }
@@ -350,20 +469,24 @@ impl AutoReader {
     }
 
     /// Feeds the active reader, encoding pages into packets when asked.
+    // Without `pages` no reader produces pages, so the configuration has
+    // nothing to say.
+    #[cfg_attr(not(feature = "pages"), allow(unused_variables))]
     fn pass(state: &mut State, config: &AutoConfig, bytes: &[u8], finish: bool, out: &mut dyn FnMut(Item<'_>)) {
-        let encode = config.encode_pages;
-        let meta = PacketMeta { source: config.source, ..PacketMeta::default() };
-        let mut wrapped = |item: Item<'_>| {
+        let State::Active(reader) = state else { return };
+        #[cfg(feature = "pages")]
+        let mut encoding = |item: Item<'_>| {
             out(item);
-            if let (true, Item::Page(page)) = (encode, item) {
+            if let (true, Item::Page(page)) = (config.encode_pages, item) {
+                let meta = PacketMeta { source: config.source, ..PacketMeta::default() };
                 encode_page(page, &mut |packet| out(Item::Packet { packet, meta }));
             }
         };
-        if let State::Active(reader) = state {
-            reader.feed(bytes, &mut wrapped);
-            if finish {
-                reader.finish(&mut wrapped);
-            }
+        #[cfg(feature = "pages")]
+        let out: &mut dyn FnMut(Item<'_>) = &mut encoding;
+        reader.feed(bytes, out);
+        if finish {
+            reader.finish(out);
         }
     }
 

@@ -10,12 +10,11 @@ use tellytxt_core::consts::{
 use tellytxt_core::packet::{Decoded, PageEnhancement, PagePacket, decode};
 use tellytxt_core::types::{PageAddress, SubCode};
 
-use crate::check::Warning;
 use crate::consts::{TTI_COMMAND_BYTES, TTI_FL_LINKS, TTI_FL_NO_LINK, TTI_FL_NULL_LINK, TTI_PACKED_CHARACTERS};
 use crate::item::{Capacity, Diagnostic, DiagnosticKind, Item, Reader, offset_of};
 use crate::page::{
     EnhancementPacket, FastextLink, FieldKind, FormField, FormMethod, FormOption, IssueKind, LinkKey, LinkLine,
-    PageFile, PageFunction, RawBody, RawPacket, SERVICE_NAME_BYTES,
+    PageFile, PageFunction, RawBody, RawPacket, SERVICE_NAME_BYTES, Warning,
 };
 use crate::text::Text;
 

@@ -8,7 +8,7 @@ publish.workspace = true
 
 [dependencies]
 # The authored test stream of REQ-TST-024 is built by the formats crate.
-tellytxt-formats = { workspace = true, features = ["std"] }
+tellytxt-formats = { workspace = true, features = ["std", "tti"] }
 
 [lints]
 workspace = true

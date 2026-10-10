@@ -12,7 +12,8 @@ path = "src/main.rs"
 
 [dependencies]
 tellytxt-core = { workspace = true, features = ["default"] }
-tellytxt-formats = { workspace = true, features = ["std"] }
+# The program reads and writes every format.
+tellytxt-formats = { workspace = true, features = ["default", "std"] }
 tellytxt-slicer.workspace = true
 tellytxt-web.workspace = true
 tellytxt-image = { workspace = true, features = ["std"] }
