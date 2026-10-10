@@ -1,6 +1,7 @@
 //! Project automation (REQ-GEN-010): `cargo xtask <command>`.
 //!
-//! - `glyphs`: regenerate the core's glyph table from the Bedstead export.
+//! - `glyphs`: regenerate the core's glyph tables: Bedstead from its export,
+//!   and the G3 set from the project's own geometry (REQ-RND-037).
 //! - `corpus`: fetch and pin the real-broadcast test corpus (REQ-TST-022).
 //! - `traceability`: write docs/traceability.md (REQ-DOC-003).
 //! - `check-layers`: enforce the module dependency table of ARCHITECTURE.md
@@ -13,6 +14,7 @@
 
 mod checks;
 mod corpus;
+mod g3;
 mod glyphs;
 mod trace;
 
