@@ -20,8 +20,9 @@ A complete minimal port is `crates/tellytxt-core/examples/minimal_port.rs`, unde
 
 All state lives in memory you provide (REQ-GEN-003):
 
-- The page store is a slice of `StoredPage` you allocate: `[StoredPage::EMPTY; N]` in a `static`, or on the heap. Each slot is about 2.6 kilobytes.
-- A `Grid` is 1000 cells; build it in place with `build_grid(&mut grid, ...)`.
+- The page store is a slice of `StoredPage` you allocate: `[StoredPage::EMPTY; N]` in a `static`, or on the heap. Each slot is about 2.7 kilobytes.
+- For Levels 2.5 and 3.5, the enhancement store is two more slices: `EnhancementSubPage::EMPTY` entries of 160 bytes, and `EnhancementPacket::EMPTY` slots of 42 bytes, one per packet. Annex E.8 bounds a service at 500 packets at Level 2.5 and 1200 at Level 3.5, about 21 and 50 kilobytes, plus 24 packets for each magazine's Magazine Organization Table. Pass them to `Decoder::with_enhancement_store`; `Decoder::new` keeps no enhancement pages.
+- A `Grid` is 1000 cells of 16 bytes plus, by default, a side-panel area of 768 cells and room for 48 DRCS patterns: about 32 kilobytes. A port that shows only Levels 1 and 1.5 can use `Grid<0, 0>`, about 16 kilobytes. Build it in place with `build_grid(&mut grid, ...)`.
 - A rendered text row at 480 by 20 needs 9.6 kilobytes at 8 bits per pixel or 4.8 kilobytes at 4 bits.
 
 ## Pixels and colour
