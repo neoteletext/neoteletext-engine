@@ -14,14 +14,15 @@ use tellytxt_core::packet::{Packet, PacketMeta};
 use tellytxt_core::types::{Instant, PageAddress, SubCode};
 
 fn corpus(name: &str) -> Option<Vec<u8>> {
-    let directory = std::env::var_os("TELLYTXT_CORPUS").map(PathBuf::from)?;
-    match std::fs::read(directory.join(name)) {
-        Ok(bytes) => Some(bytes),
-        Err(_) => {
-            eprintln!("SKIPPED: corpus file {name} not found");
-            None
-        }
+    let Some(directory) = std::env::var_os("TELLYTXT_CORPUS").map(PathBuf::from) else {
+        eprintln!("SKIPPED: TELLYTXT_CORPUS is not set; corpus test for {name} not run");
+        return None;
+    };
+    let bytes = std::fs::read(directory.join(name)).ok();
+    if bytes.is_none() {
+        eprintln!("SKIPPED: corpus file {name} not found");
     }
+    bytes
 }
 
 fn row_text(grid: &Grid, row: usize) -> String {
@@ -40,8 +41,8 @@ fn bbc1_1991_decodes() {
     let Some(bytes) = corpus("dan/bbc1_1991-10-31_Dan/bbc1_1991-10-31_v2_squashed.t42") else { return };
     let mut slots = vec![StoredPage::EMPTY; 4096];
     let mut decoder = Decoder::new(&mut slots, Config::default());
-    for (index, chunk) in bytes.chunks_exact(PACKET_BYTES).enumerate() {
-        let packet = Packet { bytes: chunk.try_into().unwrap() };
+    for (index, chunk) in bytes.as_chunks::<PACKET_BYTES>().0.iter().enumerate() {
+        let packet = Packet { bytes: *chunk };
         decoder.push(&packet, &PacketMeta::default(), Instant(index as u64 * 64), &mut |_| {});
     }
     decoder.tick(Instant(u64::MAX / 2), &mut |_| {});
