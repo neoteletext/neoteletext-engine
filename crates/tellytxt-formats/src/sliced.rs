@@ -1,13 +1,20 @@
 //! Linux sliced VBI records (REQ-INP-010): 64-byte records of four 32-bit
 //! fields (service identifier, field, line, reserved) and 48 data bytes, as
 //! in V4L2's `struct v4l2_sliced_vbi_data`.
+//!
+//! [`ByteOrder`] is always compiled; the reader needs the `sliced` feature
+//! (decision E.61).
 
+#[cfg(feature = "sliced")]
 use tellytxt_core::consts::PACKET_BYTES;
+#[cfg(feature = "sliced")]
 use tellytxt_core::packet::{Packet, PacketMeta};
 
+#[cfg(feature = "sliced")]
 use crate::consts::{
     SLICED_FIELD_OFFSET, SLICED_HEADER_BYTES, SLICED_LINE_OFFSET, SLICED_RECORD_BYTES, SLICED_TELETEXT_B,
 };
+#[cfg(feature = "sliced")]
 use crate::item::{Diagnostic, DiagnosticKind, Item, Reader, offset_of, saturate_u32};
 
 /// Byte order of the 32-bit fields, which is that of the computer that
@@ -36,6 +43,7 @@ impl ByteOrder {
 
 /// Converts one record to a packet, or `None` for records that carry no
 /// teletext (service identifier 0 or another service).
+#[cfg(feature = "sliced")]
 #[must_use]
 pub fn record_packet(record: &[u8; SLICED_RECORD_BYTES], order: ByteOrder) -> Option<(Packet, PacketMeta)> {
     if order.word(record, 0)? != SLICED_TELETEXT_B {
@@ -60,6 +68,7 @@ pub fn record_packet(record: &[u8; SLICED_RECORD_BYTES], order: ByteOrder) -> Op
 }
 
 /// A streaming reader of sliced records.
+#[cfg(feature = "sliced")]
 #[derive(Clone, Debug)]
 pub struct SlicedReader {
     order: ByteOrder,
@@ -70,6 +79,7 @@ pub struct SlicedReader {
     record_offset: u64,
 }
 
+#[cfg(feature = "sliced")]
 impl SlicedReader {
     /// A reader with the given field byte order.
     #[must_use]
@@ -78,6 +88,7 @@ impl SlicedReader {
     }
 }
 
+#[cfg(feature = "sliced")]
 impl Reader for SlicedReader {
     fn feed(&mut self, bytes: &[u8], out: &mut dyn FnMut(Item<'_>)) {
         let base = self.position;
@@ -117,7 +128,7 @@ impl Reader for SlicedReader {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "sliced"))]
 #[allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 mod tests {
     use super::*;

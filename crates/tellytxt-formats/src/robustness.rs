@@ -1,22 +1,34 @@
 //! Property tests of REQ-GEN-008 and REQ-INP-001: arbitrary input never
 //! panics or overflows (tests build with overflow checks), and the items
-//! do not depend on how the input is split.
+//! do not depend on how the input is split. Each reader compiled into the
+//! build is tested (decision E.61).
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 
 use proptest::prelude::*;
+use std::boxed::Box;
 use std::vec::Vec;
 
 use crate::detect::{AutoConfig, AutoReader, Format};
+#[cfg(feature = "dump")]
 use crate::dump::DumpReader;
+#[cfg(feature = "edittf")]
 use crate::edittf::EditTfReader;
+#[cfg(feature = "pages")]
 use crate::encode::encode_page;
+#[cfg(feature = "ep1")]
 use crate::ep1::Ep1Reader;
 use crate::item::Reader;
+#[cfg(feature = "transport")]
 use crate::pes::PesReader;
+#[cfg(feature = "sliced")]
 use crate::sliced::{ByteOrder, SlicedReader};
 use crate::t42::{T42Reader, T42Variant};
-use crate::testing::{Owned, run};
+#[cfg(feature = "pages")]
+use crate::testing::Owned;
+use crate::testing::run;
+#[cfg(feature = "transport")]
 use crate::transport::{TsConfig, TsReader};
+#[cfg(feature = "tti")]
 use crate::tti::TtiReader;
 
 /// Prefixes that lead each reader past its first checks.
@@ -29,28 +41,34 @@ const PREFIXES: [&[u8]; 6] = [
     &[0xFE, 0x01, 0x09, 0xCA, 0x2C, 0x00, 0xC2, 0x00],
 ];
 
-fn readers() -> Vec<std::boxed::Box<dyn Fn() -> std::boxed::Box<dyn Reader>>> {
-    std::vec![
-        std::boxed::Box::new(
-            || std::boxed::Box::new(T42Reader::new(T42Variant::RunIn, None)) as std::boxed::Box<dyn Reader>
-        ),
-        std::boxed::Box::new(|| std::boxed::Box::new(TsReader::new(TsConfig::default()))),
-        std::boxed::Box::new(|| std::boxed::Box::new(TsReader::new(TsConfig { pid: Some(0), ..TsConfig::default() }))),
-        std::boxed::Box::new(|| std::boxed::Box::new(PesReader::new(None))),
-        std::boxed::Box::new(|| std::boxed::Box::new(SlicedReader::new(ByteOrder::Big, None))),
-        std::boxed::Box::new(|| std::boxed::Box::new(TtiReader::new())),
-        std::boxed::Box::new(|| std::boxed::Box::new(Ep1Reader::new())),
-        std::boxed::Box::new(|| std::boxed::Box::new(EditTfReader::new())),
-        std::boxed::Box::new(|| std::boxed::Box::new(DumpReader::new())),
-        std::boxed::Box::new(|| std::boxed::Box::new(AutoReader::new(AutoConfig {
-            encode_pages: true,
-            ..AutoConfig::default()
-        }))),
-        std::boxed::Box::new(|| {
-            let config = AutoConfig { format: Some(Format::Tti), encode_pages: true, ..AutoConfig::default() };
-            std::boxed::Box::new(AutoReader::new(config))
-        }),
-    ]
+type MakeReader = Box<dyn Fn() -> Box<dyn Reader>>;
+
+fn readers() -> Vec<MakeReader> {
+    let mut readers: Vec<MakeReader> = Vec::new();
+    readers.push(Box::new(|| Box::new(T42Reader::new(T42Variant::RunIn, None))));
+    #[cfg(feature = "transport")]
+    {
+        readers.push(Box::new(|| Box::new(TsReader::new(TsConfig::default()))));
+        readers.push(Box::new(|| Box::new(TsReader::new(TsConfig { pid: Some(0), ..TsConfig::default() }))));
+        readers.push(Box::new(|| Box::new(PesReader::new(None))));
+    }
+    #[cfg(feature = "sliced")]
+    readers.push(Box::new(|| Box::new(SlicedReader::new(ByteOrder::Big, None))));
+    #[cfg(feature = "tti")]
+    readers.push(Box::new(|| Box::new(TtiReader::new())));
+    #[cfg(feature = "ep1")]
+    readers.push(Box::new(|| Box::new(Ep1Reader::new())));
+    #[cfg(feature = "edittf")]
+    readers.push(Box::new(|| Box::new(EditTfReader::new())));
+    #[cfg(feature = "dump")]
+    readers.push(Box::new(|| Box::new(DumpReader::new())));
+    readers.push(Box::new(|| Box::new(AutoReader::new(AutoConfig { encode_pages: true, ..AutoConfig::default() }))));
+    // Without `tti` this is the reader that reports the format missing.
+    readers.push(Box::new(|| {
+        let config = AutoConfig { format: Some(Format::Tti), encode_pages: true, ..AutoConfig::default() };
+        Box::new(AutoReader::new(config))
+    }));
+    readers
 }
 
 proptest! {
@@ -64,6 +82,7 @@ proptest! {
             let whole = run(&mut *make(), &input, input.len());
             let split = run(&mut *make(), &input, chunk);
             prop_assert_eq!(&whole, &split);
+            #[cfg(feature = "pages")]
             for item in &whole {
                 if let Owned::Page(page) = item {
                     encode_page(page, &mut |_| {});
@@ -72,6 +91,7 @@ proptest! {
         }
     }
 
+    #[cfg(feature = "check")]
     #[test]
     fn any_tti_lines(lines in proptest::collection::vec(proptest::collection::vec(prop_oneof![Just(b','), Just(b':'), Just(0x1B), 0x20u8..0x7F, any::<u8>()], 0..60), 0..40)) {
         let mut input = b"PN,10000\n".to_vec();
@@ -96,10 +116,9 @@ proptest! {
 /// The fuzzing target `tti_enhancement` (REQ-TST-042) as a property test,
 /// for machines without `cargo fuzz`: the same page heads, commands and
 /// checks, over a deterministic pseudo-random corpus.
-#[cfg(feature = "std")]
+#[cfg(all(feature = "std", feature = "tti"))]
 mod enhancement_lines {
     use super::*;
-    use std::boxed::Box;
     use tellytxt_core::packet::decode;
 
     use crate::Item;
@@ -195,18 +214,21 @@ mod enhancement_lines {
 #[test]
 fn reader_sizes() {
     use core::mem::size_of;
-    let sizes = [
-        ("T42Reader", size_of::<T42Reader>()),
-        ("TsReader", size_of::<TsReader>()),
-        ("PesReader", size_of::<PesReader>()),
-        ("SlicedReader", size_of::<SlicedReader>()),
-        ("TtiReader", size_of::<TtiReader>()),
-        ("Ep1Reader", size_of::<Ep1Reader>()),
-        ("EditTfReader", size_of::<EditTfReader>()),
-        ("DumpReader", size_of::<DumpReader>()),
-        ("AutoReader", size_of::<AutoReader>()),
-        ("PageFile", size_of::<crate::page::PageFile>()),
-    ];
+    let mut sizes = std::vec![("T42Reader", size_of::<T42Reader>())];
+    #[cfg(feature = "transport")]
+    sizes.extend([("TsReader", size_of::<TsReader>()), ("PesReader", size_of::<PesReader>())]);
+    #[cfg(feature = "sliced")]
+    sizes.push(("SlicedReader", size_of::<SlicedReader>()));
+    #[cfg(feature = "tti")]
+    sizes.push(("TtiReader", size_of::<TtiReader>()));
+    #[cfg(feature = "ep1")]
+    sizes.push(("Ep1Reader", size_of::<Ep1Reader>()));
+    #[cfg(feature = "edittf")]
+    sizes.push(("EditTfReader", size_of::<EditTfReader>()));
+    #[cfg(feature = "dump")]
+    sizes.push(("DumpReader", size_of::<DumpReader>()));
+    sizes.push(("AutoReader", size_of::<AutoReader>()));
+    sizes.push(("PageFile", size_of::<crate::page::PageFile>()));
     for (name, size) in sizes {
         std::println!("{name}: {size} bytes");
         assert!(size < 64 * 1024, "{name}");

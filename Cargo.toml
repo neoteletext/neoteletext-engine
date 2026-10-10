@@ -20,11 +20,11 @@ license = "MIT OR Apache-2.0"
 publish = false
 
 [workspace.dependencies]
-# Decision E.61: crates name the features of the core and of the web
-# module that they use, so that feature unification never brings an area
-# into a build that did not ask for it.
+# Decision E.61: crates name the features of the core, the formats and
+# the web module that they use, so that feature unification never brings
+# an area into a build that did not ask for it.
 tellytxt-core = { path = "crates/tellytxt-core", default-features = false }
-tellytxt-formats = { path = "crates/tellytxt-formats" }
+tellytxt-formats = { path = "crates/tellytxt-formats", default-features = false }
 tellytxt-slicer = { path = "crates/tellytxt-slicer" }
 tellytxt-web = { path = "crates/tellytxt-web", default-features = false }
 tellytxt-image = { path = "crates/tellytxt-image" }

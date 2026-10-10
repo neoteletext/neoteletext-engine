@@ -9,7 +9,7 @@ use crate::testing::{packets, run};
 use crate::tti::tests::{FORM_EXAMPLE, full_page, read};
 use std::string::String;
 use std::vec::Vec;
-use tellytxt_core::types::PageAddress;
+use tellytxt_core::types::{PageAddress, SubCode};
 
 /// Line numbers differ between a file and its rewrite; everything else
 /// must not.

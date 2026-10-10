@@ -13,8 +13,9 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "=0.4.10"
 tellytxt-core = { path = "../crates/tellytxt-core" }
-# `std` for the TTI writer, which the enhancement-line target writes back.
-tellytxt-formats = { path = "../crates/tellytxt-formats", features = ["std"] }
+# Every format, and `std` for the TTI writer, which the enhancement-line
+# target writes back.
+tellytxt-formats = { path = "../crates/tellytxt-formats", features = ["default", "std"] }
 tellytxt-slicer = { path = "../crates/tellytxt-slicer" }
 tellytxt-web = { path = "../crates/tellytxt-web", features = ["default"] }
 
