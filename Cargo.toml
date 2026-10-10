@@ -20,7 +20,9 @@ license = "MIT OR Apache-2.0"
 publish = false
 
 [workspace.dependencies]
-tellytxt-core = { path = "crates/tellytxt-core" }
+# Decision E.61: crates name the core features they use, so that feature
+# unification never brings an area into a build that did not ask for it.
+tellytxt-core = { path = "crates/tellytxt-core", default-features = false }
 tellytxt-formats = { path = "crates/tellytxt-formats" }
 tellytxt-slicer = { path = "crates/tellytxt-slicer" }
 tellytxt-web = { path = "crates/tellytxt-web" }

@@ -11,7 +11,7 @@ name = "ttx"
 path = "src/main.rs"
 
 [dependencies]
-tellytxt-core.workspace = true
+tellytxt-core = { workspace = true, features = ["default"] }
 tellytxt-formats = { workspace = true, features = ["std"] }
 tellytxt-slicer.workspace = true
 tellytxt-web.workspace = true

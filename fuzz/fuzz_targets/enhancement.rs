@@ -115,7 +115,7 @@ fuzz_target!(|input: &[u8]| {
     let mut grid: Box<Grid> = Box::new(Grid::empty());
     build_grid(&mut grid, Some(page), &magazine, &config, &DisplayOptions::default());
     let status: [_; STATUS_COLUMNS] = core::array::from_fn(|column| grid.cells[0][column]);
-    let report = tellytxt_core::viewer::compose_level(
+    let report = tellytxt_core::compose::compose_level(
         &mut grid,
         page,
         &magazine,

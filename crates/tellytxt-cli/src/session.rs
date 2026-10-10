@@ -2,6 +2,7 @@
 //! magazine and service data, and composing grids for display.
 
 use tellytxt_core::acq::{Decoder, EnhancementPacket, EnhancementStore, EnhancementSubPage, Event, StoredPage};
+use tellytxt_core::compose::compose_level_traced;
 use tellytxt_core::config::Config;
 use tellytxt_core::consts::{
     COLUMNS, ENHANCEMENT_PACKETS_LEVEL_35, HEADER_DISPLAY_BYTES, MAGAZINES, MOT_PACKETS, PAGE_COMPLETION_TIMEOUT_US,
@@ -12,7 +13,6 @@ use tellytxt_core::packet::{Packet, PacketMeta};
 use tellytxt_core::service::{ServiceInfo, interpret};
 use tellytxt_core::trace::TraceSink;
 use tellytxt_core::types::{Instant, PageAddress, SubCode};
-use tellytxt_core::viewer::compose_level_traced;
 
 /// Default number of stored pages and sub-pages.
 pub const DEFAULT_PAGES: usize = 4096;

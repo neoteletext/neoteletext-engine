@@ -505,6 +505,17 @@ impl<const DRCS: usize, const PANEL_ROWS: usize> Grid<DRCS, PANEL_ROWS> {
     }
 }
 
+/// Page zoom (REQ-L1-020): which half of the page is enlarged.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Zoom {
+    /// No zoom.
+    Off,
+    /// Rows 0 to 11 enlarged to double height.
+    Top,
+    /// Rows 12 to 23 enlarged to double height.
+    Bottom,
+}
+
 /// What the receiver contributes to the grid (decisions E.10, E.11, E.23).
 // Each flag is a separate viewer setting (REQ-L1-020, REQ-SEC-005).
 #[allow(clippy::struct_excessive_bools)]

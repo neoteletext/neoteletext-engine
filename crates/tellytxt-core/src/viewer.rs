@@ -2,17 +2,15 @@
 //! REQ-FSM-005, the receiver-owned status area (decision E.10,
 //! REQ-SEC-005), and composing the grid shown on screen.
 
+use crate::acq::EnhancementReport;
 use crate::acq::{EnhancementLookup, MagazineData, PageStore, StoredPage};
-use crate::config::{Config, PresentationLevel, RevealStyle, StepOrder};
+use crate::compose::compose_level;
+use crate::config::{Config, RevealStyle, StepOrder};
 use crate::consts::{ALPHA_RED, ALPHA_YELLOW, HEADER_DISPLAY_BYTES, SPACE, STATUS_COLUMNS};
-use crate::enhance::{self, EnhancementReport};
-use crate::level1::{DisplayOptions, Grid, build_grid};
-use crate::level15;
+use crate::level1::{DisplayOptions, Grid, Zoom, build_grid};
 use crate::nav::{
     EntryResult, History, HistoryEntry, LinkTarget, PageEntry, PageLinks, next_page, previous_page, step_stored,
 };
-use crate::render::Zoom;
-use crate::trace::TraceSink;
 use crate::types::{Instant, PageAddress, SubCode};
 
 /// Viewer keys: the numbered functions of area NAV.
@@ -516,57 +514,6 @@ pub enum Composed {
     /// The grid was built; at Levels 2.5 and 3.5, with the report of the
     /// faults the enhancement processor met, for the decoder's statistics.
     Built(Option<EnhancementReport>),
-}
-
-/// Applies the pass of the presentation level to a page's Level 1 grid
-/// (REQ-PRF-006): nothing at Level 1, the Level 1.5 pass at Level 1.5, and
-/// the enhancement processor at Levels 2.5 and 3.5 (REQ-L25-001). The
-/// level is read on every build, so changing it never re-acquires a page.
-/// At Levels 2.5 and 3.5 it returns the processor's report of the faults it
-/// met, for the caller's statistics and trace (REQ-L25-051).
-pub fn compose_level<const DRCS: usize, const PANEL_ROWS: usize>(
-    grid: &mut Grid<DRCS, PANEL_ROWS>,
-    page: &StoredPage,
-    magazine: &MagazineData,
-    lookup: &EnhancementLookup<'_>,
-    config: &Config,
-    options: &DisplayOptions,
-) -> Option<EnhancementReport> {
-    match config.level {
-        PresentationLevel::Level1 => None,
-        PresentationLevel::Level15 => {
-            level15::apply(grid, &page.enhancements, page.enhancements_present, config, true);
-            None
-        }
-        PresentationLevel::Level25 | PresentationLevel::Level35 => {
-            Some(enhance::apply(grid, page, magazine, lookup, config, options))
-        }
-    }
-}
-
-/// As [`compose_level`], and when `Config::trace` is on, reports the
-/// transitions of the walk of the level to `trace` (REQ-FSM-010): the
-/// Level 1.5 triplet walk (REQ-FSM-007), or the page-level run of the
-/// enhancement walk (REQ-FSM-011).
-pub fn compose_level_traced<const DRCS: usize, const PANEL_ROWS: usize>(
-    grid: &mut Grid<DRCS, PANEL_ROWS>,
-    page: &StoredPage,
-    magazine: &MagazineData,
-    lookup: &EnhancementLookup<'_>,
-    config: &Config,
-    options: &DisplayOptions,
-    trace: &mut TraceSink<'_>,
-) -> Option<EnhancementReport> {
-    match config.level {
-        PresentationLevel::Level1 => None,
-        PresentationLevel::Level15 => {
-            level15::apply_traced(grid, &page.enhancements, page.enhancements_present, config, true, trace);
-            None
-        }
-        PresentationLevel::Level25 | PresentationLevel::Level35 => {
-            Some(enhance::apply_traced(grid, page, magazine, lookup, config, options, trace))
-        }
-    }
 }
 
 /// Sub-pages listed for stepping and numbering.

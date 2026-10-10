@@ -31,7 +31,9 @@
 //! stored enhancement pages only through `acq::EnhancementLookup`
 //! (REQ-ACQ-020).
 
-use crate::acq::{EnhancementFaults, EnhancementKey, EnhancementLookup, MagazineData, PageBuild, StoredPage};
+use crate::acq::{
+    EnhancementFaults, EnhancementKey, EnhancementLookup, EnhancementReport, MagazineData, PageBuild, StoredPage,
+};
 use crate::charset::{self, CharRef, CharSet, G0, G0Set, G2Set, mosaic_pattern};
 use crate::colour::{self, ColourIndex, ColourMap, PagePresentation, PresentationSources, Remapping, SidePanels};
 use crate::config::{Config, PresentationLevel};
@@ -60,32 +62,6 @@ use crate::packet::{
 };
 use crate::trace::{Machine, TraceSink};
 use crate::types::{DrcsCharacter, DrcsTable, FixedVec};
-
-/// What one build of a grid found, for the decoder's statistics and the
-/// trace (REQ-L25-051, REQ-ARCH-007, REQ-TST-019). Fault counts are of the
-/// page-level run of the walk and of the row resolution; `steps` counts
-/// every triplet read in every run. Pass `build` and `faults` to
-/// `Decoder::record_enhancement` once the grid is built.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct EnhancementReport {
-    /// The page, reception and level the grid was built from.
-    pub build: PageBuild,
-    /// The level the page was processed at: Level 2.5 when a Level 3.5
-    /// decoder falls back to the table's Level 2.5 links (clause 10.6.1).
-    pub level: PresentationLevel,
-    /// The faults met, one count for each kind.
-    pub faults: EnhancementFaults,
-    /// Objects run.
-    pub objects: u32,
-    /// Triplets read, over every run of the walk.
-    pub steps: u32,
-}
-
-impl EnhancementReport {
-    const fn new(build: PageBuild, level: PresentationLevel) -> Self {
-        Self { build, level, faults: EnhancementFaults::NONE, objects: 0, steps: 0 }
-    }
-}
 
 /// The runs of the walk for one grid: the page-level run, then one for each
 /// row.

@@ -22,6 +22,7 @@
 use std::fmt::Write as _;
 use std::path::PathBuf;
 use tellytxt_core::acq::{Decoder, EnhancementPacket, EnhancementStore, EnhancementSubPage, StoredPage};
+use tellytxt_core::compose::compose_level;
 use tellytxt_core::config::{CellMode, Config, PresentationLevel};
 use tellytxt_core::consts::{ENHANCEMENT_PACKETS_LEVEL_35, MAGAZINES, MOT_PACKETS, ROWS};
 use tellytxt_core::glyphs::GlyphSet;
@@ -31,7 +32,6 @@ use tellytxt_core::render::{
     ALL_ROWS, ColourMode, FlashPhase, IndexBuffer, IndexFormat, RenderOptions, render_screen, row_width,
 };
 use tellytxt_core::types::{Instant, SubCode};
-use tellytxt_core::viewer::compose_level;
 use tellytxt_formats::author::streams;
 
 /// Raise when the stream, enhancement or rendering changes on purpose

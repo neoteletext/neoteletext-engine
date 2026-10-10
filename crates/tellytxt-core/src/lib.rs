@@ -13,7 +13,7 @@
 //! - Foundation: [`consts`], [`ecc`], [`types`];
 //! - L1 packet decoding: [`packet`];
 //! - L2 acquisition: [`fsm`], [`acq`], [`service`];
-//! - L3 presentation model: [`charset`], [`level1`], [`level15`], and for
+//! - L3 presentation model: [`charset`], [`level1`], [`compose`], [`level15`], and for
 //!   Levels 2.5 and 3.5 [`colour`], [`drcs`], [`objects`] and [`enhance`];
 //! - L4 rendering: [`glyphs`], [`render`];
 //! - L6 interaction: [`viewer`], [`nav`], [`forms`];
@@ -49,17 +49,25 @@ pub mod service;
 
 pub mod charset;
 pub mod colour;
+pub mod compose;
 pub mod drcs;
+#[cfg(feature = "level25")]
 pub mod enhance;
 pub mod level1;
+#[cfg(feature = "level15")]
 pub mod level15;
 pub mod objects;
 
+#[cfg(feature = "render")]
 pub mod glyphs;
+#[cfg(feature = "render")]
 pub mod render;
 
+#[cfg(feature = "forms")]
 pub mod forms;
+#[cfg(feature = "viewer")]
 pub mod nav;
+#[cfg(feature = "viewer")]
 pub mod viewer;
 
 pub mod port;
@@ -84,7 +92,11 @@ mod error_trait {
             impl core::error::Error for $error {}
         )+};
     }
-    error_trait!(crate::render::RenderError, crate::packet::PacketError, crate::forms::FormError);
+    error_trait!(crate::packet::PacketError);
+    #[cfg(feature = "render")]
+    error_trait!(crate::render::RenderError);
+    #[cfg(feature = "forms")]
+    error_trait!(crate::forms::FormError);
 
     #[cfg(test)]
     mod tests {
@@ -92,8 +104,10 @@ mod error_trait {
 
         #[test]
         fn every_error_type_is_an_error() {
-            is_error::<crate::render::RenderError>();
             is_error::<crate::packet::PacketError>();
+            #[cfg(feature = "render")]
+            is_error::<crate::render::RenderError>();
+            #[cfg(feature = "forms")]
             is_error::<crate::forms::FormError>();
         }
     }

@@ -5,15 +5,17 @@
 // Each test file uses its own subset of these builders.
 #![allow(dead_code, clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects, missing_docs)]
 
+use tellytxt_core::acq::EnhancementReport;
 use tellytxt_core::acq::{Decoder, EnhancementPacket, EnhancementStore, EnhancementSubPage, StoredPage};
 use tellytxt_core::charset::{CharSet, to_unicode};
+use tellytxt_core::compose::compose_level;
 use tellytxt_core::config::{Config, PresentationLevel};
 use tellytxt_core::consts::{
     COMPOSITIONAL_LINKS, DATA_BYTES, DESIGNATION_CODES, DRCS_PTU_BYTES, DRCS_PTUS, MAGAZINES, OBJECT_POINTER_UNUSED,
     PACKET_ENHANCEMENT, PAGE_FUNCTION_DRCS, PAGE_TIME_FILLING, ROW_ADDRESS_LAST, TRIPLETS_PER_PACKET,
 };
 use tellytxt_core::ecc::with_odd_parity;
-use tellytxt_core::enhance::{self, EnhancementReport};
+use tellytxt_core::enhance;
 use tellytxt_core::level1::{Cell, DisplayOptions, Glyph, Grid, build_grid};
 use tellytxt_core::packet::{
     CompositionalLink, DefaultObject, DrcsModes, MotDrcsLink, MotObjectLink, MotPageEntry, ObjectKind, ObjectNumber,
@@ -22,7 +24,6 @@ use tellytxt_core::packet::{
 use tellytxt_core::types::{
     ControlBits, FallbackFields, Instant, Magazine, PageAddress, PageNumber, PresentationFields, SubCode,
 };
-use tellytxt_core::viewer::compose_level;
 
 /// The displayed page of the tests: 100.
 pub const DISPLAY: u16 = 0x100;

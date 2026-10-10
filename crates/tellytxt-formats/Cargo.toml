@@ -18,6 +18,8 @@ std = []
 
 [dev-dependencies]
 proptest = "1.7.0"
+# The golden tests compose and render pages.
+tellytxt-core = { workspace = true, features = ["default"] }
 
 [lints]
 workspace = true

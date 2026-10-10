@@ -37,6 +37,17 @@ impl PresentationLevel {
     pub const fn is_level35(self) -> bool {
         matches!(self, Self::Level35)
     }
+
+    /// The level pages are composed at in this build: this level, or the
+    /// highest level below it whose feature is compiled in (decision E.61).
+    #[must_use]
+    pub const fn available(self) -> Self {
+        match self {
+            Self::Level25 | Self::Level35 if cfg!(feature = "level25") => self,
+            Self::Level15 | Self::Level25 | Self::Level35 if cfg!(feature = "level15") => Self::Level15,
+            _ => Self::Level1,
+        }
+    }
 }
 
 /// How characters that fail their parity check are shown (decision E.8).

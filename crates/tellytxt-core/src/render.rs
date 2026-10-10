@@ -33,7 +33,7 @@ use crate::consts::{
 };
 use crate::drcs::{DrcsMode, DrcsPattern};
 use crate::glyphs::{CharClass, GlyphSet, class};
-use crate::level1::{Cell, CellAttributes, FlashMode, FlashRate, Glyph, Grid, Size, Width};
+use crate::level1::{Cell, CellAttributes, FlashMode, FlashRate, Glyph, Grid, Size, Width, Zoom};
 use crate::types::{DrcsCharacter, DrcsTable, Instant};
 
 /// One line of one cell (REQ-RND-016).
@@ -72,17 +72,6 @@ pub enum Field {
     First,
     /// The second field only: odd lines.
     Second,
-}
-
-/// Page zoom (REQ-L1-020): which half of the page is enlarged.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Zoom {
-    /// No zoom.
-    Off,
-    /// Rows 0 to 11 enlarged to double height.
-    Top,
-    /// Rows 12 to 23 enlarged to double height.
-    Bottom,
 }
 
 /// Which flash rates show their "on" phase at one moment (decision E.48,

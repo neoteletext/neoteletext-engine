@@ -11,6 +11,21 @@ publish.workspace = true
 [dependencies]
 
 [features]
+# Decision E.61: each optional area of the core is a feature, all on by
+# default. Ports turn the defaults off and name what they use.
+default = ["level15", "level25", "render", "bedstead", "viewer", "forms"]
+# The Level 1.5 pass (area L15).
+level15 = []
+# The enhancement processor for Levels 2.5 and 3.5 (areas L25, OBJ, DRC).
+level25 = []
+# The row renderer and the generated G3 glyphs (area RND).
+render = []
+# The temporary Bedstead glyph set (decision E.25).
+bedstead = ["render"]
+# The viewer state machine, navigation and history (area NAV).
+viewer = []
+# The forms model (Appendix C).
+forms = []
 # REQ-GEN-011 and REQ-GEN-016: `core::error::Error` for the error types,
 # which needs `core::fmt`.
 error-trait = []

@@ -12,6 +12,7 @@ mod common;
 
 use std::time::Instant as Clock;
 use tellytxt_core::acq::{Decoder, StoredPage};
+use tellytxt_core::compose::compose_level;
 use tellytxt_core::config::Config;
 use tellytxt_core::consts::{PACKET_BYTES, PAGE_WIDTH};
 use tellytxt_core::glyphs::GlyphSet;
@@ -19,7 +20,6 @@ use tellytxt_core::level1::{DisplayOptions, Grid, build_grid};
 use tellytxt_core::packet::{Packet, PacketMeta};
 use tellytxt_core::render::{ALL_ROWS, FlashPhase, IndexBuffer, IndexFormat, RenderOptions, cell_line, render_screen};
 use tellytxt_core::types::{Instant, SubCode};
-use tellytxt_core::viewer::compose_level;
 
 /// REQ-GEN-013: twenty times 35 packets per frame at 25 frames per second.
 const REQUIRED_PACKETS_PER_SECOND: f64 = 17_500.0;

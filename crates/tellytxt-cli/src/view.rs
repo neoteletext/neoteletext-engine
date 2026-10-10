@@ -14,9 +14,9 @@ use crossterm::{cursor, execute, queue, terminal};
 use std::collections::HashSet;
 use std::io::Write;
 use std::time::{Duration, Instant as StdInstant};
+use tellytxt_core::acq::EnhancementReport;
 use tellytxt_core::config::Config;
 use tellytxt_core::consts::{ALPHA_YELLOW, COLUMNS, SPACE, STATUS_COLUMNS};
-use tellytxt_core::enhance::EnhancementReport;
 use tellytxt_core::forms::{FormAction, FormKey, FormModel, Method};
 use tellytxt_core::fsm::PageState;
 use tellytxt_core::level1::Grid;
@@ -455,7 +455,7 @@ pub fn run(
                 // REQ-SEC-024: links work only while their prompts are on
                 // screen: row 24 drawn, not boxed away, not zoomed off.
                 let row24_shown = !grid.boxed_mode
-                    && viewer.zoom() != tellytxt_core::render::Zoom::Top
+                    && viewer.zoom() != tellytxt_core::level1::Zoom::Top
                     && grid.cells[24].iter().any(|cell| !cell.glyph.is_blank());
                 let key_context = KeyContext {
                     links: &links,

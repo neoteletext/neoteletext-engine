@@ -8,16 +8,17 @@ mod common;
 use common::{
     DISPLAY, Receiver, damage, display_page, feed, g0, invoke, local_data, public_number, row_0, set_position,
 };
+use tellytxt_core::acq::EnhancementReport;
 use tellytxt_core::acq::{Decoder, EnhancementFaults, PageBuild};
+use tellytxt_core::compose::compose_level_traced;
 use tellytxt_core::config::{Config, PresentationLevel};
 use tellytxt_core::consts::{HEADER_DISPLAY_BYTES, OBJECT_INVOCATIONS_PER_TYPE, SPACE};
-use tellytxt_core::enhance::EnhancementReport;
 use tellytxt_core::fsm::PageKey;
 use tellytxt_core::level1::{DisplayOptions, Grid, build_grid};
 use tellytxt_core::packet::{ObjectKind, ObjectSource, Packet, TripletFunction};
 use tellytxt_core::trace::{Machine, TraceEntry, TraceSink};
 use tellytxt_core::types::{Instant, PageAddress, SubCode};
-use tellytxt_core::viewer::{ComposeContext, Composed, Viewer, ViewerEvent, compose_level_traced};
+use tellytxt_core::viewer::{ComposeContext, Composed, Viewer, ViewerEvent};
 
 /// The second feed starts after the first has finished and timed out.
 const SECOND_FEED_US: u64 = 2_000_000_000;
