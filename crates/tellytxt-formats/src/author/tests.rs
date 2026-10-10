@@ -111,6 +111,15 @@ fn local_object_numbers_come_from_the_layout() {
     assert_eq!(triplets.len(), 26);
 }
 
+/// REQ-INP-025: a page with no local enhancement data sends no packet
+/// X/26. Clause 13.8 makes any X/26 cancel the default objects, so an empty
+/// one would change what the page shows.
+#[test]
+fn no_local_data_sends_no_packet_26() {
+    let page = DisplayPage::new(address(0x400).unwrap(), SubCode::new(0));
+    assert_eq!(page.build().unwrap().enhancements.as_slice(), []);
+}
+
 /// REQ-INP-025: the pointer table of objects section 13.2: C2 unused and
 /// C3 at absolute triplet 30, which is packet 5 triplet 4.
 #[test]
@@ -166,7 +175,7 @@ fn pointer_tables_are_computed() {
 /// packets, and definitions then start after them (clause 10.5.1.2).
 #[test]
 fn pointer_packets_extend_for_high_indices() {
-    let mut gpop = ObjectPage::new(address(0x1F0).unwrap(), true);
+    let mut gpop = ObjectPage::new(address(0x1E0).unwrap(), true);
     let passive = gpop.define_at(1, ObjectKind::Passive, BOTH, 25, Triplets::new()).unwrap();
     assert_eq!(passive.source, ObjectSource::Global);
     assert_eq!(pointer_place(ObjectKind::Passive, 25), (4, 3, true));

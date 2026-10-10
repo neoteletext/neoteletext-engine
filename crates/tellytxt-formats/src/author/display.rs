@@ -282,7 +282,9 @@ impl DisplayPage {
     fn lay_out(&self) -> Result<Vec<Triplet>> {
         // The place of each definition is fixed by the lengths alone, so
         // invocations can be resolved before anything is written.
-        let marker = usize::from(self.terminate || !self.objects.is_empty());
+        // No local data and no objects: no packet X/26 at all, since any
+        // X/26 cancels the default objects (clause 13.8).
+        let marker = usize::from((self.terminate && !self.local.is_empty()) || !self.objects.is_empty());
         let mut next = self.local.len().saturating_add(marker);
         let mut places = Vec::with_capacity(self.objects.len());
         for object in &self.objects {
