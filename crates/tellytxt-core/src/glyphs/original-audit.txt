@@ -2,3 +2,14 @@
 ; glyph of the same character, each with the reason the form is not a copy
 ; (decision E.62): usually that the shape has only one sensible form at
 ; 5 by 9. One line each: U+XXXX reason.
+
+U+0020 space is empty by definition
+U+002E a single dot on the baseline centred on column 2 is the only full stop the grid allows
+U+004C a stem and a full-width foot; a shorter foot would break the width rule
+U+0054 a full-width bar on a centred stem; the set uses no serifs on T, so there is no other form
+U+00A8 two dots in row 0 over columns 1 and 3 is the only spacing that sits over both wide and narrow lower-case letters with a clear row below
+U+02C6 in two rows a centred caret has exactly one connected form
+U+02C7 in two rows a centred caron has exactly one connected form
+U+02D8 in two rows a cup that clears narrow letters has one form; the wider and narrower variants break or become the caron
+U+02D9 a single dot centred in row 0 is the only form of dot above
+U+02DD two parallel two-dot acute strokes that do not touch each other fit five columns in only this placement
