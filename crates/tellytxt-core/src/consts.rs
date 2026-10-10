@@ -25,6 +25,25 @@ pub const FRAMING_CODE_DVB: u8 = 0xE4;
 pub const FRAMING_CODE_DVB_INVERTED: u8 = 0x1B;
 /// Bits in a packet after the framing code (clause 7.1): 42 bytes.
 pub const PACKET_BITS: usize = 336;
+/// Bit periods in one television line: the bit rate is 444 × the line
+/// frequency (clause 5.3).
+pub const BITS_PER_LINE: u32 = 444;
+/// The "1" level as a percentage of black-to-peak-white (clause 5.2:
+/// 66 ± 6 percent).
+pub const ONE_LEVEL_PERCENT_OF_WHITE: u32 = 66;
+/// Leading run-in bits that may be "absent or reduced in amplitude"
+/// (clause 6.1, note).
+pub const RUN_IN_UNRELIABLE_BITS: usize = 2;
+/// Nominal time from the half-amplitude point of the line synchronising
+/// pulse's leading edge to the centre of the timing reference bit, in
+/// nanoseconds (clause 6.3, Figure 4: 12.0 µs).
+pub const TIMING_REFERENCE_NS: u32 = 12_000;
+/// How much earlier than nominal the timing reference may fall (Figure 4:
+/// −1.0 µs).
+pub const TIMING_EARLY_NS: u32 = 1_000;
+/// How much later than nominal the timing reference may fall (Figure 4:
+/// +0.4 µs).
+pub const TIMING_LATE_NS: u32 = 400;
 /// Bytes of a packet after the framing code: bytes 4 to 45 (clause 7.1).
 pub const PACKET_BYTES: usize = 42;
 /// Bytes per packet with the framing code in front (REQ-INP-003).
