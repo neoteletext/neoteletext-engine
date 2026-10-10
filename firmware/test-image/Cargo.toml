@@ -10,6 +10,8 @@ publish = false
 
 [dependencies]
 tellytxt-core = { path = "../../crates/tellytxt-core", default-features = false }
+tellytxt-formats = { path = "../../crates/tellytxt-formats", default-features = false }
+tellytxt-web = { path = "../../crates/tellytxt-web", default-features = false }
 
 [features]
 # Each feature roots the entry points of one optional area, and enables it.
@@ -19,6 +21,12 @@ render = ["tellytxt-core/render"]
 bedstead = ["render", "tellytxt-core/bedstead"]
 viewer = ["tellytxt-core/viewer"]
 forms = ["tellytxt-core/forms"]
+# The format readers through detection; formats-all adds every reader.
+formats = []
+formats-all = ["formats", "tellytxt-formats/default"]
+# The web user agent; web-all adds push, forms and cookies.
+web = []
+web-all = ["web", "tellytxt-web/default"]
 # REQ-GEN-019: a deliberate floating-point operation, so that the symbol
 # check can be shown to fail.
 float-probe = []

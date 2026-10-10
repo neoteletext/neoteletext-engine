@@ -186,6 +186,58 @@ mod forms {
     static FORM: fn(FormSpec, G0, FormKey, Instant, &mut Grid) = form;
 }
 
+/// Reading input: format detection and whichever readers are compiled in.
+#[cfg(feature = "formats")]
+mod formats {
+    use super::black_box;
+    use tellytxt_formats::detect::{AutoConfig, AutoReader};
+    use tellytxt_formats::item::Reader;
+
+    fn read(config: AutoConfig, bytes: &[u8]) {
+        let mut reader = AutoReader::new(config);
+        reader.feed(bytes, &mut |item| {
+            black_box(item);
+        });
+        reader.finish(&mut |item| {
+            black_box(item);
+        });
+    }
+
+    #[used]
+    static READ: fn(AutoConfig, &[u8]) = read;
+}
+
+/// The web user agent, with a port's random source.
+#[cfg(feature = "web")]
+mod web {
+    use super::{Instant, black_box};
+    use tellytxt_web::agent::{Input, UserAgent};
+    use tellytxt_web::port::RandomSource;
+
+    /// A stand-in for the port's random source.
+    pub struct Random;
+
+    impl RandomSource for Random {
+        fn fill(&mut self, bytes: &mut [u8]) {
+            for byte in bytes {
+                *byte = black_box(0);
+            }
+        }
+    }
+
+    /// Slots and cookie bytes as a small port might choose.
+    type Agent<'m> = UserAgent<'m, Random, 4, 4096>;
+
+    fn handle(agent: &mut Agent<'_>, now: Instant, input: Input<'_>) {
+        agent.handle(now, input, &mut |output| {
+            black_box(output);
+        });
+    }
+
+    #[used]
+    static HANDLE: fn(&mut Agent<'_>, Instant, Input<'_>) = handle;
+}
+
 /// REQ-GEN-019: one floating-point operation, which the symbol check must
 /// find on targets without a floating-point unit.
 #[cfg(feature = "float-probe")]

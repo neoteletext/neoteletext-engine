@@ -3,12 +3,42 @@
 version = 4
 
 [[package]]
+name = "embedded-io"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9eb1aa714776b75c7e67e1da744b81a129b3ff919c8712b5e1b32252c1f07cc7"
+
+[[package]]
+name = "httparse"
+version = "1.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6dbf3de79e51f3d586ab4cb9d5c3e2c14aa28ed23d180cf89b4df0454a69cc87"
+
+[[package]]
 name = "tellytxt-core"
 version = "0.1.0"
+
+[[package]]
+name = "tellytxt-formats"
+version = "0.1.0"
+dependencies = [
+ "tellytxt-core",
+]
 
 [[package]]
 name = "tellytxt-test-image"
 version = "0.0.0"
 dependencies = [
+ "tellytxt-core",
+ "tellytxt-formats",
+ "tellytxt-web",
+]
+
+[[package]]
+name = "tellytxt-web"
+version = "0.1.0"
+dependencies = [
+ "embedded-io",
+ "httparse",
  "tellytxt-core",
 ]

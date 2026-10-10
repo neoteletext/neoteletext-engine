@@ -43,6 +43,13 @@ const BUILDS: &[Build] = &[
     Build { name: "level35", features: "level15 level25 render viewer", budget: None },
     // Every area of the core, with the temporary Bedstead glyphs.
     Build { name: "core-all", features: "level15 level25 render bedstead viewer forms", budget: None },
+    // Format detection reading T42 only, then every format; the core with
+    // no optional area underneath.
+    Build { name: "t42", features: "formats", budget: None },
+    Build { name: "formats", features: "formats-all", budget: None },
+    // The web user agent without push, forms and cookies, then with them.
+    Build { name: "web", features: "web", budget: None },
+    Build { name: "web-all", features: "web-all", budget: None },
 ];
 
 /// Targets without a floating-point unit, where the float probe must be
