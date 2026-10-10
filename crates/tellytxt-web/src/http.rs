@@ -11,7 +11,7 @@
 //!   (RFC 9112 section 7.1) or, where the caller allows it, by the end of
 //!   the connection. The decoder enforces the caller's size limit.
 
-use crate::bytes::{Overflow, TextBuf, Writer, hex_value, parse_decimal, split_once, trim_ows};
+use crate::bytes::{Overflow, TextBuf, Writer, copy_prefix, hex_value, parse_decimal, split_once, trim_ows};
 use crate::consts::{
     CHUNKED, CONNECTION_CLOSE, CONNECTION_UPGRADE, CRLF, HTTP_MINOR_1, HTTP_VERSION, IDENTITY, MAX_CHUNK_LINE,
     MAX_CHUNK_SIZE_DIGITS, MAX_CONTENT_LENGTH_DIGITS, MAX_RESPONSE_HEADERS, MAX_URL_LENGTH, MAX_VALIDATOR_LENGTH,
@@ -392,8 +392,7 @@ impl HeadCollector {
         }
         let take = found.unwrap_or(input.len());
         let end = self.len.checked_add(take).ok_or(HttpError::HeadTooLarge)?;
-        let target = buffer.get_mut(self.len..end).ok_or(HttpError::HeadTooLarge)?;
-        target.copy_from_slice(input.get(..take).unwrap_or(&[]));
+        copy_prefix(buffer.get_mut(self.len..end).ok_or(HttpError::HeadTooLarge)?, input);
         self.len = end;
         Ok((take, found.is_some()))
     }
@@ -522,8 +521,7 @@ impl BodyDecoder {
         let end = input.iter().position(|&b| b == b'\n');
         let take = end.map_or(input.len(), |i| i.saturating_add(1));
         let new_len = self.line_len.checked_add(take).ok_or(HttpError::BadChunk)?;
-        let target = self.line.get_mut(self.line_len..new_len).ok_or(HttpError::BadChunk)?;
-        target.copy_from_slice(input.get(..take).unwrap_or(&[]));
+        copy_prefix(self.line.get_mut(self.line_len..new_len).ok_or(HttpError::BadChunk)?, input);
         self.line_len = new_len;
         Ok((take, end.is_some()))
     }

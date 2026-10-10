@@ -12,7 +12,7 @@
 
 use tellytxt_core::policy;
 
-use crate::bytes::{Overflow, Writer, parse_decimal, starts_with_ignore_case, trim_ows};
+use crate::bytes::{Overflow, Writer, copy_prefix, parse_decimal, starts_with_ignore_case, trim_ows};
 use crate::consts::{
     DEFAULT_COOKIES_PER_HOST, DEFAULT_COOKIES_TOTAL, MAX_COOKIE_AGE_DAYS, MAX_COOKIE_ATTRIBUTE_VALUE,
     MAX_COOKIE_NAME_VALUE, PREFIX_HOST, PREFIX_HOST_HTTP, PREFIX_HTTP, PREFIX_SECURE, SECONDS_PER_DAY,
@@ -349,8 +349,7 @@ impl<const SLOTS: usize, const BYTES: usize> CookieJar<SLOTS, BYTES> {
         let start = self.used;
         for part in [host, name, value, path] {
             let end = self.used.saturating_add(part.len());
-            let target = self.arena.get_mut(self.used..end).ok_or(CookieRejected::NoRoom)?;
-            target.copy_from_slice(part);
+            copy_prefix(self.arena.get_mut(self.used..end).ok_or(CookieRejected::NoRoom)?, part);
             self.used = end;
         }
         let tick = self.next_tick();

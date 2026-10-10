@@ -4,7 +4,7 @@
 //! frames and size limits.
 
 use crate::base64;
-use crate::bytes::{Overflow, Writer};
+use crate::bytes::{Overflow, Writer, copy_prefix};
 use crate::consts::{
     CLOSE_CODE_BYTES, CLOSE_INVALID_DATA, CLOSE_PROTOCOL_ERROR, CLOSE_TOO_BIG, OPCODE_BINARY, OPCODE_CLOSE,
     OPCODE_CONTINUATION, OPCODE_CONTROL_FIRST, OPCODE_PING, OPCODE_PONG, OPCODE_TEXT, STATUS_SWITCHING_PROTOCOLS,
@@ -261,7 +261,7 @@ impl FrameReader {
                     let take = needed.saturating_sub(self.header_len).min(rest.len());
                     let end = self.header_len.saturating_add(take);
                     if let Some(target) = self.header.get_mut(self.header_len..end) {
-                        target.copy_from_slice(rest.get(..take).unwrap_or(&[]));
+                        copy_prefix(target, rest);
                     }
                     self.header_len = end;
                     used = used.saturating_add(take);
@@ -287,13 +287,13 @@ impl FrameReader {
                     if self.opcode >= OPCODE_CONTROL_FIRST {
                         let end = self.control_len.saturating_add(take);
                         let target = self.control.get_mut(self.control_len..end).ok_or(WsError::Protocol)?;
-                        target.copy_from_slice(data);
+                        copy_prefix(target, data);
                         self.control_len = end;
                     } else if !self.skipping {
                         let end = self.message_len.saturating_add(take);
                         match message.get_mut(self.message_len..end) {
                             Some(target) => {
-                                target.copy_from_slice(data);
+                                copy_prefix(target, data);
                                 self.message_len = end;
                             }
                             None if self.skip_oversized => self.skipping = true,

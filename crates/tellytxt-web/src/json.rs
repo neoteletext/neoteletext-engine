@@ -7,7 +7,7 @@
 //! (section 6) and nesting, which is limited to `MAX_JSON_DEPTH` levels
 //! (section 9 permits a limit). Work is linear in the input length.
 
-use crate::bytes::Overflow;
+use crate::bytes::{Overflow, copy_prefix};
 use crate::consts::MAX_JSON_DEPTH;
 
 /// Why a document was rejected, with the byte offset where it happened.
@@ -65,7 +65,7 @@ impl<'a> JsonStr<'a> {
         let mut index = 0usize;
         let mut put = |bytes: &[u8], written: &mut usize| -> Result<(), Overflow> {
             let end = written.checked_add(bytes.len()).ok_or(Overflow)?;
-            output.get_mut(*written..end).ok_or(Overflow)?.copy_from_slice(bytes);
+            copy_prefix(output.get_mut(*written..end).ok_or(Overflow)?, bytes);
             *written = end;
             Ok(())
         };

@@ -3,6 +3,7 @@
 //! security here: RFC 6455 uses it as a checksum that proves the server
 //! understood the handshake. Written in the project (decision E.38).
 
+use crate::bytes::copy_prefix;
 use crate::consts::{SHA1_BLOCK_BYTES, SHA1_DIGEST_BYTES};
 
 /// Initial hash value H0 to H4 (RFC 3174 section 6.1).
@@ -45,14 +46,9 @@ impl Sha1 {
     pub fn update(&mut self, mut data: &[u8]) {
         self.total_bytes = self.total_bytes.wrapping_add(data.len() as u64);
         while !data.is_empty() {
-            let room = SHA1_BLOCK_BYTES.saturating_sub(self.block_len);
-            let take = room.min(data.len());
-            let (head, tail) = data.split_at(take);
-            if let Some(target) = self.block.get_mut(self.block_len..self.block_len.saturating_add(take)) {
-                target.copy_from_slice(head);
-            }
+            let take = copy_prefix(self.block.get_mut(self.block_len..).unwrap_or(&mut []), data);
             self.block_len = self.block_len.saturating_add(take);
-            data = tail;
+            data = data.get(take..).unwrap_or(&[]);
             if self.block_len == SHA1_BLOCK_BYTES {
                 let block = self.block;
                 self.compress(&block);

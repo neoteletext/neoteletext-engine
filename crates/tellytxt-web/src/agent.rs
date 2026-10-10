@@ -22,7 +22,7 @@
 use tellytxt_core::policy;
 use tellytxt_core::types::{Instant, PageAddress, SubCode};
 
-use crate::bytes::{Overflow, TextBuf, Writer};
+use crate::bytes::{Overflow, TextBuf, Writer, copy_prefix};
 use crate::consts::{
     ACCEPT_EVENT_STREAM, ACCEPT_PAGES, ALLOWED_LOCAL, CACHE_ENTRIES, CONFIRMED_ORIGINS, CRLF,
     DEFAULT_CONNECT_TIMEOUT_US, DEFAULT_COOKIES_PER_HOST, DEFAULT_COOKIES_TOTAL, DEFAULT_DESCRIPTOR_LIMIT,
@@ -1152,7 +1152,7 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
                 Ok(step) => {
                     let end = self.fetch.body_len.saturating_add(step.data.len());
                     if let Some(target) = self.buffers.body.get_mut(self.fetch.body_len..end) {
-                        target.copy_from_slice(step.data);
+                        copy_prefix(target, step.data);
                         self.fetch.body_len = end;
                     } else {
                         self.abandon_fetch(Failure::Http(HttpError::BodyTooLarge), sink);
@@ -1889,9 +1889,7 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             }
             Some(WsMessage::Ping) => {
                 let mut payload = [0u8; crate::consts::WS_CONTROL_MAX];
-                let ping = self.push.frames.control_payload();
-                let len = ping.len().min(payload.len());
-                payload.get_mut(..len).unwrap_or(&mut []).copy_from_slice(ping.get(..len).unwrap_or(&[]));
+                let len = copy_prefix(&mut payload, self.push.frames.control_payload());
                 let mut frame = Writer::new(self.buffers.push_request);
                 if ws::write_frame(&mut frame, OPCODE_PONG, payload.get(..len).unwrap_or(&[]), &mut self.random).is_ok()
                 {

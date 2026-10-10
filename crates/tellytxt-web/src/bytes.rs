@@ -69,8 +69,7 @@ impl<'a> Writer<'a> {
         if end > self.capacity() {
             return Err(Overflow);
         }
-        let target = self.buffer.get_mut(self.len..end).ok_or(Overflow)?;
-        target.copy_from_slice(bytes);
+        copy_prefix(self.buffer.get_mut(self.len..end).ok_or(Overflow)?, bytes);
         self.len = end;
         Ok(())
     }
@@ -97,6 +96,19 @@ impl<'a> Writer<'a> {
         }
         Ok(())
     }
+}
+
+/// Copies as many bytes as both slices hold from the start of `source` to
+/// the start of `target`, and returns how many.
+///
+/// REQ-GEN-019: a loop over the pair, not `copy_from_slice`. Where the
+/// optimiser cannot see that two slices cut to the same length are equal,
+/// `copy_from_slice` links its length-mismatch panic into the image.
+pub(crate) fn copy_prefix(target: &mut [u8], source: &[u8]) -> usize {
+    for (to, from) in target.iter_mut().zip(source) {
+        *to = *from;
+    }
+    target.len().min(source.len())
 }
 
 /// Writes `value` in decimal into `digits` and returns the used part.
@@ -146,8 +158,7 @@ impl<const N: usize> TextBuf<N> {
 
     /// Replaces the contents, or changes nothing when `bytes` do not fit.
     pub fn set(&mut self, bytes: &[u8]) -> Result<(), Overflow> {
-        let target = self.bytes.get_mut(..bytes.len()).ok_or(Overflow)?;
-        target.copy_from_slice(bytes);
+        copy_prefix(self.bytes.get_mut(..bytes.len()).ok_or(Overflow)?, bytes);
         self.len = bytes.len();
         Ok(())
     }
@@ -155,8 +166,7 @@ impl<const N: usize> TextBuf<N> {
     /// Appends, or changes nothing when `bytes` do not fit.
     pub fn push(&mut self, bytes: &[u8]) -> Result<(), Overflow> {
         let end = self.len.checked_add(bytes.len()).ok_or(Overflow)?;
-        let target = self.bytes.get_mut(self.len..end).ok_or(Overflow)?;
-        target.copy_from_slice(bytes);
+        copy_prefix(self.bytes.get_mut(self.len..end).ok_or(Overflow)?, bytes);
         self.len = end;
         Ok(())
     }
