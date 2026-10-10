@@ -51,7 +51,10 @@ fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
 /// The source of a file with its `#[cfg(test)]` tail removed.
 fn non_test_source(path: &Path) -> String {
     let text = fs::read_to_string(path).unwrap_or_default();
-    match text.find("#[cfg(test)]") {
+    // Test modules may also need a feature (decision E.61):
+    // `#[cfg(all(test, feature = ...))]`.
+    let start = ["#[cfg(test)]", "#[cfg(all(test,"].iter().filter_map(|marker| text.find(marker)).min();
+    match start {
         Some(index) => text[..index].to_string(),
         None => text,
     }

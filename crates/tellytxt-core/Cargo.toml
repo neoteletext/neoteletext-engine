@@ -37,3 +37,33 @@ proptest = "1.7.0"
 
 [lints]
 workspace = true
+
+# Decision E.61: tests and examples that use an optional area build only
+# when it is compiled in.
+[[test]]
+name = "behaviour"
+required-features = ["level15", "render", "viewer", "forms"]
+
+[[test]]
+name = "drcs"
+required-features = ["level25"]
+
+[[test]]
+name = "level25"
+required-features = ["level15", "level25"]
+
+[[test]]
+name = "objects"
+required-features = ["level25"]
+
+[[test]]
+name = "performance"
+required-features = ["level25", "bedstead"]
+
+[[test]]
+name = "reporting"
+required-features = ["level15", "level25", "viewer"]
+
+[[example]]
+name = "minimal_port"
+required-features = ["level15", "bedstead"]

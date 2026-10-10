@@ -1252,10 +1252,11 @@ pub const ALL_ROWS: u32 = (1 << ROWS) - 1;
 /// Lines of the cell in one field (for documentation of the geometry).
 pub const FIELD_LINES: usize = CELL_FIELD_LINES;
 
-#[cfg(test)]
+// The tests draw with the Bedstead glyphs.
+#[cfg(all(test, feature = "bedstead"))]
 mod level25_tests;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "bedstead"))]
 #[allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 mod tests {
     use super::*;

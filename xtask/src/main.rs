@@ -13,12 +13,15 @@
 //!   (REQ-SEC-016).
 //! - `level25-stream OUT.t42 [--tti DIR]`: write the authored Level 2.5 and
 //!   3.5 test stream (REQ-TST-024).
+//! - `features`: lint and test the fixed list of feature builds of decision
+//!   E.61.
 //! - `size [--target TRIPLE]`: link the microcontroller test image for each
 //!   build of decision E.61 and check its size and symbols (REQ-GEN-009,
 //!   REQ-GEN-019).
 
 mod checks;
 mod corpus;
+mod features;
 mod g3;
 mod glyphs;
 mod level25;
@@ -45,10 +48,11 @@ fn main() -> ExitCode {
         "check-constants" => checks::constants(&root),
         "check-io" => checks::io(&root),
         "level25-stream" => level25::write(&std::env::args().skip(2).collect::<Vec<_>>()),
+        "features" => features::run(&root),
         "size" => size::run(&root, &std::env::args().skip(2).collect::<Vec<_>>()),
         _ => Err(format!(
             "usage: cargo xtask <glyphs|corpus|traceability|check-layers|check-deps|check-constants|check-io|\
-             level25-stream|size> (got {command:?})"
+             level25-stream|features|size> (got {command:?})"
         )),
     };
     match result {

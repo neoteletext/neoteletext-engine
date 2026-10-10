@@ -196,7 +196,8 @@ fn spacing_mark(combining: char) -> Option<char> {
     })
 }
 
-#[cfg(test)]
+// The tests draw with the Bedstead glyphs.
+#[cfg(all(test, feature = "bedstead"))]
 #[allow(clippy::indexing_slicing, clippy::unwrap_used)]
 mod tests {
     use super::*;
