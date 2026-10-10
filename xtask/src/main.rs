@@ -20,6 +20,7 @@
 //!   draw (decision E.62).
 //! - `glyph-check [--complete]`: check the original glyph set (decision
 //!   E.62).
+//! - `glyph-proof OUT.png [TEXT...]`: draw the original glyphs for review.
 //! - `features`: lint and test the fixed list of feature builds of decision
 //!   E.61.
 //! - `size [--target TRIPLE]`: link the microcontroller test image for each
@@ -58,11 +59,12 @@ fn main() -> ExitCode {
         "level25-stream" => level25::write(&std::env::args().skip(2).collect::<Vec<_>>()),
         "glyph-inventory" => original::inventory(&root),
         "glyph-check" => original::check(&root, &std::env::args().skip(2).collect::<Vec<_>>()),
+        "glyph-proof" => original::proof(&root, &std::env::args().skip(2).collect::<Vec<_>>()),
         "features" => features::run(&root),
         "size" => size::run(&root, &std::env::args().skip(2).collect::<Vec<_>>()),
         _ => Err(format!(
             "usage: cargo xtask <glyphs|corpus|traceability|check-layers|check-deps|check-constants|check-io|\
-             level25-stream|glyph-inventory|glyph-check|features|size> (got {command:?})"
+             level25-stream|glyph-inventory|glyph-check|glyph-proof|features|size> (got {command:?})"
         )),
     };
     match result {

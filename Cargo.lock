@@ -990,6 +990,7 @@ version = "0.1.0"
 dependencies = [
  "tellytxt-core",
  "tellytxt-formats",
+ "tellytxt-image",
 ]
 
 [[package]]

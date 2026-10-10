@@ -7,6 +7,8 @@
 //!   well-formedness, confusables, independence from the Bedstead glyphs
 //!   (the stand-in for the SAA5050), and coverage, which `--complete`
 //!   requires to be whole.
+//! - `cargo xtask glyph-proof OUT.png [TEXT...]` draws every glyph, then
+//!   each TEXT as a line, for review by people (decision E.62).
 //!
 //! The file format and the drawing rules are in `docs/glyph-style-guide.md`.
 
@@ -15,7 +17,7 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::Path;
 use tellytxt_core::charset::{CharRef, CharSet, G0, G0Set, G2Set, NationalOption, to_unicode};
-use tellytxt_core::glyphs::SPACING_MARKS;
+use tellytxt_core::glyphs::{PLACEHOLDER, SPACING_MARKS};
 
 const REQUIRED: &str = "crates/tellytxt-core/src/glyphs/required.txt";
 const ORIGINAL: &str = "crates/tellytxt-core/src/glyphs/original.txt";
@@ -423,6 +425,65 @@ pub fn check(root: &Path, args: &[String]) -> Result<(), String> {
         }
         Err(format!("{} failure(s)", failures.len()))
     }
+}
+
+/// Proof sheet geometry: glyphs per row, the size of one dot in pixels, and
+/// the cell around a glyph in dots (REQ-RND-010: 6 by 10 for 5 by 9).
+const PROOF_COLUMNS: usize = 16;
+const PROOF_DOT: usize = 4;
+const CELL_WIDTH: usize = COLUMNS + 1;
+const CELL_HEIGHT: usize = ROWS + 1;
+
+/// `cargo xtask glyph-proof OUT.png [TEXT...]`.
+pub fn proof(root: &Path, args: &[String]) -> Result<(), String> {
+    let Some((out, texts)) = args.split_first() else {
+        return Err("usage: cargo xtask glyph-proof OUT.png [TEXT...]".into());
+    };
+    let entries = parse_original(&read(root, ORIGINAL)?).map_err(|errors| errors.join("\n"))?;
+    let glyphs: Vec<(char, Rows)> =
+        entries.keys().filter_map(|&c| resolve(&entries, c, 0).map(|rows| (c, rows))).collect();
+    // The renderer's placeholder for a character with no glyph (REQ-CHR-004).
+    let missing = PLACEHOLDER;
+    let mut lines: Vec<Vec<Rows>> =
+        glyphs.chunks(PROOF_COLUMNS).map(|chunk| chunk.iter().map(|(_, rows)| *rows).collect()).collect();
+    for text in texts {
+        lines.push(Vec::new());
+        lines.push(
+            text.chars().map(|c| glyphs.iter().find(|(g, _)| *g == c).map_or(missing, |(_, rows)| *rows)).collect(),
+        );
+    }
+    let cells = lines.iter().map(Vec::len).max().unwrap_or(0).max(1);
+    let width = cells * CELL_WIDTH * PROOF_DOT;
+    let height = lines.len().max(1) * CELL_HEIGHT * PROOF_DOT;
+    let ink = |x: usize, y: usize| -> bool {
+        let (dot_x, dot_y) = (x / PROOF_DOT, y / PROOF_DOT);
+        let (cell, column) = (dot_x / CELL_WIDTH, dot_x % CELL_WIDTH);
+        let (line, row) = (dot_y / CELL_HEIGHT, dot_y % CELL_HEIGHT);
+        column < COLUMNS
+            && row < ROWS
+            && lines.get(line).and_then(|l| l.get(cell)).is_some_and(|rows| ink(rows, row, column))
+    };
+    let palette = [
+        tellytxt_image::palette::Rgba { r: 0xF0, g: 0xF0, b: 0xE8, a: 0xFF },
+        tellytxt_image::palette::Rgba { r: 0x10, g: 0x10, b: 0x10, a: 0xFF },
+    ];
+    let mut scratch = vec![0u8; 2 * (width + 1)];
+    let mut file = fs::File::create(out).map_err(|e| format!("{out}: {e}"))?;
+    tellytxt_image::png::write(
+        &mut file,
+        width,
+        height,
+        &palette,
+        &mut |y, row: &mut [u8]| {
+            for (x, pixel) in row.iter_mut().enumerate() {
+                *pixel = u8::from(ink(x, y));
+            }
+        },
+        &mut scratch,
+    )
+    .map_err(|e| format!("{out}: {e:?}"))?;
+    println!("{out}: {} glyphs, {} text lines", glyphs.len(), texts.len());
+    Ok(())
 }
 
 #[cfg(test)]
