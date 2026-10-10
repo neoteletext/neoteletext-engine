@@ -1,6 +1,12 @@
 //! Throughput measurements (REQ-GEN-013, REQ-TST-050). Run with
 //! `cargo test -p tellytxt-core --release --test performance -- --ignored --nocapture`.
-#![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects, missing_docs)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    clippy::cast_precision_loss,
+    missing_docs
+)]
 
 use std::time::Instant as Clock;
 use tellytxt_core::acq::{Decoder, StoredPage};
