@@ -7,12 +7,13 @@ mod commands;
 mod options;
 mod output;
 mod terminal;
+#[cfg(feature = "view")]
 mod view;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 use std::process::ExitCode;
-use tellytxt_app::{exit, fetch, sandbox};
+use tellytxt_app::{exit, sandbox};
 
 /// tellytxt: a software teletext receiver (ETSI EN 300 706 Levels 1.0, 1.5, 2.5 and 3.5).
 #[derive(Parser, Debug)]
@@ -289,7 +290,7 @@ fn main() -> ExitCode {
         Command::ServiceInfo { common } => commands::service_info(&common.options()),
         Command::Check { files, descriptor } => commands::check(&files, descriptor.as_deref()),
         Command::SandboxTest => sandbox::self_test(),
-        Command::Fetch { address, no_sandbox, allow_local } => fetch::run(&address, no_sandbox, &allow_local),
+        Command::Fetch { address, no_sandbox, allow_local } => commands::fetch(&address, no_sandbox, &allow_local),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,

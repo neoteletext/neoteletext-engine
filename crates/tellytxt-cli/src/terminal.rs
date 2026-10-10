@@ -40,12 +40,21 @@ pub struct TextArea {
 }
 
 /// The text area, if the terminal reports its size in pixels.
+#[cfg(feature = "view")]
 #[must_use]
 pub fn text_area() -> Option<TextArea> {
     let size = crossterm::terminal::window_size().ok()?;
     let area =
         TextArea { width: usize::from(size.width), height: usize::from(size.height), rows: usize::from(size.rows) };
     (area.width > 0 && area.height > 0 && area.rows > 0).then_some(area)
+}
+
+/// A build without the viewer has no terminal library to measure with,
+/// so `show` draws images at scale 1 unless `--scale` names another.
+#[cfg(not(feature = "view"))]
+#[must_use]
+pub const fn text_area() -> Option<TextArea> {
+    None
 }
 
 /// The largest whole-number scale at which a page of `page_width` by

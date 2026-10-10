@@ -1,5 +1,7 @@
 //! Web mode against the local test server (REQ-WEB-013): the whole path
-//! from descriptor to decoded page, through the fetcher process.
+//! from descriptor to decoded page, through the fetcher process. Only a
+//! build with live feeds has web mode (decision E.61).
+#![cfg(feature = "live")]
 #![allow(missing_docs)]
 
 use std::io::{BufRead, BufReader};
@@ -78,6 +80,7 @@ fn faults_do_not_crash_the_receiver() {
     }
 }
 
+#[cfg(feature = "view")]
 #[test]
 fn viewer_fills_and_submits_a_form() {
     let Some(server) = server() else { return };
@@ -95,6 +98,7 @@ fn viewer_fills_and_submits_a_form() {
 
 /// REQ-WEB-009: the driver starts and stops its own server, so that the
 /// network goes away under a running viewer.
+#[cfg(feature = "view")]
 #[test]
 fn viewer_works_offline_and_recovers() {
     let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/web-server");

@@ -5,15 +5,23 @@
 //!
 //! Nothing here knows about the terminal or about parsing arguments; those
 //! belong to each program.
+//!
+//! Features (decision E.61), all on by default: `live` for live feeds and
+//! web services, which brings in the web module and TLS, and `slice` for
+//! raw sampled video. The types stay whatever the features; a part left
+//! out is refused with [`not_in_build`].
 
 pub mod convert;
 pub mod extras;
+#[cfg(feature = "live")]
 pub mod fetch;
 pub mod input;
+#[cfg(feature = "live")]
 pub mod live;
 pub mod pipe;
 pub mod sandbox;
 pub mod session;
+#[cfg(feature = "slice")]
 pub mod slice;
 pub mod source;
 
@@ -31,3 +39,10 @@ pub mod exit {
 
 /// An operation's failure: an exit status and a message.
 pub type Failure = (u8, String);
+
+/// The failure for a part this build leaves out (decision E.61): invalid
+/// usage of this build, with the feature that would bring the part in.
+#[must_use]
+pub fn not_in_build(part: &str, feature: &str) -> Failure {
+    (exit::USAGE, format!("{part}: not in this build (it was built without the `{feature}` feature)"))
+}

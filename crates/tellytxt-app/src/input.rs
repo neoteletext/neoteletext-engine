@@ -88,12 +88,24 @@ pub fn is_live(input: &str) -> bool {
         || input.starts_with("https://")
 }
 
+/// Starts the fetcher process for a live input (REQ-SEC-018).
+#[cfg(feature = "live")]
+fn live_source(options: &Options) -> Result<Box<dyn Source>, Failure> {
+    crate::live::open(&options.input, options.no_sandbox, &options.allow_local)
+}
+
+/// A build without the `live` feature has no web module to fetch with.
+#[cfg(not(feature = "live"))]
+fn live_source(_options: &Options) -> Result<Box<dyn Source>, Failure> {
+    Err(crate::not_in_build("live feeds and web services", "live"))
+}
+
 /// Collects a live source for `--duration` seconds, or until `wanted` is
 /// stored and complete (REQ-CLI-002).
 fn load_live(options: &Options, wanted: Option<PageAddress>) -> Result<Session, Failure> {
     let config = config(options)?;
     let mut session = Session::new(config, options.pages);
-    let mut source = crate::live::open(&options.input, options.no_sandbox, &options.allow_local)?;
+    let mut source = live_source(options)?;
     let start = std::time::Instant::now();
     let limit = std::time::Duration::from_secs(options.duration);
     if let Some(page) = wanted {
@@ -251,7 +263,7 @@ pub fn open_live(options: &Options) -> Result<(Session, Box<dyn Source>), Failur
     if is_live(&options.input) {
         let config = config(options)?;
         let session = Session::new(config, options.pages);
-        let source = crate::live::open(&options.input, options.no_sandbox, &options.allow_local)?;
+        let source = live_source(options)?;
         return Ok((session, source));
     }
     Ok((load(options)?, Box::new(Finished)))

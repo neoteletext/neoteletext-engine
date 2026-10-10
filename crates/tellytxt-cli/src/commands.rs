@@ -7,6 +7,7 @@ use crate::{GraphicsChoice, RasterArgs};
 use clap::ValueEnum;
 use std::fs::File;
 use std::io::{IsTerminal, Write};
+use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 pub use tellytxt_app::Failure;
 use tellytxt_app::input::{self, Options};
@@ -14,7 +15,7 @@ use tellytxt_app::sandbox::{self, Policy};
 use tellytxt_app::session::Session;
 use tellytxt_app::{convert as conversion, exit};
 use tellytxt_core::acq::StoredPage;
-use tellytxt_core::consts::{CELL_WIDTH, COLUMNS, ROWS, SIDE_PANEL_MAX_COLUMNS};
+use tellytxt_core::consts::ROWS;
 use tellytxt_core::fsm::PageKey;
 use tellytxt_core::level1::Grid;
 use tellytxt_core::policy::is_safe_file_name_byte;
@@ -267,6 +268,7 @@ pub fn show(
 }
 
 /// `ttx view`.
+#[cfg(feature = "view")]
 pub fn view(
     options: &Options,
     raster_args: &RasterArgs,
@@ -274,6 +276,7 @@ pub fn view(
     legacy_mosaics: bool,
     colours8: bool,
 ) -> Result<(), Failure> {
+    use tellytxt_core::consts::{CELL_WIDTH, COLUMNS, SIDE_PANEL_MAX_COLUMNS};
     let (mut session, mut source) = input::open_live(options)?;
     let (display, _) = terminal::detect(display(graphics), std::io::stdout().is_terminal());
     let area = if display == Display::Iterm2 { terminal::text_area() } else { None };
@@ -286,6 +289,18 @@ pub fn view(
     let depth = if colours8 { ColourDepth::Eight } else { ColourDepth::TrueColour };
     crate::view::run(&mut session, source.as_mut(), display, scale, depth, mosaic_style(legacy_mosaics))
         .map_err(|error| (exit::INPUT, error.to_string()))
+}
+
+/// `ttx view` in a build without the viewer.
+#[cfg(not(feature = "view"))]
+pub fn view(
+    _options: &Options,
+    _raster_args: &RasterArgs,
+    _graphics: GraphicsChoice,
+    _legacy_mosaics: bool,
+    _colours8: bool,
+) -> Result<(), Failure> {
+    Err(tellytxt_app::not_in_build("the interactive viewer", "view"))
 }
 
 /// A file name for a page, from validated parts only (REQ-SEC-010).
@@ -425,17 +440,50 @@ pub fn convert(options: &Options, output: &Path, to: ConvertTarget, page: Option
 }
 
 /// `ttx slice`.
+#[cfg(feature = "slice")]
 pub fn slice(options: &Options, output: &Path, preset: &str) -> Result<(), Failure> {
     let counters = tellytxt_app::slice::slice(options, output, preset)?;
     eprintln!("{counters:?}");
     Ok(())
 }
 
+/// `ttx slice` in a build without the slicer.
+#[cfg(not(feature = "slice"))]
+pub fn slice(_options: &Options, _output: &Path, _preset: &str) -> Result<(), Failure> {
+    Err(tellytxt_app::not_in_build("raw video slicing", "slice"))
+}
+
+/// `ttx fetch`, the fetcher process of live mode (REQ-SEC-018), which
+/// `ttx` starts by running itself again.
+#[cfg(feature = "live")]
+pub fn fetch(address: &str, no_sandbox: bool, allow_local: &[IpAddr]) -> Result<(), Failure> {
+    tellytxt_app::fetch::run(address, no_sandbox, allow_local)
+}
+
+/// `ttx fetch` in a build without live feeds.
+#[cfg(not(feature = "live"))]
+pub fn fetch(_address: &str, _no_sandbox: bool, _allow_local: &[IpAddr]) -> Result<(), Failure> {
+    Err(tellytxt_app::not_in_build("the fetcher process of live mode", "live"))
+}
+
+/// The short names of the services a descriptor lists, for `--descriptor`.
+#[cfg(feature = "live")]
+fn descriptor_service_names(path: &Path) -> Result<Vec<Vec<u8>>, Failure> {
+    tellytxt_app::live::descriptor_service_names(path)
+}
+
+/// Service descriptors are read by the web module, which a build without
+/// live feeds leaves out.
+#[cfg(not(feature = "live"))]
+fn descriptor_service_names(_path: &Path) -> Result<Vec<Vec<u8>>, Failure> {
+    Err(tellytxt_app::not_in_build("service descriptors (--descriptor)", "live"))
+}
+
 /// `ttx check`: the page checker (REQ-CLI-006). Exit status 4 on errors.
 pub fn check(files: &[PathBuf], descriptor: Option<&Path>) -> Result<(), Failure> {
     use tellytxt_formats::check::{CheckOptions, Severity, check_page};
     let services: Vec<Vec<u8>> = match descriptor {
-        Some(path) => tellytxt_app::live::descriptor_service_names(path)?,
+        Some(path) => descriptor_service_names(path)?,
         None => Vec::new(),
     };
     let names: Vec<&[u8]> = services.iter().map(Vec::as_slice).collect();
