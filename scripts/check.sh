@@ -17,7 +17,7 @@ cargo fmt --all --check
 step "clippy, warnings as errors (REQ-GEN-006)"
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 
-step "tests"
+step "tests (REQ-TST-001)"
 cargo test --workspace --all-features --quiet
 
 step "architecture and rule checks (REQ-ARCH-011, REQ-GEN-014, REQ-GEN-017, REQ-SEC-016)"
@@ -56,6 +56,15 @@ if [ "$mode" = "full" ]; then
             step "cargo-deny on $TELLYTXT_REMOTE: licences and advisories (REQ-GEN-017, REQ-SEC-014)"
             ssh "$TELLYTXT_REMOTE" 'cd tellytxt-check && . ~/.cargo/env && cargo deny check 2>&1 | tail -1; exit ${PIPESTATUS[0]}'
             deny_done=yes
+        fi
+
+        if ssh "$TELLYTXT_REMOTE" '. ~/.cargo/env && command -v cargo-llvm-cov >/dev/null'; then
+            step "core line coverage on $TELLYTXT_REMOTE, at least 90% (REQ-TST-041)"
+            ssh "$TELLYTXT_REMOTE" 'cd tellytxt-check && . ~/.cargo/env && \
+                cargo llvm-cov -p tellytxt-core --summary-only --fail-under-lines 90 2>&1 | grep -E "^TOTAL"; \
+                exit ${PIPESTATUS[0]}'
+        else
+            step "cargo-llvm-cov not installed on $TELLYTXT_REMOTE: coverage SKIPPED"
         fi
 
         # REQ-TST-040: every target for a fixed time on each change, after

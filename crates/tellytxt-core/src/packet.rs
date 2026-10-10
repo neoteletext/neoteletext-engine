@@ -692,6 +692,9 @@ pub mod encode {
 }
 
 #[cfg(test)]
+// REQ-TST-010: headers, links and enhancement packets built by the encoder,
+// every field checked; real captures are decoded by tests/corpus.rs and the
+// service data packet by service.rs.
 #[allow(clippy::unwrap_used, clippy::panic, clippy::indexing_slicing)]
 mod tests {
     use super::*;

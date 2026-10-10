@@ -33,6 +33,8 @@ httparse = { version = "1.10.1", default-features = false }
 # REQ-SEC-015: only the C interface crate (REQ-GEN-018) may contain unsafe
 # code, and it will override this lint for itself alone.
 unsafe_code = "forbid"
+# REQ-DOC-001: every public item is documented; warnings are errors in the
+# gates.
 missing_docs = "warn"
 unused_qualifications = "warn"
 

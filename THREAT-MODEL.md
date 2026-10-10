@@ -33,7 +33,7 @@ This is the threat model REQ-SEC-002 requires. Security overrides every other re
 | Forms | 1 | Form data, trust | Origin shown, first submission confirmed, no password fields, same-origin targets only (REQ-SEC-009). |
 | Links | 1 | Trust | Receiver-drawn link row, other services marked and confirmed (REQ-SEC-024, REQ-NAV-011, REQ-NAV-012). |
 | The `ttx` process | 1 | Host | No `unsafe` code; the library crates have no operating-system access (REQ-SEC-016); Landlock and seccomp on Linux after inputs and outputs are open (REQ-SEC-017). |
-| Fetcher to decoder (web mode) | 1, 2 | Host | Privilege separation planned by REQ-SEC-018; see the status table below. |
+| Fetcher to decoder (web mode) | 1, 2 | Host | Privilege separation (REQ-SEC-018): the fetcher process holds the network and TLS, the decoder holds the terminal and files. They speak a framed pipe protocol whose every frame is length-checked and validated by the receiver; the decoder ignores frame kinds only it may send. |
 | Dependencies and tools | 3 | Build | Microcontroller crates have no dependencies beyond `embedded-io` and `httparse` (decision E.38); `Cargo.lock` committed; toolchain pinned (REQ-SEC-014). |
 
 ## Status at this milestone
@@ -44,6 +44,8 @@ This is the threat model REQ-SEC-002 requires. Security overrides every other re
 | REQ-SEC-010 terminal output | Allow-list and injection test in `ttx`. |
 | REQ-SEC-016 no ambient authority | Checked by `cargo xtask check-io`. |
 | REQ-SEC-017 Linux sandbox | Landlock (files, TCP) and seccomp (no programs, no new processes). macOS and Windows are Phase 2: `ttx` prints a notice (IMPLEMENTATION-LOG.md decision 15). |
+| REQ-SEC-018 privilege separation | Done for every live input (`zxnet:`, `wss://`, `http://`, `https://`). On Linux both processes sandbox themselves: the fetcher may use the network and read only the resolver files (IMPLEMENTATION-LOG.md decision 28); the decoder has no network. Tested end to end against the local test server, including a form submission through the viewer. |
+| REQ-SEC-024 links | The viewer ignores link keys unless row 24 is shown in full; tested in the core viewer tests. |
 | REQ-SEC-014 supply chain | Lockfile and pinned toolchain in place. `cargo-deny`, the CycloneDX bill of materials and release signing are not set up yet. |
 | REQ-TST-040 fuzzing | Not set up yet: needs `cargo-fuzz` and a nightly toolchain, which are not installed. |
 
@@ -52,3 +54,4 @@ This is the threat model REQ-SEC-002 requires. Security overrides every other re
 | Date | Milestone | Reviewer | Result |
 |---|---|---|---|
 | 10 October 2026 | Implementation in progress | Initial model | Gaps listed in the status table above. |
+| 10 October 2026 | amd64 and iTerm2 implementation complete | Implementation review | REQ-SEC-018 and REQ-SEC-024 done. Open: fuzzing, `cargo-deny`, the bill of materials, release signing, and the macOS and Windows sandboxes. |
