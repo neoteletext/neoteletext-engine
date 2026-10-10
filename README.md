@@ -1,6 +1,6 @@
 # tellytxt
 
-A software receiver for World System Teletext (ETSI EN 300 706, Presentation Levels 1.0 and 1.5), written in Rust. The core library is `no_std` with no allocation and runs on microcontrollers; the `ttx` command-line program decodes recordings, live feeds and web teletext services, and shows pages in the terminal (iTerm2 inline images or coloured text), as text, or as images.
+A software receiver for World System Teletext (ETSI EN 300 706, Presentation Levels 1.0, 1.5, 2.5 and 3.5), written in Rust. The core library is `no_std` with no allocation and runs on microcontrollers; the `ttx` command-line program decodes recordings, live feeds and web teletext services, and shows pages in the terminal (iTerm2 inline images or coloured text), as text, or as images.
 
 ```sh
 cargo build --release -p tellytxt-cli
@@ -25,13 +25,13 @@ target/release/ttx view zxnet:teefax
 
 | Crate | Role |
 |---|---|
-| `tellytxt-core` | Error protection, packets, acquisition, the page store, character sets, Level 1.0 and 1.5 decoding, the state machines, the row renderer and the viewer model. `no_std`, no allocation, no panics. |
-| `tellytxt-formats` | Readers and writers: T42, transport streams, PES, sliced VBI, TTI, EP1, edit.tf and screen dumps. |
+| `tellytxt-core` | Error protection, packets, acquisition, the page and enhancement stores, character sets, Level 1.0 and 1.5 decoding, the Level 2.5 and 3.5 enhancement processor with objects, DRCS and the Colour Map, the state machines, the row renderer and the viewer model. `no_std`, no allocation, no panics. |
+| `tellytxt-formats` | Readers and writers: T42, transport streams, PES, sliced VBI, TTI (with enhancement data and enhancement pages), EP1, edit.tf and screen dumps; and a builder for Level 2.5 and 3.5 test pages. |
 | `tellytxt-slicer` | A software data slicer for raw sampled video. |
 | `tellytxt-web` | The sans-IO web agent: service descriptors, HTTP, WebSockets, server-sent events, cookies, forms and the zxnet feed. |
 | `tellytxt-image` | Palettes, pixel formats, scaling, PNG and PPM writers. |
 | `tellytxt-cli` | The `ttx` program. |
-| `xtask` | Project checks: layers, dependencies, constants, glyphs, the test corpus and the traceability table. |
+| `xtask` | Project checks: layers, dependencies, constants, glyphs (including the generated G3 set), the test corpus and the traceability table; `cargo xtask level25-stream` writes the authored Level 2.5 and 3.5 test stream. |
 
 ## Checks
 

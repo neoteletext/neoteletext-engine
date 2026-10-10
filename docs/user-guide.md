@@ -91,11 +91,15 @@ A live input runs in two processes (REQ-SEC-018). A fetcher process does the net
 
 ### Images
 
-`render` writes PNG (the default, with alpha for transparent cells) or PPM with `--image ppm`. The picture is 480 by 500 pixels at scale 1, or 480 by 250 in the 12-by-10 cell mode of the `saa5246a` profile.
+`render` writes PNG (the default, with alpha for transparent cells) or PPM with `--image ppm`. The picture is 480 by 500 pixels at scale 1, or 480 by 250 in the 12-by-10 cell mode of the `saa5246a` profile. A page with side panels at Levels 2.5 and 3.5 is wider: 672 pixels for 56 columns. The palette is the page's 32-entry Colour Map.
 
 ### Text
 
-`text` writes the page as UTF-8, one line per row. Mosaics become Unicode block mosaics and national characters their Unicode equivalents.
+`text` writes the page as UTF-8, one line per row. Mosaics become Unicode block mosaics and national characters their Unicode equivalents. At Levels 2.5 and 3.5 rows include their side panels, G3 smooth mosaics and line-drawing characters become the Unicode characters for them (REQ-CHR-011), and DRCS characters, which have no Unicode equivalent, become U+FFFD.
+
+### Levels 2.5 and 3.5
+
+At the default level, 3.5, `ttx` also keeps the enhancement pages a service sends (object pages, DRCS pages and the Magazine Organization Table) and the magazine packets M/29, and draws each page with them: the page's own Colour Map of 32 colours, screen and row colours, side panels, double width and double size, underline, invert, the additional flash modes, the Level 3.5 font styles, the G3 set, objects and DRCS characters. A fault in any of these removes only what depends on it; the Level 1 page always shows. `--level 1.5` shows a page as a Level 1.5 receiver would, without re-acquiring anything. `cargo xtask level25-stream FILE.t42` writes a test stream with a page for each feature, indexed on page 100.
 
 ## The viewer
 
