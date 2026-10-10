@@ -146,7 +146,8 @@ impl StoredPage {
         self.page_data_raw = None;
     }
 
-    /// Merges received bytes into `row` starting at `column` (decision E.8).
+    /// Merges received bytes into `row` starting at `column` (decision E.8,
+    /// REQ-ACQ-008): rows not received keep their stored content.
     /// Returns the number of parity failures.
     fn merge(&mut self, row: usize, column: usize, bytes: &[u8], policy: ParityPolicy) -> u32 {
         let mut failures = 0u32;
@@ -387,6 +388,8 @@ pub enum SearchStatus {
 pub struct Decoder<'a> {
     store: PageStore<'a>,
     config: Config,
+    // REQ-ACQ-001: the page in progress in each magazine, and the serial
+    // or parallel mode of the latest valid header.
     magazines: [MagazineState; MAGAZINES],
     receiving_slot: [Option<usize>; MAGAZINES],
     last_packet: [Instant; MAGAZINES],
@@ -591,8 +594,9 @@ impl<'a> Decoder<'a> {
         }
     }
 
-    /// Completes pages whose packets stopped arriving (decision E.19) and
-    /// marks pages stale (REQ-FSM-004). Call regularly with the current time.
+    /// Completes pages whose packets stopped arriving (decision E.19,
+    /// REQ-ACQ-003) and marks pages stale (REQ-FSM-004). Call regularly with
+    /// the current time.
     pub fn tick(&mut self, now: Instant, events: &mut dyn FnMut(Event)) {
         for index in 0..MAGAZINES {
             let state = self.magazines.get(index).copied().unwrap_or(MagazineState::Idle);
@@ -620,7 +624,8 @@ impl<'a> Decoder<'a> {
         }
     }
 
-    /// Handles a header for all eight magazine machines.
+    /// Handles a header for all eight magazine machines: it starts its own
+    /// page (REQ-ACQ-002) and ends pages as REQ-ACQ-003 lists.
     fn header(&mut self, header: &Header, now: Instant, events: &mut dyn FnMut(Event)) {
         if let Some(serial) = header.serial() {
             self.serial = serial;
@@ -660,7 +665,8 @@ impl<'a> Decoder<'a> {
         MagazineEvent::StorableHeader { key, erase: control.has(C4_ERASE) }
     }
 
-    /// Updates the rolling header and the clock (decision E.11).
+    /// Updates the rolling header and the clock (decision E.11,
+    /// REQ-ACQ-011).
     fn roll(&mut self, header: &Header) {
         let Some(control) = header.control else { return };
         if !header.is_complete() {
@@ -680,7 +686,9 @@ impl<'a> Decoder<'a> {
         }
     }
 
-    /// Handles a row-like packet (rows 1 to 28) of a magazine.
+    /// Handles a row-like packet (rows 1 to 28) of a magazine. In serial
+    /// mode a packet of another magazine is discarded and counted
+    /// (REQ-ACQ-002, Annex B.3).
     fn row_like(
         &mut self,
         magazine: Magazine,
@@ -860,7 +868,7 @@ impl<'a> Decoder<'a> {
 mod tests {
     extern crate std;
     use super::*;
-    use crate::consts::{C4_ERASE, C11_SERIAL};
+    use crate::consts::{C4_ERASE, C11_SERIAL, CODE_MASK_7BIT};
     use crate::ecc::with_odd_parity;
     use crate::packet::encode;
     use std::vec::Vec;
@@ -893,6 +901,7 @@ mod tests {
         PageKey { address: PageAddress::from_mpp(mpp).unwrap(), subcode: SubCode::new(sub) }
     }
 
+    /// REQ-ACQ-002, REQ-ACQ-003: parallel mode.
     #[test]
     fn parallel_page_is_stored_and_completed() {
         let mut slots = std::vec![StoredPage::EMPTY; 4];
@@ -916,6 +925,7 @@ mod tests {
         assert!(events.contains(&Event::Discarded(Discard::RowWithoutHeader)));
     }
 
+    /// REQ-ACQ-002, REQ-ACQ-003: serial mode.
     #[test]
     fn serial_mode_header_of_any_magazine_ends_page() {
         let mut slots = std::vec![StoredPage::EMPTY; 4];
@@ -937,12 +947,14 @@ mod tests {
         assert!(!page.has_row(2));
     }
 
+    /// REQ-ACQ-008: a corrupted retransmission replaces the row byte by byte,
+    /// keeping the good stored byte where the new one failed parity.
     #[test]
     fn erase_bit_clears_rows_and_parity_merge_keeps_good_bytes() {
         let mut slots = std::vec![StoredPage::EMPTY; 4];
         let mut decoder = Decoder::new(&mut slots, Config::default());
         let mut events = Vec::new();
-        let mut corrupted = text(b"GOOD");
+        let mut corrupted = text(b"BNEW");
         corrupted[0] ^= 0x01; // breaks parity of the first byte
         feed(
             &mut decoder,
@@ -959,6 +971,7 @@ mod tests {
         let address = PageAddress::from_mpp(0x100).unwrap();
         let page = decoder.store().get(address, SubCode::ANY).unwrap();
         assert_eq!(page.cells[1][0], with_odd_parity(b'G'), "E.8: good byte kept");
+        assert_eq!(&page.cells[1][1..4], &text(b"NEW")[..3], "good new bytes replace the old");
         assert!(page.has_row(3), "rows not received keep their content");
         feed(&mut decoder, &[header(1, 0x00, 0, C4_ERASE), header(1, 0x02, 0, 0)], &mut events);
         let page = decoder.store().get(address, SubCode::ANY).unwrap();
@@ -966,6 +979,7 @@ mod tests {
         assert!(events.contains(&Event::PageErased(key(0x100, 0))));
     }
 
+    /// REQ-ACQ-003: the decision E.19 timeout.
     #[test]
     fn timeout_completes_and_hex_pages_are_not_stored() {
         let mut slots = std::vec![StoredPage::EMPTY; 4];
@@ -1009,5 +1023,111 @@ mod tests {
         let mut subcodes = [SubCode::default(); 8];
         let count = decoder.store().subcodes(PageAddress::from_mpp(0x100).unwrap(), &mut subcodes);
         assert_eq!(&subcodes[..count], &[SubCode::new(1), SubCode::new(2), SubCode::new(3)]);
+    }
+
+    /// REQ-ACQ-001, REQ-ACQ-002: parallel magazines interleave, the mode
+    /// follows C11 of the latest header, and in serial mode rows of another
+    /// magazine are discarded and counted.
+    #[test]
+    fn interleaved_magazines_and_serial_mode_follow_c11() {
+        let mut slots = std::vec![StoredPage::EMPTY; 8];
+        let mut decoder = Decoder::new(&mut slots, Config::default());
+        let mut events = Vec::new();
+        feed(
+            &mut decoder,
+            &[
+                header(1, 0x00, 0, 0),
+                header(2, 0x00, 0, 0),
+                encode::row(mag(1), 1, &text(b"ONE")),
+                encode::row(mag(2), 1, &text(b"TWO")),
+                encode::row(mag(1), 2, &text(b"ONE2")),
+            ],
+            &mut events,
+        );
+        assert!(!decoder.serial);
+        let receiving = |decoder: &Decoder<'_>, magazine: u8| decoder.magazines[mag(magazine).index()];
+        assert_eq!(receiving(&decoder, 1), MagazineState::Receiving(key(0x100, 0)));
+        assert_eq!(receiving(&decoder, 2), MagazineState::Receiving(key(0x200, 0)));
+        let one = decoder.store().get(PageAddress::from_mpp(0x100).unwrap(), SubCode::ANY).unwrap();
+        assert_eq!((&one.cells[1][..3], &one.cells[2][..4]), (&text(b"ONE")[..3], &text(b"ONE2")[..4]));
+        let two = decoder.store().get(PageAddress::from_mpp(0x200).unwrap(), SubCode::ANY).unwrap();
+        assert_eq!(&two.cells[1][..3], &text(b"TWO")[..3]);
+        assert!(!two.has_row(2));
+        let discarded = decoder.statistics().discarded;
+        events.clear();
+        feed(
+            &mut decoder,
+            &[header(3, 0x00, 0, C11_SERIAL), encode::row(mag(3), 1, &text(b"S")), encode::row(mag(4), 1, &text(b"X"))],
+            &mut events,
+        );
+        assert!(decoder.serial);
+        assert_eq!(decoder.statistics().discarded, discarded + 1, "the magazine 4 row");
+        let reasons: Vec<&Event> = events.iter().filter(|event| matches!(event, Event::Discarded(_))).collect();
+        assert_eq!(reasons, [&Event::Discarded(Discard::OtherMagazine)], "Annex B.3");
+        let three = decoder.store().get(PageAddress::from_mpp(0x300).unwrap(), SubCode::ANY).unwrap();
+        assert_eq!(three.cells[1][0], with_odd_parity(b'S'));
+        feed(&mut decoder, &[header(3, 0x01, 0, 0)], &mut events);
+        assert!(!decoder.serial, "C11 clear: parallel again");
+    }
+
+    /// REQ-ACQ-003: time-filling and uncorrectable headers end the page in
+    /// progress and start nothing.
+    #[test]
+    fn time_filling_and_bad_headers_end_a_page_without_starting_one() {
+        let mut bad = header(1, 0x01, 0, 0);
+        // Two bit errors in the page units byte are uncorrectable.
+        bad.bytes[2] ^= 0b11;
+        let Ok(Decoded::Header(bad_header)) = decode(&bad) else { panic!("not a header") };
+        assert_eq!(bad_header.page, None);
+        for ender in [header(1, 0xFF, 0, 0), bad] {
+            let mut slots = std::vec![StoredPage::EMPTY; 4];
+            let mut decoder = Decoder::new(&mut slots, Config::default());
+            let mut events = Vec::new();
+            feed(
+                &mut decoder,
+                &[
+                    header(1, 0x00, 0, 0),
+                    encode::row(mag(1), 1, &text(b"IN")),
+                    ender,
+                    encode::row(mag(1), 2, &text(b"OUT")),
+                ],
+                &mut events,
+            );
+            assert!(events.contains(&Event::PageCompleted(key(0x100, 0))));
+            assert_eq!(events.iter().filter(|event| matches!(event, Event::PageStarted(_))).count(), 1);
+            let page = decoder.store().get(PageAddress::from_mpp(0x100).unwrap(), SubCode::ANY).unwrap();
+            assert!(page.has_row(1) && !page.has_row(2));
+            assert_eq!(decoder.store().pages().iter().filter(|page| page.state != PageState::Empty).count(), 1);
+        }
+    }
+
+    /// REQ-ACQ-011, decision E.11: the rolling header takes every magazine
+    /// in serial mode and only the requested one in parallel mode, never a
+    /// header with C9 set; the clock takes every valid header.
+    #[test]
+    fn rolling_header_and_clock_follow_decision_e11() {
+        let with_text = |m: u8, control: u16, rolling: &[u8], clock: &[u8]| {
+            let mut display = [with_odd_parity(b' '); HEADER_DISPLAY_BYTES];
+            display[..rolling.len()].copy_from_slice(&text(rolling)[..rolling.len()]);
+            display[ROLLING_BYTES..ROLLING_BYTES + clock.len()].copy_from_slice(&text(clock)[..clock.len()]);
+            encode::header(mag(m), PageNumber(0x10), SubCode::new(0), ControlBits(control), &display)
+        };
+        let shown =
+            |bytes: &[u8]| -> std::string::String { bytes.iter().map(|&b| char::from(b & CODE_MASK_7BIT)).collect() };
+        let mut slots = std::vec![StoredPage::EMPTY; 4];
+        let mut decoder = Decoder::new(&mut slots, Config::default());
+        decoder.set_requested(Some(PageAddress::from_mpp(0x100).unwrap()));
+        let mut events = Vec::new();
+        feed(&mut decoder, &[with_text(2, 0, b"OTHER", b"10:00:01")], &mut events);
+        assert_eq!(shown(&decoder.rolling_header()[..5]), "     ", "parallel: other magazine");
+        assert_eq!(shown(decoder.clock()), "10:00:01");
+        feed(&mut decoder, &[with_text(1, 0, b"WANTED", b"10:00:02")], &mut events);
+        assert_eq!(shown(&decoder.rolling_header()[..6]), "WANTED");
+        feed(&mut decoder, &[with_text(1, C9_INTERRUPTED, b"BROKEN", b"10:00:03")], &mut events);
+        assert_eq!(shown(&decoder.rolling_header()[..6]), "WANTED", "C9 set");
+        assert_eq!(shown(decoder.clock()), "10:00:03");
+        feed(&mut decoder, &[with_text(2, C11_SERIAL, b"SERIAL", b"10:00:04")], &mut events);
+        assert_eq!(shown(&decoder.rolling_header()[..6]), "SERIAL", "serial: every magazine");
+        assert_eq!(shown(decoder.clock()), "10:00:04");
     }
 }

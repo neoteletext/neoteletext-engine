@@ -24,6 +24,8 @@ pub enum Row24Policy {
     AnnexH,
     /// Whenever packet X/24 is present (the SAA5246A behaviour).
     WhenPresent,
+    /// Never: the SAA5050 receivers showed 24 rows (REQ-PRF-002).
+    Never,
 }
 
 /// Reveal style (REQ-NAV-007).
@@ -53,7 +55,8 @@ pub enum CellMode {
     Saa5246a,
 }
 
-/// The decoder configuration.
+/// The decoder configuration: a plain struct with a `Default`
+/// implementation and named profile constructors (REQ-GEN-011).
 // Each flag is a separate Part E decision that REQ-ARCH-008 requires to be
 // its own setting.
 #[allow(clippy::struct_excessive_bools)]
@@ -162,6 +165,7 @@ impl Config {
         config.level15 = false;
         // English is national option index 0 in Table 32 group 0000.
         config.fixed_national_index = Some(0);
+        config.row24 = Row24Policy::Never;
         config.reveal = RevealStyle::Momentary;
         config
     }
@@ -191,6 +195,7 @@ impl Config {
     }
 }
 
+// REQ-GEN-011: the default is the "EN 300 706" profile.
 impl Default for Config {
     fn default() -> Self {
         Self::en_300_706()
@@ -217,5 +222,14 @@ mod tests {
         config.rounding = true;
         assert!(config.rounding && !config.process_x26_15);
         assert!(Config::profile("nonsense").is_none());
+    }
+
+    #[test]
+    fn saa5050_profile_matches_req_prf_002() {
+        let config = Config::saa5050();
+        assert!(!config.level15 && config.rounding);
+        assert_eq!(config.row24, Row24Policy::Never);
+        assert_eq!(config.fixed_national_index, Some(0));
+        assert_eq!(config.reveal, RevealStyle::Momentary);
     }
 }

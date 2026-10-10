@@ -34,6 +34,20 @@ pub enum Glyph {
     },
 }
 
+impl Glyph {
+    /// True when the cell shows nothing in the foreground: no glyph, a
+    /// space (2/0 is a space in every G0 set, Tables 35 and 36) without a
+    /// diacritical mark, or a mosaic with no cells set.
+    #[must_use]
+    pub const fn is_blank(self) -> bool {
+        match self {
+            Self::Space => true,
+            Self::Char(character) => character.code == SPACE && character.diacritic == 0,
+            Self::Mosaic { pattern, .. } => pattern == 0,
+        }
+    }
+}
+
 /// A cell's role in double height (REQ-L1-008).
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum Size {
@@ -89,7 +103,8 @@ impl Cell {
 }
 
 /// The decoded page (REQ-L1-001): 25 rows by 40 columns, plus page-wide
-/// display state.
+/// display state. It is the core's primary output; every renderer works
+/// from it (REQ-RND-001).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Grid {
     /// The cells, row by row.
@@ -263,7 +278,8 @@ fn decode_row(codes: &[u8; COLUMNS], failed: u64, context: &RowContext<'_>) -> (
             overwritten: false,
             parity_failed: failed.checked_shr(column as u32).is_some_and(|bits| bits & 1 == 1),
         };
-        // Step 4: the held mosaic (decision E.16).
+        // Step 4: the held mosaic (decision E.16, REQ-L1-007): only codes
+        // with bit 6 set qualify, so blast-through capitals are never held.
         if state.mosaic && code > ATTRIBUTE_LAST && code & MOSAIC_BIT5 != 0 {
             state.held = Some((mosaic_pattern(code), state.separated));
         }
@@ -275,7 +291,10 @@ fn decode_row(codes: &[u8; COLUMNS], failed: u64, context: &RowContext<'_>) -> (
     (cells, has_double)
 }
 
-/// Step 1 of REQ-FSM-006.
+/// Step 1 of REQ-FSM-006: the Table 26 set-at attributes, which act in
+/// their own cell (REQ-L1-003). Steady ends flash (REQ-L1-009), Conceal
+/// starts concealment (REQ-L1-010), and the background codes act at once so
+/// the attribute cell itself is painted (REQ-L1-012).
 fn set_at(state: &mut RowState, code: u8) {
     match code {
         STEADY => state.flash = false,
@@ -310,6 +329,7 @@ fn cell_glyph(state: &RowState, code: u8, context: &RowContext<'_>) -> (Glyph, b
         return (Glyph::Space, false);
     }
     let g0 = if state.second_g0 { context.second_g0.unwrap_or(context.default_g0) } else { context.default_g0 };
+    // REQ-L1-006: the G1 pattern keeps the form in force at this cell.
     if state.mosaic && code & MOSAIC_BIT5 != 0 {
         return (Glyph::Mosaic { pattern: mosaic_pattern(code), separated: state.separated }, false);
     }
@@ -318,8 +338,12 @@ fn cell_glyph(state: &RowState, code: u8, context: &RowContext<'_>) -> (Glyph, b
     (Glyph::Char(CharRef::new(CharSet::G0(g0), code)), false)
 }
 
-/// Step 5 of REQ-FSM-006. Returns true when the row gains double height.
+/// Step 5 of REQ-FSM-006: the Table 26 set-after attributes, which act
+/// from the next cell (REQ-L1-003). Returns true when the row gains double
+/// height.
 fn set_after(state: &mut RowState, code: u8, next: u8, context: &RowContext<'_>) -> bool {
+    // REQ-L1-019, decision E.18: 0/0 and 1/0 act only under the SAA5246A
+    // profile; 0/E and 0/F fall through to the no-op arm in every profile.
     let black_codes = context.config.black_colour_codes;
     match code {
         ALPHA_BLACK..=ALPHA_WHITE if code != ALPHA_BLACK || black_codes => {
@@ -328,6 +352,7 @@ fn set_after(state: &mut RowState, code: u8, next: u8, context: &RowContext<'_>)
             }
             state.mosaic = false;
             state.foreground = code & COLOUR_ATTRIBUTE_MASK;
+            // REQ-L1-010: a colour attribute ends concealment.
             state.conceal = false;
         }
         MOSAIC_BLACK..=MOSAIC_WHITE if code != MOSAIC_BLACK || black_codes => {
@@ -338,7 +363,9 @@ fn set_after(state: &mut RowState, code: u8, next: u8, context: &RowContext<'_>)
             state.foreground = code & COLOUR_ATTRIBUTE_MASK;
             state.conceal = false;
         }
+        // REQ-L1-009: flashing until Steady or the end of the row.
         FLASH => state.flash = true,
+        // REQ-L1-011: box membership is set-after at both ends.
         END_BOX => state.boxed = false,
         START_BOX => {
             // Decision E.17: a box starts only at the second of two
@@ -399,6 +426,8 @@ pub fn build_grid(
     out.designation = designation;
     out.mix = options.mix;
     let control = page.map_or(0, |page| page.control.0);
+    // REQ-L1-011, REQ-ACQ-015, decision E.22: box membership matters only
+    // on newsflash and subtitle pages, or when the viewer asks for it.
     out.boxed_mode = options.boxed || control & (C5_NEWSFLASH | C6_SUBTITLE) != 0;
     let policy = config.parity_policy;
     let suppress_header = control & C7_SUPPRESS_HEADER != 0;
@@ -484,6 +513,7 @@ fn row_codes(
         let show = page.is_some_and(|page| match config.row24 {
             Row24Policy::AnnexH => page.links.is_some_and(|links| links.display_row_24),
             Row24Policy::WhenPresent => page.has_row(24),
+            Row24Policy::Never => false,
         });
         if !show {
             // REQ-L1-015: left blank for receiver status messages.
@@ -526,7 +556,7 @@ fn fill_lower_row(grid: &mut Grid, row: usize) {
 #[allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic, clippy::arithmetic_side_effects)]
 mod tests {
     use super::*;
-    use crate::consts::{ALPHA_RED, MOSAIC_RED};
+    use crate::consts::{ALPHA_RED, ALPHA_YELLOW, DOUBLE_SIZE, DOUBLE_WIDTH, MOSAIC_FULL, MOSAIC_RED};
 
     fn context(config: &Config) -> RowContext<'_> {
         RowContext {
@@ -548,6 +578,16 @@ mod tests {
         decode_row(&row(bytes), 0, &context(&config)).0
     }
 
+    /// REQ-L1-003, REQ-TST-013.
+    #[test]
+    fn stored_spaces_are_blank_glyphs() {
+        let cells = decode(&[b' ', b'A', MOSAIC_RED, 0x20, 0x21]);
+        assert!(matches!(cells[0].glyph, Glyph::Char(_)) && cells[0].glyph.is_blank());
+        assert!(!cells[1].glyph.is_blank());
+        assert!(cells[2].glyph.is_blank() && cells[3].glyph.is_blank());
+        assert!(!cells[4].glyph.is_blank());
+    }
+
     #[test]
     fn colour_attributes_are_set_after() {
         let cells = decode(&[ALPHA_RED, b'A']);
@@ -556,6 +596,7 @@ mod tests {
         assert_eq!(cells[0].glyph, Glyph::Space);
     }
 
+    /// REQ-L1-012; REQ-TST-013's New Background after a colour change.
     #[test]
     fn new_background_is_set_at() {
         let cells = decode(&[ALPHA_RED, NEW_BACKGROUND, b'A', BLACK_BACKGROUND, b'B']);
@@ -564,6 +605,7 @@ mod tests {
         assert_eq!(cells[3].background, 0);
     }
 
+    /// REQ-L1-007.
     #[test]
     fn hold_mosaics_annex_g33_style() {
         // Mosaic red, a mosaic, hold, a colour change: the attribute cell
@@ -574,6 +616,7 @@ mod tests {
         assert_eq!(cells[3].glyph, Glyph::Mosaic { pattern: 0x3F, separated: false });
     }
 
+    /// REQ-L1-007; REQ-TST-013's hold with mode changes.
     #[test]
     fn held_mosaic_keeps_its_form_and_resets_on_mode_change() {
         let cells =
@@ -587,13 +630,25 @@ mod tests {
         assert_eq!(cells[6].glyph, Glyph::Space);
     }
 
+    /// REQ-TST-013's blast-through with national options.
     #[test]
     fn blast_through_capitals_in_mosaic_mode() {
         let cells = decode(&[MOSAIC_RED, b'A', 0x23]);
         assert!(matches!(cells[1].glyph, Glyph::Char(c) if c.code == b'A'));
         assert!(matches!(cells[2].glyph, Glyph::Mosaic { .. }));
+        // Table 47 note 2: 5/B blasts through as the German national
+        // character, not as a mosaic.
+        let config = Config::default();
+        let german = RowContext {
+            default_g0: G0 { set: charset::G0Set::Latin, national: Some(charset::NationalOption::German) },
+            ..context(&config)
+        };
+        let cells = decode_row(&row(&[MOSAIC_RED, 0x5B]), 0, &german).0;
+        let Glyph::Char(character) = cells[1].glyph else { panic!("blast-through gave {:?}", cells[1].glyph) };
+        assert_eq!(charset::to_unicode(character).base, '\u{C4}');
     }
 
+    /// REQ-L1-010; REQ-TST-013's conceal ended by a colour attribute.
     #[test]
     fn conceal_ends_at_colour() {
         let cells = decode(&[CONCEAL, b'A', ALPHA_RED, b'B']);
@@ -601,6 +656,7 @@ mod tests {
         assert!(!cells[3].conceal);
     }
 
+    /// REQ-L1-011, REQ-TST-013: the Annex G.3.1 boxing example.
     #[test]
     fn start_box_needs_two_codes() {
         // Annex G.3.1: x 0B 0B 61 0A 0A — the second 0B, the "a" and the
@@ -612,12 +668,14 @@ mod tests {
         assert!(!single[2].boxed);
     }
 
+    /// REQ-L1-009.
     #[test]
     fn flash_and_steady() {
         let cells = decode(&[FLASH, b'A', STEADY, b'B']);
         assert!(!cells[0].flash && cells[1].flash && !cells[2].flash);
     }
 
+    /// REQ-L1-019, decision E.18.
     #[test]
     fn black_codes_follow_the_profile() {
         let cells = decode(&[ALPHA_RED, ALPHA_BLACK, b'A']);
@@ -625,8 +683,126 @@ mod tests {
         let config = Config::saa5246a();
         let cells = decode_row(&row(&[ALPHA_RED, ALPHA_BLACK, b'A']), 0, &context(&config)).0;
         assert_eq!(cells[2].foreground, 0);
+        // 1/0: no function by default, mosaic black under SAA5246A.
+        let cells = decode(&[MOSAIC_RED, MOSAIC_BLACK, 0x7F]);
+        assert_eq!(cells[2].foreground, MOSAIC_RED & COLOUR_ATTRIBUTE_MASK);
+        let cells = decode_row(&row(&[MOSAIC_RED, MOSAIC_BLACK, 0x7F]), 0, &context(&config)).0;
+        assert_eq!(cells[2].foreground, COLOUR_BLACK);
+        assert_eq!(cells[2].glyph, Glyph::Mosaic { pattern: MOSAIC_FULL, separated: false });
+        // 0/E and 0/F show a space and change no state in either profile:
+        // the row matches one where a repeated colour code fills the cell.
+        for config in [Config::default(), Config::saa5246a()] {
+            let plain = decode_row(&row(&[ALPHA_RED, ALPHA_RED, b'A']), 0, &context(&config)).0;
+            for code in [DOUBLE_WIDTH, DOUBLE_SIZE] {
+                let cells = decode_row(&row(&[ALPHA_RED, code, b'A']), 0, &context(&config)).0;
+                assert_eq!(cells, plain, "code {code:#04x}");
+            }
+        }
     }
 
+    /// REQ-L1-003, REQ-TST-013: every Table 26 attribute with a Level 1
+    /// function, checked at its own cell and at the next one.
+    #[test]
+    fn every_spacing_attribute_has_its_table_26_timing() {
+        let colour = |code: u8| code & COLOUR_ATTRIBUTE_MASK;
+        // Set-after: 0/1 to 0/7 and 1/1 to 1/7.
+        for code in ALPHA_RED..=ALPHA_WHITE {
+            let before = if code == ALPHA_RED { ALPHA_YELLOW } else { ALPHA_RED };
+            let cells = decode(&[before, code, b'A']);
+            assert_eq!((cells[1].foreground, cells[2].foreground), (colour(before), colour(code)), "{code:#04x}");
+        }
+        for code in MOSAIC_RED..=MOSAIC_WHITE {
+            let before = if code == MOSAIC_RED { MOSAIC_RED + 2 } else { MOSAIC_RED };
+            let cells = decode(&[before, code, 0x7F]);
+            assert_eq!((cells[1].foreground, cells[2].foreground), (colour(before), colour(code)), "{code:#04x}");
+            assert_eq!(cells[2].glyph, Glyph::Mosaic { pattern: MOSAIC_FULL, separated: false });
+        }
+        // 0/8 set-after, 0/9 set-at.
+        let cells = decode(&[FLASH, b'A', STEADY, b'B']);
+        assert_eq!(cells.map(|cell| cell.flash)[..4], [false, true, false, false]);
+        // 0/A set-after, 0/B set-after (a single Start Box under the option).
+        let cells = decode(&[START_BOX, START_BOX, END_BOX, b'a']);
+        assert_eq!(cells.map(|cell| cell.boxed)[..4], [false, true, true, false]);
+        let single = Config { double_start_box: false, ..Config::default() };
+        let cells = decode_row(&row(&[START_BOX, b'a']), 0, &context(&single)).0;
+        assert_eq!(cells.map(|cell| cell.boxed)[..2], [false, true]);
+        // 0/C set-at, 0/D set-after.
+        let cells = decode(&[DOUBLE_HEIGHT, b'A', NORMAL_SIZE, b'B']);
+        assert_eq!(cells.map(|cell| cell.size)[..4], [Size::Normal, Size::DoubleTop, Size::Normal, Size::Normal]);
+        // 1/8 set-at.
+        let cells = decode(&[b'A', CONCEAL, b'B']);
+        assert_eq!(cells.map(|cell| cell.conceal)[..3], [false, true, true]);
+        // 1/9 and 1/A set-at: the next mosaic takes the new form.
+        let cells = decode(&[MOSAIC_RED, SEPARATED_MOSAICS, 0x7F, CONTIGUOUS_MOSAICS, 0x7F]);
+        assert_eq!(cells[2].glyph, Glyph::Mosaic { pattern: MOSAIC_FULL, separated: true });
+        assert_eq!(cells[4].glyph, Glyph::Mosaic { pattern: MOSAIC_FULL, separated: false });
+        // 1/B set-after: the cell after ESC uses the second G0 set.
+        let config = Config::default();
+        let second = G0 { set: charset::G0Set::Latin, national: Some(charset::NationalOption::German) };
+        let with_second = RowContext { second_g0: Some(second), ..context(&config) };
+        let cells = decode_row(&row(&[ESC, b'A']), 0, &with_second).0;
+        assert_eq!(cells[0].glyph, Glyph::Space);
+        assert_eq!(cells[1].glyph, Glyph::Char(CharRef::new(CharSet::G0(second), b'A')));
+        // 1/C and 1/D set-at.
+        let cells = decode(&[ALPHA_RED, NEW_BACKGROUND, BLACK_BACKGROUND, b'A']);
+        assert_eq!(
+            cells.map(|cell| cell.background)[..4],
+            [COLOUR_BLACK, colour(ALPHA_RED), COLOUR_BLACK, COLOUR_BLACK]
+        );
+        // 1/E set-at, 1/F set-after: both attribute cells show the held
+        // mosaic; the next attribute cell does not.
+        let cells = decode(&[MOSAIC_RED, 0x7F, HOLD_MOSAICS, RELEASE_MOSAICS, MOSAIC_RED]);
+        assert_eq!(cells.map(|cell| cell.held)[..5], [false, false, true, true, false]);
+        assert_eq!(cells[4].glyph, Glyph::Space);
+    }
+
+    /// REQ-L1-006, REQ-TST-013: the separated mosaics example of Annex
+    /// G.3.2, 17 39 1A 39.
+    #[test]
+    fn annex_g32_separated_mosaics() {
+        let cells = decode(&[MOSAIC_WHITE, 0x39, SEPARATED_MOSAICS, 0x39]);
+        // 3/9 is bits 0, 3 and 4 of the sixel pattern.
+        let pattern = 0b01_1001;
+        assert_eq!(cells[1].glyph, Glyph::Mosaic { pattern, separated: false });
+        assert_eq!(cells[2].glyph, Glyph::Space);
+        assert_eq!(cells[3].glyph, Glyph::Mosaic { pattern, separated: true });
+        assert!(cells.iter().all(|cell| !cell.held));
+    }
+
+    /// REQ-L1-007, REQ-TST-013: the hold mosaics example of Annex G.3.3,
+    /// 17 66 1E 39 1A 1F 66.
+    #[test]
+    fn annex_g33_hold_mosaics() {
+        let cells = decode(&[MOSAIC_WHITE, 0x66, HOLD_MOSAICS, 0x39, SEPARATED_MOSAICS, RELEASE_MOSAICS, 0x66]);
+        // 6/6 sets sixels 1, 2 and 5 (bit 6 maps to sixel 5); 3/9 sets
+        // sixels 0, 3 and 4.
+        let six = |separated| Glyph::Mosaic { pattern: 0b10_0110, separated };
+        let three_nine = Glyph::Mosaic { pattern: 0b01_1001, separated: false };
+        let expected = [Glyph::Space, six(false), six(false), three_nine, three_nine, three_nine, six(true)];
+        assert_eq!(cells.map(|cell| cell.glyph)[..7], expected);
+        assert_eq!(cells.map(|cell| cell.held)[..7], [false, false, true, false, true, true, false]);
+    }
+
+    /// REQ-L1-007; REQ-TST-013's hold with size changes. A change of size
+    /// resets the held mosaic, a repeated size does not, and neither does
+    /// turning hold off and on.
+    #[test]
+    fn hold_resets_on_size_change_only() {
+        let held = Glyph::Mosaic { pattern: MOSAIC_FULL, separated: false };
+        // Repeated Normal Size keeps it; Double Height (set-after) shows it
+        // in its own cell, then resets it.
+        let cells = decode(&[MOSAIC_RED, 0x7F, HOLD_MOSAICS, NORMAL_SIZE, DOUBLE_HEIGHT, FLASH]);
+        assert_eq!(cells.map(|cell| cell.glyph)[3..6], [held, held, Glyph::Space]);
+        // Repeated Double Height keeps it; Normal Size (set-at) resets it
+        // before its own cell.
+        let cells = decode(&[MOSAIC_RED, DOUBLE_HEIGHT, 0x7F, HOLD_MOSAICS, DOUBLE_HEIGHT, NORMAL_SIZE]);
+        assert_eq!(cells.map(|cell| cell.glyph)[3..6], [held, held, Glyph::Space]);
+        // Release then Hold again: the held mosaic survives.
+        let cells = decode(&[MOSAIC_RED, 0x7F, HOLD_MOSAICS, RELEASE_MOSAICS, FLASH, HOLD_MOSAICS]);
+        assert_eq!(cells.map(|cell| cell.glyph)[3..6], [held, Glyph::Space, held]);
+    }
+
+    /// REQ-TST-013's double height with its ignored lower row.
     #[test]
     fn double_height_fills_the_row_below() {
         let mut page = StoredPage::EMPTY;

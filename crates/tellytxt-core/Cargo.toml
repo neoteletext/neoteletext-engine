@@ -11,6 +11,9 @@ publish.workspace = true
 [dependencies]
 
 [features]
+# REQ-GEN-011 and REQ-GEN-016: `core::error::Error` for the error types,
+# which needs `core::fmt`.
+error-trait = []
 # REQ-GEN-016: `core::fmt` only in Debug implementations, and behind this feature.
 debug-fmt = []
 

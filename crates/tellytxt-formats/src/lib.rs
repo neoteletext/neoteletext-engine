@@ -19,7 +19,11 @@
 //! - `write` (feature `std`): the T42 and TTI writers (REQ-INP-014 and 018).
 //!
 //! Raw sampled video (REQ-INP-011) is read by `tellytxt-slicer`.
+//!
+//! Every format is parsed as data into fixed fields; unknown commands are
+//! reported and ignored, and nothing read is executed (REQ-SEC-004).
 #![no_std]
+// REQ-SEC-015: only the C interface crate may contain unsafe code.
 #![forbid(unsafe_code)]
 // REQ-GEN-006 and REQ-GEN-008: no panicking constructs, as in the core.
 #![deny(

@@ -220,3 +220,99 @@ pub fn is_national_position(code: u8) -> bool {
 pub fn compose(base: char, combining: char) -> Option<char> {
     tables::compose(base, combining)
 }
+
+/// Text decoded with the Latin G0 set and no national option, for data
+/// that carries no character set designation, such as the 8/30 status
+/// message (REQ-SVC-005). Control codes show as spaces.
+#[must_use]
+pub fn latin_text<const N: usize>(codes: &[u8; N]) -> [char; N] {
+    let latin = CharSet::G0(G0 { set: G0Set::Latin, national: None });
+    codes.map(|code| to_unicode(CharRef::new(latin, code)).base)
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+    use crate::consts::{DESIGNATION_GROUP_SHIFT, SPACE};
+
+    fn value(group: u8, national: u8) -> u8 {
+        (group << DESIGNATION_GROUP_SHIFT) | national
+    }
+
+    fn latin(national: NationalOption) -> G0 {
+        G0 { set: G0Set::Latin, national: Some(national) }
+    }
+
+    /// REQ-CHR-003: a defined Table 32 entry is used as it is.
+    #[test]
+    fn defined_designation_needs_no_fallback() {
+        let (found, fallback) = designation_with_fallback(value(0b0011, 0b111));
+        assert_eq!(found, Designation { g0: latin(NationalOption::Rumanian), g2: G2Set::Latin });
+        assert!(!fallback);
+    }
+
+    /// REQ-CHR-003 step 1: a reserved entry retries the same national
+    /// option bits in group 0000.
+    #[test]
+    fn reserved_designation_retries_group_0000() {
+        // Group 0011 defines only indexes 101 and 111.
+        let (found, fallback) = designation_with_fallback(value(0b0011, 0b110));
+        assert_eq!(found, Designation { g0: latin(NationalOption::CzechSlovak), g2: G2Set::Latin });
+        assert!(fallback);
+        // Group 0101 is wholly reserved.
+        let (found, fallback) = designation_with_fallback(value(0b0101, 0b001));
+        assert_eq!(found.g0, latin(NationalOption::German));
+        assert!(fallback);
+    }
+
+    /// REQ-CHR-003 step 2: when group 0000 is reserved too, English.
+    #[test]
+    fn doubly_reserved_designation_is_english() {
+        let english = Designation { g0: latin(NationalOption::English), g2: G2Set::Latin };
+        for reserved in [value(0b0101, 0b111), value(0b1111, 0b111), value(0b0000, 0b111)] {
+            assert_eq!(designation(reserved), None);
+            assert_eq!(designation_with_fallback(reserved), (english, true), "value {reserved:#09b}");
+        }
+    }
+
+    /// REQ-CHR-005: G1 codes through the pattern to Unicode.
+    #[test]
+    fn mosaic_codes_to_unicode() {
+        // 2/0 has no blocks; 7/F has all six.
+        assert_eq!(mosaic_to_unicode(mosaic_pattern(SPACE), false), ' ');
+        assert_eq!(mosaic_to_unicode(mosaic_pattern(CODE_MASK_7BIT), false), '\u{2588}');
+        // 3/5: blocks 1, 3 and 5, the left column: LEFT HALF BLOCK.
+        assert_eq!(mosaic_to_unicode(mosaic_pattern(b'5'), false), '\u{258C}');
+        // 6/A: blocks 2, 4 and 6, the right column: RIGHT HALF BLOCK.
+        assert_eq!(mosaic_to_unicode(mosaic_pattern(b'j'), false), '\u{2590}');
+        // Separated mosaics are U+1CE50 plus the pattern.
+        assert_eq!(mosaic_to_unicode(mosaic_pattern(b'5'), true), '\u{1CE65}');
+        assert_eq!(mosaic_to_unicode(mosaic_pattern(SPACE), true), ' ');
+    }
+
+    /// The 13 positions of Table 36 are exactly the codes where some
+    /// national option differs from another; the parity bit is ignored.
+    #[test]
+    fn national_positions_are_where_the_options_differ() {
+        let mut count = 0;
+        for code in SPACE..=CODE_MASK_7BIT {
+            let first = to_unicode(CharRef::new(CharSet::G0(latin(NationalOption::ALL[0])), code)).base;
+            let varies = NationalOption::ALL
+                .iter()
+                .any(|&option| to_unicode(CharRef::new(CharSet::G0(latin(option)), code)).base != first);
+            assert_eq!(is_national_position(code), varies, "code {code:#04x}");
+            assert_eq!(is_national_position(code | !CODE_MASK_7BIT), varies, "code {code:#04x} with bit 8 set");
+            count += usize::from(varies);
+        }
+        assert_eq!(count, 13);
+    }
+
+    /// REQ-SVC-005: 2/3 and 2/4 are Latin G0's "#" and currency sign, not
+    /// a national option's characters, and control codes show as spaces.
+    #[test]
+    fn latin_text_has_no_national_option() {
+        let text: [char; 8] = latin_text(b"BBC1 #$\x07");
+        assert_eq!(text, ['B', 'B', 'C', '1', ' ', '#', '\u{A4}', ' ']);
+    }
+}

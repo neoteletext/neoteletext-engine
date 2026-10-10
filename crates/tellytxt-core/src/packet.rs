@@ -318,6 +318,8 @@ pub fn decode(packet: &Packet) -> Result<Decoded, PacketError> {
         }
         PACKET_LINKS => match designation_code(packet)? {
             0 => Decoded::Links(decode_links(packet, magazine)),
+            // Bytes 43 to 45 are reserved here (clause 9.6.1); stored
+            // uninterpreted, so they are ignored (REQ-PKT-009).
             designation @ 1..=3 => Decoded::LinksRaw { magazine, designation, bytes: packet.data() },
             // Designation codes 4 to 15 are Level 2.5 compositional links.
             _ => Decoded::Ignored(address),
@@ -330,7 +332,8 @@ pub fn decode(packet: &Packet) -> Result<Decoded, PacketError> {
         PACKET_MAGAZINE_ENHANCEMENT => match designation_code(packet)? {
             0 => match enhancement_data(packet) {
                 // Table 12: packet function 0000000 is the only defined one,
-                // and it shares bits 1 to 4 with the X/28 page function.
+                // and it shares bits 1 to 4 with the X/28 page function. The
+                // reserved values are ignored (REQ-PKT-009, clause 9.2).
                 Some(data) if data.page_function == 0 && data.page_coding == 0 => {
                     Decoded::Magazine { magazine, data: Some(data) }
                 }
@@ -446,7 +449,8 @@ const LINK_START: usize = 3;
 const LINK_BYTES: usize = 6;
 /// Index of the link control byte (packet byte 43).
 const LINK_CONTROL: usize = 39;
-/// Data bit 4 of the link control byte: display row 24 (Table 14).
+/// Data bit 4 of the link control byte: display row 24 (Table 14). Only
+/// this bit is read; the reserved bits beside it are ignored (REQ-PKT-009).
 const LINK_CONTROL_ROW_24: u8 = 0x8;
 /// Index of the first checksum byte (packet byte 44).
 const LINK_CHECKSUM: usize = 40;

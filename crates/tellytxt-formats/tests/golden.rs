@@ -3,6 +3,10 @@
 //! in each cell mode; the checksum of the palette indices must match
 //! `tests/golden/raster.txt`.
 //!
+//! `scripts/check.sh` runs this test on macOS and on `x86_64` Linux, so one
+//! checked-in checksum file holding on both is the two-platform
+//! golden-image check of REQ-RND-015.
+//!
 //! The file carries a format version. A deliberate rendering change raises
 //! the version and regenerates the file in the same change, with the reason
 //! in the commit: run with `TELLYTXT_UPDATE_GOLDEN=1`.

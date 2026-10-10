@@ -528,6 +528,8 @@ impl Slicer {
             }
             SampleFormat::U16Le => {
                 for (slot, pair) in self.samples.iter_mut().zip(line.samples.as_chunks::<2>().0) {
+                    // REQ-GEN-007: assembled as the format names it,
+                    // whatever the host's byte order.
                     let sample = u16::from_le_bytes(*pair);
                     histogram.add(usize::from(sample >> u8::BITS), f32::from(sample));
                     *slot = f32::from(sample);

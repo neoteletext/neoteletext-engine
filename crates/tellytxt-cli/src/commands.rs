@@ -327,11 +327,10 @@ pub fn service_info(common: &Common) -> Result<(), Failure> {
             (offset.unsigned_abs() % 2) * 30
         );
     }
-    let status: String = info
-        .status
+    // REQ-SVC-005: the core decodes the message with the Latin G0 set.
+    let status: String = tellytxt_core::charset::latin_text(&info.status)
         .iter()
-        .map(|&byte| char::from(byte))
-        .map(|c| if tellytxt_core::policy::is_safe_output_char(c) { c } else { ' ' })
+        .map(|&c| if tellytxt_core::policy::is_safe_output_char(c) { c } else { ' ' })
         .collect();
     println!("status: {}", status.trim_end());
     Ok(())

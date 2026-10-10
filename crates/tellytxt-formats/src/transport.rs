@@ -151,6 +151,7 @@ impl Section {
     fn total(&self) -> Option<usize> {
         let high = self.data.get(1).copied()?;
         let low = self.data.get(2).copied()?;
+        // REQ-GEN-007: MPEG-2 fields are big-endian whatever the host.
         let length = u16::from_be_bytes([high, low]) & SECTION_LENGTH_MASK;
         Some(SECTION_HEADER_BYTES.saturating_add(usize::from(length)))
     }

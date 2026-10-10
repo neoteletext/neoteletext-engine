@@ -241,6 +241,8 @@ FS,POST,/contact
 FP,40101,40102
 ";
 
+/// REQ-WEB-010: field definitions with columns, field types, options, the
+/// token, the submission target and the result pages.
 #[test]
 fn form_example_of_appendix_c7() {
     let (pages, diagnostics) = read(FORM_EXAMPLE);
@@ -265,6 +267,34 @@ fn form_example_of_appendix_c7() {
     let (success, error) = form.result_pages.unwrap();
     assert_eq!((success.mpp(), error.mpp()), (0x401, 0x401));
     assert_eq!(form.token.as_bytes(), b"5f2c9a17e0");
+}
+
+/// REQ-WEB-010, REQ-INP-013: the form commands never reach the packets, so
+/// the page displays identically on a decoder without the web module.
+#[test]
+fn form_commands_leave_the_transmitted_page_unchanged() {
+    let form_command = |line: &[u8]| {
+        [b"FT".as_slice(), b"FD", b"FS", b"FP", b"OPTION"].iter().any(|command| line.starts_with(command))
+    };
+    let stripped: Vec<u8> = FORM_EXAMPLE
+        .split_inclusive(|&byte| byte == b'\n')
+        .filter(|line| !form_command(line))
+        .flatten()
+        .copied()
+        .collect();
+    // FT, four FD, three OPTION, FS and FP.
+    assert_eq!(FORM_EXAMPLE.split(|&byte| byte == b'\n').filter(|line| form_command(line)).count(), 10);
+    let packets = |text: &[u8]| {
+        let (pages, diagnostics) = read(text);
+        assert_eq!(diagnostics, []);
+        let mut out = Vec::new();
+        encode_page(&pages[0], &mut |packet| out.push(packet));
+        (pages[0].form.fields.len(), out)
+    };
+    let (with_fields, with_form) = packets(FORM_EXAMPLE);
+    let (without_fields, without_form) = packets(&stripped);
+    assert_eq!((with_fields, without_fields), (4, 0));
+    assert_eq!(with_form, without_form);
 }
 
 #[test]

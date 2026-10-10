@@ -1,7 +1,8 @@
 //! Form submission (REQ-WEB-011, Appendix C): the encoding of the values
 //! and the destination check. The form model, focus, editing and
 //! validation belong to the viewer in the core (layer L6); this module
-//! receives the validated values.
+//! receives the validated values. Together they are the forms of
+//! REQ-WEB-010.
 
 use tellytxt_core::policy;
 

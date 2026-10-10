@@ -225,6 +225,7 @@ impl PesParser {
             self.report_skipped(out);
             let high = self.header.get(LENGTH_INDEX).copied().unwrap_or(0);
             let low = self.header.get(LENGTH_INDEX.saturating_add(1)).copied().unwrap_or(0);
+            // REQ-GEN-007: assembled big-endian, as ISO/IEC 13818-1 orders it.
             let length = usize::from(u16::from_be_bytes([high, low]));
             self.remaining = if length == 0 { None } else { Some(length) };
             let stream_id = self.header.get(STREAM_ID_INDEX).copied().unwrap_or(0);

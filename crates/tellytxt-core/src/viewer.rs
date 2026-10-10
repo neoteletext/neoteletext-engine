@@ -473,6 +473,7 @@ impl Viewer {
     /// row 24. Returns false, leaving the grid alone, while holding.
     pub fn compose(&self, grid: &mut Grid, page: Option<&StoredPage>, context: &ComposeContext<'_>) -> bool {
         let ComposeContext { magazine, config, rolling_header, store, row24 } = *context;
+        // REQ-NAV-006: while held, new receptions do not reach the screen.
         if self.state == ViewerState::Holding {
             return false;
         }
@@ -517,6 +518,9 @@ fn two_digits(value: usize) -> [u8; 2] {
 mod tests {
     use super::*;
     use crate::acq::Decoder;
+    use crate::consts::COLOUR_GREEN;
+    use crate::fsm::PageState;
+    use crate::level1::Cell;
 
     fn page(mpp: u16) -> PageAddress {
         PageAddress::from_mpp(mpp).unwrap()
@@ -587,6 +591,7 @@ mod tests {
         assert_eq!(viewer.state(), ViewerState::Displaying);
     }
 
+    /// REQ-NAV-006: a held page is not recomposed until hold is released.
     #[test]
     fn hold_reveal_and_reveal_clearing() {
         let mut slots = std::vec![StoredPage::EMPTY; 2];
@@ -612,7 +617,24 @@ mod tests {
         assert_eq!(viewer.state(), ViewerState::Holding);
         viewer.key(Key::Digit(3), &context);
         assert_eq!(viewer.state(), ViewerState::Holding, "digits do nothing while holding");
+        let magazine = MagazineData::default();
+        let rolling = [SPACE; HEADER_DISPLAY_BYTES];
+        let compose = ComposeContext {
+            magazine: &magazine,
+            config: &config,
+            rolling_header: &rolling,
+            store: decoder.store(),
+            row24: None,
+        };
+        let mut grid = Grid::EMPTY;
+        let marker = Cell { foreground: COLOUR_GREEN, ..Cell::BLANK };
+        grid.cells[5][5] = marker;
+        let received = StoredPage { state: PageState::Complete, ..StoredPage::EMPTY };
+        assert!(!viewer.compose(&mut grid, Some(&received), &compose), "held: new receptions not shown");
+        assert_eq!(grid.cells[5][5], marker);
         viewer.key(Key::Hold, &context);
+        assert!(viewer.compose(&mut grid, Some(&received), &compose), "released");
+        assert_ne!(grid.cells[5][5], marker);
         viewer.key(Key::NextPage, &context);
         assert!(!viewer.reveal(Instant(0)), "a different page clears reveal");
     }

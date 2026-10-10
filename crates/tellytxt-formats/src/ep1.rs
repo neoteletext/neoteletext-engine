@@ -48,6 +48,7 @@ pub fn parse(data: &[u8], page: &mut PageFile, out: &mut dyn FnMut(Item<'_>)) ->
             DiagnosticKind::UnmappedLanguage { code: language },
         ))),
     }
+    // REQ-GEN-007: the offset is little-endian whatever the host.
     let offset = usize::from(u16::from_le_bytes([byte(EP1_OFFSET), byte(EP1_OFFSET.saturating_add(1))]));
     let level1 = EP1_HEADER_BYTES.saturating_add(offset);
     let expected = level1.saturating_add(LEVEL1_BYTES);

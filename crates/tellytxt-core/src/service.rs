@@ -38,7 +38,9 @@ pub struct ServiceInfo {
     pub utc: Option<DateTime>,
     /// Local time offset in half-hours, from the time offset byte.
     pub offset_half_hours: Option<i8>,
-    /// The 20-character status message, 7-bit, parity removed.
+    /// The 20-character status message, 7-bit, parity removed. As text it
+    /// is `charset::latin_text(&status)` (REQ-SVC-005); the character sets
+    /// belong to a higher layer than service data.
     pub status: [u8; STATUS_MESSAGE_BYTES],
 }
 

@@ -4,6 +4,10 @@
 //! REQ-RND-016. The row renderer of REQ-RND-017 draws palette indices into
 //! buffers the caller supplies; the library never pushes pixels and keeps
 //! no pixel memory (decision E.29).
+//!
+//! Renderers start from the cell grid and never decode packets
+//! (REQ-RND-001). The raster uses integer arithmetic only, so the same grid
+//! and settings give the same pixels on every platform (REQ-RND-015).
 
 use crate::config::{CellMode, Config};
 use crate::consts::{
@@ -470,7 +474,8 @@ impl ChangeTracker {
 }
 
 /// Renders every row, or only changed rows, into a whole-screen framebuffer
-/// (REQ-RND-022). `rows` is a bitmask of rows to draw.
+/// (REQ-RND-022), the reference caller of REQ-RND-021. `rows` is a bitmask
+/// of rows to draw.
 pub fn render_screen(
     grid: &Grid,
     rows: u32,
@@ -501,6 +506,7 @@ pub const FIELD_LINES: usize = CELL_FIELD_LINES;
 mod tests {
     use super::*;
     use crate::charset::{CharRef, CharSet, G0, G0Set, NationalOption};
+    use crate::consts::{COLOUR_BLUE_BIT, COLOUR_RED_BIT};
     use std::vec;
     use std::vec::Vec;
 
@@ -522,6 +528,7 @@ mod tests {
         assert_eq!(glyph_line_20(&glyph, 0, true), 0);
     }
 
+    /// REQ-RND-013: decision E.14's geometry in both cell sizes.
     #[test]
     fn separated_mosaic_geometry_matches_e14() {
         let full = 0x3F;
@@ -550,6 +557,8 @@ mod tests {
         assert_eq!(palette[usize::from(PALETTE_TRANSPARENT)], 8);
     }
 
+    /// REQ-RND-021's test harness: rows drawn alone, in reverse order and
+    /// line by line match the whole-screen loop.
     #[test]
     fn rows_render_identically_in_any_order() {
         let mut grid = Grid::EMPTY;
@@ -585,6 +594,40 @@ mod tests {
         grid.cells[7][0].conceal = true;
         tracker.changed_rows(&grid, false);
         assert_eq!(tracker.changed_rows(&grid, true), 1 << 7, "reveal redraws flashing concealed rows only");
+    }
+
+    /// REQ-L1-009, REQ-L1-010, REQ-L1-011: what the flash, conceal and box
+    /// marks of a cell do to its pixels.
+    #[test]
+    fn flash_conceal_and_box_marks_drive_the_palette() {
+        // Colours 1 and 4 are the single-gun colours.
+        let (red, blue) = (COLOUR_RED_BIT, COLOUR_BLUE_BIT);
+        let base = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+        let mut grid = Grid::EMPTY;
+        let plain = Cell { foreground: red, background: blue, ..Cell::BLANK };
+        // Flash: foreground pixels take the background colour in the hidden
+        // phase.
+        let index = usize::from(foreground_index(&Cell { flash: true, ..plain }, &grid, false));
+        for (visible, colour) in [(true, red), (false, blue)] {
+            let mut palette = [0u8; PALETTE_SIZE];
+            fill_palette(&mut palette, &base, visible, false);
+            assert_eq!(palette[index], colour, "flash visible {visible}");
+        }
+        // Conceal: shown as a space on its background unless revealed.
+        let index = usize::from(foreground_index(&Cell { conceal: true, ..plain }, &grid, false));
+        for (reveal, colour) in [(false, blue), (true, red)] {
+            let mut palette = [0u8; PALETTE_SIZE];
+            fill_palette(&mut palette, &base, true, reveal);
+            assert_eq!(palette[index], colour, "reveal {reveal}");
+        }
+        // Box membership changes nothing outside boxed mode (decision E.22).
+        let boxed = Cell { boxed: true, ..plain };
+        assert_eq!((foreground_index(&plain, &grid, false), background_index(&plain, &grid)), (red, blue));
+        assert_eq!((foreground_index(&boxed, &grid, false), background_index(&boxed, &grid)), (red, blue));
+        grid.boxed_mode = true;
+        let picture = (PALETTE_TRANSPARENT, PALETTE_TRANSPARENT);
+        assert_eq!((foreground_index(&plain, &grid, false), background_index(&plain, &grid)), picture);
+        assert_eq!((foreground_index(&boxed, &grid, false), background_index(&boxed, &grid)), (red, blue));
     }
 
     #[test]
