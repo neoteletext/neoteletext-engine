@@ -11,6 +11,8 @@ use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use tellytxt_core::acq::StoredPage;
 use tellytxt_core::consts::{CELL_WIDTH, COLUMNS, ROWS, SIDE_PANEL_MAX_COLUMNS};
+use tellytxt_core::fsm::PageKey;
+use tellytxt_core::level1::Grid;
 use tellytxt_core::policy::is_safe_file_name_byte;
 use tellytxt_core::render::row_width;
 use tellytxt_core::types::{PageAddress, SubCode};
@@ -79,15 +81,28 @@ pub fn parse_selection(text: &str) -> Result<Selection, Failure> {
     Ok(Selection::Page(address, subcode))
 }
 
-/// The pages a selection names.
-fn selected(session: &Session, selection: Selection) -> Result<Vec<&StoredPage>, Failure> {
+/// The pages a selection names, by key, so that building their grids may
+/// update the session's statistics.
+fn selected(session: &Session, selection: Selection) -> Result<Vec<PageKey>, Failure> {
     match selection {
-        Selection::All => Ok(session.pages().into_iter().filter(|page| page.key.address.page.is_decimal()).collect()),
+        Selection::All => Ok(session
+            .pages()
+            .into_iter()
+            .filter(|page| page.key.address.page.is_decimal())
+            .map(|page| page.key)
+            .collect()),
         Selection::Page(address, subcode) => session
             .page(address, subcode)
-            .map(|page| vec![page])
+            .map(|page| vec![page.key])
             .ok_or_else(|| (exit::NOT_FOUND, format!("page {} not found", String::from_utf8_lossy(&address.ascii())))),
     }
+}
+
+/// The grid of a page that `selected` named.
+fn grid_of(session: &mut Session, key: PageKey) -> Result<Grid, Failure> {
+    session
+        .grid(key, None)
+        .ok_or_else(|| (exit::NOT_FOUND, format!("page {} not found", String::from_utf8_lossy(&key.address.ascii()))))
 }
 
 fn sandbox(common: &Common, writable: Option<&Path>) -> Result<(), Failure> {
@@ -97,10 +112,12 @@ fn sandbox(common: &Common, writable: Option<&Path>) -> Result<(), Failure> {
 
 /// `ttx list`.
 pub fn list(common: &Common) -> Result<(), Failure> {
-    let session = input::load(common)?;
+    let mut session = input::load(common)?;
     sandbox(common, None)?;
     let mut out = std::io::stdout().lock();
     let pages = session.pages();
+    let page_count = pages.len();
+    let keys: Vec<PageKey> = pages.iter().map(|page| page.key).collect();
     let mut index = 0;
     while index < pages.len() {
         let address = pages[index].key.address;
@@ -120,17 +137,41 @@ pub fn list(common: &Common) -> Result<(), Failure> {
         );
         index += subpages.len();
     }
+    // REQ-L25-051: enhancement faults are met only when a page is built, so
+    // every page is built once to count them.
+    let enhanced = session.decoder().config().level.is_enhanced();
+    if enhanced {
+        for key in keys {
+            let _ = session.grid(key, None);
+        }
+    }
     let stats = session.decoder().statistics();
     let _ = writeln!(
         out,
         "\n{} page(s); packets per magazine 1-8: {:?}; address failures {}; parity failures {}; triplet failures {}; discarded {}",
-        pages.len(),
+        page_count,
         [1, 2, 3, 4, 5, 6, 7, 0].map(|m| stats.per_magazine[m]),
         stats.address_failures,
         stats.parity_failures,
         stats.triplet_failures,
         stats.discarded
     );
+    if enhanced {
+        let faults = &stats.enhancement;
+        let _ = writeln!(
+            out,
+            "enhancement faults: damaged triplets {}; forbidden invocations {}; absent objects {}; limited invocations {}; discarded writes {}; ignored designations {}; undefined characters {}; DRCS missing {}; DRCS invalid {}",
+            faults.damaged_triplets,
+            faults.forbidden_invocations,
+            faults.absent_objects,
+            faults.limited_invocations,
+            faults.discarded_writes,
+            faults.ignored_designations,
+            faults.undefined_characters,
+            faults.drcs_missing,
+            faults.drcs_invalid
+        );
+    }
     Ok(())
 }
 
@@ -141,18 +182,13 @@ fn mosaic_style(legacy: bool) -> MosaicStyle {
 /// `ttx text`.
 pub fn text(common: &Common, page: &str, reveal: bool, legacy_mosaics: bool, cells: bool) -> Result<(), Failure> {
     let selection = parse_selection(page)?;
-    let session = input::load_for(common, selection.page())?;
+    let mut session = input::load_for(common, selection.page())?;
     sandbox(common, None)?;
     let mut out = std::io::stdout().lock();
-    for page in selected(&session, selection)? {
-        let grid = session.grid(page, None);
+    for key in selected(&session, selection)? {
+        let grid = grid_of(&mut session, key)?;
         if selection == Selection::All {
-            let _ = writeln!(
-                out,
-                "=== {}:{:04X}",
-                String::from_utf8_lossy(&page.key.address.ascii()),
-                page.key.subcode.value()
-            );
+            let _ = writeln!(out, "=== {}:{:04X}", String::from_utf8_lossy(&key.address.ascii()), key.subcode.value());
         }
         let written =
             if cells { crate::output::cells::cells(&grid) } else { plain(&grid, reveal, mosaic_style(legacy_mosaics)) };
@@ -193,7 +229,7 @@ pub fn show(
     if selection == Selection::All {
         return Err((exit::USAGE, "show displays one page; use text or render for all".into()));
     }
-    let session = input::load_for(common, selection.page())?;
+    let mut session = input::load_for(common, selection.page())?;
     let is_terminal = std::io::stdout().is_terminal();
     let (display, reason) = terminal::detect(display(graphics), is_terminal);
     if let (Some(reason), true) = (reason, common.verbose > 0) {
@@ -203,8 +239,8 @@ pub fn show(
     // Measure the terminal before the sandbox closes /dev/tty.
     let area = if display == Display::Iterm2 { terminal::text_area() } else { None };
     sandbox(common, None)?;
-    let page = selected(&session, selection)?[0];
-    let grid = session.grid(page, None);
+    let key = selected(&session, selection)?[0];
+    let grid = grid_of(&mut session, key)?;
     let mut out = std::io::stdout().lock();
     match display {
         Display::Iterm2 => {
@@ -251,9 +287,8 @@ pub fn view(
 }
 
 /// A file name for a page, from validated parts only (REQ-SEC-010).
-fn page_file_name(page: &StoredPage, extension: &str) -> String {
-    let name =
-        format!("P{}-{:04X}.{extension}", String::from_utf8_lossy(&page.key.address.ascii()), page.key.subcode.value());
+fn page_file_name(key: PageKey, extension: &str) -> String {
+    let name = format!("P{}-{:04X}.{extension}", String::from_utf8_lossy(&key.address.ascii()), key.subcode.value());
     name.bytes().filter(|&byte| is_safe_file_name_byte(byte)).map(char::from).collect()
 }
 
@@ -266,7 +301,7 @@ pub fn render(
     image: ImageFormat,
 ) -> Result<(), Failure> {
     let selection = parse_selection(page)?;
-    let session = input::load_for(common, selection.page())?;
+    let mut session = input::load_for(common, selection.page())?;
     let frame = Frame::still(session.decoder().config(), raster_args.reveal);
     let scale = scale_for(raster_args, None, (0, 0));
     let pages = selected(&session, selection)?;
@@ -284,8 +319,8 @@ pub fn render(
         ImageFormat::Png => "png",
         ImageFormat::Ppm => "ppm",
     };
-    for page in pages {
-        let grid = session.grid(page, None);
+    for key in pages {
+        let grid = grid_of(&mut session, key)?;
         let picture = match image {
             ImageFormat::Png => Rgba::TRANSPARENT,
             ImageFormat::Ppm => Rgba::opaque(0, 0, 0),
@@ -297,7 +332,7 @@ pub fn render(
         }
         .map_err(|error| (exit::INPUT, error.to_string()))?;
         let target = if selection == Selection::All {
-            directory.join(page_file_name(page, extension))
+            directory.join(page_file_name(key, extension))
         } else {
             output.to_path_buf()
         };

@@ -10,7 +10,7 @@
 //! part of the store with its own capacity in packets (decision E.56), and
 //! the presentation layer reads them through the [`EnhancementLookup`].
 
-use crate::config::{Config, ParityPolicy};
+use crate::config::{Config, ParityPolicy, PresentationLevel};
 use crate::consts::{
     C4_ERASE, C8_UPDATE, C9_INTERRUPTED, CLOCK_COLUMN, COLUMNS, COMPOSITIONAL_LINKS, DATA_BYTES, DESIGNATION_CODES,
     DESIGNATION_LINKS_LEVEL_25, HEADER_DISPLAY_BYTES, HEADER_DISPLAY_COLUMN, LINK_NULL_PAGE, MAGAZINES, MOT_DRCS_LINKS,
@@ -409,6 +409,92 @@ pub struct Statistics {
     /// Packets of enhancement pages dropped because every slot of the
     /// enhancement store belonged to a sub-page being received.
     pub enhancement_dropped: u32,
+    /// Faults met while building pages at Levels 2.5 and 3.5 (REQ-L25-051),
+    /// added by [`Decoder::record_enhancement`].
+    pub enhancement: EnhancementFaults,
+}
+
+/// The faults one build of a page met at Levels 2.5 and 3.5, one count for
+/// each kind (REQ-L25-051). The enhancement processor fills it; the decoder
+/// keeps the sum in its [`Statistics`]. It is defined here, with the
+/// statistics, because acquisition may not use the presentation layer
+/// (ARCHITECTURE.md section 9).
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub struct EnhancementFaults {
+    /// Triplets that failed their Hamming 24/18 check and were skipped.
+    pub damaged_triplets: u32,
+    /// Object invocations skipped by the nesting rules of REQ-OBJ-008 or
+    /// with an illegal source.
+    pub forbidden_invocations: u32,
+    /// Invocations whose object was absent: no link, no page, no pointer,
+    /// no matching definition, or a missing packet (REQ-OBJ-003 to
+    /// REQ-OBJ-006).
+    pub absent_objects: u32,
+    /// Invocations ignored because a limit of Annex A.8 was reached.
+    pub limited_invocations: u32,
+    /// Characters and attributes discarded by REQ-OBJ-014 and REQ-L25-050.
+    pub discarded_writes: u32,
+    /// Modified designations ignored: reserved values, or a third pair at
+    /// Level 2.5 (REQ-L25-012).
+    pub ignored_designations: u32,
+    /// Cells showing a space for an undefined G2 or G3 position (decision
+    /// E.50).
+    pub undefined_characters: u32,
+    /// DRCS cells whose data is missing or not yet usable, including those
+    /// beyond the grid's pattern capacity (REQ-DRC-007, REQ-DRC-009).
+    pub drcs_missing: u32,
+    /// DRCS cells whose data is invalid (REQ-DRC-009).
+    pub drcs_invalid: u32,
+}
+
+impl EnhancementFaults {
+    /// No faults.
+    pub const NONE: Self = Self {
+        damaged_triplets: 0,
+        forbidden_invocations: 0,
+        absent_objects: 0,
+        limited_invocations: 0,
+        discarded_writes: 0,
+        ignored_designations: 0,
+        undefined_characters: 0,
+        drcs_missing: 0,
+        drcs_invalid: 0,
+    };
+
+    /// Adds `other`'s counts to these, saturating.
+    pub const fn add(&mut self, other: &Self) {
+        self.damaged_triplets = self.damaged_triplets.saturating_add(other.damaged_triplets);
+        self.forbidden_invocations = self.forbidden_invocations.saturating_add(other.forbidden_invocations);
+        self.absent_objects = self.absent_objects.saturating_add(other.absent_objects);
+        self.limited_invocations = self.limited_invocations.saturating_add(other.limited_invocations);
+        self.discarded_writes = self.discarded_writes.saturating_add(other.discarded_writes);
+        self.ignored_designations = self.ignored_designations.saturating_add(other.ignored_designations);
+        self.undefined_characters = self.undefined_characters.saturating_add(other.undefined_characters);
+        self.drcs_missing = self.drcs_missing.saturating_add(other.drcs_missing);
+        self.drcs_invalid = self.drcs_invalid.saturating_add(other.drcs_invalid);
+    }
+}
+
+/// Which build of a page an enhancement report belongs to: the page, the
+/// reception it was built from, and the presentation level asked for. The
+/// decoder uses it so that redrawing a page does not count its faults
+/// again ([`Decoder::record_enhancement`]).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct PageBuild {
+    /// The page and sub-page.
+    pub key: PageKey,
+    /// The page's reception count when it was built ([`StoredPage::receptions`]).
+    pub receptions: u32,
+    /// The presentation level of the configuration it was built with.
+    pub level: PresentationLevel,
+}
+
+impl PageBuild {
+    /// The build of `page` at `level`.
+    #[must_use]
+    pub const fn of(page: &StoredPage, level: PresentationLevel) -> Self {
+        Self { key: page.key, receptions: page.receptions, level }
+    }
 }
 
 /// Search state of the requested page (REQ-ACQ-012).
@@ -452,6 +538,8 @@ pub struct Decoder<'a> {
     named: FixedVec<PageAddress, NAMED_ENHANCEMENT_PAGES>,
     // Where the page of the header being processed is stored.
     pending: Route,
+    // The build whose enhancement faults were recorded last.
+    last_recorded: Option<PageBuild>,
 }
 
 /// Bytes of header display data before the clock: columns 8 to 31.
@@ -509,6 +597,7 @@ impl<'a> Decoder<'a> {
             receiving_control: [ControlBits(0); MAGAZINES],
             named: FixedVec::new(PageAddress { magazine: Magazine::from_bits(1), page: PageNumber(0) }),
             pending: Route::default(),
+            last_recorded: None,
         }
     }
 
@@ -569,6 +658,32 @@ impl<'a> Decoder<'a> {
     /// Resets the statistics.
     pub fn reset_statistics(&mut self) {
         self.stats = Statistics::default();
+    }
+
+    /// Adds the faults that building a page met at Levels 2.5 and 3.5 to
+    /// the statistics (REQ-L25-051, REQ-ARCH-007), and returns whether they
+    /// were added. Call it with the `build` and `faults` of the
+    /// `EnhancementReport` that building the grid returned, after the
+    /// grid is built, because building borrows the decoder through
+    /// [`Decoder::enhancement_lookup`].
+    ///
+    /// A build is counted once: a report for the same build as the one
+    /// recorded last is ignored. A viewer composes the shown page on every
+    /// redraw, and each redraw meets the same faults, so counting them all
+    /// would make the counts measure how long the page was on screen. A
+    /// build is the page, its reception count and the level asked for.
+    /// Keying on the reception, not on every stored row, counts each fault
+    /// once per reception of the page, as the acquisition counts count each
+    /// damaged packet once per reception. The reception count is used
+    /// rather than the content because it is already kept and costs no
+    /// comparison of page bytes.
+    pub fn record_enhancement(&mut self, build: PageBuild, faults: &EnhancementFaults) -> bool {
+        if self.last_recorded == Some(build) {
+            return false;
+        }
+        self.last_recorded = Some(build);
+        self.stats.enhancement.add(faults);
+        true
     }
 
     /// The magazine data of a magazine.
@@ -1298,7 +1413,7 @@ mod tests {
     #[test]
     fn timeout_completes_and_hex_pages_are_not_stored() {
         let mut slots = std::vec![StoredPage::EMPTY; 4];
-        let level_15 = Config { level: crate::config::PresentationLevel::Level15, ..Config::default() };
+        let level_15 = Config { level: PresentationLevel::Level15, ..Config::default() };
         let mut decoder = Decoder::new(&mut slots, level_15);
         let mut events = Vec::new();
         feed(&mut decoder, &[header(3, 0x45, 0, 0), header(4, 0xA5, 0, 0)], &mut events);

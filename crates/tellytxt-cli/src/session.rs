@@ -6,12 +6,13 @@ use tellytxt_core::config::Config;
 use tellytxt_core::consts::{
     COLUMNS, ENHANCEMENT_PACKETS_LEVEL_35, HEADER_DISPLAY_BYTES, MAGAZINES, MOT_PACKETS, PAGE_COMPLETION_TIMEOUT_US,
 };
-use tellytxt_core::fsm::PageState;
+use tellytxt_core::fsm::{PageKey, PageState};
 use tellytxt_core::level1::{DisplayOptions, Grid, build_grid};
 use tellytxt_core::packet::{Packet, PacketMeta};
 use tellytxt_core::service::{ServiceInfo, interpret};
+use tellytxt_core::trace::TraceSink;
 use tellytxt_core::types::{Instant, PageAddress, SubCode};
-use tellytxt_core::viewer::compose_level;
+use tellytxt_core::viewer::compose_level_traced;
 
 /// Default number of stored pages and sub-pages.
 pub const DEFAULT_PAGES: usize = 4096;
@@ -154,8 +155,13 @@ impl Session {
     /// The grid of a page as `ttx show`, `text` and `render` present it:
     /// row 0 with the status area showing the page number (decision E.10),
     /// Level 1 then the pass of the presentation level (REQ-PRF-006).
-    #[must_use]
-    pub fn grid(&self, page: &StoredPage, row24: Option<[u8; COLUMNS]>) -> Grid {
+    /// `None` when the page is not stored. At Levels 2.5 and 3.5 the faults
+    /// met are added to the decoder's statistics (REQ-L25-051). With
+    /// tracing on, the transitions of the level's walk are printed
+    /// (REQ-FSM-010).
+    pub fn grid(&mut self, key: PageKey, row24: Option<[u8; COLUMNS]>) -> Option<Grid> {
+        let store = self.decoder.store();
+        let page = store.find(key).and_then(|index| store.slot(index))?;
         let mut grid = Grid::EMPTY;
         let address = page.key.address;
         let mut status = [b' '; 7];
@@ -165,8 +171,25 @@ impl Session {
         let magazine = self.decoder.magazine_data(address.magazine);
         let config = self.decoder.config();
         build_grid(&mut grid, Some(page), &magazine, config, &options);
-        let _ = compose_level(&mut grid, page, &magazine, &self.decoder.enhancement_lookup(), config, &options);
-        grid
+        let lookup = self.decoder.enhancement_lookup();
+        let mut entries = Vec::new();
+        let mut keep = |entry| entries.push(Event::Trace(entry));
+        let mut trace = TraceSink { time: Instant(self.clock), entries: &mut keep };
+        let report = compose_level_traced(&mut grid, page, &magazine, &lookup, config, &options, &mut trace);
+        if let Some(report) = report {
+            self.decoder.record_enhancement(report.build, &report.faults);
+        }
+        self.trace.extend(entries);
+        self.print_trace();
+        Some(grid)
+    }
+
+    /// Prints the events kept for tracing, as `-vv` asks (REQ-CLI-002), and
+    /// forgets them.
+    pub fn print_trace(&mut self) {
+        for event in self.trace.drain(..) {
+            eprintln!("ttx: {event:?}");
+        }
     }
 
     /// The rolling header text, for viewers searching for a page.

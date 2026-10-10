@@ -118,7 +118,7 @@ fn ptu_layout_of_figure_27() {
     ];
     let packets = stream(&local, vec![], vec![drcs_page(DRCS, 0, &ptus, Some(codes))]);
     let (grid, report) = build(&packets, L35);
-    assert_eq!(report.unwrap().drcs_missing, 0);
+    assert_eq!(report.unwrap().faults.drcs_missing, 0);
     let pattern = |character| grid.drcs_pattern(normal(0, character)).copied().unwrap();
     let zero = pattern(0);
     assert_eq!(zero.mode, DrcsMode::Mode0);
@@ -208,7 +208,7 @@ fn missing_and_invalid_data() {
     assert!(matches!(cell(7), Glyph::Char(_)), "missing: the character stays, without a pattern");
     assert!(grid.drcs_pattern(normal(0, 20)).is_none());
     assert!(matches!(cell(8), Glyph::Char(_)) && grid.drcs_pattern(normal(3, 0)).is_none());
-    assert_eq!((report.drcs_invalid, report.drcs_missing), (6, 2));
+    assert_eq!((report.faults.drcs_invalid, report.faults.drcs_missing), (6, 2));
 }
 
 /// REQ-DRC-009, decision E.54: a character becomes usable once its PTUs
@@ -240,7 +240,7 @@ fn level_25_uses_mode_0_only() {
     let packets = stream(&local, vec![], vec![drcs_page(DRCS, 0, &ptus, Some(codes))]);
     let (grid, report) = build(&packets, L25);
     assert!(grid.drcs_pattern(normal(0, 0)).is_some() && grid.drcs_pattern(normal(0, 1)).is_none());
-    assert_eq!(report.unwrap().drcs_missing, 1, "unusable, shown as missing");
+    assert_eq!(report.unwrap().faults.drcs_missing, 1, "unusable, shown as missing");
     assert!(build(&packets, L35).0.drcs_pattern(normal(0, 1)).is_some());
 }
 
@@ -364,7 +364,7 @@ fn pattern_capacity_is_the_callers() {
         let report = enhance::apply(&mut grid, page, &magazine, &decoder.enhancement_lookup(), &config, &options);
         assert_eq!(grid.drcs.as_slice().len(), 2);
         assert!(grid.drcs_pattern(normal(0, 2)).is_none());
-        assert_eq!(report.drcs_missing, 1);
+        assert_eq!(report.faults.drcs_missing, 1);
     });
 }
 
@@ -393,7 +393,7 @@ fn level_25_limits_are_not_enforced() {
     }
     let (grid, report) = build(&packets, L25);
     assert_eq!(grid.drcs.as_slice().len(), 31, "30 characters of sub-table 0 and one of sub-table 1");
-    assert_eq!(report.unwrap().drcs_missing, 0);
+    assert_eq!(report.unwrap().faults.drcs_missing, 0);
 }
 
 /// REQ-DRC-008: a mode 0 character takes the colours of its cell.

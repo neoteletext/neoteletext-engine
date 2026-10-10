@@ -229,7 +229,7 @@ The Web user agent (L7) sits beside the lower layers rather than above them in t
 |---|---|
 | `policy` | Every security decision, as pure functions asked by the layers that need them. Examples: "is this address blocked?", "may this form submit to that origin?", "is this a downgrade?". No layer reimplements a policy decision. |
 | `config` | The configuration struct, its defaults and the named profiles. |
-| `trace` | The state-machine transition trace (REQ-FSM-010). |
+| `trace` | The state-machine transition trace (REQ-FSM-010): `TraceEntry`, `Machine`, and `TraceSink` for machines with no event queue of their own. |
 
 They depend only on Foundation.
 
@@ -306,6 +306,7 @@ Field groups shared with the presentation layer are foundation types in `types`:
 | Enhancement pages, stored as received | `Decoder::with_enhancement_store(pages, EnhancementStore::new(&mut sub_pages, &mut packets), config)`. Capacity is the length of the packet pool (Annex E.8: `ENHANCEMENT_PACKETS_LEVEL_25`, `ENHANCEMENT_PACKETS_LEVEL_35`). `Decoder::new` keeps no enhancement pages. |
 | The read-only lookup (REQ-ACQ-020) | `Decoder::enhancement_lookup() -> EnhancementLookup`: `sub_page(magazine, page, s1)`, `magazine_organization_table(magazine)` (page mFE, S1 = 0 only), `magazine_data(magazine)`. An `EnhancementPage` gives `row(packet)`, `enhancement(designation)`, `received()`, `format()`, `drcs_modes()`, `subcode()`, `last_packet()`, `control()` and `generation()`, which changes with the content or S2. |
 | Redrawing (REQ-ACQ-022) | `Event::EnhancementPageChanged(EnhancementKey)` at the end of a reception that changed a sub-page, and `Event::MagazineData(magazine)`. |
+| Enhancement faults in the statistics (REQ-L25-051, REQ-ARCH-007) | `Statistics::enhancement: EnhancementFaults`, one count per kind of fault. The caller adds a build's faults with `Decoder::record_enhancement(PageBuild, &EnhancementFaults)` after building, when the lookup's borrow has ended. A `PageBuild` is the page, its reception count and the level asked for; the build recorded last is not counted again, so redraws of a page add nothing. The types live in `acq` because L2 may not use L3. |
 
 **Presentation model (`colour`, `drcs`, `level1`) and configuration.**
 
@@ -320,7 +321,8 @@ Field groups shared with the presentation layer are foundation types in `types`:
 
 **What each phase built.**
 
-- Phase (a): `viewer::compose_level` dispatches on `Config::level`: nothing at Level 1, `level15::apply` at Level 1.5, and `enhance::apply` at Levels 2.5 and 3.5; `viewer::Viewer::compose` and the command-line program's `Session::grid` both call it, and `ComposeContext` carries the `EnhancementLookup`. `enhance::apply` returns an `EnhancementReport` of the faults it met and the triplets it read.
+- Phase (a): `viewer::compose_level` dispatches on `Config::level`: nothing at Level 1, `level15::apply` at Level 1.5, and `enhance::apply` at Levels 2.5 and 3.5; `viewer::Viewer::compose` and the command-line program's `Session::grid` both call it, and `ComposeContext` carries the `EnhancementLookup`. `enhance::apply` returns an `EnhancementReport`: the `PageBuild`, the `EnhancementFaults` it met, the objects it ran and the triplets it read. `Viewer::compose` returns it in `Composed::Built`, for the port to record; `Session::grid` records it itself, and `ttx list` builds every page at Levels 2.5 and 3.5 to show the counts.
+- Trace (REQ-FSM-010): `viewer::compose_level_traced`, `level15::apply_traced` and `enhance::apply_traced` take a `trace::TraceSink` (the build time and a `&mut dyn FnMut(TraceEntry)`) and, when `Config::trace` is on, report the transitions of `Machine::TripletWalk` or of the page-level run of `Machine::EnhancementWalk`, with state, event and action names from `level15::walk_*_name`, `enhance::walk_*_name` and `TripletFunction::name`. A transition that met a fault names it as its action. The untraced functions are unchanged; `Session::grid` uses the traced one, so that `ttx -vv` prints the walk with the other traces.
 - `enhance::apply` rebuilds each shown row from `level1::row_codes` and the walk's events, keeping row 0 columns 0 to 7 from the Level 1 grid. The walk runs once for the page-level colours and once for each row that has events, keeping only that row's events, so that a grid needs one row of event storage (decision E.41, principle 5); the limits of Annex A.8 are checked before an object is looked for, which bounds the work by `enhance::MAX_WALK_STEPS`. `objects` finds links, definitions and bodies; `drcs::decode_character` fills `Grid::drcs`.
 - `level1::resolve_designation` follows the order of Annex C.4 and decision E.50 at each level, and the Level 1.5 pass reads every triplet through `TripletFunction` (REQ-PKT-010).
 - Phase (b): `render` draws DRCS cells from `Grid::drcs` before any glyph lookup (`GlyphSet::glyph` gives an empty glyph for a DRCS reference), and has the resolved colour mode (`ColourMode::Resolved(FlashPhase)`, chosen by `RenderOptions::for_level`), side-panel composition (`row_width`, `source_columns`, `source_cell`), double width and size, underline, invert, the font styles and the flash timing of decision E.48. The G3 glyphs are generated by `cargo xtask glyphs` from geometry into `glyphs/g3.txt` and `glyphs/g3.rs`. The image writers take the 32-entry palette of `colour_map_palette`.

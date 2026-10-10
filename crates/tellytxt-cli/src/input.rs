@@ -246,11 +246,8 @@ pub fn load_for(common: &Common, wanted: Option<PageAddress>) -> Result<Session,
         }
         session.decoder_mut().set_config(config);
     }
-    if verbose >= 2 {
-        for event in &session.trace {
-            eprintln!("ttx: {event:?}");
-        }
-    }
+    // Events are kept only with -vv (`config.trace`).
+    session.print_trace();
     if packets == 0 {
         let reason = if detected.is_none() { "the input format was not recognised" } else { "no teletext found" };
         return Err((exit::INPUT, format!("{}: {reason}", common.input)));

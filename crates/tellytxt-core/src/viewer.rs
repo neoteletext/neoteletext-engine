@@ -12,6 +12,7 @@ use crate::nav::{
     EntryResult, History, HistoryEntry, LinkTarget, PageEntry, PageLinks, next_page, previous_page, step_stored,
 };
 use crate::render::Zoom;
+use crate::trace::TraceSink;
 use crate::types::{Instant, PageAddress, SubCode};
 
 /// Viewer keys: the numbered functions of area NAV.
@@ -474,18 +475,23 @@ impl Viewer {
 
     /// Builds the grid the viewer shows (REQ-ARCH-006): Level 1, then the
     /// pass of the presentation level, with the receiver's status area,
-    /// rolling header and row 24. Returns false, leaving the grid alone,
-    /// while holding.
+    /// rolling header and row 24. While holding it leaves the grid alone.
+    ///
+    /// At Levels 2.5 and 3.5 the result carries the enhancement processor's
+    /// report. The caller records it with `Decoder::record_enhancement`
+    /// once `context` no longer borrows the decoder (REQ-L25-051); the
+    /// decoder counts each build once however often the page is redrawn.
+    #[must_use]
     pub fn compose<const DRCS: usize, const PANEL_ROWS: usize>(
         &self,
         grid: &mut Grid<DRCS, PANEL_ROWS>,
         page: Option<&StoredPage>,
         context: &ComposeContext<'_>,
-    ) -> bool {
+    ) -> Composed {
         let ComposeContext { magazine, config, rolling_header, store, row24, lookup } = *context;
         // REQ-NAV-006: while held, new receptions do not reach the screen.
         if self.state == ViewerState::Holding {
-            return false;
+            return Composed::Held;
         }
         let searching = page.is_none() || self.state == ViewerState::Searching;
         let options = DisplayOptions {
@@ -498,11 +504,18 @@ impl Viewer {
             boxed: false,
         };
         build_grid(grid, page, magazine, config, &options);
-        if let Some(page) = page {
-            let _ = compose_level(grid, page, magazine, &lookup, config, &options);
-        }
-        true
+        Composed::Built(page.and_then(|page| compose_level(grid, page, magazine, &lookup, config, &options)))
     }
+}
+
+/// What [`Viewer::compose`] did.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Composed {
+    /// The viewer is holding, and the grid was left alone (REQ-NAV-006).
+    Held,
+    /// The grid was built; at Levels 2.5 and 3.5, with the report of the
+    /// faults the enhancement processor met, for the decoder's statistics.
+    Built(Option<EnhancementReport>),
 }
 
 /// Applies the pass of the presentation level to a page's Level 1 grid
@@ -527,6 +540,31 @@ pub fn compose_level<const DRCS: usize, const PANEL_ROWS: usize>(
         }
         PresentationLevel::Level25 | PresentationLevel::Level35 => {
             Some(enhance::apply(grid, page, magazine, lookup, config, options))
+        }
+    }
+}
+
+/// As [`compose_level`], and when `Config::trace` is on, reports the
+/// transitions of the walk of the level to `trace` (REQ-FSM-010): the
+/// Level 1.5 triplet walk (REQ-FSM-007), or the page-level run of the
+/// enhancement walk (REQ-FSM-011).
+pub fn compose_level_traced<const DRCS: usize, const PANEL_ROWS: usize>(
+    grid: &mut Grid<DRCS, PANEL_ROWS>,
+    page: &StoredPage,
+    magazine: &MagazineData,
+    lookup: &EnhancementLookup<'_>,
+    config: &Config,
+    options: &DisplayOptions,
+    trace: &mut TraceSink<'_>,
+) -> Option<EnhancementReport> {
+    match config.level {
+        PresentationLevel::Level1 => None,
+        PresentationLevel::Level15 => {
+            level15::apply_traced(grid, &page.enhancements, page.enhancements_present, config, true, trace);
+            None
+        }
+        PresentationLevel::Level25 | PresentationLevel::Level35 => {
+            Some(enhance::apply_traced(grid, page, magazine, lookup, config, options, trace))
         }
     }
 }
@@ -667,10 +705,10 @@ mod tests {
         let marker = Cell { foreground: COLOUR_GREEN, ..Cell::BLANK };
         grid.cells[5][5] = marker;
         let received = StoredPage { state: PageState::Complete, ..StoredPage::EMPTY };
-        assert!(!viewer.compose(&mut grid, Some(&received), &compose), "held: new receptions not shown");
+        assert_eq!(viewer.compose(&mut grid, Some(&received), &compose), Composed::Held, "held: not shown");
         assert_eq!(grid.cells[5][5], marker);
         viewer.key(Key::Hold, &context);
-        assert!(viewer.compose(&mut grid, Some(&received), &compose), "released");
+        assert!(matches!(viewer.compose(&mut grid, Some(&received), &compose), Composed::Built(_)), "released");
         assert_ne!(grid.cells[5][5], marker);
         viewer.key(Key::NextPage, &context);
         assert!(!viewer.reveal(Instant(0)), "a different page clears reveal");

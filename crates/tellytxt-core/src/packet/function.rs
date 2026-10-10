@@ -645,6 +645,39 @@ impl TripletFunction {
 }
 
 impl TripletFunction {
+    /// The function's name in Tables 28 and 29, for the transition trace
+    /// of the walks (REQ-FSM-010).
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::FullScreenColour(_) => "Full Screen Colour",
+            Self::FullRowColour { .. } => "Full Row Colour",
+            Self::SetActivePosition { .. } => "Set Active Position",
+            Self::AddressDisplayRow0 { .. } => "Address Display Row 0",
+            Self::ProgrammeDeliveryRow { .. } => "Programme Delivery Control row triplet",
+            Self::OriginModifier { .. } => "Origin Modifier",
+            Self::ObjectInvocation { .. } => "Object Invocation",
+            Self::ObjectDefinition { .. } => "Object Definition",
+            Self::DrcsMode { .. } => "DRCS Mode",
+            Self::Termination { .. } => "Termination Marker",
+            Self::ReservedRow { .. } => "reserved row triplet",
+            Self::ForegroundColour { .. } => "Foreground Colour",
+            Self::G1Character { .. } => "G1 character",
+            Self::G3Character { .. } => "G3 character",
+            Self::BackgroundColour { .. } => "Background Colour",
+            Self::ProgrammeDeliveryColumn { .. } => "Programme Delivery Control column triplet",
+            Self::AdditionalFlash { .. } => "Additional Flash Functions",
+            Self::ModifiedDesignation { .. } => "Modified G0 and G2 Character Set Designation",
+            Self::G0Character { .. } => "G0 character",
+            Self::DisplayAttributes { .. } => "Display Attributes",
+            Self::DrcsCharacter { .. } => "DRCS Character Invocation",
+            Self::FontStyle { .. } => "Font Style",
+            Self::G2Character { .. } => "G2 character",
+            Self::G0Diacritic { .. } => "G0 character with diacritical mark",
+            Self::ReservedColumn { .. } => "reserved column triplet",
+        }
+    }
+
     /// The column a column triplet moves the active position to: every
     /// column mode except the reserved modes and Programme Delivery Control
     /// (clause 12.3.4). `None` for row triplets and for those column modes.

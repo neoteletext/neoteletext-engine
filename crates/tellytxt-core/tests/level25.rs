@@ -75,7 +75,7 @@ fn every_character_mode_writes_its_set() {
     assert_eq!(char_of(&cells[9]), '*', "mode 01001 with 2/A is the asterisk");
     assert_eq!(char_of(&cells[10]), 'A', "data below 2/0 writes nothing: the Level 1 'A' stays");
     assert_eq!((cells[11].glyph, cells[12].glyph), (Glyph::Space, Glyph::Space), "undefined G3 and G2 positions");
-    assert_eq!(report.unwrap().undefined_characters, 2);
+    assert_eq!(report.unwrap().faults.undefined_characters, 2);
     assert!(cells[1..10].iter().all(|cell| cell.attributes.source() == CharSource::Local));
     assert_eq!(cells[13].attributes.source(), CharSource::Level1);
 }
@@ -224,7 +224,7 @@ fn damaged_and_out_of_order_triplets() {
     let (grid, report) = build(&packets, L25);
     assert_eq!(char_of(&grid.cells[2][6]), 'b', "the skipped Set Active Position left row 2");
     assert_eq!(char_of(&grid.cells[2][3]), 'c', "out of order: applied");
-    assert_eq!(report.unwrap().damaged_triplets, 1);
+    assert_eq!(report.unwrap().faults.damaged_triplets, 1);
 }
 
 /// REQ-L25-012, REQ-TST-015: a Modified G0 and G2 designation lasts to the
@@ -544,7 +544,7 @@ fn receiver_area_is_never_written() {
     let level_1 = build(&page(&[], &[]), PresentationLevel::Level1).0;
     assert_eq!(grid.cells[0][..8], level_1.cells[0][..8]);
     assert_eq!(char_of(&grid.cells[0][8]), 'Q');
-    assert_eq!(report.unwrap().discarded_writes, 3);
+    assert_eq!(report.unwrap().faults.discarded_writes, 3);
 }
 
 /// REQ-L25-052: Programme Delivery Control and reserved triplets have no
@@ -631,7 +631,7 @@ fn faults_leave_the_level_1_page() {
     let (grid, report) = build(&packets, L25);
     let report = report.unwrap();
     assert_eq!(text(&grid, 1).trim_end(), "LEVEL!ONE");
-    assert_eq!((report.damaged_triplets, report.absent_objects), (1, 1));
+    assert_eq!((report.faults.damaged_triplets, report.faults.absent_objects), (1, 1));
 }
 
 /// REQ-L25-006: what a cell records: colours as Colour Map indices, source

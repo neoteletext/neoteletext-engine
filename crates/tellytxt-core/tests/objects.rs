@@ -205,7 +205,7 @@ fn origin_modifier_and_side_panels() {
     // R of the first object at column 72 is discarded, and so are the Q and
     // R of the third object at 41 and 42, which would cross into the panel
     // area.
-    assert_eq!(report.unwrap().discarded_writes, 3);
+    assert_eq!(report.unwrap().faults.discarded_writes, 3);
 }
 
 /// REQ-L25-040, REQ-L25-041, REQ-TST-016: the three side-panel layouts of
@@ -291,7 +291,7 @@ fn invocation_nesting_rules() {
     // invoking Active (1); Adaptive invoking Active and Adaptive (2); each
     // of the two Passive objects invoking all three types (6).
     assert_eq!(report.objects, 4);
-    assert_eq!(report.forbidden_invocations, 1 + 2 + 6);
+    assert_eq!(report.faults.forbidden_invocations, 1 + 2 + 6);
     // A public object may not invoke a local one.
     let public = ObjectDef::new(
         ObjectKind::Active,
@@ -303,7 +303,7 @@ fn invocation_nesting_rules() {
         page_with_objects(&[], &local, &[vec![], vec![], local_object(ObjectKind::Passive, 3, &[g0(0, b'x')])]);
     packets.extend(object_page(POP, 0, &[public]));
     let report = build(&packets, L25).1.unwrap();
-    assert_eq!((report.objects, report.forbidden_invocations), (1, 1));
+    assert_eq!((report.objects, report.faults.forbidden_invocations), (1, 1));
 }
 
 /// REQ-OBJ-012, REQ-TST-017: characters by the priority of clause 13.2:
@@ -453,7 +453,7 @@ fn limits_of_annex_a8() {
     let (grid, report) = build(&packets, L25);
     let shown = grid.cells.iter().flatten().filter(|cell| char_of(cell) == 'p').count();
     assert_eq!(shown, usize::from(OBJECT_INVOCATIONS_PER_TYPE));
-    assert_eq!(report.unwrap().limited_invocations, 3);
+    assert_eq!(report.unwrap().faults.limited_invocations, 3);
     // Twenty objects invoked at one position, each open there: fifteen run.
     let invocation = invoke(ObjectSource::Local, ObjectKind::Passive, local_number(2, 0));
     let mut local = vec![set_position(2, 0)];
@@ -462,7 +462,7 @@ fn limits_of_annex_a8() {
     let object = local_object(ObjectKind::Passive, 2, &[g0(0, b'o')]);
     let packets = display_page(0, &[], vec![x26(0, &local), x26(1, &more), x26(2, &object)]);
     let report = build(&packets, L25).1.unwrap();
-    assert_eq!((report.objects, report.limited_invocations), (OBJECTS_OPEN_AT_ONCE as u32, 5));
+    assert_eq!((report.objects, report.faults.limited_invocations), (OBJECTS_OPEN_AT_ONCE as u32, 5));
     // Objects that write nothing, opened one after another at their own
     // cells: the sixteenth in succession is ignored.
     let invocation = invoke(ObjectSource::Local, ObjectKind::Passive, local_number(3, 0));
@@ -474,7 +474,7 @@ fn limits_of_annex_a8() {
     let packets =
         display_page(0, &[], vec![x26(0, &local[..13]), x26(1, &local[13..26]), x26(2, &local[26..]), x26(3, &silent)]);
     let report = build(&packets, L25).1.unwrap();
-    assert_eq!((report.objects, report.limited_invocations), (15, 3));
+    assert_eq!((report.objects, report.faults.limited_invocations), (15, 3));
 }
 
 /// REQ-OBJ-030, REQ-TST-017: links of X/27/4 and X/27/5 and each case that
@@ -696,7 +696,7 @@ fn worst_case_page_is_bounded() {
     eprintln!("worst case: {} triplets read in {:?}, {} objects", report.steps, started.elapsed(), report.objects);
     assert!(report.steps <= MAX_WALK_STEPS, "{} > {MAX_WALK_STEPS}", report.steps);
     assert_eq!(report.objects, 100 + 2 * u32::from(OBJECT_INVOCATIONS_PER_TYPE));
-    assert_eq!(report.limited_invocations, (200 - 127) + (2 * 127 - 127));
+    assert_eq!(report.faults.limited_invocations, (200 - 127) + (2 * 127 - 127));
     assert_eq!(char_of(&grid.cells[1][0]), 'w', "the Passive objects show");
 }
 
@@ -731,7 +731,7 @@ fn open_area_of_figure_a1() {
     assert_eq!(char_of(grid.panel_cell(5, 42).unwrap()), 'W', "origin 2 + 3, 30 + 12");
     assert_eq!(char_of(grid.panel_cell(6, 45).unwrap()), 'W', "the last position addressed");
     assert_eq!(char_of(&grid.cells[4][5]), 's');
-    assert_eq!((report.objects, report.limited_invocations), (1 + 14, 1));
+    assert_eq!((report.objects, report.faults.limited_invocations), (1 + 14, 1));
 }
 
 /// REQ-L25-051: an object whose page is missing is skipped; the rest of
@@ -742,5 +742,5 @@ fn missing_object_pages_leave_the_page() {
         [set_position(2, 0), invoke(ObjectSource::Global, ObjectKind::Passive, public_number(0, 0)), g0(9, b'k')];
     let (grid, report) = build(&page_with_objects(&[(2, b"STILL HERE")], &local, &[]), L25);
     assert_eq!(text(&grid, 2).trim_end(), "STILL HERk");
-    assert_eq!(report.unwrap().absent_objects, 1);
+    assert_eq!(report.unwrap().faults.absent_objects, 1);
 }

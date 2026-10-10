@@ -9,6 +9,7 @@ use crate::consts::{
 };
 use crate::level1::{CharSource, Glyph, Grid, Size};
 use crate::packet::{Triplet, TripletFunction};
+use crate::trace::{Machine, TraceSink};
 
 /// The designation code X/26/15, which the "SAA5246A" profile skips
 /// (decision E.2).
@@ -110,6 +111,39 @@ pub fn walk_transition(state: WalkState, triplet: Option<Triplet>, context: Walk
     (next, WalkAction::Write(character))
 }
 
+/// Names for the transition trace (REQ-FSM-010).
+#[must_use]
+pub const fn walk_state_name(state: WalkState) -> &'static str {
+    match state {
+        WalkState::Start => "Start",
+        WalkState::Walking { .. } => "Walking",
+        WalkState::Terminated => "Terminated",
+    }
+}
+
+/// Names for the transition trace: the triplet's function, or a triplet
+/// that failed its Hamming 24/18 check.
+#[must_use]
+pub const fn walk_event_name(triplet: Option<Triplet>) -> &'static str {
+    match triplet {
+        Some(triplet) => triplet.function().name(),
+        None => "damaged triplet",
+    }
+}
+
+/// Names for the transition trace.
+#[must_use]
+pub const fn walk_action_name(action: WalkAction) -> &'static str {
+    match action {
+        WalkAction::None => "none",
+        WalkAction::Write(_) => "write character",
+    }
+}
+
+/// The trace's action for a write that the strict option of REQ-L15-009
+/// ignores.
+const IGNORED_OUT_OF_ORDER: &str = "ignore out-of-order write";
+
 /// The character a writing triplet names (REQ-L15-006, REQ-L15-010), with
 /// its code as transmitted; `None` for triplets that write nothing at Level
 /// 1.5.
@@ -147,6 +181,32 @@ pub fn apply<const DRCS: usize, const PANEL_ROWS: usize>(
     config: &Config,
     include_row_0: bool,
 ) {
+    walk(grid, packets, present, config, include_row_0, None);
+}
+
+/// As [`apply`], and when `Config::trace` is on, reports every transition
+/// of the walk to `trace` (REQ-FSM-010).
+pub fn apply_traced<const DRCS: usize, const PANEL_ROWS: usize>(
+    grid: &mut Grid<DRCS, PANEL_ROWS>,
+    packets: &EnhancementPackets,
+    present: u16,
+    config: &Config,
+    include_row_0: bool,
+    trace: &mut TraceSink<'_>,
+) {
+    walk(grid, packets, present, config, include_row_0, config.trace.then_some(trace));
+}
+
+/// The walk of [`apply`]; `trace` is `None` when tracing is off, so that
+/// each transition costs one test of it.
+fn walk<const DRCS: usize, const PANEL_ROWS: usize>(
+    grid: &mut Grid<DRCS, PANEL_ROWS>,
+    packets: &EnhancementPackets,
+    present: u16,
+    config: &Config,
+    include_row_0: bool,
+    mut trace: Option<&mut TraceSink<'_>>,
+) {
     if config.level == PresentationLevel::Level1 {
         return;
     }
@@ -160,13 +220,21 @@ pub fn apply<const DRCS: usize, const PANEL_ROWS: usize>(
         }
         for &triplet in triplets {
             let (next, action) = walk_transition(state, triplet, context);
+            let from = state;
             state = next;
+            let mut ignored = false;
             if let (WalkAction::Write(character), WalkState::Walking { row, column }) = (action, state) {
                 let out_of_order = previous.is_some_and(|before| (row, column) < before);
-                if !(out_of_order && config.ignore_out_of_order_triplets) {
+                ignored = out_of_order && config.ignore_out_of_order_triplets;
+                if !ignored {
                     write(grid, row, column, character, include_row_0);
                 }
                 previous = Some((row, column));
+            }
+            if let Some(sink) = trace.as_deref_mut() {
+                let action = if ignored { IGNORED_OUT_OF_ORDER } else { walk_action_name(action) };
+                let event = walk_event_name(triplet);
+                sink.transition(Machine::TripletWalk, walk_state_name(from), event, action, walk_state_name(state));
             }
             if state == WalkState::Terminated {
                 return;
