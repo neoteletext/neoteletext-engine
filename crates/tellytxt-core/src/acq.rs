@@ -271,14 +271,16 @@ impl<'a> PageStore<'a> {
             let position = prefix.iter().position(|&s| s > page.key.subcode).unwrap_or(count);
             if count < out.len() {
                 count = count.saturating_add(1);
-                if let Some(tail) = out.get_mut(position..count) {
+                // A rotation of an empty slice panics (REQ-GEN-006).
+                if let Some(tail) = out.get_mut(position..count).filter(|tail| !tail.is_empty()) {
                     tail.rotate_right(1);
                     if let Some(first) = tail.first_mut() {
                         *first = page.key.subcode;
                     }
                 }
-            } else if let Some(tail) = out.get_mut(position..) {
-                // Full: keep the lowest sub-codes.
+            } else if let Some(tail) = out.get_mut(position..).filter(|tail| !tail.is_empty()) {
+                // Full: keep the lowest sub-codes. A sub-code above every
+                // listed one leaves an empty tail and is not listed.
                 tail.rotate_right(1);
                 if let Some(first) = tail.first_mut() {
                     *first = page.key.subcode;
@@ -1481,6 +1483,24 @@ mod tests {
         let mut subcodes = [SubCode::default(); 8];
         let count = decoder.store().subcodes(PageAddress::from_mpp(0x100).unwrap(), &mut subcodes);
         assert_eq!(&subcodes[..count], &[SubCode::new(1), SubCode::new(2), SubCode::new(3)]);
+    }
+
+    /// REQ-GEN-006: a listing buffer smaller than the stored sub-pages keeps
+    /// the lowest sub-codes, without panicking when a later sub-code is
+    /// higher than every one already listed.
+    #[test]
+    fn subcode_listing_into_a_full_buffer_keeps_the_lowest() {
+        let mut slots = std::vec![StoredPage::EMPTY; 8];
+        let mut decoder = Decoder::new(&mut slots, Config::default());
+        let mut events = Vec::new();
+        feed(
+            &mut decoder,
+            &[header(1, 0x00, 1, 0), header(1, 0x00, 2, 0), header(1, 0x00, 3, 0), header(1, 0x01, 0, 0)],
+            &mut events,
+        );
+        let mut subcodes = [SubCode::default(); 2];
+        let count = decoder.store().subcodes(PageAddress::from_mpp(0x100).unwrap(), &mut subcodes);
+        assert_eq!(&subcodes[..count], &[SubCode::new(1), SubCode::new(2)]);
     }
 
     /// REQ-ACQ-001, REQ-ACQ-002: parallel magazines interleave, the mode

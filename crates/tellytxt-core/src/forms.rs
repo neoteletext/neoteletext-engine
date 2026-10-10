@@ -452,7 +452,8 @@ impl FormModel {
         if value.push(code) {
             let slice = value.as_mut_slice();
             let len = slice.len();
-            if let Some(tail) = slice.get_mut(cursor.min(len.saturating_sub(1))..) {
+            // A rotation of an empty slice panics (REQ-GEN-006).
+            if let Some(tail) = slice.get_mut(cursor.min(len.saturating_sub(1))..).filter(|tail| !tail.is_empty()) {
                 tail.rotate_right(1);
             }
             self.cursor = cursor.saturating_add(1);

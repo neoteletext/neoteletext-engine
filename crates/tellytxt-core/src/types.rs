@@ -358,7 +358,8 @@ impl<T: Copy, const N: usize> FixedVec<T, N> {
     pub fn remove(&mut self, index: usize) -> Option<T> {
         let removed = self.as_slice().get(index).copied()?;
         let len = self.len;
-        if let Some(tail) = self.items.get_mut(index..len) {
+        // A rotation of an empty slice panics (REQ-GEN-006).
+        if let Some(tail) = self.items.get_mut(index..len).filter(|tail| !tail.is_empty()) {
             tail.rotate_left(1);
         }
         self.len = len.saturating_sub(1);
