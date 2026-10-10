@@ -16,11 +16,14 @@
 //! - [`MagazinePackets`]: M/29/0, M/29/1 and M/29/4 on a page mFF;
 //! - [`Stream`]: a set of pages, written as T42 in the order of Annex B.7
 //!   or as TTI files.
+//!
+//! The authored test stream of REQ-TST-024 is in [`streams`].
 
 mod display;
 mod drcs;
 mod mot;
 mod objects;
+pub mod streams;
 mod triplets;
 
 use std::boxed::Box;
@@ -33,7 +36,7 @@ use tellytxt_core::consts::{
     C4_ERASE, DESIGNATION_DRCS_COLOURS, DESIGNATION_LEVEL_35_DATA, DESIGNATION_PAGE_DATA, HEADER_DISPLAY_BYTES,
     PACKET_MAGAZINE_ENHANCEMENT, PAGE_TIME_FILLING, SPACE, TRIPLETS_PER_PACKET,
 };
-use tellytxt_core::ecc::{hamming2418, with_odd_parity};
+use tellytxt_core::ecc::with_odd_parity;
 use tellytxt_core::packet::{DrcsColourData, Packet, Triplet, encode};
 use tellytxt_core::types::{
     ColourWords, ControlBits, DefaultColourFields, Designations, Magazine, PageAddress, PageNumber, PresentationFields,
@@ -49,7 +52,7 @@ pub use objects::{ObjectPage, pointer_place, public_number};
 pub use triplets::{FlashMode, FlashRate, LocalObject, ObjectRef, RowScope, Triplets, row_address};
 
 use crate::consts::{SUBCODE_LAST_PACKET_SHIFT, SUBCODE_UPDATE_MASK, SUBCODE_UPDATE_SHIFT, TTI_PS_TRANSMIT};
-use crate::encode::{default_clut_2_and_3, encode_page};
+use crate::encode::{default_clut_2_and_3, encode_page, packed_line_of};
 use crate::page::{PageFile, RawBody, RawPacket};
 use crate::write::{in_transmission_order, write_tti};
 
@@ -149,16 +152,14 @@ pub fn enhancement_subcode(last_packet: u8, update: u8, s1: u8) -> SubCode {
     )
 }
 
-/// The packed `OL` line of a packet just built by the core's encoders:
-/// its thirteen triplets read back.
+/// The packed `OL` line of a packet just built by the core's encoders,
+/// which always decodes; the fallback only satisfies the type.
 fn raw_line(packet: &Packet, number: u8, designation: u8) -> RawPacket {
-    let mut triplets = [Triplet::default(); TRIPLETS_PER_PACKET];
-    let data = packet.data();
-    let body = data.get(1..).unwrap_or(&[]);
-    for (triplet, chunk) in triplets.iter_mut().zip(body.as_chunks::<3>().0) {
-        *triplet = Triplet::from_value(hamming2418(*chunk).unwrap_or(0));
-    }
-    RawPacket { number, designation, body: RawBody::Triplets(triplets) }
+    packed_line_of(packet).unwrap_or(RawPacket {
+        number,
+        designation,
+        body: RawBody::Triplets([Triplet::default(); TRIPLETS_PER_PACKET]),
+    })
 }
 
 /// Adds a packed line to a page.

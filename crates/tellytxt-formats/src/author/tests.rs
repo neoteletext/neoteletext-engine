@@ -495,3 +495,15 @@ fn built_pages_round_trip_through_tti() {
     assert_eq!((last.magazine.number(), last.page.unwrap().0), (3, 0xFF));
     assert_eq!(stream.t42().len(), packets.len() * 42);
 }
+
+/// REQ-TST-024 and REQ-INP-023: the authored stream writes as TTI and
+/// reads back unchanged, in the order of Annex B.7.
+#[test]
+fn authored_stream_round_trips_through_tti() {
+    let stream = streams::stream().unwrap();
+    let ordered = stream.in_transmission_order();
+    assert_same_pages(&read_tti(&stream.tti().unwrap()), &ordered);
+    let classes: Vec<_> = ordered.iter().map(|page| crate::encode::transmission_class(page)).collect();
+    assert!(classes.is_sorted());
+    assert_eq!(classes[0], crate::encode::TransmissionClass::MagazinePackets);
+}

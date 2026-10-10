@@ -156,6 +156,25 @@ pub fn raw_packet(magazine: Magazine, raw: &RawPacket) -> Packet {
     }
 }
 
+/// The packed `OL` line of a packet that carries a designation code and
+/// thirteen triplets (X/26, X/27/4 to X/27/15, X/28, M/29): the inverse of
+/// [`raw_packet`] for those packets, so that received packets can be
+/// written as TTI (REQ-INP-023). `None` when the address or the
+/// designation code is uncorrectable; an uncorrectable triplet is written
+/// as 0.
+#[must_use]
+pub fn packed_line_of(packet: &Packet) -> Option<RawPacket> {
+    let address = tellytxt_core::packet::decode_address(packet).ok()?;
+    let data = packet.data();
+    let (&first, body) = data.split_first()?;
+    let designation = hamming84(first)?;
+    let mut triplets = [Triplet::default(); TRIPLETS_PER_PACKET];
+    for (triplet, chunk) in triplets.iter_mut().zip(body.as_chunks::<3>().0) {
+        *triplet = Triplet::from_value(hamming2418(*chunk).unwrap_or(0));
+    }
+    Some(RawPacket { number: address.number, designation, body: RawBody::Triplets(triplets) })
+}
+
 /// The character that carries six bits of a packed TTI line (vbit2's form,
 /// REQ-INP-023): bit 6 set, so every character is printable.
 const fn packed_character(value: u32) -> u8 {
