@@ -39,6 +39,13 @@ const BUILDS: &[Build] = &[
     Build { package: "tellytxt-web", features: "push" },
     Build { package: "tellytxt-web", features: "forms" },
     Build { package: "tellytxt-web", features: "cookies" },
+    Build { package: "tellytxt-app", features: "" },
+    Build { package: "tellytxt-app", features: "live" },
+    Build { package: "tellytxt-app", features: "slice" },
+    Build { package: "tellytxt-cli", features: "" },
+    Build { package: "tellytxt-cli", features: "view" },
+    Build { package: "tellytxt-cli", features: "live" },
+    Build { package: "tellytxt-cli", features: "slice" },
 ];
 
 /// `cargo xtask features`: lints and tests each build of [`BUILDS`].

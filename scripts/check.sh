@@ -33,6 +33,9 @@ if [ "$mode" = "full" ]; then
     cargo build --quiet --target x86_64-unknown-none \
         -p tellytxt-core -p tellytxt-formats -p tellytxt-slicer -p tellytxt-web -p tellytxt-image
 
+    step "each crate with no optional area and with each area alone (decision E.61)"
+    cargo xtask features
+
     step "linked test image on the amd64 bare-metal target: every build links (decision E.61)"
     cargo xtask size --target x86_64-unknown-none
 
