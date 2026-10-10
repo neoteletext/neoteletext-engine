@@ -3,7 +3,6 @@
 //! stride, rotated by 0, 90, 180 or 270 degrees.
 
 use crate::palette::Rgba;
-use tellytxt_core::consts::PALETTE_SIZE;
 
 /// Output pixel formats.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -128,13 +127,15 @@ fn put(out: &mut [u8], bit: usize, colour: Rgba, format: PixelFormat, order: Byt
 
 /// Converts a `width` by `height` image of palette indices (`stride` bytes
 /// per row) into `out` (`out_stride` bytes per output row), rotated.
+/// `palette` is the 144 colours of the palette mode or the 32 of a Colour
+/// Map (REQ-RND-030); an index beyond it is transparent.
 #[allow(clippy::too_many_arguments)] // Each argument is a separate geometry or format parameter of REQ-RND-018.
 pub fn convert(
     indices: &[u8],
     width: usize,
     height: usize,
     stride: usize,
-    palette: &[Rgba; PALETTE_SIZE],
+    palette: &[Rgba],
     format: PixelFormat,
     order: ByteOrder,
     rotation: Rotation,
