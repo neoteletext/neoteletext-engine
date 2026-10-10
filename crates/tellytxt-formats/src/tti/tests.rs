@@ -557,3 +557,38 @@ fn malformed_enhancement_lines_are_reported() {
     assert!(page.raw_packets.as_slice().iter().any(|raw| raw.number == 27 && raw.designation == 0xA));
     assert!(packets_of(page).iter().all(|packet| decode(packet).is_ok()));
 }
+
+/// REQ-INP-023: the page function a packet X/28 carries wins over a `PF`
+/// line, and X/28/0 over X/28/3, whatever order the lines come in, so a
+/// page read, written and read again keeps its function. The writer puts
+/// `PF` first; before this rule, a file with the `OL,28` line first read
+/// as function 5 and its written copy as function 4.
+#[test]
+fn packet_28_function_wins_in_any_line_order() {
+    use tellytxt_core::packet::DrcsModes;
+    use tellytxt_core::packet::encode as packet_encode;
+    use tellytxt_core::types::{Magazine, PresentationFields};
+    let magazine = Magazine::new(1).unwrap();
+    let modes = DrcsModes::from_codes(None, &[0; 48]);
+    let drcs = PageFormat { function: 4, coding: 0 };
+    let x28_3 = [&b"OL,28,"[..], &packet_line(3, &packet_encode::drcs_modes(magazine, drcs, &modes))].concat();
+    let basic = PageFormat { function: 0, coding: 0 };
+    let fields = PresentationFields::default();
+    let x28_0 =
+        [&b"OL,28,"[..], &packet_line(0, &packet_encode::page_enhancement(magazine, 0, basic, &fields))].concat();
+    let page = |lines: &[&[u8]]| {
+        let mut text = b"PN,1B000\n".to_vec();
+        for line in lines {
+            text.extend_from_slice(line);
+            text.push(b'\n');
+        }
+        let (pages, _) = read(&text);
+        pages[0].function.map(|function| PageFormat { function: function.function, coding: function.coding })
+    };
+    let pf: &[u8] = b"PF,5,1";
+    let (x28_0, x28_3) = (&x28_0[..], &x28_3[..]);
+    assert_eq!(page(&[pf, x28_3]), Some(drcs));
+    assert_eq!(page(&[x28_3, pf]), Some(drcs));
+    assert_eq!(page(&[x28_3, x28_0, pf]), Some(basic));
+    assert_eq!(page(&[pf, x28_0, x28_3]), Some(basic));
+}

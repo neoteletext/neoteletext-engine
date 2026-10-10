@@ -221,6 +221,9 @@ pub struct TtiReader {
     file_source: Text<{ crate::page::DESCRIPTION_BYTES }>,
     last_row: Option<u8>,
     last_choice_field: Option<u8>,
+    /// The designation code of the packet X/28 that set the page function,
+    /// if one did.
+    function_designation: Option<u8>,
 }
 
 impl Default for TtiReader {
@@ -247,6 +250,7 @@ impl TtiReader {
             file_source: Text::new(),
             last_row: None,
             last_choice_field: None,
+            function_designation: None,
         }
     }
 
@@ -333,8 +337,11 @@ impl TtiReader {
                 let function = hex(fields.next()).filter(|&value| value <= REGION_LAST);
                 let coding = hex(fields.next()).filter(|&value| value <= CODING_LAST);
                 match (function, coding) {
+                    // A function that a packet X/28 carries wins (below).
                     (Some(function), Some(coding)) => {
-                        self.page.function = Some(PageFunction { function: function as u8, coding: coding as u8 });
+                        if self.function_designation.is_none() {
+                            self.page.function = Some(PageFunction { function: function as u8, coding: coding as u8 });
+                        }
                     }
                     _ => self.diagnostic(bad, out),
                 }
@@ -372,6 +379,7 @@ impl TtiReader {
     fn page_number(&mut self, args: &[u8], out: &mut dyn FnMut(Item<'_>)) {
         self.emit(out);
         self.page.clear();
+        self.function_designation = None;
         self.page.description = self.file_description;
         self.page.source = self.file_source;
         self.page.line = self.line_number;
@@ -477,8 +485,12 @@ impl TtiReader {
             return;
         }
         // REQ-INP-023: X/28/0, X/28/3 and X/28/4 also set the page function
-        // and coding, overriding an earlier `PF` line.
+        // and coding, since they are what a decoder receives. They win over a
+        // `PF` line, and the lowest designation code wins among them, before
+        // or after in the file alike, so that writing a page read from a
+        // file and reading it back gives the same page.
         if number == PACKET_PAGE_ENHANCEMENT
+            && self.function_designation.is_none_or(|earlier| designation <= earlier)
             && let Ok(Decoded::PageData { packet, .. }) = decode(&packet)
         {
             let format = match packet {
@@ -489,6 +501,7 @@ impl TtiReader {
             };
             if let Some(format) = format {
                 self.page.function = Some(PageFunction { function: format.function, coding: format.coding });
+                self.function_designation = Some(designation);
             }
         }
         let packets = self.page.raw_packets.as_mut_slice();
