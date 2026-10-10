@@ -18,6 +18,8 @@ use tellytxt_web::url::IpAddress;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 /// How long the loop sleeps when nothing happened.
 const IDLE: Duration = Duration::from_millis(10);
+/// Directories the fetcher may read to resolve names (decision 28).
+const RESOLVER_PATHS: [&str; 6] = ["/etc", "/run/systemd/resolve", "/usr/lib", "/lib", "/usr/lib64", "/lib64"];
 /// Bytes read from a connection at a time.
 const READ_CHUNK: usize = 16 * 1024;
 
@@ -207,8 +209,12 @@ pub fn run(address: &str, no_sandbox: bool) -> Result<(), (u8, String)> {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let requests = requests();
     // The fetcher may resolve names, which reads /etc, and use the network.
+    // Name resolution reads the resolver configuration and loads the C
+    // library's name-service modules (decision 28 of IMPLEMENTATION-LOG.md).
+    let readable: Vec<&std::path::Path> =
+        RESOLVER_PATHS.iter().map(std::path::Path::new).filter(|path| path.exists()).collect();
     crate::sandbox::apply(
-        crate::sandbox::Policy { writable_directory: None, network: true, readable: &[std::path::Path::new("/etc")] },
+        crate::sandbox::Policy { writable_directory: None, network: true, readable: &readable },
         no_sandbox,
     )
     .map_err(|message| (crate::exit::INPUT, message))?;
