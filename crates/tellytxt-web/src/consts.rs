@@ -49,8 +49,18 @@ pub const MAX_IPV6_GROUP_DIGITS: usize = 4;
 pub const HTTP_VERSION: &[u8] = b"HTTP/1.1";
 /// Line ending (RFC 9112 section 2.1).
 pub const CRLF: &[u8] = b"\r\n";
-/// The minor version httparse reports for HTTP/1.1 responses.
+/// The name that starts every HTTP version, case-sensitive (RFC 9112
+/// section 2.3: `HTTP-name = %s"HTTP"`, then "/").
+pub const HTTP_NAME: &[u8] = b"HTTP/";
+/// The major version of the protocol this agent speaks (RFC 9112 section
+/// 2.3).
+pub const HTTP_MAJOR: u8 = 1;
+/// The minor version of an HTTP/1.0 response.
+pub const HTTP_MINOR_0: u8 = 0;
+/// The minor version of an HTTP/1.1 response.
 pub const HTTP_MINOR_1: u8 = 1;
+/// Digits of a status code (RFC 9112 section 4: `status-code = 3DIGIT`).
+pub const STATUS_CODE_DIGITS: usize = 3;
 /// Status 101 Switching Protocols (RFC 9110 section 15.2.2).
 pub const STATUS_SWITCHING_PROTOCOLS: u16 = 101;
 /// Status 200 OK.

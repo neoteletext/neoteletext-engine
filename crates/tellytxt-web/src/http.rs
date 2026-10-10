@@ -4,17 +4,21 @@
 //! - Requests are written into a caller buffer with only the permitted
 //!   headers.
 //! - The response head is collected up to the header limit, then parsed by
-//!   `httparse` (which rejects obsolete line folding by default) and
-//!   checked: no compression, no ambiguous framing, a bounded number of
-//!   headers.
+//!   the project's own strict parser (`head`, RFC 9112 sections 2 to 5,
+//!   obsolete line folding rejected) and checked: no compression, no
+//!   ambiguous framing, a bounded number of headers.
 //! - The body is framed by `Content-Length`, by chunked transfer coding
 //!   (RFC 9112 section 7.1) or, where the caller allows it, by the end of
 //!   the connection. The decoder enforces the caller's size limit.
 
+mod head;
+
+use head::HeadError;
+
 use crate::bytes::{Overflow, TextBuf, Writer, copy_prefix, hex_value, parse_decimal, split_once, trim_ows};
 use crate::consts::{
-    CHUNKED, CONNECTION_CLOSE, CONNECTION_UPGRADE, CRLF, HTTP_MINOR_1, HTTP_VERSION, IDENTITY, MAX_CHUNK_LINE,
-    MAX_CHUNK_SIZE_DIGITS, MAX_CONTENT_LENGTH_DIGITS, MAX_RESPONSE_HEADERS, MAX_URL_LENGTH, MAX_VALIDATOR_LENGTH,
+    CHUNKED, CONNECTION_CLOSE, CONNECTION_UPGRADE, CRLF, HTTP_MAJOR, HTTP_MINOR_0, HTTP_MINOR_1, HTTP_VERSION,
+    IDENTITY, MAX_CHUNK_LINE, MAX_CHUNK_SIZE_DIGITS, MAX_CONTENT_LENGTH_DIGITS, MAX_URL_LENGTH, MAX_VALIDATOR_LENGTH,
     STATUS_INFORMATIONAL_FIRST, STATUS_LIMIT, STATUS_NO_CONTENT, STATUS_NOT_MODIFIED, STATUS_SUCCESS_FIRST,
     STATUS_SWITCHING_PROTOCOLS, UPGRADE_WEBSOCKET, WEBSOCKET_ACCEPT_TEXT, cache, header, media,
 };
@@ -282,17 +286,24 @@ fn read_header(
 /// Parses and checks a complete response head held in `bytes`.
 /// `on_set_cookie` receives each `Set-Cookie` value in order.
 pub fn parse_head(bytes: &[u8], on_set_cookie: &mut dyn FnMut(&[u8])) -> Result<ResponseHead, HttpError> {
-    let mut headers = [httparse::EMPTY_HEADER; MAX_RESPONSE_HEADERS];
-    let mut response = httparse::Response::new(&mut headers);
-    match response.parse(bytes) {
-        Ok(httparse::Status::Complete(length)) if length == bytes.len() => {}
-        Err(httparse::Error::TooManyHeaders) => return Err(HttpError::TooManyHeaders),
-        // A partial head, trailing bytes, or any parse error, obsolete line
+    let parsed = head::parse(bytes).map_err(|error| match error {
+        HeadError::TooManyFields => HttpError::TooManyHeaders,
+        // A partial head, trailing bytes, or any syntax error, obsolete line
         // folding included.
-        Ok(_) | Err(_) => return Err(HttpError::Malformed),
-    }
-    let version = response.version.ok_or(HttpError::Malformed)?;
-    let status = response.code.ok_or(HttpError::Malformed)?;
+        HeadError::Incomplete
+        | HeadError::Version
+        | HeadError::Status
+        | HeadError::FieldName
+        | HeadError::FieldValue
+        | HeadError::LeadingWhitespace
+        | HeadError::TrailingBytes => HttpError::Malformed,
+    })?;
+    let http11 = match (parsed.major, parsed.minor) {
+        (HTTP_MAJOR, HTTP_MINOR_1) => true,
+        (HTTP_MAJOR, HTTP_MINOR_0) => false,
+        _ => return Err(HttpError::Version),
+    };
+    let status = parsed.status;
     if !(STATUS_INFORMATIONAL_FIRST..STATUS_LIMIT).contains(&status) {
         return Err(HttpError::Status);
     }
@@ -301,11 +312,6 @@ pub fn parse_head(bytes: &[u8], on_set_cookie: &mut dyn FnMut(&[u8])) -> Result<
     if status < STATUS_SUCCESS_FIRST && status != STATUS_SWITCHING_PROTOCOLS {
         return Err(HttpError::Status);
     }
-    let http11 = match version {
-        HTTP_MINOR_1 => true,
-        0 => false,
-        _ => return Err(HttpError::Version),
-    };
     let mut head = ResponseHead {
         status,
         http11,
@@ -325,8 +331,8 @@ pub fn parse_head(bytes: &[u8], on_set_cookie: &mut dyn FnMut(&[u8])) -> Result<
         websocket_extras: false,
     };
     let mut framing = FramingHeaders::default();
-    for field in response.headers.iter() {
-        read_header(&mut head, &mut framing, field.name.as_bytes(), field.value, on_set_cookie)?;
+    for field in parsed.fields() {
+        read_header(&mut head, &mut framing, field.name, field.value, on_set_cookie)?;
     }
     let FramingHeaders { content_length, chunked, .. } = framing;
     if chunked && content_length.is_some() {
@@ -626,6 +632,7 @@ fn parse_chunk_size(line: &[u8]) -> Result<u64, HttpError> {
 #[allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects, clippy::panic)]
 mod tests {
     use super::*;
+    use crate::consts::MAX_RESPONSE_HEADERS;
 
     fn head(text: &[u8]) -> Result<ResponseHead, HttpError> {
         parse_head(text, &mut |_| {})
@@ -719,6 +726,21 @@ mod tests {
             assert_eq!(head(text).map(|h| h.status), Err(error), "{:?}", core::str::from_utf8(text));
         }
         assert_eq!(head(b"HTTP/1.1 200 OK\r\nContent-Encoding: identity\r\n\r\n").map(|h| h.status), Ok(200));
+    }
+
+    #[test]
+    fn versions_outside_the_profile_are_rejected() {
+        assert!(head(b"HTTP/1.1 200 OK\r\n\r\n").unwrap().http11);
+        assert!(!head(b"HTTP/1.0 200 OK\r\n\r\n").unwrap().http11);
+        for text in [&b"HTTP/1.2 200 OK\r\n\r\n"[..], b"HTTP/2.0 200 OK\r\n\r\n", b"HTTP/0.9 200 OK\r\n\r\n"] {
+            assert_eq!(head(text).map(|h| h.status), Err(HttpError::Version));
+        }
+    }
+
+    #[test]
+    fn a_head_with_bytes_after_it_is_rejected() {
+        assert_eq!(head(b"HTTP/1.1 200 OK\r\n\r\nX").map(|h| h.status), Err(HttpError::Malformed));
+        assert_eq!(head(b"HTTP/1.1 200 OK\r\n").map(|h| h.status), Err(HttpError::Malformed));
     }
 
     #[test]

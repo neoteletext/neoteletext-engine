@@ -30,5 +30,8 @@ cookies = []
 # which needs `core::fmt`.
 error-trait = []
 
+[dev-dependencies]
+proptest = "1.7.0"
+
 [lints]
 workspace = true

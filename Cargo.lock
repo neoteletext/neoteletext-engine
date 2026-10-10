@@ -775,6 +775,7 @@ version = "0.1.0"
 dependencies = [
  "embedded-io",
  "httparse",
+ "proptest",
  "tellytxt-core",
 ]
 
