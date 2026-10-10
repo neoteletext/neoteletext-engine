@@ -5,7 +5,7 @@
 use crate::acq::{EnhancementLookup, MagazineData, PageStore, StoredPage};
 use crate::config::{Config, PresentationLevel, RevealStyle, StepOrder};
 use crate::consts::{ALPHA_RED, ALPHA_YELLOW, HEADER_DISPLAY_BYTES, SPACE, STATUS_COLUMNS};
-use crate::enhance;
+use crate::enhance::{self, EnhancementReport};
 use crate::level1::{DisplayOptions, Grid, build_grid};
 use crate::level15;
 use crate::nav::{
@@ -499,7 +499,7 @@ impl Viewer {
         };
         build_grid(grid, page, magazine, config, &options);
         if let Some(page) = page {
-            compose_level(grid, page, magazine, &lookup, config, &options);
+            let _ = compose_level(grid, page, magazine, &lookup, config, &options);
         }
         true
     }
@@ -509,6 +509,8 @@ impl Viewer {
 /// (REQ-PRF-006): nothing at Level 1, the Level 1.5 pass at Level 1.5, and
 /// the enhancement processor at Levels 2.5 and 3.5 (REQ-L25-001). The
 /// level is read on every build, so changing it never re-acquires a page.
+/// At Levels 2.5 and 3.5 it returns the processor's report of the faults it
+/// met, for the caller's statistics and trace (REQ-L25-051).
 pub fn compose_level<const DRCS: usize, const PANEL_ROWS: usize>(
     grid: &mut Grid<DRCS, PANEL_ROWS>,
     page: &StoredPage,
@@ -516,14 +518,15 @@ pub fn compose_level<const DRCS: usize, const PANEL_ROWS: usize>(
     lookup: &EnhancementLookup<'_>,
     config: &Config,
     options: &DisplayOptions,
-) {
+) -> Option<EnhancementReport> {
     match config.level {
-        PresentationLevel::Level1 => {}
+        PresentationLevel::Level1 => None,
         PresentationLevel::Level15 => {
             level15::apply(grid, &page.enhancements, page.enhancements_present, config, true);
+            None
         }
         PresentationLevel::Level25 | PresentationLevel::Level35 => {
-            let _ = enhance::apply(grid, page, magazine, lookup, config, options);
+            Some(enhance::apply(grid, page, magazine, lookup, config, options))
         }
     }
 }

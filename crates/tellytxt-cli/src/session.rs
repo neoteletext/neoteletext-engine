@@ -165,7 +165,7 @@ impl Session {
         let magazine = self.decoder.magazine_data(address.magazine);
         let config = self.decoder.config();
         build_grid(&mut grid, Some(page), &magazine, config, &options);
-        compose_level(&mut grid, page, &magazine, &self.decoder.enhancement_lookup(), config, &options);
+        let _ = compose_level(&mut grid, page, &magazine, &self.decoder.enhancement_lookup(), config, &options);
         grid
     }
 

@@ -439,7 +439,7 @@ pub fn page_grid(decoder: &Decoder<'_>, mpp: u16, config: &Config) -> (Box<Grid>
         let report = enhance::apply(&mut grid, page, &magazine, &lookup, config, &options);
         return (grid, Some(report));
     }
-    compose_level(&mut grid, page, &magazine, &lookup, config, &options);
+    let _ = compose_level(&mut grid, page, &magazine, &lookup, config, &options);
     (grid, None)
 }
 
