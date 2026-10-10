@@ -1,0 +1,40 @@
+# cargo-deny policy (REQ-GEN-017, REQ-SEC-014). Run by scripts/check.sh
+# full, locally or on the remote Linux host.
+
+[graph]
+all-features = true
+
+[advisories]
+version = 2
+yanked = "deny"
+
+[licenses]
+version = 2
+# REQ-GEN-017: MIT, Apache 2.0, BSD, zlib, ISC or CC0. Never GPL.
+allow = ["MIT", "Apache-2.0", "Apache-2.0 WITH LLVM-exception", "BSD-2-Clause", "BSD-3-Clause", "Zlib", "ISC", "CC0-1.0"]
+confidence-threshold = 0.9
+# The list is the requirement's; not every licence on it is in use.
+unused-allowed-license = "allow"
+
+# Permissive licences outside the list, each allowed for one crate only and
+# never in a microcontroller crate (IMPLEMENTATION-LOG.md decision 32).
+[[licenses.exceptions]]
+# The Unicode data tables of a build-time dependency of the derive macros.
+crate = "unicode-ident"
+allow = ["Unicode-3.0"]
+
+[[licenses.exceptions]]
+# Mozilla's root certificate list, used by the ttx fetcher's TLS.
+crate = "webpki-roots"
+allow = ["CDLA-Permissive-2.0"]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# The workspace's own crates refer to each other by path and are never
+# published.
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
