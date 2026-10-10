@@ -12,21 +12,25 @@ path = "src/main.rs"
 
 [dependencies]
 tellytxt-core = { workspace = true, features = ["default"] }
-# The program reads and writes every format.
+# The program reads and writes every format, and `ttx check` runs the
+# page checker.
 tellytxt-formats = { workspace = true, features = ["default", "std"] }
-tellytxt-slicer.workspace = true
-tellytxt-web = { workspace = true, features = ["default"] }
 tellytxt-image = { workspace = true, features = ["std"] }
+tellytxt-app.workspace = true
 clap = { version = "4.5.48", features = ["derive"] }
-crossterm = "0.29.0"
-embedded-io = { workspace = true }
-rustls = { version = "0.23.32", default-features = false, features = ["ring", "std", "tls12", "logging"] }
-webpki-roots = "1.0.3"
+crossterm = { version = "0.29.0", optional = true }
 
-[target.'cfg(target_os = "linux")'.dependencies]
-landlock = "0.4.3"
-seccompiler = "0.5.0"
-libc = "0.2.177"
+[features]
+# Decision E.61: coarse, additive areas, all on by default. The commands
+# stay defined in every build, so the help text does not change; a command
+# whose area is left out says so.
+default = ["view", "live", "slice"]
+# The interactive viewer, `ttx view`, and the terminal library it drives.
+view = ["dep:crossterm"]
+# Live feeds and web services, and the fetcher process (REQ-SEC-018).
+live = ["tellytxt-app/live"]
+# `ttx slice`: raw sampled video through the software data slicer.
+slice = ["tellytxt-app/slice"]
 
 [lints]
 workspace = true

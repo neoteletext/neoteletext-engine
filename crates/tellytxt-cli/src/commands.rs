@@ -2,24 +2,27 @@
 
 use crate::output::image::{Frame, Scale, iterm2_inline, png, ppm, raster};
 use crate::output::text::{ColourDepth, MosaicStyle, ansi, plain};
-use crate::sandbox::{self, Policy};
-use crate::session::Session;
 use crate::terminal::{self, Display, TextArea};
-use crate::{Common, GraphicsChoice, RasterArgs, exit, input};
+use crate::{GraphicsChoice, RasterArgs};
 use clap::ValueEnum;
+use std::fs::File;
 use std::io::{IsTerminal, Write};
+use std::net::IpAddr;
 use std::path::{Path, PathBuf};
+pub use tellytxt_app::Failure;
+use tellytxt_app::input::{self, Options};
+use tellytxt_app::sandbox::{self, Policy};
+use tellytxt_app::session::Session;
+use tellytxt_app::{convert as conversion, exit};
 use tellytxt_core::acq::StoredPage;
-use tellytxt_core::consts::{CELL_WIDTH, COLUMNS, ROWS, SIDE_PANEL_MAX_COLUMNS};
+use tellytxt_core::consts::ROWS;
 use tellytxt_core::fsm::PageKey;
 use tellytxt_core::level1::Grid;
 use tellytxt_core::policy::is_safe_file_name_byte;
 use tellytxt_core::render::row_width;
 use tellytxt_core::types::{PageAddress, SubCode};
+use tellytxt_formats::Item;
 use tellytxt_image::palette::Rgba;
-
-/// A command's failure: an exit status and a message.
-pub type Failure = (u8, String);
 
 /// Image file formats (REQ-RND-007).
 #[derive(ValueEnum, Clone, Copy, Debug)]
@@ -105,15 +108,15 @@ fn grid_of(session: &mut Session, key: PageKey) -> Result<Grid, Failure> {
         .ok_or_else(|| (exit::NOT_FOUND, format!("page {} not found", String::from_utf8_lossy(&key.address.ascii()))))
 }
 
-fn sandbox(common: &Common, writable: Option<&Path>) -> Result<(), Failure> {
-    sandbox::apply(Policy { writable_directory: writable, network: false, readable: &[] }, common.no_sandbox)
+fn sandbox(options: &Options, writable: Option<&Path>) -> Result<(), Failure> {
+    sandbox::apply(Policy { writable_directory: writable, network: false, readable: &[] }, options.no_sandbox)
         .map_err(|message| (exit::INPUT, message))
 }
 
 /// `ttx list`.
-pub fn list(common: &Common) -> Result<(), Failure> {
-    let mut session = input::load(common)?;
-    sandbox(common, None)?;
+pub fn list(options: &Options) -> Result<(), Failure> {
+    let mut session = input::load(options)?;
+    sandbox(options, None)?;
     let mut out = std::io::stdout().lock();
     let pages = session.pages();
     let page_count = pages.len();
@@ -180,10 +183,10 @@ fn mosaic_style(legacy: bool) -> MosaicStyle {
 }
 
 /// `ttx text`.
-pub fn text(common: &Common, page: &str, reveal: bool, legacy_mosaics: bool, cells: bool) -> Result<(), Failure> {
+pub fn text(options: &Options, page: &str, reveal: bool, legacy_mosaics: bool, cells: bool) -> Result<(), Failure> {
     let selection = parse_selection(page)?;
-    let mut session = input::load_for(common, selection.page())?;
-    sandbox(common, None)?;
+    let mut session = input::load_for(options, selection.page())?;
+    sandbox(options, None)?;
     let mut out = std::io::stdout().lock();
     for key in selected(&session, selection)? {
         let grid = grid_of(&mut session, key)?;
@@ -218,7 +221,7 @@ fn scale_for(raster_args: &RasterArgs, area: Option<TextArea>, (width, height): 
 
 /// `ttx show`.
 pub fn show(
-    common: &Common,
+    options: &Options,
     page: &str,
     raster_args: &RasterArgs,
     graphics: GraphicsChoice,
@@ -229,16 +232,16 @@ pub fn show(
     if selection == Selection::All {
         return Err((exit::USAGE, "show displays one page; use text or render for all".into()));
     }
-    let mut session = input::load_for(common, selection.page())?;
+    let mut session = input::load_for(options, selection.page())?;
     let is_terminal = std::io::stdout().is_terminal();
     let (display, reason) = terminal::detect(display(graphics), is_terminal);
-    if let (Some(reason), true) = (reason, common.verbose > 0) {
+    if let (Some(reason), true) = (reason, options.verbose > 0) {
         eprintln!("ttx: using text output: {reason}");
     }
     let frame = Frame::still(session.decoder().config(), raster_args.reveal);
     // Measure the terminal before the sandbox closes /dev/tty.
     let area = if display == Display::Iterm2 { terminal::text_area() } else { None };
-    sandbox(common, None)?;
+    sandbox(options, None)?;
     let key = selected(&session, selection)?[0];
     let grid = grid_of(&mut session, key)?;
     let mut out = std::io::stdout().lock();
@@ -265,25 +268,39 @@ pub fn show(
 }
 
 /// `ttx view`.
+#[cfg(feature = "view")]
 pub fn view(
-    common: &Common,
+    options: &Options,
     raster_args: &RasterArgs,
     graphics: GraphicsChoice,
     legacy_mosaics: bool,
     colours8: bool,
 ) -> Result<(), Failure> {
-    let (mut session, mut source) = input::open_live(common)?;
+    use tellytxt_core::consts::{CELL_WIDTH, COLUMNS, SIDE_PANEL_MAX_COLUMNS};
+    let (mut session, mut source) = input::open_live(options)?;
     let (display, _) = terminal::detect(display(graphics), std::io::stdout().is_terminal());
     let area = if display == Display::Iterm2 { terminal::text_area() } else { None };
     // Fit the widest page, 56 columns with side panels (decision E.49).
     let widest = (COLUMNS + usize::from(SIDE_PANEL_MAX_COLUMNS)) * CELL_WIDTH;
     let height = ROWS * Frame::still(session.decoder().config(), false).options.row_height();
     let scale = scale_for(raster_args, area, (widest, height));
-    sandbox::apply(Policy { writable_directory: None, network: false, readable: &[] }, common.no_sandbox)
+    sandbox::apply(Policy { writable_directory: None, network: false, readable: &[] }, options.no_sandbox)
         .map_err(|message| (exit::INPUT, message))?;
     let depth = if colours8 { ColourDepth::Eight } else { ColourDepth::TrueColour };
     crate::view::run(&mut session, source.as_mut(), display, scale, depth, mosaic_style(legacy_mosaics))
         .map_err(|error| (exit::INPUT, error.to_string()))
+}
+
+/// `ttx view` in a build without the viewer.
+#[cfg(not(feature = "view"))]
+pub fn view(
+    _options: &Options,
+    _raster_args: &RasterArgs,
+    _graphics: GraphicsChoice,
+    _legacy_mosaics: bool,
+    _colours8: bool,
+) -> Result<(), Failure> {
+    Err(tellytxt_app::not_in_build("the interactive viewer", "view"))
 }
 
 /// A file name for a page, from validated parts only (REQ-SEC-010).
@@ -294,14 +311,14 @@ fn page_file_name(key: PageKey, extension: &str) -> String {
 
 /// `ttx render`.
 pub fn render(
-    common: &Common,
+    options: &Options,
     page: &str,
     output: &Path,
     raster_args: &RasterArgs,
     image: ImageFormat,
 ) -> Result<(), Failure> {
     let selection = parse_selection(page)?;
-    let mut session = input::load_for(common, selection.page())?;
+    let mut session = input::load_for(options, selection.page())?;
     let frame = Frame::still(session.decoder().config(), raster_args.reveal);
     let scale = scale_for(raster_args, None, (0, 0));
     let pages = selected(&session, selection)?;
@@ -314,7 +331,7 @@ pub fn render(
             .filter(|parent| !parent.as_os_str().is_empty())
             .map_or_else(|| PathBuf::from("."), Path::to_path_buf)
     };
-    sandbox(common, Some(&directory))?;
+    sandbox(options, Some(&directory))?;
     let extension = match image {
         ImageFormat::Png => "png",
         ImageFormat::Ppm => "ppm",
@@ -342,9 +359,9 @@ pub fn render(
 }
 
 /// `ttx service-info`.
-pub fn service_info(common: &Common) -> Result<(), Failure> {
-    let session = input::load(common)?;
-    sandbox(common, None)?;
+pub fn service_info(options: &Options) -> Result<(), Failure> {
+    let session = input::load(options)?;
+    sandbox(options, None)?;
     let Some(info) = session.service() else {
         return Err((exit::NOT_FOUND, "no packet 8/30 in the input".into()));
     };
@@ -378,13 +395,36 @@ pub fn service_info(common: &Common) -> Result<(), Failure> {
     Ok(())
 }
 
-/// `ttx services`.
-pub fn services(common: &Common) -> Result<(), Failure> {
-    input::services(common)
+/// `ttx services`: the teletext streams of a transport stream (REQ-INP-007).
+pub fn services(options: &Options) -> Result<(), Failure> {
+    let mut input = input::open(options)?;
+    let mut reader = input::reader(options, false);
+    let mut found = 0u32;
+    let mut out = std::io::stdout().lock();
+    input::pump(input.as_mut(), reader.as_mut(), &mut |item| match item {
+        Item::TeletextEntry { program, pid, entry } => {
+            found += 1;
+            let _ = writeln!(
+                out,
+                "program {program:>5}  PID {pid:#06x}  language {}  {:?}  page {}",
+                String::from_utf8_lossy(&entry.language),
+                entry.kind,
+                String::from_utf8_lossy(&entry.page.ascii())
+            );
+        }
+        Item::SubtitlePage(page) => {
+            let _ = writeln!(out, "default subtitle page: {}", String::from_utf8_lossy(&page.ascii()));
+        }
+        _ => {}
+    })?;
+    if found == 0 {
+        return Err((exit::NOT_FOUND, "no teletext descriptors found".into()));
+    }
+    Ok(())
 }
 
 /// `ttx convert`.
-pub fn convert(common: &Common, output: &Path, to: ConvertTarget, page: Option<&str>) -> Result<(), Failure> {
+pub fn convert(options: &Options, output: &Path, to: ConvertTarget, page: Option<&str>) -> Result<(), Failure> {
     let filter = match page {
         Some(text) => match parse_selection(text)? {
             Selection::Page(address, _) => Some(address),
@@ -392,17 +432,89 @@ pub fn convert(common: &Common, output: &Path, to: ConvertTarget, page: Option<&
         },
         None => None,
     };
-    input::convert(common, output, to, filter)
+    let target = match to {
+        ConvertTarget::T42 => conversion::Target::T42,
+        ConvertTarget::Tti => conversion::Target::Tti,
+    };
+    conversion::convert(options, output, target, filter)
 }
 
 /// `ttx slice`.
-pub fn slice(common: &Common, output: &Path, preset: &str) -> Result<(), Failure> {
-    input::slice(common, output, preset)
+#[cfg(feature = "slice")]
+pub fn slice(options: &Options, output: &Path, preset: &str) -> Result<(), Failure> {
+    let counters = tellytxt_app::slice::slice(options, output, preset)?;
+    eprintln!("{counters:?}");
+    Ok(())
 }
 
-/// `ttx check`.
+/// `ttx slice` in a build without the slicer.
+#[cfg(not(feature = "slice"))]
+pub fn slice(_options: &Options, _output: &Path, _preset: &str) -> Result<(), Failure> {
+    Err(tellytxt_app::not_in_build("raw video slicing", "slice"))
+}
+
+/// `ttx fetch`, the fetcher process of live mode (REQ-SEC-018), which
+/// `ttx` starts by running itself again.
+#[cfg(feature = "live")]
+pub fn fetch(address: &str, no_sandbox: bool, allow_local: &[IpAddr]) -> Result<(), Failure> {
+    tellytxt_app::fetch::run(address, no_sandbox, allow_local)
+}
+
+/// `ttx fetch` in a build without live feeds.
+#[cfg(not(feature = "live"))]
+pub fn fetch(_address: &str, _no_sandbox: bool, _allow_local: &[IpAddr]) -> Result<(), Failure> {
+    Err(tellytxt_app::not_in_build("the fetcher process of live mode", "live"))
+}
+
+/// The short names of the services a descriptor lists, for `--descriptor`.
+#[cfg(feature = "live")]
+fn descriptor_service_names(path: &Path) -> Result<Vec<Vec<u8>>, Failure> {
+    tellytxt_app::live::descriptor_service_names(path)
+}
+
+/// Service descriptors are read by the web module, which a build without
+/// live feeds leaves out.
+#[cfg(not(feature = "live"))]
+fn descriptor_service_names(_path: &Path) -> Result<Vec<Vec<u8>>, Failure> {
+    Err(tellytxt_app::not_in_build("service descriptors (--descriptor)", "live"))
+}
+
+/// `ttx check`: the page checker (REQ-CLI-006). Exit status 4 on errors.
 pub fn check(files: &[PathBuf], descriptor: Option<&Path>) -> Result<(), Failure> {
-    input::check(files, descriptor)
+    use tellytxt_formats::check::{CheckOptions, Severity, check_page};
+    let services: Vec<Vec<u8>> = match descriptor {
+        Some(path) => descriptor_service_names(path)?,
+        None => Vec::new(),
+    };
+    let names: Vec<&[u8]> = services.iter().map(Vec::as_slice).collect();
+    let options = CheckOptions { services: descriptor.map(|_| names.as_slice()) };
+    let mut errors = 0u32;
+    for file in files {
+        let mut input = File::open(file).map_err(|error| (exit::INPUT, format!("{}: {error}", file.display())))?;
+        let mut reader = tellytxt_formats::tti::TtiReader::default();
+        input::pump(&mut input, &mut reader, &mut |item| {
+            if let Item::Page(page) = item {
+                check_page(page, &options, &mut |finding| {
+                    let severity = match finding.severity {
+                        Severity::Error => {
+                            errors += 1;
+                            "error"
+                        }
+                        Severity::Warning => "warning",
+                    };
+                    println!(
+                        "{}:{}: page {} sub-page {}: {severity}: {:?}",
+                        file.display(),
+                        finding.line,
+                        String::from_utf8_lossy(&finding.page.ascii()),
+                        finding.subpage,
+                        finding.problem
+                    );
+                });
+            }
+        })?;
+    }
+    if errors > 0 { Err((exit::CHECK_ERRORS, format!("{errors} error(s)"))) } else { Ok(()) }
 }
 
 #[cfg(test)]

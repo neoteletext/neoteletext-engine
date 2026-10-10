@@ -6,11 +6,14 @@
 //! - `traceability`: write docs/traceability.md (REQ-DOC-003).
 //! - `check-layers`: enforce the module dependency table of ARCHITECTURE.md
 //!   (REQ-ARCH-011).
-//! - `check-deps`: enforce the permitted dependency lists (REQ-GEN-017).
+//! - `check-deps`: enforce the permitted dependency lists (REQ-GEN-017),
+//!   and that each application crate uses only the workspace crates below
+//!   it.
 //! - `check-constants`: find teletext constants restated outside the
 //!   constants module (REQ-GEN-014).
-//! - `check-io`: find operating-system access in library crates
-//!   (REQ-SEC-016).
+//! - `check-io`: find operating-system access in library crates, and
+//!   check that every crate is classed as a library or an application
+//!   crate (REQ-SEC-016).
 //! - `level25-stream OUT.t42 [--tti DIR]`: write the authored Level 2.5 and
 //!   3.5 test stream (REQ-TST-024).
 //! - `features`: lint and test the fixed list of feature builds of decision

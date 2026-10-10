@@ -12,10 +12,9 @@ use tellytxt_core::consts::ROWS;
 use tellytxt_core::glyphs::GlyphSet;
 use tellytxt_core::level1::Grid;
 use tellytxt_core::render::{
-    ALL_ROWS, ColourMode, FlashPhase, IndexBuffer, IndexFormat, RenderOptions, flash_visible, palette_mode_allowed,
-    render_screen, row_width,
+    ALL_ROWS, ColourMode, FlashPhase, IndexBuffer, IndexFormat, RenderOptions, palette_mode_allowed, render_screen,
+    row_width,
 };
-use tellytxt_core::types::Instant;
 use tellytxt_image::palette::{Rgba, clut0_of, colour_map_palette, palette};
 use tellytxt_image::scale::{scale_indices, scaled_size};
 
@@ -63,11 +62,12 @@ impl Frame {
     }
 
     /// The frame at a time on the decoder's clock. In the resolved mode
-    /// only the flash phase changes it.
+    /// only the flash phase changes it. Only the viewer animates.
+    #[cfg(feature = "view")]
     #[must_use]
-    pub fn at(config: &Config, reveal: bool, now: Instant) -> Self {
+    pub fn at(config: &Config, reveal: bool, now: tellytxt_core::types::Instant) -> Self {
         let options = RenderOptions::for_level(config, reveal, FlashPhase::at(now));
-        let flash_visible = options.colour != ColourMode::Palette || flash_visible(now, config);
+        let flash_visible = options.colour != ColourMode::Palette || tellytxt_core::render::flash_visible(now, config);
         Self { options, flash_visible }
     }
 }
@@ -174,7 +174,6 @@ mod tests {
     use super::*;
     use tellytxt_core::colour::SidePanels;
     use tellytxt_core::config::PresentationLevel;
-    use tellytxt_core::level1::{Cell, CellAttributes, FlashRate};
 
     /// REQ-RND-033, REQ-RND-030: a page with side panels is wider, and at
     /// Level 2.5 its palette is the page's 32 colours; at Level 1.5 the
@@ -194,8 +193,11 @@ mod tests {
 
     /// REQ-RND-040: at Levels 2.5 and 3.5 a frame changes with the flash
     /// unit; at Level 1.5 with the phase of decision E.12 only.
+    #[cfg(feature = "view")]
     #[test]
     fn frames_follow_the_flash_timing() {
+        use tellytxt_core::level1::{Cell, CellAttributes, FlashRate};
+        use tellytxt_core::types::Instant;
         let enhanced = Config { level: PresentationLevel::Level35, ..Config::default() };
         let at = |config: &Config, us| Frame::at(config, false, Instant(us));
         assert_ne!(at(&enhanced, 0), at(&enhanced, 200_000), "units 0 and 2 differ");
