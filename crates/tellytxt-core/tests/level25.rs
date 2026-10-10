@@ -627,3 +627,48 @@ fn plain_page_matches_level_1() {
     let level_1 = build(&display_page(0, rows, vec![]), PresentationLevel::Level1).0;
     common::assert_same_cells(&enhanced, &level_1, "no enhancement data, no re-mapping: the Level 1 page");
 }
+
+/// REQ-L25-010, decision E.50: a G3 character written by a triplet does
+/// not change the held mosaic, and Hold Mosaics never replaces it.
+#[test]
+fn hold_mosaics_and_enhancement_characters() {
+    use tellytxt_core::consts::HOLD_MOSAICS;
+    let row: &[u8] = &[MOSAIC_RED, 0x7F, HOLD_MOSAICS, MOSAIC_RED, b' '];
+    let local = [set_position(1, 0), TripletFunction::G3Character { column: 2, code: 0x51, level_15_form: false }];
+    let grid = build_25(&page(&[(1, row)], &local));
+    assert_eq!(set_of(&grid.cells[1][2]), Some(CharSet::G3), "not replaced by the held mosaic");
+    let held = Glyph::Mosaic { pattern: 0x3F, separated: false };
+    assert_eq!((grid.cells[1][3].glyph, grid.cells[1][3].held), (held, true), "the held mosaic is unchanged");
+}
+
+/// REQ-FSM-011, REQ-FSM-009: transitions not covered elsewhere. A
+/// Termination Marker ends an object and the walk returns to the invoker's
+/// position; a damaged triplet in the Modifier pending state is skipped
+/// without moving the position and discards the offsets.
+#[test]
+fn walk_transitions() {
+    use tellytxt_core::packet::{ObjectKind, ObjectSource};
+    let object = [
+        common::define(ObjectKind::Passive, 0b11, common::local_number(1, 0)),
+        g0(0, b'o'),
+        TripletFunction::Termination { kind: 0b100 },
+        g0(1, b'x'),
+    ];
+    let invoke = common::invoke(ObjectSource::Local, ObjectKind::Passive, common::local_number(1, 0));
+    let local = [
+        set_position(3, 2),
+        common::origin(1, 10),
+        invoke,
+        g0(5, b'l'),
+        common::origin(2, 0),
+        g0(30, 0x10),
+        invoke,
+        end(),
+    ];
+    let packets = display_page(0, &[], vec![damage(x26(0, &local), 5), x26(1, &object)]);
+    let grid = build_25(&packets);
+    assert_eq!(char_of(&grid.cells[4][12]), 'o', "placed with the modifier");
+    assert_eq!(char_of(&grid.cells[4][13]), ' ', "the Termination Marker ended the object");
+    assert_eq!(char_of(&grid.cells[3][5]), 'o', "the second object at 3,5: position restored, offsets discarded");
+    assert_eq!((char_of(&grid.cells[5][5]), char_of(&grid.cells[3][30])), (' ', ' '));
+}

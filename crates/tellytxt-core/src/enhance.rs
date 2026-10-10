@@ -1822,3 +1822,128 @@ fn fill_drcs<const DRCS: usize, const PANEL_ROWS: usize>(
         }
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
+mod tests {
+    use super::*;
+    use crate::consts::{FLASH_MODE_STEADY, MOSAIC_FULL};
+
+    /// REQ-L25-027, decision E.48: the flash a triplet sets, and its
+    /// reserved values.
+    #[test]
+    fn additional_flash_values() {
+        let on = |mode, rate| Some(Flash::On { mode, rate, start: 3 });
+        assert_eq!(flash_of(FLASH_MODE_STEADY, FLASH_RATE_PHASE_2, 0, 3), Some(Flash::Steady));
+        assert_eq!(
+            flash_of(FLASH_MODE_NORMAL, FLASH_RATE_SLOW, 0, 3),
+            on(FlashMode::Normal, Rate::Fixed(FlashRate::Slow))
+        );
+        assert_eq!(
+            flash_of(FLASH_MODE_INVERTED, FLASH_RATE_PHASE_3, 0, 3),
+            on(FlashMode::Inverted, Rate::Fixed(FlashRate::FastPhase3))
+        );
+        assert_eq!(
+            flash_of(FLASH_MODE_ADJACENT_CLUT, FLASH_RATE_INCREMENTAL, 0, 3),
+            on(FlashMode::AdjacentClut, Rate::Incremental)
+        );
+        assert_eq!(flash_of(FLASH_MODE_NORMAL, FLASH_RATE_DECREMENTAL, 0, 3), on(FlashMode::Normal, Rate::Decremental));
+        assert_eq!(flash_of(FLASH_MODE_NORMAL, 0b110, 0, 3), None);
+        assert_eq!(flash_of(FLASH_MODE_NORMAL, 0b111, 0, 3), None);
+        assert_eq!(flash_of(FLASH_MODE_NORMAL, FLASH_RATE_SLOW, 0b01, 3), None);
+        let phases: [FlashRate; 4] = core::array::from_fn(|step| flash_rate(Rate::Decremental, 10, 10 + step));
+        assert_eq!(
+            phases,
+            [FlashRate::FastPhase1, FlashRate::FastPhase3, FlashRate::FastPhase2, FlashRate::FastPhase1]
+        );
+        assert_eq!(flash_rate(Rate::Incremental, 10, 9), FlashRate::FastPhase1, "left of the start");
+    }
+
+    /// Decision E.49: the display areas of a row.
+    #[test]
+    fn display_areas() {
+        let panels = SidePanels { left: 6, right: 10 };
+        let areas = [0, 39, 40, 49, 50, 65, 66, 71, 72].map(|column| area_of(column, panels));
+        let expected = [
+            Area::Main,
+            Area::Main,
+            Area::Right,
+            Area::Right,
+            Area::Outside,
+            Area::Outside,
+            Area::Left,
+            Area::Left,
+            Area::Outside,
+        ];
+        assert_eq!(areas, expected);
+        assert_eq!(area_of(40, SidePanels::NONE), Area::Outside);
+        assert_eq!(scan_index(1, 0), SCREEN_COLUMNS);
+    }
+
+    /// REQ-OBJ-008, REQ-OBJ-013: the nesting table and the planes that set
+    /// colours.
+    #[test]
+    fn planes() {
+        use ObjectKind::{Active, Adaptive, Passive};
+        let table = [
+            (Plane::Local, [true, true, true]),
+            (Plane::Active, [false, true, true]),
+            (Plane::Adaptive, [false, false, true]),
+            (Plane::Passive, [false, false, false]),
+        ];
+        for (plane, allowed) in table {
+            assert_eq!([Active, Adaptive, Passive].map(|kind| plane.may_invoke(kind)), allowed, "{plane:?}");
+        }
+        assert!(Plane::Local.sets_colours() && Plane::Active.sets_colours());
+        assert!(!Plane::Adaptive.sets_colours() && !Plane::Passive.sets_colours());
+    }
+
+    /// REQ-L25-010, REQ-L25-011, decision E.50: enhancement glyphs.
+    #[test]
+    fn enhancement_glyphs() {
+        let latin = (G0Set::Latin, G2Set::Latin);
+        let full = Glyph::Mosaic { pattern: MOSAIC_FULL, separated: true };
+        assert_eq!(enhancement_glyph(EnhChar::G1(0x7F), latin, true).0, full);
+        let greek = CharSet::G0(G0 { set: G0Set::Greek, national: None });
+        let (glyph, undefined) = enhancement_glyph(EnhChar::G1(b'Q'), (G0Set::Greek, G2Set::Greek), false);
+        assert_eq!((glyph, undefined), (Glyph::Char(CharRef::new(greek, b'Q')), false));
+        assert_eq!(enhancement_glyph(EnhChar::G2(0x59), latin, false), (Glyph::Space, true));
+        assert!(!enhancement_glyph(EnhChar::G2(0x59), (G0Set::Cyrillic1, G2Set::Cyrillic), false).1, "Latin G2 only");
+        for code in G3_UNDEFINED {
+            assert_eq!(enhancement_glyph(EnhChar::G3(code), latin, false), (Glyph::Space, true));
+        }
+        assert!(is_text(enhancement_glyph(EnhChar::G2(0x41), latin, false).0));
+        assert!(!is_text(enhancement_glyph(EnhChar::G3(0x41), latin, false).0));
+    }
+
+    /// Annex C.2 rule 3: the later of two changes at one cell wins, type by
+    /// type.
+    #[test]
+    fn changes_at_one_cell() {
+        let first = AttrChange { foreground: Some(1), background: Some(2), ..AttrChange::default() };
+        let second = AttrChange { foreground: Some(3), ..AttrChange::default() };
+        let both = first.then(second);
+        assert_eq!((both.foreground, both.background), (Some(3), Some(2)));
+    }
+
+    /// REQ-L25-025: Annex C.3 on one segment: lower halves claimed for the
+    /// next row, and no doubling where it cannot be shown.
+    #[test]
+    fn sizes_on_a_segment() {
+        let attrs = Attrs { double_height: true, double_width: true, ..Attrs::PASSIVE };
+        let resolved = cell_of(Glyph::Space, &attrs, CharSource::Local, 0);
+        let mut cells = RowCells::new();
+        cells.resolved[38] = Some(resolved);
+        cells.resolved[39] = Some(resolved);
+        cells.place(38, 40, true);
+        let placed = |cells: &RowCells, column: usize| cells.cells[column].unwrap();
+        assert_eq!(placed(&cells, 38).size, Size::DoubleTop);
+        assert_eq!(placed(&cells, 38).attributes.width(), Width::LeftHalf);
+        assert_eq!(placed(&cells, 39).attributes.width(), Width::RightHalf);
+        assert!(cells.claims[38] && cells.claims[39]);
+        let mut cells = RowCells::new();
+        cells.resolved[39] = Some(resolved);
+        cells.place(0, 40, false);
+        assert_eq!((placed(&cells, 39).size, placed(&cells, 39).attributes.width()), (Size::Normal, Width::Normal));
+    }
+}

@@ -740,6 +740,40 @@ fn worst_case_page_is_bounded() {
     assert_eq!(char_of(&grid.cells[1][0]), 'w', "the Passive objects show");
 }
 
+/// REQ-OBJ-020, REQ-TST-016: the open area of Figure A.1 runs in scan
+/// order from the invocation to the last position the object addresses,
+/// across rows and through the side-panel columns: an object invoked at
+/// row 2 and placed in the right panel down to row 6 is open at row 4, so
+/// only fourteen more objects can be opened there.
+#[test]
+fn open_area_of_figure_a1() {
+    let panels = PresentationFields {
+        side_panels: Some(SidePanelFields { left: false, right: true, status_flag: true, left_columns: 0 }),
+        ..PresentationFields::default()
+    };
+    // X/26/2: the wide object, writing at its origin and one row down, three
+    // columns on. X/26/3: a small object writing at its origin.
+    let wide =
+        [define(ObjectKind::Passive, 0b11, local_number(2, 0)), g0(0, b'W'), set_position(1, 3), g0(3, b'W'), end()];
+    let small = [define(ObjectKind::Passive, 0b11, local_number(3, 0)), g0(0, b's'), end()];
+    let small_invocation = invoke(ObjectSource::Local, ObjectKind::Passive, local_number(3, 0));
+    let mut local = vec![
+        set_position(2, 30),
+        origin(3, 12),
+        invoke(ObjectSource::Local, ObjectKind::Passive, local_number(2, 0)),
+        set_position(4, 5),
+    ];
+    local.extend(core::iter::repeat_n(small_invocation, 9));
+    let more: Vec<TripletFunction> = core::iter::repeat_n(small_invocation, 6).collect();
+    let others = vec![x28(0, &panels), x26(0, &local), x26(1, &more), x26(2, &wide), x26(3, &small)];
+    let (grid, report) = build(&display_page(0, &[], others), L25);
+    let report = report.unwrap();
+    assert_eq!(char_of(grid.panel_cell(5, 42).unwrap()), 'W', "origin 2 + 3, 30 + 12");
+    assert_eq!(char_of(grid.panel_cell(6, 45).unwrap()), 'W', "the last position addressed");
+    assert_eq!(char_of(&grid.cells[4][5]), 's');
+    assert_eq!((report.objects, report.limited_invocations), (1 + 14, 1));
+}
+
 /// REQ-L25-051: an object whose page is missing is skipped; the rest of
 /// the page shows.
 #[test]
