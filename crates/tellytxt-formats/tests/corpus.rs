@@ -244,3 +244,51 @@ fn corpus_packets_and_page_checksum_order() {
         total.pages
     );
 }
+
+/// The national option index of a page in a transport stream recording
+/// from the corpus, read through the transport stream reader and the
+/// acquisition decoder. `None` (with a note) when the file is absent.
+fn national_index_in_recording(name: &str, mpp: u16) -> Option<u8> {
+    use tellytxt_core::acq::{Decoder, StoredPage};
+    use tellytxt_core::config::Config;
+    use tellytxt_core::types::{Instant, PageAddress, SubCode};
+    use tellytxt_formats::detect::{AutoConfig, AutoReader};
+
+    let path = corpus_directory().map(|directory| directory.join(name)).filter(|path| path.is_file());
+    let Some(path) = path else {
+        eprintln!("SKIPPED: corpus file {name} not found; set TELLYTXT_CORPUS");
+        return None;
+    };
+    let data = std::fs::read(path).unwrap();
+    let mut slots = vec![StoredPage::EMPTY; 64];
+    let mut decoder = Decoder::new(&mut slots, Config::default());
+    let mut reader = Box::new(AutoReader::new(AutoConfig::default()));
+    let mut count = 0u64;
+    let mut out = |item: Item<'_>| {
+        if let Item::Packet { packet, meta } = item {
+            decoder.push(&packet, &meta, Instant(count * 64), &mut |_| {});
+            count += 1;
+        }
+    };
+    for chunk in data.chunks(65_536) {
+        reader.feed(chunk, &mut out);
+    }
+    reader.finish(&mut out);
+    let address = PageAddress::from_mpp(mpp).unwrap();
+    let page = decoder.store().get(address, SubCode::ANY);
+    assert!(page.is_some(), "page {mpp:x} not received from {name}");
+    page.map(|page| page.control.national_index())
+}
+
+/// REQ-TST-012: the order of decision E.21, pinned by two off-air
+/// recordings whose language is known from their descriptors. The reversed
+/// order would give German and Czech.
+#[test]
+fn national_option_order_matches_broadcast_languages() {
+    if let Some(index) = national_index_in_recording("ffmpeg-France2.m2ts", 0x888) {
+        assert_eq!(index, 4, "France 2 subtitles are French (Table 32 index 4)");
+    }
+    if let Some(index) = national_index_in_recording("ffmpeg-teletextsubtitles.ts", 0x777) {
+        assert_eq!(index, 3, "Italian subtitles (Table 32 index 3)");
+    }
+}
