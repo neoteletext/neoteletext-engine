@@ -217,9 +217,9 @@ fn authored_stream_lands_in_the_stores() {
     for level in [PresentationLevel::Level25, PresentationLevel::Level35] {
         let (display, enhancement) = check_stream(&stream, &packets, level);
         assert_eq!(display, streams::display_pages().unwrap().len());
-        // 1A0 (two sub-pages), 1F0, 1B0 (two), 1C0, 1B1, 1B2, 1FE, 2A9,
-        // 3A0, 2F0, 2FE, 4F0, 4A0, 4FE, 5A0, 5A1, 5A2, 5FE.
-        assert_eq!(enhancement, 20);
+        // 1A0 (two sub-pages), 1E0, 1B0 (two), 1C0, 1B1, 1B2, 1B3, 1FE,
+        // 2A9, 3A0, 2F0, 2FE, 4F0, 4A0, 4FE, 5A0, 5A1, 5A2, 5FE.
+        assert_eq!(enhancement, 21);
     }
     // Every class of page is present.
     let classes: Vec<TransmissionClass> = stream.pages().iter().map(|page| transmission_class(page)).collect();

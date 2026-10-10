@@ -292,7 +292,7 @@ mod tests {
             pages
         };
         let (left, right) = (stored(&first), stored(&second));
-        assert_eq!(left.len(), 20);
+        assert_eq!(left.len(), 21);
         assert_eq!(left, right);
         for bits in 0..8 {
             let magazine = Magazine::from_bits(bits);

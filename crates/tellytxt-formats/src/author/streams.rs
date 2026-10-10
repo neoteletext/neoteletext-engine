@@ -14,7 +14,7 @@
 //!
 //! | Magazine | Pages | What they test |
 //! |---|---|---|
-//! | 1 | 100 to 123, 1A0, 1B0 to 1B2, 1C0, 1F0, 1FE | the features one by one |
+//! | 1 | 100 to 123, 1A0, 1B0 to 1B3, 1C0, 1E0, 1FE | the features one by one |
 //! | 2, 3 | 200 to 202, 2A9, 2F0, 2FE, 3A0 | X/27/4 links over the table, across magazines |
 //! | 4 | 400 to 402, 4A0, 4F0, 4FE | default objects and the fallback of a POP link |
 //! | 5 | 500, 501, 5A0 to 5A2, 5FE | the Level 3.5 links of X/27/5 and X/22 to X/24 |
@@ -177,13 +177,14 @@ struct Drcs {
     global: DrcsPage,
     multicolour: DrcsPage,
     figure_27: DrcsPage,
+    clean: DrcsPage,
 }
 
 fn magazine_1(stream: &mut Stream) -> Result<()> {
     let objects = magazine_1_objects()?;
     let drcs = magazine_1_drcs()?;
     stream.extend(objects.pop.build()?).extend(objects.gpop.build()?);
-    for page in [&drcs.normal, &drcs.global, &drcs.multicolour, &drcs.figure_27] {
+    for page in [&drcs.normal, &drcs.global, &drcs.multicolour, &drcs.figure_27, &drcs.clean] {
         stream.extend(page.build()?);
     }
     stream.push(magazine_1_table(&objects, &drcs)?.build()?);
@@ -210,6 +211,8 @@ fn magazine_1(stream: &mut Stream) -> Result<()> {
     stream.push(drcs_level_25()?.build()?);
     stream.push(drcs_level_35(&drcs)?.build()?);
     stream.push(drcs_figure_27(&drcs)?.build()?);
+    stream.push(drcs_without_faults()?.build()?);
+    stream.push(sizes_written_by_enhancement_data()?.build()?);
     stream.push(clause_13_9()?.build()?);
     stream.push(annex_c2()?.build()?);
     stream.push(local_objects()?.build()?);
@@ -218,7 +221,8 @@ fn magazine_1(stream: &mut Stream) -> Result<()> {
     Ok(())
 }
 
-/// POP 1A0 (two sub-pages) and GPOP 1F0.
+/// POP 1A0 (two sub-pages) and GPOP 1E0. Not 1F0: TOP receivers take
+/// page 1F0 to be the Basic TOP Table whatever it carries.
 fn magazine_1_objects() -> Result<Objects> {
     let mut pop = ObjectPage::new(address(0x1A0)?, false);
     let mut active = Triplets::new();
@@ -240,7 +244,7 @@ fn magazine_1_objects() -> Result<Objects> {
     level_35.font(0, FontStyleData { proportional: false, bold: true, italic: false, rows: 0 }).text(0, b"L3.5 ONLY");
     let pop_level_35 = pop.define(1, ObjectKind::Active, LEVEL_35, level_35)?;
 
-    let mut gpop = ObjectPage::new(address(0x1F0)?, true);
+    let mut gpop = ObjectPage::new(address(0x1E0)?, true);
     let mut global = Triplets::new();
     global.foreground(0, MAGENTA).text(0, b"GLOBAL ACTIVE");
     let gpop_active = gpop.define(0, ObjectKind::Active, BOTH, global)?;
@@ -379,7 +383,13 @@ fn magazine_1_drcs() -> Result<Drcs> {
     figure_27.character(0, 1, DrcsMode::Mode0, &CHECKER)?;
     figure_27.character(0, 2, DrcsMode::Mode1, &BANDS_2)?;
     figure_27.character(0, 4, DrcsMode::Mode2, &RAMP_4)?;
-    Ok(Drcs { normal, global, multicolour, figure_27 })
+    // Every mode and nothing invalid, for page 119.
+    let mut clean = DrcsPage::new(address(0x1B3)?, false);
+    clean.character(0, 0, DrcsMode::Mode1, &BANDS_2)?;
+    clean.character(0, 2, DrcsMode::Mode2, &RAMP_4)?;
+    clean.character(0, 6, DrcsMode::Mode0, &ARROW)?;
+    clean.character(0, 7, DrcsMode::Mode3, &DOTS_6X5)?;
+    Ok(Drcs { normal, global, multicolour, figure_27, clean })
 }
 
 /// MOT 1FE, with the same links at both levels.
@@ -389,11 +399,13 @@ fn magazine_1_table(objects: &Objects, drcs: &Drcs) -> Result<Mot> {
     mot.object_link(MotLevel::Both, 1, object_link(objects.pop.address(), 1))?;
     mot.drcs_link(MotLevel::Both, 0, drcs_link(drcs.global.address(), 0))?;
     mot.drcs_link(MotLevel::Both, 1, drcs_link(drcs.normal.address(), 1))?;
+    mot.drcs_link(MotLevel::Both, 2, drcs_link(drcs.clean.address(), 0))?;
     let none = MotPageEntry { global_objects: false, pop_link: 0, global_drcs: false, drcs_link: 0 };
     mot.page(PageNumber(0x14), MotPageEntry { global_drcs: true, drcs_link: 1, ..none });
+    mot.page(PageNumber(0x19), MotPageEntry { global_drcs: true, drcs_link: 2, ..none });
     mot.page(PageNumber(0x22), MotPageEntry { pop_link: 1, drcs_link: 1, ..none });
     mot.page(PageNumber(0x23), MotPageEntry { global_objects: true, ..none });
-    let totals = MotTotals { magazines: 1 << magazine(1)?.index(), object_pages: 3, drcs_pages: 5 };
+    let totals = MotTotals { magazines: 1 << magazine(1)?.index(), object_pages: 3, drcs_pages: 6 };
     mot.totals(MotLevel::Both, totals);
     Ok(mot)
 }
@@ -409,9 +421,9 @@ fn index() -> Result<DisplayPage> {
         b"113 EVERY MODE     114 DRCS LEVEL 2.5",
         b"115 DRCS LEVEL 3.5 116 FIGURE 27",
         b"117 CLAUSE 13.9    118 G2, DIACRITICS",
-        b"120 ANNEX C.2",
+        b"119 DRCS, NO FAULTS 120 ANNEX C.2",
         b"121 LOCAL OBJECTS  122 POP OBJECTS",
-        b"123 GPOP OBJECTS",
+        b"123 GPOP OBJECTS   124 SIZES BY X/26",
         b"200-202 X/27/4 LINKS OVER THE MOT",
         b"400-402 DEFAULT OBJECTS",
         b"500-501 LEVEL 3.5 LINKS",
@@ -783,6 +795,59 @@ fn drcs_level_25() -> Result<DisplayPage> {
     // 2.5, so the sub-table stays 0.
     local.position(18, 0)?.drcs_mode(DrcsTable::Normal, DRCS_RESERVED, 1).drcs(12, DrcsTable::Normal, 5);
     local.position(20, 0)?.drcs_mode(DrcsTable::Normal, DRCS_LEVEL_35, 0).drcs(12, DrcsTable::Normal, 0);
+    Ok(page)
+}
+
+/// 119: DRCS of every mode, normal and global, found through the table
+/// alone and with no faults anywhere on the page, so that a decoder which
+/// drops a page's enhancement at its first fault (zvbi) still shows it all
+/// (REQ-TST-023). Character numbers are those of DRCS 1B3 and GDRCS 1C0.
+fn drcs_without_faults() -> Result<DisplayPage> {
+    let mut page = page(0x119, b"DRCS THROUGH THE TABLE, NO FAULTS")?;
+    let rows: [(u8, &[u8]); 5] = [(3, b"MODES 0-3"), (6, b"GLOBAL"), (9, b"COLOURED"), (12, b"FLASH"), (15, b"DOUBLE")];
+    for (row, label) in rows {
+        page.text(row, 0, label)?;
+    }
+    let local = page.local();
+    local.position(3, 0)?.drcs_mode(DrcsTable::Normal, DRCS_BOTH, 0);
+    for (column, character) in [(12u8, 6u8), (14, 0), (16, 2), (18, 7)] {
+        local.drcs(column, DrcsTable::Normal, character);
+    }
+    local.position(6, 0)?.drcs_mode(DrcsTable::Global, DRCS_BOTH, 0);
+    local.drcs(12, DrcsTable::Global, 0).drcs(14, DrcsTable::Global, 47);
+    local.position(9, 0)?.foreground(12, RED).background(12, colour(2, 5)).drcs(12, DrcsTable::Normal, 6);
+    local.position(12, 0)?.flash(12, FlashMode::Normal, FlashRate::Slow).drcs(12, DrcsTable::Normal, 6);
+    local.position(15, 0)?;
+    local.attributes(12, DisplayAttributes { double_height: true, double_width: true, ..DisplayAttributes::default() });
+    // The size ends after the character: zvbi sizes only the characters
+    // enhancement data writes, not the spaces a size runs on over.
+    local.drcs(12, DrcsTable::Normal, 6).attributes(14, DisplayAttributes::default());
+    Ok(page)
+}
+
+/// 124: double height, width and size on characters that the enhancement
+/// data writes itself, each size ended after its text, with the Level 1
+/// rows left empty: the sizes that a decoder which sizes only enhancement
+/// characters (zvbi) shows too (REQ-TST-023, Annex C.3).
+fn sizes_written_by_enhancement_data() -> Result<DisplayPage> {
+    let mut page = page(0x124, b"SIZES OF CHARACTERS WRITTEN BY X/26")?;
+    let none = DisplayAttributes::default();
+    let sizes = [
+        (3u8, DisplayAttributes { double_height: true, ..none }, &b"HEIGHT"[..]),
+        (6, DisplayAttributes { double_width: true, ..none }, b"WIDTH"),
+        (9, DisplayAttributes { double_height: true, double_width: true, ..none }, b"SIZE"),
+    ];
+    for (row, attributes, text) in sizes {
+        // A double-width character covers the next column too, so the
+        // characters leave no space between them that the size runs over.
+        let pitch = if attributes.double_width { 2 } else { 1 };
+        page.local().position(row, 0)?.attributes(4, attributes);
+        for (column, &code) in (4u8..).step_by(pitch).zip(text) {
+            page.local().character(column, code);
+        }
+        let end = 4u8.saturating_add(u8::try_from(text.len().saturating_mul(pitch)).unwrap_or(u8::MAX));
+        page.local().attributes(end, none);
+    }
     Ok(page)
 }
 
