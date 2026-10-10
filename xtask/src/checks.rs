@@ -189,7 +189,7 @@ const APPLICATION_CRATES: &[(&str, &[&str])] = &[
 
 /// Files that are data tables of code points or glyphs, where the literal
 /// values are characters, not teletext constants.
-const DATA_FILES: &[&str] = &["charset/tables.rs", "glyphs/bedstead.rs", "consts.rs"];
+const DATA_FILES: &[&str] = &["charset/tables.rs", "glyphs/bedstead.rs", "glyphs/original.rs", "consts.rs"];
 /// Teletext values that must only appear in the constants module
 /// (REQ-GEN-014).
 const WATCHED_LITERALS: &[&str] = &["0x27", "0xE4", "0xe4", "6937500", "6_937_500", "0x55"];

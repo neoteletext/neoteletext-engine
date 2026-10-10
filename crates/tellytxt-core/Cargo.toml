@@ -22,6 +22,8 @@ level25 = []
 render = []
 # The temporary Bedstead glyph set (decision E.25).
 bedstead = ["render"]
+# The project's own glyphs (REQ-RND-028, decision E.62).
+original = ["render"]
 # The viewer state machine, navigation and history (area NAV).
 viewer = []
 # The forms model (Appendix C).

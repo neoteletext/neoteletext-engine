@@ -3,6 +3,8 @@
 //! `cargo xtask glyphs` swaps a glyph set without code changes.
 //!
 //! - `crates/tellytxt-core/src/glyphs/bedstead.rs` from the Bedstead export.
+//! - `crates/tellytxt-core/src/glyphs/original.rs` from the project's original
+//!   glyphs, `original.txt` (decision E.62).
 //! - `crates/tellytxt-core/src/glyphs/g3.txt` from the G3 geometry of
 //!   [`crate::g3`], and `g3.rs` from that text.
 //!
@@ -131,6 +133,9 @@ pub fn generate(root: &Path) -> Result<(), String> {
     let (source, count) = bedstead_source(&text)?;
     fs::write(root.join(TARGET), source).map_err(|e| format!("{TARGET}: {e}"))?;
     println!("wrote {count} glyphs to {TARGET}");
+    let (original, count) = crate::original::table_source(root)?;
+    fs::write(root.join(crate::original::TABLE), original).map_err(|e| format!("{}: {e}", crate::original::TABLE))?;
+    println!("wrote {count} glyphs to {}", crate::original::TABLE);
     let g3_text = g3::text();
     fs::write(root.join(G3_TEXT), &g3_text).map_err(|e| format!("{G3_TEXT}: {e}"))?;
     fs::write(root.join(G3_TARGET), g3_source(&g3_text)?).map_err(|e| format!("{G3_TARGET}: {e}"))?;

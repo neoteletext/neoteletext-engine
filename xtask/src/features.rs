@@ -24,6 +24,7 @@ const BUILDS: &[Build] = &[
     Build { package: "tellytxt-core", features: "level25" },
     Build { package: "tellytxt-core", features: "render" },
     Build { package: "tellytxt-core", features: "bedstead" },
+    Build { package: "tellytxt-core", features: "original" },
     Build { package: "tellytxt-core", features: "viewer" },
     Build { package: "tellytxt-core", features: "forms" },
     Build { package: "tellytxt-formats", features: "" },
