@@ -650,6 +650,7 @@ dependencies = [
 name = "tellytxt-formats"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "tellytxt-core",
 ]
 

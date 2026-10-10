@@ -1,0 +1,147 @@
+//! Detection tests for every format, including corrupted starts
+//! (REQ-INP-005), and the automatic reader.
+#![allow(
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    clippy::cast_possible_truncation
+)]
+
+use super::*;
+use crate::testing::{Owned, diagnostics, packets, pages, same_in_any_chunks};
+use std::vec::Vec;
+use tellytxt_core::consts::PACKET_BYTES;
+use tellytxt_core::ecc::reverse_bits;
+use tellytxt_core::packet::{Packet, encode};
+use tellytxt_core::types::Magazine;
+
+/// Packets with valid addresses and pseudo-random bodies.
+fn sample_packets(count: usize) -> Vec<Packet> {
+    let mut seed = 0x1234_5678u32;
+    (0..count)
+        .map(|index| {
+            let mut packet = encode::address(Magazine::new((index % 8 + 1) as u8).unwrap(), (index % 26) as u8);
+            for byte in packet.bytes.iter_mut().skip(2) {
+                seed = seed.wrapping_mul(1_103_515_245).wrapping_add(12_345);
+                *byte = (seed >> 16) as u8;
+            }
+            packet
+        })
+        .collect()
+}
+
+/// A byte no Hamming 8/4 decoder can correct, so that no packet layout fits
+/// a stream of it.
+fn uncorrectable() -> u8 {
+    (0..=u8::MAX).find(|&byte| tellytxt_core::ecc::hamming84(byte).is_none()).unwrap()
+}
+
+fn serialise(variant: T42Variant, packets: &[Packet]) -> Vec<u8> {
+    let mut out = Vec::new();
+    for packet in packets {
+        out.extend_from_slice(variant.prefix());
+        out.extend(
+            packet.bytes.iter().map(|&byte| if variant == T42Variant::Reversed { reverse_bits(byte) } else { byte }),
+        );
+    }
+    out
+}
+
+#[test]
+fn detects_each_t42_layout_even_with_a_corrupted_start() {
+    let packets = sample_packets(DETECTION_BYTES / PACKET_BYTES + 20);
+    for variant in T42Variant::ALL {
+        let stream = serialise(variant, &packets);
+        assert_eq!(detect(&stream, false), Detection::Found { format: Format::T42(variant), skip: 0 }, "{variant:?}");
+        // Drop the first 17 bytes: the first packet is cut short.
+        let cut = &stream[17..];
+        let skip = variant.unit_bytes() - 17;
+        assert_eq!(detect(cut, false), Detection::Found { format: Format::T42(variant), skip }, "{variant:?} cut");
+    }
+    let short = serialise(T42Variant::Plain, &packets[..10]);
+    assert_eq!(detect(&short, false), Detection::NeedMore);
+    assert_eq!(detect(&short, true), Detection::Found { format: Format::T42(T42Variant::Plain), skip: 0 });
+}
+
+#[test]
+fn detects_signatures() {
+    let transport = crate::transport::tests::flatten(&crate::transport::tests::stream(), 0, 0);
+    let mut padded = transport.clone();
+    while padded.len() < DETECTION_BYTES {
+        padded.extend_from_slice(&transport);
+    }
+    assert_eq!(
+        detect(&padded, false),
+        Detection::Found { format: Format::TransportStream(TsPacketSize::Standard), skip: 0 }
+    );
+    assert_eq!(
+        detect(&transport, true),
+        Detection::Found { format: Format::TransportStream(TsPacketSize::Standard), skip: 0 }
+    );
+    let m2ts = crate::transport::tests::flatten(&crate::transport::tests::stream(), 4, 0);
+    assert_eq!(detect(&m2ts, true), Detection::Found { format: Format::TransportStream(TsPacketSize::M2ts), skip: 0 });
+    let fec = crate::transport::tests::flatten(&crate::transport::tests::stream(), 0, 16);
+    assert_eq!(detect(&fec, true), Detection::Found { format: Format::TransportStream(TsPacketSize::Fec), skip: 0 });
+    let pes = crate::pes::tests::pes_packet(0, &[]);
+    assert_eq!(detect(&pes, true), Detection::Found { format: Format::Pes, skip: 0 });
+    let ep1 = crate::ep1::tests::ep1_file(0x09, &[]);
+    assert_eq!(detect(&ep1, true), Detection::Found { format: Format::Ep1, skip: 0 });
+    assert_eq!(detect(b"\xEF\xBB\xBFDE,page\nPN,10000\n", true), Detection::Found { format: Format::Tti, skip: 3 });
+    assert_eq!(detect(b"https://edit.tf/#0:QIECBAg", true), Detection::Found { format: Format::EditTf, skip: 0 });
+    assert_eq!(detect(&[0x20; 1000], true), Detection::Found { format: Format::ScreenDump, skip: 0 });
+    assert_eq!(detect(&[0xA0; 960], true), Detection::Found { format: Format::ScreenDump, skip: 0 });
+    assert_eq!(detect(&std::vec![uncorrectable(); 20_000], true), Detection::Unknown);
+}
+
+#[test]
+fn detects_sliced_records_in_both_byte_orders() {
+    for order in [ByteOrder::Little, ByteOrder::Big] {
+        let mut stream = Vec::new();
+        for (index, packet) in sample_packets(40).iter().enumerate() {
+            let words = [SLICED_TELETEXT_B, (index % 2) as u32, 7, 0];
+            for word in words {
+                stream.extend_from_slice(&match order {
+                    ByteOrder::Little => word.to_le_bytes(),
+                    ByteOrder::Big => word.to_be_bytes(),
+                });
+            }
+            stream.extend_from_slice(&packet.bytes);
+            stream.extend_from_slice(&[0; 48 - PACKET_BYTES]);
+        }
+        assert_eq!(detect(&stream, true), Detection::Found { format: Format::Sliced(order), skip: 0 }, "{order:?}");
+    }
+}
+
+#[test]
+fn auto_reader_detects_then_reads_in_any_chunks() {
+    let packets_in = sample_packets(DETECTION_PACKETS * 2);
+    let mut stream = std::vec![0xAA; 5];
+    stream.extend(serialise(T42Variant::Reversed, &packets_in));
+    let items = same_in_any_chunks(|| AutoReader::new(AutoConfig::default()), &stream);
+    assert!(matches!(&items[0], Owned::Other(text) if text.contains("Reversed")));
+    assert_eq!(packets(&items), packets_in);
+    assert_eq!(diagnostics(&items), []);
+}
+
+#[test]
+fn auto_reader_encodes_pages_when_asked() {
+    let text = crate::tti::tests::FORM_EXAMPLE;
+    let config = AutoConfig { encode_pages: true, source: Some(3), ..AutoConfig::default() };
+    let items = same_in_any_chunks(|| AutoReader::new(config), text);
+    let page = pages(&items)[0];
+    let mut expected = Vec::new();
+    encode_page(&page, &mut |packet| expected.push(packet));
+    assert_eq!(packets(&items), expected);
+    assert!(items.iter().any(|item| matches!(item, Owned::Packet(_, meta) if meta.source == Some(3))));
+    // An explicit format skips detection.
+    let config = AutoConfig { format: Some(Format::Tti), ..AutoConfig::default() };
+    let items = same_in_any_chunks(|| AutoReader::new(config), text);
+    assert!(!items.iter().any(|item| matches!(item, Owned::Other(_))));
+    assert_eq!(pages(&items).len(), 1);
+}
+
+#[test]
+fn auto_reader_reports_unknown_input() {
+    let items = same_in_any_chunks(|| AutoReader::new(AutoConfig::default()), &std::vec![uncorrectable(); 20_000]);
+    assert_eq!(diagnostics(&items), [Diagnostic::at(0, DiagnosticKind::UnknownFormat)]);
+}
