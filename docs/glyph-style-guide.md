@@ -94,7 +94,7 @@ U+25A1 drawn
 The header gives:
 - the code point;
 - the kind;
-- any tags, from `descender` and `dots`.
+- any tags, from `descender` (ink in rows 7 to 8), `dots` (a dot with no neighbour) and `raised` (a letter that does not stand on row 6, such as ª and º).
 
 **Copies and overlays** have a header line only:
 
