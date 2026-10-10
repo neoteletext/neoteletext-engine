@@ -67,6 +67,9 @@ pub struct Config {
     /// Process X/26/15 like the other designation codes (decision E.2).
     pub process_x26_15: bool,
     /// Use the clause 12.3.2 row-setting rule instead of Annex A.3 (E.3).
+    /// This and the single Start Box, exact framing code and out-of-order
+    /// triplet settings are the alternatives of REQ-PRF-004, each
+    /// independent of the profile.
     pub strict_row_setting: bool,
     /// Ignore triplets addressing positions earlier than the previous one
     /// (REQ-L15-009).
