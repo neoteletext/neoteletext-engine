@@ -113,8 +113,8 @@ pub fn inventory(root: &Path) -> Result<(), String> {
 #[derive(Clone)]
 enum Entry {
     Drawn { rows: Rows, tags: BTreeSet<String> },
-    Copy(char),
-    Overlay(char, char),
+    Copy(char, BTreeSet<String>),
+    Overlay(char, char, BTreeSet<String>),
 }
 
 fn code_point(field: &str, line: usize) -> Result<char, String> {
@@ -123,8 +123,24 @@ fn code_point(field: &str, line: usize) -> Result<char, String> {
     char::from_u32(value).ok_or(format!("line {line}: U+{hex} is not a character"))
 }
 
-/// The tags a drawn entry may carry (style guide).
+/// The tags an entry may carry (style guide). They describe the glyph the
+/// entry resolves to, so copies and overlays carry them too.
 const TAGS: [&str; 3] = ["descender", "dots", "raised"];
+
+fn tags_of(fields: &[&str], line: usize) -> Result<BTreeSet<String>, String> {
+    fields
+        .iter()
+        .map(
+            |tag| {
+                if TAGS.contains(tag) {
+                    Ok((*tag).to_string())
+                } else {
+                    Err(format!("line {line}: unknown tag `{tag}`"))
+                }
+            },
+        )
+        .collect()
+}
 
 fn parse_original(text: &str) -> Result<BTreeMap<char, Entry>, Vec<String>> {
     let mut entries = BTreeMap::new();
@@ -164,28 +180,29 @@ fn parse_original(text: &str) -> Result<BTreeMap<char, Entry>, Vec<String>> {
                     }
                     *row = text.chars().fold(0u8, |acc, c| (acc << 1) | u8::from(c == '#'));
                 }
-                let tags: BTreeSet<String> = fields[2..].iter().map(|t| (*t).to_string()).collect();
-                for tag in &tags {
-                    if !TAGS.contains(&tag.as_str()) {
-                        errors.push(format!("line {number}: unknown tag `{tag}`"));
+                let tags = match tags_of(&fields[2..], number) {
+                    Ok(tags) => tags,
+                    Err(e) => {
+                        errors.push(e);
+                        continue;
                     }
-                }
+                };
                 if !ok {
                     continue;
                 }
                 Entry::Drawn { rows, tags }
             }
-            Some("copy") if fields.len() == 3 => match code_point(fields[2], number) {
-                Ok(source) => Entry::Copy(source),
-                Err(e) => {
+            Some("copy") if fields.len() >= 3 => match (code_point(fields[2], number), tags_of(&fields[3..], number)) {
+                (Ok(source), Ok(tags)) => Entry::Copy(source, tags),
+                (Err(e), _) | (_, Err(e)) => {
                     errors.push(e);
                     continue;
                 }
             },
-            Some("overlay") if fields.len() == 4 => {
-                match (code_point(fields[2], number), code_point(fields[3], number)) {
-                    (Ok(base), Ok(mark)) => Entry::Overlay(base, mark),
-                    (Err(e), _) | (_, Err(e)) => {
+            Some("overlay") if fields.len() >= 4 => {
+                match (code_point(fields[2], number), code_point(fields[3], number), tags_of(&fields[4..], number)) {
+                    (Ok(base), Ok(mark), Ok(tags)) => Entry::Overlay(base, mark, tags),
+                    (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => {
                         errors.push(e);
                         continue;
                     }
@@ -193,7 +210,7 @@ fn parse_original(text: &str) -> Result<BTreeMap<char, Entry>, Vec<String>> {
             }
             _ => {
                 errors.push(format!(
-                    "line {number}: expected `U+XXXX drawn [tags]`, `copy U+XXXX` or `overlay U+XXXX U+XXXX`"
+                    "line {number}: expected `U+XXXX drawn [tags]`, `copy U+XXXX [tags]` or `overlay U+XXXX U+XXXX [tags]`"
                 ));
                 continue;
             }
@@ -212,8 +229,8 @@ fn resolve(entries: &BTreeMap<char, Entry>, character: char, depth: usize) -> Op
     }
     match entries.get(&character)? {
         Entry::Drawn { rows, .. } => Some(*rows),
-        Entry::Copy(source) => resolve(entries, *source, depth + 1),
-        Entry::Overlay(base, mark) => {
+        Entry::Copy(source, _) => resolve(entries, *source, depth + 1),
+        Entry::Overlay(base, mark, _) => {
             let base = resolve(entries, *base, depth + 1)?;
             let mark = resolve(entries, *mark, depth + 1)?;
             let mut out = base;
@@ -263,7 +280,10 @@ fn well_formed(character: char, rows: &Rows, tags: &BTreeSet<String>) -> Vec<Str
     if rows.iter().all(|&r| r == 0) && !BLANK.contains(&character) {
         problems.push(format!("{name}: empty glyph"));
     }
-    if character.is_alphabetic() && rows[BASELINE_ROW] == 0 && !descends && !tags.contains("raised") {
+    // Spacing marks are letters to Unicode (modifier letters) but sit above
+    // or below the letter they mark.
+    let mark = SPACING_MARKS.iter().any(|(_, spacing)| *spacing == character);
+    if character.is_alphabetic() && !mark && rows[BASELINE_ROW] == 0 && !descends && !tags.contains("raised") {
         problems.push(format!("{name}: a letter stands on the baseline (row 6), or is tagged `raised`"));
     }
     problems
@@ -349,9 +369,12 @@ pub fn check(root: &Path, args: &[String]) -> Result<(), String> {
             None => failures.push(format!("U+{:04X}: refers to a missing entry, or to itself", u32::from(character))),
         }
     }
-    // Well-formedness of drawn entries.
+    // Well-formedness of every glyph, against its entry's tags.
     for (character, entry) in &entries {
-        if let Entry::Drawn { rows, tags } = entry {
+        let tags = match entry {
+            Entry::Drawn { tags, .. } | Entry::Copy(_, tags) | Entry::Overlay(_, _, tags) => tags,
+        };
+        if let Some(rows) = glyphs.get(character) {
             failures.extend(well_formed(*character, rows, tags));
         }
     }
@@ -404,7 +427,7 @@ pub fn check(root: &Path, args: &[String]) -> Result<(), String> {
     let needed = required();
     let missing: Vec<char> = needed.keys().filter(|c| !glyphs.contains_key(c)).copied().collect();
     let drawn = entries.values().filter(|e| matches!(e, Entry::Drawn { .. })).count();
-    let copies = entries.values().filter(|e| matches!(e, Entry::Copy(_))).count();
+    let copies = entries.values().filter(|e| matches!(e, Entry::Copy(..))).count();
     println!(
         "{} entries ({drawn} drawn, {copies} copies, {} overlays); {} of {} required characters covered; {audited} close matches justified",
         entries.len(),
@@ -511,7 +534,7 @@ mod tests {
     fn parses_the_three_kinds_and_resolves_them() {
         let text = "U+0061 drawn\n.....\n.....\n.###.\n....#\n.####\n#...#\n.####\n.....\n.....\n\n\
                     U+00B4 drawn\n...#.\n..#..\n.....\n.....\n.....\n.....\n.....\n.....\n.....\n\n\
-                    U+0430 copy U+0061\nU+00E1 overlay U+0061 U+00B4\n";
+                    U+0430 copy U+0061\nU+00E1 overlay U+0061 U+00B4 dots\n";
         let entries = parse_original(text).unwrap_or_default();
         assert_eq!(entries.len(), 4);
         assert_eq!(resolve(&entries, 'а', 0), resolve(&entries, 'a', 0));

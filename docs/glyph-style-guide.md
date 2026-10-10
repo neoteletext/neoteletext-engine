@@ -106,4 +106,6 @@ U+00E9 overlay U+0065 U+00B4
 - **`copy`:** uses another entry's glyph.
 - **`overlay`:** combines a base glyph and a spacing mark dot by dot, as the renderer does for marks at run time.
 
+Copies and overlays carry their tags after their operands, describing the glyph they produce, for example `U+00E7 overlay U+0063 U+00B8 descender`.
+
 Lines starting with `;` are comments. Each entry is separated from the next by a blank line.
