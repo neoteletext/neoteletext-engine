@@ -5,18 +5,29 @@
 //! the configuration and the display options (REQ-ARCH-006). Every feature
 //! that crosses rows is resolved here, so rows are independent from here on
 //! (decision E.29).
+//!
+//! The [`Cell`] and [`Grid`] also hold what Levels 2.5 and 3.5 add
+//! (decision E.42, REQ-L25-006): Colour Map colours, size in two parts,
+//! underline, invert, flash modes, font styles, DRCS characters, which
+//! source wrote each character, the side-panel area, the Colour Map, the
+//! screen and row colours, and the DRCS patterns and colour tables. The
+//! Level 1 decoding leaves all of them at their defaults.
 
 use crate::acq::{MagazineData, StoredPage};
 use crate::charset::{self, CharRef, CharSet, Designation, G0, designation_with_fallback, mosaic_pattern, second_g0};
+use crate::colour::{ColourIndex, ColourMap, SidePanels};
 use crate::config::{Config, ParityPolicy, Row24Policy};
 use crate::consts::{
     ALPHA_BLACK, ALPHA_WHITE, ATTRIBUTE_LAST, BLACK_BACKGROUND, C5_NEWSFLASH, C6_SUBTITLE, C7_SUPPRESS_HEADER,
     C10_INHIBIT_DISPLAY, CODE_MASK_7BIT, COLOUR_ATTRIBUTE_MASK, COLOUR_BLACK, COLOUR_GREEN, COLOUR_WHITE, COLUMNS,
     CONCEAL, CONTIGUOUS_MOSAICS, DESIGNATION_GROUP_SHIFT, DOUBLE_HEIGHT, END_BOX, ESC, FLASH, HEADER_DISPLAY_BYTES,
     HEADER_DISPLAY_COLUMN, HOLD_MOSAICS, MOSAIC_BIT5, MOSAIC_BLACK, MOSAIC_WHITE, NATIONAL_INDEX_MASK, NEW_BACKGROUND,
-    NORMAL_SIZE, PAGE_FUNCTION_BASIC, RELEASE_MOSAICS, ROWS, SEPARATED_MOSAICS, SPACE, START_BOX,
-    STATUS_ATTRIBUTE_COLUMN, STATUS_COLUMNS, STEADY,
+    NORMAL_SIZE, PAGE_FUNCTION_BASIC, RELEASE_MOSAICS, ROWS, SEPARATED_MOSAICS, SIDE_PANEL_AREA_COLUMNS,
+    SIDE_PANEL_FIRST_COLUMN, SIDE_PANEL_FIRST_ROW, SIDE_PANEL_ROWS, SPACE, START_BOX, STATUS_ATTRIBUTE_COLUMN,
+    STATUS_COLUMNS, STEADY,
 };
+use crate::drcs::{DEFAULT_DRCS_PATTERNS, DrcsColourTables, DrcsPattern, DrcsPatterns};
+use crate::types::DrcsCharacter;
 
 /// What a cell shows.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
@@ -37,18 +48,22 @@ pub enum Glyph {
 impl Glyph {
     /// True when the cell shows nothing in the foreground: no glyph, a
     /// space (2/0 is a space in every G0 set, Tables 35 and 36) without a
-    /// diacritical mark, or a mosaic with no cells set.
+    /// diacritical mark, or a mosaic with no cells set. A DRCS character's
+    /// code is a character number, not a code, so it is never blank here.
     #[must_use]
     pub const fn is_blank(self) -> bool {
         match self {
             Self::Space => true,
-            Self::Char(character) => character.code == SPACE && character.diacritic == 0,
+            Self::Char(character) => {
+                character.code == SPACE && character.diacritic == 0 && !matches!(character.set, CharSet::Drcs { .. })
+            }
             Self::Mosaic { pattern, .. } => pattern == 0,
         }
     }
 }
 
-/// A cell's role in double height (REQ-L1-008).
+/// A cell's role in double height (REQ-L1-008): the vertical part of its
+/// size (decision E.42).
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum Size {
     /// Normal height.
@@ -59,31 +74,278 @@ pub enum Size {
     DoubleBottom,
 }
 
-/// One cell of the grid (REQ-L1-001).
-// The flags are the independent cell attributes REQ-L1-001 lists one by one.
+/// The horizontal part of a cell's size (decision E.42, REQ-RND-034).
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub enum Width {
+    /// Normal width.
+    Normal,
+    /// The left half of a double-width character.
+    LeftHalf,
+    /// The right half, shown in the next column.
+    RightHalf,
+}
+
+/// How a flashing cell flashes (Table 29 mode 00111, decision E.48). At
+/// Levels 1 and 1.5 every flash is [`FlashMode::Normal`].
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub enum FlashMode {
+    /// The off phase shows the background colour.
+    Normal,
+    /// As normal, with the on and off phases swapped.
+    Inverted,
+    /// The off phase shows the foreground index exclusive-ORed with 8: the
+    /// same entry of the neighbouring CLUT.
+    AdjacentClut,
+}
+
+/// The rate and phase of a flashing cell (decision E.48). Incremental and
+/// decremental flash are resolved into a phase for each cell.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub enum FlashRate {
+    /// 1 hertz: on in units 0 to 8 of the twelve, off in 9 to 11. At Levels
+    /// 1 and 1.5 the timing of decision E.12 is used instead.
+    Slow,
+    /// 2 hertz, phase 1: off in units 0 and 1 of each half-second.
+    FastPhase1,
+    /// 2 hertz, phase 2: off in units 2 and 3.
+    FastPhase2,
+    /// 2 hertz, phase 3: off in units 4 and 5.
+    FastPhase3,
+}
+
+/// The Level 3.5 font styles of a cell (Table 29 mode 01110, decision
+/// E.50). They apply to G0 and G2 characters only.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, Default)]
+pub struct FontStyle {
+    /// Bold.
+    pub bold: bool,
+    /// Italic.
+    pub italic: bool,
+    /// Proportional spacing, recorded but drawn at the fixed pitch.
+    pub proportional: bool,
+}
+
+/// Which source wrote a cell's character (REQ-L25-006); the display
+/// priority of clause 13.2 runs from Passive down to Level 1.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub enum CharSource {
+    /// The Level 1 page.
+    Level1,
+    /// The local enhancement data, packets X/26; at Level 1.5 every
+    /// overwrite.
+    Local,
+    /// An Active object.
+    Active,
+    /// An Adaptive object.
+    Adaptive,
+    /// A Passive object.
+    Passive,
+}
+
+/// The cell attributes that Levels 2.5 and 3.5 add (decision E.42,
+/// REQ-L25-006): the horizontal part of the size, the flash mode and
+/// rate, underline, invert, the font styles, and the source of the
+/// character. They are packed into two bytes because a grid holds 1768
+/// cells and ports with small memories hold grids; read and set them with
+/// the methods.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub struct CellAttributes(u16);
+
+/// Bit layout of [`CellAttributes`]: width bits 0 and 1, flash mode 2 and
+/// 3, flash rate 4 and 5, underline 6, invert 7, bold 8, italic 9,
+/// proportional 10, source 11 to 13.
+const WIDTH_SHIFT: u32 = 0;
+const FLASH_MODE_SHIFT: u32 = 2;
+const FLASH_RATE_SHIFT: u32 = 4;
+const UNDERLINE_BIT: u16 = 1 << 6;
+const INVERT_BIT: u16 = 1 << 7;
+const BOLD_BIT: u16 = 1 << 8;
+const ITALIC_BIT: u16 = 1 << 9;
+const PROPORTIONAL_BIT: u16 = 1 << 10;
+const SOURCE_SHIFT: u32 = 11;
+const TWO_BITS: u16 = 0b11;
+const THREE_BITS: u16 = 0b111;
+
+impl CellAttributes {
+    /// Normal width, steady normal slow flash settings, no underline,
+    /// invert or font style, written by the Level 1 page.
+    pub const DEFAULT: Self = Self(0);
+
+    const fn field(self, shift: u32, mask: u16) -> u16 {
+        (self.0 >> shift) & mask
+    }
+
+    const fn with_field(self, shift: u32, mask: u16, value: u16) -> Self {
+        Self((self.0 & !(mask << shift)) | (value & mask) << shift)
+    }
+
+    const fn with_bit(self, bit: u16, on: bool) -> Self {
+        Self(if on { self.0 | bit } else { self.0 & !bit })
+    }
+
+    /// The horizontal part of the size.
+    #[must_use]
+    pub const fn width(self) -> Width {
+        match self.field(WIDTH_SHIFT, TWO_BITS) {
+            1 => Width::LeftHalf,
+            2 => Width::RightHalf,
+            _ => Width::Normal,
+        }
+    }
+
+    /// With another horizontal part.
+    #[must_use]
+    pub const fn with_width(self, width: Width) -> Self {
+        let bits = match width {
+            Width::Normal => 0,
+            Width::LeftHalf => 1,
+            Width::RightHalf => 2,
+        };
+        self.with_field(WIDTH_SHIFT, TWO_BITS, bits)
+    }
+
+    /// How the cell flashes, when it does.
+    #[must_use]
+    pub const fn flash_mode(self) -> FlashMode {
+        match self.field(FLASH_MODE_SHIFT, TWO_BITS) {
+            1 => FlashMode::Inverted,
+            2 => FlashMode::AdjacentClut,
+            _ => FlashMode::Normal,
+        }
+    }
+
+    /// With another flash mode.
+    #[must_use]
+    pub const fn with_flash_mode(self, mode: FlashMode) -> Self {
+        let bits = match mode {
+            FlashMode::Normal => 0,
+            FlashMode::Inverted => 1,
+            FlashMode::AdjacentClut => 2,
+        };
+        self.with_field(FLASH_MODE_SHIFT, TWO_BITS, bits)
+    }
+
+    /// The flash rate and phase, when the cell flashes.
+    #[must_use]
+    pub const fn flash_rate(self) -> FlashRate {
+        match self.field(FLASH_RATE_SHIFT, TWO_BITS) {
+            1 => FlashRate::FastPhase1,
+            2 => FlashRate::FastPhase2,
+            3 => FlashRate::FastPhase3,
+            _ => FlashRate::Slow,
+        }
+    }
+
+    /// With another flash rate and phase.
+    #[must_use]
+    pub const fn with_flash_rate(self, rate: FlashRate) -> Self {
+        let bits = match rate {
+            FlashRate::Slow => 0,
+            FlashRate::FastPhase1 => 1,
+            FlashRate::FastPhase2 => 2,
+            FlashRate::FastPhase3 => 3,
+        };
+        self.with_field(FLASH_RATE_SHIFT, TWO_BITS, bits)
+    }
+
+    /// Underline (Table 29 mode 01100 D5); separated mosaics are in the
+    /// glyph.
+    #[must_use]
+    pub const fn underline(self) -> bool {
+        self.0 & UNDERLINE_BIT != 0
+    }
+
+    /// With underline on or off.
+    #[must_use]
+    pub const fn with_underline(self, on: bool) -> Self {
+        self.with_bit(UNDERLINE_BIT, on)
+    }
+
+    /// Invert: foreground and background are swapped when drawn.
+    #[must_use]
+    pub const fn invert(self) -> bool {
+        self.0 & INVERT_BIT != 0
+    }
+
+    /// With invert on or off.
+    #[must_use]
+    pub const fn with_invert(self, on: bool) -> Self {
+        self.with_bit(INVERT_BIT, on)
+    }
+
+    /// The Level 3.5 font styles.
+    #[must_use]
+    pub const fn font(self) -> FontStyle {
+        FontStyle {
+            bold: self.0 & BOLD_BIT != 0,
+            italic: self.0 & ITALIC_BIT != 0,
+            proportional: self.0 & PROPORTIONAL_BIT != 0,
+        }
+    }
+
+    /// With other font styles.
+    #[must_use]
+    pub const fn with_font(self, font: FontStyle) -> Self {
+        self.with_bit(BOLD_BIT, font.bold)
+            .with_bit(ITALIC_BIT, font.italic)
+            .with_bit(PROPORTIONAL_BIT, font.proportional)
+    }
+
+    /// Which source wrote the character.
+    #[must_use]
+    pub const fn source(self) -> CharSource {
+        match self.field(SOURCE_SHIFT, THREE_BITS) {
+            1 => CharSource::Local,
+            2 => CharSource::Active,
+            3 => CharSource::Adaptive,
+            4 => CharSource::Passive,
+            _ => CharSource::Level1,
+        }
+    }
+
+    /// With another source.
+    #[must_use]
+    pub const fn with_source(self, source: CharSource) -> Self {
+        let bits = match source {
+            CharSource::Level1 => 0,
+            CharSource::Local => 1,
+            CharSource::Active => 2,
+            CharSource::Adaptive => 3,
+            CharSource::Passive => 4,
+        };
+        self.with_field(SOURCE_SHIFT, THREE_BITS, bits)
+    }
+}
+
+/// One cell of the grid (REQ-L1-001, REQ-L25-006).
+// The flags are the independent cell attributes REQ-L1-001 and REQ-L25-006
+// list one by one.
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub struct Cell {
-    /// What the cell shows.
+    /// What the cell shows. G3 and DRCS characters are characters of the
+    /// sets [`CharSet::G3`] and [`CharSet::Drcs`].
     pub glyph: Glyph,
-    /// Foreground colour 0 to 7.
-    pub foreground: u8,
-    /// Background colour 0 to 7.
-    pub background: u8,
-    /// The cell flashes.
+    /// Foreground colour: a Colour Map index 0 to 31; the Level 1 colours
+    /// 0 to 7 are CLUT 0 (decision E.43).
+    pub foreground: ColourIndex,
+    /// Background colour: a Colour Map index 0 to 31.
+    pub background: ColourIndex,
+    /// The cell flashes; [`CellAttributes`] says how.
     pub flash: bool,
     /// The cell is concealed.
     pub conceal: bool,
-    /// The cell lies inside a box.
+    /// The cell lies inside a box, or a window (REQ-L25-029).
     pub boxed: bool,
-    /// The cell's role in double height.
+    /// The cell's role in double height: the vertical part of its size.
     pub size: Size,
     /// The cell shows a held mosaic.
     pub held: bool,
-    /// The glyph came from a Level 1.5 overwrite.
-    pub overwritten: bool,
     /// The source byte failed parity.
     pub parity_failed: bool,
+    /// The attributes of Levels 2.5 and 3.5: width, flash mode and rate,
+    /// underline, invert, font styles and the character's source.
+    pub attributes: CellAttributes,
 }
 
 impl Cell {
@@ -97,16 +359,24 @@ impl Cell {
         boxed: false,
         size: Size::Normal,
         held: false,
-        overwritten: false,
         parity_failed: false,
+        attributes: CellAttributes::DEFAULT,
     };
 }
 
 /// The decoded page (REQ-L1-001): 25 rows by 40 columns, plus page-wide
 /// display state. It is the core's primary output; every renderer works
 /// from it (REQ-RND-001).
+///
+/// The caller sets two capacities (REQ-GEN-003): `DRCS`, the patterns of
+/// the DRCS characters the page uses (REQ-DRC-007), and `PANEL_ROWS`, the
+/// rows of the side-panel area, which is 24 for side panels and may be 0
+/// for a port that presents at Levels 1 and 1.5 only. [`Grid`] without
+/// parameters holds [`DEFAULT_DRCS_PATTERNS`] patterns and every panel
+/// row. Everything a row needs travels in the grid, so a row is rendered
+/// from the grid alone (decision E.29).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct Grid {
+pub struct Grid<const DRCS: usize = DEFAULT_DRCS_PATTERNS, const PANEL_ROWS: usize = SIDE_PANEL_ROWS> {
     /// The cells, row by row.
     pub cells: [[Cell; COLUMNS]; ROWS],
     /// Bit r set when row r contains double height.
@@ -118,20 +388,83 @@ pub struct Grid {
     pub mix: bool,
     /// The character sets the page uses, for Level 1.5 and form entry.
     pub designation: Designation,
+    /// The side-panel area, columns 40 to 71 of rows 1 to 24 (clause
+    /// 12.5.3, decision E.49): `panels[row − 1][column − 40]`. The right
+    /// panel is columns 40 to 40 + right width − 1, the left panel columns
+    /// 72 − left width to 71; [`Grid::panel_cell`] addresses it by screen
+    /// position.
+    pub panels: [[Cell; SIDE_PANEL_AREA_COLUMNS]; PANEL_ROWS],
+    /// The widths of the enabled side panels; none at Levels 1 and 1.5.
+    pub side_panels: SidePanels,
+    /// The page's Colour Map (REQ-L25-030); Table 30 at Levels 1 and 1.5.
+    pub colour_map: ColourMap,
+    /// The screen colour, for the borders around the rows (decision E.45).
+    pub screen_colour: ColourIndex,
+    /// The full row colour of each row (decision E.45).
+    pub row_colours: [ColourIndex; ROWS],
+    /// The patterns of the DRCS characters the cells use.
+    pub drcs: DrcsPatterns<DRCS>,
+    /// The DRCS colour lookup tables (decision E.54).
+    pub drcs_colours: DrcsColourTables,
 }
 
+/// The character sets of an empty grid: Latin with the English national
+/// option, until a page's designation replaces them.
+const DEFAULT_DESIGNATION: Designation = Designation {
+    g0: G0 { set: charset::G0Set::Latin, national: Some(charset::NationalOption::English) },
+    g2: charset::G2Set::Latin,
+};
+
 impl Grid {
-    /// An empty grid.
-    pub const EMPTY: Self = Self {
-        cells: [[Cell::BLANK; COLUMNS]; ROWS],
-        double_height_rows: 0,
-        boxed_mode: false,
-        mix: false,
-        designation: Designation {
-            g0: G0 { set: charset::G0Set::Latin, national: Some(charset::NationalOption::English) },
-            g2: charset::G2Set::Latin,
-        },
-    };
+    /// An empty grid with the default DRCS capacity.
+    pub const EMPTY: Self = Self::empty();
+}
+
+impl<const DRCS: usize, const PANEL_ROWS: usize> Grid<DRCS, PANEL_ROWS> {
+    /// An empty grid: blank cells, no side panels, the Table 30 Colour
+    /// Map, black screen and rows, no DRCS patterns. To empty an existing
+    /// grid without a temporary copy, use [`Grid::clear`].
+    // The grid is the value being built, so its arrays are as large as it
+    // is; in a constant such as `Grid::EMPTY` it is built at compile time,
+    // and ports with small stacks build grids in place with `clear`.
+    #[allow(clippy::large_stack_arrays)]
+    #[must_use]
+    pub const fn empty() -> Self {
+        Self {
+            cells: [[Cell::BLANK; COLUMNS]; ROWS],
+            double_height_rows: 0,
+            boxed_mode: false,
+            mix: false,
+            designation: DEFAULT_DESIGNATION,
+            panels: [[Cell::BLANK; SIDE_PANEL_AREA_COLUMNS]; PANEL_ROWS],
+            side_panels: SidePanels::NONE,
+            colour_map: ColourMap::DEFAULT,
+            screen_colour: COLOUR_BLACK,
+            row_colours: [COLOUR_BLACK; ROWS],
+            drcs: DrcsPatterns::new(DrcsPattern::EMPTY),
+            drcs_colours: DrcsColourTables::DEFAULT,
+        }
+    }
+
+    /// Makes the grid empty in place, without a temporary copy of it.
+    pub fn clear(&mut self) {
+        for row in &mut self.cells {
+            row.fill(Cell::BLANK);
+        }
+        for row in &mut self.panels {
+            row.fill(Cell::BLANK);
+        }
+        self.double_height_rows = 0;
+        self.boxed_mode = false;
+        self.mix = false;
+        self.designation = DEFAULT_DESIGNATION;
+        self.side_panels = SidePanels::NONE;
+        self.colour_map = ColourMap::DEFAULT;
+        self.screen_colour = COLOUR_BLACK;
+        self.row_colours = [COLOUR_BLACK; ROWS];
+        self.drcs.clear();
+        self.drcs_colours = DrcsColourTables::DEFAULT;
+    }
 
     /// The cell at a position.
     #[must_use]
@@ -142,6 +475,27 @@ impl Grid {
     /// The cell at a position, mutably.
     pub fn cell_mut(&mut self, row: usize, column: usize) -> Option<&mut Cell> {
         self.cells.get_mut(row).and_then(|cells| cells.get_mut(column))
+    }
+
+    /// The side-panel cell at a screen position: row 1 to 24, column 40 to
+    /// 71. `None` elsewhere, including row 0, which has no panel content.
+    #[must_use]
+    pub fn panel_cell(&self, row: usize, column: usize) -> Option<&Cell> {
+        let row = row.checked_sub(SIDE_PANEL_FIRST_ROW)?;
+        self.panels.get(row)?.get(column.checked_sub(SIDE_PANEL_FIRST_COLUMN)?)
+    }
+
+    /// The side-panel cell at a screen position, mutably.
+    pub fn panel_cell_mut(&mut self, row: usize, column: usize) -> Option<&mut Cell> {
+        let row = row.checked_sub(SIDE_PANEL_FIRST_ROW)?;
+        self.panels.get_mut(row)?.get_mut(column.checked_sub(SIDE_PANEL_FIRST_COLUMN)?)
+    }
+
+    /// The pattern of a DRCS character the grid carries; `None` means the
+    /// data is missing, and the cell shows a space (REQ-DRC-009).
+    #[must_use]
+    pub fn drcs_pattern(&self, character: DrcsCharacter) -> Option<&DrcsPattern> {
+        self.drcs.as_slice().iter().find(|pattern| pattern.character == character)
     }
 
     /// True when row `row` contains double height.
@@ -282,8 +636,8 @@ fn decode_row(codes: &[u8; COLUMNS], failed: u64, context: &RowContext<'_>) -> (
             boxed: state.boxed,
             size: if state.double { Size::DoubleTop } else { Size::Normal },
             held,
-            overwritten: false,
             parity_failed: failed.checked_shr(column as u32).is_some_and(|bits| bits & 1 == 1),
+            ..Cell::BLANK
         };
         // Step 4: the held mosaic (decision E.16, REQ-L1-007): only codes
         // with bit 6 set qualify, so blast-through capitals are never held.
@@ -421,14 +775,14 @@ fn stored_row(page: &StoredPage, row: usize, policy: ParityPolicy) -> ([u8; COLU
 
 /// Builds the grid for a page (REQ-ARCH-006). With no page, only row 0's
 /// status area and rolling header are shown.
-pub fn build_grid(
-    out: &mut Grid,
+pub fn build_grid<const DRCS: usize, const PANEL_ROWS: usize>(
+    out: &mut Grid<DRCS, PANEL_ROWS>,
     page: Option<&StoredPage>,
     magazine: &MagazineData,
     config: &Config,
     options: &DisplayOptions,
 ) {
-    *out = Grid::EMPTY;
+    out.clear();
     let (designation, second, _) = resolve_designation(page, magazine, config);
     out.designation = designation;
     out.mix = options.mix;
@@ -535,7 +889,7 @@ fn row_codes(
 
 /// Blanks row 0 for a page with C7 set, keeping the status area when asked
 /// (REQ-L1-014).
-fn hide_header(grid: &mut Grid, keep_status: bool) {
+fn hide_header<const DRCS: usize, const PANEL_ROWS: usize>(grid: &mut Grid<DRCS, PANEL_ROWS>, keep_status: bool) {
     if let Some(cells) = grid.cells.get_mut(0) {
         for (column, cell) in cells.iter_mut().enumerate() {
             if !(keep_status && column <= STATUS_ATTRIBUTE_COLUMN) {
@@ -546,7 +900,7 @@ fn hide_header(grid: &mut Grid, keep_status: bool) {
 }
 
 /// Fills the row below a double-height row (decision E.15).
-fn fill_lower_row(grid: &mut Grid, row: usize) {
+fn fill_lower_row<const DRCS: usize, const PANEL_ROWS: usize>(grid: &mut Grid<DRCS, PANEL_ROWS>, row: usize) {
     let Some(upper) = grid.cells.get(row).copied() else { return };
     let Some(lower) = grid.cells.get_mut(row.saturating_add(1)) else { return };
     for (below, above) in lower.iter_mut().zip(upper.iter()) {
@@ -564,6 +918,7 @@ fn fill_lower_row(grid: &mut Grid, row: usize) {
 mod tests {
     use super::*;
     use crate::consts::{ALPHA_RED, ALPHA_YELLOW, DOUBLE_SIZE, DOUBLE_WIDTH, MOSAIC_FULL, MOSAIC_RED};
+    use crate::types::DrcsCharacter;
 
     fn context(config: &Config) -> RowContext<'_> {
         RowContext {
@@ -812,6 +1167,73 @@ mod tests {
         // Release then Hold again: the held mosaic survives.
         let cells = decode(&[MOSAIC_RED, 0x7F, HOLD_MOSAICS, RELEASE_MOSAICS, FLASH, HOLD_MOSAICS]);
         assert_eq!(cells.map(|cell| cell.glyph)[3..6], [held, Glyph::Space, held]);
+    }
+
+    /// REQ-L25-006: the side-panel area is addressed by screen position,
+    /// columns 40 to 71 of rows 1 to 24, and a grid of any DRCS capacity
+    /// is cleared in place to the empty grid.
+    #[test]
+    fn side_panel_area_and_clearing() {
+        let mut grid: Grid<2> = Grid::empty();
+        let small: Grid<0, 0> = Grid::empty();
+        assert!(small.panel_cell(1, 40).is_none(), "a grid without panel rows");
+        assert!(grid.panel_cell(0, 40).is_none(), "row 0 has no panel content");
+        assert!(
+            grid.panel_cell(1, 39).is_none() && grid.panel_cell(1, 72).is_none() && grid.panel_cell(25, 40).is_none()
+        );
+        grid.panel_cell_mut(24, 71).unwrap().foreground = 20;
+        assert_eq!(grid.panels[23][31].foreground, 20);
+        let attributes = CellAttributes::DEFAULT.with_invert(true);
+        grid.panel_cell_mut(1, 40).unwrap().attributes = attributes;
+        assert!(grid.panels[0][0].attributes.invert());
+        let character = DrcsCharacter { table: crate::types::DrcsTable::Global, subtable: 3, character: 32 };
+        assert!(grid.drcs.push(DrcsPattern { character, ..DrcsPattern::EMPTY }));
+        assert!(grid.drcs.push(DrcsPattern::EMPTY) && !grid.drcs.push(DrcsPattern::EMPTY), "capacity 2");
+        assert_eq!(grid.drcs_pattern(character).map(|pattern| pattern.character), Some(character));
+        let drcs = Glyph::Char(CharRef::drcs(character));
+        assert!(!drcs.is_blank(), "character 32 is not a space");
+        assert_eq!(CharRef::drcs(character).drcs_character(), Some(character));
+        grid.cells[3][4].attributes = attributes.with_font(FontStyle { bold: true, ..FontStyle::default() });
+        grid.row_colours[5] = 17;
+        grid.clear();
+        assert_eq!(grid, Grid::<2>::empty());
+        assert_eq!(Grid::EMPTY.drcs.as_slice().len(), 0);
+    }
+
+    /// REQ-L25-006: every packed attribute reads back as set, without
+    /// disturbing the others.
+    #[test]
+    fn cell_attributes_pack_independently() {
+        let fonts = [
+            FontStyle::default(),
+            FontStyle { bold: true, italic: false, proportional: true },
+            FontStyle { bold: false, italic: true, proportional: false },
+        ];
+        let sources =
+            [CharSource::Level1, CharSource::Local, CharSource::Active, CharSource::Adaptive, CharSource::Passive];
+        for width in [Width::Normal, Width::LeftHalf, Width::RightHalf] {
+            for mode in [FlashMode::Normal, FlashMode::Inverted, FlashMode::AdjacentClut] {
+                for rate in [FlashRate::Slow, FlashRate::FastPhase1, FlashRate::FastPhase2, FlashRate::FastPhase3] {
+                    for (font, source) in fonts.iter().zip(sources.iter().cycle()) {
+                        for flags in 0..4 {
+                            let attributes = CellAttributes::DEFAULT
+                                .with_width(width)
+                                .with_flash_mode(mode)
+                                .with_flash_rate(rate)
+                                .with_underline(flags & 1 != 0)
+                                .with_invert(flags & 2 != 0)
+                                .with_font(*font)
+                                .with_source(*source);
+                            assert_eq!(attributes.width(), width);
+                            assert_eq!((attributes.flash_mode(), attributes.flash_rate()), (mode, rate));
+                            assert_eq!((attributes.underline(), attributes.invert()), (flags & 1 != 0, flags & 2 != 0));
+                            assert_eq!((attributes.font(), attributes.source()), (*font, *source));
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(Cell::BLANK.attributes.source(), CharSource::Level1);
     }
 
     /// REQ-TST-013's double height with its ignored lower row.

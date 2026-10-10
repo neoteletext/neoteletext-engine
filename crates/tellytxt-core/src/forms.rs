@@ -685,7 +685,7 @@ impl FormModel {
     /// Draws the values over the page in the attributes already in force at
     /// those cells (Appendix C.4). The focused field is shown in inverse
     /// video, with the cursor cell flashing.
-    pub fn draw(&self, grid: &mut Grid) {
+    pub fn draw<const DRCS: usize, const PANEL_ROWS: usize>(&self, grid: &mut Grid<DRCS, PANEL_ROWS>) {
         for (index, field) in self.spec.fields.as_slice().iter().enumerate() {
             let focused = index == self.focus;
             if field.kind == FieldKind::Radio {
@@ -708,7 +708,13 @@ impl FormModel {
     /// Draws a RADIO field: the field's column is the first choice's marker
     /// and each further choice gives its own column (Appendix C.3), so the
     /// marker shows at the chosen choice and every other is cleared.
-    fn draw_radio(&self, index: usize, field: &FieldSpec, focused: bool, grid: &mut Grid) {
+    fn draw_radio<const DRCS: usize, const PANEL_ROWS: usize>(
+        &self,
+        index: usize,
+        field: &FieldSpec,
+        focused: bool,
+        grid: &mut Grid<DRCS, PANEL_ROWS>,
+    ) {
         let chosen = usize::from(self.choice.get(index).copied().unwrap_or(0));
         let first = usize::from(field.first_option);
         let options = self.spec.options.as_slice();

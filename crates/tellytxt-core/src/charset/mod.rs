@@ -9,6 +9,7 @@
 mod tables;
 
 use crate::consts::{CODE_MASK_7BIT, DIACRITIC_NONE};
+use crate::types::{DrcsCharacter, DrcsTable};
 
 /// A G0 primary character set (EN 300 706 clause 15.6).
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
@@ -110,6 +111,15 @@ pub enum CharSet {
     G2(G2Set),
     /// The G3 smooth mosaics and line drawing set (Table 48).
     G3,
+    /// A dynamically redefinable character (clause 14): the character
+    /// number is the [`CharRef`]'s code. It has no Unicode equivalent and
+    /// converts to the fallback U+FFFD (REQ-CHR-011).
+    Drcs {
+        /// The table.
+        table: DrcsTable,
+        /// The sub-table, 0 to 15.
+        subtable: u8,
+    },
 }
 
 /// One character: a set, a 7-bit code and an optional diacritical mark.
@@ -180,6 +190,23 @@ pub fn designation_with_fallback(value: u8) -> (Designation, bool) {
 #[must_use]
 pub fn second_g0(value: u8) -> Option<G0> {
     tables::second_g0(value & CODE_MASK_7BIT)
+}
+
+impl CharRef {
+    /// A DRCS character as a character reference.
+    #[must_use]
+    pub const fn drcs(character: DrcsCharacter) -> Self {
+        Self::new(CharSet::Drcs { table: character.table, subtable: character.subtable }, character.character)
+    }
+
+    /// The DRCS character this refers to, if it is one.
+    #[must_use]
+    pub const fn drcs_character(self) -> Option<DrcsCharacter> {
+        match self.set {
+            CharSet::Drcs { table, subtable } => Some(DrcsCharacter { table, subtable, character: self.code }),
+            CharSet::G0(_) | CharSet::G2(_) | CharSet::G3 => None,
+        }
+    }
 }
 
 /// Converts a character to Unicode (REQ-CHR-010). Codes outside 0x20 to 0x7F

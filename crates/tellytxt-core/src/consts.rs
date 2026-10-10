@@ -325,6 +325,12 @@ pub const LEVEL_BIT_25: u8 = 0b01;
 pub const LEVEL_BIT_35: u8 = 0b10;
 /// Mask of the character number D5 to D0 of a DRCS Character Invocation.
 pub const DRCS_CHARACTER_MASK: u8 = 0x3F;
+/// Rows of a DRCS character: the 12 by 10 matrix (clause 14.2).
+pub const DRCS_PATTERN_ROWS: usize = 10;
+/// Dots across a DRCS character.
+pub const DRCS_PATTERN_DOTS: usize = 12;
+/// Bit planes of a DRCS character: four in modes 2 and 3 (Table 31).
+pub const DRCS_PLANES: usize = 4;
 /// Characters in a DRCS sub-table: numbers 0 to 47 (Table 29, clause 14.1).
 pub const DRCS_CHARACTERS: u8 = 48;
 /// Mask of the Termination Marker type, data bits D2 to D0 (Table 28).
@@ -893,6 +899,14 @@ mod tests {
         assert_eq!(FLASH_FAST_OFF_UNITS * FLASH_PHASES, FLASH_FAST_HALF_UNITS);
         let slow_off = u64::from(FLASH_UNITS - FLASH_SLOW_ON_UNITS);
         assert_eq!(u64::from(FLASH_SLOW_ON_UNITS) * FLASH_FIELDS_HIDDEN, slow_off * FLASH_FIELDS_SHOWN);
+    }
+
+    /// A DRCS character fills a 12 by 10 cell exactly (clause 14.2,
+    /// REQ-RND-038).
+    #[test]
+    fn drcs_patterns_fill_a_cell() {
+        assert_eq!(DRCS_PATTERN_DOTS, CELL_WIDTH);
+        assert_eq!(DRCS_PATTERN_ROWS, CELL_HEIGHT_SMALL);
     }
 
     /// Decision E.43: the Colour Map's transparent entry is the renderer's

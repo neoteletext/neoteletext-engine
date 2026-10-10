@@ -276,6 +276,28 @@ pub struct FallbackFields {
     pub black_background_substitution: bool,
 }
 
+/// The DRCS table a character comes from: Table 29 mode 01101, data bit
+/// D6.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub enum DrcsTable {
+    /// D6 = 0: the Global DRCS page (GDRCS).
+    Global,
+    /// D6 = 1: the normal DRCS page.
+    Normal,
+}
+
+/// A DRCS character as a cell names it: table, sub-table and character
+/// (decision E.42, REQ-L25-006).
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub struct DrcsCharacter {
+    /// The table.
+    pub table: DrcsTable,
+    /// The sub-table: the S1 of the DRCS sub-page, 0 to 15.
+    pub subtable: u8,
+    /// The character number, 0 to 47 (48 to 63 are invalid).
+    pub character: u8,
+}
+
 /// A point in time in microseconds, from a monotonic clock supplied by the
 /// caller (REQ-GEN-005).
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash, Default)]

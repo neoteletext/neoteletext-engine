@@ -9,7 +9,7 @@ use crate::consts::{
     MODE_G2, MODE_G3_LEVEL_15, MODE_SET_ACTIVE_POSITION, MODE_TERMINATION, RECEIVER_COLUMNS, ROW_ADDRESS_BASE,
     ROW_ADDRESS_LAST, ROW_ADDRESS_ROW_24, TRIPLET_AT_SIGN_CODE, TRIPLET_FIRST_CHARACTER,
 };
-use crate::level1::{Glyph, Grid, Size};
+use crate::level1::{CharSource, Glyph, Grid, Size};
 use crate::packet::Triplet;
 
 /// The designation code X/26/15, which the "SAA5246A" profile skips
@@ -131,7 +131,13 @@ pub type EnhancementPackets = [[Option<Triplet>; crate::consts::TRIPLETS_PER_PAC
 /// REQ-L15-001: at Level 1 the packets are stored but not applied, so the
 /// pass does nothing. Choosing between this pass (Level 1.5) and the
 /// enhancement processor (Levels 2.5 and 3.5) is the caller's dispatch.
-pub fn apply(grid: &mut Grid, packets: &EnhancementPackets, present: u16, config: &Config, include_row_0: bool) {
+pub fn apply<const DRCS: usize, const PANEL_ROWS: usize>(
+    grid: &mut Grid<DRCS, PANEL_ROWS>,
+    packets: &EnhancementPackets,
+    present: u16,
+    config: &Config,
+    include_row_0: bool,
+) {
     if config.level == PresentationLevel::Level1 {
         return;
     }
@@ -163,7 +169,13 @@ pub fn apply(grid: &mut Grid, packets: &EnhancementPackets, present: u16, config
 /// Places one overwrite under decision E.5 (REQ-L15-008). Rule (a) holds
 /// because the Level 1 pass is complete before [`apply`] runs, and rule (h)
 /// because later triplets simply overwrite earlier ones.
-fn write(grid: &mut Grid, row: u8, column: u8, character: CharRef, include_row_0: bool) {
+fn write<const DRCS: usize, const PANEL_ROWS: usize>(
+    grid: &mut Grid<DRCS, PANEL_ROWS>,
+    row: u8,
+    column: u8,
+    character: CharRef,
+    include_row_0: bool,
+) {
     let (row, column) = (usize::from(row), usize::from(column));
     // (j): row 0 columns 0 to 7 belong to the receiver (REQ-SEC-005).
     if row == 0 && (column < RECEIVER_COLUMNS || !include_row_0) {
@@ -179,7 +191,7 @@ fn write(grid: &mut Grid, row: u8, column: u8, character: CharRef, include_row_0
     }
     // (b), (c), (d), (g): only the glyph changes.
     cell.glyph = Glyph::Char(character);
-    cell.overwritten = true;
+    cell.attributes = cell.attributes.with_source(CharSource::Local);
     cell.held = false;
     // (e): the bottom half appears in the row below.
     if cell.size == Size::DoubleTop
@@ -187,7 +199,7 @@ fn write(grid: &mut Grid, row: u8, column: u8, character: CharRef, include_row_0
         && below.size == Size::DoubleBottom
     {
         below.glyph = Glyph::Char(character);
-        below.overwritten = true;
+        below.attributes = below.attributes.with_source(CharSource::Local);
         below.held = false;
     }
 }

@@ -82,7 +82,11 @@ impl RenderOptions {
 
 /// The palette index of a cell's foreground pixels (REQ-RND-023).
 #[must_use]
-pub fn foreground_index(cell: &Cell, grid: &Grid, reveal: bool) -> u8 {
+pub fn foreground_index<const DRCS: usize, const PANEL_ROWS: usize>(
+    cell: &Cell,
+    grid: &Grid<DRCS, PANEL_ROWS>,
+    reveal: bool,
+) -> u8 {
     if grid.boxed_mode && !cell.boxed {
         return PALETTE_TRANSPARENT;
     }
@@ -98,7 +102,7 @@ pub fn foreground_index(cell: &Cell, grid: &Grid, reveal: bool) -> u8 {
 
 /// The palette index of a cell's background pixels.
 #[must_use]
-pub fn background_index(cell: &Cell, grid: &Grid) -> u8 {
+pub fn background_index<const DRCS: usize, const PANEL_ROWS: usize>(cell: &Cell, grid: &Grid<DRCS, PANEL_ROWS>) -> u8 {
     if grid.mix || (grid.boxed_mode && !cell.boxed) { PALETTE_TRANSPARENT } else { cell.background }
 }
 
@@ -195,7 +199,13 @@ fn mosaic_line(pattern: u8, separated: bool, line: usize, height: usize) -> u16 
 /// to 19 in the 12-by-20 mode and 0 to 9 in the 12-by-10 mode. Double height
 /// is applied here (REQ-RND-011).
 #[must_use]
-pub fn cell_line(cell: &Cell, grid: &Grid, line: usize, glyphs: &GlyphSet, options: RenderOptions) -> CellLine {
+pub fn cell_line<const DRCS: usize, const PANEL_ROWS: usize>(
+    cell: &Cell,
+    grid: &Grid<DRCS, PANEL_ROWS>,
+    line: usize,
+    glyphs: &GlyphSet,
+    options: RenderOptions,
+) -> CellLine {
     let foreground = foreground_index(cell, grid, options.reveal);
     let background = background_index(cell, grid);
     let height = options.row_height();
@@ -251,8 +261,8 @@ pub struct IndexBuffer<'a> {
 }
 
 /// Writes one pixel row of 480 palette indices into `out`.
-fn write_line(
-    grid: &Grid,
+fn write_line<const DRCS: usize, const PANEL_ROWS: usize>(
+    grid: &Grid<DRCS, PANEL_ROWS>,
     row: usize,
     line: usize,
     glyphs: &GlyphSet,
@@ -293,8 +303,8 @@ fn write_line(
 /// Renders text row `row` into `out` with a row stride of `stride` bytes
 /// (REQ-RND-017). In the 12-by-20 mode this draws 20 lines for
 /// [`Field::Both`] and 10 for one field.
-pub fn render_row(
-    grid: &Grid,
+pub fn render_row<const DRCS: usize, const PANEL_ROWS: usize>(
+    grid: &Grid<DRCS, PANEL_ROWS>,
     row: usize,
     field: Field,
     glyphs: &GlyphSet,
@@ -325,8 +335,8 @@ pub fn render_row(
 
 /// Renders screen line `y` (0 to 499 in the 12-by-20 mode) into `out`,
 /// applying page zoom (REQ-L1-020).
-pub fn render_line(
-    grid: &Grid,
+pub fn render_line<const DRCS: usize, const PANEL_ROWS: usize>(
+    grid: &Grid<DRCS, PANEL_ROWS>,
     y: usize,
     zoom: Zoom,
     glyphs: &GlyphSet,
@@ -445,7 +455,11 @@ impl ChangeTracker {
     /// Rows that changed since the last call, as a bitmask (bit r for row
     /// r). A change of reveal marks rows holding flashing concealed cells;
     /// other flash and reveal changes are palette changes only.
-    pub fn changed_rows(&mut self, grid: &Grid, reveal: bool) -> u32 {
+    pub fn changed_rows<const DRCS: usize, const PANEL_ROWS: usize>(
+        &mut self,
+        grid: &Grid<DRCS, PANEL_ROWS>,
+        reveal: bool,
+    ) -> u32 {
         let mut changed = 0u32;
         for (row, (cells, stored)) in grid.cells.iter().zip(self.hashes.iter_mut()).enumerate() {
             let mut hasher = Fnv(FNV_OFFSET);
@@ -476,8 +490,8 @@ impl ChangeTracker {
 /// Renders every row, or only changed rows, into a whole-screen framebuffer
 /// (REQ-RND-022), the reference caller of REQ-RND-021. `rows` is a bitmask
 /// of rows to draw.
-pub fn render_screen(
-    grid: &Grid,
+pub fn render_screen<const DRCS: usize, const PANEL_ROWS: usize>(
+    grid: &Grid<DRCS, PANEL_ROWS>,
     rows: u32,
     glyphs: &GlyphSet,
     options: RenderOptions,

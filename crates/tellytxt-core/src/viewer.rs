@@ -471,7 +471,12 @@ impl Viewer {
     /// Builds the grid the viewer shows (REQ-ARCH-006): Level 1, then the
     /// Level 1.5 pass, with the receiver's status area, rolling header and
     /// row 24. Returns false, leaving the grid alone, while holding.
-    pub fn compose(&self, grid: &mut Grid, page: Option<&StoredPage>, context: &ComposeContext<'_>) -> bool {
+    pub fn compose<const DRCS: usize, const PANEL_ROWS: usize>(
+        &self,
+        grid: &mut Grid<DRCS, PANEL_ROWS>,
+        page: Option<&StoredPage>,
+        context: &ComposeContext<'_>,
+    ) -> bool {
         let ComposeContext { magazine, config, rolling_header, store, row24 } = *context;
         // REQ-NAV-006: while held, new receptions do not reach the screen.
         if self.state == ViewerState::Holding {
