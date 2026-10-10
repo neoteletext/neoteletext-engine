@@ -1,6 +1,7 @@
 //! Project automation (REQ-GEN-010): `cargo xtask <command>`.
 //!
 //! - `glyphs`: regenerate the core's glyph table from the Bedstead export.
+//! - `corpus`: fetch and pin the real-broadcast test corpus (REQ-TST-022).
 //! - `check-layers`: enforce the module dependency table of ARCHITECTURE.md
 //!   (REQ-ARCH-011).
 //! - `check-deps`: enforce the permitted dependency lists (REQ-GEN-017).
@@ -10,6 +11,7 @@
 //!   (REQ-SEC-016).
 
 mod checks;
+mod corpus;
 mod glyphs;
 
 use std::path::PathBuf;
@@ -25,12 +27,13 @@ fn main() -> ExitCode {
     let root = workspace_root();
     let result = match command.as_str() {
         "glyphs" => glyphs::generate(&root),
+        "corpus" => corpus::fetch(&root),
         "check-layers" => checks::layers(&root),
         "check-deps" => checks::dependencies(&root),
         "check-constants" => checks::constants(&root),
         "check-io" => checks::io(&root),
         _ => Err(format!(
-            "usage: cargo xtask <glyphs|check-layers|check-deps|check-constants|check-io> (got {command:?})"
+            "usage: cargo xtask <glyphs|corpus|check-layers|check-deps|check-constants|check-io> (got {command:?})"
         )),
     };
     match result {

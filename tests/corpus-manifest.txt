@@ -1,0 +1,15 @@
+# Real-broadcast test corpus (REQ-TST-022). Downloaded at test time into
+# $TELLYTXT_CORPUS by `cargo xtask corpus`; never committed. Each line:
+#   name  bytes  sha256  url
+# `bytes` is the length of the prefix fetched with a ranged request (0 for
+# the whole file). `sha256` is pinned on first download; "unpinned" means
+# not yet fetched. Tests verify the checksum before reading (REQ-SEC-022).
+# TSDuck streams: the repository's licence page covers the TSDuck software;
+# the recordings are broadcast content used here only at test time.
+ffmpeg-teletextsubtitles.ts       4194304 ee7a245c70c63ed3ef91a7bdc087bb0454301657c0fea5117066607965c2fdb6 https://samples.ffmpeg.org/ffmpeg-bugs/trac/ticket2086/teletextsubtitles.ts
+ffmpeg-France2.m2ts               4194304 cdf0036d466d05444aff51967ef9e96b485095290fe3d0ea9a939d850c5589c4 https://samples.ffmpeg.org/ffmpeg-bugs/trac/ticket2086/France2.m2ts
+ffmpeg-dreambox-2.ts              4194304 31c00fc0ca6b0e420c3991decaf2545929a94d0d67c8946b16c0ef417a32e6ef https://samples.ffmpeg.org/ffmpeg-bugs/trac/ticket2086/dreambox-2.ts
+ffmpeg-RBT_20100801_1835.ts       4194304 f342348240210e4e2a55f0b8e17c2a2f84128a17cf03e2c7d630d79763aeaf34 https://samples.ffmpeg.org/ffmpeg-bugs/trac/ticket2086/RBT_20100801_1835.ts
+tsduck-PL_MUX3_2023-11-10.ts      8388608 b5f4ae64d9cd3ef230b18a4692c3fa504b4fd72c081802882c9f50578778858a https://tsduck.io/streams/poland-dttv-warsaw/PL_DVB-T_2023-11-10_MUX3_522MHz.ts
+tsduck-NL_digitenne-482_2020.ts   8388608 8a27bd58a6617c4d8c02025b942f24877b487d89ae1ee3c565e246f641581e25 https://tsduck.io/streams/netherlands-dttv/digitenne-482-2020-06-21.ts
+tsduck-IT_mux1rai.ts              8388608 eb56ebf4e1ee81f0ceaf9d746c14fa42c3f5cf463c59ebdb77e4615102a59e83 https://tsduck.io/streams/italy-sardinia-dttv/mux1rai.ts
