@@ -16,7 +16,7 @@ use tellytxt_core::glyphs::GlyphSet;
 use tellytxt_core::level1::{DisplayOptions, Grid, build_grid};
 use tellytxt_core::level15;
 use tellytxt_core::packet::{Packet, PacketMeta};
-use tellytxt_core::render::{RenderOptions, cell_line};
+use tellytxt_core::render::{ALL_ROWS, FlashPhase, IndexBuffer, IndexFormat, RenderOptions, cell_line, render_screen};
 use tellytxt_core::types::{Instant, SubCode};
 
 /// REQ-GEN-013: twenty times 35 packets per frame at 25 frames per second.
@@ -88,8 +88,8 @@ fn presentation_and_drawing_costs() {
     for _ in 0..20 {
         for row in 0..25 {
             for line in 0..20 {
-                for cell in &grid.cells[row] {
-                    sink ^= cell_line(cell, &grid, line, &glyphs, options).mask;
+                for (column, cell) in grid.cells[row].iter().enumerate() {
+                    sink ^= cell_line(cell, &grid, row, column, line, &glyphs, options).mask;
                     draws += 1;
                 }
             }
@@ -99,4 +99,42 @@ fn presentation_and_drawing_costs() {
     println!(
         "grids built per second: {grids:.0}; cell-line draws per second: {rate:.0} (a full redraw of every field needs 500,000; page width {PAGE_WIDTH}); {sink}"
     );
+}
+
+/// REQ-TST-050: the cost of the row renderer over whole screens, the hot
+/// path of every port, in screens per second.
+#[test]
+#[ignore = "measurement; run in release mode"]
+fn row_renderer_cost() {
+    let Some(bytes) = capture() else {
+        eprintln!("SKIPPED: TELLYTXT_CORPUS with Dan's BBC1 capture is needed");
+        return;
+    };
+    let mut slots = vec![StoredPage::EMPTY; 4096];
+    let mut decoder = Decoder::new(&mut slots, Config::default());
+    for (index, chunk) in bytes.as_chunks::<PACKET_BYTES>().0.iter().enumerate() {
+        decoder.push(&Packet { bytes: *chunk }, &PacketMeta::default(), Instant(index as u64 * 64), &mut |_| {});
+    }
+    let config = Config::default();
+    let address = tellytxt_core::types::PageAddress::from_mpp(0x100).unwrap();
+    let page = decoder.store().get(address, SubCode::ANY).unwrap();
+    let mut grid = Grid::EMPTY;
+    build_grid(&mut grid, Some(page), &decoder.magazine_data(address.magazine), &config, &DisplayOptions::default());
+    level15::apply(&mut grid, &page.enhancements, page.enhancements_present, &config, true);
+    let glyphs = GlyphSet::bedstead();
+    let modes = [
+        ("palette mode", RenderOptions::from_config(&config, false)),
+        ("resolved mode", RenderOptions::resolved(&config, false, FlashPhase::at_unit(0))),
+    ];
+    let mut pixels = vec![0u8; PAGE_WIDTH * 500];
+    for (name, options) in modes {
+        let rounds = 2000;
+        let start = Clock::now();
+        for _ in 0..rounds {
+            let mut buffer = IndexBuffer { format: IndexFormat::Bits8, data: &mut pixels, stride: PAGE_WIDTH };
+            render_screen(&grid, ALL_ROWS, &glyphs, options, &mut buffer).unwrap();
+        }
+        let rate = f64::from(rounds) / start.elapsed().as_secs_f64();
+        println!("whole screens rendered per second ({name}, 8 bits): {rate:.0}; {}", pixels[0]);
+    }
 }

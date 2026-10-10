@@ -873,6 +873,25 @@ pub const SERVICE_FULL_FIELD_BIT: u8 = 0x01;
 /// Designation codes 2 and 3 are format 2.
 pub const SERVICE_FORMAT_2_BIT: u8 = 0x02;
 
+// Phase I2b: rendering and G3 glyphs
+// ---------------------------------------------------------------------------
+// G3 glyphs, the font styles and the resolved colour mode (REQ-RND-031 to
+// REQ-RND-040)
+// ---------------------------------------------------------------------------
+
+/// The G3 set occupies codes 2/0 to 7/F (Table 48).
+pub const G3_FIRST_CODE: u8 = SPACE;
+/// Positions 2/0 to 7/F: six columns of sixteen (Table 48).
+pub const G3_CODES: usize = 96;
+/// Italic shifts a glyph line right by the lines below it divided by 4,
+/// done as a shift right by 2 (REQ-RND-039, decision E.50).
+pub const ITALIC_SHIFT_LOG2: u32 = 2;
+/// Adjacent-CLUT flash exclusive-ORs a Colour Map index with 8: the same
+/// entry of the neighbouring CLUT (decision E.48).
+pub const ADJACENT_CLUT_FLIP: u8 = 1 << CLUT_SHIFT;
+/// The largest palette index a 4-bit pixel holds (REQ-RND-017).
+pub const INDEX_4BIT_MAX: u8 = 0x0F;
+
 #[cfg(test)]
 mod tests {
     use super::*;

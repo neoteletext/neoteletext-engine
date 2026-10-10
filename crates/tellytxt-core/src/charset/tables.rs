@@ -432,19 +432,23 @@ const fn g2_table(set: G2Set) -> &'static CodeTable {
 // G3 smooth mosaics and line drawing (Table 48)
 // ---------------------------------------------------------------------------
 
-/// Table 48. The smooth mosaics map to the matching shapes of Symbols for
-/// Legacy Computing (U+1FB3C to U+1FB6F, U+1FB70, U+1FB75, U+1FB95) and of
-/// Geometric Shapes; the diagonal line pieces of column 4 to U+1FBA0 to
-/// U+1FBA7. Line pieces that join a thick bar to a thin line (4/0 to 4/3
-/// and 4/C) use the box drawing characters with a heavy horizontal or
-/// right/left arm and light other arms; all other lines are light. 4/D,
-/// 4/E and 4/F are a small dot, a large dot and a ring. 5/F is the
-/// background-colour space of note 1, and 6/E, 6/F, 7/E and 7/F are
-/// unassigned (note 2); all four display as a space (REQ-CHR-007).
+/// Table 48, converted as Unicode document L2/19-025 and its mapping file
+/// `TELTXTG3.TXT` assign the positions (REQ-CHR-011, listed in
+/// `research/notes-level25-drcs.md` section 9.3). The smooth mosaics map to
+/// Symbols for Legacy Computing (U+1FB3C to U+1FB6F, U+1FB70, U+1FB75) and
+/// Geometric Shapes; 2/F, the alternate dots, to U+2592 MEDIUM SHADE; the
+/// diagonal line pieces of column 4 to U+1FBA0 to U+1FBA7. Line pieces
+/// that join a thick bar to a thin line (4/0 to 4/3 and 4/C) use the box
+/// drawing characters with a heavy horizontal or right/left arm and light
+/// other arms; all other lines are light. 4/D, 4/E and 4/F are a bullet, a
+/// black circle and a white circle, and 5/B to 5/E the triangle-headed
+/// arrows. 5/F is the background-colour space of note 1, and 6/E, 6/F, 7/E
+/// and 7/F are unassigned (note 2); all four display as a space
+/// (REQ-CHR-007).
 const G3: CodeTable = [
     '\u{1FB3C}', '\u{1FB3D}', '\u{1FB3E}', '\u{1FB3F}', '\u{1FB40}', '\u{25E3}', '\u{1FB41}',
     '\u{1FB42}', '\u{1FB43}', '\u{1FB44}', '\u{1FB45}', '\u{1FB46}', '\u{1FB68}', '\u{1FB69}',
-    '\u{1FB70}', '\u{1FB95}', //
+    '\u{1FB70}', '\u{2592}', //
     '\u{1FB47}', '\u{1FB48}', '\u{1FB49}', '\u{1FB4A}', '\u{1FB4B}', '\u{25E2}', '\u{1FB4C}',
     '\u{1FB4D}', '\u{1FB4E}', '\u{1FB4F}', '\u{1FB50}', '\u{1FB51}', '\u{1FB6A}', '\u{1FB6B}',
     '\u{1FB75}', '\u{2588}', //
@@ -452,8 +456,8 @@ const G3: CodeTable = [
     '\u{1FBA7}', '\u{1FBA0}', '\u{1FBA1}', '\u{1FBA2}', '\u{1FBA3}', '\u{253F}', '\u{2022}',
     '\u{25CF}', '\u{25CB}', //
     '\u{2502}', '\u{2500}', '\u{250C}', '\u{2510}', '\u{2514}', '\u{2518}', '\u{251C}',
-    '\u{2524}', '\u{252C}', '\u{2534}', '\u{253C}', '\u{2192}', '\u{2190}', '\u{2191}',
-    '\u{2193}', ' ', //
+    '\u{2524}', '\u{252C}', '\u{2534}', '\u{253C}', '\u{2B62}', '\u{2B60}', '\u{2B61}',
+    '\u{2B63}', ' ', //
     '\u{1FB52}', '\u{1FB53}', '\u{1FB54}', '\u{1FB55}', '\u{1FB56}', '\u{25E5}', '\u{1FB57}',
     '\u{1FB58}', '\u{1FB59}', '\u{1FB5A}', '\u{1FB5B}', '\u{1FB5C}', '\u{1FB6C}', '\u{1FB6D}',
     ' ', ' ', //
@@ -1224,19 +1228,30 @@ mod tests {
         assert_eq!(row(set, 0x70), "defgijklnqrsuvwz");
     }
 
+    /// REQ-CHR-011: every G3 position against the mapping of L2/19-025 and
+    /// `TELTXTG3.TXT`, as `research/notes-level25-drcs.md` section 9.3
+    /// lists it; 5/F and the unassigned positions are spaces.
     #[test]
     fn g3_positions() {
-        // The four positions used at Level 1.5 (REQ-CHR-007).
-        assert_eq!(base_unicode(CharSet::G3, 0x51), '\u{2500}');
-        assert_eq!(base_unicode(CharSet::G3, 0x5B), '\u{2192}');
-        assert_eq!(base_unicode(CharSet::G3, 0x5C), '\u{2190}');
-        assert_eq!(base_unicode(CharSet::G3, 0x5D), '\u{2191}');
-        for code in [0x5F, 0x6E, 0x6F, 0x7E, 0x7F] {
-            assert_eq!(base_unicode(CharSet::G3, code), ' ');
+        const MAPPING: [u32; 96] = [
+            0x1FB3C, 0x1FB3D, 0x1FB3E, 0x1FB3F, 0x1FB40, 0x25E3, 0x1FB41, 0x1FB42, // 2/0
+            0x1FB43, 0x1FB44, 0x1FB45, 0x1FB46, 0x1FB68, 0x1FB69, 0x1FB70, 0x2592, // 2/8
+            0x1FB47, 0x1FB48, 0x1FB49, 0x1FB4A, 0x1FB4B, 0x25E2, 0x1FB4C, 0x1FB4D, // 3/0
+            0x1FB4E, 0x1FB4F, 0x1FB50, 0x1FB51, 0x1FB6A, 0x1FB6B, 0x1FB75, 0x2588, // 3/8
+            0x2537, 0x252F, 0x251D, 0x2525, 0x1FBA4, 0x1FBA5, 0x1FBA6, 0x1FBA7, // 4/0
+            0x1FBA0, 0x1FBA1, 0x1FBA2, 0x1FBA3, 0x253F, 0x2022, 0x25CF, 0x25CB, // 4/8
+            0x2502, 0x2500, 0x250C, 0x2510, 0x2514, 0x2518, 0x251C, 0x2524, // 5/0
+            0x252C, 0x2534, 0x253C, 0x2B62, 0x2B60, 0x2B61, 0x2B63, 0x0020, // 5/8
+            0x1FB52, 0x1FB53, 0x1FB54, 0x1FB55, 0x1FB56, 0x25E5, 0x1FB57, 0x1FB58, // 6/0
+            0x1FB59, 0x1FB5A, 0x1FB5B, 0x1FB5C, 0x1FB6C, 0x1FB6D, 0x0020, 0x0020, // 6/8
+            0x1FB5D, 0x1FB5E, 0x1FB5F, 0x1FB60, 0x1FB61, 0x25E4, 0x1FB62, 0x1FB63, // 7/0
+            0x1FB64, 0x1FB65, 0x1FB66, 0x1FB67, 0x1FB6E, 0x1FB6F, 0x0020, 0x0020, // 7/8
+        ];
+        for (code, &expected) in ALL_CODES.zip(MAPPING.iter()) {
+            assert_eq!(u32::from(base_unicode(CharSet::G3, code)), expected, "G3 {code:#04x}");
         }
         assert_eq!(base_unicode(CharSet::G3, 0x3F), FULL_BLOCK);
-        assert_eq!(base_unicode(CharSet::G3, 0x2F), '\u{1FB95}');
-        // Every other position is distinct.
+        // Every assigned position is distinct.
         let shapes: Vec<char> = ALL_CODES
             .map(|code| base_unicode(CharSet::G3, code))
             .filter(|&found| found != ' ')

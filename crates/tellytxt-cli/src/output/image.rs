@@ -1,23 +1,35 @@
 //! Raster output: palette-index framebuffers, PNG and PPM files
 //! (REQ-RND-007), and the iTerm2 inline image protocol (REQ-RND-029).
+//!
+//! At Levels 1 and 1.5 a raster holds the indices of the palette mode and
+//! the 144-entry palette of one flash phase (REQ-RND-023); at Levels 2.5
+//! and 3.5 it holds Colour Map indices and the page's 32 colours
+//! (REQ-RND-030, REQ-RND-031). Rows are as wide as the page's side panels
+//! make them (REQ-RND-033).
 
-use tellytxt_core::consts::{COLOURS, PAGE_WIDTH, ROWS};
+use tellytxt_core::config::Config;
+use tellytxt_core::consts::ROWS;
 use tellytxt_core::glyphs::GlyphSet;
 use tellytxt_core::level1::Grid;
-use tellytxt_core::render::{ALL_ROWS, IndexBuffer, IndexFormat, RenderOptions, render_screen};
-use tellytxt_image::palette::{Rgba, palette};
+use tellytxt_core::render::{
+    ALL_ROWS, ColourMode, FlashPhase, IndexBuffer, IndexFormat, RenderOptions, flash_visible, palette_mode_allowed,
+    render_screen, row_width,
+};
+use tellytxt_core::types::Instant;
+use tellytxt_image::palette::{Rgba, clut0_of, colour_map_palette, palette};
 use tellytxt_image::scale::{scale_indices, scaled_size};
 
-/// A rendered page: palette indices plus the palette for one flash phase.
+/// A rendered page: indices plus the palette they index.
 pub struct Raster {
     /// Width in pixels.
     pub width: usize,
     /// Height in pixels.
     pub height: usize,
-    /// Palette indices, row by row.
+    /// Indices, row by row.
     pub indices: Vec<u8>,
-    /// The palette.
-    pub palette: [Rgba; tellytxt_core::consts::PALETTE_SIZE],
+    /// The palette: 144 entries in the palette mode, the 32 colours of the
+    /// page's Colour Map in the resolved mode.
+    pub palette: Vec<Rgba>,
 }
 
 /// Scaling of the output image (REQ-RND-004).
@@ -31,30 +43,61 @@ pub struct Scale {
     pub aspect: bool,
 }
 
-/// Renders a grid to a scaled raster.
-#[must_use]
-pub fn raster(
-    grid: &Grid,
-    options: RenderOptions,
-    scale: Scale,
-    colours: &[Rgba; COLOURS],
-    picture: Rgba,
-    flash_visible: bool,
-) -> Raster {
-    let height = ROWS * options.row_height();
-    let mut indices = vec![0u8; PAGE_WIDTH * height];
-    let mut buffer = IndexBuffer { format: IndexFormat::Bits8, data: &mut indices, stride: PAGE_WIDTH };
-    // The buffer is sized for the whole page, so rendering cannot fail.
-    let _ = render_screen(grid, ALL_ROWS, &GlyphSet::bedstead(), options, &mut buffer);
-    let (width, scaled_height) = scaled_size(PAGE_WIDTH, height, scale.x, scale.y, scale.aspect);
-    let mut scaled = vec![0u8; width * scaled_height];
-    let _ = scale_indices(&indices, PAGE_WIDTH, height, scale.x.max(1), scale.y.max(1), scale.aspect, &mut scaled);
-    Raster {
-        width,
-        height: scaled_height,
-        indices: scaled,
-        palette: palette(colours, picture, flash_visible, options.reveal),
+/// The settings of one frame (decision E.55, REQ-RND-040): the colour mode
+/// of the presentation level with its flash phase of decision E.48, and,
+/// for the palette mode, whether flashing characters show under the timing
+/// of decision E.12.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Frame {
+    /// The renderer's options.
+    pub options: RenderOptions,
+    /// The phase of decision E.12, used by the palette mode only.
+    pub flash_visible: bool,
+}
+
+impl Frame {
+    /// A still image: flashing characters in their "on" phase.
+    #[must_use]
+    pub const fn still(config: &Config, reveal: bool) -> Self {
+        Self { options: RenderOptions::for_level(config, reveal, FlashPhase::STEADY), flash_visible: true }
     }
+
+    /// The frame at a time on the decoder's clock. In the resolved mode
+    /// only the flash phase changes it.
+    #[must_use]
+    pub fn at(config: &Config, reveal: bool, now: Instant) -> Self {
+        let options = RenderOptions::for_level(config, reveal, FlashPhase::at(now));
+        let flash_visible = options.colour != ColourMode::Palette || flash_visible(now, config);
+        Self { options, flash_visible }
+    }
+}
+
+/// Renders a grid to a scaled raster. `picture` is the colour of the
+/// picture, transparent areas (REQ-RND-006). A grid that the palette mode
+/// cannot draw is drawn in the resolved mode.
+#[must_use]
+pub fn raster(grid: &Grid, frame: Frame, scale: Scale, picture: Rgba) -> Raster {
+    let mut options = frame.options;
+    if options.colour == ColourMode::Palette && !palette_mode_allowed(grid) {
+        options.colour = ColourMode::Resolved(FlashPhase::STEADY);
+    }
+    let width = row_width(grid);
+    let height = ROWS * options.row_height();
+    let mut indices = vec![0u8; width * height];
+    let mut buffer = IndexBuffer { format: IndexFormat::Bits8, data: &mut indices, stride: width };
+    // The buffer is sized for the whole page and the mode suits the grid,
+    // so rendering cannot fail.
+    let _ = render_screen(grid, ALL_ROWS, &GlyphSet::bedstead(), options, &mut buffer);
+    let (scaled_width, scaled_height) = scaled_size(width, height, scale.x, scale.y, scale.aspect);
+    let mut scaled = vec![0u8; scaled_width * scaled_height];
+    let _ = scale_indices(&indices, width, height, scale.x.max(1), scale.y.max(1), scale.aspect, &mut scaled);
+    let palette = match options.colour {
+        ColourMode::Palette => {
+            palette(&clut0_of(&grid.colour_map), picture, frame.flash_visible, options.reveal).to_vec()
+        }
+        ColourMode::Resolved(_) => colour_map_palette(&grid.colour_map, picture).to_vec(),
+    };
+    Raster { width: scaled_width, height: scaled_height, indices: scaled, palette }
 }
 
 /// Encodes a raster as PNG bytes.
@@ -129,6 +172,54 @@ pub fn iterm2_inline(png: &[u8], width: usize, height: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tellytxt_core::colour::SidePanels;
+    use tellytxt_core::config::PresentationLevel;
+    use tellytxt_core::level1::{Cell, CellAttributes, FlashRate};
+
+    /// REQ-RND-033, REQ-RND-030: a page with side panels is wider, and at
+    /// Level 2.5 its palette is the page's 32 colours; at Level 1.5 the
+    /// 144-entry palette of the palette mode.
+    #[test]
+    fn rasters_follow_the_level_and_the_panels() {
+        let mut grid = Grid::EMPTY;
+        grid.side_panels = SidePanels { left: 6, right: 10 };
+        let scale = Scale { x: 2, y: 1, aspect: false };
+        let enhanced = Config { level: PresentationLevel::Level25, ..Config::default() };
+        let image = raster(&grid, Frame::still(&enhanced, false), scale, Rgba::TRANSPARENT);
+        assert_eq!((image.width, image.height, image.palette.len()), (56 * 12 * 2, 500, 32));
+        let level15 = Config { level: PresentationLevel::Level15, ..Config::default() };
+        let image = raster(&Grid::EMPTY, Frame::still(&level15, false), scale, Rgba::TRANSPARENT);
+        assert_eq!((image.width, image.palette.len()), (960, 144));
+    }
+
+    /// REQ-RND-040: at Levels 2.5 and 3.5 a frame changes with the flash
+    /// unit; at Level 1.5 with the phase of decision E.12 only.
+    #[test]
+    fn frames_follow_the_flash_timing() {
+        let enhanced = Config { level: PresentationLevel::Level35, ..Config::default() };
+        let at = |config: &Config, us| Frame::at(config, false, Instant(us));
+        assert_ne!(at(&enhanced, 0), at(&enhanced, 200_000), "units 0 and 2 differ");
+        assert_eq!(at(&enhanced, 0), at(&enhanced, 100_000), "units 0 and 1 show alike");
+        assert_eq!(at(&enhanced, 0), at(&enhanced, 50_000));
+        let level15 = Config { level: PresentationLevel::Level15, ..Config::default() };
+        assert_eq!(at(&level15, 0), at(&level15, 100_000));
+        assert_ne!(at(&level15, 0), at(&level15, 1_000_000));
+        // A fast-flashing cell is drawn in the background colour in its
+        // off phase.
+        let mut grid = Grid::EMPTY;
+        grid.cells[1][0] = Cell {
+            glyph: tellytxt_core::level1::Glyph::Mosaic { pattern: 0x3F, separated: false },
+            foreground: 3,
+            background: 4,
+            flash: true,
+            attributes: CellAttributes::DEFAULT.with_flash_rate(FlashRate::FastPhase1),
+            ..Cell::BLANK
+        };
+        let one = Scale { x: 1, y: 1, aspect: false };
+        let on = raster(&grid, at(&enhanced, 200_000), one, Rgba::TRANSPARENT);
+        let off = raster(&grid, at(&enhanced, 0), one, Rgba::TRANSPARENT);
+        assert_eq!((on.indices[20 * 480], off.indices[20 * 480]), (3, 4));
+    }
 
     #[test]
     fn base64_vectors() {

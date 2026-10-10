@@ -1,6 +1,11 @@
-//! Real colours for the core's palette indices (REQ-RND-005, REQ-RND-023).
+//! Real colours for the core's indices: the 144-entry palette of the
+//! palette mode (REQ-RND-005, REQ-RND-023) and the 32 entries of a page's
+//! Colour Map in the resolved mode (REQ-RND-030).
 
-use tellytxt_core::consts::{COLOUR_BLUE_BIT, COLOUR_GREEN_BIT, COLOUR_RED_BIT, COLOURS, PALETTE_SIZE, PRIMARY_FULL};
+use tellytxt_core::colour::ColourMap;
+use tellytxt_core::consts::{
+    COLOUR_BLUE_BIT, COLOUR_GREEN_BIT, COLOUR_MAP_ENTRIES, COLOUR_RED_BIT, COLOURS, PALETTE_SIZE, PRIMARY_FULL,
+};
 use tellytxt_core::render::fill_palette;
 
 /// A colour with alpha; alpha 0 is fully transparent.
@@ -61,10 +66,64 @@ pub fn palette(colours: &[Rgba; COLOURS], picture: Rgba, flash_visible: bool, re
     out
 }
 
+/// The colours of a Colour Map, for the resolved mode (REQ-RND-030): each
+/// 4-bit primary times 17, and index 8, CLUT 1 entry 0, the picture:
+/// transparent by default, or a fill colour for formats without alpha
+/// (REQ-RND-006).
+#[must_use]
+pub fn colour_map_palette(map: &ColourMap, picture: Rgba) -> [Rgba; COLOUR_MAP_ENTRIES] {
+    core::array::from_fn(|index| {
+        let index = index as u8;
+        if ColourMap::is_transparent(index) {
+            return picture;
+        }
+        let [r, g, b] = map.rgb888(index);
+        Rgba::opaque(r, g, b)
+    })
+}
+
+/// The eight colours of CLUT 0 of a Colour Map: the base colours of the
+/// palette mode, which equal [`CLUT0`] unless the user replaced them
+/// (REQ-RND-005).
+#[must_use]
+pub fn clut0_of(map: &ColourMap) -> [Rgba; COLOURS] {
+    core::array::from_fn(|index| {
+        let [r, g, b] = map.rgb888(index as u8);
+        Rgba::opaque(r, g, b)
+    })
+}
+
 #[cfg(test)]
 #[allow(clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use tellytxt_core::colour::colour_index;
+    use tellytxt_core::types::{ColourWords, Rgb12};
+
+    /// REQ-RND-030: every index converts as Table 30 gives, index 8 is the
+    /// picture, and redefined CLUTs convert with their own values.
+    #[test]
+    fn colour_map_palette_follows_table_30() {
+        let fill = Rgba::opaque(1, 2, 3);
+        let palette = colour_map_palette(&ColourMap::DEFAULT, fill);
+        for (index, colour) in palette.iter().enumerate() {
+            let entry = ColourMap::DEFAULT.entry(index as u8);
+            let expected =
+                if index == 8 { fill } else { Rgba::opaque(entry.red() * 17, entry.green() * 17, entry.blue() * 17) };
+            assert_eq!(*colour, expected, "index {index}");
+        }
+        assert_eq!(palette[usize::from(colour_index(1, 5))], Rgba::opaque(119, 0, 119), "half magenta");
+        assert_eq!(&palette[..8], &CLUT0[..]);
+        assert_eq!(clut0_of(&ColourMap::DEFAULT), CLUT0);
+        let mut map = ColourMap::DEFAULT;
+        let words: ColourWords = core::array::from_fn(|index| Rgb12::new(15, index as u8, 0));
+        map.set_cluts(0, &words);
+        map.set_cluts(2, &words);
+        let palette = colour_map_palette(&map, Rgba::TRANSPARENT);
+        assert_eq!(palette[3], Rgba::opaque(255, 51, 0));
+        assert_eq!(palette[8], Rgba::TRANSPARENT, "CLUT 1 entry 0 stays the picture");
+        assert_eq!(palette[16 + 15], Rgba::opaque(255, 255, 0));
+    }
 
     #[test]
     fn clut0_primaries() {

@@ -2,7 +2,8 @@
 //! IMPLEMENTATION-LOG.md).
 //!
 //! It writes indexed-colour images (PNG colour type 3) with the 144-entry
-//! teletext palette and a `tRNS` chunk for transparency. Image data is
+//! teletext palette, or the 32 entries of a Colour Map (REQ-RND-030), and a
+//! `tRNS` chunk for transparency. Image data is
 //! compressed with fixed-Huffman deflate (RFC 1951 section 3.2.6) using two
 //! kinds of match that suit teletext: a run of the previous byte, and the
 //! same bytes one row above. Memory use is fixed: two rows of scratch and
@@ -39,7 +40,8 @@ pub enum PngError<E> {
     Sink(E),
     /// The scratch buffer is smaller than two rows plus two bytes.
     ScratchTooSmall,
-    /// The image is empty or rows are longer than the deflate window.
+    /// The image is empty, rows are longer than the deflate window, or the
+    /// palette is empty or longer than 144 entries.
     BadSize,
 }
 
@@ -239,17 +241,18 @@ fn emit_match<S: Sink>(
 
 /// Writes a `width` by `height` indexed image. `row` fills row `y` (width
 /// bytes of palette indices). `scratch` needs at least `2 × (width + 1)`
-/// bytes.
+/// bytes. `palette` has 1 to 144 entries, and every index must be below
+/// its length.
 pub fn write<S: Sink>(
     sink: &mut S,
     width: usize,
     height: usize,
-    palette: &[Rgba; PALETTE_SIZE],
+    palette: &[Rgba],
     row: &mut dyn FnMut(usize, &mut [u8]),
     scratch: &mut [u8],
 ) -> Result<(), PngError<S::Error>> {
     let stream_row = width.checked_add(1).ok_or(PngError::BadSize)?;
-    if width == 0 || height == 0 || stream_row > MAX_DISTANCE {
+    if width == 0 || height == 0 || stream_row > MAX_DISTANCE || palette.is_empty() || palette.len() > PALETTE_SIZE {
         return Err(PngError::BadSize);
     }
     let (previous, current) =
@@ -271,8 +274,8 @@ pub fn write<S: Sink>(
         }
         *alpha = colour.a;
     }
-    chunk(sink, *b"PLTE", &plte)?;
-    chunk(sink, *b"tRNS", &trns)?;
+    chunk(sink, *b"PLTE", plte.get(..palette.len().saturating_mul(3)).unwrap_or(&plte))?;
+    chunk(sink, *b"tRNS", trns.get(..palette.len()).unwrap_or(&trns))?;
 
     let mut writer = BitWriter { buffer: [0; CHUNK_BYTES], length: 0, accumulator: 0, bits: 0 };
     for byte in ZLIB_HEADER {

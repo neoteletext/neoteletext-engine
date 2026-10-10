@@ -1,20 +1,20 @@
 //! The `ttx` commands (REQ-CLI-001).
 
-use crate::output::image::{Scale, iterm2_inline, png, ppm, raster};
+use crate::output::image::{Frame, Scale, iterm2_inline, png, ppm, raster};
 use crate::output::text::{ColourDepth, MosaicStyle, ansi, plain};
 use crate::sandbox::{self, Policy};
 use crate::session::Session;
-use crate::terminal::{self, Display};
+use crate::terminal::{self, Display, TextArea};
 use crate::{Common, GraphicsChoice, RasterArgs, exit, input};
 use clap::ValueEnum;
 use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use tellytxt_core::acq::StoredPage;
-use tellytxt_core::consts::ROWS;
+use tellytxt_core::consts::{CELL_WIDTH, COLUMNS, ROWS, SIDE_PANEL_MAX_COLUMNS};
 use tellytxt_core::policy::is_safe_file_name_byte;
-use tellytxt_core::render::RenderOptions;
+use tellytxt_core::render::row_width;
 use tellytxt_core::types::{PageAddress, SubCode};
-use tellytxt_image::palette::{CLUT0, Rgba};
+use tellytxt_image::palette::Rgba;
 
 /// A command's failure: an exit status and a message.
 pub type Failure = (u8, String);
@@ -167,13 +167,13 @@ fn display(choice: GraphicsChoice) -> Option<Display> {
     }
 }
 
-fn scale_for(raster_args: &RasterArgs, options: RenderOptions, fit: bool) -> Scale {
+/// The scale: the one asked for, or the largest that fits `area` for a page
+/// of `width` by `height` pixels, or 1.
+fn scale_for(raster_args: &RasterArgs, area: Option<TextArea>, (width, height): (usize, usize)) -> Scale {
     let factor = if raster_args.scale > 0 {
         raster_args.scale
-    } else if fit {
-        terminal::fit_scale(ROWS * options.row_height(), raster_args.aspect)
     } else {
-        1
+        terminal::fit_scale(area, width, height, raster_args.aspect)
     };
     Scale { x: factor, y: factor, aspect: raster_args.aspect }
 }
@@ -197,16 +197,18 @@ pub fn show(
     if let (Some(reason), true) = (reason, common.verbose > 0) {
         eprintln!("ttx: using text output: {reason}");
     }
-    let options = RenderOptions::from_config(session.decoder().config(), raster_args.reveal);
+    let frame = Frame::still(session.decoder().config(), raster_args.reveal);
     // Measure the terminal before the sandbox closes /dev/tty.
-    let scale = scale_for(raster_args, options, display == Display::Iterm2);
+    let area = if display == Display::Iterm2 { terminal::text_area() } else { None };
     sandbox(common, None)?;
     let page = selected(&session, selection)?[0];
     let grid = session.grid(page, None);
     let mut out = std::io::stdout().lock();
     match display {
         Display::Iterm2 => {
-            let image = raster(&grid, options, scale, &CLUT0, Rgba::opaque(0, 0, 0), true);
+            // A page with side panels is wider (REQ-RND-033).
+            let scale = scale_for(raster_args, area, (row_width(&grid), ROWS * frame.options.row_height()));
+            let image = raster(&grid, frame, scale, Rgba::opaque(0, 0, 0));
             let encoded = png(&image).map_err(|error| (exit::INPUT, error.to_string()))?;
             let _ = out.write_all(iterm2_inline(&encoded, image.width, image.height).as_bytes());
             let _ = out.write_all(b"\n");
@@ -214,7 +216,7 @@ pub fn show(
         Display::Text => {
             let depth = if colours8 { ColourDepth::Eight } else { ColourDepth::TrueColour };
             let text = if is_terminal || graphics == GraphicsChoice::Text {
-                ansi(&grid, raster_args.reveal, mosaic_style(legacy_mosaics), depth, &CLUT0)
+                ansi(&grid, raster_args.reveal, mosaic_style(legacy_mosaics), depth)
             } else {
                 plain(&grid, raster_args.reveal, mosaic_style(legacy_mosaics))
             };
@@ -234,8 +236,11 @@ pub fn view(
 ) -> Result<(), Failure> {
     let (mut session, mut source) = input::open_live(common)?;
     let (display, _) = terminal::detect(display(graphics), std::io::stdout().is_terminal());
-    let options = RenderOptions::from_config(session.decoder().config(), false);
-    let scale = scale_for(raster_args, options, display == Display::Iterm2);
+    let area = if display == Display::Iterm2 { terminal::text_area() } else { None };
+    // Fit the widest page, 56 columns with side panels (decision E.49).
+    let widest = (COLUMNS + usize::from(SIDE_PANEL_MAX_COLUMNS)) * CELL_WIDTH;
+    let height = ROWS * Frame::still(session.decoder().config(), false).options.row_height();
+    let scale = scale_for(raster_args, area, (widest, height));
     sandbox::apply(Policy { writable_directory: None, network: false, readable: &[] }, common.no_sandbox)
         .map_err(|message| (exit::INPUT, message))?;
     let depth = if colours8 { ColourDepth::Eight } else { ColourDepth::TrueColour };
@@ -260,8 +265,8 @@ pub fn render(
 ) -> Result<(), Failure> {
     let selection = parse_selection(page)?;
     let session = input::load_for(common, selection.page())?;
-    let options = RenderOptions::from_config(session.decoder().config(), raster_args.reveal);
-    let scale = scale_for(raster_args, options, false);
+    let frame = Frame::still(session.decoder().config(), raster_args.reveal);
+    let scale = scale_for(raster_args, None, (0, 0));
     let pages = selected(&session, selection)?;
     let directory: PathBuf = if selection == Selection::All {
         std::fs::create_dir_all(output).map_err(|error| (exit::INPUT, format!("{}: {error}", output.display())))?;
@@ -283,7 +288,7 @@ pub fn render(
             ImageFormat::Png => Rgba::TRANSPARENT,
             ImageFormat::Ppm => Rgba::opaque(0, 0, 0),
         };
-        let image_data = raster(&grid, options, scale, &CLUT0, picture, true);
+        let image_data = raster(&grid, frame, scale, picture);
         let bytes = match image {
             ImageFormat::Png => png(&image_data),
             ImageFormat::Ppm => ppm(&image_data, Rgba::opaque(0, 0, 0)),

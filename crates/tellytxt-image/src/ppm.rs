@@ -3,7 +3,6 @@
 
 use crate::Sink;
 use crate::palette::Rgba;
-use tellytxt_core::consts::PALETTE_SIZE;
 
 /// Writes a decimal number into `buffer`, returning the digits.
 fn decimal(value: usize, buffer: &mut [u8; 20]) -> &[u8] {
@@ -25,13 +24,15 @@ fn decimal(value: usize, buffer: &mut [u8; 20]) -> &[u8] {
 /// Maximum sample value of an 8-bit PPM.
 const MAX_SAMPLE: &[u8] = b"255";
 
-/// Writes a `width` by `height` image of palette indices as P6.
+/// Writes a `width` by `height` image of palette indices as P6. `palette`
+/// is the 144 colours of the palette mode or the 32 of a Colour Map
+/// (REQ-RND-030); an index beyond it takes the fill colour.
 pub fn write<S: Sink>(
     sink: &mut S,
     indices: &[u8],
     width: usize,
     height: usize,
-    palette: &[Rgba; PALETTE_SIZE],
+    palette: &[Rgba],
     fill: Rgba,
 ) -> Result<(), S::Error> {
     let mut digits = [0u8; 20];
