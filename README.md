@@ -8,6 +8,8 @@ target/release/ttx show recording.t42 100
 target/release/ttx view zxnet:teefax
 ```
 
+Each crate's optional parts are Cargo features, on by default, so a port or a smaller `ttx` compiles in only what it uses. The features are listed in the user guide and the porting guide.
+
 ## Documents
 
 | Document | Contents |

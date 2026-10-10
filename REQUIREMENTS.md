@@ -1883,6 +1883,29 @@ The features of `tellytxt-core`, all on by default:
 
 `compose_level`, which applies the level's pass, moves from the viewer to its own module `compose`, and `Zoom` from the renderer to the Level 1 grid, because a port without the viewer or the renderer still composes pages.
 
+The features of `tellytxt-formats`, all on by default except `std`. T42 is always compiled. Detection recognises only the formats compiled in, and a format asked for by name that is not compiled in gives the diagnostic `FormatNotCompiled`:
+
+| Feature | Contents |
+|---|---|
+| `transport` | Transport stream and PES readers (REQ-INP-006 to 009) |
+| `sliced` | Linux sliced VBI (REQ-INP-010) |
+| `pages` | The page encoder (REQ-INP-019) |
+| `tti`, `ep1`, `edittf`, `dump` | One page-file reader each; each needs `pages` |
+| `check` | The page checker (REQ-CLI-006); needs `tti` |
+| `std` | The writers over `std::io`; the TTI writer and the authoring builder also need `tti` |
+
+Detection reading T42 only is 4.3 kilobytes of code, down from 46.8.
+
+The features of `tellytxt-web`, all on by default. A request a build cannot serve gives an event or failure saying so: `Event::PushNotCompiledIn`, `FormRefused::NotCompiledIn`, `CookieRejected::NotCompiledIn`. The zxnet feed is not a feature: nothing in the user agent reaches it, so the linker already leaves it out.
+
+| Feature | Contents | Code |
+|---|---|---|
+| `push` | WebSocket and server-sent events (REQ-WEB-005) | 12.3 kilobytes |
+| `cookies` | The cookie store's use by the agent (REQ-WEB-006) | 7.6 kilobytes |
+| `forms` | Form submission and its response (REQ-WEB-010, REQ-WEB-011) | 4.0 kilobytes |
+
+The application layer of `ttx` is a library crate of its own, `tellytxt-app`: sessions, inputs, both processes of live mode, and sandboxing, which a windowed viewer will share. Its features are `live` (the web module, TLS and the fetcher process) and `slice` (the slicer). `ttx`'s features are `view` (the interactive viewer and its terminal library), `live` and `slice`. Every command stays defined, so the help text never changes, and a command whose area is left out exits with the usage status and says so. A `ttx` without `live` contains no TLS code and is about half the size. The fetcher stays a second run of the same program: a separate fetcher binary would leave TLS out of the decoder process too, but is deferred for its packaging cost, since the decoder's sandbox already keeps it off the network.
+
 *Reason:* The microcontroller targets (REQ-GEN-015) and the flash budget of REQ-GEN-009.
 
 ---
@@ -2293,7 +2316,7 @@ The documentation shall state:
 - the memory required per stored page;
 - the flash (code and constant data) size of the core on `thumbv6m-none-eabi`, built with `opt-level = "z"` and link-time optimisation.
 
-Continuous integration shall measure the core's flash size on that target and fail if it exceeds a budget stated in the repository. The budget shall start at 64 kilobytes. The estimate is 15 to 40 kilobytes, of which the character tables are 10 to 20 kilobytes, and the measured figure replaces the estimate.
+Continuous integration shall measure the core's flash size on that target and fail if it exceeds a budget stated in the repository. The budget shall start at 64 kilobytes. The estimate is 15 to 40 kilobytes, of which the character tables are 10 to 20 kilobytes, and the measured figure replaces the estimate. Measured on 11 October 2026 by `cargo xtask size` (decision E.61): 26,198 bytes for the core with no optional area, 45,154 bytes for a Level 1.5 receiver with the renderer and the viewer, the build the budget applies to, 65,786 bytes at Level 3.5, and 111,294 bytes with every area and the temporary Bedstead glyphs.
 *Verification:* Test and continuous integration size check.
 
 **REQ-GEN-010 — The Cargo workspace.**
@@ -2306,12 +2329,13 @@ The project shall be a single Cargo workspace with these crates. Each optional c
 | `tellytxt-slicer` | The software data slicer (area SLC) | `no_std`; a `fixed-point` feature (REQ-SLC-015) |
 | `tellytxt-web` | The web-native protocols: HTTP, WebSockets, server-sent events, cookies and forms (area WEB), and the live feed reader of REQ-INP-022 | `no_std`, written "sans-IO": it consumes and produces bytes and events, and never performs input or output itself |
 | `tellytxt-image` | The pixel-format helpers (REQ-RND-018) and the image writers (REQ-RND-007) | Helpers `no_std`; image writers need `std` |
+| `tellytxt-app` | The application layer shared by `ttx` and a windowed viewer: sessions, inputs, the two processes of live mode, sandboxing (decision E.61) | `std` |
 | `tellytxt-cli` | The command-line program `ttx` (area CLI) | `std` |
 | `tellytxt-ffi` | The optional C interface (REQ-GEN-018) | Phase 2 |
 
 A development-tools package (`xtask`) holds project automation that is not part of the library, such as the glyph export, fetching the corpus and checking sizes.
 
-Features shall be additive. Every combination of the `std`, `alloc` and default features of each crate shall build, checked with `cargo hack --feature-powerset`. The mapping of the core modules of REQ-ARCH-001 to Rust modules shall be one module each within `tellytxt-core`.
+Features shall be additive. Each crate's optional areas are features, as decision E.61 lists. `cargo xtask features` builds, lints and tests each library and application crate with no optional area and with each area alone, and the workspace tests run with every feature. The mapping of the core modules of REQ-ARCH-001 to Rust modules shall be one module each within `tellytxt-core`.
 *Verification:* Continuous integration.
 
 **REQ-GEN-011 — Public interface conventions.**

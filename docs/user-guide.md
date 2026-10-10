@@ -11,6 +11,20 @@ cargo build --release -p tellytxt-cli
 # the program is target/release/ttx
 ```
 
+Every part is on by default. A smaller program leaves parts out (decision E.61):
+
+| Feature | What it adds |
+|---|---|
+| `view` | `ttx view`, the interactive viewer, and image sizing to fit the terminal in `show` |
+| `live` | Live feeds and web services (`zxnet:`, `wss://`, `http(s)://`), `check --descriptor`, and the TLS code they need |
+| `slice` | `ttx slice` |
+
+```sh
+cargo build --release -p tellytxt-cli --no-default-features --features view
+```
+
+That program reads files, shows and converts pages, and is about half the size, with no TLS code. Every command stays in the help text. A command whose part is left out exits with status 2 and says the build does not include it. Without `view`, `show` draws images at scale 1 unless `--scale` is given.
+
 The toolchain is pinned in `rust-toolchain.toml`. `scripts/check.sh full` runs every gate: formatting, clippy, the tests, the layer and constant checks, and the build for the bare-metal target.
 
 ## Commands

@@ -14,7 +14,38 @@ This is the whole of a port (REQ-ARCH-009, decision E.29). A port supplies the i
 | A network transport | Implement the transport trait of `tellytxt-web` (connect, send, non-blocking receive, close; TLS is yours). | Only for web sources |
 | Cookie storage | Implement the cookie storage trait of `tellytxt-web`. Store saved cookies as secrets (REQ-SEC-013). | Optional |
 
-A complete minimal port is `crates/tellytxt-core/examples/minimal_port.rs`, under 100 lines.
+A complete minimal port is `crates/tellytxt-core/examples/minimal_port.rs`, under 100 lines; it needs the core features `level15` and `bedstead`.
+
+## Choosing what to compile in
+
+Every crate's optional areas are Cargo features, all on by default (decision E.61). A small port turns the defaults off and names what it uses:
+
+```toml
+tellytxt-core = { version = "...", default-features = false, features = ["level15", "render"] }
+tellytxt-formats = { version = "...", default-features = false }  # T42 only
+```
+
+| Crate | Features |
+|---|---|
+| `tellytxt-core` | `level15`, `level25`, `render`, `bedstead`, `viewer`, `forms` |
+| `tellytxt-formats` | `transport`, `sliced`, `pages`, `tti`, `ep1`, `edittf`, `dump`, `check`, and `std` |
+| `tellytxt-web` | `push`, `forms`, `cookies` |
+
+Measured flash on Cortex-M0 (`cargo xtask size`, `opt-level = "z"`, link-time optimisation):
+
+| Build | Flash |
+|---|---|
+| Core with no optional area: acquisition, the Level 1 grid, composing | 26,198 bytes |
+| Level 1.5 receiver with the renderer and the viewer; your own glyphs | 45,154 bytes |
+| The same at Level 3.5 | 65,786 bytes |
+| Every core area, with the temporary Bedstead glyphs | 111,294 bytes |
+| Format detection reading T42 only, with the bare core | 29,126 bytes |
+| Format detection reading every format, with the bare core | 57,581 bytes |
+
+Notes on the builds:
+- **A configured level that is not compiled in** falls back to the highest one that is (`PresentationLevel::available`).
+- **Without `bedstead`, supply your own glyphs** with `GlyphSet::from_entries`.
+- **The minimal port example** needs `level15` and `bedstead`.
 
 ## Memory
 
