@@ -644,6 +644,42 @@ impl TripletFunction {
     }
 }
 
+impl TripletFunction {
+    /// The column a column triplet moves the active position to: every
+    /// column mode except the reserved modes and Programme Delivery Control
+    /// (clause 12.3.4). `None` for row triplets and for those column modes.
+    #[must_use]
+    pub const fn active_column(self) -> Option<u8> {
+        match self {
+            Self::ForegroundColour { column, .. }
+            | Self::G1Character { column, .. }
+            | Self::G3Character { column, .. }
+            | Self::BackgroundColour { column, .. }
+            | Self::AdditionalFlash { column, .. }
+            | Self::ModifiedDesignation { column, .. }
+            | Self::G0Character { column, .. }
+            | Self::DisplayAttributes { column, .. }
+            | Self::DrcsCharacter { column, .. }
+            | Self::FontStyle { column, .. }
+            | Self::G2Character { column, .. }
+            | Self::G0Diacritic { column, .. } => Some(column),
+            Self::ProgrammeDeliveryColumn { .. }
+            | Self::ReservedColumn { .. }
+            | Self::FullScreenColour(_)
+            | Self::FullRowColour { .. }
+            | Self::SetActivePosition { .. }
+            | Self::AddressDisplayRow0 { .. }
+            | Self::ProgrammeDeliveryRow { .. }
+            | Self::OriginModifier { .. }
+            | Self::ObjectInvocation { .. }
+            | Self::ObjectDefinition { .. }
+            | Self::DrcsMode { .. }
+            | Self::Termination { .. }
+            | Self::ReservedRow { .. } => None,
+        }
+    }
+}
+
 /// The address of an Object Invocation or Definition: bits 6 to 1 are 1,
 /// S1, S0, X (reserved, written 0), N8, N7 (Table 28).
 const fn object_address(source_bits: u8, number: ObjectNumber) -> u8 {

@@ -351,6 +351,7 @@ pub fn run(
                         rolling_header: &rolling,
                         store,
                         row24: None,
+                        lookup: session.decoder().enhancement_lookup(),
                     };
                     let _ = viewer.compose(&mut probe, Some(page), &context);
                     form = FormModel::new(*spec, probe.designation.g0).ok().map(|model| ActiveForm {
@@ -370,7 +371,9 @@ pub fn run(
         let store = session.decoder().store();
         let row24 =
             prompt.or_else(|| page_extras.as_ref().and_then(|extras| extras.row24.as_ref()).map(|(row, _)| *row));
-        let context = ComposeContext { magazine: &magazine, config: &config, rolling_header: &rolling, store, row24 };
+        let lookup = session.decoder().enhancement_lookup();
+        let context =
+            ComposeContext { magazine: &magazine, config: &config, rolling_header: &rolling, store, row24, lookup };
         let _ = viewer.compose(&mut grid, page, &context);
         if prompt.is_none()
             && let Some((_, marks)) = page_extras.as_ref().and_then(|extras| extras.row24.as_ref())

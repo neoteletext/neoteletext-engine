@@ -320,8 +320,9 @@ Field groups shared with the presentation layer are foundation types in `types`:
 
 **Interim behaviour and what each phase changes.**
 
-- Until phase (a) adds `enhance::apply`, Levels 2.5 and 3.5 run the Level 1.5 pass, so that output is unchanged. The two call sites are `viewer::Viewer::compose` and the command-line program's `Session::grid`; phase (a) replaces them with a dispatch on `Config::level`. `level15::apply` itself refuses only Level 1.
-- `level1::resolve_designation` still reads X/28/0 and M/29/0 only. The designation order of Annex C.4 at Level 3.5 (X/28/4 and M/29/4) and the national option of decision E.50 are for phase (a). The Level 1.5 pass does not yet read triplets through `TripletFunction`, which REQ-PKT-010 asks for.
+- Phase (a) is in place. `viewer::compose_level` dispatches on `Config::level`: nothing at Level 1, `level15::apply` at Level 1.5, and `enhance::apply` at Levels 2.5 and 3.5; `viewer::Viewer::compose` and the command-line program's `Session::grid` both call it, and `ComposeContext` carries the `EnhancementLookup`. `enhance::apply` returns an `EnhancementReport` of the faults it met and the triplets it read.
+- `enhance::apply` rebuilds each shown row from `level1::row_codes` and the walk's events, keeping row 0 columns 0 to 7 from the Level 1 grid. The walk runs once for the page-level colours and once for each row that has events, keeping only that row's events, so that a grid needs one row of event storage (decision E.41, principle 5); the limits of Annex A.8 are checked before an object is looked for, which bounds the work by `enhance::MAX_WALK_STEPS`. `objects` finds links, definitions and bodies; `drcs::decode_character` fills `Grid::drcs`.
+- `level1::resolve_designation` follows the order of Annex C.4 and decision E.50 at each level, and the Level 1.5 pass reads every triplet through `TripletFunction` (REQ-PKT-010).
 - `GlyphSet::glyph` draws a DRCS reference as the glyph of U+FFFD; phase (b) draws DRCS cells from `Grid::drcs` before any glyph lookup, and adds the resolved colour mode and side-panel composition.
 - Phase (c) builds object pages, DRCS pages, tables and magazine packets with the encoders above.
 

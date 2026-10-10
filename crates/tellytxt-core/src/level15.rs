@@ -4,13 +4,11 @@
 use crate::charset::{CharRef, CharSet, Designation, G0};
 use crate::config::{Config, PresentationLevel};
 use crate::consts::{
-    COLUMNS, DESIGNATION_CODES, LATIN_AT_SIGN, MODE_ADDRESS_ROW_0, MODE_COLUMN_PDC, MODE_COLUMN_RESERVED_1,
-    MODE_COLUMN_RESERVED_2, MODE_COLUMN_RESERVED_3, MODE_DIACRITIC_MASK, MODE_FULL_ROW_COLOUR, MODE_G0_NO_DIACRITIC,
-    MODE_G2, MODE_G3_LEVEL_15, MODE_SET_ACTIVE_POSITION, MODE_TERMINATION, RECEIVER_COLUMNS, ROW_ADDRESS_BASE,
-    ROW_ADDRESS_LAST, ROW_ADDRESS_ROW_24, TRIPLET_AT_SIGN_CODE, TRIPLET_FIRST_CHARACTER,
+    COLUMNS, DESIGNATION_CODES, DIACRITIC_NONE, LATIN_AT_SIGN, RECEIVER_COLUMNS, ROW_ADDRESS_BASE, ROW_ADDRESS_LAST,
+    ROW_ADDRESS_ROW_24, TRIPLET_AT_SIGN_CODE, TRIPLET_FIRST_CHARACTER,
 };
 use crate::level1::{CharSource, Glyph, Grid, Size};
-use crate::packet::Triplet;
+use crate::packet::{Triplet, TripletFunction};
 
 /// The designation code X/26/15, which the "SAA5246A" profile skips
 /// (decision E.2).
@@ -64,60 +62,71 @@ pub fn walk_transition(state: WalkState, triplet: Option<Triplet>, context: Walk
     let Some(triplet) = triplet else {
         return (WalkState::Walking { row, column }, WalkAction::None);
     };
+    // REQ-PKT-010: the pass reads every triplet through the one decoding of
+    // Tables 28 and 29.
+    let function = triplet.function();
     // REQ-L15-004, decision E.3.
-    if triplet.is_row_address() {
-        if triplet.address == ROW_ADDRESS_LAST && triplet.mode == MODE_TERMINATION {
-            return (WalkState::Terminated, WalkAction::None);
-        }
-        if triplet.address == ROW_ADDRESS_LAST && triplet.mode == MODE_ADDRESS_ROW_0 {
+    match function {
+        TripletFunction::Termination { .. } => return (WalkState::Terminated, WalkAction::None),
+        TripletFunction::AddressDisplayRow0 { address: ROW_ADDRESS_LAST, .. } => {
             return (WalkState::Walking { row: 0, column: 0 }, WalkAction::None);
         }
-        let sets_row = !context.strict_row_setting
-            || matches!(triplet.mode, MODE_FULL_ROW_COLOUR | MODE_SET_ACTIVE_POSITION | MODE_ADDRESS_ROW_0);
-        if sets_row {
-            let new_row = if triplet.address == ROW_ADDRESS_ROW_24 {
-                24
-            } else {
-                triplet.address.saturating_sub(ROW_ADDRESS_BASE)
-            };
-            return (WalkState::Walking { row: new_row, column: 0 }, WalkAction::None);
+        _ if triplet.is_row_address() => {
+            // Annex A.3 reads the address field of every row triplet, so the
+            // raw address is used whatever the function.
+            let sets_row = !context.strict_row_setting
+                || matches!(
+                    function,
+                    TripletFunction::FullRowColour { .. }
+                        | TripletFunction::SetActivePosition { .. }
+                        | TripletFunction::AddressDisplayRow0 { .. }
+                );
+            if sets_row {
+                let new_row = if triplet.address == ROW_ADDRESS_ROW_24 {
+                    24
+                } else {
+                    triplet.address.saturating_sub(ROW_ADDRESS_BASE)
+                };
+                return (WalkState::Walking { row: new_row, column: 0 }, WalkAction::None);
+            }
+            return (WalkState::Walking { row, column }, WalkAction::None);
         }
-        return (WalkState::Walking { row, column }, WalkAction::None);
+        _ => {}
     }
     // REQ-L15-005: every column mode sets the column except the reserved
     // ones and Programme Delivery Control (clause 12.3.4).
-    match triplet.mode {
-        MODE_COLUMN_RESERVED_1 | MODE_COLUMN_RESERVED_2 | MODE_COLUMN_RESERVED_3 | MODE_COLUMN_PDC => {
-            (WalkState::Walking { row, column }, WalkAction::None)
-        }
-        MODE_G3_LEVEL_15 | MODE_G2 | MODE_G0_NO_DIACRITIC..=MODE_TERMINATION => {
-            let next = WalkState::Walking { row, column: triplet.address };
-            // REQ-PKT-009: data values below 2/0 are reserved; the column
-            // still moves, but nothing is written.
-            if triplet.data < TRIPLET_FIRST_CHARACTER {
-                return (next, WalkAction::None);
-            }
-            (next, WalkAction::Write(character(triplet, context)))
-        }
-        // REQ-L15-007: every other mode, including the Level 2.5 G3 form
-        // 01011, only moves the active position.
-        _ => (WalkState::Walking { row, column: triplet.address }, WalkAction::None),
+    let Some(new_column) = function.active_column() else {
+        return (WalkState::Walking { row, column }, WalkAction::None);
+    };
+    let next = WalkState::Walking { row, column: new_column };
+    // REQ-L15-007: every other mode, including the Level 2.5 G3 form 01011,
+    // only moves the active position.
+    let Some(character) = character(function, context) else { return (next, WalkAction::None) };
+    // REQ-PKT-009: data values below 2/0 are reserved; the column still
+    // moves, but nothing is written.
+    if character.code < TRIPLET_FIRST_CHARACTER {
+        return (next, WalkAction::None);
     }
+    (next, WalkAction::Write(character))
 }
 
-/// The character a writing triplet names (REQ-L15-006, REQ-L15-010).
-fn character(triplet: Triplet, context: WalkContext) -> CharRef {
+/// The character a writing triplet names (REQ-L15-006, REQ-L15-010), with
+/// its code as transmitted; `None` for triplets that write nothing at Level
+/// 1.5.
+fn character(function: TripletFunction, context: WalkContext) -> Option<CharRef> {
     let g0 = CharSet::G0(G0 { set: context.designation.g0.set, national: None });
-    match triplet.mode {
-        MODE_G3_LEVEL_15 => CharRef::new(CharSet::G3, triplet.data),
-        MODE_G2 => CharRef::new(CharSet::G2(context.designation.g2), triplet.data),
-        MODE_G0_NO_DIACRITIC if triplet.data == TRIPLET_AT_SIGN_CODE => CharRef::new(g0, LATIN_AT_SIGN),
-        MODE_G0_NO_DIACRITIC => CharRef::new(g0, triplet.data),
-        mode => {
-            let mut character = CharRef::new(g0, triplet.data);
-            character.diacritic = mode & MODE_DIACRITIC_MASK;
-            character
+    match function {
+        TripletFunction::G3Character { code, level_15_form: true, .. } => Some(CharRef::new(CharSet::G3, code)),
+        TripletFunction::G2Character { code, .. } => Some(CharRef::new(CharSet::G2(context.designation.g2), code)),
+        TripletFunction::G0Diacritic { code: TRIPLET_AT_SIGN_CODE, diacritic: DIACRITIC_NONE, .. } => {
+            Some(CharRef::new(g0, LATIN_AT_SIGN))
         }
+        TripletFunction::G0Diacritic { code, diacritic, .. } => {
+            let mut character = CharRef::new(g0, code);
+            character.diacritic = diacritic;
+            Some(character)
+        }
+        _ => None,
     }
 }
 
@@ -215,7 +224,11 @@ fn write<const DRCS: usize, const PANEL_ROWS: usize>(
 mod tests {
     use super::*;
     use crate::charset::{G0Set, G2Set, NationalOption};
-    use crate::consts::{MODE_G3_LEVEL_25, MOSAIC_FULL};
+    use crate::consts::{
+        MODE_ADDRESS_ROW_0, MODE_COLUMN_PDC, MODE_COLUMN_RESERVED_1, MODE_COLUMN_RESERVED_2, MODE_COLUMN_RESERVED_3,
+        MODE_DIACRITIC_MASK, MODE_FULL_ROW_COLOUR, MODE_G0_NO_DIACRITIC, MODE_G2, MODE_G3_LEVEL_15, MODE_G3_LEVEL_25,
+        MODE_SET_ACTIVE_POSITION, MODE_TERMINATION, MOSAIC_FULL,
+    };
     use crate::level1::Cell;
 
     fn context(strict: bool) -> WalkContext {

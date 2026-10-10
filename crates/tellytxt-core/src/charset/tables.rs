@@ -122,6 +122,45 @@ pub(super) fn designation(value: u8) -> Option<Designation> {
     table_32_entry(value).map(|(g0, g2)| Designation { g0, g2 })
 }
 
+/// Table 34, the Modified G0 and G2 Character Set Designation triplet:
+/// group (data bits 18 to 15) and the low three bits, `None` for "any",
+/// with the G0 and G2 sets. Entries not listed are reserved (its note).
+/// No national option applies to a G0 set reached by a triplet (clause
+/// 15.4 note), so the Latin rows name only the set.
+const TABLE_34: [(u8, Option<u8>, G0Set, G2Set); 18] = {
+    use G0Set as S;
+    use G2Set::{Arabic, Cyrillic, Greek, Latin};
+    [
+        (0b0000, None,        S::Latin,     Latin),
+        (0b0001, None,        S::Latin,     Latin),
+        (0b0010, None,        S::Latin,     Latin),
+        (0b0011, None,        S::Latin,     Latin),
+        (0b0100, Some(0b000), S::Cyrillic1, Cyrillic),
+        (0b0100, Some(0b001), S::Latin,     Latin),
+        (0b0100, Some(0b010), S::Latin,     Latin),
+        (0b0100, Some(0b011), S::Latin,     Latin),
+        (0b0100, Some(0b100), S::Cyrillic2, Cyrillic),
+        (0b0100, Some(0b101), S::Cyrillic3, Cyrillic),
+        (0b0100, Some(0b110), S::Latin,     Latin),
+        (0b0110, Some(0b110), S::Latin,     Latin),
+        (0b0110, Some(0b111), S::Greek,     Greek),
+        (0b1000, Some(0b000), S::Latin,     Arabic),
+        (0b1000, Some(0b100), S::Latin,     Arabic),
+        (0b1000, Some(0b111), S::Arabic,    Arabic),
+        (0b1010, Some(0b101), S::Hebrew,    Arabic),
+        (0b1010, Some(0b111), S::Arabic,    Arabic),
+    ]
+};
+
+pub(super) fn modified_designation(value: u8) -> Option<(G0Set, G2Set)> {
+    let group = value.wrapping_shr(GROUP_SHIFT);
+    let index = value & NATIONAL_BITS_MASK;
+    TABLE_34
+        .iter()
+        .find(|&&(entry_group, entry_index, _, _)| entry_group == group && entry_index.is_none_or(|low| low == index))
+        .map(|&(_, _, g0, g2)| (g0, g2))
+}
+
 pub(super) fn second_g0(value: u8) -> Option<G0> {
     if value == NO_SECOND_G0 {
         return None;

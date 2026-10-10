@@ -8,16 +8,18 @@
     missing_docs
 )]
 
+mod common;
+
 use std::time::Instant as Clock;
 use tellytxt_core::acq::{Decoder, StoredPage};
 use tellytxt_core::config::Config;
 use tellytxt_core::consts::{PACKET_BYTES, PAGE_WIDTH};
 use tellytxt_core::glyphs::GlyphSet;
 use tellytxt_core::level1::{DisplayOptions, Grid, build_grid};
-use tellytxt_core::level15;
 use tellytxt_core::packet::{Packet, PacketMeta};
 use tellytxt_core::render::{ALL_ROWS, FlashPhase, IndexBuffer, IndexFormat, RenderOptions, cell_line, render_screen};
 use tellytxt_core::types::{Instant, SubCode};
+use tellytxt_core::viewer::compose_level;
 
 /// REQ-GEN-013: twenty times 35 packets per frame at 25 frames per second.
 const REQUIRED_PACKETS_PER_SECOND: f64 = 17_500.0;
@@ -68,16 +70,12 @@ fn presentation_and_drawing_costs() {
     let page = decoder.store().get(address, SubCode::ANY).unwrap();
     let mut grid = Grid::EMPTY;
     let rounds = 2000;
+    let magazine = decoder.magazine_data(address.magazine);
+    let options = DisplayOptions::default();
     let start = Clock::now();
     for _ in 0..rounds {
-        build_grid(
-            &mut grid,
-            Some(page),
-            &decoder.magazine_data(address.magazine),
-            &config,
-            &DisplayOptions::default(),
-        );
-        level15::apply(&mut grid, &page.enhancements, page.enhancements_present, &config, true);
+        build_grid(&mut grid, Some(page), &magazine, &config, &options);
+        let _ = compose_level(&mut grid, page, &magazine, &decoder.enhancement_lookup(), &config, &options);
     }
     let grids = f64::from(rounds) / start.elapsed().as_secs_f64();
     let glyphs = GlyphSet::bedstead();
@@ -119,8 +117,10 @@ fn row_renderer_cost() {
     let address = tellytxt_core::types::PageAddress::from_mpp(0x100).unwrap();
     let page = decoder.store().get(address, SubCode::ANY).unwrap();
     let mut grid = Grid::EMPTY;
-    build_grid(&mut grid, Some(page), &decoder.magazine_data(address.magazine), &config, &DisplayOptions::default());
-    level15::apply(&mut grid, &page.enhancements, page.enhancements_present, &config, true);
+    let magazine = decoder.magazine_data(address.magazine);
+    build_grid(&mut grid, Some(page), &magazine, &config, &DisplayOptions::default());
+    let _ =
+        compose_level(&mut grid, page, &magazine, &decoder.enhancement_lookup(), &config, &DisplayOptions::default());
     let glyphs = GlyphSet::bedstead();
     let modes = [
         ("palette mode", RenderOptions::from_config(&config, false)),
@@ -137,4 +137,23 @@ fn row_renderer_cost() {
         let rate = f64::from(rounds) / start.elapsed().as_secs_f64();
         println!("whole screens rendered per second ({name}, 8 bits): {rate:.0}; {}", pixels[0]);
     }
+}
+
+/// REQ-TST-019: the time to build the worst-case page of the object tests
+/// at Level 3.5.
+#[test]
+#[ignore = "measurement; run in release mode"]
+fn worst_case_grid_at_level_35() {
+    let packets = common::worst_case_page();
+    let config = Config::default();
+    common::Receiver::new().run(&packets, config, |decoder| {
+        let rounds = 20;
+        let start = Clock::now();
+        let mut steps = 0;
+        for _ in 0..rounds {
+            steps = common::grid_of(decoder, &config).1.map_or(0, |report| report.steps);
+        }
+        let seconds = start.elapsed().as_secs_f64() / f64::from(rounds);
+        println!("worst-case grid at Level 3.5: {:.1} ms, {steps} triplets read", seconds * 1000.0);
+    });
 }
