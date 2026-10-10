@@ -14,6 +14,18 @@ embedded-io.workspace = true
 httparse.workspace = true
 
 [features]
+# Decision E.61: each part of the user agent that a run-time choice reaches
+# is a feature, all on by default. Ports turn the defaults off and name
+# what they use. The zxnet live feed is not a feature: nothing in the agent
+# reaches it, so the linker already leaves it out of a port that does not
+# call it.
+default = ["push", "forms", "cookies"]
+# Server push over WebSocket and server-sent events (REQ-WEB-005).
+push = []
+# Form submission and its response (REQ-WEB-010, REQ-WEB-011).
+forms = []
+# The cookie store's use by the agent (REQ-WEB-006).
+cookies = []
 # REQ-GEN-011 and REQ-GEN-016: `core::error::Error` for the error types,
 # which needs `core::fmt`.
 error-trait = []

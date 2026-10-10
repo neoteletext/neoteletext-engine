@@ -20,12 +20,13 @@ license = "MIT OR Apache-2.0"
 publish = false
 
 [workspace.dependencies]
-# Decision E.61: crates name the core features they use, so that feature
-# unification never brings an area into a build that did not ask for it.
+# Decision E.61: crates name the features of the core and of the web
+# module that they use, so that feature unification never brings an area
+# into a build that did not ask for it.
 tellytxt-core = { path = "crates/tellytxt-core", default-features = false }
 tellytxt-formats = { path = "crates/tellytxt-formats" }
 tellytxt-slicer = { path = "crates/tellytxt-slicer" }
-tellytxt-web = { path = "crates/tellytxt-web" }
+tellytxt-web = { path = "crates/tellytxt-web", default-features = false }
 tellytxt-image = { path = "crates/tellytxt-image" }
 # Decision E.38: the only external crates a microcontroller crate may use.
 embedded-io = { version = "0.7.1", default-features = false }
