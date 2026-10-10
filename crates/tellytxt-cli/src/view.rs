@@ -1,23 +1,30 @@
 //! The interactive viewer, `ttx view` (REQ-CLI-004, decision 19 of
-//! IMPLEMENTATION-LOG.md): the core viewer machine driven by terminal keys.
+//! IMPLEMENTATION-LOG.md): the core viewer machine driven by terminal keys,
+//! with forms (Appendix C, REQ-NAV-009), the TTI Link Extension (Appendix
+//! E, REQ-NAV-011 and 012) and the security confirmations of area SEC.
 
+use crate::extras::{self, PageExtras};
 use crate::output::image::{Scale, iterm2_inline, png, raster};
 use crate::output::text::{ColourDepth, MosaicStyle, ansi};
-use crate::pipe::Notice;
+use crate::pipe::{Notice, Submission};
 use crate::session::Session;
 use crate::terminal::Display;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 use crossterm::{cursor, execute, queue, terminal};
+use std::collections::HashSet;
 use std::io::Write;
 use std::time::{Duration, Instant as StdInstant};
 use tellytxt_core::config::Config;
+use tellytxt_core::consts::{ALPHA_YELLOW, COLUMNS, SPACE, STATUS_COLUMNS};
+use tellytxt_core::forms::{FormAction, FormKey, FormModel, Method};
 use tellytxt_core::level1::Grid;
 use tellytxt_core::nav::PageLinks;
 use tellytxt_core::render::{RenderOptions, flash_visible};
 use tellytxt_core::service::initial_page;
 use tellytxt_core::types::{Instant, PageAddress, SubCode};
-use tellytxt_core::viewer::SecurityIndicator;
-use tellytxt_core::viewer::{Action, ComposeContext, Key, KeyContext, Viewer, ViewerEvent, ViewerState};
+use tellytxt_core::viewer::{
+    Action, ComposeContext, Key, KeyContext, SecurityIndicator, Viewer, ViewerEvent, ViewerState,
+};
 use tellytxt_image::palette::{CLUT0, Rgba};
 
 /// Something that feeds packets into the session while the viewer runs.
@@ -32,10 +39,31 @@ pub trait Source {
     fn notices(&mut self) -> Vec<Notice> {
         Vec::new()
     }
+
+    /// Extension data of a page: links, the drawn link row, a form.
+    fn extras(&self, _page: PageAddress, _subcode: SubCode) -> Option<&PageExtras> {
+        None
+    }
+
+    /// Submits a form.
+    fn submit(&mut self, _submission: Submission) {}
+
+    /// Answers a confirmation request.
+    fn confirm(&mut self, _yes: bool) {}
+
+    /// Follows a link to another service.
+    fn follow(&mut self, _service: u8, _page: PageAddress, _subcode: SubCode) {}
+
+    /// The short name of a linked service.
+    fn service_name(&self, _service: u8) -> Option<String> {
+        None
+    }
 }
 
 /// How often the viewer wakes to poll the source, check flash and keys.
 const TICK: Duration = Duration::from_millis(40);
+/// Microseconds per step of the scrolling form origin (REQ-SEC-009).
+const TICKER_STEP_US: u64 = 300_000;
 
 fn map_key(key: KeyEvent) -> Option<Key> {
     let alt = key.modifiers.contains(KeyModifiers::ALT);
@@ -62,6 +90,29 @@ fn map_key(key: KeyEvent) -> Option<Key> {
     })
 }
 
+/// Keys while a form has focus (REQ-NAV-009): typing enters text; the
+/// coloured keys are F1 to F4; Esc leaves the form.
+fn map_form_key(key: KeyEvent) -> Option<FormKey> {
+    Some(match key.code {
+        KeyCode::Tab => FormKey::Tab,
+        KeyCode::BackTab => FormKey::BackTab,
+        KeyCode::Enter => FormKey::Enter,
+        KeyCode::Backspace => FormKey::Backspace,
+        KeyCode::Left => FormKey::Left,
+        KeyCode::Right => FormKey::Right,
+        KeyCode::Up => FormKey::Up,
+        KeyCode::Down => FormKey::Down,
+        KeyCode::Char(' ') => FormKey::Space,
+        KeyCode::Char(c) => FormKey::Char(c),
+        KeyCode::F(1) => FormKey::Red,
+        KeyCode::F(2) => FormKey::Green,
+        KeyCode::F(3) => FormKey::Yellow,
+        KeyCode::F(4) => FormKey::Cyan,
+        KeyCode::Esc => FormKey::Index,
+        _ => return None,
+    })
+}
+
 /// Restores the terminal however the viewer exits.
 struct RawGuard;
 
@@ -73,7 +124,94 @@ impl Drop for RawGuard {
     }
 }
 
+/// A form on the page being shown.
+struct ActiveForm {
+    page: PageAddress,
+    subcode: SubCode,
+    model: FormModel,
+    url: String,
+    focused: bool,
+}
+
+/// What the viewer is waiting for the user to confirm.
+enum Pending {
+    /// A form submission (REQ-SEC-008 and REQ-SEC-009).
+    Submission,
+}
+
+/// A receiver-drawn row 24 message, in white, as 7-bit codes.
+fn message_row(text: &str) -> [u8; COLUMNS] {
+    let mut row = [SPACE; COLUMNS];
+    row[0] = ALPHA_YELLOW;
+    for (slot, byte) in row.iter_mut().skip(1).zip(text.bytes()) {
+        *slot = if byte.is_ascii() && byte >= SPACE { byte } else { SPACE };
+    }
+    row
+}
+
+/// Writes the form's origin into the status area as a ticker (REQ-SEC-009:
+/// while a form has focus, the origin it submits to is shown there).
+fn origin_ticker(grid: &mut Grid, origin: &str, now: Instant) {
+    let text: Vec<u8> = format!("> {origin}   ").bytes().filter(|b| b.is_ascii_graphic() || *b == b' ').collect();
+    if text.is_empty() {
+        return;
+    }
+    let offset = usize::try_from(now.0 / TICKER_STEP_US).unwrap_or(0) % text.len();
+    let reference = grid.cells[0][STATUS_COLUMNS];
+    let g0 = grid.designation.g0;
+    for column in 0..STATUS_COLUMNS {
+        let byte = text[(offset + column) % text.len()];
+        if let Some(cell) = grid.cell_mut(0, column) {
+            *cell = tellytxt_core::level1::Cell {
+                glyph: if byte == SPACE {
+                    tellytxt_core::level1::Glyph::Space
+                } else {
+                    tellytxt_core::level1::Glyph::Char(tellytxt_core::charset::CharRef::new(
+                        tellytxt_core::charset::CharSet::G0(g0),
+                        byte,
+                    ))
+                },
+                foreground: tellytxt_core::consts::COLOUR_BLACK,
+                // The colour of the Alpha Yellow attribute.
+                background: ALPHA_YELLOW & tellytxt_core::consts::COLOUR_ATTRIBUTE_MASK,
+                ..reference
+            };
+        }
+    }
+}
+
+/// The origin part of an address, for the ticker.
+fn origin_of(url: &str) -> String {
+    let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
+    let host = rest.split('/').next().unwrap_or(rest);
+    let scheme = url.split_once("://").map_or("", |(scheme, _)| scheme);
+    format!("{scheme}://{host}")
+}
+
+/// The submission for a form and the button pressed (REQ-WEB-011).
+fn submission(form: &ActiveForm, button: Option<usize>) -> Submission {
+    let spec = form.model.spec();
+    let mut fields = Vec::new();
+    form.model.pairs(&mut |name, value| {
+        fields.push((String::from_utf8_lossy(name).into_owned(), value.iter().collect::<String>()));
+    });
+    let action = button
+        .and_then(|index| spec.fields.as_slice().get(index))
+        .map(|field| String::from_utf8_lossy(field.action.as_slice()).into_owned())
+        .filter(|action| !action.is_empty());
+    let token = String::from_utf8_lossy(spec.token.as_slice()).into_owned();
+    Submission {
+        page_url: form.url.clone(),
+        post: spec.method == Method::Post,
+        target: String::from_utf8_lossy(spec.target.as_slice()).into_owned(),
+        token: (!token.is_empty()).then_some(token),
+        action,
+        fields,
+    }
+}
+
 /// Runs the viewer until the user quits.
+#[allow(clippy::too_many_lines)] // One event loop; splitting it scatters its state.
 pub fn run(
     session: &mut Session,
     source: &mut dyn Source,
@@ -95,6 +233,10 @@ pub fn run(
     let mut grid = Grid::EMPTY;
     let mut last_drawn: Option<(Grid, bool, bool)> = None;
     let mut action = viewer.event(ViewerEvent::Started);
+    let mut form: Option<ActiveForm> = None;
+    let mut pending: Option<Pending> = None;
+    let mut prompt: Option<[u8; COLUMNS]> = None;
+    let mut confirmed_services: HashSet<u8> = HashSet::new();
     let result = loop {
         let now = Instant(start.elapsed().as_micros().try_into().unwrap_or(u64::MAX));
         if live {
@@ -108,22 +250,63 @@ pub fn run(
                         let untouched = viewer.requested().0 == initial && !viewer.history().can_go_back();
                         initial = address;
                         if untouched && address != viewer.requested().0 {
-                            action = Action::Request(address, SubCode::ANY);
+                            viewer = Viewer::new(address);
+                            action = viewer.event(ViewerEvent::Started);
                         }
                     }
                 }
+                Notice::ShowPage(mpp) => {
+                    if let Some(address) = PageAddress::from_mpp(mpp) {
+                        viewer = Viewer::new(address);
+                        action = viewer.event(ViewerEvent::Started);
+                    }
+                }
+                Notice::Confirm(host, plain, _first) => {
+                    viewer.set_indicator(if plain {
+                        SecurityIndicator::PlainHttpWarning
+                    } else {
+                        SecurityIndicator::ConfirmSubmission
+                    });
+                    let warning = if plain { "UNENCRYPTED " } else { "" };
+                    prompt = Some(message_row(&format!("{warning}Send to {host}? Enter=yes Esc=no")));
+                    pending = Some(Pending::Submission);
+                }
+                Notice::Submitted(ok) => {
+                    let pages = form.as_ref().map(|form| (form.model.spec().success, form.model.spec().error));
+                    if let Some((success, error)) = pages
+                        && let Some(page) = if ok { success } else { error }
+                    {
+                        action = Action::Request(page, SubCode::ANY);
+                        viewer = Viewer::new(page);
+                        let _ = viewer.event(ViewerEvent::Started);
+                    }
+                    prompt = Some(message_row(if ok { "Sent." } else { "Not sent: the service refused it." }));
+                }
+                Notice::Service(_) => confirmed_services.clear(),
                 Notice::Message(text) => messages.push(text),
             }
         }
         let config: Config = *session.decoder().config();
-        if let Action::Request(address, subcode) = action {
-            session.decoder_mut().set_requested(Some(address));
-            source.request(address, subcode);
-            if viewer.requested().0 != address {
-                // A notice moved the start page: follow it without a key.
-                viewer = Viewer::new(address);
-                let _ = viewer.event(ViewerEvent::Started);
+        match action {
+            Action::Request(address, subcode) => {
+                session.decoder_mut().set_requested(Some(address));
+                source.request(address, subcode);
+                prompt = None;
             }
+            Action::FollowService(target) => {
+                if let Some(service) = target.service {
+                    confirmed_services.insert(service);
+                    source.follow(service, target.address, target.subcode);
+                    viewer = Viewer::new(target.address);
+                    let _ = viewer.event(ViewerEvent::Started);
+                }
+                prompt = None;
+            }
+            Action::ConfirmService(target) => {
+                let name = target.service.and_then(|service| source.service_name(service)).unwrap_or_default();
+                prompt = Some(message_row(&format!("Leave for {name}? Press the same key again")));
+            }
+            Action::None => {}
         }
         action = Action::None;
         let (requested, subcode) = viewer.requested();
@@ -134,15 +317,58 @@ pub fn run(
             ViewerState::Searching | ViewerState::Starting => None,
             _ => session.page(requested, subcode),
         };
+        let page_extras = page.and_then(|page| source.extras(page.key.address, page.key.subcode)).cloned();
+        // A form on this page becomes active, keeping values when returning.
+        match (&page_extras, page) {
+            (Some(PageExtras { form: Some(spec), url, .. }), Some(page)) => {
+                let same =
+                    form.as_ref().is_some_and(|form| form.page == page.key.address && form.subcode == page.key.subcode);
+                if !same {
+                    let mut probe = Grid::EMPTY;
+                    let magazine = session.decoder().magazine_data(page.key.address.magazine);
+                    let store = session.decoder().store();
+                    let rolling = session.rolling_header();
+                    let context = ComposeContext {
+                        magazine: &magazine,
+                        config: &config,
+                        rolling_header: &rolling,
+                        store,
+                        row24: None,
+                    };
+                    let _ = viewer.compose(&mut probe, Some(page), &context);
+                    form = FormModel::new(*spec, probe.designation.g0).ok().map(|model| ActiveForm {
+                        page: page.key.address,
+                        subcode: page.key.subcode,
+                        model,
+                        url: url.clone(),
+                        focused: true,
+                    });
+                }
+            }
+            (_, Some(page)) if form.as_ref().is_some_and(|form| form.page != page.key.address) => form = None,
+            _ => {}
+        }
         let rolling = session.rolling_header();
         let magazine = session.decoder().magazine_data(requested.magazine);
         let store = session.decoder().store();
-        let context =
-            ComposeContext { magazine: &magazine, config: &config, rolling_header: &rolling, store, row24: None };
+        let row24 =
+            prompt.or_else(|| page_extras.as_ref().and_then(|extras| extras.row24.as_ref()).map(|(row, _)| *row));
+        let context = ComposeContext { magazine: &magazine, config: &config, rolling_header: &rolling, store, row24 };
         let _ = viewer.compose(&mut grid, page, &context);
+        if prompt.is_none()
+            && let Some((_, marks)) = page_extras.as_ref().and_then(|extras| extras.row24.as_ref())
+        {
+            extras::draw_marks(&mut grid, marks);
+        }
+        if let Some(active) = &form {
+            active.model.draw(&mut grid);
+            if active.focused && pending.is_none() {
+                origin_ticker(&mut grid, &origin_of(&active.url), now);
+            }
+        }
         let reveal = viewer.reveal(now);
         let flash = flash_visible(now, &config);
-        let state = (grid, flash, reveal);
+        let state = (grid, flash && display == Display::Iterm2, reveal);
         if last_drawn.as_ref() != Some(&state) {
             draw(&mut out, &grid, display, scale, depth, mosaics, &config, flash, reveal)?;
             last_drawn = Some(state);
@@ -150,17 +376,57 @@ pub fn run(
         if event::poll(TICK)?
             && let Event::Key(key) = event::read()?
         {
-            if matches!(key.code, KeyCode::Char('q') | KeyCode::Esc)
-                || (key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL))
-            {
+            if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
                 break Ok(());
             }
+            last_drawn = None;
+            if let Some(Pending::Submission) = &pending {
+                let yes = matches!(key.code, KeyCode::Enter | KeyCode::F(4));
+                source.confirm(yes);
+                pending = None;
+                prompt = if yes { Some(message_row("Sending...")) } else { None };
+                viewer.set_indicator(SecurityIndicator::None);
+                continue;
+            }
+            if let Some(active) = form.as_mut().filter(|form| form.focused) {
+                if let Some(form_key) = map_form_key(key) {
+                    match active.model.key(form_key, now) {
+                        FormAction::Submit(button) => {
+                            source.submit(submission(active, button));
+                            prompt = Some(message_row("Submitting..."));
+                        }
+                        FormAction::Invalid(_, reason) => {
+                            prompt = Some(message_row(&format!("Check the field: {reason:?}")));
+                        }
+                        FormAction::Leave => active.focused = false,
+                        FormAction::Refused => prompt = Some(message_row("That character cannot be shown here")),
+                        FormAction::None => {}
+                    }
+                }
+                continue;
+            }
+            if matches!(key.code, KeyCode::Char('q') | KeyCode::Esc) {
+                break Ok(());
+            }
+            if key.code == KeyCode::Tab
+                && let Some(active) = form.as_mut()
+            {
+                active.focused = true;
+                continue;
+            }
             if let Some(key) = map_key(key) {
-                let links = page.map(PageLinks::from_page).unwrap_or_default();
-                let no = |_| false;
-                let key_context = KeyContext { links: &links, store, initial, config: &config, now, confirmed: &no };
+                let links = page_extras
+                    .as_ref()
+                    .and_then(|extras| extras.links)
+                    .or_else(|| page.map(PageLinks::from_page))
+                    .unwrap_or_default();
+                let confirmed = |service| confirmed_services.contains(&service);
+                let key_context =
+                    KeyContext { links: &links, store, initial, config: &config, now, confirmed: &confirmed };
                 action = viewer.key(key, &key_context);
-                last_drawn = None;
+                if !matches!(action, Action::ConfirmService(_)) {
+                    prompt = None;
+                }
             }
         }
     };

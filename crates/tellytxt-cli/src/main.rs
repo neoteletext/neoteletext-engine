@@ -5,6 +5,7 @@
 
 mod commands;
 mod convert;
+mod extras;
 mod fetch;
 mod input;
 mod live;

@@ -77,3 +77,18 @@ fn faults_do_not_crash_the_receiver() {
         assert_eq!(output.status.code(), Some(1), "fault {fault}: {}", String::from_utf8_lossy(&output.stderr));
     }
 }
+
+#[test]
+fn viewer_fills_and_submits_a_form() {
+    let Some(server) = server() else { return };
+    let script = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/web-server/drive_viewer.py");
+    let output = Command::new("python3")
+        .arg("-I")
+        .arg(script)
+        .arg(env!("CARGO_BIN_EXE_ttx"))
+        .arg(server.port.to_string())
+        .output()
+        .expect("run the viewer driver");
+    let report = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "{report}");
+}

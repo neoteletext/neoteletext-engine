@@ -111,6 +111,9 @@ pub enum SecurityIndicator {
     PlainHttpWarning,
     /// Waiting for confirmation of a link to another service.
     LeavingService,
+    /// Waiting for confirmation of the first submission to an origin
+    /// (REQ-SEC-009).
+    ConfirmSubmission,
 }
 
 /// What a key press needs to know about its surroundings.
@@ -450,6 +453,10 @@ impl Viewer {
             SecurityIndicator::LeavingService => {
                 write(&mut status, 0, &[ALPHA_YELLOW]);
                 write(&mut status, 1, b"LEAVE?");
+            }
+            SecurityIndicator::ConfirmSubmission => {
+                write(&mut status, 0, &[ALPHA_YELLOW]);
+                write(&mut status, 1, b"SEND?");
             }
         }
         status

@@ -17,6 +17,7 @@ pub const DEFAULT_PAGES: usize = 4096;
 /// A session over one input.
 pub struct Session {
     decoder: Decoder<'static>,
+    capacity: usize,
     clock: u64,
     /// Events seen, kept for `--verbose` tracing.
     pub trace: Vec<Event>,
@@ -35,7 +36,13 @@ impl Session {
         // One store for the life of the process.
         let slots: &'static mut [StoredPage] = Box::leak(vec![StoredPage::EMPTY; capacity.max(1)].into_boxed_slice());
         let tracing = config.trace;
-        Self { decoder: Decoder::new(slots, config), clock: 0, trace: Vec::new(), tracing }
+        Self { decoder: Decoder::new(slots, config), capacity: capacity.max(1), clock: 0, trace: Vec::new(), tracing }
+    }
+
+    /// The number of page slots.
+    #[must_use]
+    pub const fn capacity(&self) -> usize {
+        self.capacity
     }
 
     /// The decoder.

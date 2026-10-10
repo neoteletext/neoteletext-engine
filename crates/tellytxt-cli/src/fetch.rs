@@ -193,28 +193,30 @@ fn send(frame: &Frame) -> std::io::Result<()> {
     pipe::write(&mut out, frame)
 }
 
-/// Reads page requests from the decoder process.
-fn requests() -> Receiver<(PageAddress, Option<SubCode>)> {
+/// Reads the decoder process's requests: page requests, submissions,
+/// confirmations and links to other services. Anything else is dropped.
+fn requests() -> Receiver<Frame> {
     let (sender, receiver) = mpsc::channel();
     std::thread::spawn(move || {
         let mut input = std::io::stdin().lock();
-        while let Ok(Some(Frame::Request(mpp, sub))) = pipe::read(&mut input) {
-            if let Some(address) = PageAddress::from_mpp(mpp) {
-                let subcode = (sub != u16::MAX).then(|| SubCode::new(sub));
-                if sender.send((address, subcode)).is_err() {
-                    break;
-                }
+        while let Ok(Some(frame)) = pipe::read(&mut input) {
+            let wanted = matches!(frame, Frame::Request(..) | Frame::Submit(_) | Frame::Confirm(_) | Frame::Follow(..));
+            if wanted && sender.send(frame).is_err() {
+                break;
             }
         }
     });
     receiver
 }
 
+fn page_request(mpp: u16, sub: u16) -> Option<(PageAddress, Option<SubCode>)> {
+    PageAddress::from_mpp(mpp).map(|address| (address, (sub != u16::MAX).then(|| SubCode::new(sub))))
+}
+
 /// Runs the fetcher for `address` until the decoder process goes away.
 pub fn run(address: &str, no_sandbox: bool, allow_local: &[IpAddr]) -> Result<(), (u8, String)> {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let requests = requests();
-    // The fetcher may resolve names, which reads /etc, and use the network.
     // Name resolution reads the resolver configuration and loads the C
     // library's name-service modules (decision 28 of IMPLEMENTATION-LOG.md).
     let readable: Vec<&std::path::Path> =
@@ -242,11 +244,7 @@ fn clock(start: StdInstant) -> Instant {
     Instant(u64::try_from(start.elapsed().as_micros()).unwrap_or(u64::MAX))
 }
 
-fn run_zxnet(
-    channel: &tellytxt_web::zxnet::Channel,
-    requests: &Receiver<(PageAddress, Option<SubCode>)>,
-    allow_local: &[IpAddr],
-) {
+fn run_zxnet(channel: &tellytxt_web::zxnet::Channel, requests: &Receiver<Frame>, allow_local: &[IpAddr]) {
     use tellytxt_web::zxnet::{LiveEvent, LiveInput, LiveOutput, LiveStorage, ZxnetFeed};
     let mut storage = Box::new(LiveStorage::default());
     let mut feed = ZxnetFeed::new(*channel, storage.buffers(), SystemRandom);
@@ -287,9 +285,13 @@ fn run_zxnet(
             busy = true;
             feed.handle(clock(start), LiveInput::Net(input), &mut |output| sink(output, &mut pump));
         }
-        while let Ok((page, subcode)) = requests.try_recv() {
+        while let Ok(frame) = requests.try_recv() {
             busy = true;
-            feed.handle(clock(start), LiveInput::Request { page, subcode }, &mut |output| sink(output, &mut pump));
+            if let Frame::Request(mpp, sub) = frame
+                && let Some((page, subcode)) = page_request(mpp, sub)
+            {
+                feed.handle(clock(start), LiveInput::Request { page, subcode }, &mut |output| sink(output, &mut pump));
+            }
         }
         if clock(start) >= next_tick {
             let mut timer = None;
@@ -307,8 +309,11 @@ fn run_zxnet(
     }
 }
 
-fn run_web(address: &str, requests: &Receiver<(PageAddress, Option<SubCode>)>, allow_local: &[IpAddr]) {
-    use tellytxt_web::agent::{Event, Input, Output, Storage, UserAgent};
+// One event loop; splitting it would scatter the agent's sink and state.
+#[allow(clippy::too_many_lines)]
+fn run_web(address: &str, requests: &Receiver<Frame>, allow_local: &[IpAddr]) {
+    use tellytxt_web::agent::{Event, Input, Output, Source as Came, Storage, UserAgent};
+    use tellytxt_web::form::{FormMethod, FormSubmission};
     use tellytxt_web::http::MediaType;
     /// Cookie slots and bytes of the jar: REQ-WEB-006's default total.
     const COOKIE_SLOTS: usize = 100;
@@ -324,6 +329,7 @@ fn run_web(address: &str, requests: &Receiver<(PageAddress, Option<SubCode>)>, a
     let start = StdInstant::now();
     let mut buffer = vec![0u8; READ_CHUNK];
     let broken = std::cell::Cell::new(false);
+    let service_ready = std::cell::Cell::new(false);
     let mut next_tick: Option<Instant> = Some(Instant(0));
     let sink = |output: Output<'_>, pump: &mut Pump<StdTransport>, next_tick: &mut Option<Instant>| {
         if let Some(net) = output.net() {
@@ -335,21 +341,40 @@ fn run_web(address: &str, requests: &Receiver<(PageAddress, Option<SubCode>)>, a
                 *next_tick = Some(next_tick.map_or(at, |current| current.min(at)));
                 Ok(())
             }
-            Output::PageBytes(page) => match page.media {
-                MediaType::T42 => send(&Frame::T42(page.secure, page.bytes.to_vec())),
-                _ => send(&Frame::Tti(page.secure, page.bytes.to_vec())),
-            },
-            Output::Event(Event::ServiceReady { initial_page, secure, .. }) => {
-                let _ = if secure { Ok(()) } else { send(&Frame::Notice(Notice::Unencrypted)) };
+            Output::PageBytes(page) => {
+                let data = pipe::PageData {
+                    secure: page.secure,
+                    origin: match page.source {
+                        Came::Page { .. } => pipe::Origin::Page,
+                        Came::Push => pipe::Origin::Push,
+                        Came::Form => pipe::Origin::Form,
+                    },
+                    url: page.url.to_string(),
+                    bytes: page.bytes.to_vec(),
+                };
+                match page.media {
+                    MediaType::T42 => send(&Frame::T42(data)),
+                    _ => send(&Frame::Tti(data)),
+                }
+            }
+            Output::Event(Event::ServiceReady { initial_page, .. }) => {
+                service_ready.set(true);
                 send(&Frame::Notice(Notice::InitialPage(initial_page.mpp())))
             }
             Output::Event(Event::Unencrypted { .. }) => send(&Frame::Notice(Notice::Unencrypted)),
+            Output::Event(Event::ConfirmSubmission { host, plain_http, first_to_origin, .. }) => {
+                send(&Frame::Notice(Notice::Confirm(host.to_string(), plain_http, first_to_origin)))
+            }
+            Output::Event(Event::SubmissionSucceeded { .. }) => send(&Frame::Notice(Notice::Submitted(true))),
+            Output::Event(Event::SubmissionFailed { .. }) => send(&Frame::Notice(Notice::Submitted(false))),
             Output::Event(
                 event @ (Event::DescriptorRejected(_)
                 | Event::DescriptorFailed(_)
                 | Event::Blocked { .. }
                 | Event::DowngradeRefused { .. }
-                | Event::FetchFailed { .. }),
+                | Event::FetchFailed { .. }
+                | Event::SubmissionRefused(_)
+                | Event::LinkUnknown),
             ) => send(&Frame::Notice(Notice::Message(format!("{event:?}")))),
             _ => Ok(()),
         };
@@ -366,11 +391,53 @@ fn run_web(address: &str, requests: &Receiver<(PageAddress, Option<SubCode>)>, a
                 agent.handle(clock(start), Input::Net(input), &mut |output| sink(output, &mut pump, &mut next_tick));
             }
         }
-        while let Ok((page, subcode)) = requests.try_recv() {
+        if service_ready.replace(false) {
+            // Tell the decoder about the (new) service's linked services
+            // before any of its pages (Appendix E).
+            let names: Vec<String> = agent
+                .descriptor()
+                .map(|descriptor| {
+                    descriptor
+                        .services()
+                        .map(|service| String::from_utf8_lossy(service.short_name.as_bytes()).into_owned())
+                        .collect()
+                })
+                .unwrap_or_default();
+            if send(&Frame::Notice(Notice::Service(names))).is_err() {
+                break;
+            }
+        }
+        while let Ok(frame) = requests.try_recv() {
             busy = true;
-            agent.handle(clock(start), Input::FetchPage { page, subcode }, &mut |output| {
-                sink(output, &mut pump, &mut next_tick);
-            });
+            let now = clock(start);
+            let mut out = |output: Output<'_>| sink(output, &mut pump, &mut next_tick);
+            match frame {
+                Frame::Request(mpp, sub) => {
+                    if let Some((page, subcode)) = page_request(mpp, sub) {
+                        agent.handle(now, Input::FetchPage { page, subcode }, &mut out);
+                    }
+                }
+                Frame::Submit(submission) => {
+                    let fields: Vec<(&str, &str)> =
+                        submission.fields.iter().map(|(name, value)| (name.as_str(), value.as_str())).collect();
+                    let form = FormSubmission {
+                        page_url: &submission.page_url,
+                        method: if submission.post { FormMethod::Post } else { FormMethod::Get },
+                        target: &submission.target,
+                        fields: &fields,
+                        token: submission.token.as_deref(),
+                        action: submission.action.as_deref(),
+                    };
+                    agent.handle(now, Input::Submit(form), &mut out);
+                }
+                Frame::Confirm(yes) => agent.handle(now, Input::ConfirmSubmission(yes), &mut out),
+                Frame::Follow(service, mpp, sub) => {
+                    if let Some((page, subcode)) = page_request(mpp, sub) {
+                        agent.handle(now, Input::FollowLink { service: &service, page, subcode }, &mut out);
+                    }
+                }
+                _ => {}
+            }
         }
         if next_tick.is_some_and(|at| clock(start) >= at) {
             next_tick = None;

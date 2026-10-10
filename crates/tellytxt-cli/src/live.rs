@@ -1,11 +1,13 @@
-//! Live sources for `ttx view`: the decoder side of the fetcher process
+//! Live sources for `ttx`: the decoder side of the fetcher process
 //! (REQ-SEC-018, decision 26 of IMPLEMENTATION-LOG.md).
 
 use crate::commands::Failure;
 use crate::exit;
-use crate::pipe::{self, Frame, Notice};
+use crate::extras::{self, PageExtras};
+use crate::pipe::{self, Frame, Notice, Origin, PageData, Submission};
 use crate::session::Session;
 use crate::view::Source;
+use std::collections::HashMap;
 use std::path::Path;
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::mpsc::{self, Receiver};
@@ -22,6 +24,9 @@ pub struct Live {
     requests: ChildStdin,
     frames: Receiver<Frame>,
     notices: Vec<Notice>,
+    extras: HashMap<(PageAddress, SubCode), PageExtras>,
+    services: Vec<String>,
+    shown_form_page: Option<PageAddress>,
     ended: bool,
 }
 
@@ -49,25 +54,55 @@ pub fn open(address: &str, no_sandbox: bool, allow_local: &[std::net::IpAddr]) -
             }
         }
     });
-    Ok(Box::new(Live { child, requests, frames, notices: Vec::new(), ended: false }))
+    Ok(Box::new(Live {
+        child,
+        requests,
+        frames,
+        notices: Vec::new(),
+        extras: HashMap::new(),
+        services: Vec::new(),
+        shown_form_page: None,
+        ended: false,
+    }))
 }
 
-fn feed_page(session: &mut Session, format: Format, bytes: &[u8], now: Instant) {
-    let mut reader =
-        Box::new(AutoReader::new(AutoConfig { format: Some(format), encode_pages: true, ..AutoConfig::default() }));
-    let mut packets: Vec<(Packet, PacketMeta)> = Vec::new();
-    let mut collect = |item: Item<'_>| {
-        if let Item::Packet { packet, meta } = item {
-            packets.push((packet, meta));
+impl Live {
+    /// Decodes page bytes into the session, keeping each page's extension
+    /// data. Returns the first page the bytes held.
+    fn feed_page(
+        &mut self,
+        session: &mut Session,
+        format: Format,
+        page: &PageData,
+        now: Instant,
+    ) -> Option<PageAddress> {
+        let mut reader =
+            Box::new(AutoReader::new(AutoConfig { format: Some(format), encode_pages: true, ..AutoConfig::default() }));
+        let mut packets: Vec<(Packet, PacketMeta)> = Vec::new();
+        let mut first = None;
+        let services = self.services.clone();
+        let extras = &mut self.extras;
+        let mut collect = |item: Item<'_>| match item {
+            Item::Packet { packet, meta } => packets.push((packet, meta)),
+            Item::Page(file) => {
+                first.get_or_insert(file.address);
+                extras.insert(extras::key(file), extras::from_page(file, &page.url, &services));
+            }
+            _ => {}
+        };
+        reader.feed(&page.bytes, &mut collect);
+        reader.finish(&mut collect);
+        for (packet, meta) in &packets {
+            session.push_at(packet, meta, now);
         }
-    };
-    reader.feed(bytes, &mut collect);
-    reader.finish(&mut collect);
-    for (packet, meta) in &packets {
-        session.push_at(packet, meta, now);
+        // A fetched page is complete once its bytes are in.
+        session.tick(Instant(now.0.saturating_add(tellytxt_core::consts::PAGE_COMPLETION_TIMEOUT_US * 2)));
+        first
     }
-    // A fetched page is complete once its bytes are in.
-    session.tick(Instant(now.0.saturating_add(tellytxt_core::consts::PAGE_COMPLETION_TIMEOUT_US * 2)));
+
+    fn send(&mut self, frame: &Frame) {
+        let _ = pipe::write(&mut self.requests, frame);
+    }
 }
 
 impl Source for Live {
@@ -75,21 +110,17 @@ impl Source for Live {
         while let Ok(frame) = self.frames.try_recv() {
             match frame {
                 Frame::Packet(bytes) => session.push_at(&Packet { bytes }, &PacketMeta::default(), now),
-                Frame::Tti(secure, bytes) => {
-                    if !secure {
-                        self.notices.push(Notice::Unencrypted);
-                    }
-                    feed_page(session, Format::Tti, &bytes, now);
-                }
-                Frame::T42(secure, bytes) => {
-                    if !secure {
-                        self.notices.push(Notice::Unencrypted);
-                    }
-                    feed_page(session, Format::T42(T42Variant::Plain), &bytes, now);
+                Frame::Tti(page) => self.receive(session, Format::Tti, &page, now),
+                Frame::T42(page) => self.receive(session, Format::T42(T42Variant::Plain), &page, now),
+                Frame::Notice(Notice::Service(names)) => {
+                    // A new service: its page numbers are its own.
+                    *session = Session::new(*session.decoder().config(), session.capacity());
+                    self.extras.clear();
+                    self.services = names;
                 }
                 Frame::Notice(notice) => self.notices.push(notice),
-                // The fetcher never sends requests; ignore rather than trust.
-                Frame::Request(..) => {}
+                // The fetcher never sends these; ignore rather than trust.
+                Frame::Request(..) | Frame::Submit(_) | Frame::Confirm(_) | Frame::Follow(..) => {}
             }
         }
         session.tick(now);
@@ -102,11 +133,53 @@ impl Source for Live {
 
     fn request(&mut self, page: PageAddress, subcode: SubCode) {
         let sub = if subcode.is_any() { u16::MAX } else { subcode.value() };
-        let _ = pipe::write(&mut self.requests, &Frame::Request(page.mpp(), sub));
+        self.send(&Frame::Request(page.mpp(), sub));
     }
 
     fn notices(&mut self) -> Vec<Notice> {
-        std::mem::take(&mut self.notices)
+        let mut notices = std::mem::take(&mut self.notices);
+        if let Some(page) = self.shown_form_page.take() {
+            notices.push(Notice::ShowPage(page.mpp()));
+        }
+        notices
+    }
+
+    fn extras(&self, page: PageAddress, subcode: SubCode) -> Option<&PageExtras> {
+        self.extras
+            .get(&(page, subcode))
+            .or_else(|| self.extras.iter().find(|((address, _), _)| *address == page).map(|(_, extras)| extras))
+    }
+
+    fn submit(&mut self, submission: Submission) {
+        self.send(&Frame::Submit(submission));
+    }
+
+    fn confirm(&mut self, yes: bool) {
+        self.send(&Frame::Confirm(yes));
+    }
+
+    fn follow(&mut self, service: u8, page: PageAddress, subcode: SubCode) {
+        if let Some(name) = self.services.get(usize::from(service)).cloned() {
+            let sub = if subcode.is_any() { u16::MAX } else { subcode.value() };
+            self.send(&Frame::Follow(name, page.mpp(), sub));
+        }
+    }
+
+    fn service_name(&self, service: u8) -> Option<String> {
+        self.services.get(usize::from(service)).cloned()
+    }
+}
+
+impl Live {
+    fn receive(&mut self, session: &mut Session, format: Format, page: &PageData, now: Instant) {
+        if !page.secure && page.origin != Origin::Push {
+            self.notices.push(Notice::Unencrypted);
+        }
+        let first = self.feed_page(session, format, page, now);
+        if page.origin == Origin::Form {
+            // A form response carrying a page is shown (REQ-WEB-011).
+            self.shown_form_page = first;
+        }
     }
 }
 
