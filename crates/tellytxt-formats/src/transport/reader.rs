@@ -15,6 +15,7 @@ use crate::consts::{
 };
 use crate::item::{Capacity, Diagnostic, DiagnosticKind, Item, Reader, offset_of, saturate_u32};
 use crate::pes::PesParser;
+use crate::text::copy_prefix;
 
 use super::{MAX_PROGRAMS, TeletextEntry, TeletextType, TsConfig, TsPacketSize};
 
@@ -323,9 +324,8 @@ impl TsReader {
             }
             self.report_skipped(out);
             let mut packet = [0; TS_PACKET_BYTES];
-            if let Some(source) = self.buffer.get(self.start..self.start.saturating_add(TS_PACKET_BYTES)) {
-                packet.copy_from_slice(source);
-            }
+            // At least one whole packet is available, checked above.
+            copy_prefix(&mut packet, self.buffer.get(self.start..).unwrap_or(&[]));
             let offset = self.buffer_offset;
             self.consume(size.bytes());
             self.packet(&packet, offset, out);
@@ -638,17 +638,23 @@ impl Reader for TsReader {
         let mut rest = bytes;
         while !rest.is_empty() {
             if self.start > 0 {
-                self.buffer.copy_within(self.start..self.end, 0);
+                // REQ-GEN-019: a byte loop rather than `copy_within`, whose
+                // range check the optimiser cannot remove. Moving forward is
+                // correct for the overlap, as the source is never behind
+                // the target.
+                for index in 0..self.end.saturating_sub(self.start) {
+                    if let Some(byte) = self.buffer.get(self.start.saturating_add(index)).copied()
+                        && let Some(slot) = self.buffer.get_mut(index)
+                    {
+                        *slot = byte;
+                    }
+                }
                 self.end = self.end.saturating_sub(self.start);
                 self.start = 0;
             }
-            let take = BUFFER_BYTES.saturating_sub(self.end).min(rest.len());
-            let (now, later) = rest.split_at(take);
-            if let Some(target) = self.buffer.get_mut(self.end..self.end.saturating_add(take)) {
-                target.copy_from_slice(now);
-            }
+            let take = copy_prefix(self.buffer.get_mut(self.end..).unwrap_or(&mut []), rest);
             self.end = self.end.saturating_add(take);
-            rest = later;
+            rest = rest.get(take..).unwrap_or(&[]);
             self.process(out, false);
         }
     }

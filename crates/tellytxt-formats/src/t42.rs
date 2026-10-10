@@ -9,6 +9,7 @@ use tellytxt_core::ecc::reverse_bits;
 use tellytxt_core::packet::{Packet, PacketMeta};
 
 use crate::item::{Diagnostic, DiagnosticKind, Item, Reader, offset_of, saturate_u32};
+use crate::text::copy_prefix;
 
 /// The leading bytes of the 45-byte form, in transmission order.
 const RUN_IN_PREFIX: [u8; 3] = [CLOCK_RUN_IN, CLOCK_RUN_IN, FRAMING_CODE];
@@ -63,7 +64,8 @@ impl T42Variant {
         }
         let body = unit.get(self.prefix().len()..)?;
         let mut bytes = [0; PACKET_BYTES];
-        bytes.copy_from_slice(body);
+        // The length check above makes the body exactly one packet long.
+        copy_prefix(&mut bytes, body);
         if self == Self::Reversed {
             for byte in &mut bytes {
                 *byte = reverse_bits(*byte);

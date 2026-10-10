@@ -50,12 +50,8 @@ impl<const N: usize> Text<N> {
     /// Replaces the contents with as much of `bytes` as fits. Returns false
     /// when some bytes did not fit.
     pub fn set(&mut self, bytes: &[u8]) -> bool {
-        let count = bytes.len().min(N);
-        if let (Some(target), Some(source)) = (self.bytes.get_mut(..count), bytes.get(..count)) {
-            target.copy_from_slice(source);
-        }
-        self.len = count;
-        count == bytes.len()
+        self.len = copy_prefix(&mut self.bytes, bytes);
+        self.len == bytes.len()
     }
 
     /// Appends one byte. Returns false, changing nothing, when full.
@@ -94,9 +90,32 @@ impl<const N: usize> Text<N> {
     }
 }
 
+/// Copies as many bytes as both slices hold from the start of `source` to
+/// the start of `target`, and returns how many.
+///
+/// REQ-GEN-019: a loop over the pair, not `copy_from_slice`. Where the
+/// optimiser cannot see that two slices cut to the same length are equal,
+/// `copy_from_slice` links its length-mismatch panic into the image.
+pub(crate) fn copy_prefix(target: &mut [u8], source: &[u8]) -> usize {
+    for (to, from) in target.iter_mut().zip(source) {
+        *to = *from;
+    }
+    target.len().min(source.len())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn copy_prefix_copies_the_shorter_length() {
+        let mut target = [0u8; 3];
+        assert_eq!(copy_prefix(&mut target, b"ab"), 2);
+        assert_eq!(target, *b"ab\0");
+        assert_eq!(copy_prefix(&mut target, b"wxyz"), 3);
+        assert_eq!(target, *b"wxy");
+        assert_eq!(copy_prefix(&mut [], b"a"), 0);
+    }
 
     #[test]
     fn truncates_and_reports() {

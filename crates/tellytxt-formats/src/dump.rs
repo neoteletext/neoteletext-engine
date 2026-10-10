@@ -10,6 +10,7 @@ use tellytxt_core::consts::{CODE_MASK_7BIT, COLUMNS};
 use crate::consts::{DUMP_BYTES_24, DUMP_BYTES_25};
 use crate::item::{Diagnostic, DiagnosticKind, Item, Reader, offset_of};
 use crate::page::PageFile;
+use crate::text::copy_prefix;
 
 /// Reads a whole dump into `page`. Returns false when `data` is neither
 /// size.
@@ -54,12 +55,7 @@ impl DumpReader {
 impl Reader for DumpReader {
     fn feed(&mut self, bytes: &[u8], _out: &mut dyn FnMut(Item<'_>)) {
         self.total = offset_of(self.total, bytes.len());
-        let take = DUMP_BYTES_25.saturating_sub(self.len).min(bytes.len());
-        if let (Some(target), Some(source)) =
-            (self.buffer.get_mut(self.len..self.len.saturating_add(take)), bytes.get(..take))
-        {
-            target.copy_from_slice(source);
-        }
+        let take = copy_prefix(self.buffer.get_mut(self.len..).unwrap_or(&mut []), bytes);
         self.len = self.len.saturating_add(take);
     }
 

@@ -16,6 +16,8 @@ use crate::consts::{
 };
 #[cfg(feature = "sliced")]
 use crate::item::{Diagnostic, DiagnosticKind, Item, Reader, offset_of, saturate_u32};
+#[cfg(feature = "sliced")]
+use crate::text::copy_prefix;
 
 /// Byte order of the 32-bit fields, which is that of the computer that
 /// wrote the file.
@@ -101,12 +103,7 @@ impl Reader for SlicedReader {
             if self.len == 0 {
                 self.record_offset = offset_of(base, index);
             }
-            let take = SLICED_RECORD_BYTES.saturating_sub(self.len).min(rest.len());
-            if let (Some(target), Some(source)) =
-                (self.record.get_mut(self.len..self.len.saturating_add(take)), rest.get(..take))
-            {
-                target.copy_from_slice(source);
-            }
+            let take = copy_prefix(self.record.get_mut(self.len..).unwrap_or(&mut []), rest);
             self.len = self.len.saturating_add(take);
             index = index.saturating_add(take);
             if self.len == SLICED_RECORD_BYTES {

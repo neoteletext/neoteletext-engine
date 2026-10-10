@@ -30,6 +30,7 @@ use crate::sliced::ByteOrder;
 #[cfg(feature = "sliced")]
 use crate::sliced::SlicedReader;
 use crate::t42::{T42Reader, T42Variant};
+use crate::text::copy_prefix;
 #[cfg(feature = "transport")]
 use crate::transport::TsReader;
 use crate::transport::{TsConfig, TsPacketSize};
@@ -514,13 +515,9 @@ impl Reader for AutoReader {
     fn feed(&mut self, bytes: &[u8], out: &mut dyn FnMut(Item<'_>)) {
         let mut rest = bytes;
         while matches!(self.state, State::Detecting) && !rest.is_empty() {
-            let take = DETECTION_BYTES.saturating_sub(self.len).min(rest.len());
-            let (now, later) = rest.split_at(take);
-            if let Some(target) = self.window.get_mut(self.len..self.len.saturating_add(take)) {
-                target.copy_from_slice(now);
-            }
+            let take = copy_prefix(self.window.get_mut(self.len..).unwrap_or(&mut []), rest);
             self.len = self.len.saturating_add(take);
-            rest = later;
+            rest = rest.get(take..).unwrap_or(&[]);
             self.decide(false, out);
             if matches!(self.state, State::Detecting) && self.len == DETECTION_BYTES {
                 // A full window decides; NeedMore cannot follow it.

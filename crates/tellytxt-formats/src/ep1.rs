@@ -15,6 +15,7 @@ use crate::consts::{
 use crate::encode::DESIGNATION_GROUP_SHIFT;
 use crate::item::{Diagnostic, DiagnosticKind, Item, Reader, offset_of, saturate_u32};
 use crate::page::{EnhancementPacket, PageFile};
+use crate::text::copy_prefix;
 
 /// Bytes of the Level 1 data: 24 rows, a further row and the terminator.
 const LEVEL1_BYTES: usize = (EP1_ROWS + 1) * COLUMNS + EP1_TERMINATOR_BYTES;
@@ -131,12 +132,7 @@ impl Ep1Reader {
 impl Reader for Ep1Reader {
     fn feed(&mut self, bytes: &[u8], _out: &mut dyn FnMut(Item<'_>)) {
         self.total = offset_of(self.total, bytes.len());
-        let take = EP1_MAX_BYTES.saturating_sub(self.len).min(bytes.len());
-        if let (Some(target), Some(source)) =
-            (self.buffer.get_mut(self.len..self.len.saturating_add(take)), bytes.get(..take))
-        {
-            target.copy_from_slice(source);
-        }
+        let take = copy_prefix(self.buffer.get_mut(self.len..).unwrap_or(&mut []), bytes);
         self.len = self.len.saturating_add(take);
     }
 
