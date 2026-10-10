@@ -1812,7 +1812,8 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
         let url_text = url.as_ref().map_or("", Url::as_str);
         let secure = url.as_ref().is_some_and(Url::is_secure);
         match done {
-            None => {}
+            // The push reader is strict, so it never skips a message.
+            None | Some(WsMessage::Skipped) => {}
             Some(WsMessage::Text(len)) => {
                 self.push.healthy = true;
                 let bytes = self.buffers.push_message.get(..len).unwrap_or(&[]);

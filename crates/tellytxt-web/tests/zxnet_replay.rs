@@ -66,7 +66,10 @@ impl Harness {
 
     fn settle(&mut self) {
         let mut buffer = [0u8; 4096];
-        for _ in 0..10_000 {
+        // Enough reads for the 88 KB message of the oversized test in the
+        // transport's small chunks; the bound only stops a feed that never
+        // settles.
+        for _ in 0..100_000 {
             let Some(input) = self.pump.poll(ConnectionId::Live, &mut buffer) else { return };
             let (kind, peer, bytes) = match input {
                 NetInput::Connected(_, peer) => (0, Some(peer), Vec::new()),
@@ -172,6 +175,20 @@ fn channel_identifiers() {
     );
     assert_eq!(Channel::from_identifier("eyJhIjoxfQ==").map(|_| ()), Err(ChannelError::Json));
     assert_eq!(Channel::from_address("ws://zxnet.co.uk/ws/x", "x").map(|_| ()), Err(ChannelError::Address));
+}
+
+/// The server began sending "channelSettings" with the channel's clock face
+/// (88,311 bytes on 10 October 2026), more than the message buffer holds.
+/// It is skipped, and the page data after it still arrives.
+#[test]
+fn oversized_messages_are_skipped_not_fatal() {
+    let mut harness = connected("teefax");
+    let settings = format!(r#"["channelSettings", {{"clock": "{}"}}]"#, "x".repeat(88_311));
+    harness.server(&[&settings, r#"["secondTick"]"#, HEADER, ROW]);
+    let records = harness.take();
+    assert!(has_event(&records, "Ignored(TooLong)"), "{records:?}");
+    assert!(!has_event(&records, "Reconnecting"), "{records:?}");
+    assert_eq!(packets(&records).len(), 2);
 }
 
 #[test]

@@ -208,6 +208,8 @@ pub enum Malformed {
     PacketData,
     /// A binary frame, which the feed never sends.
     Binary,
+    /// A message longer than the message buffer, skipped unread.
+    TooLong,
 }
 
 /// An event from the live feed.
@@ -598,7 +600,7 @@ impl<'m, R: RandomSource> ZxnetFeed<'m, R> {
             phase: Phase::Stopped,
             key: [0; crate::consts::WEBSOCKET_KEY_TEXT],
             head: HeadCollector::default(),
-            frames: FrameReader::new(),
+            frames: FrameReader::skipping_oversized(),
             attempts: 0,
             last_activity: Instant(0),
             next_keepalive: Instant(0),
@@ -699,7 +701,10 @@ impl<'m, R: RandomSource> ZxnetFeed<'m, R> {
         }
         self.key = ws::new_key(&mut self.random);
         self.head.reset();
-        self.frames = FrameReader::new();
+        // The server sends messages the feed does not use, such as
+        // "channelSettings" with the channel's clock face at about 88 KB;
+        // they are skipped, not taken as a broken connection.
+        self.frames = FrameReader::skipping_oversized();
         let mut writer = Writer::new(self.buffers.request);
         let written = ws::write_handshake_headers(&mut writer, &self.channel.address, &self.key)
             .and_then(|()| writer.put(crate::consts::CRLF));
@@ -816,6 +821,7 @@ impl<'m, R: RandomSource> ZxnetFeed<'m, R> {
                     match done {
                         None | Some(WsMessage::Pong) => {}
                         Some(WsMessage::Text(len)) => self.message(now, len, sink),
+                        Some(WsMessage::Skipped) => event(sink, LiveEvent::Ignored(Malformed::TooLong)),
                         Some(WsMessage::Binary(_)) => event(sink, LiveEvent::Ignored(Malformed::Binary)),
                         Some(WsMessage::Ping) => {
                             let mut payload = [0u8; crate::consts::WS_CONTROL_MAX];

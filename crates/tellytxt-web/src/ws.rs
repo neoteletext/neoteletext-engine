@@ -162,6 +162,9 @@ pub enum WsMessage {
     Pong,
     /// The server closed the connection, with its status if it sent one.
     Close(Option<u16>),
+    /// A data message longer than the message buffer, read to its end and
+    /// discarded, from a reader made with [`FrameReader::skipping_oversized`].
+    Skipped,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -186,6 +189,10 @@ pub struct FrameReader {
     message_len: usize,
     control: [u8; WS_CONTROL_MAX],
     control_len: usize,
+    /// Discard data messages that do not fit the buffer instead of failing.
+    skip_oversized: bool,
+    /// The message being read does not fit and is being discarded.
+    skipping: bool,
 }
 
 impl Default for FrameReader {
@@ -209,7 +216,20 @@ impl FrameReader {
             message_len: 0,
             control: [0; WS_CONTROL_MAX],
             control_len: 0,
+            skip_oversized: false,
+            skipping: false,
         }
+    }
+
+    /// A reader that discards a data message longer than the message
+    /// buffer and reports it as [`WsMessage::Skipped`], for a feed whose
+    /// large messages the client does not need. Memory stays bounded by the
+    /// buffer (REQ-SEC-012); the bytes are read and dropped.
+    #[must_use]
+    pub const fn skipping_oversized() -> Self {
+        let mut reader = Self::new();
+        reader.skip_oversized = true;
+        reader
     }
 
     /// The payload of the last ping or close frame.
@@ -269,11 +289,16 @@ impl FrameReader {
                         let target = self.control.get_mut(self.control_len..end).ok_or(WsError::Protocol)?;
                         target.copy_from_slice(data);
                         self.control_len = end;
-                    } else {
+                    } else if !self.skipping {
                         let end = self.message_len.saturating_add(take);
-                        let target = message.get_mut(self.message_len..end).ok_or(WsError::TooBig)?;
-                        target.copy_from_slice(data);
-                        self.message_len = end;
+                        match message.get_mut(self.message_len..end) {
+                            Some(target) => {
+                                target.copy_from_slice(data);
+                                self.message_len = end;
+                            }
+                            None if self.skip_oversized => self.skipping = true,
+                            None => return Err(WsError::TooBig),
+                        }
                     }
                     used = used.saturating_add(take);
                     self.remaining = self.remaining.saturating_sub(take as u64);
@@ -340,6 +365,7 @@ impl FrameReader {
                 }
                 self.message_opcode = Some(self.opcode);
                 self.message_len = 0;
+                self.skipping = false;
             }
             OPCODE_CONTINUATION => {
                 if self.message_opcode.is_none() {
@@ -377,6 +403,9 @@ impl FrameReader {
                 let len = self.message_len;
                 let opcode = self.message_opcode.take();
                 self.message_len = 0;
+                if core::mem::take(&mut self.skipping) {
+                    return Ok(Some(WsMessage::Skipped));
+                }
                 if opcode == Some(OPCODE_TEXT) {
                     let text = message.get(..len).unwrap_or(&[]);
                     if core::str::from_utf8(text).is_err() {
@@ -566,5 +595,34 @@ mod tests {
         fragments.extend_from_slice(&[0u8; 128]);
         assert_eq!(read_all(&fragments, 200, 64).map(|m| m.len()), Err(WsError::TooBig));
         assert_eq!(read_all(&fragments, 256, 64).map(|m| m.len()), Ok(1));
+    }
+
+    /// An oversized data message: the strict reader fails with `TooBig`; the
+    /// skipping reader drops it, fragments included, and reads the next.
+    #[test]
+    fn oversized_messages_fail_or_are_skipped() {
+        let big = [b'a'; 200];
+        let mut stream = std::vec![OPCODE_TEXT, 126];
+        stream.extend_from_slice(&200u16.to_be_bytes());
+        stream.extend_from_slice(&big);
+        // The same, split into a first frame and a final continuation.
+        stream.extend_from_slice(&[OPCODE_TEXT, 100]);
+        stream.extend_from_slice(&big[..100]);
+        stream.extend_from_slice(&[WS_FIN | OPCODE_CONTINUATION, 100]);
+        stream.extend_from_slice(&big[..100]);
+        stream.extend_from_slice(&[WS_FIN | OPCODE_TEXT, 2, b'h', b'i']);
+        stream[0] |= WS_FIN;
+        let mut buffer = [0u8; 16];
+        assert_eq!(FrameReader::new().feed(&mut buffer, &stream), Err(WsError::TooBig));
+        let mut reader = FrameReader::skipping_oversized();
+        let mut rest = stream.as_slice();
+        let mut got = std::vec::Vec::new();
+        while !rest.is_empty() {
+            let (used, message) = reader.feed(&mut buffer, rest).unwrap();
+            got.extend(message);
+            rest = &rest[used..];
+        }
+        assert_eq!(got, [WsMessage::Skipped, WsMessage::Skipped, WsMessage::Text(2)]);
+        assert_eq!(&buffer[..2], b"hi");
     }
 }

@@ -269,9 +269,12 @@ pub fn server_frame(opcode: u8, payload: &[u8]) -> Vec<u8> {
     let mut frame = std::vec![0x80 | opcode];
     if payload.len() < 126 {
         frame.push(payload.len() as u8);
-    } else {
+    } else if let Ok(length) = u16::try_from(payload.len()) {
         frame.push(126);
-        frame.extend_from_slice(&(payload.len() as u16).to_be_bytes());
+        frame.extend_from_slice(&length.to_be_bytes());
+    } else {
+        frame.push(127);
+        frame.extend_from_slice(&(payload.len() as u64).to_be_bytes());
     }
     frame.extend_from_slice(payload);
     frame
