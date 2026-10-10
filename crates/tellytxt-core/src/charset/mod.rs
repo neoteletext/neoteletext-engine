@@ -192,6 +192,15 @@ pub fn second_g0(value: u8) -> Option<G0> {
     tables::second_g0(value & CODE_MASK_7BIT)
 }
 
+/// Looks up Table 34 for the data of a Modified G0 and G2 Character Set
+/// Designation triplet (Table 29 mode 01000, clause 15.4): the G0 and G2
+/// sets, or `None` when the value is reserved. A G0 set chosen this way is
+/// used without national option (clause 15.4 note).
+#[must_use]
+pub fn modified_designation(value: u8) -> Option<(G0Set, G2Set)> {
+    tables::modified_designation(value & CODE_MASK_7BIT)
+}
+
 impl CharRef {
     /// A DRCS character as a character reference.
     #[must_use]
@@ -269,6 +278,40 @@ mod tests {
 
     fn latin(national: NationalOption) -> G0 {
         G0 { set: G0Set::Latin, national: Some(national) }
+    }
+
+    /// REQ-L25-012: every row of Table 34, and its reserved values.
+    #[test]
+    fn table_34_modified_designation() {
+        use G0Set as S;
+        use G2Set::{Arabic, Cyrillic, Greek, Latin};
+        let mut expected = std::vec::Vec::new();
+        for group in 0..4 {
+            for low in 0..8 {
+                expected.push((value(group, low), (S::Latin, Latin)));
+            }
+        }
+        expected.extend([
+            (value(0b0100, 0), (S::Cyrillic1, Cyrillic)),
+            (value(0b0100, 1), (S::Latin, Latin)),
+            (value(0b0100, 2), (S::Latin, Latin)),
+            (value(0b0100, 3), (S::Latin, Latin)),
+            (value(0b0100, 4), (S::Cyrillic2, Cyrillic)),
+            (value(0b0100, 5), (S::Cyrillic3, Cyrillic)),
+            (value(0b0100, 6), (S::Latin, Latin)),
+            (value(0b0110, 6), (S::Latin, Latin)),
+            (value(0b0110, 7), (S::Greek, Greek)),
+            (value(0b1000, 0), (S::Latin, Arabic)),
+            (value(0b1000, 4), (S::Latin, Arabic)),
+            (value(0b1000, 7), (S::Arabic, Arabic)),
+            (value(0b1010, 5), (S::Hebrew, Arabic)),
+            (value(0b1010, 7), (S::Arabic, Arabic)),
+        ]);
+        for data in 0..=0x7F {
+            let want = expected.iter().find(|(entry, _)| *entry == data).map(|(_, sets)| *sets);
+            assert_eq!(modified_designation(data), want, "value {data:#04x}");
+        }
+        assert_eq!(modified_designation(value(0b0100, 7)), None, "0100111 is blank, so reserved");
     }
 
     /// REQ-CHR-003: a defined Table 32 entry is used as it is.

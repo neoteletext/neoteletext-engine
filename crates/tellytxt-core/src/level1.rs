@@ -543,24 +543,41 @@ impl Default for DisplayOptions {
 }
 
 /// Resolves the page's character sets (decision E.4, REQ-CHR-003): the
-/// national option from C12 to C14, the group from X/28/0, M/29/0 or the
-/// configured default. Returns the designation, the second G0 set, and
-/// whether a reserved entry needed the fallback.
+/// group from the highest-priority designation, or the configured default.
+/// Returns the designation, the second G0 set, and whether a reserved entry
+/// needed the fallback.
+///
+/// The designations are taken in the order of Annex C.4 rule 1: X/28/0
+/// format 1, X/28/4 (Level 3.5 only), M/29/0, M/29/4 (Level 3.5 only)
+/// (decision E.44); a source whose designation group is damaged is absent.
+/// The national option comes from C12 to C14, except at Levels 2.5 and
+/// 3.5, where bits 8 to 10 of the chosen designation give it when there is
+/// one (Annex E.9, decisions E.4 and E.50; REQ-L25-012).
 #[must_use]
 pub fn resolve_designation(
     page: Option<&StoredPage>,
     magazine: &MagazineData,
     config: &Config,
 ) -> (Designation, Option<G0>, bool) {
-    let national = config.fixed_national_index.unwrap_or_else(|| page.map_or(0, |page| page.control.national_index()))
-        & NATIONAL_INDEX_MASK;
-    // A page's own X/28/0 counts only when it is a basic Level 1 page; then
-    // the magazine's M/29/0 applies (decision E.4).
+    let level_35 = config.level.is_level35();
+    // A page's own X/28/0 or X/28/4 counts only when it is a basic Level 1
+    // page; then the magazine's packets apply (decision E.4).
     let page_designations = page
         .and_then(|page| page.page_data)
         .filter(|data| data.format.is_some_and(|format| format.function == PAGE_FUNCTION_BASIC))
         .and_then(|data| data.fields.designations);
-    let designations = page_designations.or_else(|| magazine.data.and_then(|fields| fields.designations));
+    let page_35 = page
+        .and_then(|page| page.page_data_level35)
+        .filter(|data| level_35 && data.format.is_some_and(|format| format.function == PAGE_FUNCTION_BASIC))
+        .and_then(|data| data.fields.designations);
+    let magazine_35 = magazine.level35.filter(|_| level_35).and_then(|fields| fields.designations);
+    let designations =
+        page_designations.or(page_35).or_else(|| magazine.data.and_then(|fields| fields.designations)).or(magazine_35);
+    let header = page.map_or(0, |page| page.control.national_index());
+    let national = config.fixed_national_index.unwrap_or_else(|| match designations {
+        Some(designations) if config.level.is_enhanced() => designations.default,
+        _ => header,
+    }) & NATIONAL_INDEX_MASK;
     let group =
         designations.map_or(config.default_region, |designations| designations.default >> DESIGNATION_GROUP_SHIFT);
     let (designation, fallback) = designation_with_fallback((group << DESIGNATION_GROUP_SHIFT) | national);
@@ -1234,6 +1251,52 @@ mod tests {
             }
         }
         assert_eq!(Cell::BLANK.attributes.source(), CharSource::Level1);
+    }
+
+    /// REQ-L25-012, decisions E.4, E.44 and E.50: the designation order of
+    /// Annex C.4 rule 1 at each level, and the national option from the
+    /// designation at Levels 2.5 and 3.5 only.
+    #[test]
+    fn designation_follows_annex_c4_and_decision_e50() {
+        use crate::config::PresentationLevel as Level;
+        use crate::packet::{PageEnhancement, PageFormat};
+        use crate::types::{ControlBits, Designations, PresentationFields};
+        let fields = |default: u8| PresentationFields {
+            designations: Some(Designations { default, second: 0x7F }),
+            ..PresentationFields::default()
+        };
+        let basic = Some(PageFormat { function: PAGE_FUNCTION_BASIC, coding: 0 });
+        // Group 1 (Central European): index 0 Polish, index 1 German.
+        let polish = 0b0001 << DESIGNATION_GROUP_SHIFT;
+        let mut page = StoredPage::EMPTY;
+        // C14 set: header national index 1.
+        page.control = ControlBits(1 << 14);
+        let magazine =
+            MagazineData { data: Some(fields(0)), level35: Some(fields(0b0110_111)), ..MagazineData::default() };
+        let option = |page: &StoredPage, level| {
+            let config = Config { level, ..Config::default() };
+            resolve_designation(Some(page), &magazine, &config).0.g0
+        };
+        let latin = |national| G0 { set: charset::G0Set::Latin, national: Some(national) };
+        // X/28/0 first; the header's option at 1.5, the designation's at 2.5.
+        page.page_data = Some(PageEnhancement { format: basic, fields: fields(polish) });
+        page.page_data_level35 = Some(PageEnhancement { format: basic, fields: fields(0b0100_000) });
+        assert_eq!(option(&page, Level::Level15), latin(charset::NationalOption::German));
+        assert_eq!(option(&page, Level::Level25), latin(charset::NationalOption::Polish));
+        assert_eq!(option(&page, Level::Level35), latin(charset::NationalOption::Polish));
+        // Without X/28/0: X/28/4 at 3.5 only (Cyrillic 1), M/29/0 otherwise.
+        page.page_data = None;
+        assert_eq!(option(&page, Level::Level35).set, charset::G0Set::Cyrillic1);
+        assert_eq!(option(&page, Level::Level25), latin(charset::NationalOption::English));
+        // Then M/29/0, then M/29/4 (Greek) at 3.5.
+        page.page_data_level35 = None;
+        assert_eq!(option(&page, Level::Level35), latin(charset::NationalOption::English));
+        let only_35 = MagazineData { data: None, ..magazine };
+        let config = Config { level: Level::Level35, ..Config::default() };
+        assert_eq!(resolve_designation(Some(&page), &only_35, &config).0.g0.set, charset::G0Set::Greek);
+        let config = Config { level: Level::Level25, ..Config::default() };
+        let header_only = resolve_designation(Some(&page), &only_35, &config).0.g0;
+        assert_eq!(header_only, latin(charset::NationalOption::German), "no designation: C12 to C14");
     }
 
     /// REQ-TST-013's double height with its ignored lower row.
