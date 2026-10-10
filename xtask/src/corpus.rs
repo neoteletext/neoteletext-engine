@@ -12,7 +12,9 @@ const MANIFEST: &str = "tests/corpus-manifest.txt";
 const UNPINNED: &str = "unpinned";
 
 fn corpus_dir() -> Result<PathBuf, String> {
-    std::env::var_os("TELLYTXT_CORPUS").map(PathBuf::from).ok_or_else(|| "set TELLYTXT_CORPUS to a directory".to_string())
+    std::env::var_os("TELLYTXT_CORPUS")
+        .map(PathBuf::from)
+        .ok_or_else(|| "set TELLYTXT_CORPUS to a directory".to_string())
 }
 
 fn sha256(path: &Path) -> Result<String, String> {

@@ -69,9 +69,7 @@ fn checksums() -> String {
     ];
     for reveal in [false, true] {
         for (name, mode, rounding) in modes {
-            let mut config = Config::default();
-            config.cell_mode = mode;
-            config.rounding = rounding;
+            let config = Config { cell_mode: mode, rounding, ..Config::default() };
             let grid = grid_of("tests/pages/testcard.tti", &config);
             let options = RenderOptions::from_config(&config, reveal);
             let mut pixels = vec![0u8; PAGE_WIDTH * 25 * options.row_height()];
