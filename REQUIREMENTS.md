@@ -1484,6 +1484,30 @@ The decisions are:
 
 *Reason:* A dependency is code the project ships to a microcontroller but cannot lint, fuzz or budget. On the smallest targets the cost of writing a small, well-specified piece is lower than the cost of trusting it.
 
+**E.39 — Details of the web protocols that the requirements leave open.**
+Decided while implementing `tellytxt-web` on 10 October 2026:
+
+1. **Descriptor members** (REQ-WEB-002). The JSON members are:
+   - `name`;
+   - `initial_page`, a string such as `"100"`;
+   - `page_template`;
+   - `push`, an object with `address` and `method` (`"websocket"` or `"sse"`);
+   - `form_origins`;
+   - `region`, 0 to 15;
+   - `services`, a list of objects with `name`, `display_name` and `descriptor`.
+
+   Unknown or repeated members make the descriptor invalid. Addresses may be relative to the descriptor's own address. Template placeholders may appear only in the path and query, never in the host.
+2. **Subscriptions** (REQ-WEB-005). Over WebSocket the client sends `subscribe all` or `subscribe 100 1A0`. For server-sent events the push address gets the query parameter `subscribe=all` or `subscribe=100,1A0`.
+3. **`{sub}` without a sub-page** expands to `0000`.
+4. **Server-sent event connections send `Accept: text/event-stream`.** REQ-WEB-014 is amended to permit it.
+5. **The server-sent events `retry` field is ignored**, because REQ-WEB-005 fixes the reconnection delays.
+6. **A response body ended by the connection closing is accepted**, as RFC 9112 section 6.3 allows.
+7. **Retries.** A GET is retried once if a kept-alive connection closes before answering. A POST is never retried.
+8. **`Expires` cookies.** Until the port supplies calendar time, a cookie with only `Expires` is kept as a session cookie, and session cookies are never saved (REQ-SEC-013).
+9. **IPv6 hosts are compared exactly as written**, so `[::1]` and `[0:0:0:0:0:0:0:1]` are different origins. This is the stricter reading of REQ-WEB-015.
+
+*Reason:* Each is the simplest choice consistent with the requirements and the relevant RFCs, and REQ-DOC-004 requires behaviour the requirements leave open to be recorded here.
+
 ---
 
 # Part F — Requirements
@@ -4325,7 +4349,7 @@ The web module shall implement exactly the following profile, and nothing beyond
 |---|---|
 | Protocol | HTTP/1.1 over plain or TLS connections supplied by the port |
 | Methods | GET, and POST for form submission only |
-| Request headers sent | `Host`, `User-Agent` (fixed, naming tellytxt.com and its version), `Accept` (the two page media types and JSON), `Accept-Encoding: identity`, `Cookie`, `If-None-Match`, `If-Modified-Since`, `Content-Type` and `Content-Length` (form submissions only), `Last-Event-ID` (server-sent events only), and the WebSocket upgrade headers. No other headers are sent, in particular no `Referer`. |
+| Request headers sent | `Host`, `User-Agent` (fixed, naming tellytxt.com and its version), `Accept` (the two page media types and JSON, or `text/event-stream` for server-sent events, decision E.39), `Accept-Encoding: identity`, `Cookie`, `If-None-Match`, `If-Modified-Since`, `Content-Type` and `Content-Length` (form submissions only), `Last-Event-ID` (server-sent events only), and the WebSocket upgrade headers. No other headers are sent, in particular no `Referer`. |
 | Response handling | Status codes 200, 204, 301, 302, 303, 304, 307, 308, 404 and other 4xx and 5xx codes as errors. Headers: `Content-Type`, `Content-Length`, `Transfer-Encoding: chunked`, `Location`, `Set-Cookie`, `ETag`, `Last-Modified`, `Cache-Control` (`max-age`, `no-cache`, `no-store`) and `Retry-After`. Other headers are ignored. |
 | Connections | One request at a time per connection. Connections may be reused (persistent connections); pipelining is not used. |
 | Push | WebSocket (RFC 6455) and server-sent events, as REQ-WEB-005 defines |

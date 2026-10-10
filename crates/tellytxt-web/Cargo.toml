@@ -1,13 +1,17 @@
 [package]
 name = "tellytxt-web"
+description = "The tellytxt.com minimal web user agent: sans-IO HTTP/1.1, WebSocket, server-sent events, cookies, forms and the zxnet live feed"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 
+# Decision E.38: `embedded-io` and `httparse` are the only external crates.
 [dependencies]
 tellytxt-core.workspace = true
+embedded-io.workspace = true
+httparse.workspace = true
 
 [lints]
 workspace = true
