@@ -3,7 +3,7 @@
 **Status:** Draft 2 (consolidated) for review
 **Date:** 1 October 2026
 **Implementation language:** Rust, edition 2024 (REQ-GEN-001), for ARM, RISC-V, Xtensa (ESP32) and AMD64 targets (REQ-GEN-015)
-**Presentation levels in scope:** Level 1.0 and Level 1.5 of the World System Teletext (System B) as defined by ETSI EN 300 706
+**Presentation levels in scope:** Levels 1.0, 1.5, 2.5 and 3.5 of the World System Teletext (System B) as defined by ETSI EN 300 706 (Levels 2.5 and 3.5 added on 10 October 2026, decision E.40)
 **Baseline reference hardware:** Philips SAA5050 (rendering) and Philips SAA5246A (receiver behaviour)
 
 ---
@@ -455,7 +455,7 @@ Clause 12 defines the levels:
 - **Level 1.5** is where the "decoder responds as Level 1 but the character repertoire is extended via packets X/26".
 - **Level 2.5 and Level 3.5** add non-spacing attributes, colour tables, objects, redefinable characters, side panels and more.
 
-Level 2.5 and Level 3.5 are out of scope for this project. Level 1.0 does not include:
+Level 2.5 and Level 3.5 were out of scope when this walkthrough was written. They were brought into scope on 10 October 2026 (decision E.40), and are specified in areas L25, OBJ and DRC of Part F. Level 1.0 does not include:
 - the black foreground codes;
 - double width and double size;
 - the supplementary character sets G2 and G3;
@@ -989,6 +989,7 @@ Each entry records a place where the standard is silent, contradicts itself, or 
 **E.1 — Scope of presentation levels and how Level 1.5 is layered.**
 The receiver implements Level 1.0 and Level 1.5 only. Level 1.5 is implemented as a separate pass. It takes the fully decoded Level 1 page, meaning the grid of cells with their attributes, and applies the packet X/26 character overwrites to it. The raw received page is never modified.
 *Reason:* This is exactly how the reference SAA5246A receiver worked, with Level 1.5 done in microcontroller software over the stored page. It also keeps the Level 1 decoder simple and testable on its own. And it lets Level 2.5 be added later as a further pass without redesign.
+*Amended 10 October 2026:* The receiver now implements Levels 1.0, 1.5, 2.5 and 3.5, chosen by the presentation level setting (decision E.40). The pass described above is the Level 1.5 pass and is unchanged. At Levels 2.5 and 3.5 the enhancement pass of decision E.42 runs in its place. That pass changes attributes as well as glyphs: the Level 1 spacing attributes and the non-spacing attributes of each affected row are resolved together, as Annex C.2 describes (decision E.47). The raw received page is still never modified.
 
 **E.2 — Packet X/26 with designation code 15.**
 By default, X/26/15 is processed like designation codes 0 to 14. The "SAA5246A" compatibility profile ignores it.
@@ -997,6 +998,7 @@ By default, X/26/15 is processed like designation codes 0 to 14. The "SAA5246A" 
 **E.3 — Which row-address triplets set the active row.**
 By default, the receiver follows Annex A.3: every triplet with an address from 40 to 63 sets the active row, whatever its mode. Address 40 means row 24, addresses 41 to 63 mean rows 1 to 23, and mode 00111 with address 63 means row 0. A "strict" option follows clause 12.3.2 instead. Under that option only modes 00001 (Full Row Colour), 00100 (Set Active Position) and 00111 (Address Display Row 0) set the row.
 *Reason:* Annex A.3 is normative and describes how the Level 1.5 decoders that broadcasters tested against actually behave. The rule comes from EBU SPB 492 clause 14.6.4, the predecessor of EN 300 706. There, a row-address triplet of any mode sets the row for the character triplets that follow, which is how those decoders were built. Broadcasters were told to keep their data compatible with it; for example, Annex A.5 asks for Full Screen Colour to be sent with address 41. The two behaviours give the same result on correctly formed transmissions, so the choice only matters for malformed data.
+*Amended 10 October 2026:* At Levels 2.5 and 3.5 the strict rule of clause 12.3.2 always applies, whatever this setting says (decision E.46). Object Invocation and Object Definition triplets carry object numbers in their address field, so the Annex A.3 rule cannot be used there. The Annex A.3 rule remains the default at Level 1.5 only.
 
 **E.4 — Default character set designation at Level 1.5.**
 The national option subset is always taken from the header bits C12, C13 and C14, following Annex E.9. The "group", which is bits 11 to 14 of the Table 32 value, is resolved in this order:
@@ -1020,6 +1022,8 @@ The designation found this way also sets:
 
   Only the first triplet of X/28/1 and M/29/1 shall be read. Table 25 allows single-region equipment to ignore this data.
 
+*Amended 10 October 2026:* At Levels 2.5 and 3.5 the national option is taken from bits 8 to 10 of the highest-priority X/28 or M/29 designation when one is present (Annex E.9), and from C12 to C14 otherwise. The order of priority is that of Annex C.4 rule 1: X/28/0 format 1, X/28/4 (Level 3.5 only), M/29/0, M/29/4 (Level 3.5 only) (decision E.44). The first triplet of X/28/1 and M/29/1 remains for diagnostics only. Their other triplets carry the DRCS colour tables at Level 3.5 (decision E.54). The rule above is unchanged at Level 1.5.
+
 **E.5 — How a Level 1.5 overwrite interacts with the Level 1 page.**
 The standard is silent on the details (Part B.9). The receiver adopts the following rules:
 
@@ -1035,6 +1039,13 @@ The standard is silent on the details (Part B.9). The receiver adopts the follow
 - (j) Overwrites addressed to row 0, columns 0 to 7, are always discarded, because that area belongs to the receiver (REQ-SEC-005).
 
 *Reason:* Rules (a), (b) and (e) follow the only relevant statements in the standard. The others are the simplest choices consistent with it. Rule (f) matches the behaviour the standard itself attributes to existing Level 1.5 decoders (Table 26 notes 3 and 6).
+*Amended 10 October 2026:* The rules above are unchanged at Level 1.5. At Levels 2.5 and 3.5 these rules change:
+- (a) and (b): the Level 1 spacing attributes and the non-spacing attributes are resolved together, row by row, under Annex C.2, so enhancement data changes attributes as well as glyphs (decisions E.42 and E.47).
+- (c): a G1 character written by X/26 is a mosaic, and G0 and G2 characters can be underlined (decision E.50).
+- (f): enhancement characters written to the lower row of a double-height row are displayed, in the cells not covered by lower halves (Table 26 codes 0/D and 0/F; decision E.15, as amended).
+- (h): the later of two writes to the same cell wins only within one display priority; between priorities, clause 13.2 decides (decision E.51).
+
+Rules (d), (e), (g), (i) and (j) apply unchanged at every level.
 
 **E.6 — Where a page ends.**
 The receiver follows clause 7.2.1 and Annexes B.3 and B.4:
@@ -1084,6 +1095,7 @@ Columns 32 to 39, the clock, are updated from every valid header of any magazine
 **E.12 — Flash timing.**
 Flashing characters are shown for 48 fields and hidden for 16, as the real SAA5050 does. That is 960 milliseconds shown and 320 milliseconds hidden at 50 fields per second, which the datasheet describes as 0.75 hertz with a 3 to 1 ratio (Part C.8). When time is supplied in milliseconds rather than fields, those durations are used. The timing is configurable. In the hidden phase the character's foreground pixels are drawn in the background colour.
 *Reason:* The standard gives no rate. The SAA5050 is the rendering baseline.
+*Amended 10 October 2026:* Unchanged at Levels 1 and 1.5. At Levels 2.5 and 3.5, Table 29 defines a slow rate of 1 hertz and a fast rate of 2 hertz, and flash follows decision E.48, which keeps the 3 to 1 ratio of this decision within a one-second cycle.
 
 **E.13 — Character rounding rule.**
 The following rule is used for the 12-by-20 rendering mode. The SAA5050 datasheet describes rounding only in words (Part C.4). This exact rule is the one used by the MAME emulator (its SAA5050 device, source lines 433 to 436), and jsbeeb uses the same expression. beebjit, Bedstead and the published analysis of a decapsulated SAA5050 are equivalent to it. It is therefore confirmed, not assumed.
@@ -1130,6 +1142,12 @@ The transmitted content of that row is ignored entirely.
 - Double height in rows 0, 23 and 24 is treated as normal height.
 
 *Reason:* Table 26 and Annex C.3. The SAA5050 system behaves the same way. Annex C.3 lets the decoder choose for illegal rows, and normal height is the safest choice.
+*Amended 10 October 2026:* Unchanged at Levels 1 and 1.5. At Levels 2.5 and 3.5 (Table 26 codes 0/D and 0/F, Table 29 mode 01100 and Annex C.3):
+- enhancement characters written to the lower row, by local X/26 data or by objects, are displayed in the cells not covered by lower halves;
+- a row whose only double height or double size comes from non-spacing attributes does not suppress the row below;
+- double width and double size follow Annex C.3 (REQ-L25-025 and REQ-L25-026).
+
+Double height in rows 0, 23 and 24 is still treated as normal height.
 
 **E.16 — Hold mosaics details.**
 The receiver implements the Table 26 text exactly, including the rule that "The 'Held-Mosaic' character is always displayed in its original contiguous or separated form regardless of the mode prevailing at the time of substitution."
@@ -1189,6 +1207,8 @@ When a displayed page has C5 or C6 set, the receiver automatically switches to b
 - When rendering to an image with no video underneath, "picture" is rendered as transparent pixels (alpha zero), or as a configurable fill colour if the output format has no transparency.
 - When rendering on top of supplied video, the video shows through.
 
+*Amended 10 October 2026:* At Levels 2.5 and 3.5, the boxing bit of an X/26 Display Attributes triplet also starts a boxed area on these pages. On other pages it starts a window, inside which the full row colour becomes transparent. Which of the foreground or background colour, the row or screen colour, and the picture each pixel shows follows Table C.1 (decision E.47 and REQ-L25-029).
+
 **E.23 — Row 24.**
 By default, row 24 is displayed only when the page carries packet X/27/0 with the "display row 24" flag set (Annex H). Pages whose links come from the TTI Link Extension have their row 24 drawn by the receiver instead (decision E.36, REQ-NAV-011). The "SAA5246A" profile shows row 24 whenever the page carries packet X/24, like that chip's automatic Fastext row.
 
@@ -1218,6 +1238,8 @@ When producing text, the base letter and the Unicode combining character for the
 - the Table Of Pages navigation scheme;
 - Programme Delivery Control decoding;
 - Level 2.5 and 3.5.
+
+*Amended 10 October 2026:* Levels 2.5 and 3.5 are no longer excluded; the owner brought them into Phase 1 (decision E.40). Only a layout algorithm for proportional spacing remains excluded, because the standard defines none (decision E.50).
 
 **E.28 — Where real teletext data comes from, and what the receiver must read.**
 A search on 1 October 2026 found that no television channel publishes its live teletext on the open internet as raw data. Real teletext data is available only in the following forms, and the input requirements are built around them.
@@ -1288,6 +1310,10 @@ The decisions taken from this are:
 6. The core never scales. Scaling and aspect correction happen in the output stage, with a helper so ports get the 1.2 aspect factor right (REQ-RND-024).
 7. Decoding and drawing are decoupled. Drawing happens only when a row has changed or the flash state changes (REQ-RND-019).
 8. **The library stops at the row renderer.** It writes pixels into buffers supplied by the target port's hardware layer, and does nothing else with them. It does not put pixels on a screen, generate video signals, keep to display timing, or contain code for any specific hardware. Those are the port's responsibility, reached only through the platform interface (REQ-ARCH-009 and REQ-ARCH-010).
+
+*Amended 10 October 2026:* At Levels 2.5 and 3.5 (decisions E.42, E.49 and E.55):
+- **Item 3.** Objects, row colours, side panels and the row extension of the Font Style triplet are further features that cross rows. They are all resolved while the grid is built, so rows stay independent. A row is 40 cells plus the side-panel widths. The patterns and colour tables of the DRCS characters a page uses travel with the grid, so a row still renders from the grid and the viewer state alone.
+- **Item 5.** Flash and reveal are resolved at render time in the resolved colour mode, instead of by palette changes. The change tracker limits the redrawing to rows that flash or conceal. The palette technique remains for Levels 1 and 1.5.
 
 **E.30 — The web-native design, and what the jellytext project teaches.**
 tellytxt.com shall read pages from ordinary web servers as well as from broadcast data. It does so over:
@@ -1509,6 +1535,257 @@ Decided while implementing `tellytxt-web` on 10 October 2026:
 
 *Reason:* Each is the simplest choice consistent with the requirements and the relevant RFCs, and REQ-DOC-004 requires behaviour the requirements leave open to be recorded here.
 
+**E.40 — Presentation Levels 2.5 and 3.5 are in scope, and the presentation level is a setting.**
+On 10 October 2026 the project owner asked for complete Presentation Levels 2.5 and 3.5, with comprehensive tests, as Phase 1 work. The receiver therefore implements Levels 1.0, 1.5, 2.5 and 3.5.
+
+- **One setting.** The presentation level is a configuration value with four values: Level 1, Level 1.5, Level 2.5 and Level 3.5. It replaces the earlier on and off switch for Level 1.5 (REQ-L15-001 and REQ-PRF-006).
+- **Profile defaults.** The default profile ("EN 300 706") presents at Level 3.5. The "SAA5050" profile presents at Level 1.0, and the "SAA5246A" profile at Level 1.5, as those chips did.
+- **Command line.** `ttx --level 1|1.5|2.5|3.5` overrides the level of the profile. The former `--level1-only` option is removed in favour of `--level 1` (REQ-CLI-007).
+- **What each level reads.** At Level 1 the page is decoded from its Level 1 bytes alone. At Level 1.5 the Level 1.5 overwrite pass runs (decision E.1). At Levels 2.5 and 3.5 the enhancement processor of decision E.42 runs instead of the Level 1.5 pass. The features that Tables 1 and 25 tick for Level 3.5 only are used only when the level is 3.5: packet X/27/5, the DRCS colour tables of X/28/1 and M/29/1, packets X/28/4 and M/29/4, the Font Style triplet, DRCS modes 1 to 3, and Modified G0 and G2 designation beyond two pairs.
+
+*Reason:* EN 300 706 clause 12 defines the levels as cumulative, so one ordered setting describes a receiver exactly. Tables 1, 25, 28 and 29 say which packets and triplets each level acts on (`research/notes-level25-enhancement.md` sections 1.2 to 1.4). Presenting at the highest level by default shows broadcasts as their authors intended, while the chip profiles keep their period behaviour.
+
+**E.41 — Principles for reading Levels 2.5 and 3.5.**
+The clauses for Levels 2.5 and 3.5 leave many details open. The research notes list them: `research/notes-level25-enhancement.md` section 12, `research/notes-level25-objects.md` section 14 and `research/notes-level25-drcs.md` section 15. Each is settled by one of decisions E.42 to E.56, and each of those decisions follows these principles:
+
+1. **Normative text beats informative text, and tables beat prose.** Where a normative clause and an informative annex disagree, the normative clause is followed. Where a table and the prose that describes it disagree, the table is followed, as decisions E.16 and E.21 already do.
+2. **Where the standard is silent, follow zvbi, or else the most literal reading.** zvbi 0.2.44 is the test oracle (REQ-TST-023), so its observable behaviour is followed where it has one. Otherwise the most literal reading of the standard is followed. Where zvbi contradicts the standard, the standard is followed. The known case is Table 30, CLUT 1 entries 5 and 6 (decision E.43).
+3. **The receiver's status area is never written.** Row 0, columns 0 to 7, belong to the receiver at every level (REQ-SEC-005). Nothing from packets X/26, objects, side panels or row colours may write or colour them.
+4. **Faults are contained at the smallest unit.** An uncorrectable or reserved triplet is skipped. An object that cannot be resolved is skipped. A missing enhancement page means that the page is shown without that enhancement. The Level 1 page is always shown.
+5. **The limits of Annex A.8 are fixed resource bounds.** Beyond them, further invocations are ignored. Enhancement processing uses no allocation.
+6. **Show at once, redraw when complete.** Rows are drawn as soon as the Level 1 page allows, and redrawn when enhancement data arrives or completes. The receiver never waits for enhancement pages, which may take up to 20 seconds to arrive (Annex B.6).
+
+*Reason:* These are the owner's rulings of 10 October 2026. Principle 3 applies REQ-SEC-005, which overrides every other requirement (decision E.32). Principle 4 extends the approach that decision E.9 takes for Level 1.5. Principle 6 answers a question that the standard leaves open (`research/notes-level25-objects.md` section 14 item 30).
+
+**E.42 — How Levels 2.5 and 3.5 are layered, and what a cell holds.**
+- **A further pass over the Level 1 grid.** Enhancement processing is a module of the presentation layer that runs after the Level 1 grid has been built. It processes, in this order:
+  1. the page's local enhancement data, from its packets X/26;
+  2. the objects that the local enhancement data invokes, whether Active, Adaptive or Passive, and whether local, public (from a Public Object Page) or global (from a Global Public Object Page);
+  3. when the page has no local enhancement data that displays anything, the default objects of decision E.53.
+
+  It writes both characters and attributes, and resolves contention between attributes as Annex C.2 describes (decision E.47).
+- **Read-only access to other pages.** Object pages, DRCS pages and the Magazine Organization Table are read from the page store through a read-only lookup. The enhancement processor never decodes packets itself: it applies the packet layer's decoders to the stored bytes, and it never changes what is stored.
+- **What a cell gains.** Each cell of the grid gains:
+  - a size made of a vertical part (normal, top half or bottom half) and a horizontal part (normal, left half or right half);
+  - underline;
+  - invert;
+  - a flash mode, with its rate and phase (decision E.48);
+  - the Level 3.5 font styles: bold, italic and proportional;
+  - glyph variants for G3 characters and for DRCS characters, the latter named by table (normal or global), sub-table and character;
+  - its colours as Colour Map indices 0 to 31 (decision E.43).
+
+  The colours of multi-colour DRCS characters are resolved at render time, from the DRCS colour lookup tables that travel with the grid (decision E.54).
+- **Side panels** are held beside the 40-column grid, as decision E.49 describes.
+
+*Reason:* Decision E.1 chose a separate pass so that Level 2.5 could be added later without redesign. Clause 13.3 describes local enhancement data as "a one-time usable Active Object", so one walk serves the local data and every object (`research/notes-level25-objects.md` section 2.3). Leaving the stored bytes untouched keeps acquisition and presentation apart (`ARCHITECTURE.md` section 8, rule 5).
+
+**E.43 — The Colour Map and colour indices.**
+- **One colour number everywhere.** Every colour in the grid is a 5-bit Colour Map index from 0 to 31, equal to 8 × CLUT + entry, where CLUT is the colour lookup table. This is how every colour field of Tables 28 and 29 is coded, and it is the numbering of Figure 28. The Level 1 colours are CLUT 0 entries 0 to 7, so existing values keep their meaning. Index 8, which is CLUT 1 entry 0, is transparent, and that is already the renderer's transparent index (REQ-RND-023).
+- **The map.** The Colour Map has 32 entries of 12-bit colour, four bits for each primary. Its defaults are those of Table 30, verified on the page image of page 89. In particular, CLUT 1 entry 5 is 7, 0, 7 (half magenta) and CLUT 1 entry 6 is 0, 7, 7 (half cyan). zvbi 0.2.44 reports different values for those two entries, and the standard is followed (decision E.41, principle 2).
+- **Which CLUTs can change.**
+  - CLUTs 2 and 3 are redefined by X/28/0 format 1 or by M/29/0, at Levels 2.5 and 3.5.
+  - CLUTs 0 and 1 are redefined by X/28/4 or by M/29/4, at Level 3.5 only. Table 10 is followed where clause 9.4.7 says the reverse.
+  - At Level 3.5, 31 entries can be redefined. CLUT 1 entry 0 always stays transparent, and its twelve bits in X/28/4 and M/29/4 are ignored.
+- **Bit significance.** In every multi-bit colour field the lowest-numbered bit is the least significant. This includes the default screen colour and default row colour of Table 4, triplet 13.
+- **Default black.** "Black" as a default screen or row colour means Colour Map entry 0 (Table 25), which is black unless it is redefined at Level 3.5.
+- **Re-mapping and substitution.** The Colour Table Re-mapping of Table 4 (triplet 13, bits 16 to 18) applies to the Level 1 spacing colour attributes, and also to the start-of-row default colours (white foreground and black background), unless Black Background Colour Substitution replaces the background.
+- **Numbering errors in the standard.** Figure 28 numbers the CLUTs 1 to 4; the numbering 0 to 3 of Table 30 is used. Where the text of a row of Table 8 contradicts the row's heading, the heading is followed.
+
+*Reason:* EN 300 706 Tables 4, 8, 10, 25, 28, 29 and 30, and Figure 28 (`research/notes-level25-enhancement.md` sections 3.2 and 7.1 to 7.4, and ambiguities A-13, A-14 and A-16 to A-20; `research/notes-level25-drcs.md` section 13.2 for the zvbi values). One index space means that the grid, the renderer and the DRCS colour tables (decision E.54) all use the same colour numbers.
+
+**E.44 — Page-level presentation data: format, precedence and errors.**
+- **Format 1 for display.** Packet X/28/0 is read as format 1 on every page that is displayed. Format 2 (Table 7) is never used for display.
+- **Precedence.** Side panels, the default screen and row colours, Black Background Colour Substitution, Colour Table Re-mapping and the colour tables are taken from the page before the magazine, and from the magazine before the defaults. The page's own X/28/0 format 1 and X/28/4 therefore beat the magazine's M/29/0 and M/29/4. Within the page, X/28/0 beats X/28/4, and within the magazine M/29/0 beats M/29/4, for every field except the colour tables, where each packet defines different CLUTs.
+- **Character set designation** follows Annex C.4 rule 1: X/28/0 format 1, then X/28/4 (Level 3.5 only), then M/29/0, then M/29/4 (Level 3.5 only), then the defaults (decision E.4, as amended).
+- **DRCS colour tables** come from the page's X/28/1, then from the magazine's M/29/1, then from the defaults of Annex D.2.2 (decision E.54).
+- **Errors.** An X/28 or M/29 packet in which any triplet of a field group is uncorrectable is treated as absent for that field group. It does not take precedence, and the next source in order applies. The field groups are:
+  - the page function and page coding;
+  - the default G0 and G2 designation and the second G0 designation;
+  - the side-panel fields;
+  - the sixteen colour words;
+  - the default screen and row colours, substitution and re-mapping;
+  - each DRCS colour table.
+
+  Inside local enhancement data and objects, an uncorrectable triplet is skipped (decision E.9).
+- **Mode identification in X/28/3.** The mode of each PTU is read as decision E.54 describes.
+
+*Reason:* Clauses 9.4.2 to 9.5.3, Tables 4 and 7 to 13, Annex C.4 and Table 1 note 1 (`research/notes-level25-enhancement.md` sections 7.2 and 9.1 to 9.10, and ambiguities A-15 and A-21 to A-23). The standard states that the page overrides the magazine for each pair of packets. Extending that to the pair X/28/4 and M/29/0 is the reading that lets the page's own data win, as it does everywhere else. Treating a damaged field group as absent stops a corrupted packet from overriding good magazine data.
+
+**E.45 — Screen colour, row colours and borders.**
+- **Screen colour.** Highest first: a Full Screen Colour triplet; the page's default screen colour; the magazine's default screen colour; Colour Map entry 0 (Annex A.5).
+- **Row colour.** Highest first:
+  1. Full Row Colour triplets, applied in transmission order;
+  2. the screen colour, but only when an explicit Full Screen Colour triplet set it;
+  3. the page's default row colour;
+  4. the magazine's default row colour;
+  5. Colour Map entry 0.
+
+  A default screen colour from X/28 or M/29 does not replace the default row colour.
+- **Full Row Colour.** Commands apply in transmission order. "This row only" (S1 S0 = 00) changes only its own row. "Down to the bottom" (S1 S0 = 11) colours its row and every row below it. An earlier "down to the bottom" fill continues below a later "this row only" row.
+- **Reserved row selections.** Address Display Row 0 and Full Row Colour with S1 S0 = 01 or 10 set the active position but set no colour.
+- **Borders.** The screen areas above row 0, below the last row, to the left and right of the rows, and outside the side panels all use the screen colour.
+- **Row 0.** Row colours never colour row 0, columns 0 to 7, of the main page (decision E.41, principle 3). The side-panel area of row 0 shows the screen colour (decision E.49).
+
+*Reason:* Annex A.5 and Table 4 (`research/notes-level25-enhancement.md` sections 4.1 to 4.4 and 7.6, and ambiguities A-1 to A-3, A-25 and A-30). Reading the phrase "the screen colour already invoked" of Annex A.5 as the Full Screen Colour triplet is the only reading under which the default row colour field of Table 4 can ever take effect.
+
+**E.46 — The active position, triplet order and damaged triplets at Levels 2.5 and 3.5.**
+- **The strict row rule.** At Levels 2.5 and 3.5 only Full Row Colour (mode 00001), Set Active Position (mode 00100) and Address Display Row 0 (mode 00111 with address 63) set the active row, as clause 12.3.2 requires. The Annex A.3 rule of decision E.3 stays the default at Level 1.5.
+- **Set Active Position with a column of 40 or more** sets the row only, and leaves the column unchanged.
+- **The column** is set by every column triplet except the reserved modes and the Programme Delivery Control mode 00110. This includes character modes whose data is below 2/0 (clause 12.3.4).
+- **Out-of-order triplets.** A triplet that addresses a position earlier than the previous triplet from the same source is applied at the position it addresses. Annex A.4 permits ignoring it. zvbi instead writes the character at the current position, so comparisons with zvbi use only streams that keep the order of Annex A.4 (REQ-TST-023).
+- **Termination.** Any triplet with address 63 and mode 11111 ends the data it is in. Its type bits are only hints. An Object Definition triplet met in the local enhancement data also ends the local enhancement data.
+- **Origin Modifier.** An Origin Modifier that is not immediately followed by an object invocation is discarded.
+- **Damaged triplets.** An uncorrectable triplet is skipped, and does not move the active position (decision E.9).
+
+*Reason:* Clause 12.3.2, Annexes A.3 and A.4, and Table 28 (`research/notes-level25-enhancement.md` sections 2.3, 4.3, 4.6 and 4.11, and ambiguities A-9, A-23 and A-26; `research/notes-level25-objects.md` section 14 items 13, 25, 26 and 31). Object Invocation and Object Definition triplets carry object numbers in their address field, so the Annex A.3 rule would move the row at every invocation. It cannot be used at these levels.
+
+**E.47 — Attribute contention and the display attributes.**
+- **Attribute types.** Foreground colour, background colour and flash are attribute types, as Annex A.7.1 lists them. Each bit of the Display Attributes triplet (double height, double width, boxing or window, conceal, invert, and underline or separated mosaics) is an attribute type of its own.
+- **Contention.** When two attributes of one type contend for a cell, the latest wins, judged as Annex C.2 says: first by the cell where each takes effect, then by the cell where each is placed, then by the order of transmission.
+- **A Level 1 attribute and an X/26 attribute at the same cell.** When a set-at Level 1 spacing attribute and an X/26 attribute of the same type are placed at the same cell, the X/26 attribute wins. This follows the priority of clause 13.2. Read literally, rule 3 of Annex C.2 would always let the Level 1 attribute win, because packets X/26 are sent before the rows (Annex B.2), and that would make enhancement attributes on attribute cells useless.
+- **A 0 bit cancels.** A Display Attributes triplet sets all six functions at once. A bit at 0 cancels its function from that cell onward, including a function set by a Level 1 spacing attribute.
+- **Conceal.** A Level 1 colour code ends only a Level 1 conceal. A non-spacing conceal lasts until a Display Attributes triplet clears it or the row ends.
+- **Boxing.** At Levels 2.5 and 3.5, a Level 1 Start Box on a page that is neither a newsflash nor a subtitle page does not open a window; boxing keeps its Level 1 meaning (decision E.17). Windows come only from the boxing bit of an X/26 Display Attributes triplet, and from boxed pages (decision E.22).
+- **Underline** is drawn on the last dot line of the cell, one line thick, on both fields in the 12 by 20 cell. The asymmetry of Table 26 notes 11 and 12 is followed: a non-spacing Underline or Separated attribute affects Level 1 characters, but the Level 1 codes 1/9 and 1/A do not affect enhancement characters. Underline is not drawn on G3 or DRCS characters, for which Table 29 leaves the response undefined.
+- **Invert** swaps the cell's foreground and background colours. It is applied before flash and conceal, which then act on the colours displayed.
+
+*Reason:* Annexes A.7.1, C.2 and E.13, clause 13.2, Table 26 notes 11 and 12, and Table 29 mode 01100 (`research/notes-level25-enhancement.md` sections 5.8 and 6.1 to 6.6, and ambiguities A-6 to A-8, A-28 and A-29). Applying invert before flash is the literal reading of Table 29: invert swaps the colours, and flash "affects the foreground colour only".
+
+**E.48 — Flash at Levels 2.5 and 3.5.**
+- **The cycle.** One flash cycle lasts one second, and is divided into twelve units of one twelfth of a second, numbered 0 to 11.
+  - **Slow flash (1 hertz)** is on during units 0 to 8 and off during units 9 to 11. That is the 3 to 1 ratio of decision E.12.
+  - **Fast flash (2 hertz)** treats each half-second of six units alike. With phase p, which is 1, 2 or 3, the character is off during units 2(p − 1) and 2p − 1 of each half-second, and on otherwise.
+  - **Incremental flash** gives successive characters, left to right from the triplet's column, the phases 1, 2, 3, 1, 2 and so on. **Decremental flash** gives them the phases 1, 3, 2, 1, 3 and so on.
+- **Modes.**
+  - Normal flash shows the background colour in the off phase.
+  - Inverted flash swaps the on and off phases.
+  - Adjacent-CLUT flash shows, in the off phase, the colour whose index is the cell's foreground index exclusive-ORed with 8. That is the same entry in the neighbouring CLUT: CLUT 0 with CLUT 1, and CLUT 2 with CLUT 3.
+- **Level 1 Flash.** At Levels 2.5 and 3.5 the Level 1 Flash attribute 0/8 means slow flash in normal mode. At Levels 1 and 1.5, decision E.12 is unchanged.
+- **Duration.** An Additional Flash Functions attribute lasts to the end of the row, or until another flash attribute: the Level 1 codes 0/8 and 0/9, or another Additional Flash Functions triplet.
+- **Multi-colour DRCS characters.** In the off phase of normal or inverted flash, a multi-colour DRCS character shows a space in the background colour (clause 14.3.2). Adjacent-CLUT flash maps the index of each of its pixels by exclusive-OR with 8.
+
+*Reason:* Table 29 mode 00111 gives the two rates and names the modes, but gives no duty cycle and no meaning for the phases (`research/notes-level25-enhancement.md` section 5.7, and ambiguities A-4 and A-5; `research/notes-level25-drcs.md` section 6.3 and ambiguity A-9). Twelve units divide both rates and the three phases evenly, and the slow rate keeps the ratio that decision E.12 measured on the SAA5050.
+
+**E.49 — Side panels.**
+- **Storage.** Side panels are held beside the 40-column grid, in a panel area addressed by columns 40 to 71 and rows 1 to 24 (clause 12.5.3). The right panel occupies columns 40 to 40 + right width − 1, and the left panel columns 72 − left width to 71.
+- **Widths.** The widths follow from the left and right enable bits and from the number n in bits 7 to 10 of triplet 2 of Table 4:
+
+  | Left panel | Right panel | Left width | Right width |
+  |---|---|---|---|
+  | Off | Off | 0 | 0 |
+  | On | Off | n, or 16 when n is 0 | 0 |
+  | Off | On | 0 | 16 − n, or 16 when n is 0 |
+  | On | On | n | 16 − n, so that n = 0 gives a left width of 0 and a right width of 16 |
+
+- **Status flag.** At Level 2.5 side panels are shown only when the Side Panel Status Flag is 1. At Level 3.5 they are shown whenever they are enabled.
+- **Sources.** Side-panel data is taken as decision E.44 describes. When no X/28 or M/29 packet gives it, the fallback bits of the page's POP link in the Magazine Organization Table apply (decision E.53). With no POP link, there are no side panels.
+- **Display width.** The display is 40 columns plus the left and right widths, and so not always 56. The renderer composes the left panel, the main page and the right panel, in that order.
+- **Content.** Side-panel content comes only from objects placed by Origin Modifiers into columns 40 to 71, in rows 1 to 24.
+  - Each panel row starts from the start-of-row defaults of clause 12.5.4 rule 1, with the full row colour as its background and a space in every cell.
+  - Attributes do not pass between a panel and the main page, in either direction (rule 2).
+  - Writes outside the enabled panel columns, to row 0, below row 24 or beyond column 71 are discarded.
+  - An object element that would cross between the main page and a panel is discarded.
+- **Row 0** has no transmitted panel content. Its panel area shows the screen colour.
+
+*Reason:* Clause 12.5, and Tables 4 and 21 (`research/notes-level25-enhancement.md` section 8, and ambiguities A-10, A-11 and A-30; `research/notes-level25-objects.md` section 2.9, and section 14 items 12 and 38). The width table is the literal reading of "16 minus this value" and "0 means 16 columns".
+
+**E.50 — Character repertoire, font styles and G3 drawing.**
+- **National option at Levels 2.5 and 3.5.** The national option comes from bits 8 to 10 of the highest-priority X/28 or M/29 designation when one is present (Annex E.9), and from the header bits C12 to C14 otherwise (decision E.4, as amended).
+- **Modified G0 and G2 designation.** At Level 2.5, designations beyond two G0 and G2 pairs on a page, counting the default pair, are ignored. At Level 3.5 there is no limit.
+- **G1 characters written by triplets.** A G1 character written by an X/26 triplet is a mosaic, drawn contiguous or separated according to the non-spacing Underline or Separated attribute. Its codes in columns 4 and 5 are the characters of the current G0 set, without national option (Table 47 note 3).
+- **G3 and hold.** A G3 character written by X/26 does not change the held mosaic, and Hold Mosaics never replaces a character written by X/26 (decision E.5 (d)).
+- **G3 drawing.** The smoothed mosaics and line-drawing characters of Table 48 are drawn from the project's own geometry: the sextant geometry of Unicode document L2/19-025, as polygons on halves and thirds of the cell.
+  - A generator in `xtask` rasterises them into replaceable glyph data for the 12 by 10 and 12 by 20 cells, in the same way as the Bedstead glyphs are exported.
+  - Points at one third and two thirds of the cell height are rounded down to whole lines.
+  - Light strokes are 2 half-dots wide and heavy strokes 4.
+  - Position 2/F, "alternate dots", is a single-dot checkerboard on the 12-dot grid, as the words of Table 48 say, and not the 2 by 1 pattern of its figure.
+- **Undefined codes.** G3 positions 6/E, 6/F, 7/E and 7/F, the undefined Latin G2 positions, and invalid DRCS data show a space, and a diagnostic is traced.
+- **Font styles (Level 3.5).**
+  - **Bold** is the glyph combined by OR with itself shifted one half-dot to the right.
+  - **Italic** shifts each glyph line to the right by the number of lines below it in the cell divided by 4, in whole half-dots, rounded down.
+  - **Proportional spacing** is recorded in the cell but drawn at the fixed pitch. The standard defines no spacing algorithm, Annex G.2 leaves appearance to the decoder, and zvbi only sets a flag.
+  - Styles apply to G0 and G2 characters only (Table 25), never to G1, G3 or DRCS characters.
+  - A Font Style triplet acts from its column to the end of its row. Its row count R extends the style, from the same column to the end of the row, over each of the next R rows. A later Font Style triplet replaces the style from its own position onward.
+
+*Reason:* Clause 15, Tables 25, 29, 34, 47 and 48, and Annexes E.9 and G.2 (`research/notes-level25-drcs.md` sections 9 and 10, and ambiguities A-12 to A-16; `research/notes-level25-enhancement.md` sections 5.3 to 5.11). The geometry agreed with the standard's figure on 95 to 100 percent of pixels for every polygon glyph (`research/notes-level25-drcs.md` section 9.3). Drawing it from the project's own geometry keeps glyph provenance clean (decision E.25).
+
+**E.51 — Objects: resolution, nesting and limits.**
+- **Pointers.** A pointer in a Public Object Page or Global Public Object Page whose value is not a valid triplet address means that the object is absent. That covers the values 507 to 510, pointers into the pointer packets, and pointers to a triplet that is not an Object Definition. The value 0x1FF means "not used". Definitions in packets 1 and 2 of an object page cannot be reached by any pointer, and are ignored.
+- **Checks.** An invocation whose definition has a different type, or whose usage bits exclude the presentation level, is skipped. The object number bits N8 to N0 of the definition are not compared with those of the invocation.
+- **Local invocations** of triplet numbers 13 to 15, or of designation codes that were not received, are skipped.
+- **Objects inside public objects** refer to the displayed page's POP and GPOP links.
+- **Nesting.** The local enhancement data may invoke objects of every type. Local enhancement data and Active objects may invoke Adaptive and Passive objects; Adaptive objects may invoke Passive objects; Passive objects invoke nothing. Any other invocation is skipped. These rules bound the depth at three below the local enhancement data.
+- **Coordinates.** Every coordinate inside an object is relative to its origin, including Address Display Row 0 and row address 40.
+- **Writes out of range.** An element that would write outside rows 0 to 24 or columns 0 to 71 is discarded, and the object continues. So are writes to row 0, columns 0 to 7 (decision E.41, principle 3), and the side-panel writes that decision E.49 discards.
+- **Adaptive objects.** Their attribute effects on a row end at the rightmost cell that any triplet of the object addresses on that row. The object is scanned before it runs, to find those cells.
+- **Passive objects.** Each invocation starts from the default attributes of clause 13.5. Transparency inside them is CLUT 1 entry 0, as everywhere else.
+- **Priority.** Characters follow clause 13.2: Passive objects over Adaptive objects, over local enhancement data, over Active objects, over the Level 1 page. Ties between attributes follow Annex C.2, with the order of transmission last.
+- **Restricted triplets.** Full Screen Colour, Full Row Colour and Address Display Row 0 inside Adaptive or Passive objects are ignored.
+- **Damage.** An uncorrectable triplet inside an object is skipped. In a pointer table, an uncorrectable triplet makes both of its pointers unused. When packets of an object page are missing, only the objects that need them are dropped.
+- **Definitions after the marker "no Local Object definitions follow"** are still used if they are invoked.
+- **Limits.** Annex A.8 is enforced as a fixed bound: at most 127 invocations of each object type per page, at most 15 objects open at once, and at most 15 objects opened in succession. Further invocations are ignored.
+
+*Reason:* Clauses 10.5.1 and 13.1 to 13.8, Table 28, and Annexes A.4, A.7, A.8 and C.4 (`research/notes-level25-objects.md` sections 2 to 5, and section 14 items 6, 7, 9 to 17, 25 to 29, 32, 35, 36, 42 and 45). Each choice confines a fault to the object that has it (decision E.41, principle 4). The standard does not require the object number check, so it is not made.
+
+**E.52 — Links to object and DRCS pages: the Magazine Organization Table and packets X/27/4 and X/27/5.**
+- **Precedence.** The links in the page's own X/27/4, and in X/27/5 at Level 3.5, take precedence over the Magazine Organization Table, whatever the X/27/4,5 flag of the table's link says.
+- **X/27/4 links 0 to 3** are taken by position, as Table 16 fixes them: GPOP, POP, GDRCS and DRCS. Their function bits are still checked, and a link whose bits do not match its position is ignored. A link that duplicates one already accepted is ignored. At Level 3.5, X/27/4 links 4 and 5 and X/27/5 links 0 and 1 are taken from their function and validity bits.
+- **Format 1 marker.** A link is accepted only when bit 11 of its first triplet is 1 and bit 1 of its second triplet is 0, as Table 15 requires. The link function and the page validity are two bits each, as Table 15 shows, whatever the bit count of clause 9.6.2 says.
+- **No link.** Page validity 00, all sixteen sub-page flags at 0, or page number FF means no link.
+- **Sub-page flags** of X/27/4 are used only as hints for acquisition. Invocations name the sub-page directly by its S1 value.
+- **Object pages are identified by the links that name them.** X/28/0 is not required on an object page.
+- **Magazine of a table link.** The magazine of a link in the Magazine Organization Table is absolute, with 0 meaning magazine 8. This reading is checked against zvbi (REQ-TST-023), and any difference is recorded here.
+- **Global flags.** The global object flag and the global DRCS flag of a page's entry are used only as hints for acquisition. A reference to the GPOP or GDRCS is resolved through the magazine's GPOP or GDRCS link whatever the flag says, as decision E.53 does for default objects.
+- **Level 3.5 links.** A Level 3.5 decoder uses packets X/22 to X/24 of the table. When X/22 or X/24 is missing, it uses X/19 to X/21 and processes the page at Level 2.5 (clause 10.6.1). When only X/23 is missing, POP links 4 to 7 are taken from the Level 2.5 links in X/20.
+- **Page xFF.** The table's byte pair for page xFF is ignored.
+- **Sub-page counts.** A link's sub-page count n means that sub-pages 0 to n are assumed, and missing ones are absent. Object sub-pages beyond the advertised count are used if they are stored.
+- **Enhancement pages are not text.** Object pages, DRCS pages and the Magazine Organization Table never receive Level 1 national option or display semantics, and their bits C12 and C13 mean "fragment" and "partial page" (Annex B.6). A Magazine Organization Table whose sub-page S1 is not 0 is ignored.
+
+*Reason:* Clauses 9.6.2, 10.5.1.4, 10.5.2.2 and 10.6, Tables 15, 16 and 20 to 23, and Annexes A.1 and B.6 (`research/notes-level25-objects.md` sections 7 and 9, and section 14 items 1 to 5, 8, 22 to 24, 34, 40, 41 and 43).
+
+**E.53 — Default objects.**
+- **Suppression.** Default objects are suppressed only by packets X/26 that carry display triplets. A page whose X/26 packets hold only Programme Delivery Control triplets keeps its default objects.
+- **Magazine-wide default objects.** The default objects of the GPOP link apply to every page of the magazine that has no local display enhancement, whatever the page's global object flag says.
+- **Order.** GPOP default object 1, GPOP default object 2, POP default object 1, POP default object 2, as Annex G.5 recommends. Where two of the same type write the same cell, the latest invoked wins (Annex A.7.1).
+- **Origin.** Each default object is placed with its origin at row 0, column 0 (clause 13.8).
+- **Fallback flags.** The fallback bits for side panels and Black Background Colour Substitution are read from the page's POP link. With no POP link they are clear, which means no side panels and no substitution.
+
+*Reason:* Clause 13.8, Table 21, and Annexes E.11, E.12 and G.5 (`research/notes-level25-objects.md` sections 7.5, 7.6 and 8, and section 14 items 18 to 21 and 33).
+
+**E.54 — DRCS pages, modes and colours.**
+- **Usable when complete.** A DRCS sub-page is usable once every PTU that a referenced character needs has been received (Annex B). Later partial receptions replace the PTUs they carry.
+- **Mode identification.** Packet X/28/3 gives the mode of each PTU. The mode of PTU n is at positions 4n to 4n + 3 of the bit stream formed by triplets 2 to 12, least significant bit first. Without X/28/3, every PTU is mode 0 (Annex D.1.7). A Level 2.5 decoder reads X/28/3, and treats any PTU not marked mode 0 (12 by 10 by 1) as unusable.
+- **Mode 3 (6 by 5 by 4).** The most significant of the six bits of each D-byte is the left pixel, as in mode 0. Each pixel is drawn as 2 by 2 dots in the 12 by 10 cell, and 2 by 4 in the 12 by 20 cell.
+- **Colour tables.** A Level 3.5 decoder takes the DRCS colour lookup tables from M/29/1 when the page has no X/28/1, and from the defaults of Annex D.2.2 when neither is present. The row of Table 8 headed "DCLUT16 for Normal" is for normal DRCS, as its heading says.
+- **Limits not enforced.** The Level 2.5 limits of two sub-tables and 24 characters, and the Level 3.5 limit of 384 PTUs, bind the broadcaster. They are not enforced beyond the store's own bound.
+- **Attributes on multi-colour characters.** Flash follows decision E.48. Invert has no effect. Conceal shows a space in the background colour. Boxing follows the cell. Font styles do not apply (decision E.50).
+- **Enlarged characters** are drawn by exact pixel replication, with no smoothing.
+- **Missing and invalid data.** A cell whose DRCS data is missing shows a space in its background colour. Invalid DRCS data shows a space, and a diagnostic is traced. Invalid data means a character whose first PTU is marked 1110 or 1111, a character that runs past PTU 47, or a D-byte outside 4/0 to 7/F or failing its parity check.
+- **The DRCS Mode triplet.** One whose level bits exclude the presentation level is ignored. The reserved level value 00 is treated as both levels. The sub-table it chooses persists to the end of the local enhancement data or of the object.
+- **Typographical errors.** The "7/E and 7/E" of Table 25 is read as 7/E and 7/F, and Table 10 is followed for the colour tables of X/28/4.
+
+*Reason:* Clause 14, Tables 8, 9, 28, 29 and 31, and Annexes B, D.1.7 and D.2.2 (`research/notes-level25-drcs.md` sections 2 to 8, and ambiguities A-1 to A-11 and A-16 to A-21).
+
+**E.55 — The resolved colour mode of the renderer.**
+- **Two colour modes.**
+  - **The palette mode** of REQ-RND-023, with the indices 16 + 8f + b and 80 + 8f + b, stays as the mode for Levels 1 and 1.5. Ports with hardware palettes keep the benefit that flash and reveal need only a new palette.
+  - **The resolved mode** resolves flash and conceal at render time, from a flash phase and the reveal setting, and gives Colour Map indices 0 to 31 directly.
+- **When each is used.** The resolved mode is used at Levels 2.5 and 3.5. The palette mode is refused for any grid that uses a colour outside CLUT 0, or any flash mode of Level 2.5.
+- **Change tracking.** The change tracker reports which rows hold flashing or concealed cells, so that a port redraws only those rows when the flash phase or the reveal setting changes.
+
+*Reason:* With 32 colours and four flash modes, the palette encoding would need far more entries than a hardware palette holds. Resolving at render time keeps the pull model of decision E.29, and costs only the redrawing of the rows that flash or conceal.
+
+**E.56 — Storing enhancement pages and magazine data.**
+- **Stored as received.** Object pages, DRCS pages and the Magazine Organization Table are kept in the page store. Each reception of such a page replaces the stored bytes of the packets it carries, with no merge by parity (decision E.8 does not apply). This applies to the rows of:
+  - a page whose X/28/0 page function is not "basic Level 1 page";
+  - page xFE, the Magazine Organization Table;
+  - a page that a stored Magazine Organization Table link, or a stored X/27/4 or X/27/5 link, names as an object or DRCS page (decision E.52).
+- **Hexadecimal pages.** At Levels 2.5 and 3.5, pages with hexadecimal numbers are stored, because enhancement pages usually have them (Annex E.1). Navigation still skips them, unless the diagnostic setting of REQ-ACQ-013 is on.
+- **Replacement.** Stored object pages are replaced by new receptions. Nothing is discarded when the Magazine Organization Table changes, beyond the store's normal eviction.
+- **Magazine data.** Packets M/29/0, M/29/1 and M/29/4 are stored for each magazine. Each new reception replaces the stored packet. All stored M/29 packets are discarded when the service changes, meaning a new network identification in packet 8/30 or a new input. There is no time-out.
+
+*Reason:* Annexes A.1, B.6, E.1 and E.8, and clause 10.6 (`research/notes-level25-objects.md` sections 6 and 11, and section 14 item 39; `research/notes-level25-enhancement.md` ambiguity A-24). Object pages carry Hamming 24/18 triplets, whose bytes do not follow the odd parity rule, so a merge by parity would keep stale bytes or reject good ones.
+
 ---
 
 # Part F — Requirements
@@ -1526,6 +1803,9 @@ Decided while implementing `tellytxt-web` on 10 October 2026:
 | CHR | Character sets |
 | L1 | Level 1.0 presentation |
 | L15 | Level 1.5 presentation |
+| L25 | Level 2.5 and 3.5 enhancement: attributes, colours, side panels and characters (section F.9a) |
+| OBJ | Objects, object pages and the links to enhancement pages (section F.9b) |
+| DRC | Dynamically redefinable characters (section F.9c) |
 | NAV | Navigation and viewer functions |
 | RND | Rendering and output |
 | INP | Input formats |
@@ -1545,6 +1825,7 @@ The requirements are delivered in two phases.
 **Phase 1** is a complete, correct receiver. It covers every "shall" in this part that has no phase note:
 - all the input formats of area INP except those listed below;
 - Level 1.0 and Level 1.5 decoding;
+- Level 2.5 and Level 3.5 decoding and rendering, brought into Phase 1 at the owner's request on 10 October 2026 (decision E.40);
 - the default profile;
 - the text, terminal and raster outputs in the 12 by 20 SAA5050 style;
 - the basic software data slicer;
@@ -1564,7 +1845,7 @@ The requirements are delivered in two phases.
 | REQ-PRF-004 | The alternative options: strict row setting, single Start Box, exact framing code, and ignoring out-of-order triplets. |
 | REQ-L15-004 and REQ-L15-009 | The strict row-setting mode and the strict option for out-of-order triplets. The default behaviours stay in Phase 1. |
 | REQ-L1-020 and REQ-NAV-007 | Page zoom, and momentary (SAA5050-style) reveal. Normal, mix and boxed modes and latched reveal stay in Phase 1. |
-| REQ-CHR-004, REQ-CHR-007 and REQ-RND-010 | Glyphs for Cyrillic, Greek, Arabic and Hebrew, and for the G3 positions not used at Level 1.5. The code tables and Unicode mappings stay in Phase 1, and missing glyphs are drawn as visible placeholders. |
+| REQ-CHR-004 and REQ-RND-010 | Glyphs for Cyrillic, Greek, Arabic and Hebrew. The code tables and Unicode mappings stay in Phase 1, and missing glyphs are drawn as visible placeholders. The glyphs of every G3 position moved to Phase 1 on 10 October 2026 (REQ-CHR-007 and REQ-RND-037). |
 | REQ-RND-009 | Terminal double-height line escape sequences. |
 | REQ-INP-016 | The writer for edit.tf and zxnet page addresses. The reader stays in Phase 1. |
 | REQ-INP-017 | Detection of repeated double-height rows in BBC Microcomputer dumps. |
@@ -1594,8 +1875,9 @@ Phase 1 is large, roughly 100 to 150 person-days, so it is delivered in mileston
 | **M3 — Broadcast** | Digital television transport streams, Linux sliced data, and the remaining page formats. | INP-003 to INP-011, INP-014 to INP-020, SVC |
 | **M4 — Raw video** | The software data slicer and its synthetic signal generator. | SLC, FSM-002, TST-060, TST-061 |
 | **M5 — Forms, links and viewer** | Interactive forms, form input, links (Appendix E), navigation and the viewer state machine. | WEB-010 to WEB-012, NAV (including history, REQ-NAV-010), FSM-005 |
+| **M6 — Levels 2.5 and 3.5** | Decode and render Presentation Levels 2.5 and 3.5 completely: the packets of both levels, storage of enhancement pages, the Colour Map, non-spacing attributes, row and screen colours, side panels, objects and default objects, DRCS, G3 glyphs, font styles and flash, with the presentation level setting and its option. The tests include the worked examples of the standard, authored streams with golden rasters, zvbi as oracle at both levels, real data, and fuzzing of every new parser. | PKT-010 to PKT-018, ACQ-016 to ACQ-022, L25, OBJ, DRC, CHR-007, CHR-011, RND-030 to RND-041, PRF-006, CLI-007, INP-023 to INP-025, FSM-011, FSM-012, TST-015 to TST-019, TST-023 to TST-025, TST-042 |
 
-M1 is expected to take 40 to 50 person-days. The order of M2 to M5 may be changed; each depends only on M1.
+M1 is expected to take 40 to 50 person-days. The order of M2 to M5 may be changed; each depends only on M1. M6 depends on M1, and on M2 for the captures from the live feed that REQ-TST-025 uses.
 
 Where Part E mentions a Phase 2 feature (the SAA5246A profile, or a strict option), the default behaviour it describes is the Phase 1 behaviour.
 
@@ -1853,6 +2135,7 @@ The core crate (REQ-GEN-010) shall declare `#![no_std]`. It shall not use the `a
 - acquisition and the page store;
 - service data;
 - Level 1.0 and Level 1.5 decoding;
+- Level 2.5 and 3.5 decoding: the Colour Map, the enhancement processor, objects and DRCS (areas L25, OBJ and DRC);
 - navigation;
 - the cell grid, the cell raster and the row renderer.
 
@@ -1907,6 +2190,7 @@ This covers every packet, file, stream, sample buffer and network message, howev
 The documentation shall state:
 - the memory required by a decoder instance in its minimum configuration, which is one requested page with Level 1.5 enabled;
 - the memory required in the default configuration of the command-line program;
+- the memory required for presentation at Level 3.5, including the store for enhancement pages (REQ-ACQ-019), the side-panel area and the DRCS patterns that travel with the grid (REQ-L25-006);
 - the memory required per stored page;
 - the flash (code and constant data) size of the core on `thumbv6m-none-eabi`, built with `opt-level = "z"` and link-time optimisation.
 
@@ -2062,6 +2346,8 @@ The implementation shall be divided into these core modules, with dependencies f
 10. navigation;
 11. the cell grid, the cell raster and the row renderer (REQ-RND-016 and REQ-RND-017).
 
+Levels 2.5 and 3.5 add four core modules beside Level 1.5 decoding: the Colour Map, the decoding of DRCS characters, the resolution of objects, and the enhancement processor (areas L25, OBJ and DRC). `ARCHITECTURE.md` section 9 places them in the presentation layer, and gives the modules each may use.
+
 The optional modules are:
 - input format readers and writers, including the page encoder;
 - the raw-sample data slicer;
@@ -2115,6 +2401,7 @@ Each event shall identify the page (magazine, page number and sub-code) where ap
 Producing the displayable cell grid shall be a function with no side effects. It shall take these inputs and produce the same result every time for the same inputs:
 - the stored page;
 - the stored magazine data;
+- at Levels 2.5 and 3.5, the stored object pages, DRCS pages and Magazine Organization Tables, reached through the read-only lookup of REQ-ACQ-020;
 - the decoder configuration;
 - the viewer state, which covers reveal, mix mode, zoom, flash phase and the status area text.
 *Verification:* Test.
@@ -2295,7 +2582,8 @@ It shall also extract:
 - the Link Control Byte, including the "display row 24" flag in data bit 4 of byte 43;
 - the two checksum bytes.
 
-Packets 27 with designation codes 1 to 3 shall be stored without interpretation. Designation codes 4 to 15 are Level 2.5 compositional links and shall be ignored.
+Packets 27 with designation codes 1 to 3 shall be stored without interpretation. Designation codes 4 and 5 are the compositional links of Levels 2.5 and 3.5, decoded as REQ-PKT-011 describes. Designation codes 6 to 15 shall be ignored.
+*Amended 10 October 2026:* designation codes 4 and 5 were previously ignored with the rest (decision E.40).
 *Verification:* Test.
 
 **REQ-PKT-006 — Page enhancement packet X/28.**
@@ -2305,11 +2593,13 @@ For packet number 28 with designation code 0 in format 1 (as identified by claus
 - the 7-bit default G0 and G2 designation (bits 8 to 14 of triplet 1);
 - the 7-bit second G0 designation (bits 15 to 18 of triplet 1 and bits 1 to 3 of triplet 2), laid out as Tables 32 and 33 define them.
 
-Packet X/28/1 shall be stored without interpretation (decision E.4). Other designation codes shall be ignored.
+The remaining fields of X/28/0 format 1 are decoded as REQ-PKT-012 describes. Packets X/28/1, X/28/3 and X/28/4 are decoded as REQ-PKT-013 to REQ-PKT-015 describe; the first triplet of X/28/1 is used for diagnostics only (decision E.4). Other designation codes shall be ignored.
+*Amended 10 October 2026:* X/28/1 was previously stored without interpretation (decision E.40).
 *Verification:* Test.
 
 **REQ-PKT-007 — Magazine enhancement packet M/29.**
-For packet number 29 with designation code 0 and packet function 0000000, the decoder shall extract the default G0 and G2 designation and the second G0 designation in the same way as for X/28/0. It shall store them for the magazine. Packet M/29/1 shall be stored without interpretation. Other designation codes shall be ignored.
+For packet number 29 with designation code 0 and packet function 0000000, the decoder shall extract the default G0 and G2 designation and the second G0 designation in the same way as for X/28/0. It shall store them for the magazine. The remaining fields, and packets M/29/1 and M/29/4, are decoded as REQ-PKT-016 describes. Other designation codes shall be ignored.
+*Amended 10 October 2026:* M/29/1 was previously stored without interpretation (decision E.40).
 *Verification:* Test.
 
 **REQ-PKT-008 — Packets that do not belong to pages.**
@@ -2319,6 +2609,82 @@ Packets numbered 30 in magazines other than 8, and all packets numbered 31, shal
 **REQ-PKT-009 — Reserved bits.**
 Bits and bytes that the standard marks as reserved shall be ignored (clause 9.2).
 *Verification:* Inspection.
+
+**REQ-PKT-010 — Triplet functions at Levels 2.5 and 3.5.**
+For every valid triplet of a packet X/26, and of packets X/1 to X/25 of an object page, the decoder shall provide the triplet's function as a typed value. The value shall cover every row mode of Table 28 and every column mode of Table 29, with the fields those tables define. In particular:
+- for Object Invocation (row modes 10001 to 10011): the source (local, POP or GPOP, with S1 S0 = 00 marked illegal), the type, and the object number N8 to N0, split as Table 28 defines it for local and for public objects;
+- for Object Definition (row modes 10101 to 10111): the usage level bits, the type and the object number;
+- for the Origin Modifier: the row offset (the address minus 40) and the column offset (the data);
+- for DRCS Mode: normal or global, the level bits and the sub-table;
+- for the Termination Marker: the type in data bits 12 to 14;
+- for every colour field: the 5-bit Colour Map index, with data bits D6 and D5 kept so that reserved values can be recognised.
+
+Reserved modes shall be reported as reserved. The Level 1.5 pass, the enhancement processor and the object resolver shall all use this one decoding.
+*Verification:* Test with one triplet of every mode, built by the encoder, including the worked encodings of `research/notes-level25-objects.md` section 13.2 and `research/notes-level25-drcs.md` section 11.
+
+**REQ-PKT-011 — Compositional link packets X/27/4 and X/27/5.**
+For packet number 27 with designation code 4 or 5, the decoder shall Hamming 24/18 decode triplets 1 to 12, and extract the six links of two triplets each that Table 15 defines. For each link it shall extract:
+- the link function and the page validity, two bits each;
+- the page units and tens;
+- the magazine, computed by exclusive-OR of the packet's own magazine with the relative magazine bits, as for X/27/0;
+- the sixteen sub-page flags;
+- the two Format 1 marker bits: bit 11 of the first triplet and bit 1 of the second.
+
+A link with an uncorrectable triplet shall be marked invalid. The roles of the links are applied by REQ-OBJ-030 (decision E.52).
+*Verification:* Test with links built by the encoder, including the worked link of `research/notes-level25-objects.md` section 13.2, and with injected errors.
+
+**REQ-PKT-012 — Packet X/28/0 format 1 in full.**
+For packet X/28/0 format 1 (Table 4), the decoder shall extract, in addition to the fields of REQ-PKT-006:
+- the left and right side-panel enable bits, the Side Panel Status Flag and the number of left-panel columns (triplet 2, bits 4 to 10);
+- the sixteen 12-bit colour words for CLUTs 2 and 3, from the 192-bit stream formed by triplet 2 bits 11 to 18, triplets 3 to 12, and triplet 13 bits 1 to 4. Each word is red, green and blue, four bits each, with each group least significant bit first;
+- the default screen colour (triplet 13, bits 5 to 9) and the default row colour (bits 10 to 14);
+- Black Background Colour Substitution (triplet 13, bit 15);
+- Colour Table Re-mapping (triplet 13, bits 16 to 18).
+
+Each field group of decision E.44 shall carry its own validity flag.
+*Verification:* Test with packets built by the encoder covering every class of field value, and with an error injected into each field group in turn.
+
+**REQ-PKT-013 — Packet X/28/1: DRCS colour lookup tables.**
+For packet X/28/1 (Table 8), the decoder shall extract the four DRCS colour lookup tables, read as 5-bit entries, least significant bit first, from triplet 2 bit 1 to triplet 13 bit 2:
+- four entries for global 12 by 10 by 2 characters;
+- four entries for normal 12 by 10 by 2 characters;
+- sixteen entries for global 12 by 10 by 4 and 6 by 5 by 4 characters;
+- sixteen entries for normal 12 by 10 by 4 and 6 by 5 by 4 characters.
+
+Triplet 1 shall be kept for diagnostics only (decision E.4). Each table shall carry its own validity flag.
+*Verification:* Test with the default tables of `research/notes-level25-drcs.md` section 6.2 and with the example values of Figure 28.
+
+**REQ-PKT-014 — Packet X/28/3: DRCS mode identification.**
+For packet X/28/3 (Table 9), the decoder shall extract the page function and page coding of triplet 1 and the 48 four-bit mode identification codes, one for each PTU, read as decision E.54 describes. Triplet 12 bits 13 to 18, and triplet 13, are reserved.
+*Verification:* Test with the worked encoding of `research/notes-level25-drcs.md` section 4.
+
+**REQ-PKT-015 — Packet X/28/4.**
+For packet X/28/4 (Table 10), the decoder shall extract the same fields as REQ-PKT-012, except that the sixteen colour words are CLUT 0 entries 0 to 7 followed by CLUT 1 entries 0 to 7. The word for CLUT 1 entry 0 shall be ignored.
+*Verification:* Test.
+
+**REQ-PKT-016 — Magazine packets M/29/0, M/29/1 and M/29/4.**
+For packet number 29, the decoder shall extract:
+- with designation code 0 and packet function 0000000, every field of REQ-PKT-012 except the page function and page coding (Table 11);
+- with designation code 1, the DRCS colour lookup tables, as REQ-PKT-013 describes (Table 12);
+- with designation code 4 and packet function 0000000, the fields of REQ-PKT-015 (Table 13).
+
+A packet with any other packet function shall be ignored.
+*Verification:* Test.
+
+**REQ-PKT-017 — Packets of object pages.**
+For a stored packet X/1 to X/25 of an object page, the decoder shall Hamming 8/4 decode byte 6 and Hamming 24/18 decode the thirteen triplets. For packets 1 to 4, bit 1 of byte 6 shall say whether the packet carries pointer data (clause 10.5.1.2). From a pointer packet, the decoder shall extract the 24 nine-bit pointers of the triplets numbered 1 to 12, counting from 0 as clause 10.5.1.2 does: bits 1 to 9 hold the pointer to the even-numbered object, and bits 10 to 18 the pointer to the odd-numbered one. Triplet 0 is reserved. An uncorrectable pointer triplet shall make both of its pointers unused (decision E.51).
+
+The decoder shall also convert an absolute triplet number from 0 to 506 into a packet and a triplet: number t below 299 is triplet t mod 13 of packet 3 + t / 13, and any higher number is triplet (t − 299) mod 13 of packet X/26 with designation code (t − 299) / 13.
+*Verification:* Test with pointer tables built by the encoder, including the worked pointer of `research/notes-level25-objects.md` section 13.2, and with the extreme triplet numbers 0, 298, 299 and 506.
+
+**REQ-PKT-018 — Packets of the Magazine Organization Table.**
+For packets of page xFE, every byte of which is Hamming 8/4 coded, the decoder shall extract:
+- from packets X/1 to X/14, the byte pair of any page number, at the position Figure 20 gives;
+- from packets X/19 and X/20 (Level 2.5) and X/22 and X/23 (Level 3.5), the GPOP link and POP links 1 to 7 of Tables 20 and 21, including the fallback bits and the two default objects of each link;
+- from packets X/21 (Level 2.5) and X/24 (Level 3.5), the GDRCS link and DRCS links 1 to 7 of Tables 22 and 23, and the totals of enhancement pages (clause 10.6.6).
+
+An uncorrectable byte shall make the link or byte pair it belongs to invalid (decision E.7).
+*Verification:* Test with the positions of `research/notes-level25-objects.md` sections 7.2 and 13.3, and the default object of section 13.4.
 
 ---
 ## F.5 Page acquisition and the page store (ACQ)
@@ -2370,7 +2736,8 @@ For each stored page and sub-page, the store shall keep:
 - up to sixteen packets X/26 with their designation codes;
 - packet X/27/0 as decoded links;
 - packets X/27/1 to X/27/3 raw;
-- packets X/28/0 format 1 and X/28/1;
+- packets X/28/0 format 1, X/28/1, X/28/3 and X/28/4;
+- packets X/27/4 and X/27/5;
 - the time of the first and most recent reception;
 - the number of receptions;
 - counts of errors.
@@ -2381,7 +2748,7 @@ When a page and sub-page that is already stored is received again without the er
 *Verification:* Test with deliberately corrupted retransmissions.
 
 **REQ-ACQ-009 — Magazine data.**
-The decoder shall store, for each magazine, the most recently received valid packets M/29/0 and M/29/1.
+The decoder shall store, for each magazine, the most recently received valid packets M/29/0 and M/29/1. At Levels 2.5 and 3.5 it shall also store M/29/4, and shall discard them all when the service changes (REQ-ACQ-018).
 *Verification:* Test.
 
 **REQ-ACQ-010 — Update indicator.**
@@ -2402,7 +2769,7 @@ The row 0 status column uses this state (decision E.10).
 *Verification:* Test.
 
 **REQ-ACQ-013 — Pages with hexadecimal numbers.**
-Headers with hexadecimal page digits (A to F) shall be processed for page termination like any other header. Such pages shall not be stored in cache mode unless a diagnostic option enables it, and viewers shall not be able to select them by digit entry (EN 300 706 Table 1 note).
+Headers with hexadecimal page digits (A to F) shall be processed for page termination like any other header. Such pages shall not be stored in cache mode unless a diagnostic option enables it, and viewers shall not be able to select them by digit entry (EN 300 706 Table 1 note). At Levels 2.5 and 3.5 they are stored, because enhancement pages usually have hexadecimal numbers (REQ-ACQ-017).
 *Verification:* Test.
 
 **REQ-ACQ-014 — Non-text pages.**
@@ -2412,6 +2779,44 @@ If a page carries packet X/28/0 format 1 whose page function is not "basic Level
 **REQ-ACQ-015 — Subtitle and newsflash pages.**
 Pages with C5 or C6 set shall be stored and displayed like other pages. Their display shall use the boxed mode of decision E.22. Each reception replaces the previous content (normally with C4 set), so that subtitles update as they are transmitted.
 *Verification:* Test with a subtitle stream.
+
+**REQ-ACQ-016 — Enhancement pages are stored as received.**
+At Levels 2.5 and 3.5, the store shall keep object pages, DRCS pages and the Magazine Organization Table (decision E.56). The rows of these pages shall be stored as received, so that each reception replaces the stored bytes of the packets it carries, with no merge by parity (REQ-ACQ-008 and decision E.8 do not apply):
+- a page whose X/28/0 page function is not "basic Level 1 page";
+- page xFE of each magazine;
+- a page that a stored link of a Magazine Organization Table, or of a packet X/27/4 or X/27/5, names as an object or DRCS page.
+
+A page that becomes an enhancement page only after it was first stored shall be stored as received from its next reception on. Each packet's presence shall be recorded.
+*Verification:* Test with repeated receptions containing Hamming-coded bytes, and with a page that is named by a link after it was first stored.
+
+**REQ-ACQ-017 — Hexadecimal pages at Levels 2.5 and 3.5.**
+At Levels 2.5 and 3.5, pages with hexadecimal page numbers shall be stored, because enhancement pages usually have them (Annex E.1; decision E.56). Viewers shall still be unable to select them by digit entry, and navigation shall still skip them, unless the diagnostic setting of REQ-ACQ-013 is on.
+*Verification:* Test at each presentation level.
+
+**REQ-ACQ-018 — Magazine data at Levels 2.5 and 3.5.**
+The decoder shall store, for each magazine, the most recent valid packets M/29/0, M/29/1 and M/29/4. Each new reception shall replace the stored packet of the same designation code. Every stored M/29 packet shall be discarded when the service changes, that is when packet 8/30 gives a new network identification, or when a new input is started. There shall be no time-out (decision E.56).
+*Verification:* Test with a change of network identification and with a change of input.
+
+**REQ-ACQ-019 — Capacity for enhancement pages.**
+Enhancement pages shall be kept in a part of the store whose capacity, in packets, is set by the caller (REQ-GEN-003). The documented default shall be the totals of Annex E.8: 500 packets at Level 2.5 and 1200 at Level 3.5, over all magazines. When that part of the store is full, the least recently received enhancement sub-page shall be replaced first. Nothing shall be discarded when a Magazine Organization Table changes, beyond this eviction (decision E.56). The memory used shall be stated as REQ-GEN-009 requires.
+*Verification:* Test that fills the enhancement store beyond its capacity.
+
+**REQ-ACQ-020 — The read-only enhancement lookup.**
+The page store shall offer a read-only lookup that the presentation layer uses to reach enhancement data (decision E.42). Given a magazine, a page number and an S1 sub-page number, it shall return the stored packets of that object or DRCS sub-page, with the record of which packets were received. Given a magazine, it shall return that magazine's Magazine Organization Table and its stored M/29 packets. The lookup shall have no side effects. Its cost shall not grow with the number of stored pages faster than a bounded search (REQ-SEC-012).
+*Verification:* Inspection; test.
+
+**REQ-ACQ-021 — Updates of enhancement pages.**
+For each stored enhancement sub-page, the store shall apply the page status of Annex B.6 and Table B.1:
+- a header with C4 set on a full transmission shall erase the stored packets before new ones are stored;
+- a partial transmission (C13 set) and a continued fragment (C12 set) shall replace only the packets they carry;
+- a change of the update indicator S2 shall be reported, so that decoded data taken from the sub-page is not reused.
+
+The sub-code's last-packet number (S4 and S3) shall be recorded, so that completeness can be judged (REQ-DRC-009).
+*Verification:* Test for every row of Table B.1.
+
+**REQ-ACQ-022 — Redrawing when enhancement data arrives.**
+When an enhancement page, a Magazine Organization Table, or a magazine packet M/29 that the displayed page uses is stored or changed, the decoder shall raise an event, so that the page's grid is built again and its changed rows are drawn again (decision E.41, principle 6). The Level 1 page shall be shown at once, without waiting for enhancement data.
+*Verification:* Test that a page is shown before its object page arrives, and is redrawn when it arrives.
 
 ---
 
@@ -2556,8 +2961,8 @@ Positions that the standard says are undefined or should not be transmitted (in 
 *Verification:* Test.
 
 **REQ-CHR-007 — The G3 set.**
-*Phase:* Phase 1 for the four positions used at Level 1.5; Phase 2 for glyphs of the other G3 positions.
-The G3 set (Table 48) shall be implemented. At minimum, positions 5/1 (horizontal line), 5/B (right arrow), 5/C (left arrow) and 5/D (up arrow), the ones Level 1.5 transmissions use in practice (Annex E.3), shall have glyphs. All other defined positions should have glyphs. The unassigned positions 6/E, 6/F, 7/E and 7/F shall display as a space.
+The G3 set (Table 48) shall be implemented. Every defined position shall have a glyph, drawn as REQ-RND-037 describes, including positions 5/1 (horizontal line), 5/B (right arrow), 5/C (left arrow) and 5/D (up arrow), the ones Level 1.5 transmissions use in practice (Annex E.3). The unassigned positions 6/E, 6/F, 7/E and 7/F shall display as a space.
+*Amended 10 October 2026:* glyphs for the G3 positions not used at Level 1.5 were Phase 2. They are Phase 1 now that Levels 2.5 and 3.5 are (decision E.40), and are drawn from the project's own geometry (decision E.50).
 *Verification:* Test; inspection of glyph coverage.
 
 **REQ-CHR-008 — Diacritical marks.**
@@ -2595,6 +3000,10 @@ When a second G0 set has been designated through Table 33 (decision E.4), the ES
 A function shall convert any internal character to a Unicode scalar value or to a short sequence of scalar values. For characters with no Unicode equivalent, it shall return a documented private-use or fallback value.
 *Verification:* Test (REQ-TST-011).
 
+**REQ-CHR-011 — Unicode for the G3 set and for DRCS characters.**
+Each defined G3 position shall convert to the Unicode character that Unicode document L2/19-025 and its mapping file `TELTXTG3.TXT` assign to it, as `research/notes-level25-drcs.md` section 9.3 lists them. Most are in the block "Symbols for Legacy Computing" from U+1FB3C to U+1FB6F, and the rest are box-drawing, geometric-shape and arrow characters. Position 5/F, which shows the background colour, shall convert to a space. The unassigned positions shall convert to a space. A DRCS character has no Unicode equivalent and shall convert to the documented fallback value of REQ-CHR-010.
+*Verification:* Test of every G3 position against the mapping file.
+
 ---
 
 ## F.8 Level 1.0 presentation (L1)
@@ -2609,6 +3018,8 @@ Decoding a page for display shall produce a grid of 25 rows (0 to 24) by 40 colu
 - whether it lies inside a box;
 - its size role: normal, top half of double height, or bottom half of double height;
 - flags recording whether it shows a held mosaic, whether it came from a Level 1.5 overwrite, and whether its source byte failed parity.
+
+At Levels 2.5 and 3.5, each cell records more, and the grid also holds a side-panel area, as REQ-L25-006 describes.
 *Verification:* Inspection; test.
 
 **REQ-L1-002 — Row processing.**
@@ -2728,8 +3139,9 @@ The display function shall support the following viewer modes:
 ## F.9 Level 1.5 presentation (L15)
 
 **REQ-L15-001 — Enabling Level 1.5.**
-Level 1.5 processing shall be switchable on and off in the configuration, and shall be on by default. When it is off, packets X/26 shall be stored but not applied.
-*Verification:* Test.
+The Level 1.5 pass shall run when the presentation level setting (REQ-PRF-006) is Level 1.5. At Level 1, packets X/26 shall be stored but not applied. At Levels 2.5 and 3.5, the enhancement processor of area L25 shall run in place of this pass.
+*Amended 10 October 2026:* this requirement was an on and off switch for Level 1.5, on by default. The presentation level setting replaces it (decision E.40).
+*Verification:* Test at each presentation level.
 
 **REQ-L15-002 — Processing order.**
 The Level 1.5 pass shall process:
@@ -2791,6 +3203,389 @@ By default, a triplet that addresses a position earlier than the previous triple
 **REQ-L15-010 — Character sets for overwrites.**
 The G0 and G2 sets used by the Level 1.5 pass shall be the designated default sets of decision E.4. National options and the ESC attribute shall not affect them.
 *Verification:* Test.
+
+---
+## F.9a Level 2.5 and 3.5 enhancement (L25)
+
+This area specifies the enhancement processor of decision E.42: how the local enhancement data of a page, and the objects it invokes, change the characters, attributes, colours and side panels of the Level 1 grid. Objects themselves are specified in area OBJ (section F.9b), and redefinable characters in area DRC (section F.9c). Decisions E.40 to E.56 apply throughout. Clause and table numbers refer to EN 300 706 V1.2.1.
+
+**REQ-L25-001 — When the enhancement processor runs.**
+The enhancement processor shall run when the presentation level (REQ-PRF-006) is 2.5 or 3.5, and only then. It shall run after the Level 1 grid of the page has been built (area L1), in place of the Level 1.5 pass of area L15. At Level 2.5 it shall ignore every packet, triplet and field that Tables 1, 25, 28 and 29 mark for Level 3.5 only (decision E.40). These are packet X/27/5, the DRCS colour tables of X/28/1 and M/29/1, packets X/28/4 and M/29/4, the Font Style triplet, DRCS modes 1 to 3, and Modified G0 and G2 designations beyond the Level 2.5 limit.
+*Verification:* Test that one stream containing every item marked for Level 3.5 only gives the expected grid at Level 2.5 and at Level 3.5.
+
+**REQ-L25-002 — Processing order.**
+The enhancement processor shall process, in this order:
+1. the local enhancement data: the page's stored packets X/26 in ascending designation code order, 0 to 15, skipping missing codes, and within each packet its triplets 1 to 13 in order, up to the first Termination Marker or Object Definition triplet (decision E.46);
+2. each object, at the point where the local enhancement data or another object invokes it (area OBJ);
+3. when the page has no packet X/26 that carries a display triplet, the default objects (REQ-OBJ-040).
+
+The walk shall follow the state machine of REQ-FSM-011. The attributes and characters it produces shall be resolved row by row, as REQ-FSM-012 describes.
+*Verification:* Test; the transition tests of REQ-FSM-009.
+
+**REQ-L25-003 — The active row.**
+The active position shall start at row 0, column 0 at the start of the local enhancement data and whenever a default object is placed (clause 12.3.2). At Levels 2.5 and 3.5 only these row triplets shall move it (decision E.46):
+- Full Row Colour (mode 00001) shall set the row from its address and the column to 0.
+- Set Active Position (mode 00100) shall set the row from its address. It shall set the column from its data when the data is below 40, and leave the column unchanged when the data is 40 or more.
+- Address Display Row 0 (mode 00111) with address 63 shall set row 0, column 0. With addresses 40 to 62 it shall leave the position unchanged.
+
+A row address of 40 means row 24, and addresses 41 to 63 mean rows 1 to 23. No other row triplet shall move the active position.
+*Verification:* Test for every row mode, including Object Invocation triplets whose address field would set a row under the rule of Annex A.3.
+
+**REQ-L25-004 — The active column.**
+Every column triplet shall set the active column to its address, except those of the reserved modes 00100, 00101 and 01010 and of the Programme Delivery Control mode 00110, which shall leave the position unchanged (clause 12.3.4). A character mode whose data is below 2/0 shall set the column and write nothing.
+*Verification:* Test for every column mode.
+
+**REQ-L25-005 — Damaged and out-of-order triplets.**
+An uncorrectable triplet shall be skipped without moving the active position. A triplet that addresses a position earlier than the previous triplet from the same source shall be applied at the position it addresses. An Origin Modifier that is not immediately followed by an object invocation shall be discarded (decision E.46).
+*Verification:* Test.
+
+**REQ-L25-006 — What a cell records at Levels 2.5 and 3.5.**
+At Levels 2.5 and 3.5, each cell of the grid shall record, in addition to the contents of REQ-L1-001 (decision E.42):
+- its foreground and background colours as Colour Map indices 0 to 31 (decision E.43);
+- its size, as a vertical part (normal, top half or bottom half) and a horizontal part (normal, left half or right half);
+- underline, and whether its mosaics are separated;
+- invert;
+- the flash mode, rate and phase of decision E.48;
+- the window or box membership of REQ-L25-029;
+- the Level 3.5 font styles: bold, italic and proportional;
+- for a G3 character, its code; for a DRCS character, the table (normal or global), the sub-table and the character number;
+- which source wrote its character: the Level 1 page, the local enhancement data, or an Active, Adaptive or Passive object.
+
+The grid shall also hold the page's Colour Map (REQ-L25-030), its screen colour and row colours (REQ-L25-034), its side-panel area and widths (REQ-L25-040), and the DRCS patterns and colour tables that its DRCS cells use (REQ-DRC-007). All of this shall be held in memory the caller provides (REQ-GEN-003).
+*Verification:* Inspection; test.
+
+**REQ-L25-010 — Characters written at Levels 2.5 and 3.5.**
+The following column modes shall write a character at the active position, with the display priority of the source that writes it (REQ-OBJ-012):
+
+| Mode | Character written |
+|---|---|
+| 00001 | A G1 character (REQ-L25-011) |
+| 00010 and 01011 | A G3 character |
+| 01001 | A G0 character from the current G0 set |
+| 01101 | A DRCS character (REQ-DRC-006) |
+| 01111 | A G2 character from the current G2 set |
+| 10000 to 11111 | A G0 character combined with the diacritical mark numbered by the low four bits of the mode. Mode 10000 with data 2/A writes "@". |
+
+National option substitution and the ESC attribute shall never apply to these characters (Table 25; clause 15.4). A G3 character shall not change the held mosaic, and Hold Mosaics shall never replace a character written by enhancement data (decision E.50). The undefined positions named in decision E.50 shall show a space, and a diagnostic shall be traced.
+*Verification:* Test for every mode, every character set and every undefined position.
+
+**REQ-L25-011 — G1 characters written by triplets.**
+A G1 character written by mode 00001 with a code in columns 2, 3, 6 or 7 shall be drawn as a block mosaic. It shall be contiguous or separated according to the non-spacing Underline or Separated attribute in force at its cell, and not according to the Level 1 codes 1/9 and 1/A (Table 26 notes 11 and 12). A code in columns 4 or 5 shall be the character of the current G0 set at that position, without national option substitution (Table 47 note 3).
+*Verification:* Test.
+
+**REQ-L25-012 — Character set designation.**
+The default G0 and G2 sets for characters written by enhancement data, and the second G0 set used by ESC on the Level 1 page, shall be taken from the highest-priority designation of Annex C.4 rule 1 (decision E.44). The national option shall be chosen as decision E.4, as amended, describes.
+
+A Modified G0 and G2 Character Set Designation triplet (mode 01000) shall select the pair of sets that Table 34 gives for its data. Reserved values shall be ignored. Its effect shall last:
+- in local enhancement data and Active objects, to the end of the row or to the next such triplet, after which the default sets apply again;
+- in Adaptive and Passive objects, to the last character cell of the object or to the next such triplet.
+
+It shall never affect the Level 1 page. At Level 2.5, a designation that would make more than two G0 and G2 pairs on the page, counting the default pair, shall be ignored. At Level 3.5 there is no limit (decision E.50).
+*Verification:* Test, including a third pair at both levels.
+
+**REQ-L25-020 — Attribute types and contention.**
+Foreground colour, background colour, flash, and each of the six display attributes (double height, double width, boxing or window, conceal, invert, and underline or separated mosaics) shall each be a separate attribute type (decision E.47). Where two attributes of one type apply to a cell, the latest shall win under Annex C.2: first by the cell where each takes effect, then by the cell where each is placed, then by the order of transmission. A non-spacing attribute placed at the same cell as a set-at Level 1 attribute of the same type shall win. Every non-spacing attribute shall take effect at the cell where it is placed.
+*Verification:* Test with the three worked examples of Annex C.2 and with the same-cell case (REQ-TST-016).
+
+**REQ-L25-021 — Foreground Colour and Background Colour triplets.**
+Column modes 00000 (Foreground Colour) and 00011 (Background Colour) shall set their colour to the Colour Map index in data bits D4 to D0. The colour shall apply from the cell where the triplet is placed to the end of the row, unless a later spacing or non-spacing attribute of the same type overrides it. Data with D6 or D5 set is reserved, and the triplet shall then only set the column. Neither triplet shall change alphanumeric or mosaic mode.
+*Verification:* Test.
+
+**REQ-L25-022 — Level 1 colour attributes at Levels 2.5 and 3.5.**
+At Levels 2.5 and 3.5, the Level 1 spacing colour attributes shall work as Table 26 defines them for these levels:
+- 0/0 Alpha Black and 1/0 Mosaic Black shall set a black foreground: entry 0 of the foreground CLUT.
+- 0/1 to 0/7 and 1/1 to 1/7 shall set entry n of the foreground CLUT that Colour Table Re-mapping selects.
+- 1/C Black Background shall set entry 0 of the background CLUT, or the row's full row colour when Black Background Colour Substitution is on.
+- 1/D New Background shall set a background from the background CLUT, with the entry number of the foreground colour currently selected by the Level 1 page.
+
+The start-of-row default white foreground and black background shall be re-mapped in the same way, except that substitution replaces the default black background when it is on (decision E.43). A black background obtained by 0/0 or 1/0 followed by 1/D shall not be substituted. A background colour set by a triplet shall never be substituted.
+*Verification:* Test for each of the eight re-mapping values, with substitution on and off.
+
+**REQ-L25-023 — The Display Attributes triplet.**
+Column mode 01100 shall set, at its cell, the six display attributes from its data bits: D0 double height, D1 boxing or window, D2 conceal, D4 invert, D5 underline or separated mosaics, and D6 double width, with D0 and D6 together meaning double size. D3 is reserved and shall be ignored. A bit at 1 shall turn its function on and a bit at 0 shall turn it off, from that cell to the end of the row or until changed again. A 0 bit shall also turn off a function that a Level 1 spacing attribute turned on (decision E.47). In particular:
+- **Conceal** set by the triplet shall last until a Display Attributes triplet clears it or the row ends. A Level 1 colour code shall not end it.
+- **Underline or separated mosaics** set by the triplet shall underline G0 characters, G1 characters of columns 4 and 5, and G2 characters, and shall draw G1 mosaics separated. The Level 1 code 1/9 shall not cancel it. Clearing it by a triplet shall also clear a Separated Mosaics set by the Level 1 code 1/A.
+- **Invert** shall swap the displayed foreground and background colours. While it is in force, a Level 1 change of foreground alters the displayed background, and a change of background alters the displayed foreground.
+- **Boxing or window** shall follow REQ-L25-029.
+*Verification:* Test for each bit, set and cleared, against each Level 1 attribute of the same type.
+
+**REQ-L25-025 — Size at Levels 2.5 and 3.5.**
+Double height, double width and double size shall be available as the spacing attributes 0/D, 0/E and 0/F and as non-spacing attributes (REQ-L25-023). Any size attribute shall end any other (Table 26 notes 2, 5 and 8). Sizes shall be resolved by the rules of Annex C.3:
+1. Double height and double size shall not take effect in rows 0, 23 and 24, and double width and double size shall not take effect in column 39 or in the last column of a side panel. At those places the character shall be drawn without the doubling that cannot be shown.
+2. Earlier size attributes in scan order, left to right and top to bottom, shall take priority over later ones.
+3. Where an enlarged character conflicts with an earlier one, the conflicting doubling shall be dropped. A double-size character shall be reduced to normal size only if neither double width nor double height alone would fit.
+4. All attributes at the origin of an enlarged character shall apply to all its parts.
+5. Attributes at positions hidden by an enlarged character shall take effect at the first position after it that is not hidden, unless they are superseded.
+
+Double width and double size shall never spread from the main page into a side panel, or back (clause 12.5.4 rule 3). Each cell shall record its vertical and horizontal parts (REQ-L25-006).
+*Verification:* Test for each rule, including the conflicts of rule 3.
+
+**REQ-L25-026 — The row below a double-height row.**
+When a row contains spacing double height or double size, alone or together with non-spacing double height, the row below shall show the lower halves under the enlarged characters. Elsewhere it shall show the local background colour of the cell above, with no foreground, and its own Level 1 characters and attributes shall be ignored (Table 26 codes 0/D and 0/F).
+
+Enhancement characters that local enhancement data or objects write to that lower row, in cells not covered by lower halves, shall be displayed. For local enhancement data, Active objects and Adaptive objects, their attributes shall be the start-of-row defaults, modified only by earlier enhancement data on that row. Cells where no enhancement character is written shall be unchanged.
+
+When a row's only double height or double size comes from non-spacing attributes, the row below shall not be suppressed: everything outside the lower halves keeps its normal effect (decisions E.5 and E.15, as amended).
+*Verification:* Test for spacing, non-spacing and mixed double height, with enhancement characters on the lower row.
+
+**REQ-L25-027 — Additional Flash Functions.**
+Column mode 00111 shall set, at its cell, the flash mode from data bits D1 and D0 (steady, normal, inverted phase, or adjacent CLUT) and the rate and phase from D4 to D2 (slow; fast with phase 1, 2 or 3; fast incremental; or fast decremental), with the timing of decision E.48. Data with D6 or D5 set, and the rate values 110 and 111, are reserved, and the triplet shall then only set the column.
+
+The flash attribute shall last to the end of the row, or to the next flash attribute: Level 1 Flash or Steady, or another Additional Flash Functions triplet. For incremental and decremental flash, the phases shall be assigned to successive characters from the triplet's column rightwards. At Levels 2.5 and 3.5 the Level 1 Flash attribute shall mean slow flash in normal mode. Flash shall act on the foreground colour only.
+*Verification:* Test for every mode and rate, and for the phases given to a run of characters.
+
+**REQ-L25-028 — Font Style (Level 3.5).**
+At Level 3.5, column mode 01110 shall set proportional spacing (D0), bold (D1) and italics (D2) from its column to the end of the row, each bit enabling its style when 1 and cancelling it when 0. The row count in D6 to D4 shall extend the same styles over the following 0 to 7 rows, from the same column to the end of each row, stopping at row 24. A later Font Style triplet shall replace the styles from its own position onward. D3 is reserved. The styles shall apply to G0 and G2 characters only (decision E.50). At Level 2.5 the triplet shall only set the column.
+*Verification:* Test against the zvbi observation recorded in `research/notes-level25-drcs.md` section 13.2, where a row count of 2 reached the next two rows only, and with overlapping row extensions.
+
+**REQ-L25-029 — Boxing, windows and the display planes.**
+At Levels 2.5 and 3.5, the boxing or window bit of a Display Attributes triplet shall start a boxed area on a page with C5 or C6 set, and a window on any other page (Table 29 mode 01100, D1). Inside a window the full row colour becomes transparent, so that the picture shows where the foreground or background colour is also transparent. A Level 1 Start Box on a page with neither C5 nor C6 set shall not open a window (decision E.47).
+
+The source of each pixel shall follow Table C.1 of Annex C.1: the foreground or background colour, the full screen or row colour, or the picture. The picture is rendered as transparent pixels or the fill colour (REQ-RND-006).
+*Verification:* Test of all rows of Table C.1 (REQ-TST-016).
+
+**REQ-L25-030 — The Colour Map of a page.**
+For each page shown at Level 2.5 or 3.5, the enhancement processor shall build the page's Colour Map of 32 entries (decision E.43):
+- every entry starts with its Table 30 default;
+- CLUTs 2 and 3 are replaced by the colour words of the page's X/28/0 format 1, or, when that is absent or its colour words are invalid, by those of the magazine's M/29/0;
+- at Level 3.5 only, CLUTs 0 and 1 are replaced by the colour words of the page's X/28/4, or, when that is absent or invalid, by those of the magazine's M/29/4. CLUT 1 entry 0 always stays transparent.
+
+The Colour Map shall travel with the grid to the renderer (REQ-RND-030).
+*Verification:* Test for each source and each order of precedence, including the Table 30 values of CLUT 1 entries 5 and 6.
+
+**REQ-L25-031 — Precedence of page-level presentation data.**
+Side panels, the default screen and row colours, Black Background Colour Substitution and Colour Table Re-mapping shall each be taken from the first valid source in this order (decision E.44):
+1. the page's X/28/0 format 1;
+2. the page's X/28/4, at Level 3.5;
+3. the magazine's M/29/0;
+4. the magazine's M/29/4, at Level 3.5;
+5. for side panels and substitution only, the fallback bits of the page's POP link in the Magazine Organization Table (REQ-OBJ-031);
+6. the defaults of Annex D.2.1.
+
+A source is valid for a field group when the triplets of that group were decoded without uncorrectable errors (REQ-PKT-012). Packet X/28/0 shall be read as format 1 on every page that is displayed.
+*Verification:* Test for each source, with each field group damaged in turn.
+
+**REQ-L25-032 — Full Screen Colour.**
+Row mode 00000 with data bits D6 and D5 at 0 shall set the screen colour of the whole page to the Colour Map index in D4 to D0. Other data values are reserved, and the triplet shall then be ignored. The triplet shall not move the active position. It shall be acted on only in local enhancement data and in Active objects (decision E.51).
+*Verification:* Test.
+
+**REQ-L25-033 — Full Row Colour and Address Display Row 0.**
+Row mode 00001 shall set the active position (REQ-L25-003). When its bits S1 and S0 are 00 it shall set the row colour of the addressed row. When they are 11 it shall set the row colour of the addressed row and of every row below it, down to row 23, or to row 24 when row 24 is displayed. Row mode 00111 with address 63 shall do the same for row 0. With S1 and S0 at 01 or 10, either triplet shall set the position and no colour.
+
+The commands shall apply in transmission order, so that a "this row only" command changes only its own row, and an earlier "down to the bottom" fill continues below it (decision E.45). Both triplets shall be acted on only in local enhancement data and in Active objects.
+*Verification:* Test with sequences of both kinds of command.
+
+**REQ-L25-034 — Screen colour, row colours and borders.**
+The screen colour and each row's colour shall be resolved in the orders of decision E.45. The screen colour shall fill the areas above row 0, below the last displayed row, to the left and right of the rows, and outside the side panels. A row's colour shall show through the row's cells as Table C.1 describes (REQ-L25-029), and shall be the default background of the row's side-panel cells (REQ-L25-041). No row colour shall be drawn in row 0, columns 0 to 7 (REQ-L25-050).
+*Verification:* Test against the precedence lists of Annex A.5 (REQ-TST-016).
+
+**REQ-L25-040 — Enabling side panels.**
+The left and right side panels and their widths shall be found from the source that REQ-L25-031 chooses, using the width table of decision E.49. At Level 2.5, side panels shall be shown only when the Side Panel Status Flag is 1. At Level 3.5 they shall be shown whenever they are enabled. When the source is the fallback of the Magazine Organization Table, its bits shall select no panel, a 16-column left panel, a 16-column right panel, or two 8-column panels (Table 21). The display width shall be 40 columns plus the widths of the two panels.
+*Verification:* Test of every row of the width table, and of each fallback value.
+
+**REQ-L25-041 — Side-panel content.**
+Side-panel cells shall be addressed as columns 40 to 71 of rows 1 to 24: the right panel from column 40, and the left panel up to column 71 (clause 12.5.3). The following rules shall hold (clause 12.5.4):
+- Each panel row starts from the Level 1 start-of-row defaults, with the full row colour as its background, and every cell is a space until it is written (rule 1).
+- Attributes shall not pass from a left panel into the main page, nor from the main page into a right panel (rule 2).
+- The page's header bits C5, C6, C7 and C10 govern the panels too (rule 5).
+- Content comes only from objects placed by Origin Modifiers.
+- Writes to panel columns that are not enabled, to row 0, below row 24 or beyond column 71 shall be discarded, as shall an object element that would cross between the main page and a panel, or between the two panels (decision E.49).
+- In row 0, the panel area shows the screen colour.
+*Verification:* Test with objects writing to every boundary, including the three column layouts given in clause 12.5.3.
+
+**REQ-L25-050 — The receiver's status area at every level.**
+No character, attribute, row colour, screen colour or side-panel content from local enhancement data, objects or default objects shall be written to, or drawn in, row 0, columns 0 to 7 (REQ-SEC-005; decision E.41). A write addressed there shall be discarded, and the rest of the data it came from shall still be processed.
+*Verification:* Test that pages writing to that area by every Level 2.5 and 3.5 route leave it unchanged. The routes include Address Display Row 0 with a row colour, objects with Origin Modifiers, side panels and default objects.
+
+**REQ-L25-051 — Faults are contained.**
+A missing, damaged or unusable enhancement source shall remove only the enhancement that depends on it (decision E.41): a skipped triplet, object or DRCS character, or a page shown without its object or DRCS page. The Level 1 page shall always be shown. Each such fault shall be counted in the decoder's statistics (REQ-ARCH-007) and traced.
+*Verification:* Test with each kind of missing or damaged source.
+
+**REQ-L25-052 — Reserved and Programme Delivery Control triplets.**
+Reserved row and column modes, the Programme Delivery Control modes (row modes 01000 to 01101 and column mode 00110), and reserved data values shall have no display effect. They shall move the active position only as REQ-L25-003 and REQ-L25-004 say (clause 9.2; Part G).
+*Verification:* Test.
+
+---
+
+## F.9b Objects (OBJ)
+
+This area specifies objects (clause 13), the pages that carry them (clause 10.5), and the links that lead to those pages: the Magazine Organization Table (clause 10.6) and packets X/27/4 and X/27/5 (clause 9.6.2). Decisions E.51 to E.53 apply. Objects are processed by the walk of REQ-FSM-011.
+
+**REQ-OBJ-001 — Object invocation.**
+An Object Invocation triplet (row modes 10001 Active, 10010 Adaptive and 10011 Passive) shall invoke the object it names, from the source its bits S1 and S0 give: 01 local, 10 the page's Public Object Page (POP), or 11 the page's Global Public Object Page (GPOP). Source 00 is illegal, and the triplet shall be skipped. The invocation shall run the object's triplets once, from the origin of REQ-OBJ-002, subject to the nesting rules of REQ-OBJ-008 and the limits of REQ-OBJ-020 (clauses 13.6 and 13.7).
+*Verification:* Test.
+
+**REQ-OBJ-002 — The origin and the Origin Modifier.**
+An object's origin shall be the active position at its invocation plus the offsets of an Origin Modifier (row mode 10000) that immediately precedes the invocation. The row offset is the modifier's address minus 40, and the column offset is its data, 0 to 71. Inside the object the active position shall start at row 0, column 0, relative to the origin. Every coordinate in the object shall be relative to the origin, including Address Display Row 0 and row address 40 (decision E.51). When the object ends, the active position shall return to its value at the invocation, and the Origin Modifier shall be cancelled. An Origin Modifier followed by any triplet other than an invocation shall be discarded (decision E.46). A column offset above 71 places every element beyond column 71, where REQ-OBJ-014 discards it.
+*Verification:* Test, including the worked Origin Modifier of `research/notes-level25-objects.md` section 13.2.
+
+**REQ-OBJ-003 — Finding a local object.**
+For a local invocation, bits N7 to N4 of the object number shall give the designation code of the packet X/26 that holds the definition, and bits N3 to N0 the triplet within it, numbered 0 to 12 (Table 28). Bit N8 shall be 0. An invocation shall be skipped when N8 is 1, when the triplet number is 13 to 15, or when the packet with that designation code was not received (decision E.51). The triplet found shall then be checked as REQ-OBJ-005 describes.
+*Verification:* Test, including each case that is skipped.
+
+**REQ-OBJ-004 — Finding a public or global object.**
+For a POP or GPOP invocation, the definition shall be found as clause 10.5.1.2 and Table 28 describe:
+1. the object page is the POP or GPOP that the page's links name (REQ-OBJ-030);
+2. the sub-page is the one whose S1 equals N3 to N0 (REQ-OBJ-032);
+3. the pointer packet is packet 1 + (N8 N7), and its byte 6 shall say that it carries pointer data;
+4. the pointer triplet, numbered from 0, is 1 + 3 × (N6 N5) + k, where k is 0 for Active, 1 for Adaptive and 2 for Passive objects;
+5. the pointer is bits 1 to 9 of that triplet when N4 is 0, and bits 10 to 18 when N4 is 1;
+6. the pointer value is an absolute triplet number, converted to a packet and triplet as REQ-PKT-017 describes.
+
+The object shall be absent when the pointer is 0x1FF (not used), when its value is 507 to 510, when it points into a pointer packet or into packets 1 or 2, or when the pointer packet is missing or does not carry pointer data (decision E.51).
+*Verification:* Test with the worked pointer of `research/notes-level25-objects.md` section 13.2, and with each case that makes the object absent.
+
+**REQ-OBJ-005 — Checking the definition.**
+The triplet found shall be an Object Definition (row modes 10101 to 10111) of the same type as the invocation, whose usage bits include the presentation level: 01 for Level 2.5, 10 for Level 3.5, and 11 for both. Otherwise the invocation shall be skipped. The object number bits of the definition shall not be compared with those of the invocation (decision E.51).
+*Verification:* Test with a definition of each other type, and with each usage value at both levels.
+
+**REQ-OBJ-006 — The body of an object.**
+An object's body shall be the triplets that follow its definition, up to the next Object Definition or Termination Marker triplet (clause 13.1). Triplet 12 of a packet is followed by triplet 0 of the next packet, and packet 25 is followed by packet X/26 with designation code 0. A body shall be at most 507 triplets, and shall never continue onto another sub-page (clause 10.5.1.1).
+
+Before an object runs, its body shall be scanned to find where it ends and which cells it addresses on each row (REQ-OBJ-010 and REQ-OBJ-020). When the scan meets a packet that has not been received before the end of the body, the object shall be absent; other objects on the same page are unaffected (decision E.51). Uncorrectable triplets in the body shall be skipped.
+*Verification:* Test with bodies that cross packets, that reach packet X/26, and that meet a missing packet.
+
+**REQ-OBJ-008 — Which objects may invoke which.**
+Invocations shall be permitted only as this table shows (clauses 13.3 to 13.6; decision E.51). Any other invocation shall be skipped.
+
+| Invoker | May invoke |
+|---|---|
+| Local enhancement data | Active, Adaptive and Passive objects, from local, POP or GPOP sources |
+| Active object | Adaptive and Passive objects |
+| Adaptive object | Passive objects |
+| Passive object | Nothing |
+| The default-object mechanism (REQ-OBJ-040) | POP and GPOP objects of any type, never local ones |
+
+A local object shall be invoked only by the page's own local enhancement data, or by another local object, and never by a public or global object (clause 13.6). An object invoked from inside a public or global object shall be found through the displayed page's POP and GPOP links.
+*Verification:* Test for every pair of invoker and type, and for each source.
+
+**REQ-OBJ-009 — Active objects.**
+An Active object's triplets shall act as if they were local enhancement data at the active position (clause 13.3). The attributes at its starting position shall be those of the Level 1 page, as already modified there by local enhancement data and earlier Active objects. The attributes it sets shall act to the end of the row, on every character, whether the character comes from the object or from the Level 1 page, until a later attribute of the same type supersedes them.
+*Verification:* Test with the Active case of the clause 13.9 example (REQ-TST-016).
+
+**REQ-OBJ-010 — Adaptive objects.**
+An Adaptive object shall start with the underlying attributes at its position: those of the Level 1 page after local enhancement data and Active objects (clause 13.4). On each row, the attribute changes it makes shall affect both its own characters and the Level 1 characters between the first and the rightmost cell that any of its triplets addresses on that row (decision E.51). For an attribute type that the object has changed, later changes made by the Level 1 page inside that range shall be ignored. To the right of the rightmost addressed cell, the underlying attributes shall apply again. A character set designation made by the object shall last to the last character cell of the object.
+*Verification:* Test with the Adaptive case of the clause 13.9 example (REQ-TST-016).
+
+**REQ-OBJ-011 — Passive objects.**
+Each invocation of a Passive object shall start from these attributes (clause 13.5): white foreground (CLUT 0 entry 7), black background (CLUT 0 entry 0), normal size, steady, boxing off, not concealed and contiguous mosaics. Its attributes shall persist across changes of row and of active position until the object changes them or ends. They shall apply only to the cells where the object writes a character, and the underlying attributes shall not affect those cells. Cells that the object does not write shall show the underlying page unchanged. Transparency inside a Passive object is CLUT 1 entry 0, as everywhere else (decision E.51).
+*Verification:* Test with the Passive case of the clause 13.9 example (REQ-TST-016), and with two invocations of one object.
+
+**REQ-OBJ-012 — Display priority.**
+Where several sources write a character to one cell, the character shown shall be chosen by the priority of clause 13.2: Passive objects, then Adaptive objects, then the local enhancement data, then Active objects, then the Level 1 page. Between two objects of the same type, the latest invoked shall win (Annex A.7.1); this includes default objects (decision E.53). Ties between attributes shall be resolved by Annex C.2, with the order in which the walk of REQ-FSM-011 meets them as the order of transmission. The displayed attributes of a cell shall be those of the plane whose character it shows, as REQ-FSM-012 describes. Transmissions that break the overlap and interleave rules of Annex A.7 shall be displayed by these same rules.
+*Verification:* Test with overlapping objects of each pair of types.
+
+**REQ-OBJ-013 — Triplets restricted to local data and Active objects.**
+Full Screen Colour, Full Row Colour and Address Display Row 0 triplets inside Adaptive or Passive objects shall be ignored entirely (decision E.51). Inside an object whose origin lies in a side panel, Full Screen Colour and Full Row Colour shall be ignored (clause 12.5.3).
+*Verification:* Test.
+
+**REQ-OBJ-014 — Where objects may write.**
+An element of an object, meaning a character or an attribute, that would be placed outside rows 0 to 24 or columns 0 to 71 shall be discarded, and the object shall continue (decision E.51). Elements placed in row 0, columns 0 to 7 (REQ-L25-050), and elements that decision E.49 discards in or across the side panels, shall be discarded in the same way.
+*Verification:* Test with objects placed at every edge.
+
+**REQ-OBJ-020 — Limits on objects.**
+The limits of Annex A.8 shall be enforced as fixed bounds (decision E.51):
+- at most 127 invocations of each object type per page, side panels and default objects included;
+- at most 15 objects open at once, where an object is open from the active position at its invocation up to and including the last position it addresses, in scan order (Annex A.8, Figure A.1);
+- at most 15 objects opened in succession without a displayable character or attribute being written in between.
+
+Invocations beyond a limit shall be ignored and counted. The work done to build a page's grid shall be bounded by these limits (REQ-SEC-012), and enhancement processing shall use no allocation.
+*Verification:* Test with pages that reach and exceed each limit; the bounded-work test of REQ-TST-019.
+
+**REQ-OBJ-030 — The enhancement pages a page uses.**
+The GPOP, POP, Global DRCS (GDRCS) and DRCS pages that a page uses, with their sub-pages, shall be taken from the page's own X/27/4, and at Level 3.5 also X/27/5, when those are present, and from the Magazine Organization Table otherwise (Annex D.1.4). The links of X/27/4 and X/27/5 shall take precedence whatever the table's X/27/4,5 flag says, and shall be read as decision E.52 describes:
+- X/27/4 links 0 to 3 are, by position, the GPOP, POP, GDRCS and DRCS links. A link whose function bits do not match its position shall be ignored.
+- At Level 3.5, X/27/4 links 4 and 5 and X/27/5 links 0 and 1 take their role from their function bits.
+- A link shall be used only when its Format 1 marker bits are as Table 15 requires, and its page validity includes the presentation level.
+- Page validity 00, all sixteen sub-page flags at 0, or page number FF shall mean no link.
+- A link that duplicates one already accepted shall be ignored.
+- The sub-page flags shall be used only as hints for acquisition.
+*Verification:* Test with the worked link of `research/notes-level25-objects.md` section 13.2, and with each case that makes a link unusable.
+
+**REQ-OBJ-031 — The Magazine Organization Table.**
+For a page P of magazine m, the decoder shall use the stored Magazine Organization Table of m, page mFE, sub-page S1 = 0. A table on another sub-page shall be ignored (decision E.52). From P's byte pair (REQ-PKT-018) it shall take the global object flag, the POP link number, the global DRCS flag and the DRCS link number. The links shall be read:
+- at Level 2.5, from X/19 to X/21;
+- at Level 3.5, from X/22 to X/24. When X/22 or X/24 is missing, the Level 2.5 links shall be used, and the page shall be processed at Level 2.5 (clause 10.6.1). When only X/23 is missing, POP links 4 to 7 shall be taken from X/20.
+
+The magazine of a link is absolute, with 0 meaning magazine 8. A link to page FF means "not used". The byte pair for page xFF shall be ignored. The global flags shall be used only as hints for acquisition, and a GPOP or GDRCS reference shall be resolved through the magazine's link whatever the flag says. The fallback bits of P's POP link shall supply side panels and Black Background Colour Substitution when REQ-L25-031 reaches them; with no POP link, they shall be clear (decision E.53).
+*Verification:* Test with the table positions of `research/notes-level25-objects.md` sections 7.2 and 13.3, at both levels and with each Level 3.5 packet missing.
+
+**REQ-OBJ-032 — Sub-pages of enhancement pages.**
+An invocation shall name the sub-page of its object page by S1 directly. A link's sub-page count n shall mean that sub-pages 0 to n are assumed; missing ones are absent. A sub-page beyond the advertised count shall be used if it is stored (decision E.52).
+*Verification:* Test.
+
+**REQ-OBJ-040 — Default objects.**
+When a page has no packet X/26 that carries a display triplet, the decoder shall place the default objects that the Magazine Organization Table gives (clause 13.8; decision E.53):
+- up to two from the GPOP link of the page's magazine, which apply to every such page of the magazine whatever the page's global object flag says;
+- up to two from the page's POP link.
+
+They shall be placed in the order GPOP 1, GPOP 2, POP 1, POP 2, each with its origin at row 0, column 0, and the active position shall be row 0, column 0 before and after each. Each default object number shall be resolved as REQ-OBJ-004 describes, with N8 = 0, so that only the first 16 objects of each type on each sub-page can be reached. A page whose X/26 packets carry only Programme Delivery Control triplets shall keep its default objects.
+*Verification:* Test with the worked default object of `research/notes-level25-objects.md` section 13.4, and with pages that have and lack local display data.
+
+**REQ-OBJ-041 — Enhancement pages are never shown as text.**
+Object pages, DRCS pages and the Magazine Organization Table shall never receive Level 1 national option or display semantics, and shall not be rendered as text pages (REQ-ACQ-014). On these pages, bit C12 means a continued fragment and bit C13 a partial page (Annex B.6, Table B.1).
+*Verification:* Test.
+
+---
+
+## F.9c Dynamically redefinable characters (DRC)
+
+This area specifies Dynamically Redefinable Characters (DRCS, clause 14): the pages that carry them, the four modes, their colours and how they are drawn. Decision E.54 applies.
+
+**REQ-DRC-001 — DRCS pages.**
+A page shall be treated as a DRCS page when its X/28/0 or X/28/3 page function is 0100 (Global DRCS) or 0101 (normal DRCS), or when a GDRCS or DRCS link names it (REQ-OBJ-030 and REQ-OBJ-031). Each sub-page, identified by S1, is one sub-table of 48 Pattern Transfer Units (PTUs) (clause 14.1). Packets X/1 to X/24 each carry two PTUs: PTU 2k is bytes 6 to 25 of packet X/(k + 1), and PTU 2k + 1 is bytes 26 to 45 (Figure 27). Packet X/25 is not used.
+*Verification:* Test with the layout of Figure 27 (REQ-TST-016).
+
+**REQ-DRC-002 — D-bytes.**
+Each PTU byte shall be checked for odd parity. A valid byte, called a D-byte, has a code from 4/0 to 7/F, and its six least significant bits are six dots, the most significant of them the leftmost (clause 14.2.1). D-byte i of a PTU, numbered 0 to 19, covers row i / 2 of the 12 by 10 matrix, and columns 0 to 5 when i is even or 6 to 11 when i is odd. A byte that fails its parity check, or whose code lies outside 4/0 to 7/F, shall make every character using that PTU invalid (decision E.54).
+*Verification:* Test with the worked PTUs of `research/notes-level25-drcs.md` section 3.5.
+
+**REQ-DRC-003 — Mode identification.**
+The mode of each PTU shall be taken from the page's X/28/3 (REQ-PKT-014), in the order decision E.54 gives. Without X/28/3 every PTU is mode 0 (Annex D.1.7). The first PTU of a character carries its mode. Each further PTU of a mode 1 or mode 2 character shall be marked 1110, and a PTU marked 1111 has no data (Table 9). A character shall be invalid when its first PTU is marked 1110, 1111 or a reserved value, when a further PTU is not marked 1110, or when it would run past PTU 47. At Level 2.5, a PTU not marked mode 0 shall be unusable.
+*Verification:* Test with the worked encoding of `research/notes-level25-drcs.md` section 4, and with each invalid case.
+
+**REQ-DRC-004 — Pixel values of each mode.**
+The pixels of a DRCS character shall be decoded according to its mode (Table 31; clauses 14.2.1 to 14.2.4):
+
+| Mode | Format | PTUs | Pixel value |
+|---|---|---|---|
+| 0 | 12 by 10 by 1 | 1 | One bit: 1 for foreground, 0 for background |
+| 1 | 12 by 10 by 2 | 2 | Plane 0 from the first PTU plus 2 × plane 1 from the second, indexing a four-entry DRCS colour table |
+| 2 | 12 by 10 by 4 | 4 | Planes 0 to 3 from the four PTUs, the first the least significant, indexing a sixteen-entry DRCS colour table |
+| 3 | 6 by 5 by 4 | 1 | D-byte 4r + k is plane k of row r, with six pixels each, the most significant bit leftmost; the four planes index a sixteen-entry DRCS colour table |
+
+The global or normal colour table is used according to whether the character comes from the global or the normal table (REQ-DRC-007).
+*Verification:* Test for each mode with characters built by the encoder.
+
+**REQ-DRC-005 — The DRCS Mode triplet.**
+Row mode 11000 shall choose the sub-table, T3 to T0, of the normal table when D6 is 1 and of the global table when D6 is 0, for later DRCS characters. It shall not move the active position. When its level bits L1 and L0 exclude the presentation level, the triplet shall be ignored; the reserved value 00 shall count as both levels (decision E.54). The chosen sub-table shall persist to the end of the local enhancement data or of the object in which the triplet occurs. It shall not pass into an invoked object, nor back from one (Table 28 note; Annex C.4 rule 3). At the start of the local enhancement data and of each object, the normal and global sub-tables shall both be 0.
+*Verification:* Test with the worked DRCS Mode triplets of `research/notes-level25-drcs.md` section 5.1, and with objects that do and do not choose their own sub-tables.
+
+**REQ-DRC-006 — The DRCS Character Invocation triplet.**
+Column mode 01101 shall set the column and write a DRCS character: from the normal table when D6 is 1 and from the global table when it is 0, in the sub-table currently chosen, with the character number in D5 to D0. A number from 48 to 63 shall make the character invalid. The cell shall record the table, the sub-table and the character (REQ-L25-006). The DRCS page shall be the one the displayed page's GDRCS or DRCS link names (REQ-OBJ-030), also for characters inside objects (Annex E.6; Table 23 note 2).
+*Verification:* Test with the worked invocations of `research/notes-level25-drcs.md` section 5.2.
+
+**REQ-DRC-007 — DRCS colour lookup tables.**
+At Level 3.5, the four DRCS colour lookup tables shall be taken from the page's X/28/1, or, when it is absent or invalid, from the magazine's M/29/1, or otherwise from the defaults of Annex D.2.2: entries 0 to 3 of the Colour Map in both four-entry tables, and entries 0 to 15 in both sixteen-entry tables (decision E.54). Each entry is a Colour Map index (Figure 28). The tables, and the patterns of every DRCS character that the page's cells use, shall travel with the grid (REQ-L25-006), so that the renderer needs nothing else. The capacity for those patterns shall be set by the caller (REQ-GEN-003); a character beyond it shall be treated as missing, and counted.
+*Verification:* Test with the Figure 28 example values (REQ-TST-016), the defaults and each precedence case.
+
+**REQ-DRC-008 — Colours and attributes of DRCS characters.**
+A mode 0 character shall take the foreground and background colours at its cell, and every attribute shall act on it as on any other character (clause 14.2.1). For modes 1 to 3, each pixel's colour shall be its colour table entry, and an entry of CLUT 1 entry 0 shall be transparent (Annex C.1). For those modes (decision E.54):
+- flash shall follow decision E.48;
+- invert shall have no effect;
+- conceal shall show a space in the background colour;
+- boxing shall follow the cell.
+
+Underline shall not be drawn on any DRCS character, and font styles shall not apply to them. Enlarged characters shall be drawn by exact pixel replication (REQ-RND-038).
+*Verification:* Test for each attribute and each mode.
+
+**REQ-DRC-009 — Missing, unusable and invalid DRCS data.**
+A DRCS sub-page shall be usable once every PTU that a referenced character needs has been received; later partial receptions replace the PTUs they carry (decision E.54). A cell whose DRCS data is missing or not yet usable shall show a space in its background colour. A cell whose DRCS data is invalid shall show a space, and a diagnostic shall be traced (decision E.50).
+*Verification:* Test with missing packets, partial receptions and each invalid case of REQ-DRC-002 and REQ-DRC-003.
+
+**REQ-DRC-010 — Limits on DRCS use.**
+The Level 2.5 limits of two sub-tables and 24 characters per page, and the Level 3.5 limit of 384 PTUs, shall not be enforced; they bind the broadcaster (decision E.54). The only limits shall be the capacity of the enhancement page store (REQ-ACQ-019) and the pattern capacity of REQ-DRC-007.
+*Verification:* Test with a page that uses more than the limits of each level.
 
 ---
 ## F.10 Navigation and viewer functions (NAV)
@@ -2946,7 +3741,7 @@ The raster renderer shall accept whole-number horizontal and vertical scale fact
 *Verification:* Demonstration.
 
 **REQ-RND-005 — Colours.**
-The eight Level 1 colours shall be rendered from colour lookup table 0 of Table 30, with each primary either 0 or full intensity (255 in 8-bit output). The colour values shall be configurable for users who want a different palette.
+The eight Level 1 colours shall be rendered from colour lookup table 0 of Table 30, with each primary either 0 or full intensity (255 in 8-bit output). The colour values shall be configurable for users who want a different palette. At Levels 2.5 and 3.5, all 32 entries of the page's Colour Map are rendered as REQ-RND-030 describes.
 *Verification:* Test.
 
 **REQ-RND-006 — Transparency.**
@@ -3048,6 +3843,8 @@ It shall do all of the following, and nothing outside it shall repeat any of thi
 - diacritic composition (REQ-RND-014).
 
 It shall use no memory other than its arguments and the constant glyph data.
+
+At Levels 2.5 and 3.5 the cell raster shall also do, and nothing outside it shall repeat: double width and double size (REQ-RND-034), underline (REQ-RND-035), G3 drawing (REQ-RND-037), DRCS drawing (REQ-RND-038) and the font styles (REQ-RND-039). For a multi-colour DRCS character it returns a colour index for each dot (REQ-RND-038), and in the resolved colour mode its indices are Colour Map indices (REQ-RND-031).
 *Reason:* Every renderer and every port calls the same function, so the pixels are the same everywhere (REQ-RND-015). This mirrors the SAA5050, which produced exactly this unit of output for each television line (decision E.29).
 *Verification:* Test. The golden tests of REQ-TST-030 shall include tests at this level, independent of any output format.
 
@@ -3064,6 +3861,8 @@ The library's pixel output shall consist of these calls, all of which draw into 
 4. **Current palette.** Returns the palette for the current flash phase and reveal setting (REQ-RND-023).
 
 Each call shall draw only from the cell grid of the displayed page and the viewer state. It shall need nothing from any other row's pixels and shall keep no pixel memory of its own.
+
+At Levels 2.5 and 3.5, a row is wider when side panels are shown (REQ-RND-033), and indices are written in the resolved colour mode (REQ-RND-031).
 
 The library shall not decide how, when or how often the port calls these, nor how the port stores the results. A whole-screen framebuffer, a ring of row buffers and a single row buffer are all equally valid port designs (REQ-ARCH-010).
 
@@ -3115,7 +3914,7 @@ Ports are free to use their own conversion, or a palette in their hardware, inst
 *Verification:* Test for each format, byte order and rotation.
 
 **REQ-RND-019 — Drawing only what changed.**
-The decoder shall mark each screen row as changed whenever its content changes. For a row containing double height, the row below shall be marked too. Rows containing flashing or concealed cells shall be recorded, so that a change of flash phase or reveal state affects only those rows. The renderers shall draw only changed rows unless a full redraw is requested. Drawing shall be decoupled from decoding: the program draws when rows have changed or the flash state changes, not once per packet received.
+The decoder shall mark each screen row as changed whenever its content changes. For a row containing double height, the row below shall be marked too. Rows containing flashing or concealed cells shall be recorded, so that a change of flash phase or reveal state affects only those rows. The renderers shall draw only changed rows unless a full redraw is requested. Drawing shall be decoupled from decoding: the program draws when rows have changed or the flash state changes, not once per packet received. In the resolved colour mode of Levels 2.5 and 3.5, change tracking follows REQ-RND-032.
 *Verification:* Test that counts the rows drawn for a flash change and for a single-row update.
 
 **REQ-RND-021 — Reference callers.**
@@ -3128,7 +3927,7 @@ Ports for specific screens, operating systems or devices are written by their us
 *Verification:* Test.
 
 **REQ-RND-022 — Whole-screen convenience loop.**
-The library shall provide a convenience function that renders all changed rows, or all rows, into a whole-screen indexed framebuffer supplied by the caller, at 8 or 4 bits per pixel. It does this by calling the row renderer for each row at the right offset. In the 12 by 20 mode, a 480 by 500 pixel screen needs 240 kilobytes at 8 bits per pixel, or 120 kilobytes at 4 bits.
+The library shall provide a convenience function that renders all changed rows, or all rows, into a whole-screen indexed framebuffer supplied by the caller, at 8 or 4 bits per pixel. It does this by calling the row renderer for each row at the right offset. In the 12 by 20 mode, a 480 by 500 pixel screen needs 240 kilobytes at 8 bits per pixel, or 120 kilobytes at 4 bits. With both side panels at their widest (REQ-RND-033), a 672 by 500 pixel screen needs 336 kilobytes at 8 bits per pixel, or 168 kilobytes at 4 bits.
 
 It is a convenience for ports that keep a framebuffer, as a Doom port does. It adds no capability that a port could not write itself in a few lines, and ports need not use it.
 *Verification:* Test that the loop's output equals rendering each row separately.
@@ -3151,6 +3950,8 @@ The indices of flashing and concealed pixels do not depend on the flash phase or
 Wherever the port's hardware layer or framebuffer uses a palette, flash and reveal therefore need no redrawing at all, only a new palette. This is the technique Doom used for its screen-wide colour effects.
 
 The palette's base colours shall come from REQ-RND-005. Colour conversion shall happen only in the helpers of REQ-RND-018 or in the port.
+
+This palette mode is the mode of Levels 1 and 1.5. At Levels 2.5 and 3.5 the resolved colour mode of REQ-RND-031 is used, and the palette mode is refused for grids that use colours outside CLUT 0 or flash modes of Level 2.5 (decision E.55).
 *Verification:* Test that a flash change and a reveal change alter only the palette, and that the result matches a full redraw.
 
 **REQ-RND-024 — No scaling in the core; aspect correction at the edge.**
@@ -3165,7 +3966,7 @@ An original glyph set shall be drawn for this project, in the 5-dot by 9-line fo
 2. the Latin G2 set and the diacritical marks;
 3. the G3 characters used at Level 1.5;
 4. Cyrillic, Greek and Hebrew;
-5. the rest of G3;
+5. the rest of G3, which REQ-RND-037 now draws from the project's own geometry;
 6. Arabic.
 
 Glyphs shall be stored as text files that can be read and compared, with one glyph per entry, like the temporary export. Each set shall be recorded with its author and licence. The drawing shall be done without tracing the SAA5050 or Bedstead glyphs, although the grid, the rounding rule and the general style are not protected.
@@ -3175,6 +3976,61 @@ Glyphs shall be stored as text files that can be read and compared, with one gly
 **REQ-RND-020 — Glyph provenance.**
 The glyph data used in a release shall be drawn originally for this project, as decision E.25 describes. During development, the Bedstead glyphs in `third_party/bedstead/` may be used as a temporary substitute. The glyph loader shall treat the glyph set as replaceable data, so that the substitution needs no code changes. The provenance of every glyph set shall be recorded in the repository. No glyph may be copied from the contents of a character generator ROM.
 *Verification:* Inspection. Before any release, a check shall confirm that no Bedstead-derived glyph remains.
+
+**REQ-RND-030 — The 32-entry Colour Map in output.**
+At Levels 2.5 and 3.5, colours shall be produced from the page's Colour Map (REQ-L25-030), which travels with the grid. Each 12-bit entry shall be converted to 8 bits for each primary by multiplying each 4-bit value by 17, so that 15 gives 255. Index 8, CLUT 1 entry 0, shall be transparent (REQ-RND-006). The pixel format helpers of REQ-RND-018 and the image writers shall take the Colour Map as their palette. The user's replacement colours of REQ-RND-005 shall replace the Table 30 defaults before any page data redefines them.
+*Verification:* Test that every index converts as Table 30 gives, and that a page redefining CLUTs 0 to 3 converts with its own values.
+
+**REQ-RND-031 — The resolved colour mode.**
+The row renderer shall offer a resolved colour mode as well as the palette mode of REQ-RND-023 (decision E.55). In the resolved mode, it shall take a flash phase (REQ-RND-040) and the reveal setting, apply them to each cell as REQ-RND-036 describes, and write Colour Map indices 0 to 31 into the caller's buffer. The resolved mode shall be used at Levels 2.5 and 3.5. The palette mode shall be refused, with an error, for a grid that uses any colour outside CLUT 0 or any flash mode of Level 2.5.
+*Verification:* Test that the resolved mode matches the palette mode on Level 1 pages, and that the palette mode is refused for each case named.
+
+**REQ-RND-032 — Change tracking in the resolved colour mode.**
+The change tracker of REQ-RND-019 shall record which rows hold flashing cells, of any flash mode, and which hold concealed cells. When the flash phase moves from one twelfth-of-a-second unit to the next, it shall report as changed exactly the rows that hold a cell whose displayed colours differ between the two units. When the reveal setting changes, it shall report the rows that hold concealed cells. When the grid is built again because enhancement data arrived (REQ-ACQ-022), it shall report the rows whose cells changed.
+*Verification:* Test that counts the rows reported for each unit of the flash cycle, for a reveal change and for the arrival of an object page.
+
+**REQ-RND-033 — Side panels and the width of a row.**
+At Levels 2.5 and 3.5, the row renderer shall compose each row from the left panel (columns 72 − left width to 71), the main page (columns 0 to 39) and the right panel (columns 40 to 40 + right width − 1), in that order, so that a row is (40 + left width + right width) × 12 pixels wide (decision E.49). In row 0, the panel cells shall be drawn in the screen colour. The renderer shall report the row width, and the grid shall report the screen colour, so that the port and the whole-screen loop of REQ-RND-022 can fill the borders around the rows in the screen colour. With both panels at their widest, a 12 by 20 row of 56 columns needs 672 by 20 pixels: 6.7 kilobytes at 4 bits per pixel, or 13.4 kilobytes at 8 bits.
+*Verification:* Test for each width of the table of decision E.49.
+
+**REQ-RND-034 — Double width and double size.**
+A cell whose horizontal part is "left half" shall show the left six half-dots of the character's normal-width line, each drawn twice, and a cell whose horizontal part is "right half" shall show the right six half-dots, each drawn twice. The normal-width line shall first be produced with rounding, mosaic geometry and font styles applied. Double size shall combine this with the vertical parts of REQ-RND-011.
+*Verification:* Test against golden cell-raster outputs for alphanumerics, mosaics, G3 and DRCS characters at double width and double size.
+
+**REQ-RND-035 — Underline.**
+Underline shall be drawn as one line of foreground colour on the last dot line of the cell, across the whole cell width. In the 12 by 20 cell that is line 19, so it appears on both fields; in the 12 by 10 cell it is line 9 (decision E.47). It shall be drawn for G0 characters, G1 characters of columns 4 and 5, and G2 characters, and never for G3 or DRCS characters. For a double-height character, only its bottom half shall show the underline.
+*Verification:* Test against golden cell-raster outputs.
+
+**REQ-RND-036 — Invert, flash and conceal when drawing.**
+For each cell the renderer shall, in this order (decisions E.47 and E.48):
+1. swap the foreground and background colours if the cell is inverted, except for multi-colour DRCS characters;
+2. apply flash: in the off phase, normal and inverted flash show the background colour in place of the foreground (and a space in the background colour for multi-colour DRCS characters), while adjacent-CLUT flash replaces each foreground index c, or each DRCS pixel index c, by c exclusive-OR 8;
+3. apply conceal: unless reveal is on, a concealed cell shows a space in its background colour.
+*Verification:* Test for every combination of invert, each flash mode and conceal.
+
+**REQ-RND-037 — G3 glyph data.**
+The G3 characters shall be drawn from glyph data generated by an `xtask` command from the project's own geometry, as decision E.50 describes. The data shall be generated separately for the 12 by 10 and the 12 by 20 cells, at the full 12 half-dot width, and stored as replaceable text data with its provenance recorded, like the other glyph sets (REQ-RND-020). The generated data shall be used for G3 characters at every presentation level. Character rounding (REQ-RND-012) shall not be applied to G3 characters. The generator shall be deterministic, and continuous integration shall check that the stored data matches its output.
+*Verification:* Test that regenerating the data gives identical files; golden cell-raster outputs for every G3 position in both cell sizes; the symmetry checks of `research/notes-level25-drcs.md` section 9.3 (column 3 mirrors column 2, and columns 6 and 7 are the complements of columns 2 and 3).
+
+**REQ-RND-038 — Drawing DRCS characters.**
+A DRCS character shall be drawn from the pattern carried with the grid (REQ-DRC-007). In the 12 by 10 cell, each of its ten rows shall be one line; in the 12 by 20 cell, each row shall be drawn on two lines, the same on both fields. A mode 3 pixel shall cover 2 by 2 dots in the 12 by 10 cell and 2 by 4 in the 12 by 20 cell. Enlarged characters shall be drawn by exact pixel replication, with no smoothing and no rounding (decision E.54). For a multi-colour DRCS character, the cell raster (REQ-RND-016) shall return a Colour Map index for each of the 12 dots of the line instead of a single foreground index.
+*Verification:* Test against golden cell-raster outputs for each mode, size and cell height.
+
+**REQ-RND-039 — Drawing the Level 3.5 font styles.**
+For a G0 or G2 character with a font style, the renderer shall take the glyph line after rounding and then:
+- for bold, combine the line by OR with itself shifted one half-dot to the right;
+- for italic, shift the line to the right by the number of lines below it in the cell divided by 4, rounded down, in half-dots (0 to 4 half-dots in the 12 by 20 cell, and 0 to 2 in the 12 by 10 cell).
+
+Bold shall be applied before italic. Dots shifted beyond the twelfth half-dot shall be dropped. Proportional spacing shall be drawn at the fixed pitch (decision E.50). The shifts shall use only integer shifts, with no division (REQ-GEN-016).
+*Verification:* Test against golden cell-raster outputs for each style and each cell size.
+
+**REQ-RND-040 — Flash timing at Levels 2.5 and 3.5.**
+The library shall provide a function that turns the caller's time (REQ-GEN-005) into the flash unit, 0 to 11, of decision E.48, and a function that says whether a cell with a given flash rate and phase is in its on or off phase in a given unit. The unit shall be computed once per frame, not per cell or per pixel (REQ-GEN-016). At Levels 1 and 1.5, the timing of decision E.12 shall be used.
+*Verification:* Test of every rate and phase in every unit, and of incremental and decremental runs.
+
+**REQ-RND-041 — Text and terminal output at Levels 2.5 and 3.5.**
+The text renderer (REQ-RND-008) shall write each row composed with its side panels, in the order of REQ-RND-033. It shall convert G3 characters as REQ-CHR-011 describes, and write DRCS characters as the fallback value of REQ-CHR-010. The terminal renderer (REQ-RND-009) shall take 24-bit colours from the page's Colour Map. In its 8-colour mode it shall use the nearest of the eight Level 1 colours. Transparent cells shall be written in the screen colour. All output shall pass the sanitising rules of REQ-SEC-010.
+*Verification:* Test with snapshot outputs of pages with side panels, G3, DRCS and redefined colours.
 
 ---
 
@@ -3374,6 +4230,8 @@ The page encoder shall produce correctly coded packets for:
 - packets X/27/0 with correct relative magazine bits and a checksum computed by REQ-ECC-007;
 - for pages with TTI Link Extension links, packet X/27/0 and a row 24 (packet X/24) generated as Appendix E.2 describes;
 - packets X/28/0 format 1.
+
+The packets of Levels 2.5 and 3.5 are encoded as REQ-INP-024 describes.
 *Verification:* Test that decodes encoded packets back to the original page.
 
 **REQ-INP-020 — Reporting input errors.**
@@ -3452,6 +4310,47 @@ When tested on 10 October 2026, only slot 0 returned rows. A page then needed to
 **Build.** This reader is part of the `tellytxt-web` crate. It uses that crate's sans-IO WebSocket code and the transport supplied by the port (REQ-WEB-001), including the port's encryption. The core library remains free of networking (REQ-GEN-002).
 *Reason:* This is the only live source of teletext with raw packet bytes found on the internet. It gives continuous real-time test data (REQ-TST-063).
 *Verification:* Test against a recorded session replayed from a file; demonstration against the live servers.
+
+**REQ-INP-023 — Enhancement data and enhancement pages in TTI files.**
+The TTI reader (REQ-INP-013) and writer (REQ-INP-014) shall carry every packet of Levels 2.5 and 3.5, in the form of the vbit2 extensions (`research/notes-formats.md` section 5.2):
+- `OL,26`: up to sixteen lines per page, each with its own designation code;
+- `OL,27`: designation codes 4 and 5 hold thirteen triplets, written as for X/26;
+- `OL,28`: designation codes 0, 1, 3 and 4 hold thirteen triplets. A line with designation code 0, 3 or 4 also sets the page function and page coding, overriding an earlier `PF` line;
+- `OL,29` on a page numbered mFF: the magazine packets M/29/0, M/29/1 and M/29/4 of magazine m, which are encoded as magazine packets and not as part of the page;
+- `PF,f,c`: the page function and page coding (Table 3).
+
+The rows of enhancement pages shall be read and written according to their page coding:
+- coding 0, used by DRCS pages: 40 characters with parity added on encoding, as for display rows;
+- coding 2, used by object pages: the first character's low four bits give byte 6, and the following 39 characters hold thirteen triplets, as for X/26;
+- coding 3, used by the Magazine Organization Table: 40 four-bit values, each in the low four bits of a character from 4/0 to 4/F.
+
+Reading a written file shall reproduce the same packets.
+*Verification:* Round-trip test (REQ-TST-020) with object pages, DRCS pages, a Magazine Organization Table and magazine packets; test with files written by vbit2 where available.
+
+**REQ-INP-024 — Encoding the packets of Levels 2.5 and 3.5.**
+The page encoder (REQ-INP-019) shall also produce correctly coded packets for:
+- packets X/26 with every designation code from 0 to 15;
+- packets X/27/4 and X/27/5;
+- packets X/28/0 format 1 with every field, X/28/1, X/28/3 and X/28/4;
+- the magazine packets M/29/0, M/29/1 and M/29/4;
+- object pages, with byte 6 of each packet Hamming 8/4 coded and thirteen Hamming 24/18 triplets;
+- the Magazine Organization Table, with every byte Hamming 8/4 coded;
+- DRCS pages, with each D-byte given odd parity.
+
+When it writes a stream, it shall follow the packet order of Annex B.2, and the order of Annex B.7 for a set of pages: the Magazine Organization Table, then the DRCS pages, then the object pages, then the Level 1 pages.
+*Verification:* Test that decodes encoded packets back to the original fields, and that zvbi accepts the encoded streams (REQ-TST-023).
+
+**REQ-INP-025 — Authoring test pages for Levels 2.5 and 3.5.**
+The formats crate shall provide, behind its `std` feature, a builder for authoring Level 2.5 and 3.5 test pages and streams by function rather than by bit pattern. It shall be able to:
+- write every row and column triplet of Tables 28 and 29 by name, with its fields;
+- build local objects, and POP and GPOP pages, with their pointer tables computed from the objects they define;
+- build a Magazine Organization Table, with each byte pair placed at the position of its page number, and with object links, DRCS links and default objects;
+- build DRCS characters of every mode from pixel patterns, with the mode identification of X/28/3 computed;
+- set every field of X/28/0 format 1, X/28/1, X/28/4 and the M/29 packets;
+- write the result as TTI files and as T42 streams, through REQ-INP-023 and REQ-INP-024.
+
+The builder is the source of the authored test streams of REQ-TST-024. Because the builder and the decoder are written from the same reading of the standard, the builder's output shall also be checked against zvbi (REQ-TST-023) and against the worked encodings of the research notes.
+*Verification:* Test that the builder reproduces the worked encodings of `research/notes-level25-objects.md` section 13.2 and `research/notes-level25-drcs.md` sections 3.5, 4, 5 and 11.
 
 ---
 
@@ -3553,7 +4452,7 @@ The slicer shall be buildable in a form that uses integer and fixed-point arithm
 
 **REQ-PRF-001 — The default profile ("EN 300 706").**
 The default profile shall follow EN 300 706 and every default choice in Part E:
-- Level 1.5 on;
+- presentation at Level 3.5 (REQ-PRF-006);
 - X/26/15 processed;
 - the row-setting rule of Annex A.3;
 - double Start Box;
@@ -3598,6 +4497,15 @@ Independent of the profile, these alternative behaviours shall be available:
 **REQ-PRF-005 — Overriding a profile.**
 After a profile has been applied, every individual setting shall remain changeable.
 *Verification:* Test.
+
+**REQ-PRF-006 — The presentation level setting.**
+The configuration shall have a presentation level setting with the values Level 1, Level 1.5, Level 2.5 and Level 3.5 (decision E.40). It shall replace the on and off switch for Level 1.5. The default profile shall present at Level 3.5, the "SAA5050" profile at Level 1 and the "SAA5246A" profile at Level 1.5. The setting shall choose the processing as follows:
+- at Level 1, packets X/26 are stored but not applied;
+- at Level 1.5, the Level 1.5 pass of area L15 runs;
+- at Levels 2.5 and 3.5, the enhancement processor of area L25 runs, with the features marked for Level 3.5 only used at Level 3.5 (REQ-L25-001).
+
+Changing the setting shall not require pages to be acquired again (REQ-ARCH-008).
+*Verification:* Test that the same stream gives the expected grid at each level, and that each profile selects its level.
 
 ---
 
@@ -3678,6 +4586,10 @@ A warning may be marked as considered with a line `CK,considered,<warning name>`
 Exit status is 0 when there are no errors, and 4 when there are errors. Warnings alone do not fail.
 *Verification:* Test with a set of pages, each containing one problem.
 
+**REQ-CLI-007 — The presentation level option.**
+Every command that decodes pages shall accept `--level` followed by `1`, `1.5`, `2.5` or `3.5`, which sets the presentation level of REQ-PRF-006 and overrides the level of the chosen profile. Any other value shall be invalid usage (REQ-CLI-005). The former `--level1-only` option shall be removed; `--level 1` replaces it (decision E.40).
+*Verification:* Test of each value, of an invalid value, and that `--level1-only` is rejected.
+
 ---
 
 ## F.16 Testing and verification (TST)
@@ -3753,6 +4665,51 @@ Tests shall cover:
 - each rule of decision E.5.
 *Verification:* Test.
 
+**REQ-TST-015 — Level 2.5 and 3.5 enhancement tests.**
+Tests shall cover, at both Level 2.5 and Level 3.5:
+- every row mode of Table 28 and every column mode of Table 29, with each class of data value, including reserved values;
+- every rule of decisions E.43 to E.50, each in a test of its own;
+- every requirement of area L25.
+
+Each test page shall be built with the authoring builder of REQ-INP-025, so that the test states the page by function.
+*Verification:* Test; the traceability table of REQ-DOC-003 shall link each decision rule to its test.
+
+**REQ-TST-016 — The worked examples of the standard.**
+Tests shall reproduce every worked example and truth table of EN 300 706 that concerns Levels 2.5 and 3.5:
+- the three contention examples of Annex C.2, which give red, blue and yellow;
+- the object example of clause 13.9, for each of the Active, Adaptive and Passive types, with the word colours of its notes 1 to 8. The example's "pink" shall be CLUT 2 entry 0 (red 15, green 0, blue 5), because the standard does not give its index;
+- the PTU layout of Figure 27, and the DRCS colour table values of Figure 28;
+- all rows of Table C.1;
+- the precedence lists for screen and row colour of Annex A.5;
+- the three side-panel column layouts of clause 12.5.3;
+- the open area of Figure A.1;
+- the default values of Table 30.
+*Verification:* Test.
+
+**REQ-TST-017 — Object tests.**
+Tests shall cover every requirement of area OBJ and every rule of decisions E.51 to E.53, including:
+- every source and type of invocation, and every permitted and forbidden pair of invoker and type;
+- every case in which a pointer, a definition or a link is unusable;
+- each limit of Annex A.8, reached and exceeded;
+- the reading of the Magazine Organization Table at both levels, with each Level 3.5 packet missing in turn;
+- default objects, with and without local display data, and the order of placement;
+- objects placed at every edge of the page and of the side panels.
+*Verification:* Test.
+
+**REQ-TST-018 — DRCS tests.**
+Tests shall cover every requirement of area DRC and every rule of decision E.54, including:
+- every mode, in both cell sizes and every size;
+- the order of the mode identification bits;
+- the DRCS colour tables from each source;
+- each flash mode, invert and conceal on multi-colour characters;
+- missing, partial and invalid data;
+- the level bits and the scope of the DRCS Mode triplet.
+*Verification:* Test.
+
+**REQ-TST-019 — Bounded work and memory of enhancement processing.**
+Tests shall build worst-case pages: every object type invoked up to the limits of Annex A.8, nesting to the greatest depth allowed, objects of 507 triplets, all sixteen X/26 packets and full side panels. They shall check that building the grid stays within a stated bound on operation counts (REQ-SEC-012), uses only the memory the caller provided, and never panics. The performance tests (REQ-TST-050) shall report the time to build such a grid at Level 3.5.
+*Verification:* Test.
+
 **REQ-TST-020 — Round-trip tests.**
 For each page file format, a test shall read a set of pages, encode them to packets, decode the packets, write the pages back in the same format, and confirm that the result matches the original.
 *Verification:* Test.
@@ -3807,6 +4764,29 @@ The tests shall use a corpus of real broadcast teletext. It shall be downloaded 
 Expected results for the corpus are the outputs of zvbi and vhs-teletext (REQ-TST-021), plus page counts and spot checks recorded by hand. If a source disappears and no cached copy exists, the test shall report the missing file clearly and skip, not fail. A test run that skipped corpus files shall say so in its summary, so that lost coverage is visible.
 *Verification:* Test.
 
+**REQ-TST-023 — zvbi as the oracle at Levels 2.5 and 3.5.**
+A test shall decode the same streams with this project and with zvbi 0.2.44 at its Level 2.5 and Level 3.5 settings, run as a separate program (REQ-TST-001 and REQ-SEC-022), and compare, cell by cell:
+- the character, as Unicode, with zvbi's private value 0xEF00 plus the code mapped to G3 positions;
+- the foreground and background colours, as Colour Map indices and not as colours, because zvbi's values for CLUT 1 entries 5 and 6 differ from Table 30 (decision E.43);
+- the size;
+- the underline, flash, conceal, bold, italic and proportional flags;
+- the screen colour index.
+
+The streams shall be the authored streams of REQ-TST-024 and the real data of REQ-TST-025, limited to streams whose triplets keep the order of Annex A.4 (decision E.46). The test shall also check the reading of the magazine of a Magazine Organization Table link (decision E.52), and record the result in that decision. DRCS cells shall be excluded until zvbi can be made to load a DRCS page; why it would not load the synthetic page of `research/notes-level25-drcs.md` section 13.2 shall be investigated, and the finding recorded in Appendix D. Every difference shall be explained in the test source or fixed.
+*Verification:* Test.
+
+**REQ-TST-024 — Authored Level 2.5 and 3.5 test streams with golden rasters.**
+A set of test streams shall be authored with the builder of REQ-INP-025. Between them they shall use every triplet mode, every object source and type, Public and Global Object Pages, the Magazine Organization Table, DRCS pages of every mode, and every variant of X/28 and M/29. Each stream's pages shall be kept as TTI source in the repository, with golden checksums of their rendered rasters in both cell sizes, under the format version rule of REQ-TST-030.
+*Verification:* Test.
+
+**REQ-TST-025 — Real Level 2.5 and 3.5 data.**
+The local corpus (REQ-TST-022) shall gain real pages that carry Level 2.5 and 3.5 data:
+- captures from the Teefax and NMS Ceefax feeds of REQ-INP-022, recorded through the feed reader into `$TELLYTXT_CORPUS`, of pages that carry packets X/26 or X/28, with any object, DRCS and Magazine Organization Table pages they use;
+- the Polish TVP pages with packets X/26 in the recording already listed in REQ-TST-022.
+
+These files shall never be committed. The tests shall decode them at Levels 2.5 and 3.5, compare them with zvbi (REQ-TST-023), and skip clearly when a file is absent.
+*Verification:* Test.
+
 **REQ-TST-030 — Reference images.**
 Golden raster images shall be kept for:
 - the Level 1.5 example pages published with QTeletextMaker (for example `Level1p5-Defcon.tti`, `Level1p5-KLF.tti` and `Level1p5-PleaseHammer.tti`), downloaded at test time;
@@ -3825,6 +4805,18 @@ Every reader, the packet decoder, the slicer, and the HTTP, WebSocket, server-se
 **REQ-TST-041 — Coverage.**
 The core library tests shall reach at least 90 percent line coverage.
 *Verification:* Coverage report.
+
+**REQ-TST-042 — Fuzz targets for the data of Levels 2.5 and 3.5.**
+Each new parser and processor of Levels 2.5 and 3.5 shall have a fuzzing target under REQ-TST-040:
+- packets X/27/4 and X/27/5, X/28/0 to X/28/4, and M/29/0, M/29/1 and M/29/4;
+- the packets of object pages, including pointer tables;
+- the packets of the Magazine Organization Table;
+- DRCS pages;
+- the enhancement lines of TTI files (REQ-INP-023);
+- the whole grid build at Level 3.5, from a displayed page and a set of linked object pages, DRCS pages and a Magazine Organization Table, all built from the fuzzer's input.
+
+The last target shall also check that the work stays within the bound of REQ-TST-019, and that row 0, columns 0 to 7, are never written (REQ-L25-050).
+*Verification:* Inspection; continuous integration logs.
 
 **REQ-TST-050 — Performance tests.**
 Tests shall measure the throughput requirements of REQ-GEN-013 and report the results.
@@ -3924,11 +4916,12 @@ Real transmissions and recordings do not always obey them. A receiver that depen
 - the erase bit;
 - the page-completion timeout (decision E.19);
 - the left-to-right processing of attributes in a row, with set-at and set-after timing (Table 26);
-- the walk through Level 1.5 triplets (clause 12.3).
+- the walk through Level 1.5 triplets (clause 12.3);
+- at Levels 2.5 and 3.5, the walk through local enhancement data and objects (clauses 12.3 and 13), and the resolution of contending attributes (Annex C.2).
 
-This area turns the receiver rules into six explicit state machines, and requires every one of them to tolerate any breach of the broadcaster rules.
+This area turns the receiver rules into explicit state machines: the six of REQ-FSM-002 to REQ-FSM-007, and the two of Levels 2.5 and 3.5 in REQ-FSM-011 and REQ-FSM-012. It requires every one of them to tolerate any breach of the broadcaster rules.
 
-The tables below are the normative form of behaviour that areas SLC, ACQ, L1, L15 and NAV describe in prose. If a table and a prose requirement disagree, that is a defect, to be corrected in both.
+The tables below are the normative form of behaviour that areas SLC, ACQ, L1, L15, L25, OBJ and NAV describe in prose. If a table and a prose requirement disagree, that is a defect, to be corrected in both.
 
 **REQ-FSM-001 — How the machines are implemented.**
 Each state machine shall be implemented as an explicit enumeration of states and a single transition function. The transition function takes the current state and one event, and returns the next state together with the actions to perform. In Rust this is an `enum` of states and a `match` over the state and the event, with no wildcard arms, so that the compiler checks that every combination is handled. No state that affects a transition may be kept anywhere except in the machine's own state record. Every transition in the tables of this area shall exist in the code, and there shall be no transitions in the code that are not in the tables. Each machine shall be usable and testable on its own, without the rest of the decoder.
@@ -4099,10 +5092,11 @@ None of the machines shall depend on the ordering rules that EN 300 706 places o
 - designation codes may arrive in any order, or with gaps;
 - rows may arrive in any order;
 - the gap after a header may be shorter than 20 milliseconds;
-- triplets may address positions out of screen order (REQ-L15-009);
-- magazines may be interleaved in any pattern that parallel mode allows.
+- triplets may address positions out of screen order (REQ-L15-009 and REQ-L25-005);
+- magazines may be interleaved in any pattern that parallel mode allows;
+- the Magazine Organization Table, object pages and DRCS pages may arrive before or after the pages that use them, and in any order among themselves (Annex B.7 asks for an order the receiver does not rely on).
 
-A page received in any such order shall give the same stored page and the same cell grid as the same packets in standard order. The only exceptions are cases where the standard itself makes order significant: which header starts and ends a page, and which of two overwrites of the same cell comes later (decision E.5 (h)).
+A page received in any such order shall give the same stored page and the same cell grid as the same packets in standard order, once all of them have arrived (REQ-ACQ-022). The only exceptions are cases where the standard itself makes order significant: which header starts and ends a page, which of two overwrites of the same cell comes later (decision E.5 (h)), and which of two contending attributes comes later in transmission (Annex C.2 rule 3).
 *Verification:* The reordering tests of REQ-FSM-009.
 
 **REQ-FSM-009 — Tests for every transition.**
@@ -4123,6 +5117,75 @@ Each machine shall be able to report every transition it makes, as a trace entry
 Tracing shall be switched on and off in the configuration. When it is off, it shall cost nothing beyond a single test per transition. The command-line program's verbosity option (REQ-CLI-002) shall be able to print the trace.
 *Reason:* A trace of transitions is the most effective way to find out why a real recording decodes wrongly.
 *Verification:* Test that a known input produces the expected trace.
+
+**REQ-FSM-011 — The Level 2.5 and 3.5 enhancement walk.**
+One run of this machine walks a page's local enhancement data, the objects it invokes and the default objects, and produces the character and attribute events that REQ-FSM-012 resolves into the grid (areas L25 and OBJ). The Level 1.5 walk of REQ-FSM-007 is unchanged and is used at Level 1.5 only.
+
+The machine's state record holds the current source, which is the local enhancement data, an object or a default object, and a stack of walk records, one for each invoking source. A walk record holds:
+- the active position, relative to the source's origin;
+- the origin;
+- any pending Origin Modifier;
+- the chosen DRCS sub-tables;
+- the source's attribute plane and display priority.
+
+The stack is at most three records deep, because of the nesting rules of REQ-OBJ-008, so no recursion is needed (REQ-GEN-016). The machine shall follow this table:
+
+| State | Event | Action | Next state |
+|---|---|---|---|
+| Start | Walk begins and the page has a packet X/26 with a display triplet | The source is the local enhancement data. Active position row 0, column 0; DRCS sub-tables 0; no Origin Modifier (REQ-L25-003 and REQ-DRC-005). | Walking |
+| Start | Walk begins and the page has no packet X/26 with a display triplet | None | Placing default objects |
+| Walking | Next triplet of the source: for the local enhancement data, from the next stored X/26 in designation-code order, skipping missing codes; for an object, the next triplet of its body (REQ-OBJ-006) | Take it | Walking |
+| Walking | Triplet that failed its Hamming 24/18 check | Skip it (decision E.46) | Walking |
+| Walking | Termination Marker (address 63, mode 11111), or the end of the source's data | End the source | Returning |
+| Walking | Object Definition triplet | End the source (decision E.46) | Returning |
+| Walking | Full Row Colour, Set Active Position, or Address Display Row 0 with address 63 | Move the active position (REQ-L25-003). For Full Row Colour and Address Display Row 0, emit a row colour event (REQ-L25-033), unless the source is an Adaptive or Passive object or lies in a side panel (REQ-OBJ-013) | Walking |
+| Walking | Full Screen Colour | Emit a screen colour event (REQ-L25-032), unless REQ-OBJ-013 forbids it | Walking |
+| Walking | DRCS Mode | Choose the sub-table if the level bits allow (REQ-DRC-005) | Walking |
+| Walking | Origin Modifier | Record the offsets (REQ-OBJ-002) | Modifier pending |
+| Modifier pending | Object Invocation | Handle it as an invocation from Walking, with the recorded offsets | As for an invocation from Walking |
+| Modifier pending | Any other triplet | Discard the offsets (decision E.46), then handle the triplet as in Walking | As for that triplet in Walking |
+| Walking | Object Invocation that REQ-OBJ-008 permits, within the limits of REQ-OBJ-020, whose definition is found and accepted (REQ-OBJ-003 to REQ-OBJ-006) | Push the walk record. The new source is the object: origin as REQ-OBJ-002 gives; active position row 0, column 0; DRCS sub-tables 0; the attribute plane of its type (REQ-OBJ-009 to REQ-OBJ-011) | Walking |
+| Walking | Any other Object Invocation | Skip it and count it | Walking |
+| Walking | Any other row triplet: a reserved mode, or a Programme Delivery Control mode | None (REQ-L25-052) | Walking |
+| Walking | Column triplet of a reserved mode, or of mode 00110 | None; the active position is unchanged (REQ-L25-004) | Walking |
+| Walking | Column triplet of a character mode (REQ-L25-010) | Column becomes the address. If the data is 2/0 or above, emit a character event at the origin plus the active position, with the source's priority, unless REQ-OBJ-014 or REQ-L25-050 discards it | Walking |
+| Walking | Column triplet of an attribute mode: 00000, 00011, 00111, 01000, 01100 or 01110 | Column becomes the address. Emit an attribute event at the origin plus the active position, unless REQ-OBJ-014 or REQ-L25-050 discards it, or the level ignores the mode (REQ-L25-001) | Walking |
+| Returning | The ended source is an object | Pop the walk record: restore the invoker's active position, origin and DRCS sub-tables; cancel the Origin Modifier (REQ-OBJ-002) | Walking |
+| Returning | The ended source is the local enhancement data | None | Finished |
+| Placing default objects | Next default object of REQ-OBJ-040, in order, that is found and accepted | The source is the default object, with origin and active position row 0, column 0 | Walking |
+| Returning | The ended source is a default object | Active position row 0, column 0 | Placing default objects |
+| Placing default objects | No more default objects | None | Finished |
+
+*Verification:* The transition tests of REQ-FSM-009, and the tests of REQ-TST-015 and REQ-TST-017.
+
+**REQ-FSM-012 — Row resolution at Levels 2.5 and 3.5: the per-cell step.**
+At Levels 2.5 and 3.5, each row shall be resolved from its Level 1 bytes and from the events of REQ-FSM-011 that fall on it. This extends the row attribute machine of REQ-FSM-006 (decision E.47).
+
+The state record of REQ-FSM-006 is kept for the underlying plane, which is the Level 1 page modified by the local enhancement data and Active objects. It gains these fields:
+- the colours as Colour Map indices;
+- underline or separated mosaics, set by a non-spacing attribute;
+- invert;
+- the flash mode, rate and phase;
+- conceal, with whether it was set by a non-spacing attribute;
+- window;
+- the font styles, including those extended from rows above by REQ-L25-028;
+- the horizontal part of the size;
+- the current G0 and G2 designation of the enhancement data.
+
+Each Adaptive object on the row has an overlay record, holding the attribute types it has changed. Each Passive object has its own record, starting from the defaults of REQ-OBJ-011.
+
+The row starts from the start-of-row defaults, re-mapped as REQ-L25-022 describes. For each cell, from column 0 to column 39, and then separately for the cells of the right panel and of the left panel, which start from the defaults of REQ-L25-041 and have no Level 1 bytes, the machine shall perform these steps in this order:
+1. **Set-after attributes from the previous cell.** Apply the set-after attributes recorded by step 7 of the previous cell, as REQ-FSM-006 step 5 does.
+2. **Set-at Level 1 attributes.** If the Level 1 byte is a set-at attribute, apply it, as REQ-FSM-006 step 1 does.
+3. **Non-spacing attributes of the underlying plane.** Apply each attribute event of the local enhancement data and of Active objects placed at this cell, in the order of the walk. These win against step 2 (REQ-L25-020).
+4. **Adaptive overlays.** For each Adaptive object whose range on this row, from its first to its rightmost addressed cell, includes this cell: start its overlay, at its first cell, from the underlying record; apply its attribute events at this cell; and, for each attribute type it has changed, use its value in place of the underlying one (REQ-OBJ-010). Outside its range the overlay has no effect.
+5. **Passive records.** Apply the attribute events of each Passive object placed at this cell to that object's own record (REQ-OBJ-011).
+6. **Choose what the cell shows.** Take the character of the highest display priority at this cell (REQ-OBJ-012): Passive, then Adaptive, then local enhancement data, then Active, then the Level 1 character chosen as REQ-FSM-006 step 2 does. Take the attributes from the Passive object's record when a Passive object supplied the character. Otherwise take them from the Adaptive overlay when the cell is in an Adaptive object's range, whether the character is the object's or the Level 1 page's; where two ranges overlap, the later invoked object's overlay applies. Otherwise take them from the underlying record. Apply the size rules of REQ-L25-025.
+7. **Record the cell and finish.** Record the cell (REQ-L25-006). Update the held mosaic from Level 1 characters only, as REQ-FSM-006 step 4 does (decision E.50). Record the set-after attributes of the Level 1 byte for step 1 of the next cell.
+
+The row after a row with spacing double height or double size is handled as REQ-L25-026 describes before this machine runs: its Level 1 bytes are not used, and only enhancement events are resolved on it.
+*Reason:* Annex C.2 orders contending attributes by where they take effect, then where they are placed, then transmission order. Steps 1 to 3 apply exactly that order to the underlying plane. Steps 4 to 6 add the planes of clause 13.2, which reproduce the worked example of clause 13.9.
+*Verification:* The transition tests of REQ-FSM-009, and the worked examples of REQ-TST-016.
 
 ---
 
@@ -4436,10 +5499,7 @@ The session is then bound to that device. The server issues short-lived cookies 
 
 The following are not part of this implementation. Each could be added later as a new set of requirements.
 
-1. **Presentation Levels 2.5 and 3.5.**
-   - Non-spacing attributes, colour lookup tables and the 32-colour palette.
-   - Side panels, objects, redefinable characters and proportional or styled fonts.
-   - The architecture of decision E.1 leaves room for them as further passes over the cell grid.
+1. **A layout algorithm for proportional spacing.** Presentation Levels 2.5 and 3.5 were brought into scope on 10 October 2026 (decision E.40). The one part of them that stays out is a layout for the proportional spacing of Level 3.5. The standard defines no spacing algorithm, so proportional spacing is recorded in each cell and drawn at the fixed pitch (decision E.50).
 2. **The Table Of Pages navigation scheme.** Its full specification (Institut für Rundfunktechnik guideline 8 R 5) is not available. The page types can be recognised by page number (1F0) and by page function in packet X/28, and such pages shall not be displayed as text (REQ-ACQ-014).
 3. **Programme Delivery Control decoding** (EN 300 231). The data is stored raw (REQ-SVC-003), and its triplets are skipped for display (REQ-L15-007).
 4. **525-line teletext.** EN 300 706 does not cover it. ITU-R BT.653 defines a 525-line System B with a different bit rate, timing, level and row length, and no country is listed as using it.
@@ -4450,6 +5510,7 @@ The following are not part of this implementation. Each could be added later as 
 9. **Viewdata.** Its screen format is related, but it is a different service.
 10. **Display, video and device hardware.** This covers putting pixels on a screen, display drivers, video signal generation, scan timing, capture devices and any specific target hardware (for example the RP2040 or RP2350). These belong to the port's hardware layer, which the library reaches only through the platform interface (REQ-ARCH-009 and REQ-ARCH-010).
 11. **Teletext generation as a product.** The page encoder exists for testing and conversion. A broadcast inserter, with carousel timing, magazine scheduling and the 20 millisecond erase interval, is not in scope.
+12. **Interpretation of the Magazine Inventory Page** (page mFD, clause 11.3). It is optional, and the Magazine Organization Table and packets X/27/4 and X/27/5 are enough to find every object and DRCS page (`research/notes-level25-objects.md` section 10). It is stored like other enhancement pages, and not shown as text. Appendix D.2 asks the owner to confirm this.
 
 ---
 
@@ -4493,6 +5554,18 @@ The following are not part of this implementation. Each could be added later as 
 | JSON | JavaScript Object Notation, the text format of the service descriptor. |
 | Origin | The scheme, host and port of a web address: the unit of web security (REQ-WEB-015). |
 | User agent | The web term for a browser or other client acting for the user. tellytxt.com is a deliberately minimal one (REQ-WEB-014). |
+| Colour Map, CLUT | The 32 colours of Levels 2.5 and 3.5, in four colour lookup tables (CLUTs) of eight entries each (Table 30). A colour is named by its index, 8 × CLUT + entry. |
+| DCLUT | A DRCS colour lookup table: four or sixteen Colour Map indices used by multi-colour DRCS characters (Table 8). |
+| DRCS, GDRCS | Dynamically Redefinable Characters: characters downloaded as dot patterns on DRCS pages. A Global DRCS page serves the whole magazine. |
+| PTU | Pattern Transfer Unit: 20 bytes of a DRCS page, holding one bit plane of a 12 by 10 character, or a whole 6 by 5 by 4 character (clause 14.1). |
+| Object | A reusable sequence of enhancement triplets, Active, Adaptive or Passive, defined locally in packets X/26 or on an object page, and invoked by a page (clause 13). |
+| POP, GPOP | Public Object Page and Global Public Object Page: pages that define objects for a set of pages, or for every page of a magazine. |
+| MOT | Magazine Organization Table: page mFE of each magazine, linking each page to its object and DRCS pages (clause 10.6). |
+| MIP | Magazine Inventory Page: page mFD, an optional list of the page types of a magazine (clause 11.3). |
+| Non-spacing attribute | An attribute set by an enhancement triplet. It occupies no character cell, unlike the spacing attributes of Level 1. |
+| Origin Modifier | A triplet that offsets the position of the next object invoked, which is how objects reach the side panels. |
+| Side panel | Up to 16 extra columns to the left or right of the 40-column page at Levels 2.5 and 3.5 (clause 12.5). |
+| Presentation level | One of Levels 1, 1.5, 2.5 and 3.5 of EN 300 706 clause 12; a configuration setting of this receiver (REQ-PRF-006). |
 
 ---
 
@@ -4506,6 +5579,9 @@ The following are not part of this implementation. Each could be added later as 
 - ETSI EN 300 472 V1.3.1 and DVB BlueBook A041, *Teletext in DVB bitstreams*.
 - ITU-R BT.653-3, *Teletext systems*.
 - ETSI ETS 300 708, *Data transmission within Teletext*.
+
+**Unicode documents:**
+- Unicode document L2/19-025, "Proposal to add characters from legacy computers and teletext to the UCS" (2019), and its mapping file `TELTXTG3.TXT`. They give the Unicode characters, and the sextant geometry, of the G3 set (decision E.50 and REQ-CHR-011).
 
 **External standards consulted during research** (not held locally):
 - ETSI EN 301 775, carriage of vertical blanking interval data in DVB.
@@ -4679,13 +5755,30 @@ This appendix lists the questions raised while writing this document. For each, 
 | What are four hard-to-read national option glyphs? | Ƶ, ł, the em dash and ‖ | zvbi and Bedstead | REQ-CHR-002 |
 | Which Rust targets, tiers and toolchains apply? | See REQ-GEN-015. Xtensa needs Espressif's pinned fork. | `research/answers-rust-targets.md` | REQ-GEN-001, REQ-GEN-015 and REQ-GEN-016 |
 
+## D.1a Settled for Levels 2.5 and 3.5 (10 October 2026)
+
+The research notes `research/notes-level25-enhancement.md`, `research/notes-level25-objects.md` and `research/notes-level25-drcs.md` list the places where the standard is silent or contradicts itself at these levels. The owner's rulings of 10 October 2026 settle them in decisions E.40 to E.56. The questions that matter most are these:
+
+| Question | Answer | Evidence | Recorded in |
+|---|---|---|---|
+| What are the default colours of CLUT 1 entries 5 and 6? | Half magenta (7, 0, 7) and half cyan (0, 7, 7), as Table 30 gives. zvbi 0.2.44 differs, so comparisons with it use colour indices. | The page image of Table 30, page 89; a zvbi run on `oldvga` | E.43, REQ-TST-023 |
+| Which rows does the row count of a Font Style triplet reach? | The next R rows, from the same column to the end of each row | A zvbi run on `oldvga` | E.50, REQ-L25-028 |
+| How does zvbi report G3 characters? | As the private value 0xEF00 plus the code | A zvbi run on `oldvga` | REQ-TST-023 |
+| Does the strict row rule of clause 12.3.2 apply at Levels 2.5 and 3.5? | Yes. Object triplets carry object numbers in their address field. | Clause 12.3.2 and Table 28 | E.3 (amended), E.46 |
+| Which row colour applies when only default colours are sent? | The default row colour; the default screen colour does not replace it | Annex A.5 and Table 4 | E.45 |
+| How wide are the side panels, and is the display always 56 columns? | As the table of decision E.49, and 40 columns plus the panel widths | Clause 12.5 and Table 4 | E.49 |
+| What do the flash phases and rates mean? | A one-second cycle of twelve units | Table 29 gives only the rates | E.48 |
+| How are the G3 characters drawn? | From the sextant geometry of Unicode document L2/19-025, which matched the standard's figure on 95 to 100 percent of pixels | `research/notes-level25-drcs.md` section 9.3 | E.50, REQ-RND-037 |
+| Which page links decide the object and DRCS pages? | X/27/4 and X/27/5 before the Magazine Organization Table, whatever its flag says | Clauses 10.5.1.4 and 10.5.2.2 | E.52 |
+| What do objects do with damaged, missing or out-of-range data? | The fault is confined to the smallest unit, and the Level 1 page always shows | The owner's principle | E.41, E.51 |
+
 ## D.2 Still open
 
 | Question | Why it matters | How it will be settled |
 |---|---|---|
 | **What is the tellytxt.com product?** Who writes pages, what the server side is, and who the users are. | This document specifies the receiver and library only. The web-native design implies servers and an authoring workflow that are not specified. | A short product brief, written by the project owner, before milestone M2. |
 | Should the receiver read the live page feeds of SRG SSR (EP1 inside JSON) and NOS (Level 1 rows)? | They are the only live sources of a real broadcaster's teletext bytes found (decision E.28, amended 10 October 2026). They are whole pages, not packets, and the NOS form has already converted accented letters. | A decision in Part E, including the broadcasters' terms of use, before any reader is written. |
-| Where can raw teletext from German broadcasters, ZDF in particular, be obtained? | German public broadcasters are the main remaining users of Level 2.5, so their data best tests what lies beyond Level 1.5. Their websites publish only HTML, and ZDF's runs a bot check that must not be circumvented. Archives of the web pages (defgsus `teletext-archive-unicode` and its successors, from 2022) hold Unicode text, not teletext bytes. | A recording from a DVB receiver in Europe tuned to Astra 19.2°E or German DVB-T2. |
+| Where can raw teletext from German broadcasters, ZDF in particular, be obtained? | German public broadcasters are the main remaining users of Level 2.5, so their data best tests what lies beyond Level 1.5. This matters more now that Levels 2.5 and 3.5 are in scope (decision E.40). Their websites publish only HTML, and ZDF's runs a bot check that must not be circumvented. Archives of the web pages (defgsus `teletext-archive-unicode` and its successors, from 2022) hold Unicode text, not teletext bytes. | A recording from a DVB receiver in Europe tuned to Astra 19.2°E or German DVB-T2. |
 | Does double-height rounding alternate its neighbour on every line (the datasheet's wording), or repeat each rounded line (all the emulators)? | Visible only on double-height diagonals | Comparison with photographs of a real SAA5050 (REQ-TST-030). E.13 follows the emulators until then. |
 | What are G2 diacritical marks 4/9 and 4/C exactly? | Rarely used; the references disagree | A real transmission that uses them (REQ-CHR-008). |
 | Is the zxnet live feed protocol stable? | It is undocumented and could change | The tolerant reader of REQ-INP-022, plus the recorded session of REQ-TST-063. The site's operator could also be asked. |
@@ -4694,6 +5787,13 @@ This appendix lists the questions raised while writing this document. For each, 
 | Will RFC 6265bis change before it is published? | REQ-WEB-006 follows the draft of 30 September 2026 | Recheck at each milestone's security review, and when it is published as an RFC (decision E.35). |
 | Which Xtensa toolchain versions build correctly? | Espressif's fork 1.94 and 1.95 fail release builds (esp-rs/rust#277) | The pinned toolchain of REQ-GEN-001, re-tested when the issue closes. |
 | How does the SAA5246A behave where its datasheet is silent? For example, parity errors, serial mode and erase. | It limits how exactly the SAA5246A profile can be reproduced | Decisions E.6 to E.8 define the behaviour. A real SAA5246A-based television, observed with a generated stream, could settle the rest. |
+| Why does zvbi not load a synthetic DRCS page, and why does it then drop every X/26 enhancement of the page? | Until this is understood, zvbi cannot be the oracle for DRCS cells (REQ-TST-023) | The investigation that REQ-TST-023 requires, or a real capture with DRCS from the corpus |
+| Is the magazine of a Magazine Organization Table link absolute or relative? | Decision E.52 reads it as absolute; a wrong reading sends every link to the wrong magazine | The zvbi comparison of REQ-TST-023, and real Magazine Organization Tables (REQ-TST-025) |
+| Is the bit order of the mode identification codes of X/28/3, and the pixel order of DRCS mode 3, as decision E.54 reads them? | No oracle has confirmed either | A real DRCS page of Level 3.5, or zvbi once it loads DRCS pages |
+| Should an invocation be skipped when the object number bits of its definition differ from its own? | Decision E.51 does not compare them, because the standard does not require it. Comparing would reject a misplaced pointer. | An owner decision |
+| Should the Magazine Inventory Page be interpreted? | It could guide which enhancement pages to keep when the store is full (REQ-ACQ-019). Part G item 12 leaves it uninterpreted. | An owner decision |
+| Does Level 3.5 fit the flash budget of REQ-GEN-009 on a Cortex-M0? | The enhancement processor, the G3 glyph data and the larger grid all add to the 64 kilobyte budget | The size check of REQ-GEN-009, from milestone M6 |
+| Do the Teefax and NMS Ceefax feeds carry packets X/26 and X/28, objects or DRCS pages? | REQ-TST-025 relies on them for real data of these levels, and the feeds send only requested pages (REQ-INP-022) | Captures made for REQ-TST-025 |
 
 ---
 

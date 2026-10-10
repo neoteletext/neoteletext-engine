@@ -36,10 +36,13 @@ Dependencies point **downward only**. A layer may use the layers below it and th
  │ L5  Output adapters           pixel formats · PNG/PPM · text/ANSI (sanitised)│  helpers no_std
  ├───────────────────────────────────────────────────────────────────────────┤
  │ L4  Rendering                 cell raster · row renderer · palette ·        │  no_std, pure
- │                               glyph data · change tracking                  │
+ │                               glyph data, G3 included · change tracking ·   │
+ │                               resolved colour mode · side-panel composition │
  ├───────────────────────────────────────────────────────────────────────────┤
  │ L3  Presentation model        charset resolution · Level 1 row machine ·    │  no_std, pure
- │                               double height · Level 1.5 walk → CELL GRID    │
+ │                               double height · Level 1.5 walk · colour map · │
+ │                               Level 2.5/3.5 walk · objects · DRCS ·         │
+ │                               side panels → CELL GRID                       │
  ├───────────────────────────────────────────────────────────────────────────┤
  │ L2  Acquisition               magazine FSMs · page lifecycle · page store · │  no_std, no alloc
  │                               magazine data · service data · stats · events │
@@ -112,36 +115,46 @@ The Web user agent (L7) sits beside the lower layers rather than above them in t
   - magazine data;
   - service data;
   - statistics;
-  - the events raised to the application.
+  - the events raised to the application;
+  - at Levels 2.5 and 3.5, the enhancement pages (object pages, DRCS pages and the Magazine Organization Table), stored as received in a part of the store with its own capacity, and the read-only lookup through which the presentation layer reaches them (decision E.56).
 - **Must not know about:** characters, pixels, the web.
-- **Key types:** `Decoder<const PAGES: usize>`, `PageStore`, `StoredPage`, `MagState`, `PageState`, `Event`.
+- **Key types:** `Decoder<const PAGES: usize>`, `PageStore`, `StoredPage`, `MagState`, `PageState`, `Event`, `EnhancementLookup`.
 - **Requirements:** ACQ, SVC, FSM-003, FSM-004.
 
-### L3 Presentation model — `tellytxt-core::{charset, level1, level15}`
+### L3 Presentation model — `tellytxt-core::{charset, level1, level15, colour, drcs, objects, enhance}`
 
-- **Owns:** one pure function, from a stored page, the magazine data and the viewer state to a `Grid` of 25 by 40 cells. Along the way it performs:
+- **Owns:** one pure function, from a stored page, the magazine data and the viewer state to a `Grid` of 25 by 40 cells, with a side-panel area of columns 40 to 71 at Levels 2.5 and 3.5. Along the way it performs:
   - character set resolution;
   - the per-cell attribute machine;
   - double height;
-  - the Level 1.5 overwrite walk.
+  - the Level 1.5 overwrite walk, in `level15`, used at Level 1.5 only;
+  - at Levels 2.5 and 3.5, the enhancement processor and the modules it uses, described in section 4.5.
 
-  Every teletext feature that crosses rows is resolved here, so rows are independent from here upward (decision E.29).
-- **Must not know about:** where the page came from, pixels, buffering.
-- **Key types:** `Grid`, `Cell`, `CharRef`, `RowState`.
-- **Requirements:** CHR, L1, L15, FSM-006, FSM-007.
+  Every teletext feature that crosses rows is resolved here, so rows are independent from here upward (decision E.29). At Levels 2.5 and 3.5 that includes objects, row colours, side panels and the row extension of the Font Style triplet.
+- **The modules of Levels 2.5 and 3.5:**
+  - `colour`: the Colour Map of 32 entries, the colour index type, and the re-mapping table. Its default values are the Table 30 constants of `consts`.
+  - `drcs`: decodes the stored bytes of DRCS pages into the patterns and colour tables that the grid carries for its DRCS cells (area DRC).
+  - `objects`: finds objects. It reads the links of X/27/4, X/27/5 and the Magazine Organization Table, the pointer tables of object pages and the local definitions, and checks each definition (area OBJ).
+  - `enhance`: the enhancement processor. It runs after the Level 1 grid is built, walks the local enhancement data, objects and default objects (REQ-FSM-011), resolves each row (REQ-FSM-012), and builds the page's Colour Map, screen and row colours and side panels (area L25).
+- **Must not know about:** where the page came from, pixels, buffering. Stored bytes are decoded only through the decoders of L1, and enhancement pages are reached only through the read-only lookup of L2.
+- **Key types:** `Grid`, `Cell`, `CharRef`, `RowState`, `ColourMap`, `ColourIndex`, `DrcsPatterns`, `ObjectRef`.
+- **Requirements:** CHR, L1, L15, L25, OBJ, DRC, FSM-006, FSM-007, FSM-011, FSM-012.
 
 ### L4 Rendering — `tellytxt-core::{render, glyphs}`
 
 - **Owns:**
   - the cell raster: one line of one cell becomes 12 dots plus foreground and background indices;
   - the row renderer: a row or line becomes palette indices in a caller buffer, pulled by the port;
-  - the palette, with flash and reveal as palette changes;
-  - the glyph data, which is replaceable;
+  - the palette, with flash and reveal as palette changes, for Levels 1 and 1.5;
+  - the resolved colour mode of Levels 2.5 and 3.5, which resolves flash and conceal at render time into Colour Map indices (decision E.55);
+  - the composition of each row from the left panel, the main page and the right panel (decision E.49);
+  - double width, underline, the Level 3.5 font styles and DRCS drawing, all inside the cell raster;
+  - the glyph data, which is replaceable, including the G3 data generated by `xtask` from the project's own geometry (decision E.50);
   - the optional glyph line cache;
-  - change tracking.
+  - change tracking, including the rows that flash or conceal.
 - **Must not know about:** pixel formats, screens, buffering strategy, timing of display.
-- **Key functions:** `cell_line()`, `render_row()`, `render_line()`, `changed_rows()`, `palette()`.
-- **Requirements:** RND-011 to RND-028.
+- **Key functions:** `cell_line()`, `render_row()`, `render_line()`, `changed_rows()`, `palette()`, `flash_unit()`.
+- **Requirements:** RND-011 to RND-028, RND-030 to RND-041.
 
 ### L5 Output adapters — `tellytxt-image`, text output in `tellytxt-cli`
 
@@ -222,7 +235,7 @@ They depend only on Foundation.
 
 ---
 
-## 4. The four flows
+## 4. The flows
 
 ### 4.1 Receiving
 
@@ -243,6 +256,28 @@ port asks L4 changed_rows()
 ```
 
 The port pulls; the library never pushes pixels.
+
+### 4.5 Building the grid at Levels 2.5 and 3.5
+
+```
+L3 level1: Level 1 grid from the stored page's rows
+   └─► L3 enhance (presentation level 2.5 or 3.5; at 1.5, level15 runs instead)
+          ├─ colour:  Colour Map from Table 30, X/28/0, X/28/4, M/29/0, M/29/4
+          ├─ walk (REQ-FSM-011) over local X/26, decoded by L1 packet
+          │     └─ objects: links (X/27/4, X/27/5, MOT) and definitions
+          │           └─ L2 EnhancementLookup (read-only) ──► stored POP, GPOP and MOT bytes ──► L1 decoders
+          ├─ drcs:    patterns and colour tables of the DRCS characters used
+          │           └─ L2 EnhancementLookup (read-only) ──► stored DRCS bytes
+          └─ row resolution (REQ-FSM-012) ──► Grid: cells, side-panel area, Colour Map,
+                                               screen and row colours, DRCS patterns
+L4 render_row(grid, row, mode, field, flash unit, reveal, port_buffer)  ← Colour Map indices
+```
+
+- **After the Level 1 grid.** The enhancement processor starts from the grid that `level1` built, and changes its characters and attributes (decision E.42).
+- **Read-only lookup.** Object pages, DRCS pages and the Magazine Organization Table are read through the lookup of L2 (REQ-ACQ-020), and decoded only by the decoders of L1. Nothing in L3 changes the store.
+- **Everything travels with the grid.** The Colour Map, the screen and row colours, the side-panel area and the DRCS patterns and colour tables used by the page are all part of the `Grid`. A row is therefore still rendered from the grid and the viewer state alone (decision E.29).
+- **Rendering.** At Levels 2.5 and 3.5 the row renderer uses the resolved colour mode (decision E.55), composes the side panels into each row (decision E.49), and draws G3 characters from the generated G3 glyph data.
+- **Redrawing.** When an enhancement page that the displayed page uses arrives or changes, L2 raises an event, the grid is built again, and change tracking reports the rows that changed (REQ-ACQ-022).
 
 ### 4.3 Interacting
 
@@ -275,7 +310,7 @@ Each boundary is one narrow type. Nothing reaches past its neighbour.
 |---|---|---|
 | L0 → L1 | `Packet` (42 bytes plus metadata) | down to up |
 | L1 → L2 | `Decoded` | down to up |
-| L2 → L3 | `&StoredPage`, `&MagazineData` (read-only) | down to up |
+| L2 → L3 | `&StoredPage`, `&MagazineData`, and at Levels 2.5 and 3.5 `&EnhancementLookup` (all read-only) | down to up |
 | L6 → L3 | `&ViewerState` (read-only) | across |
 | L3 → L4 | `&Grid` | down to up |
 | L4 → L5 | a row of palette indices plus `&Palette` | down to up |
@@ -326,7 +361,7 @@ If `tellytxt-core` grows unwieldy, the natural split is `core` (Foundation to L2
 7. **Every state machine lives in the layer that owns its state:**
    - the slicer machine in L0;
    - the magazine and page machines in L2;
-   - the row and Level 1.5 machines in L3;
+   - the row and Level 1.5 machines, and the enhancement walk and row resolution of Levels 2.5 and 3.5, in L3;
    - the viewer machine in L6;
    - the protocol machines in L7.
 
@@ -344,11 +379,17 @@ A module may use the modules listed for it, and nothing else. The cross-cutting 
 | `acq` | L2 | Foundation, `packet`, `fsm` |
 | `service` | L2 | Foundation, `packet` |
 | `charset` | L3 | Foundation |
-| `level1` | L3 | Foundation, `charset`, `acq` (read-only stored page types) |
+| `level1` | L3 | Foundation, `charset`, `acq` (read-only stored page types), `colour` (colour index and Colour Map types), `drcs` (the pattern types the grid carries) |
 | `level15` | L3 | Foundation, `charset`, `level1` (grid types), `packet` (triplet types) |
+| `colour` | L3 | Foundation |
+| `drcs` | L3 | Foundation, `packet` (X/28/1, X/28/3 and M/29/1 field types), `acq` (read-only enhancement lookup), `colour` |
+| `objects` | L3 | Foundation, `packet` (triplet, link and table types), `acq` (read-only stored page types and enhancement lookup) |
+| `enhance` | L3 | Foundation, `charset`, `level1` (grid types and the Level 1 row machine), `packet` (triplet and X/28 field types), `acq` (read-only stored page types and enhancement lookup), `colour`, `objects`, `drcs` |
 | `glyphs` | L4 | Foundation, `charset` (character references) |
-| `render` | L4 | Foundation, `glyphs`, `level1` (grid types) |
-| `viewer`, `nav`, `forms` | L6 | Foundation, `acq`, `level1`, `level15`, `render` (change tracking), `service` |
+| `render` | L4 | Foundation, `glyphs`, `level1` (grid types), `colour` (Colour Map), `drcs` (pattern types) |
+| `viewer`, `nav`, `forms` | L6 | Foundation, `acq`, `level1`, `level15`, `enhance`, `colour`, `render` (change tracking), `service` |
 | `port` | L8 | Foundation |
 
-`tellytxt-formats` and `tellytxt-slicer` may use Foundation and `packet` only. `tellytxt-web` may use Foundation, `policy` and `config` only; it never uses the decoding layers. `tellytxt-image` may use Foundation and the `render` output types only.
+`tellytxt-formats` and `tellytxt-slicer` may use Foundation and `packet` only. `tellytxt-web` may use Foundation, `policy` and `config` only; it never uses the decoding layers. `tellytxt-image` may use Foundation, the `render` output types and the `colour` Colour Map type only.
+
+`level15` remains the Level 1.5 pass, used only at Level 1.5. The modules `colour`, `drcs`, `objects` and `enhance` serve Levels 2.5 and 3.5 (section 4.5). The G3 glyph data generated by `xtask` belongs to `glyphs`, whose dependencies do not change. The `xtask` layer check holds its own copy of this table, which shall be updated in the same change that adds these modules (REQ-ARCH-011).
