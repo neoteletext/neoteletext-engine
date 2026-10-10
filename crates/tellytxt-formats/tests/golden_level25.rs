@@ -1,14 +1,16 @@
 //! Golden rasters of the authored Level 2.5 and 3.5 stream (REQ-TST-024,
 //! REQ-TST-030): every display page of `author::streams` is encoded,
 //! decoded with an enhancement store, built and enhanced at Levels 2.5 and
-//! 3.5, and rendered in the resolved colour mode (REQ-RND-031); the
-//! checksum of the Colour Map indices must match
+//! 3.5, and rendered in the resolved colour mode (REQ-RND-031) in both cell
+//! sizes; the checksum of the Colour Map indices must match
 //! `tests/golden/authored-level25.txt`.
 //!
-//! The stream is made at test time by the builder of REQ-INP-025, never
-//! stored. Each page was checked by eye, and cell by cell against zvbi
-//! where zvbi decodes it correctly (`tests/oracles/run_cells.sh`,
-//! REQ-TST-023), before its checksum was taken.
+//! The stream's pages are kept as TTI source in `tests/pages/level25/`, one
+//! file per page address, as REQ-TST-024 asks; a second test checks that
+//! the builder of REQ-INP-025 still writes exactly those files. Each page
+//! was checked by eye, and cell by cell against zvbi where zvbi decodes it
+//! correctly (`tests/oracles/run_cells.sh`, REQ-TST-023), before its
+//! checksum was taken.
 //!
 //! The file carries a format version. A deliberate change to the stream,
 //! the enhancement processor or the renderer raises the version and
@@ -34,7 +36,7 @@ use tellytxt_formats::author::streams;
 
 /// Raise when the stream, enhancement or rendering changes on purpose
 /// (REQ-TST-030).
-const FORMAT_VERSION: u32 = 1;
+const FORMAT_VERSION: u32 = 2;
 /// One line period between packets, as the command-line program uses.
 const LINE_US: u64 = 64;
 /// The flash units of decision E.48 a still page is drawn at: the start of
@@ -57,8 +59,13 @@ fn checksums() -> String {
     let stream = streams::stream().unwrap();
     let packets = stream.packets();
     let mut out = format!("format {FORMAT_VERSION}\n");
-    for (level_name, level) in [("2.5", PresentationLevel::Level25), ("3.5", PresentationLevel::Level35)] {
-        let config = Config { level, cell_mode: CellMode::Saa5050, rounding: true, ..Config::default() };
+    let cases = [
+        ("2.5", PresentationLevel::Level25, "12x20", CellMode::Saa5050),
+        ("3.5", PresentationLevel::Level35, "12x20", CellMode::Saa5050),
+        ("3.5", PresentationLevel::Level35, "12x10", CellMode::Saa5246a),
+    ];
+    for (level_name, level, size, cell_mode) in cases {
+        let config = Config { level, cell_mode, rounding: true, ..Config::default() };
         let mut pages = vec![StoredPage::EMPTY; 256];
         let mut sub_pages = vec![EnhancementSubPage::EMPTY; 256];
         let mut pool = vec![EnhancementPacket::EMPTY; ENHANCEMENT_PACKETS_LEVEL_35 + MAGAZINES * MOT_PACKETS];
@@ -98,7 +105,7 @@ fn checksums() -> String {
                     render_screen(&grid, ALL_ROWS, &GlyphSet::bedstead(), options, &mut buffer).unwrap();
                     let _ = writeln!(
                         out,
-                        "{mpp} level={level_name} unit={unit} reveal={reveal} {width}x{height} {:016x}",
+                        "{mpp} level={level_name} {size} unit={unit} reveal={reveal} {width}x{height} {:016x}",
                         fnv(&indices)
                     );
                 }
@@ -119,4 +126,31 @@ fn authored_golden_rasters_match() {
     let expected = std::fs::read_to_string(&path)
         .expect("tests/golden/authored-level25.txt; generate with TELLYTXT_UPDATE_GOLDEN=1");
     assert_eq!(actual, expected, "authored rendering changed: if deliberate, raise FORMAT_VERSION and regenerate");
+}
+
+/// REQ-TST-024: the TTI source of the stream in the repository is what the
+/// builder writes. With `TELLYTXT_UPDATE_GOLDEN=1` it is written again.
+#[test]
+fn authored_tti_source_is_current() {
+    let directory = root().join("tests/pages/level25");
+    let files = streams::stream().unwrap().tti_files().unwrap();
+    if std::env::var_os("TELLYTXT_UPDATE_GOLDEN").is_some() {
+        std::fs::create_dir_all(&directory).unwrap();
+        for (name, text) in &files {
+            std::fs::write(directory.join(name), text).unwrap();
+        }
+    }
+    let mut stored: Vec<String> =
+        std::fs::read_dir(&directory).unwrap().map(|entry| entry.unwrap().file_name().into_string().unwrap()).collect();
+    stored.sort();
+    let mut names: Vec<String> = files.iter().map(|(name, _)| name.clone()).collect();
+    names.sort();
+    assert_eq!(stored, names, "tests/pages/level25 holds other files than the builder writes");
+    for (name, text) in &files {
+        let on_disk = std::fs::read(directory.join(name)).unwrap();
+        assert!(
+            on_disk == text.as_slice(),
+            "{name} differs from the builder's: regenerate with TELLYTXT_UPDATE_GOLDEN=1"
+        );
+    }
 }
