@@ -841,8 +841,14 @@ pub fn build_grid<const DRCS: usize, const PANEL_ROWS: usize>(
     }
 }
 
-/// The codes of display row `row` as the receiver presents them.
-fn row_codes(
+/// The 7-bit codes of display row `row` as the receiver presents them, and
+/// the mask of columns whose byte failed parity: the status area and header
+/// of row 0, the stored rows under the parity policy, and row 24 as
+/// [`row_24_shown`] and the receiver's own row 24 decide. The enhancement
+/// processor of Levels 2.5 and 3.5 resolves rows from these same codes
+/// (REQ-FSM-012).
+#[must_use]
+pub fn row_codes(
     row: usize,
     page: Option<&StoredPage>,
     config: &Config,
@@ -888,12 +894,7 @@ fn row_codes(
             }
             return (codes, 0);
         }
-        let show = page.is_some_and(|page| match config.row24 {
-            Row24Policy::AnnexH => page.links.is_some_and(|links| links.display_row_24),
-            Row24Policy::WhenPresent => page.has_row(24),
-            Row24Policy::Never => false,
-        });
-        if !show {
+        if !page.is_some_and(|page| row_24_shown(page, config)) {
             // REQ-L1-015: left blank for receiver status messages.
             return ([SPACE; COLUMNS], 0);
         }
@@ -901,6 +902,17 @@ fn row_codes(
     match page {
         Some(page) => stored_row(page, row, policy),
         None => ([SPACE; COLUMNS], 0),
+    }
+}
+
+/// True when the page's own row 24 is displayed under the configured rule
+/// (decision E.23).
+#[must_use]
+pub fn row_24_shown(page: &StoredPage, config: &Config) -> bool {
+    match config.row24 {
+        Row24Policy::AnnexH => page.links.is_some_and(|links| links.display_row_24),
+        Row24Policy::WhenPresent => page.has_row(24),
+        Row24Policy::Never => false,
     }
 }
 
