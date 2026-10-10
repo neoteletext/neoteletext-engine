@@ -1,9 +1,11 @@
 //! A decoding session: the decoder over a heap-allocated page store, the
 //! magazine and service data, and composing grids for display.
 
-use tellytxt_core::acq::{Decoder, Event, StoredPage};
+use tellytxt_core::acq::{Decoder, EnhancementPacket, EnhancementStore, EnhancementSubPage, Event, StoredPage};
 use tellytxt_core::config::Config;
-use tellytxt_core::consts::{COLUMNS, HEADER_DISPLAY_BYTES, PAGE_COMPLETION_TIMEOUT_US};
+use tellytxt_core::consts::{
+    COLUMNS, ENHANCEMENT_PACKETS_LEVEL_35, HEADER_DISPLAY_BYTES, MAGAZINES, MOT_PACKETS, PAGE_COMPLETION_TIMEOUT_US,
+};
 use tellytxt_core::fsm::PageState;
 use tellytxt_core::level1::{DisplayOptions, Grid, build_grid};
 use tellytxt_core::level15;
@@ -13,6 +15,15 @@ use tellytxt_core::types::{Instant, PageAddress, SubCode};
 
 /// Default number of stored pages and sub-pages.
 pub const DEFAULT_PAGES: usize = 4096;
+
+/// Packets kept for enhancement pages (REQ-ACQ-019): the Annex E.8 total
+/// for Level 3.5, plus the eight Magazine Organization Tables, which that
+/// total leaves out.
+const ENHANCEMENT_PACKETS: usize = ENHANCEMENT_PACKETS_LEVEL_35 + MAGAZINES * MOT_PACKETS;
+
+/// Enhancement sub-pages: one for every eight packets, plus the eight
+/// tables. Most object and DRCS sub-pages hold more than eight packets.
+const ENHANCEMENT_SUB_PAGES: usize = ENHANCEMENT_PACKETS_LEVEL_35 / 8 + MAGAZINES;
 
 /// A session over one input.
 pub struct Session {
@@ -35,8 +46,17 @@ impl Session {
     pub fn new(config: Config, capacity: usize) -> Self {
         // One store for the life of the process.
         let slots: &'static mut [StoredPage] = Box::leak(vec![StoredPage::EMPTY; capacity.max(1)].into_boxed_slice());
+        let sub_pages = Box::leak(vec![EnhancementSubPage::EMPTY; ENHANCEMENT_SUB_PAGES].into_boxed_slice());
+        let packets = Box::leak(vec![EnhancementPacket::EMPTY; ENHANCEMENT_PACKETS].into_boxed_slice());
+        let enhancement = EnhancementStore::new(sub_pages, packets);
         let tracing = config.trace;
-        Self { decoder: Decoder::new(slots, config), capacity: capacity.max(1), clock: 0, trace: Vec::new(), tracing }
+        Self {
+            decoder: Decoder::with_enhancement_store(slots, enhancement, config),
+            capacity: capacity.max(1),
+            clock: 0,
+            trace: Vec::new(),
+            tracing,
+        }
     }
 
     /// The number of page slots.

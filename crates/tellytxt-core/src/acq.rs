@@ -4,12 +4,19 @@
 //! machines and the page lifecycle machines of [`crate::fsm`], and keeps
 //! every page in a [`PageStore`] whose memory the caller provides
 //! (REQ-GEN-003). It raises [`Event`]s through a callback (REQ-ARCH-005).
+//!
+//! Enhancement pages (object pages, DRCS pages and the Magazine
+//! Organization Table) are kept as received in an [`EnhancementStore`], the
+//! part of the store with its own capacity in packets (decision E.56), and
+//! the presentation layer reads them through the [`EnhancementLookup`].
 
 use crate::config::{Config, ParityPolicy};
 use crate::consts::{
     C4_ERASE, C8_UPDATE, C9_INTERRUPTED, CLOCK_COLUMN, COLUMNS, COMPOSITIONAL_LINKS, DATA_BYTES, DESIGNATION_CODES,
-    DESIGNATION_LINKS_LEVEL_25, HEADER_DISPLAY_BYTES, HEADER_DISPLAY_COLUMN, MAGAZINES, PAGE_CODING_PARITY,
-    PAGE_FUNCTION_BASIC, SPACE, STORED_ROWS, TRIPLETS_PER_PACKET,
+    DESIGNATION_LINKS_LEVEL_25, HEADER_DISPLAY_BYTES, HEADER_DISPLAY_COLUMN, LINK_NULL_PAGE, MAGAZINES, MOT_DRCS_LINKS,
+    MOT_DRCS_LINKS_LEVEL_25, MOT_DRCS_LINKS_LEVEL_35, MOT_OBJECT_LINKS_LEVEL_25, MOT_OBJECT_LINKS_LEVEL_35,
+    MOT_OBJECT_LINKS_PER_PACKET, PAGE_CODING_PARITY, PAGE_FUNCTION_BASIC, PAGE_MOT, SERVICE_FORMAT_2_BIT, SPACE,
+    STORED_ROWS, TRIPLETS_PER_PACKET,
 };
 use crate::ecc::has_odd_parity;
 use crate::fsm::{
@@ -19,10 +26,18 @@ use crate::fsm::{
 };
 use crate::packet::{
     CompositionalLink, Decoded, DrcsColourData, Header, Links, MagazinePacket, Packet, PacketError, PacketMeta,
-    PageEnhancement, PagePacket, ServicePacket, Triplet, decode,
+    PageEnhancement, PageFormat, PagePacket, ServicePacket, Triplet, decode, mot_drcs_link, mot_object_link,
 };
 use crate::trace::{Machine, TraceEntry};
-use crate::types::{ControlBits, Instant, Magazine, PageAddress, PageNumber, PresentationFields, SubCode};
+
+mod enhancement;
+
+use crate::types::{ControlBits, FixedVec, Instant, Magazine, PageAddress, PageNumber, PresentationFields, SubCode};
+use enhancement::Stored;
+pub use enhancement::{
+    EnhancementKey, EnhancementLookup, EnhancementPacket, EnhancementPage, EnhancementStore, EnhancementSubPage,
+    enhancement_index, row_index,
+};
 
 /// One stored page or sub-page (REQ-ACQ-007).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -355,8 +370,13 @@ pub enum Event {
     PageStale(PageKey),
     /// Packet 8/30 was received.
     ServiceData,
-    /// M/29 was received for a magazine.
+    /// M/29 was received for a magazine, or the magazine's M/29 packets
+    /// were discarded because the service changed (REQ-ACQ-018).
     MagazineData(Magazine),
+    /// An enhancement sub-page was stored or changed during the reception
+    /// that just ended, so pages that use it are to be built again
+    /// (REQ-ACQ-022).
+    EnhancementPageChanged(EnhancementKey),
     /// A packet was discarded.
     Discarded(Discard),
     /// A state machine transition (REQ-FSM-010).
@@ -386,6 +406,9 @@ pub struct Statistics {
     pub pages_started: u32,
     /// Pages completed.
     pub pages_completed: u32,
+    /// Packets of enhancement pages dropped because every slot of the
+    /// enhancement store belonged to a sub-page being received.
+    pub enhancement_dropped: u32,
 }
 
 /// Search state of the requested page (REQ-ACQ-012).
@@ -417,14 +440,55 @@ pub struct Decoder<'a> {
     requested: Option<PageAddress>,
     rolling: [u8; CLOCK_COLUMN - HEADER_DISPLAY_COLUMN],
     clock: [u8; COLUMNS - CLOCK_COLUMN],
+    enhancement: EnhancementStore<'a>,
+    // REQ-ACQ-016: the enhancement sub-page each magazine is receiving,
+    // its generation when the reception started (REQ-ACQ-022), and the
+    // control bits of the header that started it.
+    receiving_enhancement: [Option<usize>; MAGAZINES],
+    start_generation: [Option<u32>; MAGAZINES],
+    receiving_control: [ControlBits; MAGAZINES],
+    // Pages that stored links name as object or DRCS pages (decision E.56):
+    // a bounded hint list, refilled as links arrive.
+    named: FixedVec<PageAddress, NAMED_ENHANCEMENT_PAGES>,
+    // Where the page of the header being processed is stored.
+    pending: Route,
 }
 
 /// Bytes of header display data before the clock: columns 8 to 31.
 const ROLLING_BYTES: usize = CLOCK_COLUMN - HEADER_DISPLAY_COLUMN;
 
+/// Addresses kept in the list of pages named by links: every object and
+/// DRCS link of both levels of the eight Magazine Organization Tables
+/// (Tables 20 and 22: 8 object and 8 DRCS links each), so a complete set of
+/// tables always fits. Links of X/27/4 and X/27/5 share the list; when it
+/// is full the oldest address is dropped, and it returns with the next
+/// table or link packet that names it.
+const NAMED_ENHANCEMENT_PAGES: usize = 2 * MAGAZINES * (MOT_OBJECT_LINKS_PER_PACKET * 2 + MOT_DRCS_LINKS);
+
+/// Where the page of a header is stored.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+struct Route {
+    /// In the page store, with the parity merge of decision E.8.
+    main: bool,
+    /// In the enhancement store, as received (decision E.56).
+    enhancement: bool,
+}
+
 impl<'a> Decoder<'a> {
-    /// A decoder storing pages in `pages` (REQ-GEN-003).
+    /// A decoder storing pages in `pages` (REQ-GEN-003), with no store for
+    /// enhancement pages: object pages, DRCS pages and the Magazine
+    /// Organization Table are not kept.
     pub fn new(pages: &'a mut [StoredPage], config: Config) -> Self {
+        Self::with_enhancement_store(pages, EnhancementStore::new(&mut [], &mut []), config)
+    }
+
+    /// A decoder storing pages in `pages` and enhancement pages in
+    /// `enhancement` (REQ-GEN-003, REQ-ACQ-019).
+    pub fn with_enhancement_store(
+        pages: &'a mut [StoredPage],
+        enhancement: EnhancementStore<'a>,
+        config: Config,
+    ) -> Self {
         Self {
             store: PageStore::new(pages),
             config,
@@ -439,6 +503,43 @@ impl<'a> Decoder<'a> {
             requested: None,
             rolling: [SPACE; ROLLING_BYTES],
             clock: [SPACE; COLUMNS - CLOCK_COLUMN],
+            enhancement,
+            receiving_enhancement: [None; MAGAZINES],
+            start_generation: [None; MAGAZINES],
+            receiving_control: [ControlBits(0); MAGAZINES],
+            named: FixedVec::new(PageAddress { magazine: Magazine::from_bits(1), page: PageNumber(0) }),
+            pending: Route::default(),
+        }
+    }
+
+    /// The store of enhancement pages.
+    #[must_use]
+    pub const fn enhancement_store(&self) -> &EnhancementStore<'a> {
+        &self.enhancement
+    }
+
+    /// The read-only lookup through which the presentation layer reaches
+    /// stored object pages, DRCS pages, Magazine Organization Tables and
+    /// M/29 packets (REQ-ACQ-020).
+    #[must_use]
+    pub fn enhancement_lookup(&self) -> EnhancementLookup<'_> {
+        self.enhancement.lookup(&self.magazine_data)
+    }
+
+    /// Tells the decoder that a new input starts: the stored M/29 packets
+    /// of every magazine are discarded (REQ-ACQ-018).
+    pub fn start_new_input(&mut self, events: &mut dyn FnMut(Event)) {
+        self.discard_magazine_data(events);
+    }
+
+    /// Discards every stored M/29 packet, raising an event for each
+    /// magazine that had any (REQ-ACQ-018).
+    fn discard_magazine_data(&mut self, events: &mut dyn FnMut(Event)) {
+        for (index, data) in self.magazine_data.iter_mut().enumerate() {
+            if *data != MagazineData::default() {
+                *data = MagazineData::default();
+                events(Event::MagazineData(Magazine::from_bits(index as u8)));
+            }
         }
     }
 
@@ -534,7 +635,8 @@ impl<'a> Decoder<'a> {
             }
             Decoded::Row(row) => {
                 self.count(row.magazine, row.row);
-                self.row_like(row.magazine, now, events, |page, policy| {
+                let as_received = row_index(row.row).map(|index| (index, &row.bytes));
+                self.row_like(row.magazine, now, events, as_received, |page, policy| {
                     let failures = page.merge(usize::from(row.row), 0, &row.bytes, policy);
                     (row.row, failures)
                 });
@@ -543,7 +645,9 @@ impl<'a> Decoder<'a> {
                 self.count(enhancement.magazine, crate::consts::PACKET_ENHANCEMENT);
                 let failures = enhancement.triplets.iter().filter(|t| t.is_none()).count() as u32;
                 self.stats.triplet_failures = self.stats.triplet_failures.saturating_add(failures);
-                self.row_like(enhancement.magazine, now, events, |page, _| {
+                let data = packet.data();
+                let as_received = enhancement_index(enhancement.designation).map(|index| (index, &data));
+                self.row_like(enhancement.magazine, now, events, as_received, |page, _| {
                     let code = usize::from(enhancement.designation);
                     if let Some(slot) = page.enhancements.get_mut(code) {
                         *slot = enhancement.triplets;
@@ -554,14 +658,14 @@ impl<'a> Decoder<'a> {
             }
             Decoded::Links(links) => {
                 self.count(links.magazine, crate::consts::PACKET_LINKS);
-                self.row_like(links.magazine, now, events, |page, _| {
+                self.row_like(links.magazine, now, events, None, |page, _| {
                     page.links = Some(links);
                     (crate::consts::PACKET_LINKS, 0)
                 });
             }
             Decoded::LinksRaw { magazine, designation, bytes } => {
                 self.count(magazine, crate::consts::PACKET_LINKS);
-                self.row_like(magazine, now, events, |page, _| {
+                self.row_like(magazine, now, events, None, |page, _| {
                     let index = usize::from(designation.saturating_sub(1));
                     if let Some(slot) = page.links_raw.get_mut(index) {
                         *slot = bytes;
@@ -575,6 +679,14 @@ impl<'a> Decoder<'a> {
             }
             Decoded::Service(service) => {
                 self.count(Magazine::from_bits(0), crate::consts::PACKET_SERVICE);
+                // REQ-ACQ-018: a new network identification in format 1
+                // means a new service, whose magazine data differs.
+                let format_1 = |packet: &ServicePacket| packet.designation & SERVICE_FORMAT_2_BIT == 0;
+                if format_1(&service)
+                    && self.service.is_some_and(|old| format_1(&old) && old.network_id != service.network_id)
+                {
+                    self.discard_magazine_data(events);
+                }
                 self.service = Some(service);
                 events(Event::ServiceData);
             }
@@ -591,7 +703,10 @@ impl<'a> Decoder<'a> {
         match decoded {
             Decoded::CompositionalLinks { magazine, designation, links } => {
                 self.count(magazine, crate::consts::PACKET_LINKS);
-                self.row_like(magazine, now, events, |page, _| {
+                for link in links.iter().flatten().filter(|link| link.is_format_1() && !link.is_null()) {
+                    self.name(PageAddress { magazine: link.magazine, page: link.page });
+                }
+                self.row_like(magazine, now, events, None, |page, _| {
                     let index = usize::from(designation.saturating_sub(DESIGNATION_LINKS_LEVEL_25));
                     if let Some(slot) = page.compositional_links.get_mut(index) {
                         *slot = Some(links);
@@ -601,7 +716,7 @@ impl<'a> Decoder<'a> {
             }
             Decoded::PageData { magazine, packet } => {
                 self.count(magazine, crate::consts::PACKET_PAGE_ENHANCEMENT);
-                self.row_like(magazine, now, events, |page, _| {
+                let stored = self.row_like(magazine, now, events, None, |page, _| {
                     match packet {
                         PagePacket::Format1(data) => page.page_data = Some(data),
                         PagePacket::DrcsColours(data) => page.drcs_colours = Some(data),
@@ -612,6 +727,14 @@ impl<'a> Decoder<'a> {
                     }
                     (crate::consts::PACKET_PAGE_ENHANCEMENT, 0)
                 });
+                let format = match packet {
+                    PagePacket::Format1(data) => data.format,
+                    PagePacket::DrcsModes(modes) => modes.format,
+                    PagePacket::DrcsColours(_) | PagePacket::Level35(_) => None,
+                };
+                if let (Some(index), Some(format)) = (stored, format) {
+                    self.page_format(index, format, packet, now, events);
+                }
             }
             Decoded::Magazine { magazine, packet } => {
                 self.count(magazine, crate::consts::PACKET_MAGAZINE_ENHANCEMENT);
@@ -626,6 +749,114 @@ impl<'a> Decoder<'a> {
             }
             _ => {}
         }
+    }
+
+    /// Acts on the page function of a page being received: a page whose
+    /// X/28/0 or X/28/3 function is not "basic Level 1 page" is an
+    /// enhancement page, stored as received from this packet on
+    /// (REQ-ACQ-016, decision E.56).
+    fn page_format(
+        &mut self,
+        index: usize,
+        format: PageFormat,
+        packet: PagePacket,
+        now: Instant,
+        events: &mut dyn FnMut(Event),
+    ) {
+        if format.function == PAGE_FUNCTION_BASIC {
+            return;
+        }
+        let receiving = self.receiving_enhancement.get(index).copied().flatten();
+        let entry = match receiving {
+            Some(entry) => Some(entry),
+            None => self.switch_to_enhancement(index, now, events),
+        };
+        if let Some(entry) = entry {
+            self.enhancement.set_format(entry, format);
+            if let PagePacket::DrcsModes(modes) = packet {
+                self.enhancement.set_drcs_modes(entry, modes);
+            }
+        }
+    }
+
+    /// Moves the reception in magazine `index` to the enhancement store. A
+    /// copy in the page store holding only this reception is released; an
+    /// older one keeps its content and ends its reception here.
+    fn switch_to_enhancement(&mut self, index: usize, now: Instant, events: &mut dyn FnMut(Event)) -> Option<usize> {
+        if !self.enhancement.is_enabled() {
+            return None;
+        }
+        let Some(MagazineState::Receiving(key)) = self.magazines.get(index).copied() else { return None };
+        let control = self.receiving_control.get(index).copied().unwrap_or_default();
+        let entry = self.start_enhancement(index, key, control, now)?;
+        if let Some(slot) = self.receiving_slot.get_mut(index).and_then(Option::take) {
+            let fresh = self.store.slot(slot).is_some_and(|page| page.receptions <= 1);
+            self.page_event(slot, if fresh { PageEvent::Evicted } else { PageEvent::ReceptionEnded }, now, events);
+        }
+        Some(entry)
+    }
+
+    /// Starts the reception of an enhancement sub-page in magazine `index`.
+    /// The generation before the reception is kept, so that a change of
+    /// S2 or C4 at its start is reported too; a new sub-page has none.
+    fn start_enhancement(&mut self, index: usize, key: PageKey, control: ControlBits, now: Instant) -> Option<usize> {
+        let before = self.enhancement.get(EnhancementKey::new(key.address, key.subcode)).map(|page| page.generation());
+        let busy = self.receiving_enhancement;
+        let entry = self.enhancement.start(key.address, key.subcode, control, now, &busy)?;
+        if let Some(slot) = self.receiving_enhancement.get_mut(index) {
+            *slot = Some(entry);
+        }
+        if let Some(generation) = self.start_generation.get_mut(index) {
+            *generation = before;
+        }
+        Some(entry)
+    }
+
+    /// Adds an address to the list of pages named by links.
+    fn name(&mut self, address: PageAddress) {
+        if address.page.0 == LINK_NULL_PAGE || self.named.as_slice().contains(&address) {
+            return;
+        }
+        if self.named.is_full() {
+            self.named.remove(0);
+        }
+        self.named.push(address);
+    }
+
+    /// Adds the pages that a stored packet X/19 to X/24 of a Magazine
+    /// Organization Table links to (Tables 20 and 22; decision E.52: the
+    /// magazine of a table link is absolute).
+    fn name_from_table(&mut self, packet: u8, bytes: &[u8; DATA_BYTES]) {
+        let mut found = [None; MOT_DRCS_LINKS];
+        if MOT_OBJECT_LINKS_LEVEL_25.contains(&packet) || MOT_OBJECT_LINKS_LEVEL_35.contains(&packet) {
+            for (link, slot) in found.iter_mut().enumerate().take(MOT_OBJECT_LINKS_PER_PACKET) {
+                *slot =
+                    mot_object_link(bytes, link).map(|link| PageAddress { magazine: link.magazine, page: link.page });
+            }
+        } else if packet == MOT_DRCS_LINKS_LEVEL_25 || packet == MOT_DRCS_LINKS_LEVEL_35 {
+            for (link, slot) in found.iter_mut().enumerate() {
+                *slot = mot_drcs_link(bytes, link).map(|link| PageAddress { magazine: link.magazine, page: link.page });
+            }
+        }
+        for address in found.into_iter().flatten() {
+            self.name(address);
+        }
+    }
+
+    /// Where the page of a header is stored (REQ-ACQ-013, REQ-ACQ-016,
+    /// REQ-ACQ-017). Decimal pages always go to the page store, and also to
+    /// the enhancement store when they are enhancement pages, so that a
+    /// wrong link never hides a display page. Pages with hexadecimal numbers
+    /// go to the enhancement store when they are enhancement pages, and
+    /// otherwise to the page store at Levels 2.5 and 3.5 or under the
+    /// diagnostic setting.
+    fn route(&self, address: PageAddress) -> Route {
+        let enhancement = self.enhancement.is_enabled()
+            && (address.page.0 == PAGE_MOT
+                || self.enhancement.contains_address(address)
+                || self.named.as_slice().contains(&address));
+        let hexadecimal = self.config.store_hexadecimal_pages || (self.config.level.is_enhanced() && !enhancement);
+        Route { main: address.page.is_decimal() || hexadecimal, enhancement }
     }
 
     /// Completes pages whose packets stopped arriving (decision E.19,
@@ -666,6 +897,10 @@ impl<'a> Decoder<'a> {
         }
         let own = header.magazine;
         let time_filling = header.page.is_some_and(PageNumber::is_time_filling);
+        self.pending = header.page.map_or(Route::default(), |page| self.route(PageAddress { magazine: own, page }));
+        if let (Some(control), Some(slot)) = (header.control, self.receiving_control.get_mut(own.index())) {
+            *slot = control;
+        }
         for index in 0..MAGAZINES {
             let event = if index == own.index() {
                 self.own_header_event(header)
@@ -692,7 +927,7 @@ impl<'a> Decoder<'a> {
         if page.is_time_filling() {
             return MagazineEvent::TimeFillingHeader;
         }
-        if !page.is_decimal() && !self.config.store_hexadecimal_pages {
+        if !self.pending.main && !self.pending.enhancement {
             return MagazineEvent::NonStorableHeader;
         }
         let key = PageKey { address: PageAddress { magazine: header.magazine, page }, subcode };
@@ -722,14 +957,17 @@ impl<'a> Decoder<'a> {
 
     /// Handles a row-like packet (rows 1 to 28) of a magazine. In serial
     /// mode a packet of another magazine is discarded and counted
-    /// (REQ-ACQ-002, Annex B.3).
+    /// (REQ-ACQ-002, Annex B.3). `as_received` is the packet's index and
+    /// data bytes for the enhancement store, where it has a place there.
+    /// Returns the index of the magazine whose page took the packet.
     fn row_like(
         &mut self,
         magazine: Magazine,
         now: Instant,
         events: &mut dyn FnMut(Event),
+        as_received: Option<(usize, &[u8; DATA_BYTES])>,
         store: impl FnOnce(&mut StoredPage, ParityPolicy) -> (u8, u32),
-    ) {
+    ) -> Option<usize> {
         let (index, event) = match self.serial_active {
             Some(active) if self.serial && active != magazine => {
                 (active.index(), MagazineEvent::RowOfOtherMagazineSerial)
@@ -752,9 +990,32 @@ impl<'a> Decoder<'a> {
                     self.page_event(slot, PageEvent::RowStored(row), now, events);
                 }
             }
+            if let (Some(entry), Some((packet, bytes))) =
+                (self.receiving_enhancement.get(index).copied().flatten(), as_received)
+            {
+                self.store_enhancement(entry, packet, bytes, now);
+            }
             if let Some(last) = self.last_packet.get_mut(index) {
                 *last = now;
             }
+            return Some(index);
+        }
+        None
+    }
+
+    /// Stores a packet of an enhancement sub-page as received (decision
+    /// E.56), and learns the links of a Magazine Organization Table.
+    fn store_enhancement(&mut self, entry: usize, packet: usize, bytes: &[u8; DATA_BYTES], now: Instant) {
+        let busy = self.receiving_enhancement;
+        match self.enhancement.store(entry, packet, bytes, now, &busy) {
+            Stored::Yes { .. } => {
+                let table = self.enhancement.key(entry).filter(|key| key.address.page.0 == PAGE_MOT && key.s1 == 0);
+                if table.is_some() {
+                    // Packet index i is packet X/(i + 1).
+                    self.name_from_table(packet.saturating_add(1) as u8, bytes);
+                }
+            }
+            Stored::Dropped => self.stats.enhancement_dropped = self.stats.enhancement_dropped.saturating_add(1),
         }
     }
 
@@ -803,6 +1064,14 @@ impl<'a> Decoder<'a> {
     }
 
     fn start(&mut self, magazine_index: usize, key: PageKey, erase: bool, now: Instant, events: &mut dyn FnMut(Event)) {
+        let route = self.pending;
+        if route.enhancement {
+            let control = self.receiving_control.get(magazine_index).copied().unwrap_or_default();
+            self.start_enhancement(magazine_index, key, control, now);
+        }
+        if !route.main {
+            return;
+        }
         let Some((slot, evict)) = self.store.allocate(key, &self.receiving_slot) else {
             return;
         };
@@ -860,6 +1129,17 @@ impl<'a> Decoder<'a> {
         if let Some(slot) = slot {
             self.stats.pages_completed = self.stats.pages_completed.saturating_add(1);
             self.page_event(slot, PageEvent::ReceptionEnded, now, events);
+        }
+        // REQ-ACQ-022: report an enhancement sub-page whose content or update
+        // indicator changed during the reception.
+        let entry = self.receiving_enhancement.get_mut(magazine_index).and_then(Option::take);
+        if let Some(entry) = entry {
+            let started = self.start_generation.get(magazine_index).copied().flatten();
+            if let (Some(key), Some(generation)) = (self.enhancement.key(entry), self.enhancement.generation(entry))
+                && started != Some(generation)
+            {
+                events(Event::EnhancementPageChanged(key));
+            }
         }
     }
 
@@ -1013,11 +1293,13 @@ mod tests {
         assert!(events.contains(&Event::PageErased(key(0x100, 0))));
     }
 
-    /// REQ-ACQ-003: the decision E.19 timeout.
+    /// REQ-ACQ-003: the decision E.19 timeout. REQ-ACQ-013: at Level 1.5
+    /// pages with hexadecimal numbers are not stored.
     #[test]
     fn timeout_completes_and_hex_pages_are_not_stored() {
         let mut slots = std::vec![StoredPage::EMPTY; 4];
-        let mut decoder = Decoder::new(&mut slots, Config::default());
+        let level_15 = Config { level: crate::config::PresentationLevel::Level15, ..Config::default() };
+        let mut decoder = Decoder::new(&mut slots, level_15);
         let mut events = Vec::new();
         feed(&mut decoder, &[header(3, 0x45, 0, 0), header(4, 0xA5, 0, 0)], &mut events);
         decoder.tick(Instant(1_000_000), &mut |e| events.push(e));
@@ -1132,6 +1414,254 @@ mod tests {
             let page = decoder.store().get(PageAddress::from_mpp(0x100).unwrap(), SubCode::ANY).unwrap();
             assert!(page.has_row(1) && !page.has_row(2));
             assert_eq!(decoder.store().pages().iter().filter(|page| page.state != PageState::Empty).count(), 1);
+        }
+    }
+
+    /// Storage for the enhancement store in tests.
+    struct EnhancementMemory {
+        sub_pages: Vec<EnhancementSubPage>,
+        packets: Vec<EnhancementPacket>,
+    }
+
+    impl EnhancementMemory {
+        fn new(sub_pages: usize, packets: usize) -> Self {
+            Self {
+                sub_pages: std::vec![EnhancementSubPage::EMPTY; sub_pages],
+                packets: std::vec![EnhancementPacket::EMPTY; packets],
+            }
+        }
+
+        fn store(&mut self) -> EnhancementStore<'_> {
+            EnhancementStore::new(&mut self.sub_pages, &mut self.packets)
+        }
+    }
+
+    /// Forty data bytes of Hamming 24/18 triplets with an even-parity
+    /// first byte, which the parity merge of decision E.8 would refuse.
+    fn object_bytes(seed: u8) -> [u8; DATA_BYTES] {
+        let triplets = [Triplet { address: seed % 40, mode: 0x10, data: 0x41 }; TRIPLETS_PER_PACKET];
+        let data = encode::triplet_packet(mag(1), 1, 1, &triplets).data();
+        assert!(!data[1..].iter().all(|&byte| has_odd_parity(byte)));
+        data
+    }
+
+    fn object_row(m: u8, row: u8, seed: u8) -> Packet {
+        let mut packet = encode::address(mag(m), row);
+        packet.bytes[2..].copy_from_slice(&object_bytes(seed));
+        packet
+    }
+
+    fn table_with_pop_link(m: u8, target: u8) -> [u8; DATA_BYTES] {
+        let mut nibbles = [0u8; DATA_BYTES];
+        // POP link 1 at packet bytes 16 to 25 (Table 20).
+        let link = crate::packet::MotObjectLink {
+            magazine: mag(m),
+            x27_flag: false,
+            page: PageNumber(target),
+            subpage_count: 0,
+            fallback: crate::types::FallbackFields::default(),
+            default_objects: [None; 2],
+        };
+        nibbles[10..20].copy_from_slice(&encode::mot_object_link(&link));
+        nibbles
+    }
+
+    /// REQ-ACQ-016, REQ-ACQ-020, REQ-ACQ-021, REQ-ACQ-022: the Magazine
+    /// Organization Table and a page it names are stored as received, read
+    /// back through the lookup, replaced by new receptions, erased by C4,
+    /// and reported when they change.
+    #[test]
+    fn enhancement_pages_are_stored_as_received() {
+        let mut slots = std::vec![StoredPage::EMPTY; 8];
+        let mut memory = EnhancementMemory::new(8, 100);
+        let mut decoder = Decoder::with_enhancement_store(&mut slots, memory.store(), Config::default());
+        let mut events = Vec::new();
+        let table = table_with_pop_link(1, 0xA0);
+        // A sub-code of S4 S3 = 25 (last packet), S2 = 0, S1 = 0.
+        let table_subcode = 25 << 8;
+        let table_packet = encode::nibble_packet(mag(1), 19, &table);
+        feed(&mut decoder, &[header(1, 0xFE, table_subcode, 0), table_packet, header(1, 0x00, 0, 0)], &mut events);
+        let lookup = decoder.enhancement_lookup();
+        let mot = lookup.magazine_organization_table(mag(1)).unwrap();
+        assert_eq!((mot.row(19), mot.last_packet()), (Some(&table_packet.data()), 25));
+        assert!(!decoder.store().contains(PageAddress::from_mpp(0x1FE).unwrap()), "kept only as an enhancement page");
+        assert!(events.contains(&Event::EnhancementPageChanged(EnhancementKey {
+            address: PageAddress::from_mpp(0x1FE).unwrap(),
+            s1: 0
+        })));
+        // Page 1A0, named by the table, sub-page S1 = 2: stored as received,
+        // then replaced byte for byte by a reception whose bytes differ.
+        let object_key = EnhancementKey { address: PageAddress::from_mpp(0x1A0).unwrap(), s1: 2 };
+        for seed in [3, 7] {
+            events.clear();
+            feed(
+                &mut decoder,
+                &[header(1, 0xA0, 0x0002, 0), object_row(1, 1, seed), header(1, 0x00, 0, 0)],
+                &mut events,
+            );
+            let page = decoder.enhancement_lookup().sub_page(mag(1), PageNumber(0xA0), 2).unwrap();
+            assert_eq!(page.row(1), Some(&object_bytes(seed)), "seed {seed}: no parity merge");
+            assert!(events.contains(&Event::EnhancementPageChanged(object_key)));
+        }
+        let generation = decoder.enhancement_lookup().sub_page(mag(1), PageNumber(0xA0), 2).unwrap().generation();
+        events.clear();
+        feed(&mut decoder, &[header(1, 0xA0, 0x0002, 0), object_row(1, 1, 7), header(1, 0x00, 0, 0)], &mut events);
+        assert!(!events.iter().any(|event| matches!(event, Event::EnhancementPageChanged(_))), "nothing changed");
+        // A new update indicator S2 is reported even with the same bytes.
+        feed(&mut decoder, &[header(1, 0xA0, 0x0012, 0), object_row(1, 1, 7), header(1, 0x00, 0, 0)], &mut events);
+        let page = decoder.enhancement_lookup().sub_page(mag(1), PageNumber(0xA0), 2).unwrap();
+        assert_ne!(page.generation(), generation);
+        assert!(events.contains(&Event::EnhancementPageChanged(object_key)));
+        // C4 erases the stored packets before the new ones.
+        feed(
+            &mut decoder,
+            &[header(1, 0xA0, 0x0002, C4_ERASE), object_row(1, 2, 1), header(1, 0x00, 0, 0)],
+            &mut events,
+        );
+        let page = decoder.enhancement_lookup().sub_page(mag(1), PageNumber(0xA0), 2).unwrap();
+        assert_eq!((page.row(1), page.row(2)), (None, Some(&object_bytes(1))));
+        assert_eq!(page.received(), 1 << row_index(2).unwrap());
+        assert!(decoder.enhancement_lookup().sub_page(mag(1), PageNumber(0xA0), 0).is_none());
+    }
+
+    /// REQ-ACQ-016: a page that becomes an enhancement page after it was
+    /// first stored is stored as received from its next reception on, both
+    /// when an X/27/4 link names it and when its X/28/0 says so.
+    #[test]
+    fn pages_become_enhancement_pages_by_link_or_page_function() {
+        let mut slots = std::vec![StoredPage::EMPTY; 8];
+        let mut memory = EnhancementMemory::new(8, 100);
+        let mut decoder = Decoder::with_enhancement_store(&mut slots, memory.store(), Config::default());
+        let mut events = Vec::new();
+        let object = [header(2, 0xB0, 0, 0), object_row(2, 3, 5), header(2, 0x00, 0, 0)];
+        feed(&mut decoder, &object, &mut events);
+        let address = PageAddress::from_mpp(0x2B0).unwrap();
+        assert!(decoder.store().contains(address), "REQ-ACQ-017: stored at Level 3.5");
+        assert!(decoder.enhancement_lookup().sub_page(mag(2), PageNumber(0xB0), 0).is_none());
+        let link = CompositionalLink {
+            function: 0b01,
+            validity: 0b11,
+            magazine: mag(2),
+            page: PageNumber(0xB0),
+            subpages: 1,
+            marker_first: true,
+            marker_second: false,
+        };
+        let links = encode::compositional_links(mag(2), 4, &[link; 6]);
+        feed(&mut decoder, &[header(2, 0x00, 0, 0), links, header(2, 0x01, 0, 0)], &mut events);
+        assert_eq!(
+            decoder.store().get(PageAddress::from_mpp(0x200).unwrap(), SubCode::ANY).unwrap().compositional_links[0],
+            Some([Some(link); 6])
+        );
+        feed(&mut decoder, &object, &mut events);
+        let page = decoder.enhancement_lookup().sub_page(mag(2), PageNumber(0xB0), 0).unwrap();
+        assert_eq!(page.row(3), Some(&object_bytes(5)));
+        // X/28/0 with page function 0011 (POP), before the rows.
+        let format = PageFormat { function: 0b0011, coding: 0b010 };
+        let page_data = encode::page_enhancement(mag(3), 0, format, &PresentationFields::default());
+        feed(
+            &mut decoder,
+            &[header(3, 0xC0, 0, 0), page_data, object_row(3, 1, 9), header(3, 0x00, 0, 0)],
+            &mut events,
+        );
+        let page = decoder.enhancement_lookup().sub_page(mag(3), PageNumber(0xC0), 0).unwrap();
+        assert_eq!((page.format(), page.row(1)), (Some(format), Some(&object_bytes(9))));
+        assert!(
+            !decoder.store().contains(PageAddress::from_mpp(0x3C0).unwrap()),
+            "the copy of one reception is released"
+        );
+    }
+
+    /// REQ-ACQ-019: the enhancement store keeps to its capacity in packets,
+    /// replacing the least recently received sub-page, and drops packets
+    /// only when every slot belongs to a sub-page being received.
+    #[test]
+    fn enhancement_store_capacity_and_eviction() {
+        let mut slots = std::vec![StoredPage::EMPTY; 4];
+        let mut memory = EnhancementMemory::new(4, 3);
+        let mut decoder = Decoder::with_enhancement_store(&mut slots, memory.store(), Config::default());
+        let mut events = Vec::new();
+        let rows = |page: u8, count: u8| {
+            let mut packets = std::vec![header(4, page, 0, 0)];
+            packets.extend((1..=count).map(|row| object_row(4, row, row)));
+            packets
+        };
+        feed(&mut decoder, &[header(4, 0xFE, 0, 0), object_row(4, 1, 1), header(4, 0x00, 0, 0)], &mut events);
+        // A sub-page of five packets in a pool of three: the table is
+        // evicted, and two packets are dropped.
+        let mut five = rows(0xFE, 5);
+        five[0] = header(4, 0xFE, 1, 0);
+        feed(&mut decoder, &five, &mut events);
+        assert_eq!(decoder.enhancement_store().packets_used(), 3);
+        assert!(decoder.enhancement_lookup().magazine_organization_table(mag(4)).is_none(), "S1 = 0 was evicted");
+        let page = decoder.enhancement_lookup().sub_page(mag(4), PageNumber(0xFE), 1).unwrap();
+        assert_eq!(page.received(), 0b111);
+        assert_eq!(decoder.statistics().enhancement_dropped, 2);
+        // A decoder without an enhancement store keeps no enhancement pages.
+        let mut slots = std::vec![StoredPage::EMPTY; 4];
+        let mut decoder = Decoder::new(&mut slots, Config::default());
+        feed(&mut decoder, &rows(0xFE, 2), &mut events);
+        assert!(!decoder.enhancement_store().is_enabled());
+        assert!(decoder.enhancement_lookup().magazine_organization_table(mag(4)).is_none());
+    }
+
+    /// REQ-ACQ-018: M/29/0, M/29/1 and M/29/4 are kept per magazine, each
+    /// replacing the last, and are discarded when the network
+    /// identification changes or a new input starts.
+    #[test]
+    fn magazine_data_is_kept_until_the_service_changes() {
+        let mut slots = std::vec![StoredPage::EMPTY; 4];
+        let mut decoder = Decoder::new(&mut slots, Config::default());
+        let mut events = Vec::new();
+        let fields = PresentationFields {
+            colours: Some(crate::types::DefaultColourFields { screen: 3, ..Default::default() }),
+            ..PresentationFields::default()
+        };
+        let colours = DrcsColourData { global_4: Some([1, 2, 3, 4]), ..Default::default() };
+        let service = |network_id: u16| {
+            let mut packet = encode::address(mag(8), 30);
+            packet.bytes[2] = crate::ecc::hamming84_encode(0);
+            let [high, low] = network_id.to_be_bytes();
+            packet.bytes[9] = high.reverse_bits();
+            packet.bytes[10] = low.reverse_bits();
+            packet
+        };
+        feed(
+            &mut decoder,
+            &[
+                service(0x1234),
+                encode::magazine_enhancement(mag(5), 0, &fields),
+                encode::drcs_colours(mag(5), 29, &colours),
+                encode::magazine_enhancement(mag(5), 4, &fields),
+                service(0x1234),
+            ],
+            &mut events,
+        );
+        let data = decoder.magazine_data(mag(5));
+        let colours_of = |fields: Option<PresentationFields>| fields.and_then(|fields| fields.colours);
+        assert_eq!((colours_of(data.data), colours_of(data.level35)), (fields.colours, fields.colours));
+        assert_eq!(data.drcs_colours.unwrap().global_4, colours.global_4);
+        assert_eq!(decoder.enhancement_lookup().magazine_data(mag(5)), Some(&data));
+        events.clear();
+        feed(&mut decoder, &[service(0x4321)], &mut events);
+        assert_eq!(decoder.magazine_data(mag(5)), MagazineData::default());
+        assert!(events.contains(&Event::MagazineData(mag(5))));
+        feed(&mut decoder, &[encode::magazine_enhancement(mag(5), 0, &fields)], &mut events);
+        decoder.start_new_input(&mut |_| {});
+        assert_eq!(decoder.magazine_data(mag(5)), MagazineData::default());
+    }
+
+    /// REQ-ACQ-017: pages with hexadecimal numbers are stored at Levels 2.5
+    /// and 3.5, and not at Levels 1 and 1.5.
+    #[test]
+    fn hexadecimal_pages_follow_the_level() {
+        use crate::config::PresentationLevel as L;
+        for (level, stored) in [(L::Level1, false), (L::Level15, false), (L::Level25, true), (L::Level35, true)] {
+            let mut slots = std::vec![StoredPage::EMPTY; 4];
+            let mut decoder = Decoder::new(&mut slots, Config { level, ..Config::default() });
+            let mut events = Vec::new();
+            feed(&mut decoder, &[header(6, 0x3D, 0, 0), header(6, 0x00, 0, 0)], &mut events);
+            assert_eq!(decoder.store().contains(PageAddress::from_mpp(0x63D).unwrap()), stored, "{level:?}");
         }
     }
 

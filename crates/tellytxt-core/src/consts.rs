@@ -515,6 +515,15 @@ pub const OBJECT_TRIPLETS_IN_ROWS: u16 =
 /// Pointers in one pointer packet: two in each of triplets 1 to 12.
 pub const OBJECT_POINTERS_PER_PACKET: usize = 24;
 
+/// Packets an enhancement sub-page can hold: X/1 to X/25 and X/26/0 to
+/// X/26/15 (clause 10.5.1.1).
+pub const ENHANCEMENT_SUBPAGE_PACKETS: usize = PACKET_ROW_25 as usize + DESIGNATION_CODES;
+/// The most packets of DRCS and object pages over all magazines at Level
+/// 2.5 (Annex E.8); the documented default capacity of REQ-ACQ-019.
+pub const ENHANCEMENT_PACKETS_LEVEL_25: usize = 500;
+/// The same total at Level 3.5 (Annex E.8).
+pub const ENHANCEMENT_PACKETS_LEVEL_35: usize = 1200;
+
 // ---------------------------------------------------------------------------
 // The Magazine Organization Table (clause 10.6, Figure 20, Tables 20 to 23)
 // ---------------------------------------------------------------------------
@@ -556,6 +565,8 @@ pub const MOT_DRCS_LINK_FIRST_BYTE: usize = 6;
 pub const MOT_DRCS_LINK_BYTES: usize = 4;
 /// DRCS links in one packet: the GDRCS link and DRCS links 1 to 7.
 pub const MOT_DRCS_LINKS: usize = 8;
+/// Packets X/1 to X/24 of a Magazine Organization Table (clause 10.6.1).
+pub const MOT_PACKETS: usize = 24;
 /// Packet byte of the totals of enhancement pages (clause 10.6.6).
 pub const MOT_TOTALS_BYTE: usize = 40;
 /// Data bit 4 of a link's first byte: the X/27/4,5 flag (Table 21).
