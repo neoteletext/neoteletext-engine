@@ -120,8 +120,8 @@ fn non_text_pages_and_inhibit_display_show_no_rows() {
     build_grid(&mut grid, Some(&page), &MagazineData::default(), &config, &DisplayOptions::default());
     assert!(grid.cells[1..24].iter().all(|row| row.iter().all(|cell| cell.glyph == Glyph::Space)), "REQ-L1-016");
     page.control = ControlBits(0);
-    if let Some(data) = page.page_data.as_mut() {
-        data.page_function = 1;
+    if let Some(format) = page.page_data.as_mut().and_then(|data| data.format.as_mut()) {
+        format.function = 1;
     }
     assert!(!page.is_text_page());
     build_grid(&mut grid, Some(&page), &MagazineData::default(), &config, &DisplayOptions::default());
@@ -132,8 +132,8 @@ fn non_text_pages_and_inhibit_display_show_no_rows() {
 fn esc_switches_to_the_second_g0_set() {
     let mut page = decode(&body()).0;
     // Table 33 value 0x24: Cyrillic option 2 in the group 0100 encoding.
-    if let Some(data) = page.page_data.as_mut() {
-        data.second_designation = 0x24;
+    if let Some(designations) = page.page_data.as_mut().and_then(|data| data.fields.designations.as_mut()) {
+        designations.second = 0x24;
     }
     page.cells[2][..3].copy_from_slice(&[with_odd_parity(b'A'), with_odd_parity(ESC), with_odd_parity(b'A')]);
     let mut grid = Grid::EMPTY;

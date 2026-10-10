@@ -7,7 +7,7 @@ use tellytxt_core::consts::{
     PACKET_MAGAZINE_ENHANCEMENT, PACKET_PAGE_ENHANCEMENT, ROWS, STORED_ROWS, TRIPLETS_PER_PACKET,
     TTI_DOUBLE_HEIGHT_ALIAS, TTI_ESCAPE_OFFSET,
 };
-use tellytxt_core::packet::{Decoded, Triplet, decode};
+use tellytxt_core::packet::{Decoded, PageEnhancement, PagePacket, Triplet, decode};
 use tellytxt_core::types::{PageAddress, SubCode};
 
 use crate::check::Warning;
@@ -493,9 +493,12 @@ impl TtiReader {
             return;
         }
         if number == PACKET_PAGE_ENHANCEMENT
-            && let Ok(Decoded::PageData { data: Some(data), .. }) = decode(&packet)
+            && let Ok(Decoded::PageData {
+                packet: PagePacket::Format1(PageEnhancement { format: Some(format), .. }),
+                ..
+            }) = decode(&packet)
         {
-            self.page.function = Some(PageFunction { function: data.page_function, coding: data.page_coding });
+            self.page.function = Some(PageFunction { function: format.function, coding: format.coding });
         }
         let packets = self.page.raw_packets.as_mut_slice();
         if let Some(existing) =

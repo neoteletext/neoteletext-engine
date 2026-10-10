@@ -19,7 +19,7 @@ use tellytxt_core::consts::{
     ROW_ADDRESS_LAST,
 };
 use tellytxt_core::ecc::check_parity;
-use tellytxt_core::packet::{Decoded, Triplet, decode};
+use tellytxt_core::packet::{Decoded, PageFormat, PagePacket, Triplet, decode};
 
 pub(crate) fn packed_line(designation: u8, triplets: &[Triplet; 13]) -> Vec<u8> {
     let mut out = std::vec![0x40 | designation];
@@ -359,7 +359,7 @@ fn encoded_pages_decode_to_the_same_fields() {
     assert_eq!(links.links[0].unwrap().page.0, 0xA1);
     assert_eq!(links.links[1].unwrap().magazine.number(), 2);
     assert!(matches!(decoded[3], Decoded::PageData { .. }));
-    assert!(matches!(decoded[4], Decoded::PageDataRaw { .. }));
+    assert!(matches!(decoded[4], Decoded::PageData { packet: PagePacket::DrcsColours(_), .. }));
     let Decoded::Enhancement(enhancement) = decoded[5] else { panic!("{:?}", decoded[5]) };
     assert_eq!(enhancement.triplets.map(Option::unwrap), sample_triplets());
     let rows: Vec<_> = decoded[6..]
@@ -375,7 +375,7 @@ fn encoded_pages_decode_to_the_same_fields() {
         assert_eq!(&codes, page.row(usize::from(number)).unwrap());
     }
     // X/28/0 from RE and PF: region 2 above national option index 4.
-    let Decoded::PageData { data: Some(data), .. } = decoded[3] else { panic!() };
-    assert_eq!(data.default_designation, (2 << 3) | 4);
-    assert_eq!((data.page_function, data.page_coding), (0, 0));
+    let Decoded::PageData { packet: PagePacket::Format1(data), .. } = decoded[3] else { panic!() };
+    assert_eq!(data.fields.designations.unwrap().default, (2 << 3) | 4);
+    assert_eq!(data.format, Some(PageFormat { function: 0, coding: 0 }));
 }

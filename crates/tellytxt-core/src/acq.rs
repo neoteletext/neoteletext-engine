@@ -7,8 +7,9 @@
 
 use crate::config::{Config, ParityPolicy};
 use crate::consts::{
-    C4_ERASE, C8_UPDATE, C9_INTERRUPTED, CLOCK_COLUMN, COLUMNS, DATA_BYTES, DESIGNATION_CODES, HEADER_DISPLAY_BYTES,
-    HEADER_DISPLAY_COLUMN, MAGAZINES, SPACE, STORED_ROWS, TRIPLETS_PER_PACKET,
+    C4_ERASE, C8_UPDATE, C9_INTERRUPTED, CLOCK_COLUMN, COLUMNS, COMPOSITIONAL_LINKS, DATA_BYTES, DESIGNATION_CODES,
+    DESIGNATION_LINKS_LEVEL_25, HEADER_DISPLAY_BYTES, HEADER_DISPLAY_COLUMN, MAGAZINES, PAGE_CODING_PARITY,
+    PAGE_FUNCTION_BASIC, SPACE, STORED_ROWS, TRIPLETS_PER_PACKET,
 };
 use crate::ecc::has_odd_parity;
 use crate::fsm::{
@@ -17,10 +18,11 @@ use crate::fsm::{
     page_transition,
 };
 use crate::packet::{
-    Decoded, EnhancementData, Header, Links, Packet, PacketError, PacketMeta, ServicePacket, Triplet, decode,
+    CompositionalLink, Decoded, DrcsColourData, Header, Links, MagazinePacket, Packet, PacketError, PacketMeta,
+    PageEnhancement, PagePacket, ServicePacket, Triplet, decode,
 };
 use crate::trace::{Machine, TraceEntry};
-use crate::types::{ControlBits, Instant, Magazine, PageAddress, PageNumber, SubCode};
+use crate::types::{ControlBits, Instant, Magazine, PageAddress, PageNumber, PresentationFields, SubCode};
 
 /// One stored page or sub-page (REQ-ACQ-007).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -52,10 +54,15 @@ pub struct StoredPage {
     pub links_raw: [[u8; DATA_BYTES]; 3],
     /// Which of X/27/1 to X/27/3 are present.
     pub links_raw_present: u8,
-    /// Packet X/28/0 format 1, if received and decodable.
-    pub page_data: Option<EnhancementData>,
-    /// Packet X/28/1, raw.
-    pub page_data_raw: Option<[u8; DATA_BYTES]>,
+    /// Packets X/27/4 and X/27/5, indexed by designation code minus 4,
+    /// with their decoded links (REQ-PKT-011).
+    pub compositional_links: [Option<[Option<CompositionalLink>; COMPOSITIONAL_LINKS]>; 2],
+    /// Packet X/28/0, read as format 1 (decision E.44).
+    pub page_data: Option<PageEnhancement>,
+    /// Packet X/28/1: the DRCS colour lookup tables (REQ-PKT-013).
+    pub drcs_colours: Option<DrcsColourData>,
+    /// Packet X/28/4: the Level 3.5 page data (REQ-PKT-015).
+    pub page_data_level35: Option<PageEnhancement>,
     /// Time of the first reception.
     pub first_received: Instant,
     /// Time of the most recent packet.
@@ -87,8 +94,10 @@ impl StoredPage {
         links: None,
         links_raw: [[0; DATA_BYTES]; 3],
         links_raw_present: 0,
+        compositional_links: [None; 2],
         page_data: None,
-        page_data_raw: None,
+        drcs_colours: None,
+        page_data_level35: None,
         first_received: Instant(0),
         last_received: Instant(0),
         receptions: 0,
@@ -100,7 +109,9 @@ impl StoredPage {
     /// text (REQ-ACQ-014).
     #[must_use]
     pub fn is_text_page(&self) -> bool {
-        self.page_data.is_none_or(|data| data.page_function == 0 && data.page_coding == 0)
+        self.page_data
+            .and_then(|data| data.format)
+            .is_none_or(|format| format.function == PAGE_FUNCTION_BASIC && format.coding == PAGE_CODING_PARITY)
     }
 
     /// True when row `row` has been received.
@@ -142,8 +153,10 @@ impl StoredPage {
         self.enhancements_present = 0;
         self.links = None;
         self.links_raw_present = 0;
+        self.compositional_links = [None; 2];
         self.page_data = None;
-        self.page_data_raw = None;
+        self.drcs_colours = None;
+        self.page_data_level35 = None;
     }
 
     /// Merges received bytes into `row` starting at `column` (decision E.8,
@@ -290,13 +303,16 @@ impl<'a> PageStore<'a> {
     }
 }
 
-/// The magazine data of one magazine (REQ-ACQ-009).
+/// The magazine data of one magazine (REQ-ACQ-009, REQ-ACQ-018): the most
+/// recent packet of each designation code, each replacing the last.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct MagazineData {
-    /// The latest valid M/29/0.
-    pub data: Option<EnhancementData>,
-    /// The latest M/29/1, raw.
-    pub raw: Option<[u8; DATA_BYTES]>,
+    /// The latest M/29/0 with packet function 0 (REQ-PKT-016).
+    pub data: Option<PresentationFields>,
+    /// The latest M/29/1: the DRCS colour lookup tables.
+    pub drcs_colours: Option<DrcsColourData>,
+    /// The latest M/29/4 with packet function 0: the Level 3.5 data.
+    pub level35: Option<PresentationFields>,
 }
 
 /// Why a packet was discarded.
@@ -554,33 +570,8 @@ impl<'a> Decoder<'a> {
                     (crate::consts::PACKET_LINKS, 0)
                 });
             }
-            Decoded::PageData { magazine, data } => {
-                self.count(magazine, crate::consts::PACKET_PAGE_ENHANCEMENT);
-                self.row_like(magazine, now, events, |page, _| {
-                    page.page_data = data;
-                    (crate::consts::PACKET_PAGE_ENHANCEMENT, 0)
-                });
-            }
-            Decoded::PageDataRaw { magazine, bytes } => {
-                self.count(magazine, crate::consts::PACKET_PAGE_ENHANCEMENT);
-                self.row_like(magazine, now, events, |page, _| {
-                    page.page_data_raw = Some(bytes);
-                    (crate::consts::PACKET_PAGE_ENHANCEMENT, 0)
-                });
-            }
-            Decoded::Magazine { magazine, data } => {
-                self.count(magazine, crate::consts::PACKET_MAGAZINE_ENHANCEMENT);
-                if let (Some(slot), Some(data)) = (self.magazine_data.get_mut(magazine.index()), data) {
-                    slot.data = Some(data);
-                }
-                events(Event::MagazineData(magazine));
-            }
-            Decoded::MagazineRaw { magazine, bytes } => {
-                self.count(magazine, crate::consts::PACKET_MAGAZINE_ENHANCEMENT);
-                if let Some(slot) = self.magazine_data.get_mut(magazine.index()) {
-                    slot.raw = Some(bytes);
-                }
-                events(Event::MagazineData(magazine));
+            Decoded::CompositionalLinks { .. } | Decoded::PageData { .. } | Decoded::Magazine { .. } => {
+                self.enhancement_data(decoded, now, events);
             }
             Decoded::Service(service) => {
                 self.count(Magazine::from_bits(0), crate::consts::PACKET_SERVICE);
@@ -591,6 +582,49 @@ impl<'a> Decoder<'a> {
                 self.count(address.magazine, address.number);
                 self.stats.ignored = self.stats.ignored.saturating_add(1);
             }
+        }
+    }
+
+    /// Stores the page-related packets X/27/4, X/27/5 and X/28, and the
+    /// magazine-related packets M/29 (REQ-ACQ-007, REQ-ACQ-009).
+    fn enhancement_data(&mut self, decoded: Decoded, now: Instant, events: &mut dyn FnMut(Event)) {
+        match decoded {
+            Decoded::CompositionalLinks { magazine, designation, links } => {
+                self.count(magazine, crate::consts::PACKET_LINKS);
+                self.row_like(magazine, now, events, |page, _| {
+                    let index = usize::from(designation.saturating_sub(DESIGNATION_LINKS_LEVEL_25));
+                    if let Some(slot) = page.compositional_links.get_mut(index) {
+                        *slot = Some(links);
+                    }
+                    (crate::consts::PACKET_LINKS, 0)
+                });
+            }
+            Decoded::PageData { magazine, packet } => {
+                self.count(magazine, crate::consts::PACKET_PAGE_ENHANCEMENT);
+                self.row_like(magazine, now, events, |page, _| {
+                    match packet {
+                        PagePacket::Format1(data) => page.page_data = Some(data),
+                        PagePacket::DrcsColours(data) => page.drcs_colours = Some(data),
+                        PagePacket::Level35(data) => page.page_data_level35 = Some(data),
+                        // X/28/3 belongs to DRCS pages, which are not text
+                        // pages (REQ-OBJ-041).
+                        PagePacket::DrcsModes(_) => {}
+                    }
+                    (crate::consts::PACKET_PAGE_ENHANCEMENT, 0)
+                });
+            }
+            Decoded::Magazine { magazine, packet } => {
+                self.count(magazine, crate::consts::PACKET_MAGAZINE_ENHANCEMENT);
+                if let Some(slot) = self.magazine_data.get_mut(magazine.index()) {
+                    match packet {
+                        MagazinePacket::Data(fields) => slot.data = Some(fields),
+                        MagazinePacket::DrcsColours(data) => slot.drcs_colours = Some(data),
+                        MagazinePacket::Level35(fields) => slot.level35 = Some(fields),
+                    }
+                }
+                events(Event::MagazineData(magazine));
+            }
+            _ => {}
         }
     }
 

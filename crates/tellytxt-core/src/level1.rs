@@ -14,8 +14,8 @@ use crate::consts::{
     C10_INHIBIT_DISPLAY, CODE_MASK_7BIT, COLOUR_ATTRIBUTE_MASK, COLOUR_BLACK, COLOUR_GREEN, COLOUR_WHITE, COLUMNS,
     CONCEAL, CONTIGUOUS_MOSAICS, DESIGNATION_GROUP_SHIFT, DOUBLE_HEIGHT, END_BOX, ESC, FLASH, HEADER_DISPLAY_BYTES,
     HEADER_DISPLAY_COLUMN, HOLD_MOSAICS, MOSAIC_BIT5, MOSAIC_BLACK, MOSAIC_WHITE, NATIONAL_INDEX_MASK, NEW_BACKGROUND,
-    NORMAL_SIZE, RELEASE_MOSAICS, ROWS, SEPARATED_MOSAICS, SPACE, START_BOX, STATUS_ATTRIBUTE_COLUMN, STATUS_COLUMNS,
-    STEADY,
+    NORMAL_SIZE, PAGE_FUNCTION_BASIC, RELEASE_MOSAICS, ROWS, SEPARATED_MOSAICS, SPACE, START_BOX,
+    STATUS_ATTRIBUTE_COLUMN, STATUS_COLUMNS, STEADY,
 };
 
 /// What a cell shows.
@@ -200,10 +200,17 @@ pub fn resolve_designation(
 ) -> (Designation, Option<G0>, bool) {
     let national = config.fixed_national_index.unwrap_or_else(|| page.map_or(0, |page| page.control.national_index()))
         & NATIONAL_INDEX_MASK;
-    let enhancement = page.and_then(|page| page.page_data).filter(|data| data.page_function == 0).or(magazine.data);
-    let group = enhancement.map_or(config.default_region, |data| data.default_designation >> DESIGNATION_GROUP_SHIFT);
+    // A page's own X/28/0 counts only when it is a basic Level 1 page; then
+    // the magazine's M/29/0 applies (decision E.4).
+    let page_designations = page
+        .and_then(|page| page.page_data)
+        .filter(|data| data.format.is_some_and(|format| format.function == PAGE_FUNCTION_BASIC))
+        .and_then(|data| data.fields.designations);
+    let designations = page_designations.or_else(|| magazine.data.and_then(|fields| fields.designations));
+    let group =
+        designations.map_or(config.default_region, |designations| designations.default >> DESIGNATION_GROUP_SHIFT);
     let (designation, fallback) = designation_with_fallback((group << DESIGNATION_GROUP_SHIFT) | national);
-    let second = enhancement.and_then(|data| second_g0(data.second_designation));
+    let second = designations.and_then(|designations| second_g0(designations.second));
     (designation, second, fallback)
 }
 

@@ -8,8 +8,8 @@ use std::vec::Vec;
 use tellytxt_core::charset::{CharRef, CharSet, G2Set, designation, to_unicode};
 use tellytxt_core::consts::{C4_ERASE, C7_SUPPRESS_HEADER, C13, MODE_G0_NO_DIACRITIC, ROW_ADDRESS_BASE};
 use tellytxt_core::ecc::check_parity;
-use tellytxt_core::packet::{Decoded, decode};
-use tellytxt_core::types::{ControlBits, PageAddress};
+use tellytxt_core::packet::{Decoded, PageFormat, PagePacket, decode};
+use tellytxt_core::types::{ControlBits, Designations, PageAddress};
 
 fn encode_all(page: &PageFile) -> Vec<Packet> {
     let mut packets = Vec::new();
@@ -97,12 +97,11 @@ fn page_enhancement_packet_from_region_and_function() {
     page.function = Some(PageFunction { function: 2, coding: 1 });
     page.set_national_index(5);
     let packets = encode_all(&page);
-    let Ok(Decoded::PageData { data: Some(data), .. }) = decode(&packets[1]) else {
+    let Ok(Decoded::PageData { packet: PagePacket::Format1(data), .. }) = decode(&packets[1]) else {
         panic!("{:?}", decode(&packets[1]))
     };
-    assert_eq!(data.default_designation, (3 << 3) | 5);
-    assert_eq!(data.second_designation, 0x7F);
-    assert_eq!((data.page_function, data.page_coding), (2, 1));
+    assert_eq!(data.fields.designations, Some(Designations { default: (3 << 3) | 5, second: 0x7F }));
+    assert_eq!(data.format, Some(PageFormat { function: 2, coding: 1 }));
 }
 
 #[test]

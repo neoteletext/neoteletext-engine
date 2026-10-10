@@ -238,6 +238,125 @@ pub const MODE_COLUMN_RESERVED_3: u8 = 0x0A;
 pub const MODE_G3_LEVEL_25: u8 = 0x0B;
 /// Column mode 01111: G2 character.
 pub const MODE_G2: u8 = 0x0F;
+/// Row mode 00000: Full Screen Colour (Table 28).
+pub const MODE_FULL_SCREEN_COLOUR: u8 = 0x00;
+/// Row modes 01000 to 01101: Programme Delivery Control (Table 28, Part G).
+pub const MODE_ROW_PDC_FIRST: u8 = 0x08;
+/// The last Programme Delivery Control row mode.
+pub const MODE_ROW_PDC_LAST: u8 = 0x0D;
+/// Row mode 10000: Origin Modifier (Table 28).
+pub const MODE_ORIGIN_MODIFIER: u8 = 0x10;
+/// Row modes 10001 to 10011: Active, Adaptive and Passive Object
+/// Invocation (Table 28).
+pub const MODE_OBJECT_INVOCATION_FIRST: u8 = 0x11;
+/// The last Object Invocation row mode.
+pub const MODE_OBJECT_INVOCATION_LAST: u8 = 0x13;
+/// Row modes 10101 to 10111: Active, Adaptive and Passive Object
+/// Definition (Table 28).
+pub const MODE_OBJECT_DEFINITION_FIRST: u8 = 0x15;
+/// The last Object Definition row mode.
+pub const MODE_OBJECT_DEFINITION_LAST: u8 = 0x17;
+/// Row mode 11000: DRCS Mode (Table 28).
+pub const MODE_DRCS_MODE: u8 = 0x18;
+/// The low two bits of an object mode, M1 M0: 01 Active, 10 Adaptive,
+/// 11 Passive (Table 28).
+pub const MODE_OBJECT_TYPE_MASK: u8 = 0x03;
+/// Column mode 00000: Foreground Colour (Table 29).
+pub const MODE_FOREGROUND_COLOUR: u8 = 0x00;
+/// Column mode 00001: G1 block mosaic character (Table 29).
+pub const MODE_G1: u8 = 0x01;
+/// Column mode 00011: Background Colour (Table 29).
+pub const MODE_BACKGROUND_COLOUR: u8 = 0x03;
+/// Column mode 00111: Additional Flash Functions (Table 29).
+pub const MODE_ADDITIONAL_FLASH: u8 = 0x07;
+/// Column mode 01000: Modified G0 and G2 Character Set Designation
+/// (Table 29).
+pub const MODE_MODIFIED_DESIGNATION: u8 = 0x08;
+/// Column mode 01001: G0 character at Levels 2.5 and 3.5 (Table 29).
+pub const MODE_G0_LEVEL_25: u8 = 0x09;
+/// Column mode 01100: Display Attributes (Table 29).
+pub const MODE_DISPLAY_ATTRIBUTES: u8 = 0x0C;
+/// Column mode 01101: DRCS Character Invocation (Table 29).
+pub const MODE_DRCS_CHARACTER: u8 = 0x0D;
+/// Column mode 01110: Font Style, Level 3.5 only (Table 29).
+pub const MODE_FONT_STYLE: u8 = 0x0E;
+/// The colour index of a colour field: D4 to D0, CLUT in D4 D3 and entry
+/// in D2 to D0 (Tables 28 and 29, decision E.43).
+pub const TRIPLET_COLOUR_INDEX_MASK: u8 = 0x1F;
+/// Shift of D6 D5 above a colour index: zero except in reserved values,
+/// and S1 S0 in Full Row Colour and Address Display Row 0 (Table 28).
+pub const TRIPLET_COLOUR_HIGH_SHIFT: u32 = 5;
+/// S1 S0 = 00 of Full Row Colour: this row only (Table 28).
+pub const ROW_COLOUR_THIS_ROW: u8 = 0b00;
+/// S1 S0 = 11 of Full Row Colour: this row and every row below (Table 28).
+pub const ROW_COLOUR_DOWN_TO_BOTTOM: u8 = 0b11;
+/// The reserved address that the encoder writes in triplets whose address
+/// field is reserved but must still be a row address (Full Screen Colour
+/// and DRCS Mode): 41, which Annex A.5 note 1 recommends for Level 1.5
+/// compatibility.
+pub const ROW_ADDRESS_RESERVED_DEFAULT: u8 = 41;
+/// Shift of S1 S0 in the address of an Object Invocation or Definition:
+/// address bits 6 to 1 are 1, S1, S0, X, N8, N7 (Table 28).
+pub const OBJECT_SOURCE_SHIFT: u32 = 3;
+/// Mask of S1 S0 after the shift.
+pub const OBJECT_SOURCE_MASK: u8 = 0x03;
+/// Address bit 6, always 1 in an Object Invocation or Definition.
+pub const OBJECT_ADDRESS_BIT6: u8 = 0x20;
+/// Address bits N8 N7 of an Object Invocation or Definition.
+pub const OBJECT_ADDRESS_N8_N7_MASK: u8 = 0x03;
+/// Bits of an object number, N8 to N0 (Table 28).
+pub const OBJECT_NUMBER_BITS: u32 = 9;
+/// Shift of N8 N7 within an object number: N6 to N0 are the data field.
+pub const OBJECT_NUMBER_HIGH_SHIFT: u32 = 7;
+/// Data bit D6 of DRCS Mode and DRCS Character Invocation: 1 normal DRCS,
+/// 0 global DRCS (Tables 28 and 29).
+pub const DRCS_NORMAL_BIT: u8 = 0x40;
+/// Shift of L1 L0, the DRCS level bits, in the DRCS Mode data field.
+pub const DRCS_LEVEL_SHIFT: u32 = 4;
+/// Mask of L1 L0 after the shift.
+pub const DRCS_LEVEL_MASK: u8 = 0x03;
+/// Mask of T3 to T0, the DRCS sub-table, in the DRCS Mode data field.
+pub const DRCS_SUBTABLE_MASK: u8 = 0x0F;
+/// The Level 2.5 bit of a two-bit level field: S0 of an Object Definition's
+/// usage, L0 of DRCS Mode, and the low bit of an X/27/4 page validity
+/// (Tables 15 and 28: 01 Level 2.5, 10 Level 3.5, 11 both).
+pub const LEVEL_BIT_25: u8 = 0b01;
+/// The Level 3.5 bit of a two-bit level field.
+pub const LEVEL_BIT_35: u8 = 0b10;
+/// Mask of the character number D5 to D0 of a DRCS Character Invocation.
+pub const DRCS_CHARACTER_MASK: u8 = 0x3F;
+/// Characters in a DRCS sub-table: numbers 0 to 47 (Table 29, clause 14.1).
+pub const DRCS_CHARACTERS: u8 = 48;
+/// Mask of the Termination Marker type, data bits D2 to D0 (Table 28).
+pub const TERMINATION_TYPE_MASK: u8 = 0x07;
+/// Mask of the flash mode, D1 D0 of Additional Flash Functions (Table 29).
+pub const FLASH_MODE_MASK: u8 = 0x03;
+/// Shift of the flash rate and phase, D4 to D2 (Table 29).
+pub const FLASH_RATE_SHIFT: u32 = 2;
+/// Mask of the flash rate and phase after the shift.
+pub const FLASH_RATE_MASK: u8 = 0x07;
+/// Display Attributes data bit D0: double height (Table 29).
+pub const ATTRIBUTE_DOUBLE_HEIGHT: u8 = 0x01;
+/// Display Attributes D1: boxing or window.
+pub const ATTRIBUTE_BOXING: u8 = 0x02;
+/// Display Attributes D2: conceal.
+pub const ATTRIBUTE_CONCEAL: u8 = 0x04;
+/// Display Attributes D4: invert.
+pub const ATTRIBUTE_INVERT: u8 = 0x10;
+/// Display Attributes D5: underline or separated mosaics.
+pub const ATTRIBUTE_UNDERLINE: u8 = 0x20;
+/// Display Attributes D6: double width.
+pub const ATTRIBUTE_DOUBLE_WIDTH: u8 = 0x40;
+/// Font Style data bit D0: proportional spacing (Table 29).
+pub const FONT_PROPORTIONAL: u8 = 0x01;
+/// Font Style D1: bold.
+pub const FONT_BOLD: u8 = 0x02;
+/// Font Style D2: italics.
+pub const FONT_ITALIC: u8 = 0x04;
+/// Shift of the Font Style row count R2 to R0, D6 to D4.
+pub const FONT_ROWS_SHIFT: u32 = 4;
+/// Mask of the row count after the shift.
+pub const FONT_ROWS_MASK: u8 = 0x07;
 /// Column mode 10000: G0 character without diacritical mark.
 pub const MODE_G0_NO_DIACRITIC: u8 = 0x10;
 /// Low four mode bits of modes 10001 to 11111 number the diacritic.
@@ -252,7 +371,217 @@ pub const LATIN_AT_SIGN: u8 = 0x40;
 pub const DIACRITIC_NONE: u8 = 0;
 
 // ---------------------------------------------------------------------------
-// Character set designation (clause 15, Tables 3, 4, 32, 33, 36, 37)
+// Page-related and magazine-related enhancement packets (clauses 9.4.2 to
+// 9.5.3, 9.6.2; Tables 3, 4 and 8 to 16)
+// ---------------------------------------------------------------------------
+
+/// X/28 and M/29 designation code 0: X/28/0 format 1 and M/29/0.
+pub const DESIGNATION_PAGE_DATA: u8 = 0;
+/// X/28 and M/29 designation code 1: the DRCS colour lookup tables.
+pub const DESIGNATION_DRCS_COLOURS: u8 = 1;
+/// X/28 designation code 3: DRCS mode identification (Table 9).
+pub const DESIGNATION_DRCS_MODES: u8 = 3;
+/// X/28 and M/29 designation code 4: Level 3.5 data (Tables 10 and 13).
+pub const DESIGNATION_LEVEL_35_DATA: u8 = 4;
+/// X/27 designation code 4: compositional links, Level 2.5 (clause 9.6.2).
+pub const DESIGNATION_LINKS_LEVEL_25: u8 = 4;
+/// X/27 designation code 5: compositional links, Level 3.5.
+pub const DESIGNATION_LINKS_LEVEL_35: u8 = 5;
+/// Mask of the page function, triplet 1 bits 1 to 4 (Table 3).
+pub const PAGE_FUNCTION_MASK: u32 = 0x0F;
+/// Page function 0000: basic Level 1 page (Table 3).
+pub const PAGE_FUNCTION_BASIC: u8 = 0x0;
+/// Page function 0010: Global Public Object Page (Table 3).
+pub const PAGE_FUNCTION_GPOP: u8 = 0x2;
+/// Page function 0011: Public Object Page.
+pub const PAGE_FUNCTION_POP: u8 = 0x3;
+/// Page function 0100: Global DRCS page.
+pub const PAGE_FUNCTION_GDRCS: u8 = 0x4;
+/// Page function 0101: normal DRCS page.
+pub const PAGE_FUNCTION_DRCS: u8 = 0x5;
+/// Page function 0110: Magazine Organization Table.
+pub const PAGE_FUNCTION_MOT: u8 = 0x6;
+/// Page coding 000: 7 data bits with odd parity (Table 3).
+pub const PAGE_CODING_PARITY: u8 = 0x0;
+/// Mask of the M/29 packet function, triplet 1 bits 1 to 7; only 0000000
+/// is defined (Tables 11 and 13).
+pub const PACKET_FUNCTION_MASK: u32 = 0x7F;
+/// Shift of the default G0 and G2 designation, triplet 1 bits 8 to 14
+/// (Table 4).
+pub const DESIGNATION_DEFAULT_SHIFT: u32 = 7;
+/// Mask of a 7-bit designation (Tables 32 and 33).
+pub const DESIGNATION_MASK: u32 = 0x7F;
+/// Shift of the low four bits of the second G0 designation, triplet 1
+/// bits 15 to 18 (Table 4).
+pub const DESIGNATION_SECOND_LOW_SHIFT: u32 = 14;
+/// Bits of the second G0 designation in triplet 1.
+pub const DESIGNATION_SECOND_LOW_BITS: u32 = 4;
+/// Mask of the high three bits of the second G0 designation, triplet 2
+/// bits 1 to 3 (Table 4).
+pub const DESIGNATION_SECOND_HIGH_MASK: u32 = 0x07;
+/// Triplet 2 bit 4: left side panel (Table 4).
+pub const SIDE_PANEL_LEFT_SHIFT: u32 = 3;
+/// Triplet 2 bit 5: right side panel.
+pub const SIDE_PANEL_RIGHT_SHIFT: u32 = 4;
+/// Triplet 2 bit 6: Side Panel Status Flag.
+pub const SIDE_PANEL_STATUS_SHIFT: u32 = 5;
+/// Triplet 2 bits 7 to 10: number of columns of the left panel.
+pub const SIDE_PANEL_COLUMNS_SHIFT: u32 = 6;
+/// Triplet 13 bits 5 to 9: default screen colour (Table 4).
+pub const DEFAULT_SCREEN_COLOUR_SHIFT: u32 = 4;
+/// Triplet 13 bits 10 to 14: default row colour.
+pub const DEFAULT_ROW_COLOUR_SHIFT: u32 = 9;
+/// Triplet 13 bit 15: Black Background Colour Substitution.
+pub const BLACK_SUBSTITUTION_SHIFT: u32 = 14;
+/// Triplet 13 bits 16 to 18: Colour Table Re-mapping.
+pub const REMAPPING_SHIFT: u32 = 15;
+/// Mask of the 3-bit re-mapping value.
+pub const REMAPPING_MASK: u32 = 0x07;
+/// Colour words in X/28/0 format 1, X/28/4, M/29/0 and M/29/4: two CLUTs
+/// of eight (Tables 4 and 10).
+pub const COLOUR_WORDS: usize = 16;
+/// Bits of one colour word: four each of red, green and blue.
+pub const COLOUR_WORD_BITS: usize = 12;
+/// Bits of one primary in a colour word.
+pub const COLOUR_PRIMARY_BITS: u32 = 4;
+/// Stream position of the first colour word bit, triplet 2 bit 11, where
+/// stream position 18 × t + b − 1 is bit b of triplet t + 1 (Table 4).
+pub const COLOUR_WORDS_START: usize = 28;
+/// Bits of a DRCS colour lookup table entry: a Colour Map index (Table 8).
+pub const DRCS_CLUT_ENTRY_BITS: usize = 5;
+/// Entries of the DRCS colour lookup tables for 12 by 10 by 2 characters.
+pub const DRCS_CLUT_4: usize = 4;
+/// Entries of the DRCS colour lookup tables for 12 by 10 by 4 and 6 by 5
+/// by 4 characters.
+pub const DRCS_CLUT_16: usize = 16;
+/// Stream position of the first DRCS colour table bit, triplet 2 bit 1
+/// (Table 8).
+pub const DRCS_CLUTS_START: usize = 18;
+/// Pattern Transfer Units in a DRCS sub-page (clause 14.1).
+pub const DRCS_PTUS: usize = 48;
+/// Bits of one DRCS mode identification code (Table 9).
+pub const DRCS_MODE_BITS: usize = 4;
+/// Stream position of the first mode identification bit, triplet 2 bit 1
+/// (Table 9, decision E.54).
+pub const DRCS_MODES_START: usize = 18;
+/// Mask of the link function, X/27/4 triplet 1 bits 1 and 2 (Table 15).
+pub const LINK_FUNCTION_MASK: u32 = 0x03;
+/// Shift of the page validity, triplet 1 bits 3 and 4 (Table 15).
+pub const LINK_VALIDITY_SHIFT: u32 = 2;
+/// Mask of the page validity after the shift.
+pub const LINK_VALIDITY_MASK: u32 = 0x03;
+/// Shift of the page units, triplet 1 bits 7 to 10.
+pub const LINK_UNITS_SHIFT: u32 = 6;
+/// Shift of the Format 1 marker, triplet 1 bit 11, which is 1.
+pub const LINK_MARKER_FIRST_SHIFT: u32 = 10;
+/// Shift of the relative magazine, triplet 1 bits 12 to 14.
+pub const LINK_MAGAZINE_SHIFT: u32 = 11;
+/// Shift of the page tens, triplet 1 bits 15 to 18.
+pub const LINK_TENS_SHIFT: u32 = 14;
+/// Mask of the Format 1 marker of triplet 2, bit 1, which is 0.
+pub const LINK_MARKER_SECOND_MASK: u32 = 0x01;
+/// Shift of the sixteen sub-page flags, triplet 2 bits 3 to 18.
+pub const LINK_SUBPAGES_SHIFT: u32 = 2;
+/// Mask of the sub-page flags after the shift.
+pub const LINK_SUBPAGES_MASK: u32 = 0xFFFF;
+/// Links in an X/27/4 or X/27/5 packet (Table 15).
+pub const COMPOSITIONAL_LINKS: usize = 6;
+
+// ---------------------------------------------------------------------------
+// Object pages (clause 10.5.1, Figure 19)
+// ---------------------------------------------------------------------------
+
+/// Bit B1 of byte 6 of packets 1 to 4 of an object page: 1 for pointer
+/// data, 0 for object definitions (clause 10.5.1.2).
+pub const OBJECT_POINTER_DATA_BIT: u8 = 0x01;
+/// The first pointer packet of an object page.
+pub const OBJECT_POINTER_FIRST_PACKET: u8 = 1;
+/// The last packet that may carry pointers.
+pub const OBJECT_POINTER_LAST_PACKET: u8 = 4;
+/// The first packet of the definition area: absolute triplet 0 is
+/// triplet 0 of packet 3 (clause 10.5.1.2).
+pub const OBJECT_DEFINITION_FIRST_PACKET: u8 = 3;
+/// Bits of a pointer (clause 10.5.1.2).
+pub const OBJECT_POINTER_BITS: u32 = 9;
+/// A pointer of all ones: "pointer not used".
+pub const OBJECT_POINTER_UNUSED: u16 = 0x1FF;
+/// The highest absolute triplet number, triplet 12 of X/26/15
+/// (clause 10.5.1.2).
+pub const OBJECT_TRIPLET_LAST: u16 = 506;
+/// Absolute triplet numbers in packets 3 to 25; X/26/0 starts at this
+/// number (clause 10.5.1.2).
+pub const OBJECT_TRIPLETS_IN_ROWS: u16 =
+    (PACKET_ROW_25 - OBJECT_DEFINITION_FIRST_PACKET + 1) as u16 * TRIPLETS_PER_PACKET as u16;
+/// Pointers in one pointer packet: two in each of triplets 1 to 12.
+pub const OBJECT_POINTERS_PER_PACKET: usize = 24;
+
+// ---------------------------------------------------------------------------
+// The Magazine Organization Table (clause 10.6, Figure 20, Tables 20 to 23)
+// ---------------------------------------------------------------------------
+
+/// Page number of the Magazine Organization Table in every magazine.
+pub const PAGE_MOT: u8 = 0xFE;
+/// The first packet of the byte pairs for decimal pages x00 to x99.
+pub const MOT_DECIMAL_FIRST_PACKET: u8 = 1;
+/// The first packet of the byte pairs for tens A to F, units 0 to 9.
+pub const MOT_HEX_TENS_FIRST_PACKET: u8 = 6;
+/// The first packet of the byte pairs for units A to F.
+pub const MOT_HEX_UNITS_FIRST_PACKET: u8 = 9;
+/// Byte pairs per packet for pages with decimal units (Figure 20).
+pub const MOT_PAIRS_DECIMAL_UNITS: usize = 20;
+/// Byte pairs per packet for pages with units A to F (Figure 20).
+pub const MOT_PAIRS_HEX_UNITS: usize = 18;
+/// Units digits 0 to 9, and hexadecimal units A to F (Figure 20).
+pub const MOT_DECIMAL_DIGITS: u8 = 10;
+/// Hexadecimal units digits A to F in each tens row (Figure 20).
+pub const MOT_HEX_DIGITS: u8 = 6;
+/// Packets of the Level 2.5 object links: GPOP and POP links 1 to 3, then
+/// POP links 4 to 7 (Table 20).
+pub const MOT_OBJECT_LINKS_LEVEL_25: [u8; 2] = [19, 20];
+/// Packet of the Level 2.5 DRCS links (Table 22).
+pub const MOT_DRCS_LINKS_LEVEL_25: u8 = 21;
+/// Packets of the Level 3.5 object links (Table 20).
+pub const MOT_OBJECT_LINKS_LEVEL_35: [u8; 2] = [22, 23];
+/// Packet of the Level 3.5 DRCS links (Table 22).
+pub const MOT_DRCS_LINKS_LEVEL_35: u8 = 24;
+/// Packet byte of the first object link (Table 20).
+pub const MOT_OBJECT_LINK_FIRST_BYTE: usize = 6;
+/// Bytes of an object link (Table 21).
+pub const MOT_OBJECT_LINK_BYTES: usize = 10;
+/// Object links in one packet (Table 20).
+pub const MOT_OBJECT_LINKS_PER_PACKET: usize = 4;
+/// Packet byte of the first DRCS link (Table 22).
+pub const MOT_DRCS_LINK_FIRST_BYTE: usize = 6;
+/// Bytes of a DRCS link (Table 23).
+pub const MOT_DRCS_LINK_BYTES: usize = 4;
+/// DRCS links in one packet: the GDRCS link and DRCS links 1 to 7.
+pub const MOT_DRCS_LINKS: usize = 8;
+/// Packet byte of the totals of enhancement pages (clause 10.6.6).
+pub const MOT_TOTALS_BYTE: usize = 40;
+/// Data bit 4 of a link's first byte: the X/27/4,5 flag (Table 21).
+pub const MOT_LINK_X27_FLAG: u8 = 0x08;
+/// Data bit 4 of a byte pair's bytes: the global object or DRCS flag
+/// (clause 10.6.2).
+pub const MOT_GLOBAL_FLAG: u8 = 0x08;
+/// Data bits 3 to 1 of a byte pair's bytes: the link number 1 to 7, or 0.
+pub const MOT_LINK_NUMBER_MASK: u8 = 0x07;
+/// Fallback byte N+4 bit 1: 1 means no side panel and no substitution
+/// (Table 21).
+pub const MOT_FALLBACK_NONE: u8 = 0x01;
+/// Shift of the default side panel, bits 3 and 2 of byte N+4.
+pub const MOT_FALLBACK_PANELS_SHIFT: u32 = 1;
+/// Mask of the default side panel after the shift: 00 none, 01 left 16,
+/// 10 right 16, 11 both 8.
+pub const MOT_FALLBACK_PANELS_MASK: u8 = 0x03;
+/// Byte N+4 bit 4: black background replaced by the full row colour.
+pub const MOT_FALLBACK_SUBSTITUTION: u8 = 0x08;
+/// The full width of one side panel (clause 12.5.2).
+pub const SIDE_PANEL_MAX_COLUMNS: u8 = 16;
+/// The width of each panel when both are used by the MOT fallback.
+pub const SIDE_PANEL_HALF_COLUMNS: u8 = 8;
+/// Shift of the second default object's type, bits 4 and 3 of byte N+5
+/// (clause 10.6.4.1).
+pub const MOT_DEFAULT_SECOND_SHIFT: u32 = 2;
 // ---------------------------------------------------------------------------
 
 /// Shift of the group in a 7-bit Table 32 designation value: the group is
