@@ -122,3 +122,47 @@ fn t42_round_trips_and_filters() {
     assert_eq!(written, expected.len() - 1);
     assert_eq!(filtered.len(), written * 42);
 }
+
+/// REQ-INP-023 and REQ-TST-020: object, DRCS and table pages, magazine
+/// packets and the page packets of Levels 2.5 and 3.5 read, write and read
+/// back unchanged.
+#[test]
+fn enhancement_pages_round_trip() {
+    round_trip(&crate::tti::tests::enhancement_pages());
+}
+
+/// REQ-INP-024 and Annex B.7: a set of pages goes out as magazine
+/// packets, tables, DRCS pages, object pages and then display pages, each
+/// class in the order given.
+#[test]
+fn page_sets_are_written_in_the_order_of_annex_b7() {
+    use crate::encode::{TransmissionClass, transmission_class};
+    let (pages, _) = read(&crate::tti::tests::enhancement_pages());
+    let mut display = PageFile::new();
+    display.address = PageAddress::from_mpp(0x150).unwrap();
+    display.set_row(1, b"Second display page");
+    let mut given: Vec<&PageFile> = std::vec![&display];
+    given.extend(pages.iter().rev());
+    let ordered = in_transmission_order(&given);
+    let classes: Vec<TransmissionClass> = ordered.iter().map(|page| transmission_class(page)).collect();
+    assert_eq!(
+        classes,
+        [
+            TransmissionClass::MagazinePackets,
+            TransmissionClass::OrganizationTable,
+            TransmissionClass::Drcs,
+            TransmissionClass::Objects,
+            TransmissionClass::Display,
+            TransmissionClass::Display,
+        ]
+    );
+    // Within a class the order given is kept.
+    assert_eq!(ordered[4].address.mpp(), 0x150);
+    let mut stream = Vec::new();
+    T42Writer::new(&mut stream).write_pages(&given).unwrap();
+    let mut expected = Vec::new();
+    for page in &ordered {
+        encode_page(page, &mut |packet| expected.extend_from_slice(&packet.bytes));
+    }
+    assert_eq!(stream, expected);
+}

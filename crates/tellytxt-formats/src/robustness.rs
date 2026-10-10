@@ -93,6 +93,103 @@ proptest! {
     }
 }
 
+/// The fuzzing target `tti_enhancement` (REQ-TST-042) as a property test,
+/// for machines without `cargo fuzz`: the same page heads, commands and
+/// checks, over a deterministic pseudo-random corpus.
+#[cfg(feature = "std")]
+mod enhancement_lines {
+    use super::*;
+    use std::boxed::Box;
+    use tellytxt_core::packet::decode;
+
+    use crate::Item;
+    use crate::page::PageFile;
+    use crate::write::write_tti;
+
+    /// As in `fuzz/fuzz_targets/tti_enhancement.rs`.
+    const HEADS: [&[u8]; 5] =
+        [b"PN,1A000\nPF,3,2\n", b"PN,1B000\nPF,5,0\n", b"PN,1FE00\n", b"PN,1FF00\n", b"PN,10000\n"];
+    const COMMANDS: [&[u8]; 9] =
+        [b"OL,26,", b"OL,27,", b"OL,28,", b"OL,29,", b"OL,1,", b"OL,3,", b"OL,24,", b"PF,", b"PN,1A001\n"];
+
+    fn read(text: &[u8]) -> Vec<Box<PageFile>> {
+        let mut pages = Vec::new();
+        let mut reader = Box::new(TtiReader::new());
+        let mut collect = |item: Item<'_>| {
+            if let Item::Page(page) = item {
+                pages.push(Box::new(*page));
+            }
+        };
+        reader.feed(text, &mut collect);
+        reader.finish(&mut collect);
+        pages
+    }
+
+    fn write(pages: &[Box<PageFile>]) -> Vec<u8> {
+        let references: Vec<&PageFile> = pages.iter().map(|page| &**page).collect();
+        let mut out = Vec::new();
+        write_tti(&references, &mut out).unwrap();
+        out
+    }
+
+    /// The body of the fuzzing target.
+    fn run(data: &[u8]) {
+        let [head, body @ ..] = data else { return };
+        let mut text = HEADS[usize::from(*head) % HEADS.len()].to_vec();
+        for line in body.split(|&byte| byte == b'\n') {
+            let [selector, rest @ ..] = line else { continue };
+            text.extend_from_slice(COMMANDS[usize::from(*selector) % COMMANDS.len()]);
+            text.extend_from_slice(rest);
+            text.push(b'\n');
+        }
+        let pages = read(&text);
+        for page in &pages {
+            encode_page(page, &mut |packet| {
+                let _ = decode(&packet);
+            });
+        }
+        let written = write(&pages);
+        assert_eq!(write(&read(&written)), written, "{}", std::string::String::from_utf8_lossy(&written));
+    }
+
+    /// Characters a packed line or a row is made of, with the bytes that
+    /// break lines and escapes.
+    fn character() -> impl Strategy<Value = u8> {
+        prop_oneof![0x40u8..0x80, Just(b'\n'), Just(0x1B), Just(b','), any::<u8>()]
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig { cases: 256, ..ProptestConfig::default() })]
+
+        /// REQ-TST-042 and REQ-INP-023: any enhancement lines are read,
+        /// encoded and written back stably, without a panic.
+        #[test]
+        fn any_enhancement_lines(data in proptest::collection::vec(character(), 0..600)) {
+            run(&data);
+        }
+    }
+
+    /// REQ-TST-042: the corpus of the authored pages, cut and damaged.
+    #[test]
+    fn authored_pages_cut_and_damaged() {
+        let text = crate::author::streams::stream().unwrap().tti().unwrap();
+        let mut seed = 0x2545_F491u32;
+        for _ in 0..64 {
+            // A fixed linear congruential sequence (Numerical Recipes), so
+            // the corpus is the same on every run.
+            seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            let start = seed as usize % text.len();
+            let length = (seed >> 8) as usize % 2000;
+            let mut piece = std::vec![seed.to_le_bytes()[3]];
+            piece.extend_from_slice(&text[start..(start + length).min(text.len())]);
+            if let Some(byte) = piece.get_mut(length / 2) {
+                *byte ^= seed.to_le_bytes()[1];
+            }
+            run(&piece);
+        }
+    }
+}
+
 /// Memory of each reader is fixed by its type (REQ-INP-001); the sizes are
 /// printed for the resource documentation of REQ-GEN-009.
 #[test]

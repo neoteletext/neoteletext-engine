@@ -10,10 +10,13 @@
 //!   constants module (REQ-GEN-014).
 //! - `check-io`: find operating-system access in library crates
 //!   (REQ-SEC-016).
+//! - `level25-stream OUT.t42 [--tti DIR]`: write the authored Level 2.5 and
+//!   3.5 test stream (REQ-TST-024).
 
 mod checks;
 mod corpus;
 mod glyphs;
+mod level25;
 mod trace;
 
 use std::path::PathBuf;
@@ -35,8 +38,10 @@ fn main() -> ExitCode {
         "check-deps" => checks::dependencies(&root),
         "check-constants" => checks::constants(&root),
         "check-io" => checks::io(&root),
+        "level25-stream" => level25::write(&std::env::args().skip(2).collect::<Vec<_>>()),
         _ => Err(format!(
-            "usage: cargo xtask <glyphs|corpus|traceability|check-layers|check-deps|check-constants|check-io> (got {command:?})"
+            "usage: cargo xtask <glyphs|corpus|traceability|check-layers|check-deps|check-constants|check-io|\
+             level25-stream> (got {command:?})"
         )),
     };
     match result {

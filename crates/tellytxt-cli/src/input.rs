@@ -350,13 +350,7 @@ pub fn convert(common: &Common, output: &Path, to: ConvertTarget, filter: Option
         }
         ConvertTarget::Tti => {
             let session = load(common)?;
-            let pages: Vec<tellytxt_formats::page::PageFile> = session
-                .pages()
-                .into_iter()
-                .filter(|page| page.state != PageState::Empty)
-                .filter(|page| filter.is_none_or(|address| page.key.address == address))
-                .map(crate::convert::page_file)
-                .collect();
+            let pages = crate::convert::session_page_files(&session, filter);
             let references: Vec<&tellytxt_formats::page::PageFile> = pages.iter().collect();
             let mut out = std::io::BufWriter::new(file);
             tellytxt_formats::write::write_tti(&references, &mut out)

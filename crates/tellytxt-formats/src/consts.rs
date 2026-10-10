@@ -219,6 +219,82 @@ pub const TTI_PS_C5_SHIFT: u32 = 5;
 pub const TTI_PS_C12_BIT: u32 = 7;
 
 // ---------------------------------------------------------------------------
+// Pages of Levels 2.5 and 3.5 in files and streams (REQ-INP-023 to 025)
+// ---------------------------------------------------------------------------
+
+/// Page coding 010 (Table 3): per packet one Hamming 8/4 byte, then
+/// thirteen Hamming 24/18 triplets. Object pages use it.
+pub const PAGE_CODING_TRIPLETS: u8 = 0x2;
+/// Page coding 011 (Table 3): every byte Hamming 8/4. The Magazine
+/// Organization Table uses it (clause 10.6.1).
+pub const PAGE_CODING_NIBBLES: u8 = 0x3;
+/// Table 6: for a page function other than basic Level 1 and data
+/// broadcasting, bits 8 to 18 of X/28/0 triplet 1 are "11111111100". The
+/// string is read in the order the table names the bits, bit 8 first, so
+/// bits 8 to 16 are 1 and bits 17 and 18 are 0. Either reading makes bits 9
+/// to 14 non-zero, which is what keeps EN 300 708 decoders away (ETS 300
+/// 708 clause 5.4.1, Table 6).
+pub const NOT_TEXT_PAGE_MARKER: u32 = 0x1FF << 7;
+/// Termination Marker types, data bits D2 D1 D0 (Table 28, mode 11111):
+/// intermediate object sub-page, end of an object, more follow.
+pub const TERMINATION_INTERMEDIATE_MORE: u8 = 0b000;
+/// Intermediate object sub-page, end of the last object.
+pub const TERMINATION_INTERMEDIATE_LAST: u8 = 0b001;
+/// Last object sub-page, end of an object, more follow.
+pub const TERMINATION_FINAL_MORE: u8 = 0b010;
+/// Last object sub-page, end of the last object.
+pub const TERMINATION_FINAL_LAST: u8 = 0b011;
+/// Local Object definitions, end of an object, more follow.
+pub const TERMINATION_LOCAL_OBJECT_MORE: u8 = 0b100;
+/// Local Object definitions, end of the last object.
+pub const TERMINATION_LOCAL_OBJECT_LAST: u8 = 0b101;
+/// Local enhancement data ends; Local Object definitions follow.
+pub const TERMINATION_LOCAL_DATA_OBJECTS_FOLLOW: u8 = 0b110;
+/// Local enhancement data ends; no Local Object definitions follow.
+pub const TERMINATION_LOCAL_DATA_END: u8 = 0b111;
+/// Objects of one type in a pointer packet: two in each of the four
+/// pointer triplets of that type (clause 10.5.1.2).
+pub const OBJECTS_PER_POINTER_PACKET: usize = 8;
+/// Objects of one type on one object sub-page: packets 1 to 4
+/// (clause 10.5.1.1).
+pub const OBJECTS_PER_TYPE: usize = 32;
+/// Shift of the sub-code's S3 digit; S4 S3 together hold the last packet
+/// of an enhancement page as six bits (Annex A.1).
+pub const SUBCODE_LAST_PACKET_SHIFT: u32 = 8;
+/// Shift of the sub-code's S2 digit, the update indicator (Annex A.1).
+pub const SUBCODE_UPDATE_SHIFT: u32 = 4;
+/// Mask of the three bits of S2.
+pub const SUBCODE_UPDATE_MASK: u16 = 0x7;
+/// The last packet number of an enhancement page sent up to X/26 with
+/// designation code d is this plus d (Annex A.1).
+pub const LAST_PACKET_ENHANCEMENT_BASE: u8 = 26;
+/// Packets X/1 to X/24 of a DRCS page carry two PTUs each
+/// (clause 14.1, Figure 27).
+pub const DRCS_PTUS_PER_PACKET: usize = 2;
+/// D-bytes of one PTU (clause 14.1).
+pub const DRCS_PTU_BYTES: usize = 20;
+/// Pattern bits in one D-byte; bit 6 of the 7-bit code is always 1
+/// (clause 14.1).
+pub const DRCS_DOTS_PER_BYTE: usize = 6;
+/// Bit 6 of every D-byte: its codes are 4/0 to 7/F (clause 14.1).
+pub const DRCS_BYTE_BASE: u8 = 0x40;
+/// Rows and columns of a mode 3 character (Table 31): 6 by 5 pixels.
+pub const DRCS_MODE3_COLUMNS: usize = 6;
+/// Rows of a mode 3 character.
+pub const DRCS_MODE3_ROWS: usize = 5;
+/// X/28/3 mode identification codes (Table 9): a further PTU of a mode 1
+/// or mode 2 character.
+pub const DRCS_MODE_SUBSEQUENT: u8 = 0xE;
+/// X/28/3 mode identification code: no data for this PTU.
+pub const DRCS_MODE_NO_DATA: u8 = 0xF;
+/// The PTUs of a mode 1 (12 by 10 by 2) character.
+pub const DRCS_MODE1_PTUS: usize = 2;
+/// The PTUs of a mode 2 (12 by 10 by 4) character.
+pub const DRCS_MODE2_PTUS: usize = 4;
+/// Highest packet of a DRCS page; X/25 is not used (Figure 27).
+pub const DRCS_LAST_PACKET: u8 = 24;
+
+// ---------------------------------------------------------------------------
 // EP1 page files (notes-formats.md section 6.1)
 // ---------------------------------------------------------------------------
 
@@ -316,5 +392,18 @@ mod tests {
         assert_eq!(SLICED_HEADER_BYTES + 48, SLICED_RECORD_BYTES);
         assert_eq!(TS_M2TS_PACKET_BYTES - TS_PACKET_BYTES, 4);
         assert_eq!(1 + 13 * 3, EP1_PACKET_BYTES);
+    }
+
+    /// The layouts of object pages and DRCS pages agree with the core's
+    /// constants (clauses 10.5.1.2 and 14.1).
+    #[test]
+    fn enhancement_page_layouts_agree() {
+        use tellytxt_core::consts::{DATA_BYTES, DRCS_PATTERN_DOTS, DRCS_PATTERN_ROWS, DRCS_PTUS};
+        assert_eq!(OBJECTS_PER_POINTER_PACKET * 4, OBJECTS_PER_TYPE);
+        assert_eq!(DRCS_PTU_BYTES * DRCS_PTUS_PER_PACKET, DATA_BYTES);
+        assert_eq!(DRCS_PTUS, DRCS_PTUS_PER_PACKET * usize::from(DRCS_LAST_PACKET));
+        assert_eq!(DRCS_PTU_BYTES * DRCS_DOTS_PER_BYTE, DRCS_PATTERN_ROWS * DRCS_PATTERN_DOTS);
+        assert_eq!(DRCS_MODE3_ROWS * DRCS_MODE3_COLUMNS * 4, DRCS_PTU_BYTES * DRCS_DOTS_PER_BYTE);
+        assert_eq!(NOT_TEXT_PAGE_MARKER >> 7, 0b1_1111_1111);
     }
 }

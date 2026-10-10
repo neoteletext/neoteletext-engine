@@ -90,18 +90,76 @@ fn checksum_covers_rows_1_to_25_with_absent_rows_as_spaces() {
     assert_eq!(page_checksum(&clock, &rows), page_checksum(&display, &rows));
 }
 
+fn page_data(packets: &[Packet]) -> Vec<tellytxt_core::packet::PageEnhancement> {
+    packets
+        .iter()
+        .filter_map(|packet| match decode(packet) {
+            Ok(Decoded::PageData { packet: PagePacket::Format1(data), .. }) => Some(data),
+            _ => None,
+        })
+        .collect()
+}
+
+/// REQ-INP-019: `RE` and `PF` of a basic page give X/28/0 format 1 with
+/// the designation and, so that it redefines nothing else, the default
+/// CLUTs 2 and 3 of Table 30 and the other fields at their defaults.
 #[test]
 fn page_enhancement_packet_from_region_and_function() {
     let mut page = PageFile::new();
     page.region = Some(3);
-    page.function = Some(PageFunction { function: 2, coding: 1 });
+    page.function = Some(PageFunction { function: 0, coding: 1 });
     page.set_national_index(5);
     let packets = encode_all(&page);
-    let Ok(Decoded::PageData { packet: PagePacket::Format1(data), .. }) = decode(&packets[1]) else {
-        panic!("{:?}", decode(&packets[1]))
-    };
+    let data = page_data(&packets);
+    assert_eq!(data.len(), 1);
+    let data = data[0];
     assert_eq!(data.fields.designations, Some(Designations { default: (3 << 3) | 5, second: 0x7F }));
-    assert_eq!(data.format, Some(PageFormat { function: 2, coding: 1 }));
+    assert_eq!(data.format, Some(PageFormat { function: 0, coding: 1 }));
+    assert_eq!(data.fields.colour_words, Some(default_clut_2_and_3()));
+    assert_eq!(default_clut_2_and_3()[0].0, 0xF05, "CLUT 2 entry 0 of Table 30");
+    let colours = data.fields.colours.unwrap();
+    assert_eq!(
+        (colours.screen, colours.row, colours.black_background_substitution, colours.remapping),
+        (0, 0, false, 0)
+    );
+    let panels = data.fields.side_panels.unwrap();
+    assert!(!panels.left && !panels.right);
+}
+
+/// REQ-INP-019: `PF,0,0` alone needs no X/28/0, because a page without one
+/// is a basic Level 1 page with odd parity; an explicit `OL,28` line with
+/// designation code 0 always replaces the one `RE` and `PF` would give.
+#[test]
+fn basic_function_alone_sends_no_page_enhancement_packet() {
+    let mut page = PageFile::new();
+    page.function = Some(PageFunction { function: 0, coding: 0 });
+    assert_eq!(page_data(&encode_all(&page)), Vec::new());
+    page.region = Some(1);
+    let mut triplets = [Triplet::default(); TRIPLETS_PER_PACKET];
+    triplets[12] = Triplet::from_value(3 << 4);
+    let _ = page.raw_packets.push(RawPacket { number: 28, designation: 0, body: RawBody::Triplets(triplets) });
+    let data = page_data(&encode_all(&page));
+    assert_eq!(data.len(), 1);
+    assert_eq!(data[0].fields.colours.unwrap().screen, 3);
+}
+
+/// REQ-INP-024 and Table 6: a page whose function is not basic gets
+/// X/28/0 with its function and coding, bits 8 to 18 set to 11111111100
+/// read from bit 8, and triplets 2 to 13 reserved as 0.
+#[test]
+fn page_enhancement_packet_for_other_page_functions() {
+    let mut page = PageFile::new();
+    page.region = Some(3);
+    page.function = Some(PageFunction { function: 2, coding: 2 });
+    let packets = encode_all(&page);
+    let Ok(Decoded::PageData { packet: PagePacket::Format1(data), .. }) = decode(&packets[1]) else { panic!() };
+    assert_eq!(data.format, Some(PageFormat { function: 2, coding: 2 }));
+    let bytes = packets[1].data();
+    let first = hamming2418([bytes[1], bytes[2], bytes[3]]).unwrap();
+    assert_eq!(first, 0x22 | 0b1111_1111_1000_0000, "bits 8 to 16 set");
+    for triplet in bytes[4..].chunks(3) {
+        assert_eq!(hamming2418([triplet[0], triplet[1], triplet[2]]), Some(0));
+    }
 }
 
 #[test]
@@ -164,4 +222,58 @@ fn labels_cannot_carry_attributes() {
     let _ = page.links.push(link);
     let row = link_row(&page).unwrap();
     assert_eq!(&row.codes[1..6], b"a b c");
+}
+
+/// REQ-INP-023: each row coding turns the codes of a page file into the
+/// transmitted bytes and back.
+#[test]
+fn row_codings_round_trip() {
+    use tellytxt_core::packet::ObjectPacket;
+    let mut triplets = [TERMINATION; TRIPLETS_PER_PACKET];
+    triplets[0] = Triplet { address: 41, mode: MODE_SET_ACTIVE_POSITION, data: 7 };
+    let codes = packed_row(1, &triplets);
+    assert!(codes.iter().all(|&code| (0x40..0x80).contains(&code)), "printable");
+    let bytes = row_bytes(RowCoding::Triplets, &codes);
+    let object = ObjectPacket::new(&bytes);
+    assert_eq!(object.byte_6, Some(1));
+    assert_eq!(object.triplets.map(Option::unwrap), triplets);
+    assert_eq!(row_codes(RowCoding::Triplets, &bytes), codes);
+    assert_eq!(unpack_triplets(&pack_triplets(&triplets)), triplets);
+
+    let values: [u8; DATA_BYTES] = core::array::from_fn(|index| (index * 7 % 16) as u8);
+    let codes = nibble_row(&values);
+    let bytes = row_bytes(RowCoding::Nibbles, &codes);
+    assert_eq!(bytes.map(|byte| hamming84(byte).unwrap()), values);
+    assert_eq!(row_codes(RowCoding::Nibbles, &bytes), codes);
+
+    let mut text = [SPACE; COLUMNS];
+    text[..5].copy_from_slice(b"Hello");
+    let bytes = row_bytes(RowCoding::Parity, &text);
+    assert!(bytes.iter().all(|&byte| check_parity(byte).1));
+    assert_eq!(row_codes(RowCoding::Parity, &bytes), text);
+    // Bytes that fail their check become spaces or 0, never a panic.
+    let mut damaged = bytes;
+    damaged[0] ^= 0x80;
+    assert_eq!(row_codes(RowCoding::Parity, &damaged)[0], SPACE);
+    let uncorrectable = (0..=u8::MAX).find(|&byte| hamming84(byte).is_none()).unwrap();
+    assert_eq!(row_codes(RowCoding::Nibbles, &[uncorrectable; DATA_BYTES]), [0x40; COLUMNS]);
+}
+
+/// REQ-INP-023: the row coding comes from the page coding, and page mFE
+/// without one is coded Hamming 8/4 (clause 10.6.1).
+#[test]
+fn row_coding_follows_the_page_coding() {
+    let mut page = PageFile::new();
+    assert_eq!(row_coding(&page), RowCoding::Parity);
+    assert!(!is_enhancement_page(&page));
+    page.address = PageAddress::from_mpp(0x2FE).unwrap();
+    assert_eq!(row_coding(&page), RowCoding::Nibbles);
+    assert!(is_enhancement_page(&page));
+    page.function = Some(PageFunction { function: 5, coding: 0 });
+    assert_eq!(row_coding(&page), RowCoding::Parity);
+    for (coding, expected) in
+        [(1, RowCoding::Parity), (2, RowCoding::Triplets), (3, RowCoding::Nibbles), (4, RowCoding::Parity)]
+    {
+        assert_eq!(RowCoding::from_coding(coding), expected);
+    }
 }

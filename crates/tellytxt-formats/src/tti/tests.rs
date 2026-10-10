@@ -379,3 +379,181 @@ fn encoded_pages_decode_to_the_same_fields() {
     assert_eq!(data.fields.designations.unwrap().default, (2 << 3) | 4);
     assert_eq!(data.format, Some(PageFormat { function: 0, coding: 0 }));
 }
+
+/// The TTI form of the pages of Levels 2.5 and 3.5 (REQ-INP-023): an
+/// object page (coding 010), a DRCS page whose X/28/3 line sets its
+/// function, a Magazine Organization Table without `PF` (coding 011), the
+/// magazine packets on page 1FF, and a display page with X/27/4, X/28/0 and
+/// X/28/4 lines.
+pub(crate) fn enhancement_pages() -> Vec<u8> {
+    use crate::encode::{nibble_row, packed_row};
+    use tellytxt_core::packet::encode as packet_encode;
+    use tellytxt_core::packet::{CompositionalLink, DrcsColourData, DrcsModes};
+    use tellytxt_core::types::{Magazine, PageNumber, PresentationFields};
+    let mut text = Vec::new();
+    let mut line = |parts: &[&[u8]]| {
+        for part in parts {
+            text.extend_from_slice(part);
+        }
+        text.push(b'\n');
+    };
+    let magazine = Magazine::new(1).unwrap();
+    let mut pointers = [Triplet::default(); 13];
+    pointers[1] = packet_encode::pointer_triplet(0, 0x1FF);
+    let mut definitions = [Triplet { address: ROW_ADDRESS_LAST, mode: MODE_TERMINATION, data: 0 }; 13];
+    definitions[0] = Triplet { address: 0x38, mode: 0x15, data: 0 };
+    definitions[1] = Triplet { address: 2, mode: MODE_G0_NO_DIACRITIC, data: b'O' };
+    line(&[b"PN,1A000"]);
+    line(&[b"SC,0300"]);
+    line(&[b"PS,C000"]);
+    line(&[b"PF,3,2"]);
+    line(&[b"OL,1,", &packed_row(1, &pointers)]);
+    line(&[b"OL,3,", &packed_row(0, &definitions)]);
+    line(&[b"OL,26,", &packed_line(0, &definitions)]);
+    line(&[b"PN,1B000"]);
+    let mut ptus = [0x40u8; 40];
+    ptus[..4].copy_from_slice(&[0x7F, 0x7F, 0x60, 0x7E]);
+    line(&[b"OL,1,", &ptus]);
+    let modes = DrcsModes::from_codes(None, &[0; 48]);
+    let format = PageFormat { function: 5, coding: 0 };
+    line(&[b"OL,28,", &packet_line(3, &packet_encode::drcs_modes(magazine, format, &modes))]);
+    line(&[b"PN,1FE00"]);
+    let mut nibbles = [0u8; 40];
+    for (index, value) in nibbles.iter_mut().enumerate() {
+        *value = (index % 16) as u8;
+    }
+    line(&[b"OL,1,", &nibble_row(&nibbles)]);
+    line(&[b"PN,1FF00"]);
+    let fields = PresentationFields::default();
+    line(&[b"OL,29,", &packet_line(0, &packet_encode::magazine_enhancement(magazine, 0, &fields))]);
+    let colours = DrcsColourData::default();
+    line(&[b"OL,29,", &packet_line(1, &packet_encode::drcs_colours(magazine, 29, &colours))]);
+    line(&[b"OL,29,", &packet_line(4, &packet_encode::magazine_enhancement(magazine, 4, &fields))]);
+    line(&[b"PN,10000"]);
+    line(&[b"OL,1,Display"]);
+    let pop = CompositionalLink {
+        function: 1,
+        validity: 3,
+        magazine,
+        page: PageNumber(0xA0),
+        subpages: 1,
+        marker_first: true,
+        marker_second: false,
+    };
+    line(&[b"OL,27,", &packet_line(4, &packet_encode::compositional_links(magazine, 4, &[pop; 6]))]);
+    let basic = PageFormat { function: 0, coding: 0 };
+    line(&[b"OL,28,", &packet_line(0, &packet_encode::page_enhancement(magazine, 0, basic, &fields))]);
+    line(&[b"OL,28,", &packet_line(4, &packet_encode::page_enhancement(magazine, 4, basic, &fields))]);
+    text
+}
+
+/// The packed characters of a packet's designation code and triplets.
+fn packet_line(designation: u8, packet: &tellytxt_core::packet::Packet) -> Vec<u8> {
+    let data = packet.data();
+    let mut triplets = [Triplet::default(); 13];
+    for (triplet, chunk) in triplets.iter_mut().zip(data[1..].chunks(3)) {
+        *triplet = Triplet::from_value(tellytxt_core::ecc::hamming2418([chunk[0], chunk[1], chunk[2]]).unwrap());
+    }
+    packed_line(designation, &triplets)
+}
+
+fn packets_of(page: &PageFile) -> Vec<tellytxt_core::packet::Packet> {
+    let mut packets = Vec::new();
+    encode_page(page, &mut |packet| packets.push(packet));
+    packets
+}
+
+/// REQ-INP-023: the rows of enhancement pages are coded by their page
+/// coding, X/28/3 and X/28/4 lines set the page function, page mFE is coded
+/// Hamming 8/4 without `PF`, and the magazine packets go out before the
+/// page mFF that carries them.
+#[test]
+fn enhancement_pages_are_coded_by_their_page_coding() {
+    use tellytxt_core::ecc::hamming84;
+    use tellytxt_core::packet::{MagazinePacket, ObjectPacket, TripletFunction};
+    let (pages, diagnostics) = read(&enhancement_pages());
+    assert_eq!(diagnostics, []);
+    assert_eq!(pages.len(), 5);
+
+    let objects = &pages[0];
+    assert_eq!(objects.function, Some(PageFunction { function: 3, coding: 2 }));
+    let decoded: Vec<Decoded> = packets_of(objects).iter().map(|packet| decode(packet).unwrap()).collect();
+    // Header, the X/28/0 made from PF, rows 1 and 3, then X/26 (Annex B.2
+    // item 3).
+    assert!(matches!(decoded[1], Decoded::PageData { packet: PagePacket::Format1(_), .. }));
+    let Decoded::Row(pointer_row) = decoded[2] else { panic!("{:?}", decoded[2]) };
+    let pointers = ObjectPacket::new(&pointer_row.bytes);
+    assert!(pointers.carries_pointers());
+    assert_eq!((pointers.pointer(1, false), pointers.pointer(1, true)), (0, 0x1FF));
+    let Decoded::Row(definition_row) = decoded[3] else { panic!() };
+    let definitions = ObjectPacket::new(&definition_row.bytes);
+    assert_eq!(definitions.byte_6, Some(0));
+    assert!(matches!(definitions.triplets[0].unwrap().function(), TripletFunction::ObjectDefinition { .. }));
+    assert!(matches!(decoded[4], Decoded::Enhancement(_)));
+    assert_eq!(decoded.len(), 5);
+
+    let drcs = &pages[1];
+    assert_eq!(drcs.function, Some(PageFunction { function: 5, coding: 0 }));
+    let rows: Vec<[u8; 40]> = packets_of(drcs)
+        .iter()
+        .filter_map(|packet| if let Ok(Decoded::Row(row)) = decode(packet) { Some(row.bytes) } else { None })
+        .collect();
+    assert_eq!(rows.len(), 1);
+    assert!(rows[0].iter().all(|&byte| check_parity(byte).1), "D-bytes carry odd parity");
+    assert_eq!(rows[0].map(|byte| byte & 0x7F)[..4], [0x7F, 0x7F, 0x60, 0x7E]);
+
+    let table = &pages[2];
+    assert_eq!(table.function, None);
+    let row = packets_of(table)
+        .iter()
+        .find_map(|packet| if let Ok(Decoded::Row(row)) = decode(packet) { Some(row.bytes) } else { None })
+        .unwrap();
+    let values: Vec<u8> = row.iter().map(|&byte| hamming84(byte).unwrap()).collect();
+    assert_eq!(values, (0..40u8).map(|index| index % 16).collect::<Vec<_>>());
+
+    let kinds: Vec<_> = packets_of(&pages[3]).iter().map(|packet| decode(packet).unwrap()).collect();
+    assert!(matches!(kinds[0], Decoded::Magazine { packet: MagazinePacket::Data(_), .. }));
+    assert!(matches!(kinds[1], Decoded::Magazine { packet: MagazinePacket::DrcsColours(_), .. }));
+    assert!(matches!(kinds[2], Decoded::Magazine { packet: MagazinePacket::Level35(_), .. }));
+    assert!(matches!(kinds[3], Decoded::Header(_)));
+
+    let display = &pages[4];
+    // X/28/0 and X/28/4 lines set the function of a basic page; no X/28/0
+    // is made from it, since the page has its own.
+    assert_eq!(display.function, Some(PageFunction { function: 0, coding: 0 }));
+    let kinds: Vec<_> = packets_of(display).iter().map(|packet| decode(packet).unwrap()).collect();
+    assert!(matches!(kinds[1], Decoded::CompositionalLinks { designation: 4, .. }));
+    assert!(matches!(kinds[2], Decoded::PageData { packet: PagePacket::Format1(_), .. }));
+    assert!(matches!(kinds[3], Decoded::PageData { packet: PagePacket::Level35(_), .. }));
+    assert!(matches!(kinds[4], Decoded::Row(_)));
+    assert_eq!(kinds.len(), 5);
+}
+
+/// REQ-INP-023 and REQ-SEC-001: malformed enhancement lines are bounded,
+/// reported and never panic; what can be read is kept.
+#[test]
+fn malformed_enhancement_lines_are_reported() {
+    let mut text = b"PN,1A000\nPF,3,2\n".to_vec();
+    // Too short, an escape at the end, too long, and a designation above
+    // 15, whose low four bits are used.
+    text.extend_from_slice(b"OL,26,@ABC\n");
+    text.extend_from_slice(b"OL,28,\x1b\n");
+    text.extend_from_slice(b"OL,29,");
+    text.extend(std::iter::repeat_n(b'A', 60));
+    text.push(b'\n');
+    text.extend_from_slice(b"OL,27,");
+    text.extend(std::iter::repeat_n(b'Z', 40));
+    text.push(b'\n');
+    // Row text on an object page is kept as written and coded on output.
+    text.extend_from_slice(b"OL,3,short\n");
+    let (pages, diagnostics) = read(&text);
+    let kinds: Vec<_> = diagnostics.iter().map(|diagnostic| (diagnostic.line, diagnostic.kind)).collect();
+    let bad = DiagnosticKind::BadArgument { command: *b"OL" };
+    assert_eq!(kinds, [(Some(3), bad), (Some(4), bad), (Some(5), bad)]);
+    let page = &pages[0];
+    assert_eq!(page.enhancements.len(), 1);
+    assert_eq!(page.enhancements.as_slice()[0].designation, 0);
+    // "Z" is 5/A: designation code 10 of X/27, thirteen triplets.
+    assert!(page.raw_packets.as_slice().iter().any(|raw| raw.number == 27 && raw.designation == 0xA));
+    assert!(packets_of(page).iter().all(|packet| decode(packet).is_ok()));
+}

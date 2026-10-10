@@ -17,6 +17,8 @@
 //!   (REQ-INP-005).
 //! - [`check`]: the TTI page checker behind `ttx check` (REQ-CLI-006).
 //! - `write` (feature `std`): the T42 and TTI writers (REQ-INP-014 and 018).
+//! - `author` (feature `std`): the builder for Level 2.5 and 3.5 test pages
+//!   and the authored test streams (REQ-INP-025, REQ-TST-024).
 //!
 //! Raw sampled video (REQ-INP-011) is read by `tellytxt-slicer`.
 //!
@@ -61,6 +63,9 @@ pub mod encode;
 
 #[cfg(feature = "std")]
 pub mod write;
+
+#[cfg(feature = "std")]
+pub mod author;
 
 #[cfg(test)]
 mod testing;
