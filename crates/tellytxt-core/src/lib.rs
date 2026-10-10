@@ -13,7 +13,8 @@
 //! - Foundation: [`consts`], [`ecc`], [`types`];
 //! - L1 packet decoding: [`packet`];
 //! - L2 acquisition: [`fsm`], [`acq`], [`service`];
-//! - L3 presentation model: [`charset`], [`level1`], [`level15`];
+//! - L3 presentation model: [`charset`], [`level1`], [`level15`], and for
+//!   Levels 2.5 and 3.5 [`colour`];
 //! - L4 rendering: [`glyphs`], [`render`];
 //! - L6 interaction: [`viewer`], [`nav`], [`forms`];
 //! - L8 platform interface: [`port`];
@@ -47,6 +48,7 @@ pub mod fsm;
 pub mod service;
 
 pub mod charset;
+pub mod colour;
 pub mod level1;
 pub mod level15;
 
