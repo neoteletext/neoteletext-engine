@@ -4,33 +4,15 @@
 //! 3 input unreadable or unrecognised, 4 page checker errors.
 
 mod commands;
-mod convert;
-mod extras;
-mod fetch;
-mod input;
-mod live;
+mod options;
 mod output;
-mod pipe;
-mod sandbox;
-mod session;
 mod terminal;
 mod view;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 use std::process::ExitCode;
-
-/// Exit statuses of REQ-CLI-005 and REQ-CLI-006.
-pub mod exit {
-    /// A requested page was not found.
-    pub const NOT_FOUND: u8 = 1;
-    /// Invalid usage.
-    pub const USAGE: u8 = 2;
-    /// The input could not be read or recognised.
-    pub const INPUT: u8 = 3;
-    /// The page checker found errors.
-    pub const CHECK_ERRORS: u8 = 4;
-}
+use tellytxt_app::{exit, fetch, sandbox};
 
 /// tellytxt: a software teletext receiver (ETSI EN 300 706 Levels 1.0, 1.5, 2.5 and 3.5).
 #[derive(Parser, Debug)]
@@ -49,7 +31,7 @@ pub struct Common {
     pub input: String,
     /// Input format, overriding detection.
     #[arg(long, value_enum)]
-    pub format: Option<input::FormatChoice>,
+    pub format: Option<options::FormatChoice>,
     /// Compatibility profile.
     #[arg(long, default_value = "en300706")]
     pub profile: String,
@@ -60,7 +42,7 @@ pub struct Common {
     #[arg(long, default_value_t = 20)]
     pub duration: u64,
     /// Pages and sub-pages to keep in memory.
-    #[arg(long, default_value_t = session::DEFAULT_PAGES)]
+    #[arg(long, default_value_t = tellytxt_app::session::DEFAULT_PAGES)]
     pub pages: usize,
     /// Character set region, the Table 32 group 0 to 15 (decision E.4).
     /// By default it follows the language a transport stream declares.
@@ -286,23 +268,25 @@ fn main() -> ExitCode {
         }
     };
     let result = match cli.command {
-        Command::List { common } => commands::list(&common),
+        Command::List { common } => commands::list(&common.options()),
         Command::Show { common, page, raster, graphics, legacy_mosaics, colours8 } => {
-            commands::show(&common, &page, &raster, graphics, legacy_mosaics, colours8)
+            commands::show(&common.options(), &page, &raster, graphics, legacy_mosaics, colours8)
         }
         Command::View { common, raster, graphics, legacy_mosaics, colours8 } => {
-            commands::view(&common, &raster, graphics, legacy_mosaics, colours8)
+            commands::view(&common.options(), &raster, graphics, legacy_mosaics, colours8)
         }
         Command::Render { common, page, output, raster, image } => {
-            commands::render(&common, &page, &output, &raster, image)
+            commands::render(&common.options(), &page, &output, &raster, image)
         }
         Command::Text { common, page, reveal, legacy_mosaics, cells } => {
-            commands::text(&common, &page, reveal, legacy_mosaics, cells)
+            commands::text(&common.options(), &page, reveal, legacy_mosaics, cells)
         }
-        Command::Convert { common, output, to, page } => commands::convert(&common, &output, to, page.as_deref()),
-        Command::Slice { common, output, preset } => commands::slice(&common, &output, &preset),
-        Command::Services { common } => commands::services(&common),
-        Command::ServiceInfo { common } => commands::service_info(&common),
+        Command::Convert { common, output, to, page } => {
+            commands::convert(&common.options(), &output, to, page.as_deref())
+        }
+        Command::Slice { common, output, preset } => commands::slice(&common.options(), &output, &preset),
+        Command::Services { common } => commands::services(&common.options()),
+        Command::ServiceInfo { common } => commands::service_info(&common.options()),
         Command::Check { files, descriptor } => commands::check(&files, descriptor.as_deref()),
         Command::SandboxTest => sandbox::self_test(),
         Command::Fetch { address, no_sandbox, allow_local } => fetch::run(&address, no_sandbox, &allow_local),

@@ -713,11 +713,9 @@ dependencies = [
 ]
 
 [[package]]
-name = "tellytxt-cli"
+name = "tellytxt-app"
 version = "0.1.0"
 dependencies = [
- "clap",
- "crossterm",
  "embedded-io",
  "landlock",
  "libc",
@@ -725,10 +723,21 @@ dependencies = [
  "seccompiler",
  "tellytxt-core",
  "tellytxt-formats",
- "tellytxt-image",
  "tellytxt-slicer",
  "tellytxt-web",
  "webpki-roots",
+]
+
+[[package]]
+name = "tellytxt-cli"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "crossterm",
+ "tellytxt-app",
+ "tellytxt-core",
+ "tellytxt-formats",
+ "tellytxt-image",
 ]
 
 [[package]]

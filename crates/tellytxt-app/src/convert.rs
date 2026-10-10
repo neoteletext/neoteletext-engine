@@ -1,7 +1,7 @@
-//! Stored pages back to page files, for `ttx convert --to tti`: display
-//! pages with their packets 26 to 28, enhancement pages coded by their
-//! page coding, and each magazine's packets M/29 on its page mFF
-//! (REQ-INP-014, REQ-INP-023).
+//! Converting between formats (REQ-INP-014, REQ-INP-018), and stored
+//! pages back to page files for `ttx convert --to tti`: display pages with
+//! their packets 26 to 28, enhancement pages coded by their page coding,
+//! and each magazine's packets M/29 on its page mFF (REQ-INP-023).
 
 use tellytxt_core::acq::{EnhancementPage, MagazineData, StoredPage};
 use tellytxt_core::config::ParityPolicy;
@@ -17,7 +17,13 @@ use tellytxt_core::types::{Magazine, PageAddress, PageNumber, SubCode};
 use tellytxt_formats::encode::{RowCoding, packed_line_of, row_codes, transmission_class};
 use tellytxt_formats::page::{EnhancementPacket, FastextLink, PageFile, PageFunction};
 
+use crate::input::{self, Options};
 use crate::session::Session;
+use crate::{Failure, exit};
+use std::fs::File;
+use std::io::Write;
+use std::path::Path;
+use tellytxt_formats::Item;
 
 /// Fastext keys carried by a stored X/27/0: links 0 to 5.
 const LINKS: usize = 6;
@@ -209,6 +215,53 @@ pub fn session_page_files(session: &Session, filter: Option<PageAddress>) -> Vec
     files.extend(session.pages().into_iter().filter(|page| wanted(page.key.address)).map(page_file));
     files.sort_by_key(transmission_class);
     files
+}
+
+/// Conversion targets (REQ-CLI-001 `convert`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Target {
+    /// T42 packets.
+    T42,
+    /// TTI page files.
+    Tti,
+}
+
+/// Converts the input to `to`, written to `output`; with a filter, only
+/// that page (REQ-INP-014, REQ-INP-018).
+pub fn convert(options: &Options, output: &Path, to: Target, filter: Option<PageAddress>) -> Result<(), Failure> {
+    let file = File::create(output).map_err(|error| (exit::INPUT, format!("{}: {error}", output.display())))?;
+    match to {
+        Target::T42 => {
+            let filter = tellytxt_formats::write::PacketFilter {
+                magazine: filter.map(|address| address.magazine),
+                page: filter.map(|address| address.page),
+            };
+            let mut writer = tellytxt_formats::write::T42Writer::with_filter(std::io::BufWriter::new(file), filter);
+            let mut input = input::open(options)?;
+            let mut reader = input::reader(options, true);
+            let mut failure = None;
+            input::pump(input.as_mut(), reader.as_mut(), &mut |item| {
+                if let Item::Packet { packet, .. } = item
+                    && let Err(error) = writer.write_packet(&packet)
+                {
+                    failure = Some(error);
+                }
+            })?;
+            if let Some(error) = failure {
+                return Err((exit::INPUT, error.to_string()));
+            }
+            writer.into_inner().flush().map_err(|error| (exit::INPUT, error.to_string()))
+        }
+        Target::Tti => {
+            let session = input::load(options)?;
+            let pages = session_page_files(&session, filter);
+            let references: Vec<&PageFile> = pages.iter().collect();
+            let mut out = std::io::BufWriter::new(file);
+            tellytxt_formats::write::write_tti(&references, &mut out)
+                .map_err(|error| (exit::INPUT, error.to_string()))?;
+            out.flush().map_err(|error| (exit::INPUT, error.to_string()))
+        }
+    }
 }
 
 #[cfg(test)]

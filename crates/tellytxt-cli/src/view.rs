@@ -3,17 +3,18 @@
 //! with forms (Appendix C, REQ-NAV-009), the TTI Link Extension (Appendix
 //! E, REQ-NAV-011 and 012) and the security confirmations of area SEC.
 
-use crate::extras::{self, PageExtras};
 use crate::output::image::{Frame, Scale, iterm2_inline, png, raster};
 use crate::output::text::{ColourDepth, MosaicStyle, ansi};
-use crate::pipe::{Notice, Submission};
-use crate::session::Session;
 use crate::terminal::Display;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 use crossterm::{cursor, execute, queue, terminal};
 use std::collections::HashSet;
 use std::io::Write;
 use std::time::{Duration, Instant as StdInstant};
+use tellytxt_app::extras::{self, PageExtras};
+use tellytxt_app::pipe::{Notice, Submission};
+use tellytxt_app::session::Session;
+use tellytxt_app::source::Source;
 use tellytxt_core::acq::EnhancementReport;
 use tellytxt_core::config::Config;
 use tellytxt_core::consts::{ALPHA_YELLOW, COLUMNS, SPACE, STATUS_COLUMNS};
@@ -27,39 +28,6 @@ use tellytxt_core::viewer::{
     Action, ComposeContext, Composed, Key, KeyContext, SecurityIndicator, Viewer, ViewerEvent, ViewerState,
 };
 use tellytxt_image::palette::Rgba;
-
-/// Something that feeds packets into the session while the viewer runs.
-pub trait Source {
-    /// Feeds whatever is available now. Returns false at the end of input.
-    fn poll(&mut self, session: &mut Session, now: Instant) -> bool;
-
-    /// Asks for a page, for sources that fetch on demand.
-    fn request(&mut self, _page: PageAddress, _subcode: SubCode) {}
-
-    /// Notices for the viewer since the last call.
-    fn notices(&mut self) -> Vec<Notice> {
-        Vec::new()
-    }
-
-    /// Extension data of a page: links, the drawn link row, a form.
-    fn extras(&self, _page: PageAddress, _subcode: SubCode) -> Option<&PageExtras> {
-        None
-    }
-
-    /// Submits a form.
-    fn submit(&mut self, _submission: Submission) {}
-
-    /// Answers a confirmation request.
-    fn confirm(&mut self, _yes: bool) {}
-
-    /// Follows a link to another service.
-    fn follow(&mut self, _service: u8, _page: PageAddress, _subcode: SubCode) {}
-
-    /// The short name of a linked service.
-    fn service_name(&self, _service: u8) -> Option<String> {
-        None
-    }
-}
 
 /// How often the viewer wakes to poll the source, check flash and keys.
 const TICK: Duration = Duration::from_millis(40);

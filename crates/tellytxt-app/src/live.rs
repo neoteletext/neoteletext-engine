@@ -1,12 +1,11 @@
-//! Live sources for `ttx`: the decoder side of the fetcher process
+//! Live sources: the decoder side of the fetcher process
 //! (REQ-SEC-018, decision 26 of IMPLEMENTATION-LOG.md).
 
-use crate::commands::Failure;
-use crate::exit;
 use crate::extras::{self, PageExtras};
 use crate::pipe::{self, Frame, Notice, Origin, PageData, Submission};
 use crate::session::Session;
-use crate::view::Source;
+use crate::source::Source;
+use crate::{Failure, exit};
 use std::collections::HashMap;
 use std::path::Path;
 use std::process::{Child, ChildStdin, Command, Stdio};

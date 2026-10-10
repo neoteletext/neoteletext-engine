@@ -212,7 +212,7 @@ The Web user agent (L7) sits beside the lower layers rather than above them in t
   - `DeviceKey` (Phase 2).
 - **Must not know about:** any implementation.
 
-### L9 Applications and ports — `tellytxt-cli`, the WebAssembly host, `tellytxt-ffi`, users' ports
+### L9 Applications and ports — `tellytxt-app`, `tellytxt-cli`, the WebAssembly host, `tellytxt-ffi`, users' ports
 
 - **Owns:**
   - real input and output;
@@ -392,6 +392,7 @@ Each boundary is one narrow type. Nothing reaches past its neighbour.
 | `tellytxt-slicer` | L0: raw samples to packets | `no_std` |
 | `tellytxt-web` | L7 and L8 (web traits) | `no_std`, sans-IO |
 | `tellytxt-image` | L5 | Helpers `no_std`; writers `std` |
+| `tellytxt-app` | L9: the application layer shared by `ttx` and a windowed viewer: sessions, inputs, live mode's two processes, sandboxing | `std` |
 | `tellytxt-cli` | L9 (and text output of L5) | `std` |
 | `tellytxt-ffi` | L9: the C interface (Phase 2) | The only crate with `unsafe` |
 | `xtask` | Tooling, not shipped | `std` |

@@ -145,8 +145,44 @@ pub fn dependencies(root: &Path) -> Result<(), String> {
             }
         }
     }
+    for (krate, permitted) in APPLICATION_CRATES {
+        let output = Command::new("cargo")
+            .current_dir(root)
+            .args(["tree", "-p", krate, "-e", "normal", "--prefix", "none", "--depth", "1", "--all-features"])
+            .output()
+            .map_err(|e| format!("cargo tree: {e}"))?;
+        if !output.status.success() {
+            return Err(format!("cargo tree -p {krate} failed: {}", String::from_utf8_lossy(&output.stderr)));
+        }
+        let text = String::from_utf8_lossy(&output.stdout);
+        let workspace_crates: BTreeSet<&str> = text
+            .lines()
+            .filter_map(|line| line.split_whitespace().next())
+            .filter(|name| name.starts_with(WORKSPACE_PREFIX) && name != krate)
+            .collect();
+        for name in workspace_crates {
+            if !permitted.contains(&name) {
+                violations.push(format!("{krate} depends on `{name}`, which is not below it"));
+            }
+        }
+    }
     report(&violations)
 }
+
+/// The prefix of every crate of the workspace.
+const WORKSPACE_PREFIX: &str = "tellytxt-";
+
+/// The application crates of layer L9: `std`, free to use outside crates,
+/// and with `tellytxt-ffi` the only crates that may touch the operating
+/// system (REQ-SEC-016). Each may use only the workspace crates listed for
+/// it, which keeps the shared application layer below the programs.
+const APPLICATION_CRATES: &[(&str, &[&str])] = &[
+    ("tellytxt-app", &["tellytxt-core", "tellytxt-formats", "tellytxt-slicer", "tellytxt-web", "tellytxt-image"]),
+    (
+        "tellytxt-cli",
+        &["tellytxt-app", "tellytxt-core", "tellytxt-formats", "tellytxt-slicer", "tellytxt-web", "tellytxt-image"],
+    ),
+];
 
 /// Files that are data tables of code points or glyphs, where the literal
 /// values are characters, not teletext constants.
@@ -202,6 +238,17 @@ const FORBIDDEN: &[&str] =
 /// REQ-SEC-016: no operating-system access in library crates.
 pub fn io(root: &Path) -> Result<(), String> {
     let mut violations = Vec::new();
+    // A new crate must be placed in one class or the other, so that none
+    // escapes this check unnoticed.
+    let entries = fs::read_dir(root.join("crates")).map_err(|e| format!("crates: {e}"))?;
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        let library = LIBRARY_CRATES.contains(&name.as_str());
+        let application = APPLICATION_CRATES.iter().any(|(krate, _)| *krate == name);
+        if entry.path().is_dir() && !library && !application {
+            violations.push(format!("crates/{name} is neither a library crate nor an application crate"));
+        }
+    }
     for krate in LIBRARY_CRATES {
         let mut files = Vec::new();
         rust_files(&root.join("crates").join(krate).join("src"), &mut files);
