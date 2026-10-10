@@ -211,6 +211,10 @@ enum Command {
         /// Write separated mosaics with contiguous characters, for older fonts.
         #[arg(long)]
         legacy_mosaics: bool,
+        /// Write every cell with its colours and attributes instead: the
+        /// test interface of the zvbi oracle (REQ-TST-023).
+        #[arg(long, hide = true)]
+        cells: bool,
     },
     /// Convert between formats.
     Convert {
@@ -292,8 +296,8 @@ fn main() -> ExitCode {
         Command::Render { common, page, output, raster, image } => {
             commands::render(&common, &page, &output, &raster, image)
         }
-        Command::Text { common, page, reveal, legacy_mosaics } => {
-            commands::text(&common, &page, reveal, legacy_mosaics)
+        Command::Text { common, page, reveal, legacy_mosaics, cells } => {
+            commands::text(&common, &page, reveal, legacy_mosaics, cells)
         }
         Command::Convert { common, output, to, page } => commands::convert(&common, &output, to, page.as_deref()),
         Command::Slice { common, output, preset } => commands::slice(&common, &output, &preset),

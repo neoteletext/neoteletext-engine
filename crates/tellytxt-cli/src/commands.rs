@@ -139,7 +139,7 @@ fn mosaic_style(legacy: bool) -> MosaicStyle {
 }
 
 /// `ttx text`.
-pub fn text(common: &Common, page: &str, reveal: bool, legacy_mosaics: bool) -> Result<(), Failure> {
+pub fn text(common: &Common, page: &str, reveal: bool, legacy_mosaics: bool, cells: bool) -> Result<(), Failure> {
     let selection = parse_selection(page)?;
     let session = input::load_for(common, selection.page())?;
     sandbox(common, None)?;
@@ -154,7 +154,9 @@ pub fn text(common: &Common, page: &str, reveal: bool, legacy_mosaics: bool) -> 
                 page.key.subcode.value()
             );
         }
-        let _ = out.write_all(plain(&grid, reveal, mosaic_style(legacy_mosaics)).as_bytes());
+        let written =
+            if cells { crate::output::cells::cells(&grid) } else { plain(&grid, reveal, mosaic_style(legacy_mosaics)) };
+        let _ = out.write_all(written.as_bytes());
     }
     Ok(())
 }
