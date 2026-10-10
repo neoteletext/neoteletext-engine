@@ -4,7 +4,7 @@
 //! E, REQ-NAV-011 and 012) and the security confirmations of area SEC.
 
 use crate::extras::{self, PageExtras};
-use crate::output::image::{Scale, iterm2_inline, png, raster};
+use crate::output::image::{Frame, Scale, iterm2_inline, png, raster};
 use crate::output::text::{ColourDepth, MosaicStyle, ansi};
 use crate::pipe::{Notice, Submission};
 use crate::session::Session;
@@ -20,13 +20,12 @@ use tellytxt_core::forms::{FormAction, FormKey, FormModel, Method};
 use tellytxt_core::fsm::PageState;
 use tellytxt_core::level1::Grid;
 use tellytxt_core::nav::PageLinks;
-use tellytxt_core::render::{RenderOptions, flash_visible};
 use tellytxt_core::service::initial_page;
 use tellytxt_core::types::{Instant, PageAddress, SubCode};
 use tellytxt_core::viewer::{
     Action, ComposeContext, Key, KeyContext, SecurityIndicator, Viewer, ViewerEvent, ViewerState,
 };
-use tellytxt_image::palette::{CLUT0, Rgba};
+use tellytxt_image::palette::Rgba;
 
 /// Something that feeds packets into the session while the viewer runs.
 pub trait Source {
@@ -232,7 +231,7 @@ pub fn run(
     let mut messages: Vec<String> = Vec::new();
     let mut live = true;
     let mut grid = Grid::EMPTY;
-    let mut last_drawn: Option<(Grid, bool, bool)> = None;
+    let mut last_drawn: Option<(Grid, Option<Frame>, bool)> = None;
     let mut action = viewer.event(ViewerEvent::Started);
     let mut form: Option<ActiveForm> = None;
     let mut pending: Option<Pending> = None;
@@ -385,10 +384,11 @@ pub fn run(
             }
         }
         let reveal = viewer.reveal(now);
-        let flash = flash_visible(now, &config);
-        let state = (grid, flash && display == Display::Iterm2, reveal);
+        // Images change with the flash phase; text flashes by itself.
+        let frame = Frame::at(&config, reveal, now);
+        let state = (grid, (display == Display::Iterm2).then_some(frame), reveal);
         if last_drawn.as_ref() != Some(&state) {
-            draw(&mut out, &grid, display, scale, depth, mosaics, &config, flash, reveal)?;
+            draw(&mut out, &grid, display, scale, depth, mosaics, frame)?;
             last_drawn = Some(state);
         }
         if event::poll(TICK)?
@@ -467,7 +467,6 @@ pub fn run(
     result
 }
 
-#[allow(clippy::too_many_arguments)] // Drawing settings of one frame.
 fn draw(
     out: &mut std::io::Stdout,
     grid: &Grid,
@@ -475,20 +474,17 @@ fn draw(
     scale: Scale,
     depth: ColourDepth,
     mosaics: MosaicStyle,
-    config: &Config,
-    flash: bool,
-    reveal: bool,
+    frame: Frame,
 ) -> std::io::Result<()> {
     queue!(out, cursor::MoveTo(0, 0))?;
     match display {
         Display::Iterm2 => {
-            let raster =
-                raster(grid, RenderOptions::from_config(config, reveal), scale, &CLUT0, Rgba::opaque(0, 0, 0), flash);
+            let raster = raster(grid, frame, scale, Rgba::opaque(0, 0, 0));
             let encoded = png(&raster)?;
             out.write_all(iterm2_inline(&encoded, raster.width, raster.height).as_bytes())?;
         }
         Display::Text => {
-            let text = ansi(grid, reveal, mosaics, depth, &CLUT0).replace('\n', "\r\n");
+            let text = ansi(grid, frame.options.reveal, mosaics, depth).replace('\n', "\r\n");
             out.write_all(text.as_bytes())?;
         }
     }

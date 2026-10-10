@@ -699,9 +699,9 @@ const PANEL_AREA_END: usize = SIDE_PANEL_FIRST_COLUMN + SIDE_PANEL_AREA_COLUMNS;
 /// The source columns of a row in display order (REQ-RND-033): the left
 /// panel (columns 72 − left width to 71), the main page (0 to 39) and the
 /// right panel (40 to 40 + right width − 1).
-fn display_columns<const DRCS: usize, const PANEL_ROWS: usize>(
+pub fn source_columns<const DRCS: usize, const PANEL_ROWS: usize>(
     grid: &Grid<DRCS, PANEL_ROWS>,
-) -> impl Iterator<Item = usize> {
+) -> impl Iterator<Item = usize> + use<DRCS, PANEL_ROWS> {
     let (left, right) = panel_widths(grid);
     (PANEL_AREA_END.saturating_sub(left)..PANEL_AREA_END)
         .chain(0..COLUMNS)
@@ -742,7 +742,7 @@ pub fn palette_mode_allowed<const DRCS: usize, const PANEL_ROWS: usize>(grid: &G
 
 fn palette_row_allowed<const DRCS: usize, const PANEL_ROWS: usize>(grid: &Grid<DRCS, PANEL_ROWS>, row: usize) -> bool {
     let panels = row_columns(grid) > COLUMNS;
-    display_columns(grid).all(|column| match row_cell(grid, row, column) {
+    source_columns(grid).all(|column| match source_cell(grid, row, column) {
         Some(cell) => palette_cell_allowed(cell, grid),
         None => !panels || border_index(grid) <= CLUT0_LAST || border_index(grid) == PALETTE_TRANSPARENT,
     })
@@ -751,7 +751,8 @@ fn palette_row_allowed<const DRCS: usize, const PANEL_ROWS: usize>(grid: &Grid<D
 /// The cell at a row and source column, main page or side panel; `None`
 /// where the side-panel area has no content (row 0, or a grid without
 /// panel rows).
-fn row_cell<const DRCS: usize, const PANEL_ROWS: usize>(
+#[must_use]
+pub fn source_cell<const DRCS: usize, const PANEL_ROWS: usize>(
     grid: &Grid<DRCS, PANEL_ROWS>,
     row: usize,
     column: usize,
