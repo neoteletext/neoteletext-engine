@@ -12,6 +12,12 @@
 //! Two connections are used: [`ConnectionId::Fetch`] carries the
 //! descriptor, page and form requests one at a time (REQ-WEB-014), and
 //! [`ConnectionId::Push`] carries the push stream (REQ-WEB-005).
+//!
+//! Push, form submission and cookies are compile-time features (decision
+//! E.61). The agent's types are the same in every build. A build without a
+//! feature answers whatever needs it with a value that says so, and every
+//! branch that would reach the missing part tests a constant, so the
+//! optimiser and the linker drop that part's code.
 
 use tellytxt_core::policy;
 use tellytxt_core::types::{Instant, PageAddress, SubCode};
@@ -360,6 +366,10 @@ pub enum Event<'a> {
     },
     /// The push connection is open.
     PushConnected(PushMethod),
+    /// The descriptor names a push address, but this build has no push
+    /// (the `push` feature, decision E.61): pages are fetched on request
+    /// only.
+    PushNotCompiledIn(PushMethod),
     /// The push connection was lost; it is retried after this delay.
     PushLost {
         /// Microseconds until the next attempt.
@@ -623,6 +633,9 @@ fn write_cookie_header<const SLOTS: usize, const BYTES: usize>(
     seconds: u64,
     body_len: usize,
 ) -> Result<bool, Overflow> {
+    if !cfg!(feature = "cookies") {
+        return Ok(false);
+    }
     // Room for this header's line end, the empty line and the body.
     writer.set_reserve(CRLF.len().saturating_mul(2).saturating_add(body_len));
     let mark = writer.len();
@@ -727,7 +740,7 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
         scratch: &mut [u8],
     ) -> Result<usize, Option<S::Error>> {
         let (seconds, calendar) = self.seconds(now);
-        if !self.config.persist_cookies || !calendar {
+        if !cfg!(feature = "cookies") || !self.config.persist_cookies || !calendar {
             return Ok(0);
         }
         let mut writer = Writer::new(scratch);
@@ -745,7 +758,7 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
         scratch: &mut [u8],
     ) -> Result<usize, S::Error> {
         let (seconds, calendar) = self.seconds(now);
-        if !self.config.persist_cookies || !calendar {
+        if !cfg!(feature = "cookies") || !self.config.persist_cookies || !calendar {
             return Ok(0);
         }
         let len = storage.load(scratch)?;
@@ -761,8 +774,12 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
                 NetInput::ConnectFailed(ConnectionId::Fetch) => self.fetch_lost(now, Failure::Network, sink),
                 NetInput::Received(ConnectionId::Fetch, bytes) => self.fetch_received(now, bytes, sink),
                 NetInput::Closed(ConnectionId::Fetch) => self.fetch_closed(now, sink),
-                NetInput::Connected(ConnectionId::Push, peer) => self.push_connected(now, peer, sink),
-                NetInput::ConnectFailed(ConnectionId::Push) | NetInput::Closed(ConnectionId::Push) => {
+                NetInput::Connected(ConnectionId::Push, peer) if cfg!(feature = "push") => {
+                    self.push_connected(now, peer, sink);
+                }
+                NetInput::ConnectFailed(ConnectionId::Push) | NetInput::Closed(ConnectionId::Push)
+                    if cfg!(feature = "push") =>
+                {
                     let live = matches!(
                         self.push.phase,
                         PushPhase::Connecting { .. } | PushPhase::Handshake { .. } | PushPhase::Open
@@ -771,12 +788,15 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
                         self.push_lost(now, None, false, sink);
                     }
                 }
-                NetInput::Received(ConnectionId::Push, bytes) => self.push_received(now, bytes, sink),
-                // The live feed has its own machine.
-                NetInput::Connected(ConnectionId::Live, _)
-                | NetInput::ConnectFailed(ConnectionId::Live)
-                | NetInput::Received(ConnectionId::Live, _)
-                | NetInput::Closed(ConnectionId::Live) => {}
+                NetInput::Received(ConnectionId::Push, bytes) if cfg!(feature = "push") => {
+                    self.push_received(now, bytes, sink);
+                }
+                // The live feed has its own machine, and a build without
+                // push never opens a push connection.
+                NetInput::Connected(ConnectionId::Push | ConnectionId::Live, _)
+                | NetInput::ConnectFailed(ConnectionId::Push | ConnectionId::Live)
+                | NetInput::Received(ConnectionId::Push | ConnectionId::Live, _)
+                | NetInput::Closed(ConnectionId::Push | ConnectionId::Live) => {}
             },
             Input::OpenService(address) => match Url::parse(address) {
                 Ok(url) if !url.scheme().is_websocket() => self.pending_descriptor = Some((url, false)),
@@ -786,8 +806,19 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             Input::FollowLink { service, page, subcode } => self.follow_link(service, page, subcode, sink),
             Input::FetchPage { page, subcode } => self.enqueue(page, subcode, sink),
             Input::Subscribe(subscription) => self.subscribe(now, subscription, sink),
-            Input::Submit(submission) => self.submit(&submission, sink),
-            Input::ConfirmSubmission(confirmed) => self.confirm(confirmed, sink),
+            Input::Submit(submission) => {
+                if cfg!(feature = "forms") {
+                    self.submit(&submission, sink);
+                } else {
+                    event(sink, Event::SubmissionRefused(FormRefused::NotCompiledIn));
+                }
+            }
+            // Without forms nothing ever waits for a confirmation.
+            Input::ConfirmSubmission(confirmed) => {
+                if cfg!(feature = "forms") {
+                    self.confirm(confirmed, sink);
+                }
+            }
             Input::WipeCookies => self.jar.wipe(),
             Input::WallClock(unix) => self.wall_clock = Some((now, unix)),
         }
@@ -861,7 +892,7 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
         let host = url.host_text();
         let (seconds, _) = self.seconds(now);
         let reached = self.secure_hosts.iter().flatten().any(|known| known.as_str() == host)
-            || self.jar.reached_securely(host, seconds);
+            || cfg!(feature = "cookies") && self.jar.reached_securely(host, seconds);
         policy::is_downgrade(reached, url.origin().parts(), host)
     }
 
@@ -888,7 +919,7 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             let (purpose, url, method, site) = if let Some((url, via_link)) = self.pending_descriptor.take() {
                 let site = if via_link { Site::CrossServiceNavigation } else { Site::SameService };
                 (Purpose::Descriptor { via_link }, url, Method::Get, site)
-            } else if self.form.phase == FormPhase::Queued {
+            } else if cfg!(feature = "forms") && self.form.phase == FormPhase::Queued {
                 let Some(url) = self.form.target else {
                     self.form.phase = FormPhase::Idle;
                     continue;
@@ -1162,7 +1193,12 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
         let path = exchange.url.path();
         let secure = exchange.url.is_secure();
         let parsed = http::parse_head(head_bytes, &mut |value| {
-            if let Err(rejected) = jar.store(value, host, path, secure, seconds, calendar) {
+            let stored = if cfg!(feature = "cookies") {
+                jar.store(value, host, path, secure, seconds, calendar)
+            } else {
+                Err(CookieRejected::NotCompiledIn)
+            };
+            if let Err(rejected) = stored {
                 event(sink, Event::CookieRejected(rejected));
             }
         });
@@ -1288,6 +1324,8 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
                     self.update_cache(now, page, subcode, &head);
                 }
             }
+            // Only a build with forms makes a form request.
+            Purpose::Form if !cfg!(feature = "forms") => {}
             Purpose::Form => {
                 self.form.phase = FormPhase::Idle;
                 let success = (STATUS_SUCCESS_FIRST..STATUS_REDIRECT_FIRST).contains(&status);
@@ -1426,7 +1464,11 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             },
         );
         if self.push.url.is_some() {
-            self.push_connect(now, sink);
+            if cfg!(feature = "push") {
+                self.push_connect(now, sink);
+            } else {
+                event(sink, Event::PushNotCompiledIn(self.push.method));
+            }
         }
     }
 
@@ -1551,7 +1593,7 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
                 }
             }
         }
-        if self.push.phase == PushPhase::Open {
+        if cfg!(feature = "push") && self.push.phase == PushPhase::Open {
             match self.push.method {
                 PushMethod::WebSocket => self.send_subscribe(sink),
                 PushMethod::ServerSentEvents => {
@@ -1749,7 +1791,12 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
         let Self { buffers, jar, .. } = self;
         let head_bytes = buffers.push_head.get(..head_len).unwrap_or(&[]);
         let parsed = http::parse_head(head_bytes, &mut |value| {
-            if let Err(rejected) = jar.store(value, url.host_text(), url.path(), url.is_secure(), seconds, calendar) {
+            let stored = if cfg!(feature = "cookies") {
+                jar.store(value, url.host_text(), url.path(), url.is_secure(), seconds, calendar)
+            } else {
+                Err(CookieRejected::NotCompiledIn)
+            };
+            if let Err(rejected) = stored {
                 event(sink, Event::CookieRejected(rejected));
             }
         });
@@ -1964,6 +2011,9 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             && now >= deadline
         {
             self.abandon_fetch(Failure::Timeout, sink);
+        }
+        if !cfg!(feature = "push") {
+            return;
         }
         match self.push.phase {
             PushPhase::Backoff { until } if now >= until => {

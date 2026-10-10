@@ -14,7 +14,7 @@ path = "src/main.rs"
 tellytxt-core = { workspace = true, features = ["default"] }
 tellytxt-formats = { workspace = true, features = ["std"] }
 tellytxt-slicer.workspace = true
-tellytxt-web.workspace = true
+tellytxt-web = { workspace = true, features = ["default"] }
 tellytxt-image = { workspace = true, features = ["std"] }
 clap = { version = "4.5.48", features = ["derive"] }
 crossterm = "0.29.0"

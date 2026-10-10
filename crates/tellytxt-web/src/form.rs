@@ -51,6 +51,9 @@ pub enum FormRefused {
     Busy,
     /// The encoded values do not fit.
     TooLarge,
+    /// This build has no form submission (the `forms` feature, decision
+    /// E.61).
+    NotCompiledIn,
 }
 
 /// Resolves the target and checks that the form may submit there: the

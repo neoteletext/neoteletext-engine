@@ -7,7 +7,9 @@ mod common;
 use std::string::{String, ToString};
 use std::vec::Vec;
 
-use common::{Counter, Replay, Reply, client_frame, header_value, response, server_frame};
+use common::{Counter, Replay, Reply, header_value, response};
+#[cfg(feature = "push")]
+use common::{client_frame, server_frame};
 use tellytxt_core::types::{Instant, PageAddress, SubCode};
 use tellytxt_web::agent::{Config, Input, Output, Source, Storage, Subscription, UserAgent};
 use tellytxt_web::form::{FormMethod, FormSubmission};
@@ -261,6 +263,7 @@ fn descriptor_page_and_conditional_request() {
     let requests = harness.replay().requests_to("tt.example:80");
     let last = requests.last().unwrap();
     assert_eq!(header_value(last, "If-None-Match").as_deref(), Some("\"v1\""));
+    #[cfg(feature = "cookies")]
     assert_eq!(header_value(last, "Cookie").as_deref(), Some("session=v1-abc"));
     // One persistent connection served all three requests.
     assert_eq!(harness.replay().connects.len(), 1);
@@ -509,6 +512,7 @@ fn submission<'a>(page_url: &'a str, target: &'a str, fields: &'a [(&'a str, &'a
 }
 
 #[test]
+#[cfg(feature = "forms")]
 fn form_over_plain_http_needs_the_warning_every_time() {
     let mut harness = plain_service();
     harness.replay().reply("tt.example:80", Reply::Bytes(response("200 OK", &["Content-Type: text/plain"], b"ok")));
@@ -553,6 +557,7 @@ fn form_over_plain_http_needs_the_warning_every_time() {
 }
 
 #[test]
+#[cfg(feature = "forms")]
 fn form_destinations_are_restricted() {
     let mut harness = plain_service();
     let fields = [("a", "1")];
@@ -568,6 +573,7 @@ fn form_destinations_are_restricted() {
 }
 
 #[test]
+#[cfg(feature = "forms")]
 fn form_responses() {
     let mut replay = Replay::new(&[("secure.example", PUBLIC)]);
     replay
@@ -603,6 +609,7 @@ fn form_responses() {
 }
 
 #[test]
+#[cfg(feature = "forms")]
 fn get_form_puts_values_in_the_query() {
     let mut harness = plain_service();
     harness.replay().reply("tt.example:80", tti_response(&[]));
@@ -620,6 +627,7 @@ fn get_form_puts_values_in_the_query() {
 }
 
 #[test]
+#[cfg(all(feature = "forms", feature = "cookies"))]
 fn cross_origin_form_sends_only_same_site_none_secure_cookies() {
     let mut replay = Replay::new(&[("secure.example", PUBLIC), ("forms.example", PUBLIC_2)]);
     replay.reply(
@@ -682,6 +690,7 @@ fn links_to_other_services() {
     assert_eq!(url, "http://other.example/x/234/0002");
 }
 
+#[cfg(feature = "push")]
 fn push_service(method: &str, address: &str) -> Harness {
     let mut replay = Replay::new(&[("tt.example", PUBLIC)]);
     let extra = format!(r#","push":{{"address":"{address}","method":"{method}"}}"#);
@@ -690,6 +699,7 @@ fn push_service(method: &str, address: &str) -> Harness {
 }
 
 #[test]
+#[cfg(feature = "push")]
 fn websocket_push() {
     let mut harness = push_service("websocket", "ws://tt.example/push");
     let packet = [0x15u8; 42];
@@ -728,6 +738,7 @@ fn websocket_push() {
 }
 
 #[test]
+#[cfg(feature = "push")]
 fn websocket_push_reconnects_with_doubling_delays() {
     let mut harness = push_service("websocket", "ws://tt.example/push");
     harness.replay().reply("tt.example:80", Reply::WebSocket(server_frame(0x8, &1000u16.to_be_bytes())));
@@ -749,6 +760,7 @@ fn websocket_push_reconnects_with_doubling_delays() {
 }
 
 #[test]
+#[cfg(feature = "push")]
 fn websocket_push_protocol_errors() {
     let mut harness = push_service("websocket", "ws://tt.example/push");
     let mut frames = server_frame(0x2, &[0u8; 41]);
@@ -766,6 +778,7 @@ fn websocket_push_protocol_errors() {
 }
 
 #[test]
+#[cfg(feature = "push")]
 fn websocket_push_oversize_message() {
     let mut replay = Replay::new(&[("tt.example", PUBLIC)]);
     replay.reply(
@@ -780,6 +793,7 @@ fn websocket_push_oversize_message() {
 }
 
 #[test]
+#[cfg(feature = "push")]
 fn server_sent_events_push_and_resumption() {
     let mut harness = push_service("sse", "http://tt.example/events?x=1");
     let packets = [0x15u8; 42];
@@ -812,6 +826,7 @@ fn server_sent_events_push_and_resumption() {
 }
 
 #[test]
+#[cfg(feature = "push")]
 fn push_to_blocked_peer_is_refused() {
     let mut replay = Replay::new(&[("tt.example", PUBLIC), ("push.example", PRIVATE)]);
     replay.reply(
@@ -825,6 +840,7 @@ fn push_to_blocked_peer_is_refused() {
 }
 
 #[test]
+#[cfg(feature = "cookies")]
 fn cookies_round_trip_and_wipe() {
     let mut harness = secure_service();
     harness.replay().reply(
@@ -850,6 +866,7 @@ fn cookies_round_trip_and_wipe() {
 }
 
 #[test]
+#[cfg(all(feature = "push", feature = "cookies"))]
 fn cookies_go_with_websocket_upgrades() {
     let mut replay = Replay::new(&[("tt.example", PUBLIC)]);
     let json = descriptor(r#","push":{"address":"ws://tt.example/push","method":"websocket"}"#);
@@ -893,6 +910,7 @@ impl tellytxt_web::port::CookieStorage for MemoryStorage {
 }
 
 #[test]
+#[cfg(feature = "cookies")]
 fn cookies_are_saved_only_when_enabled_and_never_session_ones() {
     const UNIX_NOW: u64 = 1_791_590_400;
     let setup = |persist: bool| {
@@ -919,4 +937,80 @@ fn cookies_are_saved_only_when_enabled_and_never_session_ones() {
     fresh.input(Input::WallClock(UNIX_NOW));
     assert_eq!(fresh.agent.load_cookies(fresh.now, &mut storage, &mut scratch), Ok(1));
     assert_eq!(fresh.agent.cookies().len(), 1);
+}
+
+// Decision E.61: a build without a feature answers whatever needs it with a
+// value that says so, and never acts as if the missing part had worked.
+
+#[test]
+#[cfg(not(feature = "push"))]
+fn push_not_compiled_in_is_reported_and_never_connects() {
+    for (method, address, reported) in [
+        ("websocket", "ws://tt.example/push", "PushNotCompiledIn(WebSocket)"),
+        ("sse", "http://tt.example/events", "PushNotCompiledIn(ServerSentEvents)"),
+    ] {
+        let mut replay = Replay::new(&[("tt.example", PUBLIC)]);
+        let extra = format!(r#","push":{{"address":"{address}","method":"{method}"}}"#);
+        replay.reply("tt.example:80", json_response(&descriptor(&extra)));
+        let mut harness = Harness::new(Config::default(), replay);
+        let records = harness.open("http://tt.example/service.json");
+        assert!(has_event(&records, "ServiceReady"), "{records:?}");
+        assert!(has_event(&records, reported), "{records:?}");
+        assert_eq!(records.last(), Some(&Rec::Event(reported.to_string())), "no timer for a reconnection follows");
+        harness.input(Input::Subscribe(Subscription::All));
+        harness.advance(120 * SECOND);
+        assert!(!has_event(&harness.take(), "Push"), "nothing more about push");
+        assert!(
+            !harness.replay().connects.iter().any(|(connection, ..)| *connection == ConnectionId::Push),
+            "no push connection is opened"
+        );
+    }
+}
+
+#[test]
+#[cfg(not(feature = "forms"))]
+fn form_submission_not_compiled_in_is_refused_and_sends_nothing() {
+    let mut harness = plain_service();
+    let before = harness.replay().requests.len();
+    let fields = [("name", "Ann Smith")];
+    harness.input(Input::Submit(submission("http://tt.example/p/400", "/contact", &fields)));
+    harness.input(Input::ConfirmSubmission(true));
+    let records = harness.take();
+    assert_eq!(events(&records), ["SubmissionRefused(NotCompiledIn)"]);
+    assert_eq!(harness.replay().requests.len(), before, "no request was made");
+}
+
+#[test]
+#[cfg(not(feature = "cookies"))]
+fn cookies_not_compiled_in_are_reported_and_never_kept() {
+    const UNIX_NOW: u64 = 1_791_590_400;
+    let mut replay = Replay::new(&[("tt.example", PUBLIC)]);
+    replay.reply("tt.example:80", json_response(&descriptor("")));
+    replay.reply("tt.example:80", tti_response(&["Set-Cookie: keep=1; Path=/; Max-Age=3600"]));
+    replay.reply("tt.example:80", tti_response(&[]));
+    let config = Config { persist_cookies: true, ..Config::default() };
+    let mut harness = Harness::new(config, replay);
+    harness.input(Input::WallClock(UNIX_NOW));
+    harness.open("http://tt.example/service.json");
+    let records = harness.fetch(0x100);
+    assert_eq!(pages(&records).len(), 1, "the page still arrives");
+    assert!(has_event(&records, "CookieRejected(NotCompiledIn)"), "{records:?}");
+    harness.advance(SECOND);
+    harness.fetch(0x101);
+    for request in harness.replay().requests_to("tt.example:80") {
+        assert_eq!(header_value(&request, "Cookie"), None);
+    }
+    assert!(harness.agent.cookies().is_empty());
+
+    // Cookies saved by a build that has them are not restored.
+    let mut jar = tellytxt_web::cookie::CookieJar::<4, 1024>::new();
+    jar.store(b"keep=1; Max-Age=3600", "tt.example", "/", false, UNIX_NOW, true).unwrap();
+    let mut saved = [0u8; 1024];
+    let mut writer = tellytxt_web::bytes::Writer::new(&mut saved);
+    assert_eq!(jar.export(UNIX_NOW, &mut writer), Ok(1));
+    let mut storage = MemoryStorage(writer.written().to_vec());
+    let mut scratch = [0u8; 4096];
+    assert_eq!(harness.agent.load_cookies(harness.now, &mut storage, &mut scratch), Ok(0));
+    assert!(harness.agent.cookies().is_empty());
+    assert_eq!(harness.agent.save_cookies(harness.now, &mut storage, &mut scratch), Ok(0));
 }

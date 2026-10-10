@@ -69,6 +69,8 @@ pub enum CookieRejected {
     Expired,
     /// There is no room even after evicting every other cookie.
     NoRoom,
+    /// This build keeps no cookies (the `cookies` feature, decision E.61).
+    NotCompiledIn,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
