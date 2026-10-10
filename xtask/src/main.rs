@@ -2,6 +2,7 @@
 //!
 //! - `glyphs`: regenerate the core's glyph table from the Bedstead export.
 //! - `corpus`: fetch and pin the real-broadcast test corpus (REQ-TST-022).
+//! - `traceability`: write docs/traceability.md (REQ-DOC-003).
 //! - `check-layers`: enforce the module dependency table of ARCHITECTURE.md
 //!   (REQ-ARCH-011).
 //! - `check-deps`: enforce the permitted dependency lists (REQ-GEN-017).
@@ -13,6 +14,7 @@
 mod checks;
 mod corpus;
 mod glyphs;
+mod trace;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -28,12 +30,13 @@ fn main() -> ExitCode {
     let result = match command.as_str() {
         "glyphs" => glyphs::generate(&root),
         "corpus" => corpus::fetch(&root),
+        "traceability" => trace::generate(&root),
         "check-layers" => checks::layers(&root),
         "check-deps" => checks::dependencies(&root),
         "check-constants" => checks::constants(&root),
         "check-io" => checks::io(&root),
         _ => Err(format!(
-            "usage: cargo xtask <glyphs|corpus|check-layers|check-deps|check-constants|check-io> (got {command:?})"
+            "usage: cargo xtask <glyphs|corpus|traceability|check-layers|check-deps|check-constants|check-io> (got {command:?})"
         )),
     };
     match result {
