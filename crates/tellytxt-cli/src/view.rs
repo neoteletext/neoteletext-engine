@@ -17,6 +17,7 @@ use std::time::{Duration, Instant as StdInstant};
 use tellytxt_core::config::Config;
 use tellytxt_core::consts::{ALPHA_YELLOW, COLUMNS, SPACE, STATUS_COLUMNS};
 use tellytxt_core::forms::{FormAction, FormKey, FormModel, Method};
+use tellytxt_core::fsm::PageState;
 use tellytxt_core::level1::Grid;
 use tellytxt_core::nav::PageLinks;
 use tellytxt_core::render::{RenderOptions, flash_visible};
@@ -284,6 +285,12 @@ pub fn run(
                 }
                 Notice::Service(_) => confirmed_services.clear(),
                 Notice::Message(text) => messages.push(text),
+                // REQ-WEB-009: a page that is not stored cannot be shown
+                // while the network is away.
+                Notice::Offline(mpp) if PageAddress::from_mpp(mpp) == Some(viewer.requested().0) => {
+                    prompt = Some(message_row("Page not available offline"));
+                }
+                Notice::Offline(_) | Notice::Current(_) => {}
             }
         }
         let config: Config = *session.decoder().config();
@@ -317,6 +324,17 @@ pub fn run(
             ViewerState::Searching | ViewerState::Starting => None,
             _ => session.page(requested, subcode),
         };
+        // REQ-FSM-005: the status area says when the page shown has not
+        // been received, or confirmed current, recently.
+        match page.map(|page| page.state) {
+            Some(PageState::Stale) => {
+                let _ = viewer.event(ViewerEvent::PageStale);
+            }
+            Some(_) => {
+                let _ = viewer.event(ViewerEvent::PageUpdated);
+            }
+            None => {}
+        }
         let page_extras = page.and_then(|page| source.extras(page.key.address, page.key.subcode)).cloned();
         // A form on this page becomes active, keeping values when returning.
         match (&page_extras, page) {
@@ -425,7 +443,7 @@ pub fn run(
                 // screen: row 24 drawn, not boxed away, not zoomed off.
                 let row24_shown = !grid.boxed_mode
                     && viewer.zoom() != tellytxt_core::render::Zoom::Top
-                    && grid.cells[24].iter().any(|cell| cell.glyph != tellytxt_core::level1::Glyph::Space);
+                    && grid.cells[24].iter().any(|cell| !cell.glyph.is_blank());
                 let key_context = KeyContext {
                     links: &links,
                     store,

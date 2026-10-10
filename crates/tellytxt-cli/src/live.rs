@@ -28,7 +28,24 @@ pub struct Live {
     services: Vec<String>,
     shown_form_page: Option<PageAddress>,
     ended: bool,
+    /// The bytes each page last arrived as, to take in again when the
+    /// server confirms them current (REQ-WEB-009).
+    last_bytes: HashMap<u16, (Format, PageData)>,
+    /// The page the viewer asked for last.
+    requested: Option<(PageAddress, SubCode)>,
+    /// When the last fetch failed for want of a network, if it has not
+    /// succeeded since (REQ-WEB-009).
+    offline_since: Option<Instant>,
+    /// When the requested page was last asked for again.
+    last_retry: Instant,
+    /// The time of the latest poll, the viewer's clock.
+    last_poll: Instant,
 }
+
+/// Microseconds between requests for the viewed page while offline, so
+/// that it is the first page checked when the network returns
+/// (REQ-WEB-009).
+const OFFLINE_RETRY_US: u64 = 10_000_000;
 
 /// Starts the fetcher process for `address`. Must run before sandboxing:
 /// starting a program is blocked afterwards.
@@ -63,6 +80,11 @@ pub fn open(address: &str, no_sandbox: bool, allow_local: &[std::net::IpAddr]) -
         services: Vec::new(),
         shown_form_page: None,
         ended: false,
+        last_bytes: HashMap::new(),
+        requested: None,
+        offline_since: None,
+        last_retry: Instant(0),
+        last_poll: Instant(0),
     }))
 }
 
@@ -107,6 +129,7 @@ impl Live {
 
 impl Source for Live {
     fn poll(&mut self, session: &mut Session, now: Instant) -> bool {
+        self.last_poll = now;
         while let Ok(frame) = self.frames.try_recv() {
             match frame {
                 Frame::Packet(bytes) => session.push_at(&Packet { bytes }, &PacketMeta::default(), now),
@@ -116,7 +139,24 @@ impl Source for Live {
                     // A new service: its page numbers are its own.
                     *session = Session::new(*session.decoder().config(), session.capacity());
                     self.extras.clear();
+                    self.last_bytes.clear();
                     self.services = names;
+                }
+                Frame::Notice(Notice::Current(mpp)) => {
+                    // A page confirmed unchanged is as good as received
+                    // again: it is current, and not stale (REQ-WEB-009).
+                    self.offline_since = None;
+                    if let Some((format, page)) = self.last_bytes.get(&mpp).cloned() {
+                        self.feed_page(session, format, &page, now);
+                    }
+                }
+                Frame::Notice(Notice::Offline(mpp)) => {
+                    self.offline_since.get_or_insert(now);
+                    let stored =
+                        PageAddress::from_mpp(mpp).is_some_and(|page| session.page(page, SubCode::ANY).is_some());
+                    if !stored {
+                        self.notices.push(Notice::Offline(mpp));
+                    }
                 }
                 Frame::Notice(notice) => self.notices.push(notice),
                 // The fetcher never sends these; ignore rather than trust.
@@ -124,6 +164,18 @@ impl Source for Live {
             }
         }
         session.tick(now);
+        // The page on screen is asked for again before it would go stale,
+        // and more often while offline, so that it is the first page
+        // checked when the network returns (REQ-WEB-009). The web module's
+        // cache answers without the network while the page is fresh.
+        let interval =
+            if self.offline_since.is_some() { OFFLINE_RETRY_US } else { session.decoder().config().stale_after_us / 2 };
+        if now.since(self.last_retry) >= interval
+            && let Some((page, subcode)) = self.requested
+        {
+            self.last_retry = now;
+            self.request(page, subcode);
+        }
         if !self.ended && matches!(self.child.try_wait(), Ok(Some(_))) {
             self.ended = true;
             self.notices.push(Notice::Message("the fetcher process ended".into()));
@@ -132,6 +184,8 @@ impl Source for Live {
     }
 
     fn request(&mut self, page: PageAddress, subcode: SubCode) {
+        self.requested = Some((page, subcode));
+        self.last_retry = self.last_poll;
         let sub = if subcode.is_any() { u16::MAX } else { subcode.value() };
         self.send(&Frame::Request(page.mpp(), sub));
     }
@@ -175,7 +229,13 @@ impl Live {
         if !page.secure && page.origin != Origin::Push {
             self.notices.push(Notice::Unencrypted);
         }
+        self.offline_since = None;
         let first = self.feed_page(session, format, page, now);
+        if let Some(address) = first
+            && page.origin == Origin::Page
+        {
+            self.last_bytes.insert(address.mpp(), (format, page.clone()));
+        }
         if page.origin == Origin::Form {
             // A form response carrying a page is shown (REQ-WEB-011).
             self.shown_form_page = first;

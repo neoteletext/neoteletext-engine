@@ -89,6 +89,11 @@ pub enum Notice {
     Submitted(bool),
     /// Show this page, `0xMPP`: a form response carried it (REQ-WEB-011).
     ShowPage(u16),
+    /// The server confirmed page `0xMPP` unchanged (REQ-WEB-004): the
+    /// stored copy is current (REQ-WEB-009).
+    Current(u16),
+    /// Fetching page `0xMPP` failed for want of a network (REQ-WEB-009).
+    Offline(u16),
 }
 
 const PACKET: u8 = b'P';
@@ -101,6 +106,8 @@ const SERVICE: u8 = b'S';
 const CONFIRM_ASK: u8 = b'A';
 const SUBMITTED: u8 = b'D';
 const SHOW: u8 = b'G';
+const CURRENT: u8 = b'K';
+const OFFLINE: u8 = b'O';
 const REQUEST: u8 = b'R';
 const SUBMIT: u8 = b'F';
 const CONFIRM: u8 = b'C';
@@ -226,6 +233,8 @@ pub fn write(out: &mut dyn Write, frame: &Frame) -> io::Result<()> {
         }
         Frame::Notice(Notice::Submitted(ok)) => put(out, SUBMITTED, &[u8::from(*ok)]),
         Frame::Notice(Notice::ShowPage(mpp)) => put(out, SHOW, &mpp.to_be_bytes()),
+        Frame::Notice(Notice::Current(mpp)) => put(out, CURRENT, &mpp.to_be_bytes()),
+        Frame::Notice(Notice::Offline(mpp)) => put(out, OFFLINE, &mpp.to_be_bytes()),
         Frame::Request(mpp, sub) => put(out, REQUEST, &[mpp.to_be_bytes(), sub.to_be_bytes()].concat()),
         Frame::Submit(submission) => {
             let mut buffer = vec![u8::from(submission.post)];
@@ -292,6 +301,12 @@ pub fn read(input: &mut dyn Read) -> io::Result<Option<Frame>> {
         SHOW => {
             Frame::Notice(Notice::ShowPage(u16::from_be_bytes(payload.as_slice().try_into().map_err(|_| invalid())?)))
         }
+        CURRENT => {
+            Frame::Notice(Notice::Current(u16::from_be_bytes(payload.as_slice().try_into().map_err(|_| invalid())?)))
+        }
+        OFFLINE => {
+            Frame::Notice(Notice::Offline(u16::from_be_bytes(payload.as_slice().try_into().map_err(|_| invalid())?)))
+        }
         REQUEST => {
             let [a, b, c, d]: [u8; 4] = payload.as_slice().try_into().map_err(|_| invalid())?;
             Frame::Request(u16::from_be_bytes([a, b]), u16::from_be_bytes([c, d]))
@@ -344,6 +359,8 @@ mod tests {
             Frame::Notice(Notice::Confirm("example.org".into(), true, false)),
             Frame::Notice(Notice::Submitted(true)),
             Frame::Notice(Notice::ShowPage(0x301)),
+            Frame::Notice(Notice::Current(0x100)),
+            Frame::Notice(Notice::Offline(0x8FF)),
             Frame::Request(0x123, 0xFFFF),
             Frame::Submit(Submission {
                 page_url: "http://x/p".into(),

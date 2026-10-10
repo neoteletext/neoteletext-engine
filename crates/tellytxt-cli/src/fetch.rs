@@ -312,7 +312,7 @@ fn run_zxnet(channel: &tellytxt_web::zxnet::Channel, requests: &Receiver<Frame>,
 // One event loop; splitting it would scatter the agent's sink and state.
 #[allow(clippy::too_many_lines)]
 fn run_web(address: &str, requests: &Receiver<Frame>, allow_local: &[IpAddr]) {
-    use tellytxt_web::agent::{Event, Input, Output, Source as Came, Storage, UserAgent};
+    use tellytxt_web::agent::{Event, Failure, Input, Output, Source as Came, Storage, UserAgent};
     use tellytxt_web::form::{FormMethod, FormSubmission};
     use tellytxt_web::http::MediaType;
     /// Cookie slots and bytes of the jar: REQ-WEB-006's default total.
@@ -364,6 +364,10 @@ fn run_web(address: &str, requests: &Receiver<Frame>, allow_local: &[IpAddr]) {
             Output::Event(Event::Unencrypted { .. }) => send(&Frame::Notice(Notice::Unencrypted)),
             Output::Event(Event::ConfirmSubmission { host, plain_http, first_to_origin, .. }) => {
                 send(&Frame::Notice(Notice::Confirm(host.to_string(), plain_http, first_to_origin)))
+            }
+            Output::Event(Event::PageCurrent { page, .. }) => send(&Frame::Notice(Notice::Current(page.mpp()))),
+            Output::Event(Event::FetchFailed { page, failure: Failure::Network | Failure::Timeout, .. }) => {
+                send(&Frame::Notice(Notice::Offline(page.mpp())))
             }
             Output::Event(Event::SubmissionSucceeded { .. }) => send(&Frame::Notice(Notice::Submitted(true))),
             Output::Event(Event::SubmissionFailed { .. }) => send(&Frame::Notice(Notice::Submitted(false))),

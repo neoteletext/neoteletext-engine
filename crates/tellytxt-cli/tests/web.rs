@@ -92,3 +92,25 @@ fn viewer_fills_and_submits_a_form() {
     let report = String::from_utf8_lossy(&output.stdout);
     assert!(output.status.success(), "{report}");
 }
+
+/// REQ-WEB-009: the driver starts and stops its own server, so that the
+/// network goes away under a running viewer.
+#[test]
+fn viewer_works_offline_and_recovers() {
+    let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/web-server");
+    let output = match Command::new("python3")
+        .arg("-I")
+        .arg(directory.join("drive_offline.py"))
+        .arg(env!("CARGO_BIN_EXE_ttx"))
+        .arg(directory.join("server.py"))
+        .output()
+    {
+        Ok(output) => output,
+        Err(error) => {
+            eprintln!("SKIPPED: python3 is needed for the offline test: {error}");
+            return;
+        }
+    };
+    let report = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "{report}");
+}
