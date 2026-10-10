@@ -56,7 +56,7 @@ use crate::level1::{
 };
 use crate::objects::{self, Body, EnhancementLinks, Fetch, ObjectRef, row_of};
 use crate::packet::{
-    ColourData, DisplayAttributes, FontStyleData, ObjectKind, ObjectNumber, ObjectSource, Triplet, TripletFunction,
+    ColourData, DisplayAttributes, FontStyleData, ObjectKind, ObjectNumber, ObjectSource, TripletFunction,
 };
 use crate::types::{DrcsCharacter, DrcsTable, FixedVec};
 
@@ -463,8 +463,6 @@ struct Frame<'s> {
     /// The active position, relative to the origin.
     row: u8,
     column: u8,
-    /// A pending Origin Modifier: row and column offsets.
-    modifier: Option<(u8, u8)>,
     /// The chosen sub-tables: global, then normal (REQ-DRC-005).
     drcs: [u8; 2],
     /// The display area of the origin; elements elsewhere are discarded
@@ -491,7 +489,6 @@ impl Frame<'_> {
             origin: (0, 0),
             row: 0,
             column: 0,
-            modifier: None,
             drcs: [0; 2],
             area: Area::Main,
             slot: 0,
@@ -621,6 +618,211 @@ struct Inputs<'a, 's> {
     default_sets: (G0Set, G2Set),
 }
 
+/// States of the enhancement walk (REQ-FSM-011).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum WalkState {
+    /// Before the walk.
+    Start,
+    /// Taking the triplets of the current source.
+    Walking,
+    /// An Origin Modifier waits for the invocation that follows it.
+    ModifierPending {
+        /// The row offset, the modifier's address minus 40.
+        row_offset: u8,
+        /// The column offset, its data.
+        column_offset: u8,
+    },
+    /// The current source has ended.
+    Returning,
+    /// Placing the default objects of REQ-OBJ-040.
+    PlacingDefaults,
+    /// The walk is over.
+    Finished,
+}
+
+/// The source that ended, as the Returning state is told it.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Ended {
+    /// The page's local enhancement data.
+    Local,
+    /// An object invoked by another source.
+    Object,
+    /// A default object.
+    Default,
+}
+
+/// The events of the walk (REQ-FSM-011).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum WalkEvent {
+    /// The walk begins; `display` when the page has a packet X/26 with a
+    /// display triplet (decision E.53).
+    Begin {
+        /// The page's local data displays something.
+        display: bool,
+    },
+    /// The next triplet of the current source; `None` when it failed its
+    /// Hamming 24/18 check.
+    Triplet(Option<TripletFunction>),
+    /// The current source has no more data.
+    EndOfData,
+    /// A source ended.
+    Returned(Ended),
+    /// The next default object was looked for: `found` when it was found and
+    /// accepted.
+    DefaultObject {
+        /// A default object is ready to run.
+        found: bool,
+    },
+}
+
+/// What a transition of the walk does (REQ-FSM-011).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum WalkAction {
+    /// Nothing.
+    None,
+    /// The source becomes the local enhancement data at row 0, column 0,
+    /// with DRCS sub-tables 0 and no Origin Modifier.
+    BeginLocal,
+    /// The source becomes the default object found, at row 0, column 0.
+    StartDefault,
+    /// Skip a damaged triplet; the position does not move (decision E.46).
+    Skip,
+    /// End the current source.
+    EndSource,
+    /// Pop the walk record: the invoker's position, origin and sub-tables
+    /// return, and the Origin Modifier is cancelled (REQ-OBJ-002).
+    Pop,
+    /// After a default object, the position is row 0, column 0 again.
+    ResetPosition,
+    /// Full Screen Colour (REQ-L25-032).
+    ScreenColour(ColourData),
+    /// Full Row Colour or Address Display Row 0: the position becomes `row`,
+    /// column 0, and the row colour is set (REQ-L25-033).
+    RowColour {
+        /// The row, relative to the source's origin.
+        row: u8,
+        /// The colour and row selection.
+        colour: ColourData,
+    },
+    /// Set Active Position (REQ-L25-003).
+    Position {
+        /// The row.
+        row: u8,
+        /// The column, kept when 40 or more.
+        column: u8,
+    },
+    /// DRCS Mode (REQ-DRC-005).
+    DrcsMode {
+        /// The normal table, or the global.
+        normal: bool,
+        /// The level bits.
+        levels: u8,
+        /// The sub-table.
+        subtable: u8,
+    },
+    /// An Object Invocation with the offsets of an Origin Modifier that
+    /// immediately preceded it, or none (REQ-OBJ-001, REQ-OBJ-002).
+    Invoke {
+        /// The source.
+        source: ObjectSource,
+        /// The type.
+        kind: ObjectKind,
+        /// The number.
+        number: ObjectNumber,
+        /// The row offset.
+        row_offset: u8,
+        /// The column offset.
+        column_offset: u8,
+    },
+    /// A column triplet: its column, then its character or attribute
+    /// (REQ-L25-004, REQ-L25-010, REQ-L25-020).
+    Column(TripletFunction),
+}
+
+/// The transition of the walk for one triplet in the Walking state, and in
+/// Modifier pending for anything but an invocation (REQ-FSM-011).
+const fn triplet_transition(function: TripletFunction) -> (WalkState, WalkAction) {
+    use TripletFunction as F;
+    let walking = WalkState::Walking;
+    match function {
+        // Decision E.46: any Termination Marker, and an Object Definition,
+        // end the source.
+        F::Termination { .. } | F::ObjectDefinition { .. } => (WalkState::Returning, WalkAction::EndSource),
+        F::ObjectInvocation { source, kind, number } => {
+            (walking, WalkAction::Invoke { source, kind, number, row_offset: 0, column_offset: 0 })
+        }
+        F::OriginModifier { row_offset, column_offset } => {
+            (WalkState::ModifierPending { row_offset, column_offset }, WalkAction::None)
+        }
+        F::FullScreenColour(colour) => (walking, WalkAction::ScreenColour(colour)),
+        F::FullRowColour { address, colour } => (walking, WalkAction::RowColour { row: row_of(address), colour }),
+        F::AddressDisplayRow0 { address, colour } => {
+            if address == ROW_ADDRESS_LAST {
+                (walking, WalkAction::RowColour { row: 0, colour })
+            } else {
+                // Addresses 40 to 62 are reserved: no move (REQ-L25-003).
+                (walking, WalkAction::None)
+            }
+        }
+        F::SetActivePosition { address, column } => (walking, WalkAction::Position { row: row_of(address), column }),
+        F::DrcsMode { normal, levels, subtable } => (walking, WalkAction::DrcsMode { normal, levels, subtable }),
+        // REQ-L25-052: Programme Delivery Control and reserved triplets do
+        // nothing, and do not move the position.
+        F::ProgrammeDeliveryRow { .. }
+        | F::ReservedRow { .. }
+        | F::ProgrammeDeliveryColumn { .. }
+        | F::ReservedColumn { .. } => (walking, WalkAction::None),
+        F::ForegroundColour { .. }
+        | F::G1Character { .. }
+        | F::G3Character { .. }
+        | F::BackgroundColour { .. }
+        | F::AdditionalFlash { .. }
+        | F::ModifiedDesignation { .. }
+        | F::G0Character { .. }
+        | F::DisplayAttributes { .. }
+        | F::DrcsCharacter { .. }
+        | F::FontStyle { .. }
+        | F::G2Character { .. }
+        | F::G0Diacritic { .. } => (walking, WalkAction::Column(function)),
+    }
+}
+
+/// The transition function of the enhancement walk (REQ-FSM-011,
+/// REQ-FSM-001): the next state and the action for a state and an event.
+/// Events that cannot arrive in a state leave it unchanged, so that no
+/// input can drive the machine astray (REQ-FSM-008).
+#[must_use]
+pub const fn walk_transition(state: WalkState, event: WalkEvent) -> (WalkState, WalkAction) {
+    use WalkEvent as E;
+    use WalkState as S;
+    match (state, event) {
+        (S::Start, E::Begin { display: true }) => (S::Walking, WalkAction::BeginLocal),
+        (S::Start, E::Begin { display: false }) => (S::PlacingDefaults, WalkAction::None),
+        // Decision E.46: a damaged triplet is skipped; one after an Origin
+        // Modifier is not the invocation it needs, so the offsets go.
+        (S::Walking | S::ModifierPending { .. }, E::Triplet(None)) => (S::Walking, WalkAction::Skip),
+        (
+            S::ModifierPending { row_offset, column_offset },
+            E::Triplet(Some(TripletFunction::ObjectInvocation { source, kind, number })),
+        ) => (S::Walking, WalkAction::Invoke { source, kind, number, row_offset, column_offset }),
+        (S::Walking | S::ModifierPending { .. }, E::Triplet(Some(function))) => triplet_transition(function),
+        (S::Walking | S::ModifierPending { .. }, E::EndOfData) => (S::Returning, WalkAction::EndSource),
+        (S::Returning, E::Returned(Ended::Object)) => (S::Walking, WalkAction::Pop),
+        (S::Returning, E::Returned(Ended::Local)) | (S::PlacingDefaults, E::DefaultObject { found: false }) => {
+            (S::Finished, WalkAction::None)
+        }
+        (S::Returning, E::Returned(Ended::Default)) => (S::PlacingDefaults, WalkAction::ResetPosition),
+        (S::PlacingDefaults, E::DefaultObject { found: true }) => (S::Walking, WalkAction::StartDefault),
+        (S::Start, E::Triplet(_) | E::EndOfData | E::Returned(_) | E::DefaultObject { .. })
+        | (S::Walking | S::ModifierPending { .. }, E::Begin { .. } | E::Returned(_) | E::DefaultObject { .. })
+        | (S::Returning, E::Begin { .. } | E::Triplet(_) | E::EndOfData | E::DefaultObject { .. })
+        | (S::PlacingDefaults, E::Begin { .. } | E::Triplet(_) | E::EndOfData | E::Returned(_))
+        | (S::Finished, E::Begin { .. } | E::Triplet(_) | E::EndOfData | E::Returned(_) | E::DefaultObject { .. }) => {
+            (state, WalkAction::None)
+        }
+    }
+}
+
 /// One run of the walk of REQ-FSM-011.
 struct Walker<'a, 's> {
     inputs: &'a Inputs<'a, 's>,
@@ -647,118 +849,170 @@ impl<'a, 's> Walker<'a, 's> {
         }
     }
 
-    /// Runs the walk: the local enhancement data when it displays anything,
-    /// otherwise the default objects (REQ-L25-002, REQ-OBJ-040).
+    /// Runs the machine of REQ-FSM-011 to the end: the local enhancement
+    /// data when it displays anything, otherwise the default objects, with
+    /// every object they invoke on an explicit stack of walk records at most
+    /// [`WALK_DEPTH`] deep (REQ-GEN-016). Each loop reads one triplet, ends
+    /// one source or places one default object, so the loop is bounded by
+    /// the data and the limits.
     fn walk(&mut self, out: &mut Collector) {
-        if has_display_triplets(self.inputs.page) {
-            self.run(Frame::local(), out);
-            return;
-        }
-        let defaults = self.inputs.links.default_objects;
-        for default in defaults.iter().flatten() {
-            // Annex A.8 item 1: default objects count toward the limits.
-            if !self.within_limits(default.kind, (0, 0)) {
-                continue;
-            }
-            let found = objects::find_public(
-                self.inputs.lookup,
-                Some(default.page),
-                self.inputs.page,
-                default.kind,
-                default.number,
-                self.inputs.level,
-            );
-            match found {
-                // Clause 13.8: origin and active position row 0, column 0.
-                Ok(object) => {
-                    if let Some(frame) = self.accept(object, (0, 0), (0, 0)) {
-                        self.run(frame, out);
-                    }
+        let mut stack: FixedVec<Frame<'s>, WALK_DEPTH> = FixedVec::new(Frame::local());
+        let mut defaults = self.inputs.links.default_objects.into_iter().flatten();
+        let mut found: Option<Frame<'s>> = None;
+        let mut state = WalkState::Start;
+        loop {
+            let event = match state {
+                WalkState::Start => WalkEvent::Begin { display: has_display_triplets(self.inputs.page) },
+                WalkState::Walking | WalkState::ModifierPending { .. } => self.next_triplet(&mut stack),
+                WalkState::Returning => {
+                    let ended = match stack.as_slice() {
+                        [_, _, ..] => Ended::Object,
+                        [frame] if frame.local_data => Ended::Local,
+                        _ => Ended::Default,
+                    };
+                    WalkEvent::Returned(ended)
                 }
-                Err(_) => self.report.absent_objects = self.report.absent_objects.saturating_add(1),
-            }
+                WalkState::PlacingDefaults => {
+                    found = defaults.find_map(|default| self.default_object(default));
+                    WalkEvent::DefaultObject { found: found.is_some() }
+                }
+                WalkState::Finished => return,
+            };
+            let (next, action) = walk_transition(state, event);
+            state = next;
+            self.act(action, &mut stack, &mut found, out);
         }
     }
 
-    /// Runs a source and every object it invokes, with an explicit stack of
-    /// walk records at most [`WALK_DEPTH`] deep (REQ-GEN-016).
-    fn run(&mut self, root: Frame<'s>, out: &mut Collector) {
-        let mut stack: FixedVec<Frame<'s>, WALK_DEPTH> = FixedVec::new(root);
-        let _ = stack.push(root);
-        while let Some(frame) = stack.as_mut_slice().last_mut() {
-            if frame.cursor >= frame.end {
-                // Returning: the invoker's position and sub-tables are in its
-                // own record, so popping restores them (REQ-OBJ-002).
-                let _ = stack.pop();
-                continue;
-            }
+    /// The next event of the current source: its next triplet, or the end
+    /// of its data. The local enhancement data skips missing designation
+    /// codes (REQ-L25-002).
+    fn next_triplet(&mut self, stack: &mut FixedVec<Frame<'s>, WALK_DEPTH>) -> WalkEvent {
+        let Some(frame) = stack.as_mut_slice().last_mut() else { return WalkEvent::EndOfData };
+        while frame.cursor < frame.end {
             let index = frame.cursor;
             frame.cursor = frame.cursor.saturating_add(1);
             self.report.steps = self.report.steps.saturating_add(1);
             match frame.body.fetch(self.inputs.page, index) {
-                Fetch::Triplet(triplet) => {
-                    if let Some(child) = self.step(frame, triplet, out) {
-                        // The nesting rules bound the depth (decision E.51).
-                        let _ = stack.push(child);
-                    }
-                }
-                Fetch::Damaged => {
-                    // Decision E.46: skipped, without moving the position;
-                    // it is not the invocation an Origin Modifier needs.
-                    frame.modifier = None;
-                    self.report.damaged_triplets = self.report.damaged_triplets.saturating_add(1);
-                }
+                Fetch::Triplet(triplet) => return WalkEvent::Triplet(Some(triplet.function())),
+                Fetch::Damaged => return WalkEvent::Triplet(None),
                 Fetch::Missing if frame.local_data => {
-                    // REQ-L25-002: missing designation codes are skipped.
                     let per_packet = TRIPLETS_PER_PACKET as u16;
                     let next =
                         index.saturating_add(per_packet).saturating_sub(index.checked_rem(per_packet).unwrap_or(0));
                     frame.cursor = frame.cursor.max(next);
                 }
-                Fetch::Missing => frame.cursor = frame.end,
+                // An object's scan found every packet it needs.
+                Fetch::Missing => break,
+            }
+        }
+        WalkEvent::EndOfData
+    }
+
+    /// A default object of REQ-OBJ-040, found and accepted, with origin and
+    /// active position row 0, column 0 (clause 13.8).
+    fn default_object(&mut self, default: objects::DefaultInvocation) -> Option<Frame<'s>> {
+        // Annex A.8 item 1: default objects count toward the limits.
+        if !self.within_limits(default.kind, (0, 0)) {
+            return None;
+        }
+        let inputs = self.inputs;
+        let found = objects::find_public(
+            inputs.lookup,
+            Some(default.page),
+            inputs.page,
+            default.kind,
+            default.number,
+            inputs.level,
+        );
+        let Ok(object) = found else {
+            self.report.absent_objects = self.report.absent_objects.saturating_add(1);
+            return None;
+        };
+        self.accept(object, (0, 0), (0, 0))
+    }
+
+    /// Performs the action of a transition.
+    fn act(
+        &mut self,
+        action: WalkAction,
+        stack: &mut FixedVec<Frame<'s>, WALK_DEPTH>,
+        found: &mut Option<Frame<'s>>,
+        out: &mut Collector,
+    ) {
+        match action {
+            WalkAction::None => {}
+            WalkAction::BeginLocal => {
+                stack.clear();
+                let _ = stack.push(Frame::local());
+            }
+            WalkAction::StartDefault => {
+                stack.clear();
+                if let Some(frame) = found.take() {
+                    let _ = stack.push(frame);
+                }
+            }
+            // Popping restores the invoker's position and sub-tables, which
+            // are in its own record (REQ-OBJ-002); a default object's record
+            // goes, leaving row 0, column 0 (clause 13.8).
+            WalkAction::Pop | WalkAction::ResetPosition => {
+                let _ = stack.pop();
+            }
+            WalkAction::Skip => self.report.damaged_triplets = self.report.damaged_triplets.saturating_add(1),
+            WalkAction::EndSource => {
+                if let Some(frame) = stack.as_mut_slice().last_mut() {
+                    frame.cursor = frame.end;
+                }
+            }
+            WalkAction::Invoke { source, kind, number, row_offset, column_offset } => {
+                let child = stack
+                    .as_slice()
+                    .last()
+                    .and_then(|frame| self.invoke(frame, source, kind, number, (row_offset, column_offset)));
+                if let Some(child) = child {
+                    // The nesting rules bound the depth (decision E.51).
+                    let _ = stack.push(child);
+                }
+            }
+            WalkAction::ScreenColour(_)
+            | WalkAction::RowColour { .. }
+            | WalkAction::Position { .. }
+            | WalkAction::DrcsMode { .. }
+            | WalkAction::Column(_) => {
+                if let Some(frame) = stack.as_mut_slice().last_mut() {
+                    self.act_on_frame(action, frame, out);
+                }
             }
         }
     }
 
-    /// One triplet of a source (the transitions of REQ-FSM-011). Returns the
-    /// walk record of an object it invokes.
-    fn step(&mut self, frame: &mut Frame<'s>, triplet: Triplet, out: &mut Collector) -> Option<Frame<'s>> {
-        let function = triplet.function();
-        // REQ-OBJ-002, decision E.46: an Origin Modifier applies only to an
-        // invocation that immediately follows it.
-        let modifier = frame.modifier.take();
+    /// The actions that change the current source's record or emit events.
+    fn act_on_frame(&mut self, action: WalkAction, frame: &mut Frame<'s>, out: &mut Collector) {
+        // REQ-OBJ-013: Full Screen Colour, Full Row Colour and Address
+        // Display Row 0 act only in local data and Active objects, and the
+        // colours only in the main page.
         let restricted = !frame.plane.sets_colours();
-        match function {
-            TripletFunction::Termination { .. } | TripletFunction::ObjectDefinition { .. } => frame.cursor = frame.end,
-            TripletFunction::ObjectInvocation { source, kind, number } => {
-                return self.invoke(frame, source, kind, number, modifier);
-            }
-            TripletFunction::OriginModifier { row_offset, column_offset } => {
-                frame.modifier = Some((row_offset, column_offset));
-            }
-            TripletFunction::FullScreenColour(colour) => {
-                // REQ-L25-032, REQ-OBJ-013: local data and Active objects
-                // outside the side panels only; reserved data is ignored.
+        match action {
+            WalkAction::ScreenColour(colour) => {
                 if !restricted && frame.area == Area::Main && colour.is_defined() && out.row.is_none() {
                     out.screen = Some(colour.index);
                 }
             }
-            TripletFunction::FullRowColour { address, colour } if !restricted => {
-                (frame.row, frame.column) = (row_of(address), 0);
-                Self::row_colour(frame, colour, out);
+            WalkAction::RowColour { row, colour } if !restricted => {
+                (frame.row, frame.column) = (row, 0);
+                let (row, _) = frame.position();
+                if frame.area == Area::Main && row < ROWS {
+                    out.row_colour(row, colour);
+                }
             }
-            TripletFunction::AddressDisplayRow0 { address: ROW_ADDRESS_LAST, colour } if !restricted => {
-                (frame.row, frame.column) = (0, 0);
-                Self::row_colour(frame, colour, out);
-            }
-            TripletFunction::SetActivePosition { address, column } => {
-                frame.row = row_of(address);
+            WalkAction::Position { row, column } => {
+                frame.row = row;
                 // Decision E.46: a column of 40 or more leaves the column.
                 if usize::from(column) < COLUMNS {
                     frame.column = column;
                 }
             }
-            TripletFunction::DrcsMode { normal, levels, subtable } => {
+            WalkAction::DrcsMode { normal, levels, subtable } => {
                 // Decision E.54: the reserved level value 00 counts as both.
                 let bit = if self.inputs.level.is_level35() { LEVEL_BIT_35 } else { LEVEL_BIT_25 };
                 let applies = levels & DRCS_LEVEL_MASK == 0 || levels & bit != 0;
@@ -766,17 +1020,16 @@ impl<'a, 's> Walker<'a, 's> {
                     *chosen = subtable;
                 }
             }
-            _ => self.column_triplet(frame, function, out),
-        }
-        None
-    }
-
-    /// A Full Row Colour or Address Display Row 0 colour (REQ-L25-033):
-    /// only in the main page (REQ-OBJ-013).
-    fn row_colour(frame: &Frame<'s>, colour: ColourData, out: &mut Collector) {
-        let (row, _) = frame.position();
-        if frame.area == Area::Main && row < ROWS {
-            out.row_colour(row, colour);
+            WalkAction::Column(function) => self.column_triplet(frame, function, out),
+            WalkAction::RowColour { .. }
+            | WalkAction::None
+            | WalkAction::BeginLocal
+            | WalkAction::StartDefault
+            | WalkAction::Pop
+            | WalkAction::ResetPosition
+            | WalkAction::Skip
+            | WalkAction::EndSource
+            | WalkAction::Invoke { .. } => {}
         }
     }
 
@@ -936,7 +1189,7 @@ impl<'a, 's> Walker<'a, 's> {
         source: ObjectSource,
         kind: ObjectKind,
         number: ObjectNumber,
-        modifier: Option<(u8, u8)>,
+        (row_offset, column_offset): (u8, u8),
     ) -> Option<Frame<'s>> {
         let inputs = self.inputs;
         // REQ-OBJ-008; a local object only from the page's own data.
@@ -970,7 +1223,6 @@ impl<'a, 's> Walker<'a, 's> {
             self.report.absent_objects = self.report.absent_objects.saturating_add(1);
             return None;
         };
-        let (row_offset, column_offset) = modifier.unwrap_or((0, 0));
         let origin = (
             invocation.0.saturating_add(usize::from(row_offset)),
             invocation.1.saturating_add(usize::from(column_offset)),
@@ -1032,7 +1284,6 @@ impl<'a, 's> Walker<'a, 's> {
             origin,
             row: 0,
             column: 0,
-            modifier: None,
             drcs: [0; 2],
             area: area_of(origin.1, self.inputs.panels),
             slot,
@@ -1914,6 +2165,106 @@ mod tests {
         }
         assert!(is_text(enhancement_glyph(EnhChar::G2(0x41), latin, false).0));
         assert!(!is_text(enhancement_glyph(EnhChar::G3(0x41), latin, false).0));
+    }
+
+    /// REQ-FSM-009, REQ-FSM-011: every row of the walk's table, checked for
+    /// its next state and action.
+    #[test]
+    fn every_transition_of_the_walk() {
+        use TripletFunction as F;
+        use WalkAction as A;
+        use WalkEvent as E;
+        use WalkState as S;
+        let colour = ColourData { index: 3, high: 0 };
+        let number = ObjectNumber(0x15);
+        let pending = S::ModifierPending { row_offset: 2, column_offset: 56 };
+        let invocation = F::ObjectInvocation { source: ObjectSource::Local, kind: ObjectKind::Passive, number };
+        let column = F::G0Character { column: 4, code: b'A' };
+        let attribute = F::ForegroundColour { column: 4, colour };
+        let rows: [(S, E, S, A); 24] = [
+            (S::Start, E::Begin { display: true }, S::Walking, A::BeginLocal),
+            (S::Start, E::Begin { display: false }, S::PlacingDefaults, A::None),
+            (S::Walking, E::Triplet(None), S::Walking, A::Skip),
+            (S::Walking, E::Triplet(Some(F::Termination { kind: 7 })), S::Returning, A::EndSource),
+            (S::Walking, E::EndOfData, S::Returning, A::EndSource),
+            (
+                S::Walking,
+                E::Triplet(Some(F::ObjectDefinition {
+                    usage: crate::packet::ObjectUsage(3),
+                    kind: ObjectKind::Active,
+                    number,
+                })),
+                S::Returning,
+                A::EndSource,
+            ),
+            (
+                S::Walking,
+                E::Triplet(Some(F::FullRowColour { address: 45, colour })),
+                S::Walking,
+                A::RowColour { row: 5, colour },
+            ),
+            (
+                S::Walking,
+                E::Triplet(Some(F::SetActivePosition { address: 40, column: 7 })),
+                S::Walking,
+                A::Position { row: 24, column: 7 },
+            ),
+            (
+                S::Walking,
+                E::Triplet(Some(F::AddressDisplayRow0 { address: 63, colour })),
+                S::Walking,
+                A::RowColour { row: 0, colour },
+            ),
+            (S::Walking, E::Triplet(Some(F::AddressDisplayRow0 { address: 50, colour })), S::Walking, A::None),
+            (S::Walking, E::Triplet(Some(F::FullScreenColour(colour))), S::Walking, A::ScreenColour(colour)),
+            (
+                S::Walking,
+                E::Triplet(Some(F::DrcsMode { normal: true, levels: 3, subtable: 2 })),
+                S::Walking,
+                A::DrcsMode { normal: true, levels: 3, subtable: 2 },
+            ),
+            (S::Walking, E::Triplet(Some(F::OriginModifier { row_offset: 2, column_offset: 56 })), pending, A::None),
+            (
+                pending,
+                E::Triplet(Some(invocation)),
+                S::Walking,
+                A::Invoke {
+                    source: ObjectSource::Local,
+                    kind: ObjectKind::Passive,
+                    number,
+                    row_offset: 2,
+                    column_offset: 56,
+                },
+            ),
+            (pending, E::Triplet(Some(column)), S::Walking, A::Column(column)),
+            (pending, E::Triplet(None), S::Walking, A::Skip),
+            (
+                S::Walking,
+                E::Triplet(Some(invocation)),
+                S::Walking,
+                A::Invoke {
+                    source: ObjectSource::Local,
+                    kind: ObjectKind::Passive,
+                    number,
+                    row_offset: 0,
+                    column_offset: 0,
+                },
+            ),
+            (S::Walking, E::Triplet(Some(F::ReservedRow { mode: 2, address: 41, data: 0 })), S::Walking, A::None),
+            (S::Walking, E::Triplet(Some(F::ProgrammeDeliveryColumn { column: 3, data: 0 })), S::Walking, A::None),
+            (S::Walking, E::Triplet(Some(attribute)), S::Walking, A::Column(attribute)),
+            (S::Returning, E::Returned(Ended::Object), S::Walking, A::Pop),
+            (S::Returning, E::Returned(Ended::Local), S::Finished, A::None),
+            (S::Returning, E::Returned(Ended::Default), S::PlacingDefaults, A::ResetPosition),
+            (S::PlacingDefaults, E::DefaultObject { found: true }, S::Walking, A::StartDefault),
+        ];
+        for (state, event, next, action) in rows {
+            assert_eq!(walk_transition(state, event), (next, action), "{state:?} {event:?}");
+        }
+        assert_eq!(walk_transition(S::PlacingDefaults, E::DefaultObject { found: false }), (S::Finished, A::None));
+        // Events that cannot arrive change nothing.
+        assert_eq!(walk_transition(S::Finished, E::Begin { display: true }), (S::Finished, A::None));
+        assert_eq!(walk_transition(S::Returning, E::EndOfData), (S::Returning, A::None));
     }
 
     /// Annex C.2 rule 3: the later of two changes at one cell wins, type by
