@@ -672,3 +672,44 @@ fn walk_transitions() {
     assert_eq!(char_of(&grid.cells[3][5]), 'o', "the second object at 3,5: position restored, offsets discarded");
     assert_eq!((char_of(&grid.cells[5][5]), char_of(&grid.cells[3][30])), (' ', ' '));
 }
+
+/// REQ-TST-015, REQ-L25-050, REQ-FSM-008: every row mode and every column
+/// mode of Tables 28 and 29, with each class of data value, reserved ones
+/// included, at both levels: the page builds, the receiver's area is
+/// untouched, and a character written after it lands where the position
+/// rules say.
+#[test]
+fn every_mode_with_every_class_of_data() {
+    use tellytxt_core::packet::Triplet;
+    let reference = build_25(&page(&[], &[]));
+    for level in [L25, L35] {
+        for row_group in [false, true] {
+            for mode in 0..32u8 {
+                for data in [0x00, 0x1F, 0x20, 0x41, 0x5F, 0x7F] {
+                    let address = if row_group { 46 } else { 12 };
+                    let triplet = Triplet { address, mode, data }.function();
+                    let local = [set_position(3, 2), triplet, g0(30, b'Z')];
+                    let (grid, _) = build(&page(&[], &local), level);
+                    let label = format!("{level:?} row group {row_group} mode {mode:05b} data {data:#04x}");
+                    assert_eq!(grid.cells[0][..8], reference.cells[0][..8], "{label}");
+                    // Only the row triplets that set the row move it:
+                    // Full Row Colour and Set Active Position to row 6, and
+                    // Object Invocation never.
+                    let moves_row = row_group && matches!(mode, 0b00001 | 0b00100);
+                    // Decision E.46: an Object Definition ends the local
+                    // data (the Termination Marker needs address 63).
+                    let ends = row_group && (0b10101..=0b10111).contains(&mode);
+                    let expected_row = if moves_row { 6 } else { 3 };
+                    // A designation may change the set; the code stays.
+                    let glyph = grid.cells[expected_row][30].glyph;
+                    if !ends {
+                        assert!(
+                            matches!(glyph, Glyph::Char(character) if character.code == b'Z'),
+                            "{label}: {glyph:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
