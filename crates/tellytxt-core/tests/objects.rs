@@ -689,47 +689,7 @@ fn enhancement_pages_are_not_shown_as_text() {
 /// Passive objects reach their limit of 127.
 #[test]
 fn worst_case_page_is_bounded() {
-    // GPOP: each object writes its cell, invokes the next type twice and is
-    // padded to fill the page, so that every scan and run reads the most.
-    let pad = |count: usize| {
-        core::iter::repeat_n(TripletFunction::ReservedRow { mode: 0b00010, address: 41, data: 0 }, count)
-    };
-    let nested = |letter: u8, next: Option<ObjectKind>| {
-        let mut body = vec![g0(0, letter)];
-        if let Some(kind) = next {
-            body.extend(core::iter::repeat_n(invoke(ObjectSource::Global, kind, public_number(0, 0)), 2));
-        }
-        body.extend(pad(162 - body.len()));
-        body
-    };
-    let gpop = object_page(
-        GPOP,
-        0,
-        &[
-            ObjectDef::new(ObjectKind::Active, 0, nested(b'a', Some(ObjectKind::Adaptive))),
-            ObjectDef::new(ObjectKind::Adaptive, 0, nested(b'd', Some(ObjectKind::Passive))),
-            ObjectDef::new(ObjectKind::Passive, 0, nested(b'w', None)),
-        ],
-    );
-    let mut local = vec![];
-    for index in 0..100u8 {
-        if index % 39 == 0 {
-            local.push(set_position(1 + index / 39, 0));
-        }
-        local.push(g0(index % 39, 0x10));
-        local.push(invoke(ObjectSource::Global, ObjectKind::Active, public_number(0, 0)));
-    }
-    let panels = PresentationFields {
-        side_panels: Some(SidePanelFields { left: true, right: true, status_flag: true, left_columns: 8 }),
-        ..PresentationFields::default()
-    };
-    let mut others = vec![object_links(), x28(0, &panels)];
-    others.extend(local_data(&local));
-    assert_eq!(local_data(&local).len(), 16, "all sixteen packets X/26");
-    // The display page first, so that its X/27/4 names the GPOP before the
-    // GPOP arrives.
-    let mut packets = display_page(0, &[(1, b"WORST CASE")], others);
-    packets.extend(gpop);
+    let packets = common::worst_case_page();
     let started = std::time::Instant::now();
     let (grid, report) = build(&packets, L35);
     let report = report.unwrap();

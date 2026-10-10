@@ -506,3 +506,60 @@ pub fn row_0(colour: u8, high: u8) -> TripletFunction {
 }
 
 pub const DESIGNATIONS: usize = DESIGNATION_CODES;
+
+/// The worst-case page of REQ-TST-019: page 100 invoking, from all sixteen
+/// packets X/26, an Active object of its GPOP 1A1 at 100 positions; each
+/// object writes its cell, invokes the next type twice (Active, Adaptive,
+/// Passive) and is padded so that the three fill the object page; both side
+/// panels are on.
+pub fn worst_case_page() -> Vec<Packet> {
+    const GPOP: u16 = 0x1A1;
+    let pad = |count: usize| {
+        core::iter::repeat_n(TripletFunction::ReservedRow { mode: 0b00010, address: 41, data: 0 }, count)
+    };
+    let nested = |letter: u8, next: Option<ObjectKind>| {
+        let mut body = vec![g0(0, letter)];
+        if let Some(kind) = next {
+            body.extend(core::iter::repeat_n(invoke(ObjectSource::Global, kind, public_number(0, 0)), 2));
+        }
+        body.extend(pad(162 - body.len()));
+        body
+    };
+    let gpop = object_page(
+        GPOP,
+        0,
+        &[
+            ObjectDef::new(ObjectKind::Active, 0, nested(b'a', Some(ObjectKind::Adaptive))),
+            ObjectDef::new(ObjectKind::Adaptive, 0, nested(b'd', Some(ObjectKind::Passive))),
+            ObjectDef::new(ObjectKind::Passive, 0, nested(b'w', None)),
+        ],
+    );
+    let mut local = vec![];
+    for index in 0..100u8 {
+        if index % 39 == 0 {
+            local.push(set_position(1 + index / 39, 0));
+        }
+        local.push(g0(index % 39, 0x10));
+        local.push(invoke(ObjectSource::Global, ObjectKind::Active, public_number(0, 0)));
+    }
+    let panels = PresentationFields {
+        side_panels: Some(tellytxt_core::types::SidePanelFields {
+            left: true,
+            right: true,
+            status_flag: true,
+            left_columns: 8,
+        }),
+        ..PresentationFields::default()
+    };
+    let none = |function| null_link(function);
+    let links = x27(4, [link(0b00, 0b11, GPOP), none(0b01), none(0b10), none(0b11), none(0), none(0)]);
+    let mut others = vec![links, x28(0, &panels)];
+    let data = local_data(&local);
+    assert_eq!(data.len(), 16, "all sixteen packets X/26");
+    others.extend(data);
+    // The display page first, so that its X/27/4 names the GPOP before the
+    // GPOP arrives.
+    let mut packets = display_page(0, &[(1, b"WORST CASE")], others);
+    packets.extend(gpop);
+    packets
+}
