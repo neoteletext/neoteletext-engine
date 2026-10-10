@@ -15,6 +15,9 @@ pub struct Policy<'a> {
     pub writable_directory: Option<&'a Path>,
     /// The process may make network connections (web mode fetcher).
     pub network: bool,
+    /// Directories the process may read (the fetcher reads `/etc` to
+    /// resolve names).
+    pub readable: &'a [&'a Path],
 }
 
 /// Applies the sandbox. `allow_unsandboxed` is `--no-sandbox`.
@@ -48,6 +51,11 @@ mod platform {
             ruleset = ruleset.handle_access(AccessNet::from_all(LANDLOCK_ABI)).map_err(|e| e.to_string())?;
         }
         let mut created = ruleset.create().map_err(|e| e.to_string())?;
+        for directory in policy.readable {
+            let fd = PathFd::new(directory).map_err(|e| e.to_string())?;
+            created =
+                created.add_rule(PathBeneath::new(fd, AccessFs::from_read(LANDLOCK_ABI))).map_err(|e| e.to_string())?;
+        }
         if let Some(directory) = policy.writable_directory {
             let fd = PathFd::new(directory).map_err(|e| e.to_string())?;
             created =
@@ -123,11 +131,29 @@ mod platform {
     // The same signature as the Linux implementation, which can fail.
     #[allow(clippy::unnecessary_wraps)]
     pub(super) fn apply(policy: Policy<'_>) -> Result<(), String> {
-        let wanted = if policy.network { "files outside the output" } else { "files outside the output, and the network" };
+        let wanted =
+            if policy.network { "files outside the output" } else { "files outside the output, and the network" };
         let output = policy.writable_directory.map_or_else(String::new, |dir| format!(" ({})", dir.display()));
+        let _ = policy.readable;
         eprintln!(
             "ttx: note: self-sandboxing is not implemented on this system yet (REQ-SEC-017 Phase 2); {wanted}{output} are not blocked"
         );
         Ok(())
+    }
+}
+
+/// The REQ-SEC-017 verification: after the sandbox is applied, opening a
+/// file, starting a program and connecting to the network must all fail.
+pub fn self_test() -> Result<(), (u8, String)> {
+    apply(Policy { writable_directory: None, network: false, readable: &[] }, false)
+        .map_err(|message| (crate::exit::INPUT, message))?;
+    let file = std::fs::File::open("/etc/hostname").is_err();
+    let program = std::process::Command::new("/bin/true").status().is_err();
+    let network = std::net::TcpStream::connect(("1.1.1.1", 80)).is_err();
+    println!("open file blocked: {file}\nstart program blocked: {program}\nnetwork blocked: {network}");
+    if file && program && network {
+        Ok(())
+    } else {
+        Err((crate::exit::INPUT, "the sandbox did not block everything".to_string()))
     }
 }

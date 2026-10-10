@@ -46,6 +46,17 @@ pub enum Selection {
     Page(PageAddress, SubCode),
 }
 
+impl Selection {
+    /// The page to ask a live source for.
+    #[must_use]
+    pub const fn page(self) -> Option<PageAddress> {
+        match self {
+            Self::All => None,
+            Self::Page(address, _) => Some(address),
+        }
+    }
+}
+
 /// Parses `100`, `100:0003`, `8FF` or `all` (REQ-CLI-003).
 pub fn parse_selection(text: &str) -> Result<Selection, Failure> {
     if text.eq_ignore_ascii_case("all") {
@@ -80,7 +91,7 @@ fn selected(session: &Session, selection: Selection) -> Result<Vec<&StoredPage>,
 }
 
 fn sandbox(common: &Common, writable: Option<&Path>) -> Result<(), Failure> {
-    sandbox::apply(Policy { writable_directory: writable, network: false }, common.no_sandbox)
+    sandbox::apply(Policy { writable_directory: writable, network: false, readable: &[] }, common.no_sandbox)
         .map_err(|message| (exit::INPUT, message))
 }
 
@@ -130,7 +141,7 @@ fn mosaic_style(legacy: bool) -> MosaicStyle {
 /// `ttx text`.
 pub fn text(common: &Common, page: &str, reveal: bool, legacy_mosaics: bool) -> Result<(), Failure> {
     let selection = parse_selection(page)?;
-    let session = input::load(common)?;
+    let session = input::load_for(common, selection.page())?;
     sandbox(common, None)?;
     let mut out = std::io::stdout().lock();
     for page in selected(&session, selection)? {
@@ -180,7 +191,7 @@ pub fn show(
     if selection == Selection::All {
         return Err((exit::USAGE, "show displays one page; use text or render for all".into()));
     }
-    let session = input::load(common)?;
+    let session = input::load_for(common, selection.page())?;
     let is_terminal = std::io::stdout().is_terminal();
     let (display, reason) = terminal::detect(display(graphics), is_terminal);
     if let (Some(reason), true) = (reason, common.verbose > 0) {
@@ -225,7 +236,7 @@ pub fn view(
     let (display, _) = terminal::detect(display(graphics), std::io::stdout().is_terminal());
     let options = RenderOptions::from_config(session.decoder().config(), false);
     let scale = scale_for(raster_args, options, display == Display::Iterm2);
-    sandbox::apply(Policy { writable_directory: None, network: false }, common.no_sandbox)
+    sandbox::apply(Policy { writable_directory: None, network: false, readable: &[] }, common.no_sandbox)
         .map_err(|message| (exit::INPUT, message))?;
     let depth = if colours8 { ColourDepth::Eight } else { ColourDepth::TrueColour };
     crate::view::run(&mut session, source.as_mut(), display, scale, depth, mosaic_style(legacy_mosaics))
@@ -248,7 +259,7 @@ pub fn render(
     image: ImageFormat,
 ) -> Result<(), Failure> {
     let selection = parse_selection(page)?;
-    let session = input::load(common)?;
+    let session = input::load_for(common, selection.page())?;
     let options = RenderOptions::from_config(session.decoder().config(), raster_args.reveal);
     let scale = scale_for(raster_args, options, false);
     let pages = selected(&session, selection)?;

@@ -5,9 +5,11 @@
 
 mod commands;
 mod convert;
+mod fetch;
 mod input;
 mod live;
 mod output;
+mod pipe;
 mod sandbox;
 mod session;
 mod terminal;
@@ -53,6 +55,9 @@ pub struct Common {
     /// Transport stream packet identifier of the teletext stream to use.
     #[arg(long)]
     pub pid: Option<u16>,
+    /// Seconds to collect pages from a live feed before acting (REQ-CLI-002).
+    #[arg(long, default_value_t = 20)]
+    pub duration: u64,
     /// Pages and sub-pages to keep in memory.
     #[arg(long, default_value_t = session::DEFAULT_PAGES)]
     pub pages: usize,
@@ -220,6 +225,19 @@ enum Command {
         #[command(flatten)]
         common: Common,
     },
+    /// Apply the sandbox, then try to open a file, start a program and open
+    /// a network connection; all three must fail (REQ-SEC-017 verification).
+    #[command(hide = true)]
+    SandboxTest,
+    /// The fetcher process of live mode (REQ-SEC-018); started by `view`.
+    #[command(hide = true)]
+    Fetch {
+        /// The live source.
+        address: String,
+        /// Run without the sandbox.
+        #[arg(long)]
+        no_sandbox: bool,
+    },
     /// Check TTI page files for authoring problems.
     Check {
         /// TTI files.
@@ -257,6 +275,8 @@ fn main() -> ExitCode {
         Command::Services { common } => commands::services(&common),
         Command::ServiceInfo { common } => commands::service_info(&common),
         Command::Check { files, descriptor } => commands::check(&files, descriptor.as_deref()),
+        Command::SandboxTest => sandbox::self_test(),
+        Command::Fetch { address, no_sandbox } => fetch::run(&address, no_sandbox),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,

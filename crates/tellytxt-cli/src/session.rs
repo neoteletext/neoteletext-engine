@@ -65,6 +65,32 @@ impl Session {
         });
     }
 
+    /// Feeds one packet received now, on the session's real clock (live
+    /// sources).
+    pub fn push_at(&mut self, packet: &Packet, meta: &PacketMeta, now: Instant) {
+        self.clock = self.clock.max(now.0);
+        let tracing = self.tracing;
+        let trace = &mut self.trace;
+        self.decoder.push(packet, meta, Instant(self.clock), &mut |event| {
+            if tracing {
+                trace.push(event);
+            }
+        });
+    }
+
+    /// Lets time pass: completes pages whose packets stopped (decision
+    /// E.19).
+    pub fn tick(&mut self, now: Instant) {
+        self.clock = self.clock.max(now.0);
+        let tracing = self.tracing;
+        let trace = &mut self.trace;
+        self.decoder.tick(Instant(self.clock), &mut |event| {
+            if tracing {
+                trace.push(event);
+            }
+        });
+    }
+
     /// Ends the input: completes every page still being received.
     pub fn finish(&mut self) {
         self.clock = self.clock.saturating_add(PAGE_COMPLETION_TIMEOUT_US.saturating_mul(2));

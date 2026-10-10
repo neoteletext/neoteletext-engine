@@ -18,6 +18,9 @@ tellytxt-web.workspace = true
 tellytxt-image = { workspace = true, features = ["std"] }
 clap = { version = "4.5.48", features = ["derive"] }
 crossterm = "0.29.0"
+embedded-io = { workspace = true }
+rustls = { version = "0.23.32", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+webpki-roots = "1.0.3"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 landlock = "0.4.3"

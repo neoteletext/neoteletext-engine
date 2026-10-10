@@ -104,10 +104,57 @@ pub fn config(common: &Common) -> Result<Config, Failure> {
     Ok(config)
 }
 
+/// True for inputs that are live feeds or web services.
+pub fn is_live(input: &str) -> bool {
+    input.starts_with("zxnet:")
+        || input.starts_with("wss://")
+        || input.starts_with("http://")
+        || input.starts_with("https://")
+}
+
+/// Collects a live source for `--duration` seconds, or until `wanted` is
+/// stored and complete (REQ-CLI-002).
+fn load_live(common: &Common, wanted: Option<PageAddress>) -> Result<Session, Failure> {
+    let config = config(common)?;
+    let mut session = Session::new(config, common.pages);
+    let mut source = crate::live::open(&common.input, common.no_sandbox)?;
+    let start = std::time::Instant::now();
+    let limit = std::time::Duration::from_secs(common.duration);
+    if let Some(page) = wanted {
+        source.request(page, tellytxt_core::types::SubCode::ANY);
+    }
+    let mut asked_initial = wanted.is_some();
+    while start.elapsed() < limit {
+        let now = tellytxt_core::types::Instant(u64::try_from(start.elapsed().as_micros()).unwrap_or(u64::MAX));
+        let alive = source.poll(&mut session, now);
+        for notice in source.notices() {
+            match notice {
+                crate::pipe::Notice::InitialPage(mpp) if !asked_initial => {
+                    if let Some(page) = PageAddress::from_mpp(mpp) {
+                        source.request(page, tellytxt_core::types::SubCode::ANY);
+                        asked_initial = true;
+                    }
+                }
+                crate::pipe::Notice::Message(text) => eprintln!("ttx: {text}"),
+                _ => {}
+            }
+        }
+        let done = wanted
+            .and_then(|page| session.page(page, tellytxt_core::types::SubCode::ANY))
+            .is_some_and(|page| page.state == PageState::Complete);
+        if done || !alive {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    session.finish();
+    Ok(session)
+}
+
 /// Opens the input: a file, or standard input for `-`.
 fn open(common: &Common) -> Result<Box<dyn Read>, Failure> {
-    if common.input.starts_with("zxnet:") || common.input.starts_with("wss://") {
-        return Err((exit::USAGE, "live feeds can only be viewed: use `ttx view`".into()));
+    if is_live(&common.input) {
+        return Err((exit::USAGE, "this command needs a file or standard input, not a live feed".into()));
     }
     if common.input == "-" {
         return Ok(Box::new(std::io::stdin().lock()));
@@ -142,6 +189,15 @@ fn reader(common: &Common, encode_pages: bool) -> Box<AutoReader> {
 
 /// Reads the whole input into a new session.
 pub fn load(common: &Common) -> Result<Session, Failure> {
+    load_for(common, None)
+}
+
+/// Reads the whole input into a new session; for live feeds, asks for and
+/// waits for `wanted`.
+pub fn load_for(common: &Common, wanted: Option<PageAddress>) -> Result<Session, Failure> {
+    if is_live(&common.input) {
+        return load_live(common, wanted);
+    }
     let config = config(common)?;
     let mut session = Session::new(config, common.pages);
     let mut input = open(common)?;
@@ -218,17 +274,17 @@ fn region_for_language(language: [u8; 3]) -> u8 {
 struct Finished;
 
 impl Source for Finished {
-    fn poll(&mut self, _session: &mut Session) -> bool {
+    fn poll(&mut self, _session: &mut Session, _now: tellytxt_core::types::Instant) -> bool {
         false
     }
 }
 
 /// Opens an input for `ttx view`: a file read whole, or a live feed.
 pub fn open_live(common: &Common) -> Result<(Session, Box<dyn Source>), Failure> {
-    if common.input.starts_with("zxnet:") || common.input.starts_with("wss://") || common.input.starts_with("http") {
+    if is_live(&common.input) {
         let config = config(common)?;
         let session = Session::new(config, common.pages);
-        let source = crate::live::open(&common.input)?;
+        let source = crate::live::open(&common.input, common.no_sandbox)?;
         return Ok((session, source));
     }
     Ok((load(common)?, Box::new(Finished)))

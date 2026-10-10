@@ -3,6 +3,7 @@
 
 use crate::output::image::{Scale, iterm2_inline, png, raster};
 use crate::output::text::{ColourDepth, MosaicStyle, ansi};
+use crate::pipe::Notice;
 use crate::session::Session;
 use crate::terminal::Display;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
@@ -14,14 +15,23 @@ use tellytxt_core::level1::Grid;
 use tellytxt_core::nav::PageLinks;
 use tellytxt_core::render::{RenderOptions, flash_visible};
 use tellytxt_core::service::initial_page;
-use tellytxt_core::types::Instant;
+use tellytxt_core::types::{Instant, PageAddress, SubCode};
+use tellytxt_core::viewer::SecurityIndicator;
 use tellytxt_core::viewer::{Action, ComposeContext, Key, KeyContext, Viewer, ViewerEvent, ViewerState};
 use tellytxt_image::palette::{CLUT0, Rgba};
 
 /// Something that feeds packets into the session while the viewer runs.
 pub trait Source {
     /// Feeds whatever is available now. Returns false at the end of input.
-    fn poll(&mut self, session: &mut Session) -> bool;
+    fn poll(&mut self, session: &mut Session, now: Instant) -> bool;
+
+    /// Asks for a page, for sources that fetch on demand.
+    fn request(&mut self, _page: PageAddress, _subcode: SubCode) {}
+
+    /// Notices for the viewer since the last call.
+    fn notices(&mut self) -> Vec<Notice> {
+        Vec::new()
+    }
 }
 
 /// How often the viewer wakes to poll the source, check flash and keys.
@@ -73,25 +83,47 @@ pub fn run(
     mosaics: MosaicStyle,
 ) -> std::io::Result<()> {
     terminal::enable_raw_mode()?;
-    let _guard = RawGuard;
+    let guard = RawGuard;
     let mut out = std::io::stdout();
     execute!(out, terminal::EnterAlternateScreen, cursor::Hide)?;
 
     let start = StdInstant::now();
-    let initial = initial_page(session.service().as_ref());
+    let mut initial = initial_page(session.service().as_ref());
     let mut viewer = Viewer::new(initial);
+    let mut messages: Vec<String> = Vec::new();
     let mut live = true;
     let mut grid = Grid::EMPTY;
     let mut last_drawn: Option<(Grid, bool, bool)> = None;
     let mut action = viewer.event(ViewerEvent::Started);
-    loop {
-        if live {
-            live = source.poll(session);
-        }
+    let result = loop {
         let now = Instant(start.elapsed().as_micros().try_into().unwrap_or(u64::MAX));
+        if live {
+            live = source.poll(session, now);
+        }
+        for notice in source.notices() {
+            match notice {
+                Notice::Unencrypted => viewer.set_indicator(SecurityIndicator::Unencrypted),
+                Notice::InitialPage(mpp) => {
+                    if let Some(address) = PageAddress::from_mpp(mpp) {
+                        let untouched = viewer.requested().0 == initial && !viewer.history().can_go_back();
+                        initial = address;
+                        if untouched && address != viewer.requested().0 {
+                            action = Action::Request(address, SubCode::ANY);
+                        }
+                    }
+                }
+                Notice::Message(text) => messages.push(text),
+            }
+        }
         let config: Config = *session.decoder().config();
-        if let Action::Request(address, _) = action {
+        if let Action::Request(address, subcode) = action {
             session.decoder_mut().set_requested(Some(address));
+            source.request(address, subcode);
+            if viewer.requested().0 != address {
+                // A notice moved the start page: follow it without a key.
+                viewer = Viewer::new(address);
+                let _ = viewer.event(ViewerEvent::Started);
+            }
         }
         action = Action::None;
         let (requested, subcode) = viewer.requested();
@@ -121,7 +153,7 @@ pub fn run(
             if matches!(key.code, KeyCode::Char('q') | KeyCode::Esc)
                 || (key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL))
             {
-                return Ok(());
+                break Ok(());
             }
             if let Some(key) = map_key(key) {
                 let links = page.map(PageLinks::from_page).unwrap_or_default();
@@ -131,7 +163,12 @@ pub fn run(
                 last_drawn = None;
             }
         }
+    };
+    drop(guard);
+    for message in messages {
+        eprintln!("ttx: {message}");
     }
+    result
 }
 
 #[allow(clippy::too_many_arguments)] // Drawing settings of one frame.
