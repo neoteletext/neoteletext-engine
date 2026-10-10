@@ -1,4 +1,5 @@
-//! Enhancement faults in `ttx list` (REQ-L25-051, REQ-ARCH-007), on the
+//! Enhancement faults in `ttx list` (REQ-L25-051, REQ-ARCH-007) and the
+//! walk trace of `-vv` (REQ-FSM-010, REQ-CLI-002), on the
 //! authored Level 2.5 and 3.5 stream (REQ-INP-025), which carries faults on
 //! purpose.
 #![allow(missing_docs)]
@@ -60,4 +61,18 @@ fn list_shows_the_enhancement_faults() {
     }
     let (listing, _) = ttx_on_stream(&["list", "-", "--level", "1"]);
     assert!(fault_counts(&listing).is_none(), "{listing}");
+}
+
+/// REQ-FSM-010, REQ-CLI-002: `-vv` prints the trace of the walk of the
+/// level as it prints the other machines' traces; `-v` does not.
+#[test]
+fn verbosity_prints_the_walk_trace() {
+    for (level, machine) in [("1.5", "machine: TripletWalk"), ("3.5", "machine: EnhancementWalk")] {
+        let (_, trace) = ttx_on_stream(&["text", "-", "101", "--level", level, "-vv"]);
+        let walk: Vec<&str> = trace.lines().filter(|line| line.contains(machine)).collect();
+        assert!(!walk.is_empty(), "no {machine} entries at Level {level}:\n{trace}");
+        assert!(walk.iter().all(|line| line.starts_with("ttx: Trace(TraceEntry {")), "{walk:#?}");
+        let (_, quiet) = ttx_on_stream(&["text", "-", "101", "--level", level, "-v"]);
+        assert!(!quiet.contains("TraceEntry"), "{quiet}");
+    }
 }

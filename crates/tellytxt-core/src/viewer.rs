@@ -12,6 +12,7 @@ use crate::nav::{
     EntryResult, History, HistoryEntry, LinkTarget, PageEntry, PageLinks, next_page, previous_page, step_stored,
 };
 use crate::render::Zoom;
+use crate::trace::TraceSink;
 use crate::types::{Instant, PageAddress, SubCode};
 
 /// Viewer keys: the numbered functions of area NAV.
@@ -539,6 +540,31 @@ pub fn compose_level<const DRCS: usize, const PANEL_ROWS: usize>(
         }
         PresentationLevel::Level25 | PresentationLevel::Level35 => {
             Some(enhance::apply(grid, page, magazine, lookup, config, options))
+        }
+    }
+}
+
+/// As [`compose_level`], and when `Config::trace` is on, reports the
+/// transitions of the walk of the level to `trace` (REQ-FSM-010): the
+/// Level 1.5 triplet walk (REQ-FSM-007), or the page-level run of the
+/// enhancement walk (REQ-FSM-011).
+pub fn compose_level_traced<const DRCS: usize, const PANEL_ROWS: usize>(
+    grid: &mut Grid<DRCS, PANEL_ROWS>,
+    page: &StoredPage,
+    magazine: &MagazineData,
+    lookup: &EnhancementLookup<'_>,
+    config: &Config,
+    options: &DisplayOptions,
+    trace: &mut TraceSink<'_>,
+) -> Option<EnhancementReport> {
+    match config.level {
+        PresentationLevel::Level1 => None,
+        PresentationLevel::Level15 => {
+            level15::apply_traced(grid, &page.enhancements, page.enhancements_present, config, true, trace);
+            None
+        }
+        PresentationLevel::Level25 | PresentationLevel::Level35 => {
+            Some(enhance::apply_traced(grid, page, magazine, lookup, config, options, trace))
         }
     }
 }

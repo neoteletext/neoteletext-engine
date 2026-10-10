@@ -58,6 +58,7 @@ use crate::objects::{self, Body, EnhancementLinks, Fetch, ObjectRef, row_of};
 use crate::packet::{
     ColourData, DisplayAttributes, FontStyleData, ObjectKind, ObjectNumber, ObjectSource, TripletFunction,
 };
+use crate::trace::{Machine, TraceSink};
 use crate::types::{DrcsCharacter, DrcsTable, FixedVec};
 
 /// What one build of a grid found, for the decoder's statistics and the
@@ -792,6 +793,89 @@ pub const fn walk_transition(state: WalkState, event: WalkEvent) -> (WalkState, 
     }
 }
 
+/// Names for the transition trace (REQ-FSM-010), as the table of
+/// REQ-FSM-011 names the states.
+#[must_use]
+pub const fn walk_state_name(state: WalkState) -> &'static str {
+    match state {
+        WalkState::Start => "Start",
+        WalkState::Walking => "Walking",
+        WalkState::ModifierPending { .. } => "Modifier pending",
+        WalkState::Returning => "Returning",
+        WalkState::PlacingDefaults => "Placing default objects",
+        WalkState::Finished => "Finished",
+    }
+}
+
+/// Names for the transition trace; a triplet is named by its function.
+#[must_use]
+pub const fn walk_event_name(event: WalkEvent) -> &'static str {
+    match event {
+        WalkEvent::Begin { display: true } => "walk begins, with a display triplet",
+        WalkEvent::Begin { display: false } => "walk begins, with no display triplet",
+        WalkEvent::Triplet(Some(function)) => function.name(),
+        WalkEvent::Triplet(None) => "damaged triplet",
+        WalkEvent::EndOfData => "end of the source's data",
+        WalkEvent::Returned(Ended::Local) => "the local enhancement data ended",
+        WalkEvent::Returned(Ended::Object) => "an object ended",
+        WalkEvent::Returned(Ended::Default) => "a default object ended",
+        WalkEvent::DefaultObject { found: true } => "next default object found",
+        WalkEvent::DefaultObject { found: false } => "no more default objects",
+    }
+}
+
+/// Names for the transition trace.
+#[must_use]
+pub const fn walk_action_name(action: WalkAction) -> &'static str {
+    match action {
+        WalkAction::None => "none",
+        WalkAction::BeginLocal => "begin the local enhancement data",
+        WalkAction::StartDefault => "start the default object",
+        WalkAction::Skip => "skip the damaged triplet",
+        WalkAction::EndSource => "end the source",
+        WalkAction::Pop => "pop the walk record",
+        WalkAction::ResetPosition => "active position to row 0, column 0",
+        WalkAction::ScreenColour(_) => "screen colour",
+        WalkAction::RowColour { .. } => "move to the row; row colour",
+        WalkAction::Position { .. } => "set the active position",
+        WalkAction::DrcsMode { .. } => "choose the DRCS sub-table",
+        WalkAction::Invoke { .. } => "invoke the object",
+        WalkAction::Column(_) => "set the column; place the character or attribute",
+    }
+}
+
+/// The trace's action for a transition whose step met a fault
+/// (REQ-L25-051): the fault, in place of the action that met it. A step
+/// meets at most one fault of the walk, except in Placing default objects,
+/// where finding the next default object may pass over several.
+fn traced_action(
+    state: WalkState,
+    action: WalkAction,
+    before: &EnhancementFaults,
+    after: &EnhancementFaults,
+) -> &'static str {
+    let fault = if after.forbidden_invocations != before.forbidden_invocations {
+        "skip the invocation: not permitted (REQ-OBJ-008)"
+    } else if after.limited_invocations != before.limited_invocations {
+        "skip the invocation: a limit of Annex A.8 is reached"
+    } else if after.absent_objects != before.absent_objects {
+        "skip the invocation: the object is absent"
+    } else if after.discarded_writes != before.discarded_writes {
+        "discard the write (REQ-OBJ-014, REQ-L25-050)"
+    } else if after.ignored_designations != before.ignored_designations {
+        "ignore the designation (REQ-L25-012)"
+    } else {
+        return walk_action_name(action);
+    };
+    match (state, action) {
+        (WalkState::PlacingDefaults, WalkAction::StartDefault) => {
+            "start the default object, past default objects absent or over a limit"
+        }
+        (WalkState::PlacingDefaults, _) => "none: the default objects left are absent or over a limit",
+        _ => fault,
+    }
+}
+
 /// One run of the walk of REQ-FSM-011.
 struct Walker<'a, 's> {
     inputs: &'a Inputs<'a, 's>,
@@ -824,12 +908,27 @@ impl<'a, 's> Walker<'a, 's> {
     /// [`WALK_DEPTH`] deep (REQ-GEN-016). Each loop reads one triplet, ends
     /// one source or places one default object, so the loop is bounded by
     /// the data and the limits.
-    fn walk(&mut self, out: &mut Collector) {
+    ///
+    /// With `trace`, every transition is reported to it (REQ-FSM-010). The
+    /// one test of `trace` is made once for the run, not once for each
+    /// transition: the walk without tracing is a separate copy, in which
+    /// nothing of the trace remains.
+    fn walk(&mut self, out: &mut Collector, trace: Option<&mut TraceSink<'_>>) {
+        match trace {
+            None => self.run::<false>(out, None),
+            Some(sink) => self.run::<true>(out, Some(sink)),
+        }
+    }
+
+    /// The walk of [`Walker::walk`]; `TRACED` says whether `trace` is used.
+    fn run<const TRACED: bool>(&mut self, out: &mut Collector, mut trace: Option<&mut TraceSink<'_>>) {
         let mut stack: FixedVec<Frame<'s>, WALK_DEPTH> = FixedVec::new(Frame::local());
         let mut defaults = self.inputs.links.default_objects.into_iter().flatten();
         let mut found: Option<Frame<'s>> = None;
         let mut state = WalkState::Start;
         loop {
+            // The faults before the step, to name one it meets.
+            let before = if TRACED { self.report.faults } else { EnhancementFaults::NONE };
             let event = match state {
                 WalkState::Start => WalkEvent::Begin { display: has_display_triplets(self.inputs.page) },
                 WalkState::Walking | WalkState::ModifierPending { .. } => self.next_triplet(&mut stack),
@@ -848,8 +947,13 @@ impl<'a, 's> Walker<'a, 's> {
                 WalkState::Finished => return,
             };
             let (next, action) = walk_transition(state, event);
-            state = next;
             self.act(action, &mut stack, &mut found, out);
+            if TRACED && let Some(sink) = trace.as_deref_mut() {
+                let action = traced_action(state, action, &before, &self.report.faults);
+                let (from, event, to) = (walk_state_name(state), walk_event_name(event), walk_state_name(next));
+                sink.transition(Machine::EnhancementWalk, from, event, action, to);
+            }
+            state = next;
         }
     }
 
@@ -1797,7 +1901,9 @@ impl Rows<'_, '_> {
         let mut events = Collector::new(Some(row), self.last_colour_row);
         if self.with_events.checked_shr(row as u32).is_some_and(|bits| bits & 1 == 1) {
             let mut walker = Walker::new(self.inputs);
-            walker.walk(&mut events);
+            // Only the page-level run is traced: every run makes the same
+            // transitions, and each row's run repeats them.
+            walker.walk(&mut events, None);
             report.steps = report.steps.saturating_add(walker.report.steps);
         }
         let context = self.context(row);
@@ -1848,6 +1954,35 @@ pub fn apply<const DRCS: usize, const PANEL_ROWS: usize>(
     config: &Config,
     options: &DisplayOptions,
 ) -> EnhancementReport {
+    process(grid, page, magazine, lookup, config, options, None)
+}
+
+/// As [`apply`], and when `Config::trace` is on, reports every transition
+/// of the page-level run of the walk to `trace` (REQ-FSM-010). A fault the
+/// walk meets (REQ-L25-051) is named as the action of the transition that
+/// met it.
+pub fn apply_traced<const DRCS: usize, const PANEL_ROWS: usize>(
+    grid: &mut Grid<DRCS, PANEL_ROWS>,
+    page: &StoredPage,
+    magazine: &MagazineData,
+    lookup: &EnhancementLookup<'_>,
+    config: &Config,
+    options: &DisplayOptions,
+    trace: &mut TraceSink<'_>,
+) -> EnhancementReport {
+    process(grid, page, magazine, lookup, config, options, config.trace.then_some(trace))
+}
+
+/// [`apply`], with `trace` `None` when tracing is off.
+fn process<const DRCS: usize, const PANEL_ROWS: usize>(
+    grid: &mut Grid<DRCS, PANEL_ROWS>,
+    page: &StoredPage,
+    magazine: &MagazineData,
+    lookup: &EnhancementLookup<'_>,
+    config: &Config,
+    options: &DisplayOptions,
+    trace: Option<&mut TraceSink<'_>>,
+) -> EnhancementReport {
     let build = PageBuild::of(page, config.level);
     if !config.level.is_enhanced() {
         return EnhancementReport::new(build, config.level);
@@ -1894,7 +2029,7 @@ pub fn apply<const DRCS: usize, const PANEL_ROWS: usize>(
     // The page-level run: screen and row colours (decision E.45).
     let mut page_level = Collector::new(None, last_colour_row);
     let mut walker = Walker::new(&inputs);
-    walker.walk(&mut page_level);
+    walker.walk(&mut page_level, trace);
     let mut report = walker.report;
     let screen = page_level.screen.unwrap_or(presentation.default_screen);
     let fallback_row = if page_level.screen.is_some() { screen } else { presentation.default_row };

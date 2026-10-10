@@ -18,6 +18,8 @@ pub enum Machine {
     Slicer,
     /// The Level 1.5 triplet walk (FSM-007).
     TripletWalk,
+    /// The Level 2.5 and 3.5 enhancement walk (FSM-011).
+    EnhancementWalk,
 }
 
 /// One transition.
@@ -35,4 +37,28 @@ pub struct TraceEntry {
     pub action: &'static str,
     /// The state after.
     pub to: &'static str,
+}
+
+/// Where a machine that has neither a clock nor an event queue of its own,
+/// such as the walks that build a grid, reports its transitions: the time
+/// to stamp them with, and the caller's receiver.
+pub struct TraceSink<'t> {
+    /// The time of every entry: when the grid is built.
+    pub time: Instant,
+    /// Receives each entry.
+    pub entries: &'t mut dyn FnMut(TraceEntry),
+}
+
+impl TraceSink<'_> {
+    /// Reports one transition.
+    pub fn transition(
+        &mut self,
+        machine: Machine,
+        from: &'static str,
+        event: &'static str,
+        action: &'static str,
+        to: &'static str,
+    ) {
+        (self.entries)(TraceEntry { machine, time: self.time, from, event, action, to });
+    }
 }
