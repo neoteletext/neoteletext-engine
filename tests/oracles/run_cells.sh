@@ -3,15 +3,15 @@
 # Level 2.5 or 3.5 and compares them cell by cell. Needs a C compiler and
 # zvbi's development files (pkg-config zvbi-0.2), so it runs on the Linux
 # test host.
-#   run_cells.sh TTX LEVEL [--skip PAGE,...] FILE...
+#   run_cells.sh TTX LEVEL [--known FILE] FILE...
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 ttx="$1"
 level="$2"
 shift 2
 skip=()
-if [ "${1:-}" = "--skip" ]; then
-    skip=(--skip "$2")
+if [ "${1:-}" = "--known" ]; then
+    skip=(--known "$2")
     shift 2
 fi
 work="$(mktemp -d)"

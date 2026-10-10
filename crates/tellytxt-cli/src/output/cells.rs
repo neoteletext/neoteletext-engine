@@ -82,13 +82,15 @@ fn flags(cell: &Cell, out: &mut String) {
 }
 
 /// The cells of the page's main area, one line per row after a line giving
-/// the screen colour.
+/// the screen colour. Each row starts with its number and its full row
+/// colour, which a transparent cell shows (Annex C, Table C.1).
 #[must_use]
 pub fn cells(grid: &Grid) -> String {
     let mut out = String::new();
     let _ = writeln!(out, "screen {}", grid.screen_colour);
     for (number, row) in grid.cells.iter().enumerate() {
-        let _ = write!(out, "{number:02}");
+        let row_colour = grid.row_colours.get(number).copied().unwrap_or(grid.screen_colour);
+        let _ = write!(out, "{number:02}/{row_colour}");
         for cell in row {
             out.push(' ');
             character(cell, &mut out);
@@ -119,6 +121,6 @@ mod tests {
         grid.cells[1][3].flash = true;
         let dump = cells(&grid);
         let row = dump.lines().nth(2).unwrap_or_default();
-        assert!(row.starts_with("01 G3:2F/7/0/NN/ M3Fs/7/0/NN/ DnA:47/7/0/NN/ S/7/0/TN/f "), "{row}");
+        assert!(row.starts_with("01/0 G3:2F/7/0/NN/ M3Fs/7/0/NN/ DnA:47/7/0/NN/ S/7/0/TN/f "), "{row}");
     }
 }

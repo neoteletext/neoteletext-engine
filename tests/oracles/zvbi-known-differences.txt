@@ -1,0 +1,27 @@
+# Pages of the authored Level 2.5/3.5 stream (`cargo xtask level25-stream`)
+# on which zvbi 0.2.44/0.2.45 and ttx differ for a recorded reason
+# (REQ-TST-023). Read by compare_cells.py --known. Each zvbi fault was
+# found with a debug build of zvbi on the Linux test host; see
+# IMPLEMENTATION-LOG.md. Format: PAGE reason.
+103 zvbi has no row colour plane: with Black Background Colour Substitution it leaves cells transparent, showing the screen colour, where the full row colour belongs (REQ-L25-022, decision E.45)
+104 zvbi starts a Local Object at its definition triplet and stops there, so Local Objects never draw
+105 zvbi starts a Local Object at its definition triplet and stops there, so Local Objects never draw
+106 zvbi starts a Local Object at its definition triplet and stops there, so Local Objects never draw
+107 zvbi starts a Local Object at its definition triplet and stops there, so Local Objects never draw
+108 zvbi starts a Local Object at its definition triplet and stops there, so Local Objects never draw
+109 zvbi applies the size of a Display Attributes triplet only to characters the enhancement data writes, not to the Level 1 characters it covers (REQ-L25-023)
+110 zvbi flashes for the reserved flash rates 110 and 111, which only set the column (REQ-L25-027)
+113 the page uses DRCS without a DRCS link in the table; zvbi then drops all of the page's enhancement, where ttx contains the fault to the cell (REQ-L25-051, REQ-DRC-009)
+114 the page invokes an invalid DRCS character on purpose; zvbi then drops all of the page's enhancement, where ttx contains the fault to the cell (REQ-L25-051, REQ-DRC-009)
+115 zvbi reads the page number of an X/27/4 link one bit too high (EN 300 706 Table 15: units are bits 7 to 10), so every X/27/4 link misses
+116 zvbi reads the page number of an X/27/4 link one bit too high (EN 300 706 Table 15: units are bits 7 to 10), so every X/27/4 link misses
+117 zvbi starts a Local Object at its definition triplet and stops there, so Local Objects never draw
+121 zvbi starts a Local Object at its definition triplet and stops there, so Local Objects never draw
+122 the page invokes an unused object pointer on purpose; zvbi then drops all of the page's enhancement, where ttx skips that one invocation (REQ-L25-051, REQ-OBJ-005)
+200 zvbi reads the page number of an X/27/4 link one bit too high (EN 300 706 Table 15: units are bits 7 to 10), so every X/27/4 link misses
+201 zvbi reads the page number of an X/27/4 link one bit too high (EN 300 706 Table 15: units are bits 7 to 10), so every X/27/4 link misses
+202 zvbi reads the page number of an X/27/4 link one bit too high (EN 300 706 Table 15: units are bits 7 to 10), so every X/27/4 link misses
+400 zvbi invokes the default objects of the page's POP link but never those of the table's global link (clause 13.8 defines both)
+402 the page's X/26 holds Programme Delivery Control only; zvbi drops the default objects for any X/26, ttx keeps them because nothing on the page is displayed (decision E.53)
+501 zvbi reads the page number of an X/27/4 link one bit too high (EN 300 706 Table 15: units are bits 7 to 10), so every X/27/4 link misses
+702 zvbi copies the magazine's M/29/0 into the page before reading X/28/4 and then skips X/28/4's default colours, so the magazine beats the page (decision E.44)
