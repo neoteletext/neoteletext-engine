@@ -95,6 +95,14 @@ impl StoredPage {
         errors: 0,
     };
 
+    /// False when packet X/28/0 format 1 says the page is not a basic Level 1
+    /// page coded as 7 bits with odd parity: such pages are not displayed as
+    /// text (REQ-ACQ-014).
+    #[must_use]
+    pub fn is_text_page(&self) -> bool {
+        self.page_data.is_none_or(|data| data.page_function == 0 && data.page_coding == 0)
+    }
+
     /// True when row `row` has been received.
     #[must_use]
     pub fn has_row(&self, row: u8) -> bool {

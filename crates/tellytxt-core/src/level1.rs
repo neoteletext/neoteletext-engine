@@ -402,7 +402,8 @@ pub fn build_grid(
     out.boxed_mode = options.boxed || control & (C5_NEWSFLASH | C6_SUBTITLE) != 0;
     let policy = config.parity_policy;
     let suppress_header = control & C7_SUPPRESS_HEADER != 0;
-    let inhibit = control & C10_INHIBIT_DISPLAY != 0;
+    // REQ-L1-016 inhibit display; REQ-ACQ-014 non-text pages show no rows.
+    let inhibit = control & C10_INHIBIT_DISPLAY != 0 || page.is_some_and(|page| !page.is_text_page());
 
     let mut row = 0usize;
     while row < ROWS {
