@@ -1,0 +1,4 @@
+; Drawn glyphs of original.txt that are within one dot of the reference
+; glyph of the same character, each with the reason the form is not a copy
+; (decision E.62): usually that the shape has only one sensible form at
+; 5 by 9. One line each: U+XXXX reason.

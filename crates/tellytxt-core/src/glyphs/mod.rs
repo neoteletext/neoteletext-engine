@@ -174,26 +174,30 @@ impl GlyphSet {
     }
 }
 
+/// Each combining mark of the diacritical marks (REQ-CHR-008) and the
+/// spacing character whose glyph is overlaid for it (decision E.26). Every
+/// glyph set needs a glyph for each spacing character (decision E.62).
+pub const SPACING_MARKS: [(char, char); 15] = [
+    ('\u{0300}', '`'),
+    ('\u{0301}', '\u{00B4}'),
+    ('\u{0302}', '\u{02C6}'),
+    ('\u{0303}', '\u{02DC}'),
+    ('\u{0304}', '\u{00AF}'),
+    ('\u{0306}', '\u{02D8}'),
+    ('\u{0307}', '\u{02D9}'),
+    ('\u{0308}', '\u{00A8}'),
+    ('\u{030A}', '\u{02DA}'),
+    ('\u{030B}', '\u{02DD}'),
+    ('\u{030C}', '\u{02C7}'),
+    ('\u{0323}', '.'),
+    ('\u{0327}', '\u{00B8}'),
+    ('\u{0328}', '\u{02DB}'),
+    ('\u{0332}', '_'),
+];
+
 /// The spacing form of a combining mark, whose glyph is overlaid.
 fn spacing_mark(combining: char) -> Option<char> {
-    Some(match combining {
-        '\u{0300}' => '`',
-        '\u{0301}' => '\u{00B4}',
-        '\u{0302}' => '\u{02C6}',
-        '\u{0303}' => '\u{02DC}',
-        '\u{0304}' => '\u{00AF}',
-        '\u{0306}' => '\u{02D8}',
-        '\u{0307}' => '\u{02D9}',
-        '\u{0308}' => '\u{00A8}',
-        '\u{030A}' => '\u{02DA}',
-        '\u{030B}' => '\u{02DD}',
-        '\u{030C}' => '\u{02C7}',
-        '\u{0323}' => '.',
-        '\u{0327}' => '\u{00B8}',
-        '\u{0328}' => '\u{02DB}',
-        '\u{0332}' => '_',
-        _ => return None,
-    })
+    SPACING_MARKS.iter().find(|(mark, _)| *mark == combining).map(|(_, spacing)| *spacing)
 }
 
 // The tests draw with the Bedstead glyphs.

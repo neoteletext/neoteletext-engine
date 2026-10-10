@@ -1918,6 +1918,31 @@ The application layer of `ttx` is a library crate of its own, `tellytxt-app`: se
 
 *Reason:* The microcontroller targets (REQ-GEN-015) and the flash budget of REQ-GEN-009.
 
+**E.62 — How the original glyphs are drawn and accepted.**
+Recorded on 11 October 2026 (REQ-DOC-004), on the owner's instruction to write the checks first and then start the glyphs of REQ-RND-028.
+
+**What is drawn.** The required characters are generated, not chosen: every code point the character set tables produce for every G0 set, every national option and every G2 set, codes 2/0 to 7/F, plus the spacing forms of the diacritical marks that decision E.26 overlays. `cargo xtask glyph-inventory` writes them to `crates/tellytxt-core/src/glyphs/required.txt`. Block mosaics are computed (REQ-CHR-005), G3 is generated from geometry (REQ-RND-037), and DRCS characters come from the service, so none of them is drawn.
+
+**How it is drawn.** The glyphs are kept in `crates/tellytxt-core/src/glyphs/original.txt`, one glyph per entry, drawn as nine rows of five characters. An entry is one of three kinds:
+- drawn;
+- a copy of another entry, for letters that share a shape across scripts, such as Latin A and Cyrillic А;
+- a base letter with a spacing mark overlaid, as decision E.26 composes at run time.
+
+The rules are written in words in `docs/glyph-style-guide.md`, from first principles: the grid, cap height, x-height, descenders, stroke, marks. They are never written from the SAA5050 or Bedstead glyphs.
+
+**Who draws.** The designer works from a design pack: the style guide, the required list and the file format. The designer never sees the SAA5050 datasheets, the Bedstead files, the generated Bedstead table, golden rasters or rendered samples.
+
+**How the glyphs are accepted.** `cargo xtask glyph-check` checks:
+1. **Format:** every entry parses, and no code point appears twice.
+2. **Well-formedness:** no ink in the descender rows without the `descender` tag, no isolated dot without the `dots` tag, and no empty glyph except a space.
+3. **Confusables:** no two characters of one set have the same glyph, and the listed confusable pairs differ by at least two dots.
+4. **Independence:** every drawn glyph is compared with the Bedstead glyph of the same code point, the stand-in for the SAA5050. An exact match, or a difference of one dot, fails unless `crates/tellytxt-core/src/glyphs/original-audit.txt` gives the reason. Shapes such as a full stop or a hyphen have only one sensible form.
+5. **Coverage:** reported always; required to be complete with `--complete`, which becomes part of the release check of REQ-RND-020.
+
+Recognition by people fluent in each script, and proofs of real pages, are reviewed by hand before the set replaces Bedstead.
+
+*Reason:* REQ-RND-020 and REQ-RND-028. Writing the checks before the glyphs gives the designer feedback while drawing, and the independence check makes the clean room something the gate measures rather than a promise.
+
 ---
 
 # Part F — Requirements

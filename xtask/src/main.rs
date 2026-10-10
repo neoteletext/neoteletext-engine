@@ -16,6 +16,10 @@
 //!   crate (REQ-SEC-016).
 //! - `level25-stream OUT.t42 [--tti DIR]`: write the authored Level 2.5 and
 //!   3.5 test stream (REQ-TST-024).
+//! - `glyph-inventory`: write the characters the original glyph set must
+//!   draw (decision E.62).
+//! - `glyph-check [--complete]`: check the original glyph set (decision
+//!   E.62).
 //! - `features`: lint and test the fixed list of feature builds of decision
 //!   E.61.
 //! - `size [--target TRIPLE]`: link the microcontroller test image for each
@@ -28,6 +32,7 @@ mod features;
 mod g3;
 mod glyphs;
 mod level25;
+mod original;
 mod size;
 mod trace;
 
@@ -51,11 +56,13 @@ fn main() -> ExitCode {
         "check-constants" => checks::constants(&root),
         "check-io" => checks::io(&root),
         "level25-stream" => level25::write(&std::env::args().skip(2).collect::<Vec<_>>()),
+        "glyph-inventory" => original::inventory(&root),
+        "glyph-check" => original::check(&root, &std::env::args().skip(2).collect::<Vec<_>>()),
         "features" => features::run(&root),
         "size" => size::run(&root, &std::env::args().skip(2).collect::<Vec<_>>()),
         _ => Err(format!(
             "usage: cargo xtask <glyphs|corpus|traceability|check-layers|check-deps|check-constants|check-io|\
-             level25-stream|features|size> (got {command:?})"
+             level25-stream|glyph-inventory|glyph-check|features|size> (got {command:?})"
         )),
     };
     match result {

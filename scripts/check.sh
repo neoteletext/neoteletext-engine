@@ -28,6 +28,9 @@ cargo xtask check-constants
 cargo xtask check-io
 cargo xtask check-deps
 
+step "original glyph set: format, rules, confusables, independence (decision E.62)"
+cargo xtask glyph-check
+
 if [ "$mode" = "full" ]; then
     step "no_std crates on the amd64 bare-metal target (REQ-GEN-002)"
     cargo build --quiet --target x86_64-unknown-none \

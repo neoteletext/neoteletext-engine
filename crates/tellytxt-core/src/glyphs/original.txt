@@ -1,0 +1,3 @@
+; The project's original glyph set (REQ-RND-028, decision E.62).
+; Drawn from docs/glyph-style-guide.md alone; see that file for the format.
+; Author: the tellytxt.com project. Licence: MIT, as the project.

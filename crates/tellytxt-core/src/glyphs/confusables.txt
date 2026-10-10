@@ -1,0 +1,30 @@
+; Pairs of characters whose glyphs must differ by at least two dots
+; (decision E.62, docs/glyph-style-guide.md). One pair per line.
+U+004F U+0030 ; O and zero
+U+006F U+0030 ; o and zero
+U+0049 U+006C ; I and l
+U+0049 U+0031 ; I and one
+U+006C U+0031 ; l and one
+U+0053 U+0035 ; S and five
+U+0042 U+0038 ; B and eight
+U+005A U+0032 ; Z and two
+U+0047 U+0036 ; G and six
+U+0044 U+004F ; D and O
+U+0055 U+0056 ; U and V
+U+0072 U+006E ; r and n
+U+0063 U+0065 ; c and e
+U+002C U+002E ; comma and full stop
+U+003B U+003A ; semicolon and colon
+U+0027 U+0060 ; apostrophe and grave
+U+0417 U+0033 ; Cyrillic Ze and three
+U+0431 U+0036 ; Cyrillic be and six
+U+0428 U+0429 ; Cyrillic Sha and Shcha
+U+0448 U+0449 ; Cyrillic sha and shcha
+U+03BD U+0076 ; Greek nu and v
+U+03B9 U+0069 ; Greek iota and i
+U+05D5 U+05D6 ; Hebrew vav and zayin
+U+05D5 U+05DF ; Hebrew vav and final nun
+U+05D3 U+05E8 ; Hebrew dalet and resh
+U+05D4 U+05D7 ; Hebrew he and het
+U+05D1 U+05DB ; Hebrew bet and kaf
+U+05E1 U+05DD ; Hebrew samekh and final mem
