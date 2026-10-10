@@ -1,0 +1,15 @@
+DE,tellytxt attribute and mosaic test card (REQ-TST-030)
+PN,19900
+PS,8000
+OL,1,CMATTRIBUTE TEST CARD
+OL,3,Ared Bgreen Cyellow Dblue Emag Fcyan
+OL,4,GHflashI steady XconcealedG shown
+OL,5,A]Gnew background\ black background
+OL,6,Q#5Z#5YRABCS,,,
+OL,7,V^TU_S hold mosaics
+OL,9,BMDouble height Lnormal
+OL,12,FRounding: AVWXY/\ 0123456789 @#$%&*
+OL,13,Gabcdefghijklmnopqrstuvwxyz []{}|~
+OL,15,CBox:KKboxed textJJ unboxed
+OL,17,W !"#$%&'()*+,-./0123456789:;<=>?
+OL,18,WZ !"#$%&'()*+,-./0123456789:;<=>?
