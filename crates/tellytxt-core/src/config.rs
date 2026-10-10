@@ -142,7 +142,7 @@ impl Config {
             flash_hidden_us: FLASH_HIDDEN_US,
             rounding: true,
             double_start_box: true,
-            black_colour_codes: false,
+            black_colour_codes: true,
             page_completion_timeout_us: PAGE_COMPLETION_TIMEOUT_US,
             row24: Row24Policy::AnnexH,
             framing_tolerance: true,
@@ -165,6 +165,8 @@ impl Config {
         config.level15 = false;
         // English is national option index 0 in Table 32 group 0000.
         config.fixed_national_index = Some(0);
+        // Decision E.18: the SAA5050 has no black colour codes.
+        config.black_colour_codes = false;
         config.row24 = Row24Policy::Never;
         config.reveal = RevealStyle::Momentary;
         config
@@ -175,7 +177,6 @@ impl Config {
     pub const fn saa5246a() -> Self {
         let mut config = Self::en_300_706();
         config.process_x26_15 = false;
-        config.black_colour_codes = true;
         config.row24 = Row24Policy::WhenPresent;
         config.cell_mode = CellMode::Saa5246a;
         config.rounding = false;
@@ -210,7 +211,7 @@ mod tests {
     fn default_profile_matches_req_prf_001() {
         let config = Config::default();
         assert!(config.level15 && config.process_x26_15 && !config.strict_row_setting);
-        assert!(config.double_start_box && !config.black_colour_codes && config.rounding);
+        assert!(config.double_start_box && config.black_colour_codes && config.rounding);
         assert_eq!(config.row24, Row24Policy::AnnexH);
         assert_eq!(config.flash_shown_us, 960_000);
         assert_eq!(config.flash_hidden_us, 320_000);

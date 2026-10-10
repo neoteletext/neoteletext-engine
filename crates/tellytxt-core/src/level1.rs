@@ -678,17 +678,22 @@ mod tests {
     /// REQ-L1-019, decision E.18.
     #[test]
     fn black_codes_follow_the_profile() {
+        // 0/0: alpha black by default and under SAA5246A; no function in the
+        // SAA5050 profile.
+        let saa5050 = Config::saa5050();
         let cells = decode(&[ALPHA_RED, ALPHA_BLACK, b'A']);
-        assert_eq!(cells[2].foreground, 1, "0/0 has no function by default");
-        let config = Config::saa5246a();
-        let cells = decode_row(&row(&[ALPHA_RED, ALPHA_BLACK, b'A']), 0, &context(&config)).0;
-        assert_eq!(cells[2].foreground, 0);
-        // 1/0: no function by default, mosaic black under SAA5246A.
-        let cells = decode(&[MOSAIC_RED, MOSAIC_BLACK, 0x7F]);
-        assert_eq!(cells[2].foreground, MOSAIC_RED & COLOUR_ATTRIBUTE_MASK);
-        let cells = decode_row(&row(&[MOSAIC_RED, MOSAIC_BLACK, 0x7F]), 0, &context(&config)).0;
+        assert_eq!(cells[2].foreground, COLOUR_BLACK, "0/0 is alpha black by default");
+        let cells = decode_row(&row(&[ALPHA_RED, ALPHA_BLACK, b'A']), 0, &context(&saa5050)).0;
+        assert_eq!(cells[2].foreground, 1, "0/0 has no function on the SAA5050");
+        // The RAI case: alpha black ends mosaic mode, so digits are text.
+        let cells = decode(&[MOSAIC_RED, ALPHA_BLACK, b'2']);
+        assert!(matches!(cells[2].glyph, Glyph::Char(c) if c.code == b'2'));
+        // 1/0: mosaic black by default; no function on the SAA5050.
+        let cells = decode(&[ALPHA_RED, MOSAIC_BLACK, 0x7F]);
         assert_eq!(cells[2].foreground, COLOUR_BLACK);
         assert_eq!(cells[2].glyph, Glyph::Mosaic { pattern: MOSAIC_FULL, separated: false });
+        let cells = decode_row(&row(&[MOSAIC_RED, MOSAIC_BLACK, 0x7F]), 0, &context(&saa5050)).0;
+        assert_eq!(cells[2].foreground, MOSAIC_RED & COLOUR_ATTRIBUTE_MASK);
         // 0/E and 0/F show a space and change no state in either profile:
         // the row matches one where a repeated colour code fills the cell.
         for config in [Config::default(), Config::saa5246a()] {

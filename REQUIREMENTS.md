@@ -1150,8 +1150,9 @@ A box starts only when two Start Box attributes appear in consecutive cells, and
 - The worked example in Annex G.3.1 (`x 0B 0B 61 0A 0A`, with the second 0B, the "a" and the first 0A boxed) gives the same result under either rule.
 
 **E.18 — Codes with no Level 1 function.**
-By default, codes 0/0 (alpha black), 1/0 (mosaic black), 0/E (double width) and 0/F (double size) are displayed as spaces and change no state. The "SAA5246A" profile treats 0/0 and 1/0 as alpha black and mosaic black, as that chip does.
-*Reason:* Table 26 gives them no response at Levels 1 and 1.5.
+By default, codes 0/0 and 1/0 are alpha black and mosaic black: set-after attributes like the other colour codes, which select alphanumeric or mosaic mode and a black foreground. Codes 0/E (double width) and 0/F (double size) are displayed as spaces and change no state. The "SAA5050" profile displays 0/0 and 1/0 as spaces with no effect, as that chip does.
+*Reason:* Table 26 gives these codes no response at Levels 1 and 1.5, but current services transmit Level 1 pages that depend on them. A comparison with zvbi on off-air recordings (REQ-TST-021) found them on Italian RAI pages from 2021 (page 517 writes "SETTIMANA DAL 24/01 AL 30/01" after alpha black, in a row that starts in mosaic mode; pages 509 to 513 draw mosaics after mosaic black) and on a Dutch regional service from 2020 (page 100). Treating them as having no function turned that text into mosaics and those mosaics into letters. zvbi and the SAA5246A decode them, and decision E.38 gives recent broadcasts priority.
+*Amended 10 October 2026:* previously the default ignored 0/0 and 1/0, and only the "SAA5246A" profile decoded them.
 
 **E.19 — When a page is complete.**
 The receiver shows rows as they arrive, as hardware decoders do. A page is complete when one of these happens:
@@ -3556,7 +3557,7 @@ The default profile shall follow EN 300 706 and every default choice in Part E:
 - X/26/15 processed;
 - the row-setting rule of Annex A.3;
 - double Start Box;
-- black foreground codes ignored;
+- alpha black and mosaic black decoded (decision E.18);
 - row 24 displayed according to Annex H;
 - rendering in 12 by 20 cells with rounding.
 *Verification:* Test.
@@ -3565,6 +3566,7 @@ The default profile shall follow EN 300 706 and every default choice in Part E:
 *Phase:* Phase 2 (whole requirement).
 A profile shall reproduce a receiver built with the SAA5050 and its companion chips:
 - Level 1.0 only, with packets X/26 ignored;
+- codes 0/0 and 1/0 displayed as spaces with no effect (decision E.18);
 - 24 rows, with row 24 never displayed;
 - a single fixed national character set chosen in the configuration, English by default, with C12 to C14 ignored, as on that chip;
 - 12 by 20 cells with rounding;
