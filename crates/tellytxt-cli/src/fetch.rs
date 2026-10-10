@@ -44,6 +44,7 @@ pub struct StdTransport {
     streams: [Option<Stream>; 3],
     states: [LinkState; 3],
     tls: Arc<rustls::ClientConfig>,
+    allowed_local: Vec<IpAddr>,
 }
 
 fn slot(connection: ConnectionId) -> usize {
@@ -71,10 +72,15 @@ fn blocked(address: IpAddr) -> bool {
 impl StdTransport {
     /// A transport trusting the Mozilla root certificates.
     #[must_use]
-    pub fn new() -> Self {
+    pub fn new(allowed_local: &[IpAddr]) -> Self {
         let roots = rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
         let tls = rustls::ClientConfig::builder().with_root_certificates(roots).with_no_client_auth();
-        Self { streams: [None, None, None], states: [LinkState::Closed; 3], tls: Arc::new(tls) }
+        Self {
+            streams: [None, None, None],
+            states: [LinkState::Closed; 3],
+            tls: Arc::new(tls),
+            allowed_local: allowed_local.to_vec(),
+        }
     }
 
     fn open(&self, host: &str, port: u16, security: Security) -> Result<(Stream, IpAddr), String> {
@@ -82,7 +88,7 @@ impl StdTransport {
             (host, port).to_socket_addrs().map_err(|error| format!("{host}: {error}"))?.collect();
         let allowed = candidates
             .iter()
-            .find(|address| !blocked(address.ip()))
+            .find(|address| !blocked(address.ip()) || self.allowed_local.contains(&address.ip()))
             .ok_or_else(|| format!("{host}: every address is on a blocked local network (REQ-SEC-006)"))?;
         let socket =
             TcpStream::connect_timeout(allowed, CONNECT_TIMEOUT).map_err(|error| format!("{host}: {error}"))?;
@@ -205,7 +211,7 @@ fn requests() -> Receiver<(PageAddress, Option<SubCode>)> {
 }
 
 /// Runs the fetcher for `address` until the decoder process goes away.
-pub fn run(address: &str, no_sandbox: bool) -> Result<(), (u8, String)> {
+pub fn run(address: &str, no_sandbox: bool, allow_local: &[IpAddr]) -> Result<(), (u8, String)> {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let requests = requests();
     // The fetcher may resolve names, which reads /etc, and use the network.
@@ -221,13 +227,13 @@ pub fn run(address: &str, no_sandbox: bool) -> Result<(), (u8, String)> {
     if let Some(name) = address.strip_prefix("zxnet:") {
         let channel = tellytxt_web::zxnet::Channel::from_short_name(name)
             .map_err(|error| (crate::exit::USAGE, format!("unknown live feed: {error:?}")))?;
-        run_zxnet(&channel, &requests);
+        run_zxnet(&channel, &requests, allow_local);
     } else if address.starts_with("wss://") {
         let channel = tellytxt_web::zxnet::Channel::from_identifier(address)
             .map_err(|error| (crate::exit::USAGE, format!("unknown live feed: {error:?}")))?;
-        run_zxnet(&channel, &requests);
+        run_zxnet(&channel, &requests, allow_local);
     } else {
-        run_web(address, &requests);
+        run_web(address, &requests, allow_local);
     }
     Ok(())
 }
@@ -236,11 +242,18 @@ fn clock(start: StdInstant) -> Instant {
     Instant(u64::try_from(start.elapsed().as_micros()).unwrap_or(u64::MAX))
 }
 
-fn run_zxnet(channel: &tellytxt_web::zxnet::Channel, requests: &Receiver<(PageAddress, Option<SubCode>)>) {
+fn run_zxnet(
+    channel: &tellytxt_web::zxnet::Channel,
+    requests: &Receiver<(PageAddress, Option<SubCode>)>,
+    allow_local: &[IpAddr],
+) {
     use tellytxt_web::zxnet::{LiveEvent, LiveInput, LiveOutput, LiveStorage, ZxnetFeed};
     let mut storage = Box::new(LiveStorage::default());
     let mut feed = ZxnetFeed::new(*channel, storage.buffers(), SystemRandom);
-    let mut pump = Pump::new(StdTransport::new());
+    if let Some(&address) = allow_local.first() {
+        feed.allow_local(web_address(address));
+    }
+    let mut pump = Pump::new(StdTransport::new(allow_local));
     let start = StdInstant::now();
     let mut buffer = vec![0u8; READ_CHUNK];
     let broken = std::cell::Cell::new(false);
@@ -294,16 +307,20 @@ fn run_zxnet(channel: &tellytxt_web::zxnet::Channel, requests: &Receiver<(PageAd
     }
 }
 
-fn run_web(address: &str, requests: &Receiver<(PageAddress, Option<SubCode>)>) {
+fn run_web(address: &str, requests: &Receiver<(PageAddress, Option<SubCode>)>, allow_local: &[IpAddr]) {
     use tellytxt_web::agent::{Event, Input, Output, Storage, UserAgent};
     use tellytxt_web::http::MediaType;
     /// Cookie slots and bytes of the jar: REQ-WEB-006's default total.
     const COOKIE_SLOTS: usize = 100;
     const COOKIE_BYTES: usize = 32 * 1024;
     let mut storage = Box::new(Storage::default());
+    let mut config = tellytxt_web::agent::Config::default();
+    for (slot, &address) in config.allowed_local.iter_mut().zip(allow_local) {
+        *slot = Some(web_address(address));
+    }
     let mut agent: Box<UserAgent<'_, SystemRandom, COOKIE_SLOTS, COOKIE_BYTES>> =
-        Box::new(UserAgent::new(tellytxt_web::agent::Config::default(), storage.buffers(), SystemRandom));
-    let mut pump = Pump::new(StdTransport::new());
+        Box::new(UserAgent::new(config, storage.buffers(), SystemRandom));
+    let mut pump = Pump::new(StdTransport::new(allow_local));
     let start = StdInstant::now();
     let mut buffer = vec![0u8; READ_CHUNK];
     let broken = std::cell::Cell::new(false);

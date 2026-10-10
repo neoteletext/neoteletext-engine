@@ -117,7 +117,7 @@ pub fn is_live(input: &str) -> bool {
 fn load_live(common: &Common, wanted: Option<PageAddress>) -> Result<Session, Failure> {
     let config = config(common)?;
     let mut session = Session::new(config, common.pages);
-    let mut source = crate::live::open(&common.input, common.no_sandbox)?;
+    let mut source = crate::live::open(&common.input, common.no_sandbox, &common.allow_local)?;
     let start = std::time::Instant::now();
     let limit = std::time::Duration::from_secs(common.duration);
     if let Some(page) = wanted {
@@ -284,7 +284,7 @@ pub fn open_live(common: &Common) -> Result<(Session, Box<dyn Source>), Failure>
     if is_live(&common.input) {
         let config = config(common)?;
         let session = Session::new(config, common.pages);
-        let source = crate::live::open(&common.input, common.no_sandbox)?;
+        let source = crate::live::open(&common.input, common.no_sandbox, &common.allow_local)?;
         return Ok((session, source));
     }
     Ok((load(common)?, Box::new(Finished)))

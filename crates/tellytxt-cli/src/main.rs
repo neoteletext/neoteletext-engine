@@ -83,6 +83,10 @@ pub struct Common {
     /// Run without the operating-system sandbox (REQ-SEC-017).
     #[arg(long)]
     pub no_sandbox: bool,
+    /// Allow a web service on this local-network address, for example a
+    /// test server on 127.0.0.1 (REQ-SEC-006 is otherwise strict).
+    #[arg(long, value_name = "IP")]
+    pub allow_local: Vec<std::net::IpAddr>,
 }
 
 /// Parity policy names (decision E.8).
@@ -237,6 +241,9 @@ enum Command {
         /// Run without the sandbox.
         #[arg(long)]
         no_sandbox: bool,
+        /// Local-network addresses allowed.
+        #[arg(long)]
+        allow_local: Vec<std::net::IpAddr>,
     },
     /// Check TTI page files for authoring problems.
     Check {
@@ -276,7 +283,7 @@ fn main() -> ExitCode {
         Command::ServiceInfo { common } => commands::service_info(&common),
         Command::Check { files, descriptor } => commands::check(&files, descriptor.as_deref()),
         Command::SandboxTest => sandbox::self_test(),
-        Command::Fetch { address, no_sandbox } => fetch::run(&address, no_sandbox),
+        Command::Fetch { address, no_sandbox, allow_local } => fetch::run(&address, no_sandbox, &allow_local),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
