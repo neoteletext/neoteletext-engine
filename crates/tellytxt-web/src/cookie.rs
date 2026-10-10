@@ -297,15 +297,7 @@ impl<const SLOTS: usize, const BYTES: usize> CookieJar<SLOTS, BYTES> {
             return Err(CookieRejected::SameSiteNoneNotSecure);
         }
 
-        let mut default_path = [0u8; crate::consts::MAX_URL_LENGTH];
-        let path = if let Some(path) = attributes.path {
-            path
-        } else {
-            let derived = default_cookie_path(request_path.as_bytes());
-            let target = default_path.get_mut(..derived.len()).unwrap_or(&mut []);
-            target.copy_from_slice(derived);
-            default_path.get(..derived.len()).unwrap_or(b"/")
-        };
+        let path = attributes.path.unwrap_or_else(|| default_cookie_path(request_path.as_bytes()));
         let host = host.as_bytes();
 
         // Section 5.7 step 16: plain HTTP cannot touch a Secure cookie of
@@ -920,6 +912,19 @@ mod tests {
         assert_eq!(set(&mut jar, &long_path, true), Ok(()));
         // The over-long Path attribute was ignored, so the default path applies.
         assert_eq!(header(&mut jar, "a.example", "/dir/x", true, Site::SameService), "p=1");
+    }
+
+    /// `store` is public, and a port may give it any request path. The
+    /// default path of one longer than a URL the agent holds was copied
+    /// into a buffer of that size, and panicked.
+    #[test]
+    fn default_path_longer_than_a_url_is_stored() {
+        let mut jar = Jar::new();
+        let directory = std::format!("/{}", "d".repeat(crate::consts::MAX_URL_LENGTH));
+        let request = std::format!("{directory}/page");
+        assert_eq!(jar.store(b"long=1", "a.example", &request, true, NOW, true), Ok(()));
+        assert_eq!(header(&mut jar, "a.example", &request, true, Site::SameService), "long=1");
+        assert_eq!(header(&mut jar, "a.example", "/elsewhere", true, Site::SameService), "");
     }
 
     #[test]
