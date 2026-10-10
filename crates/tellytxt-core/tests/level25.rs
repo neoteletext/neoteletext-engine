@@ -90,6 +90,22 @@ fn national_options_apply_to_level_1_only() {
     assert_eq!((char_of(&grid.cells[1][0]), char_of(&grid.cells[1][1])), ('Ä', '['));
 }
 
+/// REQ-CHR-011: G3 characters written by X/26 convert to their Unicode
+/// characters, position 5/F to a space, and a DRCS character to the
+/// fallback U+FFFD.
+#[test]
+fn g3_and_drcs_cells_convert_to_unicode() {
+    let local = [
+        set_position(1, 0),
+        TripletFunction::G3Character { column: 0, code: 0x51, level_15_form: false },
+        TripletFunction::G3Character { column: 1, code: 0x5F, level_15_form: false },
+        TripletFunction::DrcsCharacter { column: 2, normal: true, character: 3 },
+    ];
+    let grid = build_25(&page(&[], &local));
+    let converted: Vec<char> = grid.cells[1][..3].iter().map(char_of).collect();
+    assert_eq!(converted, ['\u{2500}', ' ', '\u{FFFD}']);
+}
+
 /// REQ-L25-011: a G1 character written by a triplet is separated by the
 /// non-spacing attribute only; that attribute also separates Level 1
 /// mosaics.
@@ -487,7 +503,7 @@ fn colour_map_from_page_packets() {
     assert_eq!(grid.colour_map, ColourMap::DEFAULT, "Table 30");
 }
 
-/// REQ-L25-032 to REQ-L25-034, REQ-TST-016, decision E.45: the precedence
+/// REQ-L25-032, REQ-L25-033, REQ-L25-034, REQ-TST-016, decision E.45: the precedence
 /// lists of Annex A.5 and the order of row colour commands.
 #[test]
 fn screen_and_row_colours() {

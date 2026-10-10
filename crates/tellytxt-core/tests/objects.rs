@@ -111,7 +111,7 @@ const RED: u8 = colour_index(0, 1);
 const GREEN: u8 = colour_index(0, 2);
 const WHITE: u8 = colour_index(0, 7);
 
-/// REQ-OBJ-009 to REQ-OBJ-011, REQ-TST-016: the object example of clause
+/// REQ-OBJ-009, REQ-OBJ-010, REQ-OBJ-011, REQ-TST-016: the object example of clause
 /// 13.9 for each type, from each source (REQ-OBJ-001).
 #[test]
 fn clause_13_9_object_example() {
