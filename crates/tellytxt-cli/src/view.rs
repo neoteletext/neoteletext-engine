@@ -64,7 +64,14 @@ impl Drop for RawGuard {
 }
 
 /// Runs the viewer until the user quits.
-pub fn run(session: &mut Session, source: &mut dyn Source, display: Display, scale: Scale, depth: ColourDepth, mosaics: MosaicStyle) -> std::io::Result<()> {
+pub fn run(
+    session: &mut Session,
+    source: &mut dyn Source,
+    display: Display,
+    scale: Scale,
+    depth: ColourDepth,
+    mosaics: MosaicStyle,
+) -> std::io::Result<()> {
     terminal::enable_raw_mode()?;
     let _guard = RawGuard;
     let mut out = std::io::stdout();
@@ -98,7 +105,8 @@ pub fn run(session: &mut Session, source: &mut dyn Source, display: Display, sca
         let rolling = session.rolling_header();
         let magazine = session.decoder().magazine_data(requested.magazine);
         let store = session.decoder().store();
-        let context = ComposeContext { magazine: &magazine, config: &config, rolling_header: &rolling, store, row24: None };
+        let context =
+            ComposeContext { magazine: &magazine, config: &config, rolling_header: &rolling, store, row24: None };
         let _ = viewer.compose(&mut grid, page, &context);
         let reveal = viewer.reveal(now);
         let flash = flash_visible(now, &config);
@@ -141,7 +149,8 @@ fn draw(
     queue!(out, cursor::MoveTo(0, 0))?;
     match display {
         Display::Iterm2 => {
-            let raster = raster(grid, RenderOptions::from_config(config, reveal), scale, &CLUT0, Rgba::opaque(0, 0, 0), flash);
+            let raster =
+                raster(grid, RenderOptions::from_config(config, reveal), scale, &CLUT0, Rgba::opaque(0, 0, 0), flash);
             let encoded = png(&raster)?;
             out.write_all(iterm2_inline(&encoded, raster.width, raster.height).as_bytes())?;
         }

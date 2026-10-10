@@ -637,6 +637,7 @@ dependencies = [
  "tellytxt-formats",
  "tellytxt-image",
  "tellytxt-slicer",
+ "tellytxt-web",
 ]
 
 [[package]]

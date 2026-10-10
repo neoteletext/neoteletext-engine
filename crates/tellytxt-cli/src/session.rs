@@ -49,12 +49,6 @@ impl Session {
         &mut self.decoder
     }
 
-    /// The current session time.
-    #[must_use]
-    pub const fn now(&self) -> Instant {
-        Instant(self.clock)
-    }
-
     /// Feeds one packet. Time advances by the packet's own time stamp when
     /// it has one, otherwise by one line period.
     pub fn push(&mut self, packet: &Packet, meta: &PacketMeta) {

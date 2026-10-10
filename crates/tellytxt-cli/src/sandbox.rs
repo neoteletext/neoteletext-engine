@@ -42,18 +42,16 @@ mod platform {
     const LANDLOCK_ABI: ABI = ABI::V4;
 
     fn landlock(policy: Policy<'_>) -> Result<(), String> {
-        let mut ruleset = Ruleset::default()
-            .handle_access(AccessFs::from_all(LANDLOCK_ABI))
-            .map_err(|e| e.to_string())?;
+        let mut ruleset =
+            Ruleset::default().handle_access(AccessFs::from_all(LANDLOCK_ABI)).map_err(|e| e.to_string())?;
         if !policy.network {
             ruleset = ruleset.handle_access(AccessNet::from_all(LANDLOCK_ABI)).map_err(|e| e.to_string())?;
         }
         let mut created = ruleset.create().map_err(|e| e.to_string())?;
         if let Some(directory) = policy.writable_directory {
             let fd = PathFd::new(directory).map_err(|e| e.to_string())?;
-            created = created
-                .add_rule(PathBeneath::new(fd, AccessFs::from_all(LANDLOCK_ABI)))
-                .map_err(|e| e.to_string())?;
+            created =
+                created.add_rule(PathBeneath::new(fd, AccessFs::from_all(LANDLOCK_ABI))).map_err(|e| e.to_string())?;
         }
         let status = created.restrict_self().map_err(|e| e.to_string())?;
         match status.ruleset {
@@ -84,13 +82,8 @@ mod platform {
         }
         // clone() is allowed only for threads (CLONE_THREAD set).
         let process_clone = SeccompRule::new(vec![
-            SeccompCondition::new(
-                0,
-                SeccompCmpArgLen::Qword,
-                SeccompCmpOp::MaskedEq(libc::CLONE_THREAD as u64),
-                0,
-            )
-            .map_err(|e| e.to_string())?,
+            SeccompCondition::new(0, SeccompCmpArgLen::Qword, SeccompCmpOp::MaskedEq(libc::CLONE_THREAD as u64), 0)
+                .map_err(|e| e.to_string())?,
         ])
         .map_err(|e| e.to_string())?;
         rules.insert(libc::SYS_clone, vec![process_clone]);
@@ -99,33 +92,27 @@ mod platform {
                 rules.insert(syscall, vec![]);
             }
         }
-        let filter = SeccompFilter::new(
-            rules,
-            SeccompAction::Allow,
-            SeccompAction::Errno(libc::EPERM as u32),
-            target_arch()?,
-        )
-        .map_err(|e| e.to_string())?;
+        let filter =
+            SeccompFilter::new(rules, SeccompAction::Allow, SeccompAction::Errno(libc::EPERM as u32), target_arch()?)
+                .map_err(|e| e.to_string())?;
         let program: BpfProgram = filter.try_into().map_err(|e: seccompiler::BackendError| e.to_string())?;
         seccompiler::apply_filter(&program).map_err(|e| e.to_string())?;
         // clone3 cannot be inspected; answering "not implemented" makes the
         // C library fall back to clone, which the rule above checks.
         let mut clone3 = BTreeMap::new();
         clone3.insert(libc::SYS_clone3, vec![]);
-        let filter = SeccompFilter::new(
-            clone3,
-            SeccompAction::Allow,
-            SeccompAction::Errno(libc::ENOSYS as u32),
-            target_arch()?,
-        )
-        .map_err(|e| e.to_string())?;
+        let filter =
+            SeccompFilter::new(clone3, SeccompAction::Allow, SeccompAction::Errno(libc::ENOSYS as u32), target_arch()?)
+                .map_err(|e| e.to_string())?;
         let program: BpfProgram = filter.try_into().map_err(|e: seccompiler::BackendError| e.to_string())?;
         seccompiler::apply_filter(&program).map_err(|e| e.to_string())
     }
 
     pub(super) fn apply(policy: Policy<'_>) -> Result<(), String> {
-        landlock(policy).map_err(|e| format!("cannot apply the Landlock sandbox: {e} (use --no-sandbox to run without it)"))?;
-        seccomp(policy).map_err(|e| format!("cannot apply the seccomp sandbox: {e} (use --no-sandbox to run without it)"))
+        landlock(policy)
+            .map_err(|e| format!("cannot apply the Landlock sandbox: {e} (use --no-sandbox to run without it)"))?;
+        seccomp(policy)
+            .map_err(|e| format!("cannot apply the seccomp sandbox: {e} (use --no-sandbox to run without it)"))
     }
 }
 
@@ -133,8 +120,14 @@ mod platform {
 mod platform {
     use super::Policy;
 
-    pub(super) fn apply(_policy: Policy<'_>) -> Result<(), String> {
-        eprintln!("ttx: note: self-sandboxing is not implemented on this system yet (REQ-SEC-017 Phase 2)");
+    // The same signature as the Linux implementation, which can fail.
+    #[allow(clippy::unnecessary_wraps)]
+    pub(super) fn apply(policy: Policy<'_>) -> Result<(), String> {
+        let wanted = if policy.network { "files outside the output" } else { "files outside the output, and the network" };
+        let output = policy.writable_directory.map_or_else(String::new, |dir| format!(" ({})", dir.display()));
+        eprintln!(
+            "ttx: note: self-sandboxing is not implemented on this system yet (REQ-SEC-017 Phase 2); {wanted}{output} are not blocked"
+        );
         Ok(())
     }
 }

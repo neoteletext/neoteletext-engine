@@ -21,7 +21,7 @@ pub enum MosaicStyle {
 
 /// Whether a cell's foreground is visible at all.
 fn visible(cell: &Cell, grid: &Grid, reveal: bool) -> bool {
-    !(grid.boxed_mode && !cell.boxed) && !(cell.conceal && !reveal) && cell.size != Size::DoubleBottom
+    (!grid.boxed_mode || cell.boxed) && (!cell.conceal || reveal) && cell.size != Size::DoubleBottom
 }
 
 /// The text of one cell: a base character and an optional combining mark,
@@ -40,15 +40,16 @@ fn cell_text(cell: &Cell, grid: &Grid, reveal: bool, mosaics: MosaicStyle, out: 
             let unicode = to_unicode(character);
             let base = if is_safe_output_char(unicode.base) { unicode.base } else { ' ' };
             match unicode.combining {
-                Some(mark) => match compose(base, mark) {
-                    Some(precomposed) => out.push(precomposed),
-                    None => {
+                Some(mark) => {
+                    if let Some(precomposed) = compose(base, mark) {
+                        out.push(precomposed);
+                    } else {
                         out.push(base);
                         if is_safe_output_char(mark) {
                             out.push(mark);
                         }
                     }
-                },
+                }
                 None => out.push(base),
             }
         }

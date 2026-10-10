@@ -1,3 +1,268 @@
-//! The `ttx` command-line program.
+//! `ttx`, the tellytxt command-line program (area CLI).
+//!
+//! Exit status (REQ-CLI-005): 0 success, 1 page not found, 2 invalid usage,
+//! 3 input unreadable or unrecognised, 4 page checker errors.
 
-fn main() {}
+mod commands;
+mod convert;
+mod input;
+mod live;
+mod output;
+mod sandbox;
+mod session;
+mod terminal;
+mod view;
+
+use clap::{Args, Parser, Subcommand, ValueEnum};
+use std::path::PathBuf;
+use std::process::ExitCode;
+
+/// Exit statuses of REQ-CLI-005 and REQ-CLI-006.
+pub mod exit {
+    /// A requested page was not found.
+    pub const NOT_FOUND: u8 = 1;
+    /// Invalid usage.
+    pub const USAGE: u8 = 2;
+    /// The input could not be read or recognised.
+    pub const INPUT: u8 = 3;
+    /// The page checker found errors.
+    pub const CHECK_ERRORS: u8 = 4;
+}
+
+/// tellytxt: a software teletext receiver (ETSI EN 300 706 Levels 1.0 and 1.5).
+#[derive(Parser, Debug)]
+#[command(name = "ttx", version, about)]
+pub struct Cli {
+    #[command(subcommand)]
+    command: Command,
+}
+
+/// Options every command accepts (REQ-CLI-002).
+// Each flag is a separate command-line switch.
+#[allow(clippy::struct_excessive_bools)]
+#[derive(Args, Debug, Clone)]
+pub struct Common {
+    /// Input: a file, `-` for standard input, or `zxnet:<name>` for a live feed.
+    pub input: String,
+    /// Input format, overriding detection.
+    #[arg(long, value_enum)]
+    pub format: Option<input::FormatChoice>,
+    /// Compatibility profile.
+    #[arg(long, default_value = "en300706")]
+    pub profile: String,
+    /// Transport stream packet identifier of the teletext stream to use.
+    #[arg(long)]
+    pub pid: Option<u16>,
+    /// Pages and sub-pages to keep in memory.
+    #[arg(long, default_value_t = session::DEFAULT_PAGES)]
+    pub pages: usize,
+    /// Character set region, the Table 32 group 0 to 15 (decision E.4).
+    /// By default it follows the language a transport stream declares.
+    #[arg(long, value_parser = clap::value_parser!(u8).range(0..16))]
+    pub region: Option<u8>,
+    /// Parity failure policy (decision E.8).
+    #[arg(long, value_enum)]
+    pub parity: Option<ParityChoice>,
+    /// Turn Level 1.5 processing off (REQ-L15-001).
+    #[arg(long)]
+    pub level1_only: bool,
+    /// Turn character rounding off (REQ-RND-012).
+    #[arg(long)]
+    pub no_rounding: bool,
+    /// Accept a single Start Box (decision E.17).
+    #[arg(long)]
+    pub single_start_box: bool,
+    /// Print diagnostics, and with -vv the state machine trace (REQ-FSM-010).
+    #[arg(short, long, action = clap::ArgAction::Count)]
+    pub verbose: u8,
+    /// Run without the operating-system sandbox (REQ-SEC-017).
+    #[arg(long)]
+    pub no_sandbox: bool,
+}
+
+/// Parity policy names (decision E.8).
+#[derive(ValueEnum, Clone, Copy, Debug)]
+pub enum ParityChoice {
+    /// Keep the last character that passed.
+    KeepGood,
+    /// Show failed characters as spaces.
+    Space,
+    /// Show a visible error marker.
+    Marker,
+}
+
+/// Terminal display choices (REQ-RND-029).
+#[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GraphicsChoice {
+    /// Detect.
+    Auto,
+    /// iTerm2 inline images.
+    Iterm2,
+    /// Characters with ANSI colour.
+    Text,
+}
+
+/// Raster options shared by `show`, `render` and `view`.
+#[derive(Args, Debug, Clone)]
+pub struct RasterArgs {
+    /// Whole-number scale factor; 0 fits the terminal.
+    #[arg(long, default_value_t = 0)]
+    pub scale: usize,
+    /// Stretch height by 1.2 for 4:3 proportions (REQ-RND-004).
+    #[arg(long)]
+    pub aspect: bool,
+    /// Show concealed text.
+    #[arg(long)]
+    pub reveal: bool,
+}
+
+#[derive(Subcommand, Debug)]
+enum Command {
+    /// List the pages and sub-pages found, with counts and error statistics.
+    List {
+        #[command(flatten)]
+        common: Common,
+    },
+    /// Display one page in the terminal.
+    Show {
+        #[command(flatten)]
+        common: Common,
+        /// Page, e.g. 100 or 100:0003.
+        page: String,
+        #[command(flatten)]
+        raster: RasterArgs,
+        /// Graphics protocol.
+        #[arg(long, value_enum, default_value = "auto")]
+        graphics: GraphicsChoice,
+        /// Write separated mosaics with contiguous characters, for older fonts.
+        #[arg(long)]
+        legacy_mosaics: bool,
+        /// Use 8 colours instead of 24-bit colour.
+        #[arg(long)]
+        colours8: bool,
+    },
+    /// Browse pages interactively in the terminal.
+    View {
+        #[command(flatten)]
+        common: Common,
+        #[command(flatten)]
+        raster: RasterArgs,
+        /// Graphics protocol.
+        #[arg(long, value_enum, default_value = "auto")]
+        graphics: GraphicsChoice,
+        /// Write separated mosaics with contiguous characters, for older fonts.
+        #[arg(long)]
+        legacy_mosaics: bool,
+        /// Use 8 colours instead of 24-bit colour.
+        #[arg(long)]
+        colours8: bool,
+    },
+    /// Write one page, or all, as image files.
+    Render {
+        #[command(flatten)]
+        common: Common,
+        /// Page, e.g. 100, 100:0003, or `all`.
+        page: String,
+        /// Output file, or directory for `all`.
+        #[arg(short, long)]
+        output: PathBuf,
+        #[command(flatten)]
+        raster: RasterArgs,
+        /// Image format.
+        #[arg(long, value_enum, default_value = "png")]
+        image: commands::ImageFormat,
+    },
+    /// Write one page, or all, as UTF-8 text.
+    Text {
+        #[command(flatten)]
+        common: Common,
+        /// Page, e.g. 100, 100:0003, or `all`.
+        page: String,
+        /// Show concealed text.
+        #[arg(long)]
+        reveal: bool,
+        /// Write separated mosaics with contiguous characters, for older fonts.
+        #[arg(long)]
+        legacy_mosaics: bool,
+    },
+    /// Convert between formats.
+    Convert {
+        #[command(flatten)]
+        common: Common,
+        /// Output file.
+        #[arg(short, long)]
+        output: PathBuf,
+        /// Output format.
+        #[arg(long, value_enum)]
+        to: commands::ConvertTarget,
+        /// Only this magazine and page, e.g. 100.
+        #[arg(long)]
+        page: Option<String>,
+    },
+    /// Convert raw sampled video to T42 with quality statistics.
+    Slice {
+        #[command(flatten)]
+        common: Common,
+        /// Output T42 file.
+        #[arg(short, long)]
+        output: PathBuf,
+        /// Capture geometry preset.
+        #[arg(long, default_value = "bt8x8")]
+        preset: String,
+    },
+    /// List the teletext streams, languages and subtitle pages of a transport stream.
+    Services {
+        #[command(flatten)]
+        common: Common,
+    },
+    /// Print the broadcast service data of packet 8/30.
+    ServiceInfo {
+        #[command(flatten)]
+        common: Common,
+    },
+    /// Check TTI page files for authoring problems.
+    Check {
+        /// TTI files.
+        files: Vec<PathBuf>,
+        /// Service descriptor to resolve link targets against.
+        #[arg(long)]
+        descriptor: Option<PathBuf>,
+    },
+}
+
+fn main() -> ExitCode {
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(error) => {
+            let _ = error.print();
+            return if error.use_stderr() { ExitCode::from(exit::USAGE) } else { ExitCode::SUCCESS };
+        }
+    };
+    let result = match cli.command {
+        Command::List { common } => commands::list(&common),
+        Command::Show { common, page, raster, graphics, legacy_mosaics, colours8 } => {
+            commands::show(&common, &page, &raster, graphics, legacy_mosaics, colours8)
+        }
+        Command::View { common, raster, graphics, legacy_mosaics, colours8 } => {
+            commands::view(&common, &raster, graphics, legacy_mosaics, colours8)
+        }
+        Command::Render { common, page, output, raster, image } => {
+            commands::render(&common, &page, &output, &raster, image)
+        }
+        Command::Text { common, page, reveal, legacy_mosaics } => {
+            commands::text(&common, &page, reveal, legacy_mosaics)
+        }
+        Command::Convert { common, output, to, page } => commands::convert(&common, &output, to, page.as_deref()),
+        Command::Slice { common, output, preset } => commands::slice(&common, &output, &preset),
+        Command::Services { common } => commands::services(&common),
+        Command::ServiceInfo { common } => commands::service_info(&common),
+        Command::Check { files, descriptor } => commands::check(&files, descriptor.as_deref()),
+    };
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err((code, message)) => {
+            eprintln!("ttx: {message}");
+            ExitCode::from(code)
+        }
+    }
+}

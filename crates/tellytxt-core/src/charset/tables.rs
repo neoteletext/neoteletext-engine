@@ -28,9 +28,7 @@ const SET_SIZE: usize = 96;
 /// One character set, indexed by code − 2/0.
 type CodeTable = [char; SET_SIZE];
 
-/// Bits 3 to 6 of a Table 32 or Table 33 value are the group; bits 0 to 2
-/// are the national option index (Table 32 note 1, decision E.21).
-const GROUP_SHIFT: u32 = 3;
+use crate::consts::DESIGNATION_GROUP_SHIFT as GROUP_SHIFT;
 
 
 fn lookup(table: &CodeTable, code: u8) -> char {
