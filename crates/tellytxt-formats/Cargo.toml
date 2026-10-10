@@ -11,3 +11,6 @@ tellytxt-core.workspace = true
 
 [lints]
 workspace = true
+
+[features]
+std = []

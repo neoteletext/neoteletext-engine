@@ -3,6 +3,7 @@
 //! ranged requests; files already present with the pinned checksum are
 //! kept. Missing sources are reported, not fatal.
 
+use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -62,7 +63,7 @@ pub fn fetch(root: &Path) -> Result<(), String> {
             return Err(format!("{name}: checksum {sum} does not match the pinned {pin}"));
         }
         println!("ok {name} {sum}");
-        updated.push_str(&format!("{name:<32} {bytes:>8} {sum} {url}\n"));
+        let _ = writeln!(updated, "{name:<32} {bytes:>8} {sum} {url}");
     }
     fs::write(root.join(MANIFEST), updated).map_err(|e| e.to_string())?;
     if failures > 0 { Err(format!("{failures} file(s) missing")) } else { Ok(()) }
