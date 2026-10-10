@@ -421,8 +421,20 @@ pub fn run(
                     .or_else(|| page.map(PageLinks::from_page))
                     .unwrap_or_default();
                 let confirmed = |service| confirmed_services.contains(&service);
-                let key_context =
-                    KeyContext { links: &links, store, initial, config: &config, now, confirmed: &confirmed };
+                // REQ-SEC-024: links work only while their prompts are on
+                // screen: row 24 drawn, not boxed away, not zoomed off.
+                let row24_shown = !grid.boxed_mode
+                    && viewer.zoom() != tellytxt_core::render::Zoom::Top
+                    && grid.cells[24].iter().any(|cell| cell.glyph != tellytxt_core::level1::Glyph::Space);
+                let key_context = KeyContext {
+                    links: &links,
+                    store,
+                    initial,
+                    config: &config,
+                    now,
+                    confirmed: &confirmed,
+                    row24_shown,
+                };
                 action = viewer.key(key, &key_context);
                 if !matches!(action, Action::ConfirmService(_)) {
                     prompt = None;

@@ -131,6 +131,9 @@ pub struct KeyContext<'a> {
     pub now: Instant,
     /// Whether another service's origin was confirmed this session.
     pub confirmed: &'a dyn Fn(u8) -> bool,
+    /// Row 24 is on screen with the link prompts. When it is not, the
+    /// coloured keys do nothing (REQ-SEC-024).
+    pub row24_shown: bool,
 }
 
 /// What composing the screen needs besides the page.
@@ -279,7 +282,7 @@ impl Viewer {
     /// (from X/27/0 or the TTI Link Extension); `confirmed` says whether
     /// another service's origin has been confirmed this session.
     pub fn key(&mut self, key: Key, context: &KeyContext<'_>) -> Action {
-        let KeyContext { links, store, initial, config, now, confirmed } = *context;
+        let KeyContext { links, store, initial, config, now, confirmed, row24_shown } = *context;
         if let ViewerState::ConfirmingLink(waiting) = self.state {
             let index = colour_index(key);
             if index == Some(waiting)
@@ -327,6 +330,9 @@ impl Viewer {
                 Action::None
             }
             _ if !matches!(self.state, ViewerState::Displaying | ViewerState::Searching) => Action::None,
+            // REQ-SEC-024: a link may be followed only while its prompt is
+            // shown whole in row 24.
+            Key::Red | Key::Green | Key::Yellow | Key::Cyan if !row24_shown => Action::None,
             Key::Red | Key::Green | Key::Yellow | Key::Cyan => {
                 let index = colour_index(key).unwrap_or(0);
                 match links.keys.get(usize::from(index)).copied().flatten() {
@@ -532,6 +538,7 @@ mod tests {
             config: &config,
             now: Instant(0),
             confirmed: &no,
+            row24_shown: true,
         };
         assert_eq!(viewer.key(Key::Digit(2), &context), Action::None);
         assert_eq!(viewer.state(), ViewerState::Entering1);
@@ -561,6 +568,7 @@ mod tests {
             config: &config,
             now: Instant(0),
             confirmed: &no,
+            row24_shown: true,
         };
         let action = viewer.key(Key::Yellow, &context);
         assert_eq!(action, Action::ConfirmService(target));
@@ -572,6 +580,10 @@ mod tests {
         viewer.event(ViewerEvent::PagePresent);
         viewer.key(Key::Yellow, &context);
         assert_eq!(viewer.key(Key::Red, &context), Action::None);
+        assert_eq!(viewer.state(), ViewerState::Displaying);
+        // REQ-SEC-024: with row 24 off screen the coloured keys do nothing.
+        let hidden = KeyContext { row24_shown: false, ..context };
+        assert_eq!(viewer.key(Key::Yellow, &hidden), Action::None);
         assert_eq!(viewer.state(), ViewerState::Displaying);
     }
 
@@ -592,6 +604,7 @@ mod tests {
             config: &config,
             now: Instant(0),
             confirmed: &no,
+            row24_shown: true,
         };
         viewer.key(Key::Reveal, &context);
         assert!(viewer.reveal(Instant(0)));
