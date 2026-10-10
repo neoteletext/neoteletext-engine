@@ -1853,6 +1853,38 @@ Where zvbi follows a different reading from decisions E.45 (the full row colour 
 
 *Reason:* REQ-TST-023 requires an independent oracle; recording its faults keeps the comparison strict everywhere else, since a page not in the list must agree in every compared cell.
 
+**E.61 — Compile-time features: a build contains only the parts it uses.**
+Recorded on 11 October 2026 (REQ-DOC-004), on the owner's instruction that the code be organised so that only the parts a build needs are compiled in.
+
+The linker removes code nothing calls, but not code reachable through a choice made at run time. Measured on 11 October 2026 with a linked image built with `opt-level = "z"` and link-time optimisation (`x86_64-unknown-none`), whose roots are the functions a port calls:
+- a decoder that composes its pages through the configured level carries the Level 2.5 and 3.5 processor, about 27 kilobytes of code, even when it is configured for Level 1.5, which needs 1.7;
+- format detection reaches every reader: about 40 kilobytes of code in a port that reads only T42, which needs 1;
+- the renderer adds 6 kilobytes of code and the Bedstead glyphs 33 kilobytes of data;
+- forms add 8 kilobytes of code and 6 of data.
+
+Only compile-time features can remove these. The rules:
+1. **Three tools.** Crates separate different dependencies or environments. Cargo features separate the optional areas within a crate. The configuration chooses behaviour among what is compiled.
+2. **Features are additive and coarse**: one per area of Part F, never one per function. A feature never changes what another feature does.
+3. **Data types and acquisition are never behind a feature.** Level 1.5 reads the character set designations of X/28/0 and M/29/0 (decision E.4), so acquisition stays whole at every level. Keeping types unconditional keeps the features additive. Only processing is optional.
+4. **A configured level that is not compiled in** falls back to the highest compiled level below it (`PresentationLevel::available`).
+5. **Each crate's default is every feature**, so that a plain dependency works. Library crates depend on one another with default features off and name what they use, so that Cargo's feature unification never brings in an area a port did not ask for.
+6. **The gate builds and tests a fixed list of builds** from `xtask`, and measures the linked test image of REQ-GEN-009 and REQ-GEN-019.
+
+The features of `tellytxt-core`, all on by default:
+
+| Feature | Contents |
+|---|---|
+| `level15` | The Level 1.5 pass (area L15) |
+| `level25` | The enhancement processor for Levels 2.5 and 3.5 (areas L25, OBJ and DRC) |
+| `render` | The row renderer and the generated G3 glyphs (area RND) |
+| `bedstead` | The temporary Bedstead glyph set (decision E.25); a port with its own glyphs leaves it out |
+| `viewer` | The viewer state machine, navigation and history (area NAV) |
+| `forms` | The forms model (Appendix C) |
+
+`compose_level`, which applies the level's pass, moves from the viewer to its own module `compose`, and `Zoom` from the renderer to the Level 1 grid, because a port without the viewer or the renderer still composes pages.
+
+*Reason:* The microcontroller targets (REQ-GEN-015) and the flash budget of REQ-GEN-009.
+
 ---
 
 # Part F — Requirements
