@@ -1,8 +1,16 @@
-# The neoteletext desktop browser: design
+# The neoteletext browser: design
 
-A design for a desktop teletext browser for macOS, Linux and Windows, with tabs, an address bar, back and forward, bookmarks and the rest of what people expect of a browser. It browses the web-native teletext of `docs/web-native-concept.md`, as well as files and live feeds.
+A design for a teletext browser for Windows, macOS, Linux, Android and iOS, with tabs, an address bar, back and forward, bookmarks and the rest of what people expect of a browser. It browses the web-native teletext of `docs/web-native-concept.md`, as well as files and live feeds.
 
 This is a design, not a requirement. Nothing here changes REQUIREMENTS.md until its decisions (section 15) are recorded in Part E and its behaviour becomes requirements. It follows the research of 11 October 2026 into how browsers are built (section 2, sources in section 17).
+
+*Revised 11 October 2026:* Android and iOS joined the targets. The revision:
+- moves all browser behaviour into a platform-free crate, so each platform's shell is thin (section 3.5);
+- runs the decoder inside a WebAssembly interpreter on every platform, because iOS gives an ordinary app no second process (sections 3.6 and 12.8);
+- compares five architectures and records the owner's choice: one Rust app on egui, with no Slint (section 9.1);
+- adds the Android and iOS sandboxes, touch input, mobile layouts and packaging.
+
+The file keeps its name because the GitHub plan links to it.
 
 ## Contents
 
@@ -30,7 +38,8 @@ This is a design, not a requirement. Nothing here changes REQUIREMENTS.md until 
 
 ### Goals
 
-- **A real browser for teletext.** Tabs, an address bar, back and forward, reload, home, bookmarks, history, and keyboard shortcuts, on macOS, Linux and Windows from one code base.
+- **A real browser for teletext.** Tabs, an address bar, back and forward, reload, home, bookmarks, history, and keyboard shortcuts, on Windows, macOS, Linux, Android and iOS from one code base.
+- **The same behaviour everywhere.** Navigation, the tuning screen, address display and every security rule are one body of Rust code, tested once, on all five platforms. A platform supplies only a window, input, storage and its sandbox.
 - **Everything the concept settled.** Sites, links to page numbers and addresses, aliases, the tuning screen, row 0 as location bar, page catching, presets, and the keyboard mapping of `docs/web-native-concept.md`.
 - **Every input.** Web teletext sites, zxnet live feeds, and local files in every format `ttx` reads (T42, TTI, transport streams and the rest).
 - **Faithful pages.** The page area is the same raster `ttx` renders: 12 by 20 cells with rounding, Levels 1 to 3.5, side panels, flash, reveal, mix, zoom, and the glyph switch between the original set and Bedstead.
@@ -47,7 +56,7 @@ This is a design, not a requirement. Nothing here changes REQUIREMENTS.md until 
 
 - **No HTML.** The browser shows teletext only. An address that serves anything else gets a clear refusal page.
 - **No scripts or plug-ins.**
-- **No mobile build.** The owner has said Linux and Windows as well as macOS; mobile would change the toolkit choice (see section 15).
+- **No alternative web browser engine entitlement on iOS.** Apple's BrowserEngineKit gives multiple processes only to HTML engines distributed solely in the EU or Japan (section 2.12). We ship one app worldwide and design for a single process on iOS.
 
 ---
 
@@ -130,7 +139,7 @@ Its internationalised domain name policy [19] shows a label as punycode when:
 - Servo's demo browser servoshell is built with egui and winit [26].
 - Lagrange draws its whole interface itself on every platform [31][32].
 
-**What we do:** one toolkit, egui, on all three platforms (section 9).
+**What we do:** one toolkit, egui, on all five platforms, over a platform-free core (sections 2.12, 3.5 and 9.1).
 
 ### 2.9 Front ends plug into a shared core, and a headless front end drives the tests
 
@@ -161,6 +170,38 @@ Other small-web browsers:
   - Landlock needs no privileges; whether it works inside Flatpak is unverified.
 
 **What we do:** section 12.
+
+### 2.12 Mobile: what the same browsers do on Android and iOS
+
+**How much is shared:**
+- **Chrome** shares its business logic. On iOS it cannot ship Blink: `ios/web` wraps WKWebView in place of `content/`, and the interface is Objective-C++ and Swift [39][40].
+- **Firefox** writes separate mobile apps (Kotlin on GeckoView for Android, Swift on WebKit for iOS). They share Rust components, such as sync and logins, through UniFFI-generated Kotlin and Swift bindings [41][42].
+- **Lagrange**, the closest analogue, ships on iOS (App Store) and Android (F-Droid and an APK) from one C code base. It draws its whole interface itself, has small per-platform shims (`android.c`, `ios.m`), and picks a phone or tablet layout at compile time [31].
+- **Servo** ships servoshell for Android and OpenHarmony, but not iOS [43].
+- **Ladybird** has an Android port and no iOS port [22].
+- **No mobile version:** NetSurf, Dillo, Kristall and Amfora.
+
+**Processes on Android:**
+- **Chrome** runs renderers and sandboxed services as `android:isolatedProcess` services, preloaded by an app zygote, with seccomp-BPF as a second layer [44][45].
+  - An isolated process has its own user ID and no permissions, and talks only through the service interface [46].
+  - Chrome also declares a native-only sandboxed service. Android API level 37 added pure native services (`android:nativeService`), which need no Java runtime in the process [47].
+- **Firefox** documents isolated tab processes and app zygote preloading, behind build flags [48].
+- **Ladybird's** Android services are separate processes, but not isolated ones [22].
+- **Servo** spawns unsandboxed child processes on Android: its sandbox code says "Sandboxed multiprocess is not supported on this platform" [49].
+
+**Processes on iOS:**
+- **Ordinary apps cannot start processes.** Apple's developer technical support states that `posix_spawn` and the other ways of launching a child process are not supported on iOS [50]. Writable executable memory, and so just-in-time compilation, is reserved to Apple [51].
+- **BrowserEngineKit** gives a browser multiple processes (content, network and rendering extensions over XPC) and just-in-time compilation [52][53]. It is only for engines that:
+  - are web browsers in the HTML sense;
+  - pass 90% of the Web Platform Tests;
+  - are distributed solely in the EU (iOS 17.4 and later) or solely in Japan (iOS 26.2 and later).
+- **Chrome and Firefox on iOS** both use WebKit for this reason.
+- **Lagrange on iOS** is a single process [31].
+
+**What we do:**
+- **Android:** the same three kinds of process as the desktop, with the decoder as an isolated service, as Chrome does (section 12.6).
+- **iOS:** one process, with the decoder walled off by a WebAssembly interpreter, which needs no second process and no just-in-time compilation (section 12.7). The interpreter runs on the other four platforms too, so the decoder's wall is the same code everywhere (section 3.6).
+- **Following Lagrange and NetSurf:** one engine with thin per-platform shims, and a layout chosen for phones and tablets.
 
 ---
 
@@ -245,11 +286,38 @@ Constraints on these messages:
 |---|---|
 | `neoteletext-core` | The input router of `docs/hmi.md`. Navigation stays in the viewer's existing state machine where it is per page; history moves to the tab model (section 6). |
 | `neoteletext-web` | The concept's link targets (`LK`, `LT`, addresses), descriptor aliases and well-known location, bundles, enhancement dependencies. The address display policy (section 7) lives here too, because it is security policy (`core::policy` holds the rules; the data source is a decision). |
-| `neoteletext-app` | The tab object (section 5), the navigation controller (section 6), the decoder-process side and its sandbox, and the new pipe message kinds. |
+| **`neoteletext-browser`** (new) | Everything the browser decides, with no operating-system access, like the library crates: the tab object (section 5), the navigation controller (section 6), history, bookmarks and presets as data, the tuning screen, the chrome's state (what the address bar, tab strip and buttons show), and the decoder protocol of section 3.4 as a sans-IO state machine. It compiles for every target, including iOS and Android. |
+| **`neoteletext-decoder-wasm`** (new) | The decoder of section 3.1 built as a WebAssembly module (`wasm32-unknown-unknown`, `no_std`), exporting only the messages of section 3.4 over its linear memory. |
+| `neoteletext-app` | The platform side: spawning and sandboxing processes, the WebAssembly host (section 3.6), storage, the secret store, and the new pipe message kinds. Each platform's sandbox sits behind one trait. |
 | `neoteletext-cli` | `ttx view` becomes a front end of the tab object, so the terminal viewer gains tabs, history across sites and the tuning screen. |
-| **`neoteletext-desktop`** (new) | The egui application: the interface process (section 9). |
+| **`neoteletext-gui`** (new) | The egui interface (section 9): draws the chrome from `neoteletext-browser`'s state and presents frames. One crate for all five platforms. |
+| **`platform/android`, `platform/ios`** (new) | The thin native shells: a Gradle project and an Xcode project, each a few hundred lines of Kotlin or Swift. They hold what Rust cannot do on that platform: the app entry point, the Android service stubs (section 12.6), the system text field and keyboard where egui falls short (section 9.1), and the share and file-open hooks. They contain no browser behaviour. |
 
-The layer table of `ARCHITECTURE.md` gains `neoteletext-desktop` at L9, above `neoteletext-app`.
+Notes:
+- **The shells and the toolkit crate never decide anything.** A rule about trust, navigation or display that lived in Swift or Kotlin would have to be written and tested twice. Every such rule lives in `neoteletext-browser`.
+- **The layer table of `ARCHITECTURE.md`** gains `neoteletext-browser` at L8 beside `neoteletext-app`, and `neoteletext-gui` at L9.
+
+### 3.6 The process model on each platform
+
+The decoder handles untrusted data, so it is the part to wall off. It gets two walls where the platform allows and one where it does not:
+
+| Platform | Interface | Fetcher | Decoder |
+|---|---|---|---|
+| Linux | Main process | Its own process, Landlock and seccomp | Its own process, Landlock and seccomp, **and** inside the WebAssembly interpreter |
+| macOS | Main app, App Sandbox | XPC service with the network entitlement only | XPC service with no entitlements, **and** the interpreter |
+| Windows | Main process | AppContainer with the internet-client capability | AppContainer without it, low integrity, job object, **and** the interpreter |
+| Android | Main app process | A `:fetcher` service process | An isolated service process with seccomp, **and** the interpreter |
+| iOS | The app | Inside the app process | Inside the app process, **inside the interpreter only** |
+
+**The WebAssembly wall:**
+- **The interpreter is wasmi** [54]: no just-in-time compilation (so it is allowed on iOS), `no_std`, MIT or Apache licensed, with fuel metering and limits on memory and tables.
+- **The module is our own decoder, compiled into the signed app.** Nothing is downloaded, and no page ever supplies code: the "no executable content" rule is unchanged. App Review guideline 2.5.2 forbids code that is downloaded or changes the app's features [55]. A bundled interpreter running bundled code is the case older Apple terms allowed by name [56]. That the current terms still allow it is likely but not confirmed.
+- **What it gives:** a decoder bug, even one that corrupts the decoder's memory, stays inside the module's linear memory. The module imports nothing but the message channel, so it has no way to reach the network, files or the interface's state.
+- **What it costs:** the interpreter is slower than native code. A teletext page is 1,000 cells, so this should be small, but it must be measured (section 14) on the slowest phone we support.
+- **Why on every platform:** the wall is then one piece of code, tested and fuzzed everywhere, rather than a special case on iOS. On four platforms it sits inside an operating-system sandbox as well.
+- **Audit:** wasmi was audited at versions 0.31 and 0.36 to 0.38. Version 2.0 has not been audited. Our fuzzing of the host side covers our use; an outside audit is a release question (section 15).
+
+**Messages are the same everywhere.** The decoder protocol of section 3.4 is carried over a pipe between processes, or over the module's memory inside one process. `neoteletext-browser` checks every decoder message in the same way in both cases.
 
 ---
 
@@ -294,7 +362,7 @@ From `docs/hmi.md`:
 
 ## 5. The tab object
 
-The one interface every front end drives: the headless test driver, `ttx view` and the desktop app. The tab object lives in the interface process. It holds the tab's navigation controller and talks to the fetcher and decoder.
+The one interface every front end drives: the headless test driver, `ttx view` and the app on every platform. The tab object lives in `neoteletext-browser` and runs in the interface process. It holds the tab's navigation controller and talks to the fetcher and decoder.
 
 ```rust
 /// One browser tab (interface process).
@@ -473,7 +541,49 @@ The rule for viewers stays short: the site is whatever row 0 and the address bar
 
 ### 9.1 Toolkit
 
-**egui** with **eframe**, on macOS, Linux (X11 and Wayland) and Windows [26]. Other options and why they were not chosen are in the earlier analysis: native per platform, Java Swing, Flutter, Avalonia, Qt, and a teletext-drawn interface. The research favours one toolkit for all platforms (section 2.8).
+The page area is our own raster, so the toolkit draws only the chrome: tabs, buttons, an address field, menus and lists. What separates the toolkits on five platforms is the phone: the on-screen keyboard and text editing, screen readers, safe areas and the app lifecycle.
+
+**The state of each option, October 2026:**
+
+| Option | Desktop | Android | iOS | Text input on phones | Screen readers on phones | Licence |
+|---|---|---|---|---|---|---|
+| **egui and eframe** 0.36 [57] | Yes | Supported | Not supported officially; third-party ports only | Weak: winit's soft-keyboard and input-method work is unfinished [58][59] | AccessKit now has Android and iOS back ends [60]; eframe's use of them on phones is unverified | MIT or Apache |
+| **Slint** 1.18 [61] | Yes | Since 1.5 | Since 1.12 | Keyboard, input method and safe-area fixes through 1.18 | An accessibility layer; phone coverage unverified | GPLv3, or royalty-free with conditions, or commercial [62]; **rejected by the owner** |
+| **Native per platform** over a Rust core (Firefox's model) [41] | Five interfaces | Kotlin | Swift | Native, complete | Native, complete | UniFFI is MPL-2.0 [63] |
+| **Flutter** with flutter_rust_bridge | Yes | Yes | Yes | Native, complete | TalkBack and VoiceOver | BSD and MIT; adds the Dart runtime and Flutter's C++ engine to the trusted code |
+| **Compose Multiplatform** | On the JVM | Yes | Yes | Native | Unverified | Adds Kotlin and, on desktop, a JVM |
+| **Tauri, Dioxus** | | | | | | Rejected: they put the system web view, a full HTML and JavaScript engine, inside the trusted process |
+| **Iced, Makepad** | | | | | | Rejected: no iOS, or iOS not a standard target |
+
+**Decided by the owner on 11 October 2026: one Rust app with egui on all five platforms, and no Slint.** Of the five architectures compared that day, this is option 1:
+- one interface codebase in Rust (`neoteletext-gui`) on egui and eframe;
+- thin Swift and Kotlin shells on the phones (section 3.5);
+- the other four were rejected:
+  - native interfaces per platform, for cost and drift;
+  - an interface drawn as teletext, for the text-editing and accessibility work it needs;
+  - Flutter, for the outside code in the trusted process;
+  - a web app inside the user's browser, because cross-origin rules, cookie blocking and the lack of raw TCP break the open web of teletext sites.
+
+**egui's gaps on phones, and how the shells fill them.** egui is supported on Android and not officially on iOS, and its phone text input is weak (the table above). The shells fill each gap without holding any browser behaviour:
+
+| Gap | Filled by |
+|---|---|
+| eframe has no official iOS entry point | The iOS shell creates the window and the Metal layer and runs eframe's renderer in it, as the third-party iOS ports do. |
+| The on-screen keyboard and text input | While the address bar or a form field is being edited, the shell places a system text field (`UITextField`, Android `EditText`) over it. It passes the text back to `neoteletext-browser`, which validates it like any typed input. This gives selection, paste, autocorrect control and input methods for every script. Pasted input still never confirms (`docs/hmi.md`). |
+| Screen readers | AccessKit's Android and iOS back ends, wired by the shell if eframe does not wire them itself. |
+| Safe areas, suspend and resume, rotation | eframe's own support (0.31 and 0.33), checked by the test app. |
+| The system back gesture, the share sheet, opening files | The shell, which turns each into an input-router function or an open-file event. |
+
+**The phone test app** proves this before phase 6 builds on it. It is a small egui app on an Android phone and an iPhone (and their emulators): a tab strip, an address field, four Fastext buttons and a page area showing a frame from `neoteletext-browser`. It must pass every one of these:
+- the on-screen keyboard opens, edits the address with selection and paste, and closes, with no crash;
+- an input method for a non-Latin script composes text in the address field;
+- VoiceOver and TalkBack read the buttons, the address and the page text;
+- the app is suspended and resumed, and rotated, without losing state;
+- it respects the notch and the home indicator;
+- its added size and the time to show the first frame are measured;
+- `cargo-deny` passes on egui's dependency tree.
+
+A criterion that egui and the shell together cannot meet comes back to the owner as a decision. It is not worked around.
 
 ### 9.2 Window layout
 
@@ -498,7 +608,7 @@ The rule for viewers stays short: the site is whatever row 0 and the address bar
 ```
 
 - **Tab strip:**
-  - drawn by egui, since Windows has no system tab strip and browsers draw their own;
+  - drawn by the toolkit, since Windows has no system tab strip and browsers draw their own;
   - a title per tab (site name or file name, and page number), a loading indicator and a close button;
   - drag to reorder, and drag out to a new window.
 - **Toolbar:**
@@ -514,6 +624,31 @@ The rule for viewers stays short: the site is whatever row 0 and the address bar
   - centred on black, with the page's own border colour at Levels 2.5 and 3.5;
   - wider pages with side panels fit as wide.
 - **Status line:** search progress, the presentation level, the glyph set, and errors.
+
+**Phones**, in the pattern Safari and Chrome use on phones, and Lagrange's compile-time phone layout [31]:
+
+```
+┌──────────────────────────┐
+│ ┌──────────────────────┐ │
+│ │ P300 weather.ex 14:32│ │ ← row 0 (browser)
+│ │                      │ │
+│ │   the teletext page, │ │
+│ │   whole-number scale │ │
+│ │   in device pixels   │ │
+│ │                      │ │
+│ │ Red Green Yellow Cyan│ │ ← row 24
+│ └──────────────────────┘ │
+│ [red] [grn] [yel] [cyn]  │  Fastext bar
+│ 🔒 weather.example  300   │  address bar (bottom, in thumb reach)
+│ ◀  ▶  123  ⧉ 2  ☰        │  back, forward, number pad, tabs, menu
+└──────────────────────────┘
+```
+
+- **The page** fills the width at the largest whole-number scale in device pixels. A phone 1,170 pixels wide shows the 480-pixel page at twice its size.
+- **The address bar** sits at the bottom. The true site is always shown there, so it remains the line of death (section 2.6).
+- **Tabs** are a grid of page thumbnails, opened from the tab button.
+- **The number pad** is a sheet of ten digits plus Index, Hold and Reveal, so page numbers never need the system keyboard.
+- **Landscape and tablets** use the desktop layout.
 
 ### 9.3 Menus
 
@@ -536,6 +671,15 @@ On macOS the menus live in the system menu bar, through a menu crate if needed (
 - **Scroll wheel or swipe:** next and previous page. Two-finger swipe left and right means Back and Forward on macOS.
 - **Drag a T42 or TTI file onto the window:** open it in a new tab.
 
+**Touch** (phones and tablets; these go through the input router of `docs/hmi.md`, which gains a touch device class):
+- **Tap a page number on the page:** page catching, with the destination shown in the address bar before it is followed.
+- **Tap a Fastext prompt in row 24,** or a button of the Fastext bar: follow that link.
+- **Swipe left or right on the page:** next or previous page.
+- **The system back gesture** (Android's back, the iOS edge swipe): Back.
+- **Long press on the page:** reveal while held.
+- **Pinch:** zoom by whole-number steps.
+- **Open a `.t42` or `.tti` file** from the Files app or a share sheet: a new tab.
+
 ### 9.5 Other screens
 
 All are drawn as teletext pages by the interface, in the same page area, so the browser keeps one look:
@@ -545,7 +689,7 @@ All are drawn as teletext pages by the interface, in the same page area, so the 
 
 ### 9.6 Accessibility
 
-egui reports its widgets to the platform through AccessKit: VoiceOver on macOS, Narrator on Windows, Orca on Linux. The page area adds:
+The toolkit reports its widgets to the platform: VoiceOver on macOS and iOS, Narrator on Windows, Orca on Linux, and TalkBack on Android. egui does that through AccessKit, whose phone back ends are new (section 9.1), so the test app checks them. The page area adds:
 - the page's text, one row per line, from the same conversion `ttx text` uses;
 - the links as buttons with their labels;
 - announcements when the page changes.
@@ -570,8 +714,10 @@ The keyboard mapping is the concept's, decided (`docs/web-native-concept.md` sec
 
 Notes:
 - **Keys go through the input router** of `docs/hmi.md`, so number entry, address entry, forms, page catching and confirmation behave as in `ttx`.
-- **egui reports key presses and releases,** so holding Index for Back (REQ-NAV-010) works.
+- **The toolkit must report key presses and releases,** so holding Index for Back (REQ-NAV-010) works; the test app checks this.
 - **The numeric keypad** works as in the concept: digits with Num Lock on, navigation with it off.
+- **Phones and tablets with a hardware keyboard** use the same keys. iPadOS reserves some ⌘ shortcuts, which the test app checks.
+- **Touch** is described in section 9.4.
 
 ---
 
@@ -581,6 +727,10 @@ All of it is in the interface process only, in the platform's application data d
 - **macOS:** the app container.
 - **Linux:** `$XDG_DATA_HOME/neoteletext`.
 - **Windows:** `%APPDATA%\neoteletext`.
+- **Android:** the app's internal storage, which no other app can read.
+- **iOS:** the app container, with data-protection class "complete until first user authentication" or stronger.
+
+Cookies go to the platform's secret store: Keychain on macOS and iOS, Credential Manager on Windows, Secret Service on Linux, and a key held in the Android Keystore that encrypts them on Android.
 
 | Data | Rules |
 |---|---|
@@ -632,6 +782,41 @@ Decoders store nothing, and their page stores live only in memory.
 - **No trust-on-first-use,** unlike Gemini [30]: teletext sites are ordinary web servers.
 - **A certificate error** shows an error page, with no way to click through by default.
 
+### 12.6 Android
+
+Following Chrome's Android sandbox [44][45]:
+- **The interface** is the app's main process. It holds the internet permission only because the manifest is per app; the interface itself never opens a socket, and the fetcher does all networking.
+- **The fetcher** is a service in its own process (`android:process=":fetcher"`).
+- **Decoders** are services with `android:isolatedProcess="true"` [46]:
+  - each has its own user ID and no permissions, and cannot open files or sockets of the app;
+  - each is bound with `bindIsolatedService`, which needs API level 29, so that is the minimum version;
+  - each installs a seccomp filter on start, as Chrome does, before it reads anything;
+  - each runs the decoder inside the WebAssembly interpreter (section 3.6).
+- **Rust in services:** from API level 37 a decoder can be a pure native service [47]. Below 37, each service is a stub of a few dozen lines of Kotlin that loads the Rust library and hands it a file descriptor for the pipe. The stub holds no logic.
+- **The pipe** is the same framed protocol as on the desktop, over a socket pair passed through Binder.
+
+### 12.7 iOS
+
+- **One process** (section 2.12). Within it:
+  - **the decoder** runs only inside the WebAssembly interpreter, which is its wall (section 3.6);
+  - **the fetcher** is ordinary Rust in the app, running on its own thread, with the existing bounded parsers;
+  - **the app** runs in the iOS app sandbox, which every App Store app has, with only the outgoing-network capability and user-chosen files.
+- **No just-in-time compilation** is needed or requested.
+- **What is lost:** if a bug escaped the interpreter, the attacker would hold the whole app: the network, cookies and history. On the other four platforms the operating-system sandbox would still stop them.
+- **Why that is acceptable** (an owner decision, section 15):
+  - the decoder is safe Rust with no `unsafe`, no allocation in the core, and fuzzing;
+  - the interpreter is a second, independent wall;
+  - pages contain no executable content;
+  - Chrome and Firefox on iOS rely on WebKit's processes only because Apple supplies them; no third-party app can have them outside BrowserEngineKit.
+
+### 12.8 The WebAssembly host on every platform
+
+- **The host gives the module no imports** except reading the next message and writing a reply into its own memory.
+- **Fuel:** each message has a fuel budget, so a page that would loop forever stops with an error page.
+- **Memory:** the module's linear memory has a fixed maximum, set from the decoder's measured need with a margin; growth beyond it fails.
+- **Every value read out of the module is checked** as if it came from another process: lengths, indices and message kinds are bounded before use.
+- **Fuzzing:** the host's message handling and the module's input both get fuzz targets, run in the full gate.
+
 ---
 
 ## 13. Packaging and updates
@@ -641,6 +826,10 @@ Decoders store nothing, and their page stores live only in memory.
 | macOS | `.app` (universal: Apple Silicon and Intel) in a disk image | Developer ID, hardened runtime, notarisation | Sparkle, as Lagrange uses [31], or none at first |
 | Windows | MSI or MSIX installer | Authenticode certificate | WinSparkle [31], or the MSIX store channel |
 | Linux | Flatpak (Flathub), AppImage, `.deb` | Flathub's process; signed AppImage | Flathub, or AppImage update information |
+| Android | App bundle for Google Play; an APK for F-Droid and direct download, as Lagrange does [31] | Play app signing; our own key for the APK | The store |
+| iOS and iPadOS | App Store, and TestFlight for testing | The same Apple Developer Program membership as macOS | The store |
+
+The app stores update their apps themselves, so Sparkle and WinSparkle stay desktop-only. App Store and Play review add a step to every release, which the release phase allows for.
 
 Also:
 - **The `teletext:` link handler** and file associations for `.t42` and `.tti` are registered by each package.
@@ -669,16 +858,21 @@ Also:
 - a decoder that tries the network or the file system, which the sandbox must refuse, on each OS.
 
 **Interface tests:**
-- egui's test harness renders the interface without a display and compares snapshots of the chrome;
+- the toolkit's test harness renders the interface without a display and compares snapshots of the chrome, in the desktop and phone layouts;
 - a smoke test per platform opens a window, loads a page and checks the frame.
 
+**WebAssembly wall tests:**
+- a decoder module built to misbehave (writing out of bounds, looping, growing memory, sending malformed replies) must be stopped by the host on every platform;
+- the decoder's speed inside the interpreter is measured against native, on this Mac and on the slowest supported phone, and reported by the gate.
+
 **Gates:**
-- `scripts/check.sh` gains the desktop crate.
+- `scripts/check.sh` gains the new crates, and builds `neoteletext-browser` and the decoder module for every target, including `aarch64-apple-ios`, `aarch64-apple-ios-sim` and `aarch64-linux-android`.
 - Each platform builds and runs its tests:
-  - macOS on this Mac;
-  - Linux on `oldvga`;
-  - Windows on a Windows machine or virtual machine (section 15).
-- `cargo-deny` covers egui's dependency tree, and the size of the desktop app is reported.
+  - macOS, the iOS simulator and the Android emulator on this Mac (Xcode 16.2 with iOS 16.4 to 18.3 simulators; Android emulator 35.4.9 with an arm64 API 35 image, running natively on Apple Silicon);
+  - Linux on `oldvga` (its 3.2 GB of memory is too little for an Android emulator);
+  - Windows on a Windows machine or virtual machine (section 15);
+  - real phones before each release, because simulators do not show sandbox or keyboard behaviour faithfully.
+- `cargo-deny` covers the toolkit's and wasmi's dependency trees, and the size of each app is reported.
 
 ---
 
@@ -686,16 +880,24 @@ Also:
 
 | # | Decision | Recommendation |
 |---|---|---|
-| 1 | The process model: interface, fetcher and decoder processes, with one decoder per site | Yes; one per tab in the first version |
-| 2 | The interface toolkit | egui with eframe |
-| 3 | Libraries: eframe and egui (and its windowing and GPU tree); a tabs crate if needed; a menu crate for the macOS menu bar; a Public Suffix List source; a punycode and confusables source; a secret-store crate; Sparkle and WinSparkle bindings; Windows and macOS sandbox crates | Measure size and licences before choosing each |
-| 4 | The input router of `docs/hmi.md` | Adopt; every front end depends on it |
+| 1 | The process model: interface, fetcher and decoder processes, with one decoder per site, on Windows, macOS, Linux and Android | Yes; one per tab in the first version |
+| 2 | The interface toolkit | **Decided** by the owner on 11 October 2026: egui on all five platforms (architecture option 1); no Slint |
+| 3 | Libraries: the toolkit and its windowing and GPU tree; a menu crate for the macOS menu bar; a Public Suffix List source; a punycode and confusables source; a secret-store crate; Sparkle and WinSparkle bindings; Windows and macOS sandbox crates | Measure size and licences before choosing each |
+| 4 | The input router of `docs/hmi.md`, with a touch device class added | Adopt; every front end depends on it |
 | 5 | Record the web-native concept's decisions in Part E and write its requirements | Needed before the engine work |
 | 6 | macOS process isolation: XPC services, or helper executables with Seatbelt profiles | XPC services |
 | 7 | Where Windows builds and tests run | A Windows virtual machine reachable from the gate |
-| 8 | Signing and distribution: Apple Developer ID, a Windows code-signing certificate, Flathub | Needed only for public release |
-| 9 | Mobile later? | If yes, revisit decision 2 (Flutter would then be the stronger choice) |
+| 8 | Signing and distribution: the Apple Developer Program (macOS and iOS), a Windows code-signing certificate, a Google Play developer account, Flathub, F-Droid | Needed for the first phone builds on real devices (Apple) and for public release (the rest) |
+| 9 | Mobile | Decided by the owner on 11 October 2026: Android and iOS are targets |
 | 10 | Session restore and history retention: how long, and whether confirmed sites persist between runs | 30 days of history; confirmed sites per session only |
+| 11 | All browser behaviour in the platform-free crate `neoteletext-browser`, with thin native shells (section 3.5) | Yes |
+| 12 | The decoder runs inside the wasmi WebAssembly interpreter on every platform (sections 3.6 and 12.8) | Yes. It is the only wall available on iOS, and one wall tested everywhere is better than a special case |
+| 13 | iOS runs as one process, with the interpreter as the decoder's only wall (section 12.7) | Accept; no alternative exists outside BrowserEngineKit |
+| 14 | Slint's licence condition | **Withdrawn** 11 October 2026: Slint is not used |
+| 15 | The interface between Rust and the Swift and Kotlin shells: UniFFI (MPL-2.0) or a hand-written C interface in `neoteletext-ffi` | The hand-written C interface; it is narrow (text in, events out) and keeps `unsafe` in the one crate allowed it |
+| 16 | Minimum versions: Android API level 29 (for `bindIsolatedService`); iOS 17 | Yes |
+| 17 | An outside security audit of the wasmi version we ship, or of our host | Before the first public release |
+| 18 | Installing the Rust iOS and Android targets, the Android NDK, an API 29 emulator image, and a current Xcode here; freeing disk space on this Mac | Needed for the test app |
 
 **Already decided and not reopened here:**
 - **The tuning screen** stays inside the page area with row 0 above it (concept section 6, owner's instruction of 11 October 2026).
@@ -709,16 +911,18 @@ Each phase ends with its tests passing in the gate.
 
 | Phase | Work | Done when |
 |---|---|---|
-| **1. Requirements** | Record decisions 1, 2, 4 and 5 in Part E; write the WEB, NAV and new DESKTOP requirements; amend Appendix E and REQ-WEB-002. | Requirements reviewed |
-| **2. Engine: web-native model** | Section 4.2, in `neoteletext-web` and `neoteletext-app`, with tests against the local test server. | `ttx` browses a test site with aliases, bundles, dependencies and links to other sites |
-| **3. Engine: tab and navigation** | Sections 5 and 6, the input router, the address display rules; `ttx view` rebuilt on the tab object; the headless test driver. | `ttx view` has the address bar in row 0, the tuning screen, and history across sites; the headless scripts pass |
-| **4. Process split** | The decoder process and its messages (section 3.4); `ttx` uses it too. | Decoders run sandboxed on Linux; protocol fuzzing passes |
-| **5. Desktop app, first version** | `neoteletext-desktop`: window, tab strip, toolbar, address bar, page area, Fastext buttons, keyboard, menus. | Browses files, zxnet and web sites on all three platforms |
-| **6. Platform security** | Section 12 on macOS and Windows. | The sandbox tests of section 14 pass on each platform |
-| **7. Features** | Bookmarks, presets, history, session restore, page catching with the mouse, accessibility, the glyph switch, fullscreen badge. | Feature tests and snapshots pass |
-| **8. Release** | Section 13: packages, signing, updates, link handlers. | Signed packages install and update on each platform |
+| **1. Requirements** | Record decisions 1, 2, 4, 5, 11, 12, 13, 15 and 16 in Part E; write the WEB, NAV and new BROWSER requirements; amend Appendix E and REQ-WEB-002. | Requirements reviewed |
+| **2. Engine: web-native model** | Section 4.2, in `neoteletext-web` and `neoteletext-browser`, with tests against the local test server. | `ttx` browses a test site with aliases, bundles, dependencies and links to other sites |
+| **3. Engine: tab and navigation** | Sections 5 and 6 in `neoteletext-browser`, the input router, the address display rules; `ttx view` rebuilt on the tab object; the headless test driver. | `ttx view` has the address bar in row 0, the tuning screen, and history across sites; the headless scripts pass |
+| **3a. Phone test app** (can run beside phases 2 and 3) | Section 9.1: the egui test app with its shells, on the iOS simulator, an iPhone, the Android emulator and an Android phone, all from this Mac. | Every criterion of section 9.1 passes, or the failures are brought to the owner |
+| **4. Decoder walls** | The decoder module and the wasmi host (sections 3.6 and 12.8); the decoder process and its messages (section 3.4); `ttx` uses both. | Decoders run in the interpreter everywhere and in sandboxed processes on Linux; the misbehaving-module and protocol fuzz tests pass |
+| **5. App, first version** | `neoteletext-gui` on Windows, macOS and Linux: window, tab strip, toolbar, address bar, page area, Fastext buttons, keyboard, menus. | Browses files, zxnet and web sites on all three desktop platforms |
+| **6. Phones** | The Android and iOS shells (section 3.5), the phone layout, touch input, the Android service stubs. | Browses the same sites on the Android emulator and phone, the iOS simulator and iPhone |
+| **7. Platform security** | Section 12 on macOS, Windows, Android and iOS. | The sandbox tests of section 14 pass on each platform |
+| **8. Features** | Bookmarks, presets, history, session restore, page catching with mouse and touch, accessibility, the glyph switch, fullscreen badge. | Feature tests and snapshots pass on all five platforms |
+| **9. Release** | Section 13: packages, signing, store review, updates, link handlers; the audit of decision 17. | Signed packages install and update on each platform |
 
-Phases 2 to 4 benefit `ttx` directly, and are worth doing whatever is decided about the desktop app.
+Phases 2 to 4 benefit `ttx` directly, and are worth doing whatever is decided about the apps.
 
 ---
 
@@ -762,5 +966,32 @@ Phases 2 to 4 benefit `ttx` directly, and are worth doing whatever is decided ab
 36. https://learn.microsoft.com/en-us/windows/win32/secauthz/appcontainer-isolation
 37. https://docs.flatpak.org/en/latest/sandbox-permissions.html
 38. https://github.com/refi64/zypak
+39. https://chromium.googlesource.com/chromium/src/+/d232a5d77ae4b065bc1905a4942a518aa5e07c4d/ios/web/
+40. https://developer.chrome.com/blog/chromium-chronicle-28
+41. https://firefox-source-docs.mozilla.org/rust-components/developing-rust-components/index.html
+42. https://hacks.mozilla.org/2023/08/autogenerating-rust-js-bindings-with-uniffi/
+43. https://book.servo.org/trying/getting-servoshell.html
+44. https://chromium.googlesource.com/chromium/src/+/HEAD/docs/security/android-sandbox.md
+45. https://chromium.googlesource.com/chromium/src/+/main/chrome/android/java/AndroidManifest.xml
+46. https://developer.android.com/guide/topics/manifest/service-element
+47. https://developer.android.com/ndk/reference/group/native-service
+48. https://firefox-source-docs.mozilla.org/mobile/android/geckoview/project/isolated-process/overview.html
+49. https://github.com/servo/servo/blob/main/components/constellation/sandboxing.rs
+50. https://developer.apple.com/forums/thread/706855
+51. https://support.apple.com/guide/security/sec15bfe098e
+52. https://developer.apple.com/support/alternative-browser-engines/
+53. https://developer.apple.com/support/alternative-browser-engines-jp
+54. https://github.com/wasmi-labs/wasmi
+55. https://developer.apple.com/app-store/review/guidelines/
+56. https://developer.apple.com/programs/information/Apple_Developer_Program_Information_8_12_15.pdf
+57. https://github.com/emilk/egui/blob/main/crates/eframe/CHANGELOG.md
+58. https://github.com/rust-windowing/winit/pull/3787
+59. https://github.com/rust-windowing/winit/issues/1497
+60. https://github.com/AccessKit/accesskit
+61. https://github.com/slint-ui/slint/blob/master/CHANGELOG.md
+62. https://github.com/slint-ui/slint/blob/master/LICENSES/LicenseRef-Slint-Royalty-free-2.0.md
+63. https://github.com/mozilla/uniffi-rs
 
 Claims the research could not verify: Safari's interface internals, the release in which Chrome's macOS interface became Views-only, Firefox's current `browser.xhtml` after 2019, and Landlock inside Flatpak.
+
+Mobile claims not verified (research of 11 October 2026): whether eframe uses AccessKit on phones; the current Apple licence text on bundled interpreters; that BrowserEngineKit is still limited to the EU and Japan; whether Firefox's Android isolated processes are on by default; and whether Android's native services can be isolated processes.
