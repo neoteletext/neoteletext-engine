@@ -89,6 +89,13 @@ fn the_window_browses_with_the_keyboard() {
     snapshot(&mut harness, "3-news-200");
     harness.key_press(Key::PageUp);
     wait(&mut harness, "back to 100", |app| shown(app, 0x100, "TEST NEWS"));
+    // Cmd-D keeps the page, at once, in the bookmarks file.
+    harness.key_press_modifiers(eframe::egui::Modifiers::COMMAND, Key::D);
+    harness.run_steps(2);
+    let saved = std::fs::read_to_string(data.join("bookmarks.tsv")).unwrap();
+    assert!(saved.contains(&sites.address("news", "/100.t42")) && saved.contains("TEST NEWS"), "{saved}");
+    let bookmarks = Storage::new(Some(data.clone())).bookmarks();
+    assert_eq!(bookmarks.len(), 1);
     // A new tab, then the keys page.
     harness.key_press_modifiers(eframe::egui::Modifiers::COMMAND, Key::T);
     harness.run_steps(2);
@@ -97,9 +104,12 @@ fn the_window_browses_with_the_keyboard() {
     // gives them back to the page.
     harness.key_press(Key::Escape);
     harness.run_steps(2);
+    // The new tab's start page lists the bookmark; a click opens it.
+    assert_eq!(harness.state().active_tab().view, View::Start);
+    snapshot(&mut harness, "4-start");
     harness.event(Event::Text("K".to_string()));
     harness.run_steps(2);
     assert_eq!(harness.state().active_tab().view, View::Keys);
-    snapshot(&mut harness, "4-keys");
+    snapshot(&mut harness, "5-keys");
     let _ = std::fs::remove_dir_all(data);
 }
