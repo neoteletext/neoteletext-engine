@@ -1,6 +1,8 @@
 //! One tab: its helpers, its history, what it shows, and the routing of
 //! every frame between its fetcher and its decoder
-//! (`docs/desktop-browser.md` sections 3.2 and 5).
+//! (`docs/desktop-browser.md` sections 3.2 and 5): links to other sites
+//! (REQ-NAV-013), aliases (REQ-WEB-020), files (REQ-BRW-005) and the
+//! routing rules of REQ-SEC-026.
 //!
 //! The tab is the trusted side. It reads what the helpers send, but trusts
 //! none of it: a decoder can ask for pages, submit a form, or ask to

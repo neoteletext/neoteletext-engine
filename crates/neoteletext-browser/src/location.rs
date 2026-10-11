@@ -1,5 +1,5 @@
-//! Locations and what the address bar accepts (`docs/desktop-browser.md`
-//! section 7, `docs/web-native-concept.md` sections 3 and 4).
+//! Locations and what the address bar accepts (REQ-BRW-002, REQ-WEB-018,
+//! `docs/desktop-browser.md` section 7, `docs/web-native-concept.md` sections 3 and 4).
 //!
 //! A location is where a tab's pages come from: a web-native site, a
 //! service named by its descriptor, a local file or a live feed. Its

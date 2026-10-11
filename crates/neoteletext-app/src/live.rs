@@ -49,14 +49,14 @@ pub struct Live {
     /// The time of the latest poll, the viewer's clock.
     last_poll: Instant,
     /// The service's refresh interval for the page on screen, when its
-    /// descriptor gives one and it has no push.
+    /// descriptor gives one and it has no push (REQ-WEB-020).
     refresh_us: Option<u64>,
     /// Every page asked for, `0xMPP`: a page's file may fill only these.
     asked: std::collections::HashSet<u16>,
 }
 
-/// Which pages the bytes of one response may fill
-/// (`docs/web-native-concept.md` section 2 item 4).
+/// Which pages the bytes of one response may fill (REQ-WEB-019,
+/// `docs/web-native-concept.md` section 2 item 4).
 #[derive(Clone, Copy)]
 enum Fill<'a> {
     /// Any page: a front door, a push message, a form's answer, a file.
@@ -418,8 +418,8 @@ mod tests {
 
     const SECOND: u64 = 1_000_000;
 
-    /// Concept decision 13: a service's refresh interval brings the page
-    /// on screen again sooner than the stale timeout would.
+    /// REQ-WEB-020, concept decision 13: a service's refresh interval
+    /// brings the page on screen again sooner than the stale timeout would.
     #[test]
     fn the_refresh_interval_asks_for_the_page_again() {
         let (sender, frames) = mpsc::channel();
@@ -441,8 +441,8 @@ mod tests {
         assert_eq!(kept.requests(), 3);
     }
 
-    /// Concept section 2 item 4: a page's own file fills only that page,
-    /// while a front door fills every page it holds.
+    /// REQ-WEB-019, concept section 2 item 4: a page's own file fills only
+    /// that page, while a front door fills every page it holds.
     #[test]
     fn a_page_file_fills_only_its_page() {
         let two_pages = b"PN,10000\nOL,1,ONE\nPN,20000\nOL,1,TWO\nPN,1A000\nOL,1,HEX\n".to_vec();

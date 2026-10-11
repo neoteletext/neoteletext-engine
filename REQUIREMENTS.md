@@ -1448,6 +1448,8 @@ No other link mechanism exists. The alternatives that were considered and reject
 
 Pages received from broadcasts keep their transmitted row 24 (decision E.23). Their links can only lead to pages in the same service, so the destination is always fully determined by the packet X/27/0.
 
+*Amended 12 October 2026 by decision E.64:* links may also lead to addresses, and a page may link page numbers (`LK`) and runs of text (`LT`) as well as its coloured keys. The four coloured keys, the receiver-drawn row 24 and the ban on page-drawn link markers are unchanged. In the browser, a link to another service goes through the tuning screen (decision E.65) instead of the confirmation in row 24 of REQ-NAV-012.
+
 **E.37 — Terminal output: exact pixels where the terminal can show them, characters everywhere else.**
 A terminal can show a teletext page in two ways:
 - **As characters**, drawn by the terminal's own font with colour escape sequences (REQ-RND-009).
@@ -1946,6 +1948,106 @@ Recognition by people fluent in each script, and proofs of real pages, are revie
 
 *Reason:* REQ-RND-020 and REQ-RND-028. Writing the checks before the glyphs gives the designer feedback while drawing, and the independence check makes the clean room something the gate measures rather than a promise.
 
+**Decisions E.63 to E.69: the web-native browser.**
+These record the design of `docs/web-native-concept.md` (its decisions 1 to 14, settled on 11 October 2026: decisions 1 to 5 are the owner's, and 6 to 14 were recommended and accepted by the owner), the owner's decisions on the browser in `docs/desktop-browser.md` section 15, and the decisions taken while building the macOS browser on 12 October 2026, when the owner asked for the build to be completed without questions. The build's decisions are marked *(build)* below. They are listed with their reasons in `docs/macos-build-decisions.md` (D1 to D27) and await the owner's review (issue #162). The behaviour was built before these entries were written, against REQ-DOC-004; they were recorded on 12 October 2026 to restore the rule.
+
+**E.63 — Web-native sites: what a site is, where its descriptor lives, and what its files may hold.**
+1. **A site is a web origin that serves teletext** (REQ-WEB-015). *(build, D7)* The browser treats every origin, that is scheme, host and port, as its own site. The concept named the registrable domain; the origin is stricter, so more moves show the tuning screen (decision E.65), and it needs no list of public suffixes. This should be revisited if sites spread over several subdomains of one domain become common.
+2. **The descriptor lives at `/.well-known/teletext.json`** (concept decision 13). A file at the site root, such as `index.json`, could collide with the site's own files. Typing the well-known address names the site itself.
+3. **A site needs no descriptor.** *(build, D8)* When the well-known address answers 404 or 410, the site gets defaults, built as a descriptor so that REQ-WEB-002's checks apply to them: its name is the host, its initial page is 100, its pages are `/{mpp}.t42`, and its front door is `/index.t42`. Any other failure, such as a server error or an invalid descriptor, is reported and not replaced by the defaults, so that a broken site never silently changes meaning.
+4. **Page files and a front door both work, with no setting** (concept decision 6). A typed number is looked for in the store, if the page is there and confirmed current (REQ-WEB-004), then in the page's own file, and is otherwise "not found".
+   - *(build, D10)* A page's own file fills only pages that have been asked for, and enhancement pages, whose numbers are not decimal and which a page file may carry for its objects (item 5). Any other page in it is dropped by its header, so a page file cannot overwrite the rest of the site. The front door, pushed messages, form responses and local files fill every page they hold. `ttx`'s web mode follows the same rule, because it shares the code.
+   - *(build, D9)* The front door is bounded by the page response limit of REQ-WEB-008, 256 kilobytes by default. A bundled site larger than that publishes page files instead.
+   - *(build, D17)* A file or front door that does not hold the page asked for opens at its own first page, unless the viewer has already chosen a page.
+5. **Enhancement dependencies are found both ways** (concept decision 7). A page's own file may carry the object and DRCS pages it uses. Otherwise, *(build, D26)* when a page is shown at Level 2.5 or 3.5, the decoder asks once for its magazine's Organization Table (page xFE), then for the object and DRCS pages that the table and the page name. Pages already stored are not asked for again, and these requests do not change which page is kept fresh.
+6. **The descriptor gains aliases and a refresh interval** (concept decisions 3 and 13). A features list and a search page were considered and left out: nothing would read the features list, and a search page is an ordinary page that a site links to.
+   - An **alias** maps one page number, never a range, to a target that is `name:mpp` or an address. *(build, D24)* A relative address is refused, an address in a descriptor fetched over `https` must itself be `https`, and a descriptor has at most 16 aliases.
+   - **`refresh`** is a whole number of seconds. *(build, D24)* It is accepted from 5 to 86 400, and is used only when the service has no push.
+7. **Sub-pages in addresses are not needed** (concept decision 5). An address leads to a page's file and shows its newest sub-page.
+
+*Reason:* `docs/web-native-concept.md` section 2. A simple site is then a folder of files on any static host, and nothing needs declaring. The page-file rule keeps one page's file from rewriting another page of the site.
+
+**E.64 — Links may lead to addresses; page numbers and runs of text may be links.**
+This amends decision E.36 and Appendix E.
+1. **Addresses in pages** (concept decision 1, the owner's). A Fastext key, a page number or a run of text may link to an address as well as to a named service, and no setting forbids it. A site that publishes other people's content removes their links before publishing, as on the ordinary web.
+2. **One rule tells targets apart:** a target containing `://` is an address. *(build, D23)* An address must be `http` or `https`, printable ASCII without spaces or commas, and at most 256 bytes; anything else makes the link invalid. `weather:300`, which has no `//`, is always a named service.
+3. **Two new TTI lines.** `LK,mpp,target` links a page number shown on the page, and `LT,row,column,length,target` links a run of text on rows 1 to 23. *(build, D23)* A page has at most eight of each. The TTI writer keeps all three link lines.
+4. **Which link a typed number follows** (concept decision 9): the current page's own link for that number, otherwise the descriptor's alias for it, otherwise the site's own page with that number. The most specific link wins, so what the viewer sees on the page is what typing the number does. *(build, D23)* The decoder checks the page's own link; the browser's interface checks the alias when the decoder asks for the page.
+5. **The page checker warns** when a page links a number that it does not show.
+6. **Every link to another site goes through the tuning screen** (decision E.65). An address written in a page is marked there as not declared by the site.
+
+What stays from decision E.36: the four coloured keys and Index remain the Fastext model, row 24 is drawn by the receiver from the link data, and pages never draw link markers. Text links look exactly as the author drew them until the viewer asks to see them (decision E.66).
+
+*Reason:* `docs/web-native-concept.md` sections 1, 3 and 5. Sites without a descriptor can link elsewhere only by writing addresses, and the tuning screen, not a ban, is the safeguard.
+
+**E.65 — Leaving a site: the tuning screen, and row 0 on every page.**
+1. **The browser owns all of row 0 on web sites** (concept decision 2, the owner's). Header text in a web page file is ignored. *(build, D13)* In the browser, row 0 is drawn by the interface on every page, whatever its source: the top 20 pixel lines of every frame a decoder sends are replaced across their whole width.
+   - **On web sites,** row 0 shows the receiver's status area, the site's name and the clock. The clock stays while the name fits in columns 8 to 31, and gives way when it does not (concept decision 10). A name too long for the row is shortened from the left and marked with `<`, so the end of the host, which names the site, always shows.
+   - **For files and live feeds,** row 0 shows the status area and the broadcast's own header text, without the browser's clock.
+   - **A decoder's reported page digits** are accepted only as three hexadecimal digits or `-`; anything else is shown as `---`.
+2. **Row 0 shows what the keys are doing** (concept decision 12): `P` and the page digits while browsing, the digits so far while one is being typed, `FORM` while a form has the keys, `LINK` in page catching, and `GO?` on the tuning screen. A page over plain HTTP shows the red marker and `!` of REQ-SEC-005.
+3. **The tuning screen** (concept decision 8). Before any page from another site is shown, the browser clears rows 1 to 24 and shows the destination's host in double height, the full address, whether the connection is encrypted, and how the viewer came to be going there, with row 0 showing `GO?` and the destination. It stays inside the page area, with row 0 above it (the owner's instruction of 11 October 2026). Only the receiver accepts the confirmation, so a fake screen drawn by a page leads nowhere.
+4. **When it is shown** (concept decision 4, the owner's). *(build, D12)* It is shown for a typed address, including in a new tab; a bookmark or history entry; a restored tab; every link to another site; and every redirect to another site. It is skipped only when going back or forward to a site confirmed earlier in the session. A link to a site already confirmed still asks: the concept leaves this open, and asking is the safer reading.
+5. **Redirects to another site are not followed.** *(build, D11)* In the browser the web module reports a redirect to another origin instead of following it, and the browser shows the tuning screen for the new destination. An upgrade from `http` to `https` on the same host is not another site. `ttx` keeps following redirects as REQ-WEB-003 says, and form submissions keep their existing rule, under which a redirect to another origin makes the submission cross-site for cookies.
+6. **Only the interface confirms.** *(build, D14)* A form submission's confirmation is a bar outside the page that the viewer answers. A confirmation request from a decoder is dropped, never passed on.
+7. **The receiver's own pages** *(build, D15)*, which are the start page, the keys page, the tuning screen, error pages and the loading page, go through the same Level 1 decoding as broadcast pages but are built in the interface and never pass through a decoder.
+
+International domain names are shown in their ASCII form. Flagging names that imitate other domains (concept section 6) is not built; Appendix D.2 keeps it open.
+
+*Reason:* `docs/web-native-concept.md` sections 4 and 6. A 40 by 25 page can draw anything in rows 1 to 24, including a fake tuning screen; row 0, which no page can write, is what makes the real one recognisable on every port. The rule for viewers is short: the site is whatever row 0 says.
+
+**E.66 — Page catching and showing links.**
+Concept decision 11 settled the model: the selected link has its colours swapped, its destination appears in row 0, a key underlines every link, and the pointer highlights links. *(build, D25)* The details:
+- **Turning it on.** Enter turns page catching on at the first link in reading order. Links are the page numbers printed on rows 1 to 23 that lead somewhere, and the runs of `LT` lines.
+- **Moving.** Right and Down move forward; Left and Up move back. Enter follows the selected link.
+- **Turning it off.** Escape or Delete turns it off; any other key turns it off and then does what it does.
+- **Row 0** shows `LINK` and the destination as the decoder reports it, written only after the receiver's `LINK`, so it can never be mistaken for the tuning screen's `GO?`.
+- **Pages with side panels** are not caught, because their text columns are not the grid's.
+- **The pointer.** A page number under the pointer names its destination in the window's status line, and a click follows it, as it follows a Fastext prompt or an `LT` run.
+- **Show links.** `l` underlines every link with the receiver's own underline, and `l` again stops. The concept names no key; `l` was chosen as the letter for "links".
+
+*Reason:* `docs/web-native-concept.md` section 5 item 2. The cursor stops only on real links, so text a page draws to look like a selected link can never be selected.
+
+**E.67 — The browser's keys.**
+The keys follow concept decision 14: Page Up and Page Down are Back and Forward, End is Index, Insert is Hold, Delete is Cancel, every function has a plain letter key, `K` shows the keys, and Escape never quits. *(build, D18)* The windowed browser differs as follows:
+- **`q` does not quit;** Command-Q does, as in every macOS program, so a stray key cannot close the browser. `ttx` keeps `q`.
+- **Command-Left and Command-Right** go back and forward, as do Command-[ and Command-].
+- **Command-Shift-C** copies the page's text.
+- **`G`** switches the glyph set (decision E.68).
+- **`.` for sub-page entry** is not built.
+
+*Reason:* `docs/web-native-concept.md` section 7, and the conventions of macOS programs.
+
+**E.68 — The browser program.**
+1. **One Rust program on egui for all five platforms** (the owner's decision of 11 October 2026, `docs/desktop-browser.md` section 15 decisions 2 and 9): Windows, macOS, Linux, Android and iOS. Slint is not used.
+2. **All browser behaviour is in a crate with no operating-system access** (design decision 11, built in *(build, D5)*): `neoteletext-browser` holds address parsing, sites, history, the tuning screen's rules and page, row 0, the receiver's pages and the formats of saved files, and `xtask check-io` treats it as a library crate. `neoteletext-gui` holds the window, the tabs' processes and storage, and its program is called `neoteletext`.
+3. **Processes.** *(build, D1)* Each tab has its own fetcher process and decoder process. One decoder per site, shared by tabs, is later work (design decision 1); the messages are the same either way. The interface routes every frame between them and reads all of it as untrusted.
+4. **The decoder's loop** *(build, D6)* is a new module, `neoteletext_app::decoder`, ported from `ttx view`'s. Moving `ttx view` onto it is later work; the shared pieces were moved into `neoteletext-app` so that they are not duplicated.
+5. **Files.** *(build, D16)* Files open from a typed path, a `file://` address, or by dropping them on the window. T42 files are read up to 256 megabytes and anything else as TTI up to 256 kilobytes. The other formats `ttx` reads are not opened by the browser yet, and there is no file dialog.
+6. **Fonts and glyphs.** *(build, D19)* The window's own text uses the system's fonts, read at start; egui's bundled fonts are left out because their licences are not on REQ-GEN-017's list. Pages are always drawn with the teletext glyph sets, and the viewer can choose the project's own glyphs, Bedstead, or both side by side.
+7. **Menus are inside the window** *(build, D20)*, not in the macOS menu bar, which would need another library.
+8. **Saved data** (design decision 10, built in *(build, D21)*). Bookmarks, history, open tabs and settings are kept in the platform's application data directory, written only by the interface process, each written whole by renaming a temporary file. History keeps 30 days. Confirmed sites are kept for the session only, and restored tabs reopen at their tuning screens.
+9. **Cookies** *(build, D22)* live in each tab's fetcher, in memory only. Leaving a site in a tab ends that tab's session with it, and saving cookies between runs stays off (REQ-SEC-013).
+10. **Screen readers** *(build, D27)* are given the page's text as the page area's label, besides egui's own description of the window.
+11. **Libraries** *(build)*. `eframe` and `egui` 0.36.2, with the features `wgpu`, `accesskit`, `x11` and `wayland` and without default fonts; `chrono` 0.4.45 for the local time of row 0's clock; and, for tests only, `egui_kittest` 0.36.2 and `image` 0.25.10. All are MIT or Apache-2.0. egui brings in two crates licensed BSL-1.0, `clipboard-win` and `error-code`, used only on Windows; `deny.toml` allows that licence for those two crates only. The owner is to confirm this exception (issue #145).
+
+The design's other decisions (section 15: decisions 3, 4, 6, 7, 8, 12, 13 and 15 to 18) were recommendations still awaiting the owner (issue #150), and Appendix D.2 lists them.
+
+*Reason:* `docs/desktop-browser.md`. Keeping every browser decision in a crate with no operating-system access lets one set of tests cover all five platforms, and keeps the shells thin.
+
+**E.69 — Confining the browser's helper processes.**
+1. **The browser runs privilege-separated web mode** (REQ-SEC-018) for every tab, with the decoder holding no rights and the fetcher holding only the network.
+2. **On macOS the helpers are confined by Seatbelt profiles applied with `/usr/bin/sandbox-exec`.** *(build, D2)* Design decision 6 recommended XPC services, which need an app bundle with nested services and Objective-C or `unsafe` code, and only the C interface crate may contain `unsafe` code (REQ-SEC-015). `sandbox-exec` needs neither, works for both the bare program and the bundle, and confines the helper before its first instruction. The profiles deny everything, then allow only what was measured to be needed on macOS 15.6:
+   - **the decoder:** running itself, reading the system libraries, its own file and the root directory, and reading `sysctl` values; no files, no network and no other programs;
+   - **the fetcher:** the same, plus outgoing connections, name resolution through the system's resolver, and the resolver's files.
+
+   `sandbox-exec` is deprecated by Apple but present and working on macOS 15.6. If it is removed, XPC services are the replacement.
+3. **On Linux** each helper applies its own Landlock and seccomp sandbox, as `ttx` does (REQ-SEC-017).
+4. **The interface process itself is not sandboxed.** *(build, D3)* The App Sandbox needs a signed bundle with entitlements, which is part of the release work and needs membership of the Apple Developer Program (design decision 8).
+5. **The WebAssembly wall around the decoder** (design decision 12) **is not built.** *(build, D4)* On macOS the decoder already runs in a process with no file or network access. The interpreter is the only wall available on iOS; it is tracked in issue #160.
+
+*Reason:* Security overrides every other requirement (decision E.32), and the helpers parse untrusted input. A test on every run proves the confinement, by trying to read a file, connect and start a program under each profile (REQ-SEC-026).
+
 ---
 
 # Part F — Requirements
@@ -1976,6 +2078,7 @@ Recognition by people fluent in each script, and proofs of real pages, are revie
 | DOC | Documentation |
 | FSM | State machines |
 | WEB | Web-native page sources |
+| BRW | The browser (section F.20) |
 | SEC | Security and sandboxing, which overrides every other area (section F.0.3) |
 
 ## F.0.1 Delivery phases
@@ -1991,6 +2094,7 @@ The requirements are delivered in two phases.
 - the basic software data slicer;
 - the web-native module (area WEB), including the live WebSocket feed reader (REQ-INP-022);
 - the command-line commands;
+- the browser (area BRW, and REQ-NAV-013 to REQ-NAV-015, REQ-SEC-025, REQ-SEC-026, REQ-WEB-018, REQ-WEB-020, REQ-WEB-022 and REQ-TST-081) on macOS and Linux, added on 12 October 2026 (decision E.68);
 - the full test suite for all of these.
 
 **Phase 2** holds the optional features and nice-to-haves. A requirement, or part of one, belongs to Phase 2 when it carries a *Phase:* note saying so. Phase 1 requirements carry no phase note. Phase 1 must not depend on anything in Phase 2.
@@ -2021,6 +2125,7 @@ The requirements are delivered in two phases.
 | REQ-SEC-019 | The example WebAssembly host. The WebAssembly builds stay in Phase 1. |
 | REQ-SEC-021 | Guidance on hardware isolation for microcontroller ports. |
 | REQ-RND-026 | The glyph line cache. |
+| Area BRW, REQ-NAV-013 to REQ-NAV-015, REQ-SEC-025, REQ-SEC-026, REQ-WEB-018, REQ-WEB-020, REQ-WEB-022 and REQ-TST-081 | The browser on Windows, Android and iOS. macOS and Linux stay in Phase 1. |
 
 Tests for a Phase 2 feature are delivered with that feature.
 
@@ -2036,8 +2141,9 @@ Phase 1 is large, roughly 100 to 150 person-days, so it is delivered in mileston
 | **M4 — Raw video** | The software data slicer and its synthetic signal generator. | SLC, FSM-002, TST-060, TST-061 |
 | **M5 — Forms, links and viewer** | Interactive forms, form input, links (Appendix E), navigation and the viewer state machine. | WEB-010 to WEB-012, NAV (including history, REQ-NAV-010), FSM-005 |
 | **M6 — Levels 2.5 and 3.5** | Decode and render Presentation Levels 2.5 and 3.5 completely: the packets of both levels, storage of enhancement pages, the Colour Map, non-spacing attributes, row and screen colours, side panels, objects and default objects, DRCS, G3 glyphs, font styles and flash, with the presentation level setting and its option. The tests include the worked examples of the standard, authored streams with golden rasters, zvbi as oracle at both levels, real data, and fuzzing of every new parser. | PKT-010 to PKT-018, ACQ-016 to ACQ-022, L25, OBJ, DRC, CHR-007, CHR-011, RND-030 to RND-041, PRF-006, CLI-007, INP-023 to INP-025, FSM-011, FSM-012, TST-015 to TST-019, TST-023 to TST-025, TST-042 |
+| **M7 — Browser** | The windowed browser on macOS and Linux: tabs, the address bar, sites with and without descriptors, links to addresses, aliases, the tuning screen, row 0 drawn by the receiver, page catching, files, saved data, and helper processes confined on both systems, tested end to end against local sites. Built on 12 October 2026 ahead of these requirements; recorded in decisions E.63 to E.69. | BRW, NAV-013 to NAV-015, SEC-025, SEC-026, WEB-018 to WEB-022, TST-081 |
 
-M1 is expected to take 40 to 50 person-days. The order of M2 to M5 may be changed; each depends only on M1. M6 depends on M1, and on M2 for the captures from the live feed that REQ-TST-025 uses.
+M1 is expected to take 40 to 50 person-days. The order of M2 to M5 may be changed; each depends only on M1. M6 depends on M1, and on M2 for the captures from the live feed that REQ-TST-025 uses. M7 depends on M2 and M5.
 
 Where Part E mentions a Phase 2 feature (the SAA5246A profile, or a strict option), the default behaviour it describes is the Phase 1 behaviour.
 
@@ -2261,8 +2367,31 @@ A link may be followed only while the receiver is showing its complete prompt in
 - disguise a link to another service as a local one;
 - give a key a link it does not show.
 
-On pages where row 24 is not displayed, the coloured keys shall do nothing. That includes newsflash and subtitle pages shown boxed, and page zoom of the top half when row 24 is off screen. The only link mechanism is the coloured keys (decision E.36). Text on the page that looks like a link is only text.
+On pages where row 24 is not displayed, the coloured keys shall do nothing. That includes newsflash and subtitle pages shown boxed, and page zoom of the top half when row 24 is off screen. The only link mechanisms are the coloured keys (decision E.36) and the page-number and text links declared by `LK` and `LT` lines (decision E.64). Text on the page that looks like a link, but is not declared as one, is only text: it cannot be selected, and nothing shows a destination for it.
+*Amended 12 October 2026* (decision E.64): page-number and text links.
 *Verification:* Test with hostile pages that try each of these.
+
+**REQ-SEC-025 — The browser draws row 0 on every page.**
+*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS (section F.0.1).
+In the browser, all of row 0 belongs to the receiver on every page, not only columns 0 to 7 (decision E.65 items 1 and 2). The interface shall replace row 0 of every frame a decoder sends, across its whole width, with the row it draws itself:
+- columns 0 to 6, the status area of REQ-SEC-005, showing the activity: the page digits, `FORM`, `LINK` or `GO?`, and the red marker for plain HTTP;
+- on web sites, the site's name from the location the interface holds, never from the page, and the clock while the name fits in columns 8 to 31; a longer name is shortened from the left and marked;
+- for files and live feeds, the broadcast's own header text.
+
+Page digits reported by a decoder shall be shown only when they are three hexadecimal digits or `-`, and as `---` otherwise. The pages the receiver draws itself (the start page, the keys page, the tuning screen, error and loading pages) shall be built in the interface process and never pass through a decoder.
+*Reason:* Row 0 is how the viewer knows which site they are on, and what the keys are doing. A decoder handling a hostile page must not be able to write it.
+*Verification:* Tests in which a decoder sends a forged row 0 and a hostile site draws a fake header and a fake tuning screen; the row shown must be the receiver's.
+
+**REQ-SEC-026 — The browser's helper processes.**
+*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS (section F.0.1).
+The browser shall run each tab's network access and decoding in separate helper processes, as REQ-SEC-018 describes for `ttx`: a fetcher, which holds only the network, and a decoder, which holds nothing (decision E.69). The interface process shall route every message between them, read every message as untrusted, and check each against the strict, bounded framing of the pipe. It shall drop any confirmation request a decoder sends: only the interface asks the viewer to confirm, outside the page (decision E.65 item 6).
+
+The helpers shall be confined before they read any input:
+- **on macOS,** by Seatbelt profiles applied with `/usr/bin/sandbox-exec` when the helper starts. The decoder's profile allows no files, no network and no other programs; the fetcher's allows outgoing connections and name resolution only;
+- **on Linux,** by the Landlock and seccomp sandbox of REQ-SEC-017, applied by each helper.
+
+If a helper cannot be confined, it shall not run, unless the browser was started with `--no-sandbox`, which exists for debugging only.
+*Verification:* A test on every run that, under each helper's confinement, tries to read a file, open a network connection and start a program, and expects exactly the failures above, and that the same attempts succeed unconfined, so the test measures something.
 
 ---
 
@@ -3796,6 +3925,8 @@ When a coloured key's link leads to a different service (REQ-WEB-015), and that 
 - the receiver redraws row 24 to show the destination service's name as the descriptor gives it, and its origin, with the instruction to press the same key again to go.
 
 Pressing the same key again follows the link and marks the origin as confirmed. Any other key cancels. Links within the same service, and the Index key, are followed at once.
+
+This requirement applies to `ttx view` and to ports without a browser interface. In the browser (area BRW), every link to another site goes through the tuning screen of REQ-NAV-014 instead (decision E.65).
 *Verification:* Test of confirmation, cancellation, and the already-confirmed case.
 
 **REQ-NAV-004 — Pre-fetching linked pages.**
@@ -3877,6 +4008,40 @@ The viewer shall keep a history of the pages it has displayed, like a browser. E
 - History is never saved between runs unless the port enables it, and it can be wiped, like the cookie store (REQ-SEC-013).
 
 *Verification:* Test of back, forward, clearing and the form case.
+
+**REQ-NAV-013 — Links to addresses, page numbers and runs of text.**
+*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS (section F.0.1).
+A link target may be a page of the current service, a page of a named service, or an address (Appendix E.1, decision E.64). The browser shall follow:
+- **coloured keys and Index** to any of these targets;
+- **page-number links** (`LK`): typing that number, or choosing the number printed on the page, while the page is shown;
+- **text links** (`LT`): choosing the linked run of text.
+
+A typed number shall follow the current page's own link for it, otherwise the descriptor's alias for it (REQ-WEB-020), otherwise the current site's page with that number. A link to a page of the current site is followed at once. A link to another site, whether by a named service or an address, shall go through the tuning screen (REQ-NAV-014). `ttx view` keeps REQ-NAV-012 for named services, and does not yet follow addresses, page-number links or text links.
+*Verification:* Test of each link source and target form, and of the order of page link, alias and site page.
+
+**REQ-NAV-014 — The tuning screen.**
+*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS (section F.0.1).
+Before the browser shows anything from another site, it shall clear rows 1 to 24 and show the tuning screen (decision E.65 item 3). The screen shall show:
+- the destination's host, in double height, shortened from the left so that its end always shows;
+- the full address, wrapped over up to four rows, with a mark when it is cut;
+- whether the connection is encrypted; a plain HTTP destination is stated in red;
+- why the browser is going there: a typed address, a choice from bookmarks or history, a restored tab, a redirect and the site that sent it, or a link and the site it is on. For a link, the name the site's descriptor gives the destination, or that the address was written in the page and not declared;
+- the keys: Enter to go, and Escape or Delete to stay.
+
+Row 0 shall show `GO?` and the destination. The screen shall be shown for a typed address, a bookmark or history entry, a restored tab, a link to another site, and a redirect to another site. It shall be skipped only when going back or forward to a site confirmed earlier in the same session. Confirmed sites shall not be remembered between runs. Only the viewer's own key press confirms; nothing a page or a decoder sends can.
+*Verification:* Test of each reason for the screen, of the skipped case, and that a page drawing a copy of the screen cannot confirm anything (the hostile test site of REQ-TST-081).
+
+**REQ-NAV-015 — Page catching and showing links.**
+*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS.
+The viewer shall offer page catching (decision E.66):
+- Enter, when nothing else uses it, turns page catching on at the first link in reading order. The links are the page numbers on rows 1 to 23 that lead to a page, and the runs of `LT` lines.
+- Right and Down move to the next link, Left and Up to the previous one, and Enter follows the selected link.
+- Escape or Delete turns page catching off. Any other key turns it off and then does what it does.
+- The selected link is shown with its foreground and background colours swapped, drawn by the receiver. Row 0 shows `LINK` and the selected link's destination.
+- Pages with side panels are not caught.
+
+A show-links key, `l`, shall underline every link on the page with the receiver's own underline until it is pressed again. With a pointer, the destination of a page number under the pointer shall be shown outside the page, and a click shall follow it.
+*Verification:* Test of turning on, moving, following and turning off; test that only real links can be selected.
 
 ---
 
@@ -4730,14 +4895,14 @@ The program shall exit with:
 `ttx check` shall read TTI page files and report problems that would make a page fail on some receivers, or behave unsafely. Each problem is reported as an error or a warning, with its file, page and line. It shall report:
 
 *Errors:*
-- **Too many links.** More than four coloured links, or a repeated key.
-- **Bad link targets.** Targets naming services missing from a given descriptor.
+- **Too many links.** More than four coloured links, a repeated key, or two `LK` lines for the same page number.
+- **Bad link targets.** Targets naming services missing from a given descriptor, and `LK` or `LT` lines whose target, page number or position is invalid (Appendix E.1).
 - **Bad labels.** Labels too long for the prompt, or using characters the page's G0 set cannot show.
 - **Bad form fields.** Overlapping fields, fields outside the row, or version 2.0 form syntax.
 - **Withdrawn commands.** Use of the withdrawn `FH` command.
 
 *Warnings:*
-- **Page number not shown.** A link to a page in the same service whose page number does not appear in the page's text (Appendix E.2 rule 5).
+- **Page number not shown.** A link to a page in the same service whose page number does not appear in the page's text (Appendix E.2 rule 5), or an `LK` line that links a page number the page's text does not show (Appendix E.2 rule 7, decision E.64).
 - **No other route.** A link to another service with no other route given in the text (Appendix E.2 rule 6).
 - **No broadcast fallback.** A form page with no fallback instruction for broadcast viewers (Appendix C.6).
 - **Unreliable placeholders.** Form placeholders using national option characters (Appendix C.4).
@@ -5030,6 +5195,17 @@ Continuous integration shall run on every change:
 - the size budget (REQ-GEN-009);
 - the fuzzing runs (REQ-TST-040).
 *Verification:* Inspection.
+
+**REQ-TST-081 — End-to-end tests of the browser against local sites.**
+*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS (section F.0.1).
+The browser shall be tested end to end, with its real helper processes, against local test sites, each on its own port of 127.0.0.1 so that each is its own site. The sites are test code (`tests/web-server/sites.py`) and shall include:
+- a site with a descriptor, TTI pages, aliases, `LN`, `LK` and `LT` links to another site, and a form;
+- a site without a descriptor, with a front door and page files in T42;
+- a site whose descriptor redirects to another site;
+- a hostile site whose pages try to forge row 0 and the tuning screen, and one of whose responses never ends.
+
+The tests shall drive the browser's tabs through the same code the window uses, without a display, and shall cover typed addresses, history, links, aliases, page catching, redirects, forms, files, the hostile site, and the helpers' confinement (REQ-SEC-026). Window tests shall render the whole window without a display and check what it shows.
+*Verification:* The tests run in the gate.
 
 ---
 
@@ -5385,11 +5561,16 @@ A web teletext service shall be identified by the address of a small descriptor 
 - optionally, a push address and the push method (WebSocket or server-sent events);
 - optionally, a list of other origins that forms may submit to;
 - optionally, the default character set region (decision E.4);
-- optionally, a list of other services that links may lead to (Appendix E). Each has a short name, a display name and the address of its own descriptor.
+- optionally, a list of other services that links may lead to (Appendix E). Each has a short name, a display name and the address of its own descriptor;
+- optionally, `aliases`: an object whose members map a page number to a target, either `name:mpp` or an address (decisions E.63 and E.64). An alias is one page number, never a range. A relative address shall be refused, an address in a descriptor fetched over `https` shall be `https`, and there shall be at most 16 aliases;
+- optionally, `refresh`: a whole number of seconds from 5 to 86 400, the interval at which the page on screen is asked for again when the service has no push (decision E.63).
+
+A site's descriptor is found at `/.well-known/teletext.json` on its origin (REQ-WEB-018). A descriptor may also be given by any other address, as before.
 
 The page address template uses the placeholders `{m}` (magazine), `{pp}` (page number as two hexadecimal digits), `{mpp}` and `{sub}` (sub-code as four hexadecimal digits), for example `https://example.org/ttx/pages/{mpp}`. The reader shall reject a descriptor with missing required members or unknown placeholders, with a clear diagnostic.
 *Reason:* A page number is teletext's address. The template maps it to a web address without making the page files themselves aware of the web.
-*Verification:* Test with valid and malformed descriptors.
+*Amended 12 October 2026* (decision E.63): the well-known location, `aliases` and `refresh`.
+*Verification:* Test with valid and malformed descriptors, including aliases and refresh intervals out of range.
 
 **REQ-WEB-003 — Fetching pages.**
 The web module shall fetch a page by expanding the template for the requested page, and optionally sub-page, and making an HTTP GET request. It shall accept these response types:
@@ -5399,7 +5580,7 @@ The web module shall fetch a page by expanding the template for the requested pa
 These two media types are defined by this project. For interoperability, the module shall also accept `text/plain` and `application/octet-stream`, deciding the format by the detection of REQ-INP-005. The response shall pass through the normal acquisition path, as page files do (REQ-ARCH-004).
 
 The module shall:
-- follow at most 5 redirects;
+- follow at most 5 redirects. When the port asks for redirects to stay within the site, a redirect to another origin shall instead be reported, not followed (REQ-WEB-021);
 - treat 404 as "page not in this service";
 - report other failures as events without disturbing pages already stored.
 *Verification:* Test against the local test server of REQ-WEB-013.
@@ -5655,6 +5836,130 @@ Where the port can keep a signing key that cannot leave the device, the web modu
 The session is then bound to that device. The server issues short-lived cookies only after the client proves it holds the key, so cookies copied from the device, or read on a plain HTTP connection, soon become useless. Ports without such storage shall simply not offer it, and sessions then work as REQ-WEB-006 describes. The implementation shall follow the W3C specification as it stands when the work is scheduled.
 *Verification:* Test against a test-server implementation of the protocol.
 
+**REQ-WEB-018 — Sites.**
+*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS (section F.0.1).
+The web module shall be able to open a site given only its origin (decision E.63), and the browser shall open sites this way. It shall fetch the descriptor from `/.well-known/teletext.json` on that origin.
+- When the descriptor is found and valid, the site is that service.
+- When the request answers 404 or 410, the site shall be given defaults, built as a descriptor and checked by the rules of REQ-WEB-002: its name is the host, its initial page is 100, its page address template is `/{mpp}.t42` on the origin, and its front door is `/index.t42`.
+- Any other failure, including a server error and an invalid descriptor, shall be reported as a failure, never replaced by the defaults.
+
+A site's identity, for every rule that depends on "the same site", is its origin (REQ-WEB-015).
+*Reason:* A simple site is then a folder of page files on any static host, and a broken descriptor cannot silently turn a site into a different one.
+*Verification:* Test against the local test server with a site that has a descriptor, one without, and one whose descriptor fails.
+
+**REQ-WEB-019 — Page files and the front door.**
+A site's pages come from two kinds of resource, with no setting to choose between them (decision E.63 item 4):
+- **The front door,** `/index.t42` on a site without a descriptor, may hold any number of pages, and every page it holds shall be stored. It is bounded by the page response limit of REQ-WEB-008.
+- **A page's own file,** the expansion of the page address template, shall fill only pages that have been asked for, and enhancement pages, whose page numbers are not decimal. Any other page in it shall be dropped.
+
+A requested page shall be looked for first in the store, if it is there and confirmed current (REQ-WEB-004), then in its own file, and is otherwise "not found". A front door, a pushed message, a form response or a local file shall fill every page it holds. When a file or front door does not hold the page asked for, and the viewer has not chosen a page, the first page it holds shall be shown.
+*Reason:* A page file cannot then overwrite other pages of its site, while a whole capture dropped in as the front door is still a working site.
+*Verification:* Test that a page file holding other pages fills only the pages asked for and enhancement pages, and that a front door fills every page.
+
+**REQ-WEB-020 — Aliases and refresh.**
+*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS (section F.0.1).
+In the browser, when the site's descriptor has aliases (REQ-WEB-002), a typed number that has no link on the current page shall follow the alias for that number, if there is one (decision E.64 item 4). An alias to another site goes through the tuning screen in the browser (REQ-NAV-014). When the descriptor has a refresh interval and the service has no push, the page on screen shall be asked for again at that interval, with a conditional request (REQ-WEB-004).
+*Verification:* Test that an alias leads to its target and that a page's own link wins over it; test the refresh interval against the local test server.
+
+**REQ-WEB-021 — Redirects within the site.**
+The web module shall offer a setting under which a redirect to another origin is not followed, but reported as an event naming the new address (decision E.65 item 5). A redirect from `http` to `https` on the same host, from the default port of `http` to the default port of `https`, is within the site; a redirect to any other port is not. The browser shall use this setting; `ttx` follows redirects as REQ-WEB-003 says. The limit of five redirects applies in both cases.
+*Reason:* Otherwise a redirect would take the viewer to another site without the tuning screen.
+*Verification:* Test that a redirect to another origin is reported and not followed, and that an upgrade to `https` on the same host is followed.
+
+**REQ-WEB-022 — Enhancement dependencies.**
+*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS (section F.0.1).
+When the browser shows a page at Presentation Level 2.5 or 3.5 and its enhancement pages are not in the store, it shall ask once for its magazine's Organization Table (page xFE), then for the object and DRCS pages that the table and the page name (decision E.63 item 5). Pages already stored shall not be asked for again. These requests shall not change which page is kept current. While they load, the page is shown with what has arrived, and is drawn again as they arrive. A dependency that cannot be fetched removes only what depends on it (decision E.41).
+*Verification:* Test against the local test server that a Level 2.5 page fetches its table and object pages once.
+
+---
+
+## F.20 The browser (BRW)
+
+This area is the windowed browser, `neoteletext`, designed in `docs/desktop-browser.md` and `docs/web-native-concept.md`, and recorded in decisions E.63 to E.69. Its security requirements are REQ-SEC-025 and REQ-SEC-026, and its navigation requirements REQ-NAV-013 to REQ-NAV-015.
+
+Every requirement in this area carries the same phase: Phase 1 on macOS and Linux, and Phase 2 on Windows, Android and iOS (section F.0.1).
+
+**REQ-BRW-001 — One program, with its behaviour in a platform-free crate.**
+*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS.
+The browser shall be one Rust program built on egui for every platform (decision E.68 item 1). Every decision about what the browser shows and does (addresses, sites, history, the tuning screen, row 0, the receiver's own pages and the formats of saved files) shall be made in `neoteletext-browser`, a library crate with no operating-system access (REQ-SEC-016). `neoteletext-gui` holds only the window, the helper processes and storage. The program shall also be its own helpers: started with a hidden command, it runs as a tab's fetcher or decoder (REQ-SEC-026).
+*Verification:* Inspection; `xtask check-io` classes `neoteletext-browser` as a library crate.
+
+**REQ-BRW-002 — Tabs and the address bar.**
+*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS.
+The browser window shall hold any number of tabs. Each tab has its own location, history, helper processes and cookies. The window shall have a tab strip; a toolbar with back, forward, reload and home buttons, the connection's security, the address bar and buttons for the four coloured keys; a menu with bookmarks, history, copying and settings; and a status line.
+
+The address bar shall accept:
+- `https://host/` or a bare `host`, which means `https`: the site at that origin, at its initial page (REQ-WEB-018);
+- `https://host/140.t42`, or `host 140`: that page of that site;
+- `https://host/name.json`: the service that descriptor names (REQ-WEB-002), except that the well-known descriptor's own address names the site;
+- `zxnet:name`: a known zxnet live feed (REQ-INP-022);
+- `file:///path` or `/path`: a local file (REQ-BRW-005).
+
+Every address shall pass the strict parser of REQ-WEB-016; only `http` and `https` lead to sites. A page number must be three digits of a real page. While a page is shown, the address bar shows the address of its page file, which typed back leads to the same page.
+*Verification:* Test of each accepted form and of rejected ones; a window test.
+
+**REQ-BRW-003 — Each tab's history.**
+*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS.
+Each tab shall keep a history of the pages it has shown, across sites, of at most 100 entries, the oldest dropped first. Each entry records the location, the page and a title from the page's first line of text. A new page after going back drops the entries ahead of it. Going back or forward to another site shows the tuning screen unless that site was confirmed earlier in the session (REQ-NAV-014).
+*Verification:* Test of back, forward, the dropped entries and the cross-site case.
+
+**REQ-BRW-004 — Keys.**
+*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS.
+The browser's keys shall follow decision E.67:
+
+| Function | Letter | Other keys |
+|---|---|---|
+| Page number | `0` to `9` | |
+| Coloured keys | `r`, `g`, `y`, `c` | F1 to F4 |
+| Index | `i` | End |
+| Initial page | `h` | Home |
+| Next and previous page | `+`, `-` | Up, Down |
+| Sub-pages | | Right, Left |
+| Back and forward | Backspace, `f` | Page Up, Page Down; Command-Left, Command-Right; Command-[, Command-] |
+| Hold | `H` | Insert |
+| Reveal, mix, zoom | `?`, `m`, `z` | `*`, `/` |
+| Reload | `u` | F5, Command-R |
+| Page catching, show links | Enter, `l` | |
+| Into the page's form | Tab | |
+| Confirm | Enter | F4 |
+| Cancel | Escape | Delete |
+| Address bar | | Command-L, F6 |
+| New tab, close tab, next tab | | Command-T, Command-W, Control-Tab |
+| Bookmark | | Command-D |
+| Copy the page's text | | Command-Shift-C |
+| Glyph set | `G` | |
+| The keys page | `K` | |
+| Quit | | Command-Q |
+
+Escape never quits. `K` shows a page, drawn by the receiver, that lists the letter for each function first, each line fitting the 40 columns and using no character that differs between national options. While a form has the keys, typing is text, and F1 to F4 remain the coloured keys.
+*Verification:* A test that every line of the keys page fits; window tests of the main keys.
+
+**REQ-BRW-005 — Files.**
+*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS.
+The browser shall open a local file given in the address bar or dropped on the window (decision E.68 item 5). A file whose name ends in `.t42` shall be read as T42 packets, up to 256 megabytes; any other file as TTI, up to 256 kilobytes. Every page a file holds shall be stored, and the file opens at the page asked for or, failing that, its first page (REQ-WEB-019). A file is its own site for the tuning screen.
+*Verification:* Test of opening each format by path; test of the first-page rule.
+
+**REQ-BRW-006 — Saved data.**
+*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS.
+The browser shall keep bookmarks, history, the open tabs and its settings between runs, in the platform's application data directory: Application Support on macOS, `$XDG_DATA_HOME` or `~/.local/share` on Linux, `%APPDATA%` on Windows (decision E.68 item 8). Only the interface process shall write them. Each file shall be written whole, by writing a temporary file and renaming it.
+- History shall keep 30 days.
+- Confirmed sites shall not be saved.
+- Restored tabs shall reopen at their tuning screens.
+- Cookies shall not be saved (REQ-SEC-013).
+
+Reading shall be strict and bounded, because the files could have been changed by anything: at most 4 megabytes per file and 10 000 records, and every stored address read back through the address bar's parser, so a stored address can never mean more than a typed one.
+*Verification:* Tests of writing and reading back, of the history limit, and of malformed files; a window test that a bookmark is kept and listed on a new tab's start page.
+
+**REQ-BRW-007 — Glyphs and the window's fonts.**
+*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS.
+Pages shall be drawn with the teletext glyph sets only. The viewer shall be able to choose the project's own glyphs (REQ-RND-028), Bedstead (decision E.25), or both side by side, by the `G` key or the menu; the choice applies to every tab and is saved. The window's own text shall use the platform's fonts, read at start, and no bundled font whose licence is not on REQ-GEN-017's list.
+*Verification:* Window tests rendering each glyph choice.
+
+**REQ-BRW-008 — Accessibility.**
+*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS.
+The window's controls shall be described to the platform's screen reader. The page area shall be labelled with the page's text, as `ttx text` gives it. The page's text shall be copyable. The rest of `docs/web-native-concept.md` section 11 (navigation row by row and link by link, and link descriptions) is not yet required.
+*Verification:* Inspection with the platform's screen reader.
+
 ---
 
 # Part G — Out of Scope
@@ -5728,6 +6033,13 @@ The following are not part of this implementation. Each could be added later as 
 | Origin Modifier | A triplet that offsets the position of the next object invoked, which is how objects reach the side panels. |
 | Side panel | Up to 16 extra columns to the left or right of the 40-column page at Levels 2.5 and 3.5 (clause 12.5). |
 | Presentation level | One of Levels 1, 1.5, 2.5 and 3.5 of EN 300 706 clause 12; a configuration setting of this receiver (REQ-PRF-006). |
+| Site | A web origin that serves teletext pages, with or without a descriptor (REQ-WEB-018, decision E.63). |
+| Front door | The file `/index.t42` of a site without a descriptor: its first page, which may hold any number of pages (REQ-WEB-019). |
+| Page file | The file of one page, at the address the page address template gives, such as `/140.t42` (REQ-WEB-019). |
+| Alias | A descriptor entry that leads one page number to another site on every page of the site (REQ-WEB-020). |
+| Tuning screen | The receiver-drawn screen shown before anything from another site, which the viewer confirms (REQ-NAV-014, decision E.65). |
+| Page catching | Moving a cursor between the links on a page and following one, as some Philips televisions did with page numbers (REQ-NAV-015). |
+| Helper process | A process the browser starts for a tab: a fetcher, which holds only the network, or a decoder, which holds nothing (REQ-SEC-026). |
 
 ---
 
@@ -5955,13 +6267,16 @@ The research notes `research/notes-level25-enhancement.md`, `research/notes-leve
 | Should an invocation be skipped when the object number bits of its definition differ from its own? | Decision E.51 does not compare them, because the standard does not require it. Comparing would reject a misplaced pointer. | An owner decision |
 | Should the Magazine Inventory Page be interpreted? | It could guide which enhancement pages to keep when the store is full (REQ-ACQ-019). Part G item 12 leaves it uninterpreted. | An owner decision |
 | Does Level 3.5 fit the flash budget of REQ-GEN-009 on a Cortex-M0? | The enhancement processor, the G3 glyph data and the larger grid all add to the 64 kilobyte budget | The size check of REQ-GEN-009, from milestone M6 |
+| Are the decisions taken while building the macOS browser right? | Decisions E.63 to E.69 include choices marked *(build)*, taken on 12 October 2026 without the owner: among them the origin as the site, `sandbox-exec` instead of XPC services, the WebAssembly wall deferred, `q` not quitting, and the BSL-1.0 licence exception. | The owner's review (issue #162); each change is recorded as an amendment in Part E. |
+| The browser design's remaining decisions | `docs/desktop-browser.md` section 15 decisions 3, 4, 6, 7, 8, 12, 13 and 15 to 18 are recommendations: libraries, the input router, process isolation on macOS, Windows test machines, signing accounts, the WebAssembly wall, iOS as one process, the interface to the phone shells, minimum system versions, an outside audit, and the phone tools. | The owner's decisions (issue #150), recorded in Part E. |
+| Should the tuning screen flag host names that imitate others? | The concept (section 6) says names that imitate other domains are flagged; nothing does this yet. It needs a source of confusable characters and of well-known names. | A decision in Part E before it is built. |
 | Do the Teefax and NMS Ceefax feeds carry packets X/26 and X/28, objects or DRCS pages? | REQ-TST-025 relies on them for real data of these levels, and the feeds send only requested pages (REQ-INP-022) | Captures made for REQ-TST-025 |
 
 ---
 
 # Appendix E — TTI Link Extension (normative)
 
-This appendix defines how a TTI page declares its links (decision E.36).
+This appendix defines how a TTI page declares its links (decisions E.36 and E.64). It was amended on 12 October 2026 to allow addresses as targets, and to add the `LK` and `LT` lines.
 
 ## E.1 The link command
 
@@ -5972,12 +6287,31 @@ LN,key,target,label
 - **`key`** is `R`, `G`, `Y` or `C` for the red, green, yellow and cyan keys, or `I` for Index. Each key may appear at most once on a page or sub-page.
 - **`target`** has one of these forms:
   - `mpp` or `mpp:ssss`: a page, and optionally a sub-page, in the same service, in hexadecimal;
-  - `name:mpp` or `name:mpp:ssss`: a page in another service named in the service descriptor (REQ-WEB-002). Names are letters, digits and hyphens.
+  - `name:mpp` or `name:mpp:ssss`: a page in another service named in the service descriptor (REQ-WEB-002). Names are letters, digits and hyphens;
+  - an address: the address of another site's page file, such as `https://weather.example/300.t42` (decision E.64).
 
-  Addresses (URLs) never appear in pages.
+  A target containing `://` is an address; any other target is a page or a named service. An address shall use `http` or `https`, shall be printable ASCII with no spaces or commas, and shall be at most 256 bytes. A target that breaks these rules makes the link invalid. An address on the page's own origin is a page of the current site.
 - **`label`** is the prompt text. It is at most 9 characters for a link in the same service and 8 for a link to another service, using characters the page's G0 set can show. It is ignored for `I`.
 
 `LN` lines apply to the page or sub-page of the most recent `PN` line.
+
+### E.1.1 Page-number links
+
+```
+LK,mpp,target
+```
+
+Links the page number `mpp`, which the page shows, to `target`, in any of the forms above. While the page is shown, typing that number, or choosing the number printed on the page, follows the link (REQ-NAV-013). A page has at most eight `LK` lines; a ninth is ignored with a diagnostic. Two `LK` lines for the same number, or an invalid number or target, are reported by the page checker as errors (REQ-CLI-006).
+
+### E.1.2 Text links
+
+```
+LT,row,column,length,target
+```
+
+Links a run of `length` characters starting at `column` on `row` to `target`. `row` is 1 to 23 and the run must lie within the 40 columns; anything else makes the line invalid. A page has at most eight `LT` lines; a ninth is ignored with a diagnostic. The page draws the text itself; the receiver shows it as a link only in page catching or when the viewer asks to see links (REQ-NAV-015).
+
+`LK` and `LT` lines apply to the page or sub-page of the most recent `PN` line, and are kept by the TTI writer.
 
 ## E.2 Rules
 
@@ -5985,12 +6319,14 @@ LN,key,target,label
 2. **Unknown services.** A target naming a service not in the descriptor makes that link null.
 3. **Older decoders.** Older TTI readers ignore `LN` lines. A page that wants links on such readers may also carry an ordinary `FL` line. When both are present, `LN` wins in neoteletext.
 4. **Encoding for broadcast.** When the page encoder turns the page into packets (REQ-INP-019):
-   - it writes packet X/27/0 from the links to the same service, with links to other services written as null;
+   - it writes packet X/27/0 from the links to the same service, with links to other services and to addresses written as null;
    - it writes a row 24 (packet X/24) drawn as REQ-NAV-011 describes, with the "display row 24" flag set. The one difference is that a link to another service is written in white rather than its key's colour. The "»" mark still shows, but the prompt does not look like a key that works: a broadcast television cannot follow it.
 
    A Fastext television therefore shows the same prompts and follows the same-service links.
 5. **Reachable without Fastext.** Televisions made before Fastext (before about 1987) can only follow a link by having the viewer type its page number. Every link to a page in the same service should therefore have its three-digit page number visible somewhere in the page's own rows, for example "Sport 140". The page checker (REQ-CLI-006) shall warn when one is not.
 6. **Honest about what cannot work.** A link to another service, or a destination outside teletext, cannot be followed on a broadcast-only television. Authors should give such destinations in a form a viewer can act on without the link: the channel or service name, a short address, or a QR code drawn in mosaic graphics. The page checker shall warn when a page's only route to another service is its link.
+7. **Linked numbers are shown.** A page-number link changes what typing that number does on that page only, so the number should appear in the page's text, where the viewer can see it. The page checker shall warn when an `LK` line links a number the page does not show.
+8. **No packet form.** Addresses, `LK` lines and `LT` lines cannot be carried in packets. The page encoder writes a coloured link to an address as null, with its prompt in white (rule 4), and leaves `LK` and `LT` lines out.
 
 ## E.3 Example
 

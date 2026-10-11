@@ -1,4 +1,4 @@
-//! Each tab's history (`docs/desktop-browser.md` section 6): a flat list of
+//! Each tab's history (REQ-BRW-003, `docs/desktop-browser.md` section 6): a flat list of
 //! entries and the index of the current one, as Chromium's navigation
 //! controller keeps it. A new page after going back drops the entries
 //! ahead of it.
@@ -129,6 +129,7 @@ mod tests {
         Location::Site { origin: "https://b.example".into(), secure: true }
     }
 
+    /// REQ-BRW-003.
     #[test]
     fn back_forward_and_pruning() {
         let mut history = Navigation::new();
@@ -160,6 +161,7 @@ mod tests {
         assert_eq!(entries[0].title, "Index [31m page", "control characters never reach a title");
     }
 
+    /// REQ-BRW-003: at most `MAX_ENTRIES`, the oldest dropped first.
     #[test]
     fn history_is_bounded() {
         let mut history = Navigation::new();

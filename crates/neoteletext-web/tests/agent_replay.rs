@@ -1,5 +1,6 @@
 //! The user agent driven through the in-memory replay transport
-//! (REQ-WEB-001, REQ-WEB-013's exact replay).
+//! (REQ-WEB-001, REQ-WEB-013's exact replay), including sites
+//! (REQ-WEB-018) and redirects within a site (REQ-WEB-021).
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects, clippy::panic)]
 
 mod common;

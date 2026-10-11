@@ -884,7 +884,7 @@ Also:
 | 2 | The interface toolkit | **Decided** by the owner on 11 October 2026: egui on all five platforms (architecture option 1); no Slint |
 | 3 | Libraries: the toolkit and its windowing and GPU tree; a menu crate for the macOS menu bar; a Public Suffix List source; a punycode and confusables source; a secret-store crate; Sparkle and WinSparkle bindings; Windows and macOS sandbox crates | Measure size and licences before choosing each |
 | 4 | The input router of `docs/hmi.md`, with a touch device class added | Adopt; every front end depends on it |
-| 5 | Record the web-native concept's decisions in Part E and write its requirements | Needed before the engine work |
+| 5 | Record the web-native concept's decisions in Part E and write its requirements | **Done** 12 October 2026: decisions E.63 to E.69, area BRW |
 | 6 | macOS process isolation: XPC services, or helper executables with Seatbelt profiles | XPC services |
 | 7 | Where Windows builds and tests run | A Windows virtual machine reachable from the gate |
 | 8 | Signing and distribution: the Apple Developer Program (macOS and iOS), a Windows code-signing certificate, a Google Play developer account, Flathub, F-Droid | Needed for the first phone builds on real devices (Apple) and for public release (the rest) |

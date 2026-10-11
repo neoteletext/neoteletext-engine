@@ -1,7 +1,9 @@
 //! The browser end to end against the local sites of
 //! `tests/web-server/sites.py`: real tabs, real fetcher and decoder
 //! processes confined as they are in use, and real HTTP. The window is
-//! not opened; the tests drive the tabs it drives.
+//! not opened; the tests drive the tabs it drives (REQ-TST-081). They
+//! cover REQ-WEB-018, REQ-WEB-019, REQ-WEB-021, REQ-NAV-013, REQ-NAV-014,
+//! REQ-NAV-015, REQ-SEC-025, REQ-SEC-026 and REQ-BRW-005.
 #![allow(missing_docs, clippy::unwrap_used, clippy::panic)]
 
 use neoteletext_app::pipe::UserInput;
@@ -326,8 +328,8 @@ fn links_to_addresses_go_through_the_tuning_screen() {
     );
 }
 
-/// Concept section 5 item 4: the descriptor's aliases send a number to
-/// another site on every page.
+/// REQ-WEB-020, concept section 5 item 4: the descriptor's aliases send a
+/// number to another site on every page.
 #[test]
 fn aliases_lead_numbers_to_other_sites() {
     let Some(sites) = sites() else { return };

@@ -1,5 +1,5 @@
 //! The rows the receiver draws itself, as 7-bit teletext codes: row 0 on
-//! every page (`docs/web-native-concept.md` section 4), and whole pages
+//! every page (REQ-SEC-025, `docs/web-native-concept.md` section 4), and whole pages
 //! for the tuning screen, the start page and error pages. The program
 //! renders them with the same renderer as broadcast pages, but they never
 //! pass through a decoder process, so no page can forge them.

@@ -157,7 +157,8 @@ mod platform {
     }
 }
 
-/// A helper process of the browser (`docs/desktop-browser.md` section 3.1).
+/// A helper process of the browser (REQ-SEC-026, `docs/desktop-browser.md`
+/// section 3.1).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Helper {
     /// The fetcher: the network only.

@@ -2,7 +2,7 @@
 
 The owner asked on 12 October 2026 for a working macOS browser with tabs and an address bar, built to completion with no questions asked, and for every decision to be recorded for later review. This is that record. Each entry says what was decided, why, and what it would take to change it.
 
-None of these is in REQUIREMENTS.md yet. The project's rule is that behaviour is recorded in Part E before it is built (REQ-DOC-004); this build went first because the owner asked for it. Section 4 lists what Part E and the requirements need.
+These are now in REQUIREMENTS.md, recorded on 12 October 2026 as decisions E.63 to E.69, where each is marked *(build)* with its number here; section 4 says where each part went. The project's rule is that behaviour is recorded in Part E before it is built (REQ-DOC-004); this build went first because the owner asked for it, and the entries were written afterwards. This document keeps the reasons in full for the owner's review (issue #162); a change after review is recorded as an amendment in Part E.
 
 The design is `docs/desktop-browser.md`; the concept is `docs/web-native-concept.md`. "Design decision n" means section 15 of the design.
 
@@ -148,16 +148,23 @@ It is skipped only for back and forward to a site confirmed this session (concep
 
 egui's tree adds two crates whose licence, BSL-1.0, is not on REQ-GEN-017's list: `clipboard-win` and `error-code`, both used only on Windows. `deny.toml` now allows BSL-1.0 for those two crates only, in the same way as the two exceptions of IMPLEMENTATION-LOG.md row 32. This is for the owner to confirm, with issue #145.
 
-## 4. What REQUIREMENTS.md needs
+## 4. Where each decision went in REQUIREMENTS.md
 
-- **Part E entries:** D1, D2, D7, D8, D11, D12, D13, D14, D18, D23 to D26, and the concept's decisions 1 to 14, which are still only in the concept document.
-- **Appendix E amendments:** addresses as targets, the `://` rule, and the `LK` and `LT` lines (D23).
-- **REQ-WEB-002 amendments:** the well-known location, `aliases` and `refresh` (D8, D24).
-- **Requirements:**
-  - **WEB:** sites, the well-known descriptor, the defaults and front door, refusing redirects to another site.
-  - **NAV:** tab history, the tuning screen.
-  - **A new BRW area:** the window, row 0 on every page, confirmations, saved files.
-  - **SEC:** the helpers' confinement on macOS.
+Recorded on 12 October 2026.
+
+| Here | Part E | Requirements |
+|---|---|---|
+| D1, D5, D6, D15, D16, D19 to D22, D27, libraries | E.68 | REQ-BRW-001 to REQ-BRW-008, REQ-SEC-025 |
+| D2, D3, D4 | E.69 | REQ-SEC-026 |
+| D7, D8, D9, D10, D17, D24, D26 | E.63 | REQ-WEB-002, REQ-WEB-018 to REQ-WEB-020, REQ-WEB-022 |
+| D11, D12, D13, D14 | E.65 | REQ-WEB-021, REQ-NAV-014, REQ-SEC-025, REQ-SEC-026 |
+| D18 | E.67 | REQ-BRW-004 |
+| D23 | E.64, amending E.36 | REQ-NAV-013, REQ-SEC-024, REQ-CLI-006, Appendix E |
+| D25 | E.66 | REQ-NAV-015 |
+| The concept's decisions 1 to 14 | E.63 to E.67 | as above |
+| The tests | — | REQ-TST-081 |
+
+The browser is milestone M7, Phase 1 on macOS and Linux and Phase 2 on Windows, Android and iOS (sections F.0.1 and F.0.2).
 
 ## 5. Not built yet
 

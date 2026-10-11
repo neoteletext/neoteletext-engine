@@ -1,6 +1,7 @@
-//! The browser's decoder process (`docs/desktop-browser.md` sections 3.1
-//! and 3.4): one site's pages, decoded and rendered with no network and no
-//! files.
+//! The browser's decoder process (REQ-SEC-026, `docs/desktop-browser.md`
+//! sections 3.1 and 3.4): one site's pages, decoded and rendered with no
+//! network and no files, with page catching and showing links
+//! (REQ-NAV-015) and fetching enhancement pages (REQ-WEB-022).
 //!
 //! The interface process starts it, forwards the fetcher's frames to it on
 //! standard input with the user's keys, and reads back on standard output
@@ -795,6 +796,7 @@ impl Engine {
 mod tests {
     use super::*;
 
+    /// REQ-NAV-015: only real page numbers can be caught.
     #[test]
     fn page_numbers_are_caught_only_as_three_digits() {
         let line = "Weather 200   Phone 0800 000   Sport 302.";
@@ -853,8 +855,8 @@ mod tests {
 
     const GLYPHS: GlyphChoices = [&[], &[], &[]];
 
-    /// `docs/web-native-concept.md` section 2 item 6: a shown page brings
-    /// its magazine's Organization Table, once.
+    /// REQ-WEB-022, `docs/web-native-concept.md` section 2 item 6: a shown
+    /// page brings its magazine's Organization Table, once.
     #[test]
     fn the_organization_table_is_asked_for_once() {
         let mut session = session_with(b"PN,10000\nOL,1,HELLO\n");
@@ -867,8 +869,8 @@ mod tests {
         assert_eq!(source.prefetched, [0x1FE]);
     }
 
-    /// Concept decision 11: "show links" underlines every link, and only
-    /// links.
+    /// REQ-NAV-015, concept decision 11: "show links" underlines every
+    /// link, and only links.
     #[test]
     fn show_links_underlines_the_page_numbers() {
         let mut session = session_with(b"PN,10000\nOL,4,Sport 200 and 1234\n");

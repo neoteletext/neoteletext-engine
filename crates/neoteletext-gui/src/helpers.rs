@@ -1,4 +1,4 @@
-//! A tab's helper processes (`docs/desktop-browser.md` section 3.1): the
+//! A tab's helper processes (REQ-SEC-026, `docs/desktop-browser.md` section 3.1): the
 //! fetcher, which holds the network, and the decoder, which holds the
 //! site's pages. Both are this program run again, confined before their
 //! first instruction on macOS, and confining themselves elsewhere.

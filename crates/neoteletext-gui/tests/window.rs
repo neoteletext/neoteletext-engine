@@ -1,4 +1,5 @@
-//! The whole window, rendered without a display (`docs/desktop-browser.md`
+//! The whole window, rendered without a display (REQ-TST-081, REQ-BRW-002,
+//! REQ-BRW-004, REQ-BRW-006, REQ-BRW-007, `docs/desktop-browser.md`
 //! section 14): the keys a user presses reach the right places, and the
 //! window draws. Set `NEOTELETEXT_SNAPSHOTS` to a directory to keep the
 //! rendered window as PNG files.

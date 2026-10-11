@@ -1,4 +1,5 @@
-//! The window (`docs/desktop-browser.md` section 9): the tab strip, the
+//! The window (REQ-BRW-002, REQ-BRW-004, REQ-BRW-007, REQ-BRW-008,
+//! `docs/desktop-browser.md` section 9): the tab strip, the
 //! toolbar with the address bar and the Fastext buttons, the trusted bars
 //! that ask for confirmation, the page area, the side panel of bookmarks
 //! and history, and the keys of `docs/web-native-concept.md` section 7.

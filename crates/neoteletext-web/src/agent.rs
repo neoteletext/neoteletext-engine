@@ -98,7 +98,7 @@ pub struct Config {
     /// that a browser can show its tuning screen before another site's
     /// content (`docs/web-native-concept.md` section 6). An upgrade from
     /// `http` to `https` on the same host is not another site. Off by
-    /// default, which keeps `ttx`'s behaviour.
+    /// default, which keeps `ttx`'s behaviour (REQ-WEB-021).
     pub redirects_within_site: bool,
 }
 
@@ -1552,7 +1552,8 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
 
     /// Opens a site that has no descriptor with the defaults of
     /// [`Input::OpenSite`], built as a descriptor so that every rule of
-    /// REQ-WEB-002 applies to them too, then fetches its front door.
+    /// REQ-WEB-002 applies to them too, then fetches its front door
+    /// (REQ-WEB-018).
     fn open_defaults(&mut self, now: Instant, well_known: &Url, sink: &mut Sink<'_>) {
         let mut buffer = [0u8; DEFAULT_DESCRIPTOR_BYTES];
         let mut writer = Writer::new(&mut buffer);

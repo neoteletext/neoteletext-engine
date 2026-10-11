@@ -1,4 +1,4 @@
-//! Where the browser keeps what it saves (`docs/desktop-browser.md`
+//! Where the browser keeps what it saves (REQ-BRW-006, `docs/desktop-browser.md`
 //! section 11): the platform's application data directory, only ever
 //! written by the interface process. The formats are
 //! `neoteletext_browser::saved`'s.

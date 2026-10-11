@@ -1,4 +1,4 @@
-//! The neoteletext browser (`docs/desktop-browser.md`): a window with tabs,
+//! The neoteletext browser (area BRW, REQ-BRW-001, `docs/desktop-browser.md`): a window with tabs,
 //! an address bar, back and forward and bookmarks, over a fetcher process
 //! and a decoder process per tab.
 //!

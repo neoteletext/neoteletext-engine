@@ -1,4 +1,4 @@
-//! What the browser keeps between runs (`docs/desktop-browser.md`
+//! What the browser keeps between runs (REQ-BRW-006, `docs/desktop-browser.md`
 //! section 11), as text the program reads and writes: bookmarks, the
 //! history of visits, the open tabs and the settings. Reading is strict and
 //! bounded, because the files could have been changed by anything.

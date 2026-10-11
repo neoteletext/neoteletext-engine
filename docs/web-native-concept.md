@@ -1,6 +1,6 @@
 # Web-native teletext: concept
 
-The agreed design for browsing teletext over the web. Every open question was settled on 11 October 2026 (section 15). It is not yet part of REQUIREMENTS.md: each decision becomes a Part E decision, and the behaviour becomes requirements in area WEB, before it is built.
+The agreed design for browsing teletext over the web. Every open question was settled on 11 October 2026 (section 15). Since 12 October 2026 it is part of REQUIREMENTS.md: its decisions are decisions E.63 to E.67, and its behaviour is in REQ-WEB-002, REQ-WEB-018 to REQ-WEB-022, REQ-NAV-013 to REQ-NAV-015, REQ-SEC-025, area BRW and Appendix E. Where this document and REQUIREMENTS.md disagree, REQUIREMENTS.md wins.
 
 It builds on what the project already specifies:
 
@@ -387,8 +387,10 @@ Settled on 11 October 2026. Decisions 1 to 5 are the owner's; decisions 6 to 14 
 
 ## 16. What comes next
 
-1. **Record decisions 1 to 14 in REQUIREMENTS.md Part E**, and write the behaviour as requirements in areas WEB and NAV.
-2. **Amend Appendix E:** addresses as link targets, the `://` rule, and the `LK` and `LT` lines.
-3. **Amend REQ-WEB-002:** the well-known location, aliases and the refresh interval.
-4. **Amend the row 0 requirements** (REQ-SEC-005 and the header rules) for web sites.
-5. **Then build**, with regression tests, in the TTI reader, `neoteletext-web`, the viewer and `ttx`. The input structure of `docs/hmi.md` is the place to start for the key changes.
+Items 1 to 4 were done on 12 October 2026, after item 5 had been built:
+
+1. ~~Record decisions 1 to 14 in REQUIREMENTS.md Part E, and write the behaviour as requirements in areas WEB and NAV.~~ Decisions E.63 to E.67.
+2. ~~Amend Appendix E: addresses as link targets, the `://` rule, and the `LK` and `LT` lines.~~
+3. ~~Amend REQ-WEB-002: the well-known location, aliases and the refresh interval.~~
+4. ~~Amend the row 0 requirements for web sites.~~ REQ-SEC-025.
+5. **Build**, with regression tests. Built in the browser (area BRW); `ttx view` does not yet follow addresses, page-number links or text links (REQ-NAV-013).

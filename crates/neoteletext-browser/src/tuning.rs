@@ -1,4 +1,4 @@
-//! Leaving a site: the tuning screen (`docs/web-native-concept.md`
+//! Leaving a site: the tuning screen (REQ-NAV-014, `docs/web-native-concept.md`
 //! section 6, `docs/desktop-browser.md` section 8).
 //!
 //! Before anything from another site is shown, the tab shows this screen

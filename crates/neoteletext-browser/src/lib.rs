@@ -1,5 +1,5 @@
 //! Everything the neoteletext browser decides, with no operating-system
-//! access (`docs/desktop-browser.md` section 3.5): what an address in the
+//! access (REQ-BRW-001, `docs/desktop-browser.md` section 3.5): what an address in the
 //! address bar means, which site a page belongs to, each tab's history,
 //! when the tuning screen must be shown, and the rows the receiver draws
 //! itself (row 0, the tuning screen, the start page).

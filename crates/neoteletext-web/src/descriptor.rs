@@ -450,7 +450,8 @@ impl Descriptor {
     }
 
     /// `aliases`: an object of page numbers and their targets, each a
-    /// named service's page (`name:mpp`) or an address.
+    /// named service's page (`name:mpp`) or an address (REQ-WEB-002,
+    /// REQ-WEB-020).
     fn parse_aliases(&mut self, reader: &mut JsonReader<'_>, base: &Url) -> Result<(), DescriptorError> {
         if reader.next_token()? != Some(Token::BeginObject) {
             return Err(DescriptorError::Invalid(Member::Aliases));

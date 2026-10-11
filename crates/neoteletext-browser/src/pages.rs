@@ -1,4 +1,4 @@
-//! The pages the receiver draws itself (`docs/desktop-browser.md`
+//! The pages the receiver draws itself (REQ-SEC-025, REQ-BRW-004, `docs/desktop-browser.md`
 //! section 9.5): the start page of a new tab, the keys page, and error
 //! pages. They are teletext pages, so the browser keeps one look.
 

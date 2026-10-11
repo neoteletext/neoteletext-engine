@@ -1,6 +1,6 @@
 # Open questions
 
-Everything still open on 11 October 2026, grouped by what each item needs before it can move. Each item names where its full context lives.
+Everything still open on 12 October 2026, grouped by what each item needs before it can move. Each item names where its full context lives.
 
 ## 1. Owner decisions
 
@@ -11,6 +11,7 @@ Everything still open on 11 October 2026, grouped by what each item needs before
 | 3 | **Black colour codes (decision E.18, amended).** Alpha black 0/0 and mosaic black 1/0 are decoded, because Italian RAI and Dutch regional pages depend on them. Confirm the amendment. | Row 36; E.18 | Decoded |
 | 4 | **Review decisions E.40 to E.62.** In particular E.47 (X/26 wins over Level 1 attributes on one cell), E.48 (flash timing), E.57 and E.58 (points the standard leaves open), E.61 (compile-time features) and E.62 (original glyphs). | REQUIREMENTS.md Part E | As recorded |
 | 5 | **Bedstead in the repository.** Keep `third_party/bedstead/` as the reference the glyph independence check compares against, or move it outside the repository (for example fetched at test time like the corpus). | E.62; `third_party/bedstead/PROVENANCE.md` | Kept, not built by default |
+| 6a | **Review decisions E.63 to E.69** (the browser). Choices marked *(build)* were taken on 12 October 2026 while you were away: in particular E.63 item 1 (a site is an origin), E.65 item 4 (a link to a confirmed site still asks), E.67 (`q` does not quit the window), E.68 item 11 (the BSL-1.0 exception), and E.69 items 2 and 5 (`sandbox-exec` instead of XPC; no WebAssembly wall yet). | REQUIREMENTS.md Part E; `docs/macos-build-decisions.md`; issue #162 | As recorded |
 | 6 | **Merge and push.** Merge `implementation` into `main`, and push. | — | Not merged, not pushed |
 
 ## 2. Needs outside help or data
@@ -28,7 +29,7 @@ Everything still open on 11 October 2026, grouped by what each item needs before
 
 | # | Proposal | Next step | Context |
 |---|---|---|---|
-| 13 | **Web-native teletext browser.** All 14 decisions settled. | Record them in Part E; amend Appendix E (addresses as link targets, `LK` and `LT` lines) and REQ-WEB-002 (well-known location, aliases, refresh interval); amend the row 0 requirements; then build. | `docs/web-native-concept.md` section 16 |
+| 13 | **Web-native teletext browser.** All 14 decisions settled, built on 12 October 2026, and recorded in Part E as decisions E.63 to E.67, with Appendix E, REQ-WEB-002 and the row 0 requirements amended. | Review the build's own choices (item 6a). | `docs/web-native-concept.md`; REQUIREMENTS.md decisions E.63 to E.69 |
 | 14 | **Input devices across machines.** Core-owned input routing, including the security confirmations; one `Function` enum; press, repeat and release in the port interface; binding tables as data; the dial and on-screen keyboard; pasted input never confirming. | Decide its seven decisions; the document is not yet committed. | `docs/hmi.md` section 7 |
 | 15 | **Browser for Windows, macOS, Linux, Android and iOS.** Tabs, address bar, back and forward, bookmarks; all behaviour in the platform-free `neoteletext-browser`; interface, fetcher and decoder processes where the platform allows, and the decoder inside the wasmi interpreter everywhere (iOS is one process). The tuning screen stays inside the page area (owner's instruction). Mobile decided by the owner on 11 October 2026. | The toolkit is decided (egui on all five, no Slint; 11 October 2026). Remaining decisions, chiefly: the WebAssembly wall; accepting one process on iOS; the C interface to the phone shells; minimum Android and iOS versions; the Apple, Play and Windows accounts; a Windows build machine. | `docs/desktop-browser.md` sections 15 and 16 |
 
