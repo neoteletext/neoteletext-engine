@@ -1,2 +1,6 @@
 #!/usr/bin/env bash
-exec "$(git rev-parse --show-toplevel)/scripts/check.sh" full
+# The fast gate: every pushed commit already passed it at commit time, so
+# this re-checks the tree in a minute or two. The full gate (about 40
+# minutes with the Linux build host) is run deliberately before merging
+# to main or releasing, not on every push (IMPLEMENTATION-LOG.md row 4).
+exec "$(git rev-parse --show-toplevel)/scripts/check.sh" fast

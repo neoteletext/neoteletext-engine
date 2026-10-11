@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # Every local gate (decision 4 of IMPLEMENTATION-LOG.md).
-#   scripts/check.sh fast   formatting, lints, tests, architecture checks
+#   scripts/check.sh fast   formatting, lints, tests, architecture checks;
+#                           the pre-commit and pre-push hooks run it
 #   scripts/check.sh full   fast, plus the amd64 target builds, release
 #                           tests and, if NEOTELETEXT_REMOTE names a Linux
 #                           host, the x86_64 Linux tests, the build for
 #                           every target (scripts/build-targets.sh) and the
 #                           fuzzing targets run there (NEOTELETEXT_FUZZ_SECONDS
-#                           each)
+#                           each). Run it before merging to main and
+#                           before a release; it takes about 40 minutes
 set -euo pipefail
 cd "$(dirname "$0")/.."
 mode="${1:-fast}"

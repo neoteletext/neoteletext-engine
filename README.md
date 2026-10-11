@@ -37,7 +37,7 @@ Each crate's optional parts are Cargo features, on by default, so a port or a sm
 
 ## Checks
 
-`scripts/check.sh` runs the fast checks and `scripts/check.sh full` runs everything. The git hooks in `.githooks` run them before each commit and push. Tests that need the real broadcast corpus read it from `$NEOTELETEXT_CORPUS` (see `cargo xtask corpus`) and say so when it is absent.
+`scripts/check.sh` runs the fast checks, and the git hooks in `.githooks` run them before each commit and each push. `scripts/check.sh full` runs everything, including every target and fuzzing on the Linux build host (`NEOTELETEXT_REMOTE`); it takes about 40 minutes and is run before merging to `main` and before a release. Tests that need the real broadcast corpus read it from `$NEOTELETEXT_CORPUS` (see `cargo xtask corpus`) and say so when it is absent.
 
 ## Licence
 
