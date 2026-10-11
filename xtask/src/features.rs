@@ -22,6 +22,10 @@ const BUILDS: &[Build] = &[
     Build { package: "neoteletext-core", features: "" },
     Build { package: "neoteletext-core", features: "level15" },
     Build { package: "neoteletext-core", features: "level25" },
+    // Levels 2.5 and 3.5 with every capability compiled out, and the
+    // modern-classic profile (decision E.71, REQ-GEN-020).
+    Build { package: "neoteletext-core", features: "level15,level25" },
+    Build { package: "neoteletext-core", features: "modern-classic" },
     Build { package: "neoteletext-core", features: "render" },
     Build { package: "neoteletext-core", features: "bedstead" },
     Build { package: "neoteletext-core", features: "original" },

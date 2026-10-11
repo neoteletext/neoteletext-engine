@@ -2,6 +2,10 @@
 //! DRCS pages built with the encoder, linked from a displayed page, and
 //! decoded into the patterns and colour tables its grid carries.
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects, missing_docs)]
+#![cfg_attr(
+    not(all(feature = "drcs-multicolour")),
+    allow(dead_code, unused_imports, reason = "helpers of the tests whose capability is compiled out (decision E.71)")
+)]
 
 mod common;
 
@@ -85,6 +89,8 @@ fn diagonal() -> [u16; 10] {
 /// Figure 27 (characters 0 and 1 in mode 0, character 2 in mode 1 over
 /// PTUs 2 and 3, character 4 in mode 2 over PTUs 4 to 7, across packets
 /// X/3 and X/4), decoded pixel by pixel.
+// Needs its capability compiled in (decision E.71).
+#[cfg(feature = "drcs-multicolour")]
 #[test]
 fn ptu_layout_of_figure_27() {
     let full = [0xFFF; 10];
@@ -139,6 +145,8 @@ fn ptu_layout_of_figure_27() {
 
 /// REQ-DRC-004, decision E.54: a 6 by 5 by 4 character, D-byte 4r + k as
 /// plane k of row r, each pixel 2 by 2 dots.
+// Needs its capability compiled in (decision E.71).
+#[cfg(feature = "drcs-multicolour")]
 #[test]
 fn mode_3_character() {
     let mut bytes = [with_odd_parity(0x40); DRCS_PTU_BYTES];
@@ -160,6 +168,8 @@ fn mode_3_character() {
 /// REQ-DRC-003, REQ-DRC-009, REQ-TST-018: missing and invalid data. A
 /// missing character keeps its cell and has no pattern; an invalid one
 /// shows a space.
+// Needs its capability compiled in (decision E.71).
+#[cfg(feature = "drcs-multicolour")]
 #[test]
 fn missing_and_invalid_data() {
     let mut bad_byte = ptu([0xFFF; 10]);
@@ -232,6 +242,8 @@ fn partial_receptions_complete_a_character() {
 
 /// REQ-DRC-003, REQ-L25-001, decision E.54: at Level 2.5 only mode 0
 /// characters are usable.
+// Needs its capability compiled in (decision E.71).
+#[cfg(feature = "drcs-multicolour")]
 #[test]
 fn level_25_uses_mode_0_only() {
     let codes = modes(&[(0, DRCS_MODE_12X10X1), (1, DRCS_MODE_12X10X2), (2, DRCS_MODE_SUBSEQUENT)]);

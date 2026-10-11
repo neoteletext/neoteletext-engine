@@ -39,10 +39,13 @@ const BUILDS: &[Build] = &[
     // A Level 1.5 receiver with the renderer and the viewer; the port
     // supplies its glyphs.
     Build { name: "level15", features: "level15 render viewer", budget: Some(FLASH_BUDGET) },
-    // The same at Level 3.5.
-    Build { name: "level35", features: "level15 level25 render viewer", budget: None },
+    // The same at Level 3.5, with every capability (decision E.71).
+    Build { name: "level35", features: "level15 capabilities render viewer", budget: None },
+    // The same with only the modern-classic profile's capabilities
+    // (decision E.71, REQ-GEN-020).
+    Build { name: "modern-classic", features: "level15 modern-classic render viewer", budget: None },
     // Every area of the core, with the project's own glyphs.
-    Build { name: "core-all", features: "level15 level25 render original viewer forms", budget: None },
+    Build { name: "core-all", features: "level15 capabilities render original viewer forms", budget: None },
     // Format detection reading T42 only, then every format; the core with
     // no optional area underneath.
     Build { name: "t42", features: "formats", budget: None },
@@ -109,11 +112,11 @@ pub fn run(root: &Path, args: &[String]) -> Result<(), String> {
     };
     let image_dir = root.join("firmware/test-image");
     let mut failures = Vec::new();
-    println!("{:<10} {:>10} {:>10}  budget", "build", "flash", "static RAM");
+    println!("{:<14} {:>10} {:>10}  budget", "build", "flash", "static RAM");
     for build in BUILDS {
         let image = link(&image_dir, &target, build.features)?;
         let budget = build.budget.map_or_else(String::new, |budget| format!("{budget}"));
-        println!("{:<10} {:>10} {:>10}  {budget}", build.name, image.flash, image.ram);
+        println!("{:<14} {:>10} {:>10}  {budget}", build.name, image.flash, image.ram);
         if let Some(budget) = build.budget
             && image.flash > budget
         {

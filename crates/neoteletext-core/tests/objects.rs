@@ -3,6 +3,10 @@
 //! found through X/27/4 and the Magazine Organization Table, and run by the
 //! enhancement processor.
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects, missing_docs)]
+#![cfg_attr(
+    not(all(feature = "side-panels")),
+    allow(dead_code, unused_imports, reason = "helpers of the tests whose capability is compiled out (decision E.71)")
+)]
 
 mod common;
 
@@ -174,6 +178,8 @@ fn passive_objects_start_from_their_defaults() {
 /// `research/notes-level25-objects.md` section 13.2: row +2, column +56),
 /// the position returns after the object, and elements beyond the object's
 /// display area are discarded.
+// Needs its capability compiled in (decision E.71).
+#[cfg(feature = "side-panels")]
 #[test]
 fn origin_modifier_and_side_panels() {
     // The left panel only, n = 0: 16 columns, 56 to 71 (decision E.49).
@@ -210,6 +216,8 @@ fn origin_modifier_and_side_panels() {
 
 /// REQ-L25-040, REQ-L25-041, REQ-TST-016: the three side-panel layouts of
 /// clause 12.5.3, the panel defaults, and writes to row 0 discarded.
+// Needs its capability compiled in (decision E.71).
+#[cfg(feature = "side-panels")]
 #[test]
 fn side_panel_layouts_of_clause_12_5_3() {
     let layouts = [
@@ -705,6 +713,8 @@ fn worst_case_page_is_bounded() {
 /// across rows and through the side-panel columns: an object invoked at
 /// row 2 and placed in the right panel down to row 6 is open at row 4, so
 /// only fourteen more objects can be opened there.
+// Needs its capability compiled in (decision E.71).
+#[cfg(feature = "side-panels")]
 #[test]
 fn open_area_of_figure_a1() {
     let panels = PresentationFields {

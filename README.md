@@ -16,7 +16,7 @@ target/release/neoteletext https://example.org/
 scripts/macos-app.sh            # builds neoteletext.app in target/
 ```
 
-Each crate's optional parts are Cargo features, on by default, so a port or a smaller `ttx` compiles in only what it uses. The features are listed in the user guide and the porting guide.
+Each crate's optional parts are Cargo features, on by default, so a port or a smaller `ttx` compiles in only what it uses. The features are listed in the user guide and the porting guide. The decoder's capabilities from the later teletext levels are features too: the recommended `modern-classic` profile keeps those that preserve teletext's look or make it more usable, and switches off those that would dilute it, such as colour bitmap characters, the 32-colour palette and animation ([docs/capabilities.md](docs/capabilities.md)).
 
 ## Documents
 
@@ -24,6 +24,7 @@ Each crate's optional parts are Cargo features, on by default, so a port or a sm
 |---|---|
 | [docs/user-guide.md](docs/user-guide.md) | The `ttx` program: commands, inputs, outputs, profiles and settings. |
 | [docs/porting.md](docs/porting.md) | Writing a port of the library for a new display or device. |
+| [docs/capabilities.md](docs/capabilities.md) | The compile-time capability features and the modern-classic profile: what keeps teletext's distinctive look and is kept, and what would dilute it and is switched off. |
 | [REQUIREMENTS.md](REQUIREMENTS.md) | The specification: requirements, decisions and open questions. |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | The layers, their boundaries and allowed dependencies. |
 | [THREAT-MODEL.md](THREAT-MODEL.md), [SECURITY.md](SECURITY.md) | Security design and reporting. |

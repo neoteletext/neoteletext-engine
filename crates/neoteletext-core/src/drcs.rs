@@ -254,7 +254,9 @@ pub fn decode_character(
         }
     };
     let (mode, ptus) = mode_of(code(first)?).ok_or(DrcsFault::Invalid)?;
-    if mode != DrcsMode::Mode0 && !level.is_level35() {
+    // Multicolour modes are Level 3.5's, and need their capability
+    // compiled in (decision E.71).
+    if mode != DrcsMode::Mode0 && (!level.is_level35() || !cfg!(feature = "drcs-multicolour")) {
         return Err(DrcsFault::Missing);
     }
     if first.saturating_add(ptus) > DRCS_PTUS {

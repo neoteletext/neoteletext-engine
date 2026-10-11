@@ -165,7 +165,7 @@ fn page(field: &str) -> Result<PageAddress, Fault> {
     if field.len() != 3 || !field.bytes().all(|byte| byte.is_ascii_digit()) {
         return Err(Fault::Page);
     }
-    let mpp = u16::from_str_radix(field, 16).map_err(|_| Fault::Page)?;
+    let mpp = crate::bytes::hex_number(field.as_bytes()).ok_or(Fault::Page)?;
     PageAddress::from_mpp(mpp).ok_or(Fault::Page)
 }
 
@@ -177,7 +177,7 @@ fn date(field: &str) -> Result<Date, Fault> {
         if !part.iter().all(u8::is_ascii_digit) {
             return Err(Fault::Date);
         }
-        core::str::from_utf8(part).ok().and_then(|text| text.parse::<u16>().ok()).ok_or(Fault::Date)
+        crate::bytes::decimal_number(part).ok_or(Fault::Date)
     };
     if bytes.len() != DATE_LENGTH || bytes.get(4) != Some(&b'-') || bytes.get(7) != Some(&b'-') {
         return Err(Fault::Date);
@@ -204,7 +204,7 @@ fn target(field: &str) -> Result<&str, Fault> {
     let (name, number) = field.split_once(NAME_SEPARATOR).ok_or(Fault::Target)?;
     let named = !name.is_empty() && name.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'-');
     let hex = number.len() == 3 && number.bytes().all(|byte| byte.is_ascii_hexdigit());
-    let valid_page = hex && u16::from_str_radix(number, 16).ok().and_then(PageAddress::from_mpp).is_some();
+    let valid_page = hex && crate::bytes::hex_number(number.as_bytes()).and_then(PageAddress::from_mpp).is_some();
     if named && valid_page { Ok(field) } else { Err(Fault::Target) }
 }
 

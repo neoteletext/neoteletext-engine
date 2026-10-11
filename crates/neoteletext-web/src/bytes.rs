@@ -226,6 +226,31 @@ pub fn parse_decimal(bytes: &[u8], max_digits: usize) -> Option<u64> {
     Some(value)
 }
 
+/// A number written in hexadecimal digits, at most four of them; `None`
+/// for anything else. The standard library's `from_str_radix` carries a
+/// panic path for its radix argument, which REQ-GEN-019 keeps out of the
+/// linked image.
+#[must_use]
+pub fn hex_number(text: &[u8]) -> Option<u16> {
+    if text.is_empty() || text.len() > 4 {
+        return None;
+    }
+    text.iter().try_fold(0u16, |value, &digit| Some((value << 4) | u16::from(hex_value(digit)?)))
+}
+
+/// A number written in decimal digits, at most four of them; `None` for
+/// anything else.
+#[must_use]
+pub fn decimal_number(text: &[u8]) -> Option<u16> {
+    if text.is_empty() || text.len() > 4 {
+        return None;
+    }
+    text.iter().try_fold(0u16, |value, &digit| {
+        let digit = digit.checked_sub(b'0').filter(|digit| *digit <= 9)?;
+        value.checked_mul(10)?.checked_add(u16::from(digit))
+    })
+}
+
 /// The value of an ASCII hexadecimal digit.
 #[must_use]
 pub const fn hex_value(byte: u8) -> Option<u8> {

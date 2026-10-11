@@ -251,6 +251,12 @@ impl PagePresentation {
 #[must_use]
 pub fn resolve(sources: &PresentationSources<'_>, level: PresentationLevel, base: &ColourMap) -> PagePresentation {
     let mut out = PagePresentation::defaults(*base);
+    if !cfg!(feature = "colours32") {
+        // Decision E.71: without the 32-colour Colour Map, CLUTs 2 and 3
+        // are copies of CLUTs 0 and 1, and nothing redefines a CLUT.
+        let (low, high) = out.colour_map.entries.split_at_mut(COLOUR_MAP_ENTRIES / 2);
+        high.copy_from_slice(low);
+    }
     if !level.is_enhanced() {
         return out;
     }
@@ -260,10 +266,16 @@ pub fn resolve(sources: &PresentationSources<'_>, level: PresentationLevel, base
     let ordered = [sources.page, page_35, sources.magazine, magazine_35];
     let first = |group: fn(&PresentationFields) -> bool| ordered.into_iter().flatten().find(|fields| group(fields));
 
-    if let Some(words) = [sources.page, sources.magazine].into_iter().flatten().find_map(|fields| fields.colour_words) {
+    let redefinable = cfg!(feature = "colours32");
+    if redefinable
+        && let Some(words) =
+            [sources.page, sources.magazine].into_iter().flatten().find_map(|fields| fields.colour_words)
+    {
         out.colour_map.set_cluts(CLUT_LEVEL_25_FIRST, &words);
     }
-    if let Some(words) = [page_35, magazine_35].into_iter().flatten().find_map(|fields| fields.colour_words) {
+    if redefinable
+        && let Some(words) = [page_35, magazine_35].into_iter().flatten().find_map(|fields| fields.colour_words)
+    {
         out.colour_map.set_cluts(CLUT_LEVEL_35_FIRST, &words);
     }
 
@@ -280,7 +292,10 @@ pub fn resolve(sources: &PresentationSources<'_>, level: PresentationLevel, base
     let panels = first(|fields| fields.side_panels.is_some())
         .and_then(|fields| fields.side_panels)
         .or(sources.fallback.map(|fallback| fallback.side_panels));
-    if let Some(panels) = panels {
+    // Without side panels compiled in, a page is 40 columns (decision E.71).
+    if cfg!(feature = "side-panels")
+        && let Some(panels) = panels
+    {
         out.side_panels = SidePanels::from_fields(panels, level);
     }
     out
@@ -299,6 +314,10 @@ pub fn colour_words(map: &ColourMap, first_clut: u8) -> ColourWords {
 const _: () = assert!(COLOUR_WORDS == 2 * CLUT_ENTRIES);
 
 #[cfg(test)]
+#[cfg_attr(
+    not(all(feature = "side-panels", feature = "colours32")),
+    allow(dead_code, unused_imports, reason = "helpers of the tests whose capability is compiled out (decision E.71)")
+)]
 #[allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 mod tests {
     use super::*;
@@ -361,6 +380,8 @@ mod tests {
 
     /// REQ-L25-030: each source and order of precedence, Level 3.5 data
     /// ignored at Level 2.5, and CLUT 1 entry 0 kept transparent.
+    // Needs its capability compiled in (decision E.71).
+    #[cfg(feature = "colours32")]
     #[test]
     fn colour_map_sources_and_precedence() {
         let base = ColourMap::DEFAULT;
@@ -449,6 +470,8 @@ mod tests {
 
     /// REQ-L25-040: every row of the width table of decision E.49, the
     /// status flag at each level, and the table's fallback values.
+    // Needs its capability compiled in (decision E.71).
+    #[cfg(feature = "side-panels")]
     #[test]
     fn side_panel_widths() {
         let panels = |left, right, status_flag, left_columns, level| {

@@ -105,7 +105,7 @@ impl ChannelFile {
         if digits.len() != PAGE_DIGITS || !digits.bytes().all(|byte| capital_hex(&byte)) {
             return None;
         }
-        let mpp = u16::from_str_radix(digits, 16).ok()?;
+        let mpp = crate::bytes::hex_number(digits.as_bytes())?;
         Some(Self::Page { page: PageAddress::from_mpp(mpp)?, t42 })
     }
 }
@@ -152,12 +152,16 @@ pub fn check_folder_path(path: &str) -> Result<(), ChannelError> {
 }
 
 /// The path of an absolute address as written: from the first `/` after
-/// the authority to the query or the end. `None` when there is no path.
-fn written_path(text: &str) -> Option<&str> {
-    let after_scheme = text.split_once("://").map(|(_, rest)| rest)?;
-    let start = after_scheme.find('/')?;
+/// the authority to the query, the fragment or the end. `None` when there
+/// is no path. Scanned byte by byte, as the address parser does, so that
+/// no search can reach a bound (REQ-GEN-019).
+fn written_path(text: &[u8]) -> Option<&[u8]> {
+    let scheme_end = text.windows(3).position(|window| window == b"://")?;
+    let after_scheme = text.get(scheme_end.saturating_add(3)..)?;
+    let start = after_scheme.iter().position(|&byte| byte == b'/')?;
     let path = after_scheme.get(start..)?;
-    Some(path.split(['?', '#']).next().unwrap_or(path))
+    let end = path.iter().position(|&byte| byte == b'?' || byte == b'#').unwrap_or(path.len());
+    path.get(..end)
 }
 
 /// A channel's address and the file it names, if any.
@@ -178,14 +182,17 @@ pub fn parse_address(text: &str) -> Result<ChannelAddress, ChannelError> {
     if !matches!(url.scheme(), Scheme::Http | Scheme::Https) {
         return Err(ChannelError::Scheme);
     }
-    if url.query().is_some() || text.contains('?') {
+    if url.query().is_some() || text.bytes().any(|byte| byte == b'?') {
         return Err(ChannelError::Query);
     }
-    let written = written_path(text).unwrap_or("/");
-    let (folder_path, last) = match written.rfind('/') {
-        Some(slash) => (written.get(..=slash).unwrap_or("/"), written.get(slash.saturating_add(1)..).unwrap_or("")),
-        None => ("/", ""),
+    let written = written_path(text.as_bytes()).unwrap_or(b"/");
+    let (folder_path, last) = match written.iter().rposition(|&byte| byte == b'/') {
+        Some(slash) => (written.get(..=slash).unwrap_or(b"/"), written.get(slash.saturating_add(1)..).unwrap_or(b"")),
+        None => (&b"/"[..], &b""[..]),
     };
+    // The address parser accepted the whole address, so its path is ASCII.
+    let folder_path = core::str::from_utf8(folder_path).map_err(|_| ChannelError::Character)?;
+    let last = core::str::from_utf8(last).map_err(|_| ChannelError::Character)?;
     check_folder_path(folder_path)?;
     let file =
         if last.is_empty() { None } else { Some(ChannelFile::from_name(last).ok_or(ChannelError::NotChannelFile)?) };

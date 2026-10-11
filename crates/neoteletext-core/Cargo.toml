@@ -13,11 +13,47 @@ publish.workspace = true
 [features]
 # Decision E.61: each optional area of the core is a feature, all on by
 # default. Ports turn the defaults off and name what they use.
-default = ["level15", "level25", "render", "original", "viewer", "forms"]
+default = [
+    "level15",
+    "level25",
+    "render",
+    "original",
+    "viewer",
+    "forms",
+    "objects",
+    "drcs",
+    "drcs-multicolour",
+    "bold",
+    "italic",
+    "side-panels",
+    "colours32",
+    "animation",
+]
 # The Level 1.5 pass (area L15).
 level15 = []
-# The enhancement processor for Levels 2.5 and 3.5 (areas L25, OBJ, DRC).
+# The enhancement processor for Levels 2.5 and 3.5 (areas L25, OBJ, DRC):
+# non-spacing attributes and characters. The capabilities below are each a
+# feature of their own (decision E.71, REQ-GEN-020).
 level25 = []
+# Active, Adaptive and Passive objects, and default objects (area OBJ).
+objects = ["level25"]
+# Dynamically redefinable characters, mode 0 (area DRC).
+drcs = ["level25"]
+# DRCS modes 1, 2 and 3: multicolour characters (clause 14.2).
+drcs-multicolour = ["drcs"]
+# Bold and italic characters (Table 28, Font Style).
+bold = ["level25"]
+italic = ["level25"]
+# Side panels (clause 12.5).
+side-panels = ["level25"]
+# CLUTs 2 and 3 and the redefinition of any CLUT (clause 12.4).
+colours32 = ["level25"]
+# Additional Flash Functions: flash modes, fast rates and phases (Table 29).
+animation = ["level25"]
+# The modern-classic profile (decision E.71): Level 1.5, and of Levels 2.5
+# and 3.5 only the non-spacing attributes, objects, monochrome DRCS and
+# bold. Used with the default features off.
+modern-classic = ["level15", "level25", "render", "original", "viewer", "forms", "objects", "drcs", "bold"]
 # The row renderer and the generated G3 glyphs (area RND).
 render = []
 # The temporary Bedstead glyph set (decision E.25).
@@ -47,16 +83,32 @@ name = "behaviour"
 required-features = ["level15", "render", "viewer", "forms"]
 
 [[test]]
-name = "drcs"
-required-features = ["level25"]
-
-[[test]]
-name = "level25"
+name = "capabilities"
 required-features = ["level15", "level25"]
 
 [[test]]
+name = "drcs"
+required-features = ["level25", "drcs"]
+
+[[test]]
+name = "level25"
+# The whole of Levels 2.5 and 3.5: every capability (decision E.71).
+required-features = [
+    "level15",
+    "level25",
+    "objects",
+    "drcs",
+    "drcs-multicolour",
+    "bold",
+    "italic",
+    "side-panels",
+    "colours32",
+    "animation",
+]
+
+[[test]]
 name = "objects"
-required-features = ["level25"]
+required-features = ["level25", "objects"]
 
 [[test]]
 name = "performance"

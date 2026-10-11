@@ -351,9 +351,18 @@ fn read(root: &Path, path: &str) -> Result<String, String> {
 /// default features must include the original set and not the Bedstead set.
 fn release_defaults(root: &Path) -> Result<Option<String>, String> {
     let manifest = read(root, CORE_MANIFEST)?;
-    let defaults = manifest.lines().find(|line| line.starts_with("default =")).unwrap_or_default();
+    let defaults = default_features(&manifest);
     Ok((defaults.contains("\"bedstead\"") || !defaults.contains("\"original\""))
         .then(|| format!("{CORE_MANIFEST}: the default features must include `original` and not `bedstead`")))
+}
+
+/// The `default = [...]` array of a manifest's features, which may span
+/// several lines; empty when there is none.
+fn default_features(manifest: &str) -> &str {
+    let Some(start) = manifest.lines().find(|line| line.starts_with("default =")) else { return "" };
+    let from = manifest.find(start).unwrap_or(0);
+    let rest = &manifest[from..];
+    rest.find(']').map_or(rest, |end| &rest[..=end])
 }
 
 /// `cargo xtask glyph-check [--complete]`.
@@ -569,6 +578,16 @@ pub fn table_source(root: &Path) -> Result<(String, usize), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The default features are read whole, on one line or several.
+    #[test]
+    fn default_features_span_lines() {
+        let one = "[features]\ndefault = [\"original\", \"render\"]\nbedstead = []\n";
+        assert_eq!(default_features(one), "default = [\"original\", \"render\"]");
+        let many = "[features]\ndefault = [\n    \"render\",\n    \"original\",\n]\nbedstead = [\"render\"]\n";
+        assert!(default_features(many).contains("\"original\""));
+        assert!(!default_features(many).contains("bedstead"));
+    }
 
     fn rows(text: &str) -> Rows {
         let mut out = [0u8; ROWS];

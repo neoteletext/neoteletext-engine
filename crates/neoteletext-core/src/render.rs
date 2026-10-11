@@ -382,12 +382,14 @@ fn text_line(glyph: &[u8; GLYPH_LINES], source: usize, options: RenderOptions) -
 fn styled_line(mask: u16, cell: &Cell, source: usize, height: usize) -> u16 {
     let mut mask = mask;
     let font = cell.attributes.font();
-    if font.bold {
+    // Each style is drawn only when its capability is compiled in
+    // (decision E.71).
+    if cfg!(feature = "bold") && font.bold {
         // Bold: the line ORed with itself one half-dot to the right.
         mask |= mask >> 1;
     }
     let last = height.saturating_sub(1);
-    if font.italic {
+    if cfg!(feature = "italic") && font.italic {
         // Italic: shifted right by the lines below this one divided by 4.
         let below = last.saturating_sub(source);
         mask = mask.checked_shr((below >> ITALIC_SHIFT_LOG2) as u32).unwrap_or(0);
@@ -410,7 +412,11 @@ fn drcs_line<const DRCS: usize, const PANEL_ROWS: usize>(
     source: usize,
     mode: CellMode,
 ) -> Dots {
-    let Some(pattern) = pattern else { return Dots::Mask(0) };
+    // Without DRCS compiled in, every character is missing (decision E.71).
+    let Some(pattern) = pattern.filter(|_| cfg!(feature = "drcs")) else { return Dots::Mask(0) };
+    if !cfg!(feature = "drcs-multicolour") && pattern.mode != DrcsMode::Mode0 {
+        return Dots::Mask(0);
+    }
     let row = match mode {
         CellMode::Saa5050 => source / 2,
         CellMode::Saa5246a => source,
@@ -678,6 +684,10 @@ fn palette_cell_allowed<const DRCS: usize, const PANEL_ROWS: usize>(
 
 /// The widths of the shown side panels, each at most 16 columns.
 fn panel_widths<const DRCS: usize, const PANEL_ROWS: usize>(grid: &Grid<DRCS, PANEL_ROWS>) -> (usize, usize) {
+    // Without side panels compiled in, a page is 40 columns (decision E.71).
+    if !cfg!(feature = "side-panels") {
+        return (0, 0);
+    }
     let clamp = |width: u8| usize::from(width.min(SIDE_PANEL_MAX_COLUMNS));
     (clamp(grid.side_panels.left), clamp(grid.side_panels.right))
 }

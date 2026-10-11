@@ -2087,6 +2087,34 @@ Decided by the owner on 12 October 2026, who asked for solutions that are opinio
 
 *Reason:* The site as an origin could not hold a channel in a folder, which is how the easiest free hosts publish (a GitHub Pages project site is `user.github.io/project/`), and it made strangers on one shared host one site. A channel as a folder works on every static host with no configuration. Fixed names, one request per question, no inference and failing closed keep it simple to learn, to build, and to make safe.
 
+**E.71 — Capability features within Levels 2.5 and 3.5, and the modern-classic profile.**
+Recorded on 12 October 2026, on the owner's instruction to add teletext feature flags so that capabilities can be compiled out, with this "modern-classic" profile: keep the 40 by 24 grid, the classic eight-colour palette by default, contiguous and separated mosaics, no proportional spacing, non-spacing colour and character attributes, the additional international character sets, monochrome downloadable characters, reusable page objects and bold characters; leave out the 32-colour palette, italic characters, side panels, multicolour downloadable characters and animation. This amends rule 2 of decision E.61: within the enhancement area, there is one feature for each capability the owner named, not one for the whole area.
+
+1. **Eight features of `neoteletext-core`, on by default.** Each needs `level25`, and the decoding and the drawing of its capability are both behind it, so a build without it contains neither:
+
+   | Feature | Capability | When it is compiled out |
+   |---|---|---|
+   | `objects` | Active, Adaptive and Passive objects, and default objects (area OBJ) | Object invocations and default objects are ignored; a page's own enhancement data still applies |
+   | `drcs` | Dynamically redefinable characters in mode 0, 12 by 10 by 1 (area DRC) | Every DRCS character is missing: a space in the background colour, counted as missing (REQ-DRC-007) |
+   | `drcs-multicolour` | DRCS modes 1, 2 and 3 (clause 14.2); needs `drcs` | Those characters are missing, as they are below Level 3.5 |
+   | `bold` | Bold characters (Table 28, Font Style) | The style is not applied |
+   | `italic` | Italic characters (Table 28, Font Style) | The style is not applied |
+   | `side-panels` | Side panels (clause 12.5) | There are no side panels; a page is always 40 columns, and anything placed in a panel is outside the page, as for a panel that is not enabled |
+   | `colours32` | The Colour Map's CLUTs 2 and 3, and every redefinition of a CLUT by X/28/0, X/28/4, M/29/0 or M/29/4 (clause 12.4) | No CLUT is redefined, and CLUTs 2 and 3 are copies of CLUTs 0 and 1, so a page shows at most the sixteen default colours of CLUTs 0 and 1, and the eight classic colours stay the default |
+   | `animation` | Additional Flash Functions: the flash modes, the fast rates and phases, incremental and decremental flash (Table 29) | The triplet is ignored; the Level 1 flash, slow and normal (decision E.48), is unchanged |
+
+2. **The profile is a feature too.** `modern-classic` turns on `level15`, `level25`, `render`, `original`, `viewer`, `forms`, `objects`, `drcs` and `bold`. A port uses it with the default features off.
+3. **What is not a feature.**
+   - The 40 by 24 grid, the eight-colour default and the mosaics are Level 1, which every build has.
+   - Non-spacing attributes are the enhancement area itself, the `level25` feature.
+   - Proportional spacing is never laid out (Part G item 1, decision E.50).
+   - The additional international character sets: their glyphs are one generated table of every set (decision E.62), and their code tables are small, so compiling them out needs the glyph generator to write a table per script. That is later work.
+4. **Gate builds.** `cargo xtask features` adds the core with Levels 1.5 and 2.5 and every capability off, and with `modern-classic`. The tests of a capability need its feature; a test file checks that each capability compiled out is ignored as item 1 says.
+
+5. **Measured on 12 October 2026** with `cargo xtask size`, on the linked Cortex-M0 image (`thumbv6m-none-eabi`, `opt-level = "z"`, link-time optimisation) of a receiver with Level 1.5, the renderer and the viewer: 65,758 bytes with every capability of Levels 2.5 and 3.5, and 62,894 bytes with the modern-classic profile's, 2,864 bytes or about 4 percent less. Most of the enhancement processor is the non-spacing attributes and the walk, which the profile keeps.
+
+*Reason:* Teletext's distinctive look comes from its constraints: a fixed 40 by 24 grid, eight saturated colours, block mosaics, attributes set within the text, and no proportional spacing or pictures. The profile keeps the capabilities that preserve those constraints, and those that make pages more usable without changing them: non-spacing attributes, more languages, monochrome custom characters in the grid, reusable objects and bold for legibility. It switches off, without removing, the capabilities that would dilute the style: a redefinable palette of 4,096 colours, italics, a page wider than 40 columns, per-pixel colour characters that tile into bitmap images, and animation. Each remains implemented and tested, and a port that needs one compiles it in. One feature per named capability keeps each one switchable alone, while the profile names the recommended choice once. `docs/capabilities.md` explains the mechanism.
+
 ---
 
 # Part F — Requirements
@@ -2648,6 +2676,10 @@ The check shall fail if the linked image contains:
 The size check of REQ-GEN-009 shall measure the same image.
 *Reason:* The lints of REQ-GEN-006 and REQ-GEN-016 cover only the project's own source. Only the linked image shows what dependencies and the compiler actually brought in (decision E.38).
 *Verification:* Continuous integration, including a test that a deliberately added floating-point operation makes the check fail.
+
+**REQ-GEN-020 — Capability features and the modern-classic profile.**
+`neoteletext-core` shall offer the eight capability features of decision E.71, `objects`, `drcs`, `drcs-multicolour`, `bold`, `italic`, `side-panels`, `colours32` and `animation`, each on by default and each needing `level25`. A build without one of them shall contain neither the decoding nor the drawing of that capability, and shall treat its page data as decision E.71 item 1 says, never as an error. The feature `modern-classic` shall turn on `level15`, `level25`, `render`, `original`, `viewer`, `forms`, `objects`, `drcs` and `bold`, and nothing else.
+*Verification:* `cargo xtask features` builds, lints and tests the core with `level25` alone and with `modern-classic`; a test checks each capability compiled out; `cargo xtask size` reports the image of the profile beside the full one.
 
 **REQ-GEN-018 — Optional C interface.**
 *Phase:* Phase 2 (whole requirement).

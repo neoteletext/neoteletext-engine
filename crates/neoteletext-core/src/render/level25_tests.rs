@@ -4,6 +4,10 @@
 //! (REQ-RND-030 to REQ-RND-040). Every grid is built by hand, so these
 //! tests depend on nothing but the grid (REQ-RND-001).
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
+#![cfg_attr(
+    not(all(feature = "drcs-multicolour", feature = "side-panels", feature = "bold", feature = "italic")),
+    allow(dead_code, unused_imports, reason = "helpers of the tests whose capability is compiled out (decision E.71)")
+)]
 
 // The module is compiled for tests only (see `render.rs`); the attribute
 // also marks this file as test code for `cargo xtask check-layers`.
@@ -13,7 +17,9 @@ use crate::charset::{CharRef, CharSet, G0, G0Set, NationalOption};
 use crate::colour::SidePanels;
 use crate::consts::{G3_CODES, G3_FIRST_CODE, PAGE_WIDTH};
 use crate::drcs::DrcsPattern;
-use crate::level1::{CellAttributes, FontStyle};
+use crate::level1::CellAttributes;
+#[cfg(all(feature = "bold", feature = "italic"))]
+use crate::level1::FontStyle;
 use crate::types::DrcsCharacter;
 use std::vec;
 use std::vec::Vec;
@@ -233,7 +239,13 @@ fn palette_mode_is_refused_where_it_cannot_draw() {
             grid.panel_cell_mut(2, 70).unwrap().background = 12;
         }),
     ];
-    for (name, case) in cases {
+    // A build without a capability cannot draw it, so does not refuse it
+    // (decision E.71).
+    let compiled = |name: &&str| {
+        (cfg!(feature = "drcs-multicolour") || *name != "multi-colour DRCS")
+            && (cfg!(feature = "side-panels") || *name != "a side-panel cell outside CLUT 0")
+    };
+    for (name, case) in cases.into_iter().filter(|(name, _)| compiled(name)) {
         let mut grid = level1_grid();
         case(&mut grid, multi);
         assert!(refused(&grid), "{name}");
@@ -443,6 +455,8 @@ fn columns_shown(grid: &Grid, row: usize) -> Vec<Option<usize>> {
 /// REQ-RND-033, decision E.49, clause 12.5.3 (REQ-TST-016): the row is
 /// composed of the left panel, the main page and the right panel, for every
 /// width; row 0's panel area shows the screen colour.
+// Needs its capability compiled in (decision E.71).
+#[cfg(feature = "side-panels")]
 #[test]
 fn side_panels_compose_each_row() {
     for (left, right) in [(0u8, 0u8), (16, 0), (0, 16), (8, 8), (5, 11), (11, 5), (1, 0), (0, 1), (16, 16)] {
@@ -466,6 +480,8 @@ fn side_panels_compose_each_row() {
 /// REQ-RND-033: the three layouts of clause 12.5.3 at their widest, drawn
 /// in the resolved mode at full width, with REQ-RND-017's independence:
 /// whole screen, row by row and line by line agree.
+// Needs its capability compiled in (decision E.71).
+#[cfg(feature = "side-panels")]
 #[test]
 fn panel_rows_render_identically_in_any_order() {
     for (left, right) in [(16u8, 0u8), (0, 16), (8, 8)] {
@@ -503,6 +519,8 @@ fn panel_rows_render_identically_in_any_order() {
 }
 
 /// A grid without panel rows shows the screen colour in its panel area.
+// Needs its capability compiled in (decision E.71).
+#[cfg(feature = "side-panels")]
 #[test]
 fn panels_without_storage_show_the_screen_colour() {
     let mut grid: Grid<4, 0> = Grid::empty();
@@ -584,6 +602,8 @@ fn double_width_and_double_size() {
 /// REQ-RND-034, REQ-L25-025: the renderer draws each half where the grid
 /// puts it; a pair split by the panel boundary still shows its halves, and
 /// a double-width cell in a side panel is drawn like one on the page.
+// Needs its capability compiled in (decision E.71).
+#[cfg(feature = "side-panels")]
 #[test]
 fn double_width_halves_beside_the_panel_boundary() {
     let mut grid = Grid::EMPTY;
@@ -671,6 +691,8 @@ fn underline_on_the_last_line() {
 /// REQ-RND-039, decision E.50: bold ORs the line with itself one half-dot
 /// right; italic shifts it right by the lines below it divided by 4; bold
 /// first; proportional changes nothing; never on G3, mosaics or DRCS.
+// Needs its capability compiled in (decision E.71).
+#[cfg(all(feature = "bold", feature = "italic"))]
 #[test]
 fn font_styles() {
     let grid = Grid::EMPTY;
@@ -786,6 +808,8 @@ fn drcs_pattern(character: DrcsCharacter, mode: DrcsMode) -> DrcsPattern {
 /// REQ-RND-038, REQ-DRC-004, REQ-DRC-008 (REQ-TST-018): every mode,
 /// pixel-exact in both cell sizes, from the normal and global colour
 /// tables; mode 0 in the cell's colours.
+// Needs its capability compiled in (decision E.71).
+#[cfg(feature = "drcs-multicolour")]
 #[test]
 fn drcs_modes_draw_pixel_exactly() {
     for table in [DrcsTable::Normal, DrcsTable::Global] {
@@ -840,6 +864,8 @@ fn drcs_modes_draw_pixel_exactly() {
 /// REQ-RND-038, decision E.54: a transparent DRCS pixel shows the plane
 /// below; missing data is a space in the background colour; enlarged
 /// characters replicate pixels.
+// Needs its capability compiled in (decision E.71).
+#[cfg(feature = "drcs-multicolour")]
 #[test]
 fn drcs_transparency_missing_data_and_enlargement() {
     let mut grid = Grid::EMPTY;
@@ -873,6 +899,8 @@ fn drcs_transparency_missing_data_and_enlargement() {
 /// DRCS character invert does nothing, conceal and the off phase of normal
 /// and inverted flash show a space in the background colour, and
 /// adjacent-CLUT flash flips every dot's CLUT.
+// Needs its capability compiled in (decision E.71).
+#[cfg(feature = "drcs-multicolour")]
 #[test]
 fn drcs_attributes() {
     let mut grid = Grid::EMPTY;

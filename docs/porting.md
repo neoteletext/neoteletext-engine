@@ -27,20 +27,27 @@ neoteletext-formats = { version = "...", default-features = false }  # T42 only
 
 | Crate | Features |
 |---|---|
-| `neoteletext-core` | `level15`, `level25`, `render`, `original`, `bedstead`, `viewer`, `forms` |
+| `neoteletext-core` | `level15`, `level25`, `render`, `original`, `bedstead`, `viewer`, `forms`; the capabilities of Levels 2.5 and 3.5 `objects`, `drcs`, `drcs-multicolour`, `bold`, `italic`, `side-panels`, `colours32`, `animation`; and the profile `modern-classic` |
 | `neoteletext-formats` | `transport`, `sliced`, `pages`, `tti`, `ep1`, `edittf`, `dump`, `check`, and `std` |
 | `neoteletext-web` | `push`, `forms`, `cookies` |
 
-Measured flash on Cortex-M0 (`cargo xtask size`, `opt-level = "z"`, link-time optimisation):
+`level25` alone gives the enhancement processor's non-spacing attributes and characters. Each other capability of Levels 2.5 and 3.5 is a feature of its own (decision E.71); a capability left out is ignored in the page data, never an error. [capabilities.md](capabilities.md) explains the mechanism, which capabilities the profile keeps and why. The `modern-classic` profile keeps the classic display with objects, monochrome DRCS characters and bold, and leaves out the 32-colour palette, italics, side panels, multicolour DRCS characters and the additional flash functions:
+
+```toml
+neoteletext-core = { version = "...", default-features = false, features = ["modern-classic"] }
+```
+
+Measured flash on Cortex-M0 on 12 October 2026 (`cargo xtask size`, `opt-level = "z"`, link-time optimisation):
 
 | Build | Flash |
 |---|---|
 | Core with no optional area: acquisition, the Level 1 grid, composing | 26,198 bytes |
-| Level 1.5 receiver with the renderer and the viewer; your own glyphs | 45,126 bytes |
-| The same at Level 3.5 | 65,758 bytes |
-| Every core area, with the project's own glyphs | 86,706 bytes |
+| Level 1.5 receiver with the renderer and the viewer; your own glyphs | 43,002 bytes |
+| The same at Level 3.5, every capability | 65,758 bytes |
+| The same with the `modern-classic` profile's capabilities | 62,894 bytes |
+| Every core area, with the project's own glyphs | 86,710 bytes |
 | Format detection reading T42 only, with the bare core | 29,126 bytes |
-| Format detection reading every format, with the bare core | 57,581 bytes |
+| Format detection reading every format, with the bare core | 58,737 bytes |
 
 Notes on the builds:
 - **A configured level that is not compiled in** falls back to the highest one that is (`PresentationLevel::available`).

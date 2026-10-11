@@ -206,6 +206,11 @@ impl AttrChange {
 /// 00111, decision E.48); `None` for its reserved values, which only set the
 /// column (REQ-L25-027).
 fn flash_of(mode: u8, rate: u8, reserved: u8, column: u8) -> Option<Flash> {
+    // Without animation compiled in, the triplet changes nothing; the
+    // Level 1 flash is unchanged (decision E.71).
+    if !cfg!(feature = "animation") {
+        return None;
+    }
     if reserved != 0 {
         return None;
     }
@@ -899,7 +904,10 @@ impl<'a, 's> Walker<'a, 's> {
     /// The walk of [`Walker::walk`]; `TRACED` says whether `trace` is used.
     fn run<const TRACED: bool>(&mut self, out: &mut Collector, mut trace: Option<&mut TraceSink<'_>>) {
         let mut stack: FixedVec<Frame<'s>, WALK_DEPTH> = FixedVec::new(Frame::local());
-        let mut defaults = self.inputs.links.default_objects.into_iter().flatten();
+        // Without objects compiled in, no default object is placed
+        // (decision E.71).
+        let mut defaults =
+            self.inputs.links.default_objects.into_iter().flatten().filter(|_| cfg!(feature = "objects"));
         let mut found: Option<Frame<'s>> = None;
         let mut state = WalkState::Start;
         loop {
@@ -1015,6 +1023,9 @@ impl<'a, 's> Walker<'a, 's> {
                     frame.cursor = frame.end;
                 }
             }
+            // Without objects compiled in, an invocation is ignored
+            // (decision E.71).
+            WalkAction::Invoke { .. } if !cfg!(feature = "objects") => {}
             WalkAction::Invoke { source, kind, number, row_offset, column_offset } => {
                 let child = stack
                     .as_slice()
@@ -1345,8 +1356,14 @@ impl<'a, 's> Walker<'a, 's> {
 }
 
 /// The styles of a Font Style triplet (REQ-L25-028).
+/// The font style a triplet sets; bold and italic only when their
+/// capabilities are compiled in (decision E.71).
 const fn font_of(style: FontStyleData) -> FontStyle {
-    FontStyle { bold: style.bold, italic: style.italic, proportional: style.proportional }
+    FontStyle {
+        bold: style.bold && cfg!(feature = "bold"),
+        italic: style.italic && cfg!(feature = "italic"),
+        proportional: style.proportional,
+    }
 }
 
 /// True for a triplet that displays something: a character, an attribute,
@@ -2140,7 +2157,11 @@ fn fill_drcs<const DRCS: usize, const PANEL_ROWS: usize>(
                 DrcsTable::Global => links.gdrcs,
             };
             let sub_page = link.and_then(|link| lookup.sub_page(link.magazine, link.page, drcs.subtable));
-            match decode_character(sub_page, drcs, level) {
+            // Without DRCS compiled in, every character is missing
+            // (decision E.71).
+            let decoded =
+                if cfg!(feature = "drcs") { decode_character(sub_page, drcs, level) } else { Err(DrcsFault::Missing) };
+            match decoded {
                 Ok(pattern) => {
                     if !grid.drcs.push(pattern) {
                         // REQ-DRC-007: beyond the capacity, treated as missing.
@@ -2165,13 +2186,21 @@ fn fill_drcs<const DRCS: usize, const PANEL_ROWS: usize>(
 }
 
 #[cfg(test)]
+#[cfg_attr(
+    not(all(feature = "animation")),
+    allow(dead_code, unused_imports, reason = "helpers of the tests whose capability is compiled out (decision E.71)")
+)]
 #[allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 mod tests {
     use super::*;
-    use crate::consts::{FLASH_MODE_STEADY, MOSAIC_FULL};
+    #[cfg(feature = "animation")]
+    use crate::consts::FLASH_MODE_STEADY;
+    use crate::consts::MOSAIC_FULL;
 
     /// REQ-L25-027, decision E.48: the flash a triplet sets, and its
     /// reserved values.
+    // Needs its capability compiled in (decision E.71).
+    #[cfg(feature = "animation")]
     #[test]
     fn additional_flash_values() {
         let on = |mode, rate| Some(Flash::On { mode, rate, start: 3 });
