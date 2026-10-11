@@ -21,6 +21,8 @@ const MAX_SCREEN_FRAME: usize = MAX_SCREEN_WIDTH * MAX_SCREEN_HEIGHT + MAX_SCREE
 /// The longest text of a screen: 25 rows of 40 characters of up to four
 /// bytes of UTF-8 each, and their line ends.
 pub const MAX_SCREEN_TEXT: usize = 25 * (40 * 4 + 1);
+/// The longest destination of a caught link: an address.
+pub const MAX_LINK_TEXT: usize = 512;
 
 /// Where page bytes came from.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -99,6 +101,9 @@ pub enum Frame {
     Screen(Screen),
     /// Decoder to interface: what the page shows and where the viewer is.
     Status(PageStatus),
+    /// Decoder to interface: a link on the page leads to this address
+    /// (`docs/web-native-concept.md` section 3), for the tuning screen.
+    Visit(String),
 }
 
 /// A key or character from the interface. Which of them the decoder acts
@@ -179,6 +184,10 @@ pub struct PageStatus {
     pub status: [u8; 8],
     /// A form on the page has the focus.
     pub form: bool,
+    /// Page catching is on (`docs/web-native-concept.md` section 5), and
+    /// this is where the selected link leads, as the decoder sees it;
+    /// empty when catching is off.
+    pub link: String,
     /// The page's text, one line per row, for accessibility, copying and
     /// tests.
     pub text: String,
@@ -216,6 +225,12 @@ pub enum Notice {
     RedirectToOtherSite(String),
     /// The service's name, from its descriptor or its host.
     ServiceName(String),
+    /// The descriptor's aliases: page numbers, `0xMPP`, and their targets,
+    /// `name:mpp` or an address (concept section 5 item 4).
+    Aliases(Vec<(u16, String)>),
+    /// Ask for the page on screen again this often, in seconds: the
+    /// descriptor's refresh interval for a service without push.
+    Refresh(u32),
     /// A bundle of pages arrived (a file, or a site's front door); its
     /// first page, `0xMPP`, is shown if the page asked for is not in it
     /// and the user has not moved.
@@ -248,6 +263,9 @@ const LINKED_SITES: u8 = b'J';
 const REDIRECT: u8 = b'W';
 const SERVICE_NAME: u8 = b'M';
 const BUNDLE: u8 = b'b';
+const ALIASES: u8 = b'a';
+const VISIT: u8 = b'v';
+const REFRESH: u8 = b'e';
 /// The most strings one frame may carry.
 const MAX_STRINGS: usize = 256;
 
@@ -410,6 +428,17 @@ pub fn write(out: &mut dyn Write, frame: &Frame) -> io::Result<()> {
         Frame::Notice(Notice::RedirectToOtherSite(address)) => put(out, REDIRECT, address.as_bytes()),
         Frame::Notice(Notice::ServiceName(name)) => put(out, SERVICE_NAME, name.as_bytes()),
         Frame::Notice(Notice::Bundle(mpp)) => put(out, BUNDLE, &mpp.to_be_bytes()),
+        Frame::Notice(Notice::Aliases(aliases)) => {
+            let mut buffer = Vec::new();
+            buffer.extend_from_slice(&u16::try_from(aliases.len().min(MAX_STRINGS)).unwrap_or(0).to_be_bytes());
+            for (mpp, target) in aliases.iter().take(MAX_STRINGS) {
+                buffer.extend_from_slice(&mpp.to_be_bytes());
+                put_string(&mut buffer, target);
+            }
+            put(out, ALIASES, &buffer)
+        }
+        Frame::Visit(address) => put(out, VISIT, address.as_bytes()),
+        Frame::Notice(Notice::Refresh(seconds)) => put(out, REFRESH, &seconds.to_be_bytes()),
         Frame::Input(input) => {
             let (code, value) = input_code(*input);
             let mut buffer = vec![code];
@@ -435,6 +464,7 @@ pub fn write(out: &mut dyn Write, frame: &Frame) -> io::Result<()> {
             buffer.push(u8::from(status.found));
             buffer.extend_from_slice(&status.status);
             buffer.push(u8::from(status.form));
+            put_string(&mut buffer, &status.link);
             put_string(&mut buffer, &status.text);
             put(out, STATUS, &buffer)
         }
@@ -611,6 +641,16 @@ fn browser_frame(kind: u8, payload: &[u8]) -> io::Result<Frame> {
         }
         SERVICE_NAME => Frame::Notice(Notice::ServiceName(String::from_utf8(payload.to_vec()).map_err(|_| invalid())?)),
         BUNDLE => Frame::Notice(Notice::Bundle(u16::from_be_bytes(payload.try_into().map_err(|_| invalid())?))),
+        ALIASES => {
+            let count = usize::from(cursor.u16()?);
+            let aliases = (0..count.min(MAX_STRINGS))
+                .map(|_| Ok((cursor.u16()?, cursor.string()?)))
+                .collect::<io::Result<Vec<_>>>()?;
+            cursor.end()?;
+            Frame::Notice(Notice::Aliases(aliases))
+        }
+        VISIT => Frame::Visit(String::from_utf8(payload.to_vec()).map_err(|_| invalid())?),
+        REFRESH => Frame::Notice(Notice::Refresh(u32::from_be_bytes(payload.try_into().map_err(|_| invalid())?))),
         INPUT => {
             let code = cursor.byte()?;
             let value = cursor.u32()?;
@@ -639,12 +679,13 @@ fn browser_frame(kind: u8, payload: &[u8]) -> io::Result<Frame> {
             let found = cursor.byte()? != 0;
             let status: [u8; 8] = cursor.bytes(8)?.try_into().map_err(|_| invalid())?;
             let form = cursor.byte()? != 0;
+            let link = cursor.string()?;
             let text = cursor.string()?;
             cursor.end()?;
-            if text.len() > MAX_SCREEN_TEXT {
+            if text.len() > MAX_SCREEN_TEXT || link.len() > MAX_LINK_TEXT {
                 return Err(invalid());
             }
-            Frame::Status(PageStatus { page, subcode, found, status, form, text })
+            Frame::Status(PageStatus { page, subcode, found, status, form, link, text })
         }
         _ => return Err(invalid()),
     })
@@ -690,6 +731,9 @@ mod tests {
             Frame::Notice(Notice::RedirectToOtherSite("https://elsewhere.example/".into())),
             Frame::Notice(Notice::ServiceName("Test".into())),
             Frame::Notice(Notice::Bundle(0x199)),
+            Frame::Notice(Notice::Aliases(vec![(0x300, "weather:300".into())])),
+            Frame::Visit("https://w.example/300.t42".into()),
+            Frame::Notice(Notice::Refresh(60)),
             Frame::Input(UserInput::Digit(7)),
             Frame::Input(UserInput::Colour(3)),
             Frame::Input(UserInput::Char('é')),
@@ -710,6 +754,7 @@ mod tests {
                 found: true,
                 status: *b"P100    ",
                 form: false,
+                link: "P200".into(),
                 text: "HELLO\n".into(),
             }),
         ];

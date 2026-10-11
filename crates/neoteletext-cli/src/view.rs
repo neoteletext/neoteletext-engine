@@ -223,7 +223,9 @@ pub fn run(
                 | Notice::Current(_)
                 | Notice::LinkedSites(_)
                 | Notice::ServiceName(_)
-                | Notice::Bundle(_) => {}
+                | Notice::Bundle(_)
+                | Notice::Aliases(_)
+                | Notice::Refresh(_) => {}
                 // Only a browser asks the fetcher to stop at other sites.
                 Notice::RedirectToOtherSite(address) => messages.push(format!("redirected to {address}")),
             }

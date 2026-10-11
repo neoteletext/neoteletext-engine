@@ -56,6 +56,7 @@ NEWS_PAGES = {
         "LN,R,200,Story",
         "LN,G,300,Contact",
         "LN,Y,weather:300,Weather",
+        "LN,C,http://127.0.0.1:{weather}/200.t42,Radar",
         "LN,I,100,",
     ]),
     "200": tti([
@@ -63,6 +64,10 @@ NEWS_PAGES = {
         "OL,1," + esc(GREEN) + "TOP STORY",
         "OL,3," + esc(WHITE) + "Teletext returns to the web.",
         "OL,5," + esc(WHITE) + "Back to the index: 100",
+        "OL,7," + esc(WHITE) + "Weather forecast: 400",
+        "OL,8," + esc(WHITE) + "Somewhere else",
+        "LK,400,http://127.0.0.1:{weather}/300.t42",
+        "LT,8,1,9,http://127.0.0.1:{hostile}/",
         "LN,R,100,Index",
     ]),
 }
@@ -190,6 +195,7 @@ class Site(http.server.BaseHTTPRequestHandler):
                 "page_template": "/pages/{mpp}.tti",
                 "services": [{"name": "weather", "display_name": "Weather",
                               "descriptor": "http://127.0.0.1:%d/.well-known/teletext.json" % self.ports["weather"]}],
+                "aliases": {"500": "weather:200", "600": "http://127.0.0.1:%d/300.t42" % self.ports["weather"]},
             }
             return self.send(200, json.dumps(descriptor), "application/json",
                              [("Set-Cookie", "session=v1.%s; Path=/; HttpOnly; SameSite=Lax" % session)])
@@ -202,7 +208,7 @@ class Site(http.server.BaseHTTPRequestHandler):
             if page == "301":
                 return self.send(200, THANKS_PAGE)
             if page in NEWS_PAGES:
-                return self.send(200, NEWS_PAGES[page])
+                return self.send(200, NEWS_PAGES[page].format(**self.ports))
         return self.not_found()
 
     def site_weather(self, path):

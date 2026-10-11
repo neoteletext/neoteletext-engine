@@ -73,6 +73,7 @@ pub struct Tab {
     /// The service's name, from its descriptor or its host.
     pub name: Option<String>,
     linked: Vec<(String, String)>,
+    aliases: Vec<(u16, String)>,
     /// Some page of this site came over plain HTTP.
     pub unencrypted: bool,
     /// The latest message for the status line.
@@ -115,6 +116,7 @@ impl Tab {
             status: None,
             name: None,
             linked: Vec::new(),
+            aliases: Vec::new(),
             unencrypted: false,
             notice: None,
             submission: None,
@@ -244,6 +246,7 @@ impl Tab {
         self.status = None;
         self.name = None;
         self.linked.clear();
+        self.aliases.clear();
         self.unencrypted = false;
         self.submission = None;
         self.notice = None;
@@ -408,6 +411,7 @@ impl Tab {
                 self.changed();
             }
             Frame::Notice(Notice::LinkedSites(sites)) => self.linked = sites,
+            Frame::Notice(Notice::Aliases(aliases)) => self.aliases = aliases,
             Frame::Notice(Notice::ServiceName(name)) => {
                 self.name = Some(clean_title(&name));
                 self.changed();
@@ -465,10 +469,71 @@ impl Tab {
                 self.status = Some(status);
                 self.changed();
             }
-            frame @ (Frame::Request(..) | Frame::Submit(_)) => self.send_fetcher(&frame),
+            Frame::Request(mpp, sub) => {
+                // The descriptor's alias for a number leads elsewhere on
+                // every page of the site (concept section 5 item 4); the
+                // decoder has already preferred the page's own link.
+                match self.aliases.iter().find(|(page, _)| *page == mpp).map(|(_, target)| target.clone()) {
+                    Some(target) => self.alias(&target),
+                    None => self.send_fetcher(&Frame::Request(mpp, sub)),
+                }
+            }
+            frame @ Frame::Submit(_) => self.send_fetcher(&frame),
             Frame::Follow(service, mpp, _) => self.follow(&service, mpp),
+            Frame::Visit(address) => self.visit(&address),
             // A decoder never confirms anything, and never sends the rest.
             _ => {}
+        }
+    }
+
+    /// An address written in a page (concept section 3): through the
+    /// tuning screen, marked as not declared by the site.
+    fn visit(&mut self, address: &str) {
+        let from = self.location.as_ref().map(Location::label).unwrap_or_default();
+        match parse_input(address) {
+            Ok(destination)
+                if self.location.as_ref().is_some_and(|here| here.site_key() == destination.location.site_key()) =>
+            {
+                if let Some(page) = destination.page {
+                    self.send_decoder(&Frame::Show(page, ANY_SUBCODE));
+                }
+            }
+            Ok(destination) => {
+                self.view = View::Tuning(Tuning { destination, why: Why::Link { from, declared: None } });
+            }
+            Err(_) => self.notice = Some("That link's address is not allowed.".to_string()),
+        }
+        self.changed();
+    }
+
+    /// A number the descriptor aliases: an address, or `name:mpp`. The
+    /// decoder was searching for the number; it goes back to the page
+    /// shown while the tuning screen waits.
+    fn alias(&mut self, target: &str) {
+        if let Some(page) = self.navigation.current().map(|entry| entry.page) {
+            self.send_decoder(&Frame::Show(page, ANY_SUBCODE));
+            self.history_target = Some(page);
+        }
+        if target.contains("://") {
+            let from = self.location.as_ref().map(Location::label).unwrap_or_default();
+            match parse_input(target) {
+                Ok(destination) => {
+                    let declared = Some(destination.location.label());
+                    self.view = View::Tuning(Tuning { destination, why: Why::Link { from, declared } });
+                }
+                Err(_) => self.notice = Some("The site's alias names an address that is not allowed.".into()),
+            }
+            self.changed();
+            return;
+        }
+        let named = target.split_once(':').and_then(|(service, page)| {
+            neoteletext_browser::location::page_number(page).map(|page| (service.to_string(), page))
+        });
+        if let Some((service, page)) = named {
+            self.follow(&service, page);
+        } else {
+            self.notice = Some("The site's alias is not a link.".to_string());
+            self.changed();
         }
     }
 

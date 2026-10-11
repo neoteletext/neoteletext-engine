@@ -592,3 +592,63 @@ fn packet_28_function_wins_in_any_line_order() {
     assert_eq!(page(&[x28_3, x28_0, pf]), Some(basic));
     assert_eq!(page(&[pf, x28_0, x28_3]), Some(basic));
 }
+
+/// `docs/web-native-concept.md` sections 3 and 5: addresses as link
+/// targets, page-number links and text links.
+#[test]
+fn addresses_number_links_and_text_links() {
+    let text = b"PN,10000\nOL,4,Weather 300\nLN,R,https://weather.example/300.t42,Weather\n\
+LK,300,https://weather.example/300.t42\nLK,400,sport:100\nLT,4,0,7,http://w.example/\n";
+    let (pages, diagnostics) = read(text);
+    assert_eq!(diagnostics, []);
+    let page = &pages[0];
+    let red = page.links.as_slice()[0];
+    assert_eq!(red.url.as_bytes(), b"https://weather.example/300.t42");
+    assert!(red.is_other_service(), "an address leads to another site");
+    let numbers: Vec<_> = page.number_links.as_slice().iter().map(|link| link.number.mpp()).collect();
+    assert_eq!(numbers, [0x300, 0x400]);
+    assert_eq!(page.number_links.as_slice()[0].destination.url.as_bytes(), b"https://weather.example/300.t42");
+    assert_eq!(page.number_links.as_slice()[1].destination.service.as_bytes(), b"sport");
+    let text_link = page.text_links.as_slice()[0];
+    assert_eq!((text_link.row, text_link.column, text_link.length), (4, 0, 7));
+    assert_eq!(text_link.destination.url.as_bytes(), b"http://w.example/");
+    // The writer keeps every link.
+    let mut written = Vec::new();
+    crate::write::write_tti(&[page], &mut written).unwrap();
+    let (again, _) = read(&written);
+    // The same links, on other lines of the written file.
+    let keys = |page: &PageFile| -> Vec<_> { page.links.as_slice().iter().map(|l| (l.key, l.url, l.label)).collect() };
+    let numbers = |page: &PageFile| -> Vec<_> {
+        page.number_links.as_slice().iter().map(|l| (l.number, l.destination)).collect()
+    };
+    let texts = |page: &PageFile| -> Vec<_> {
+        page.text_links.as_slice().iter().map(|l| (l.row, l.column, l.length, l.destination)).collect()
+    };
+    assert_eq!(keys(&again[0]), keys(page));
+    assert_eq!(numbers(&again[0]), numbers(page));
+    assert_eq!(texts(&again[0]), texts(page));
+}
+
+#[test]
+fn bad_addresses_and_text_links_are_refused() {
+    let long = [b"LK,300,https://a.example/".as_slice(), &[b'x'; 300], b"\n"].concat();
+    for line in [
+        b"LK,300,javascript://alert(1)\n".as_slice(),
+        b"LK,300,ftp://a.example/\n",
+        b"LK,300,https://a.example/a b\n",
+        b"LK,9A,100\n",
+        b"LT,0,0,3,100\n",
+        b"LT,24,0,3,100\n",
+        b"LT,4,38,3,100\n",
+        b"LT,4,0,0,100\n",
+        &long,
+    ] {
+        let text = [b"PN,10000\n".as_slice(), line].concat();
+        let (pages, _) = read(&text);
+        assert!(pages[0].has_issue(IssueKind::BadLinkTarget), "{line:?}");
+        assert!(pages[0].number_links.is_empty() && pages[0].text_links.is_empty());
+    }
+    let (pages, _) = read(b"PN,10000\nLK,300,100\nLK,300,200\n");
+    assert!(pages[0].has_issue(IssueKind::RepeatedKey));
+    assert_eq!(pages[0].number_links.len(), 1);
+}

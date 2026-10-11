@@ -87,11 +87,41 @@ It is skipped only for back and forward to a site confirmed this session (concep
 
 **D17. A file or front door without the page asked for opens at its own first page,** unless the user has already chosen a page.
 
+**D23. Addresses in pages.** Concept decision 1, built as the concept describes:
+- An `LN` target containing `://` is an address. It may be `http` or `https`, printable ASCII without spaces or commas, at most 256 bytes; anything else makes the link invalid.
+- `LK,mpp,target` links a page number, at most 8 per page.
+- `LT,row,column,length,target` links a run of text on rows 1 to 23, at most 8 per page.
+- The TTI writer keeps all three.
+- The page checker warns when a page links a number it does not show (concept section 5).
+- An address always goes through the tuning screen, marked "not declared by the site".
+- A typed number follows, in order:
+  1. the page's own link, which the decoder checks;
+  2. otherwise the descriptor's alias, which the interface checks when the decoder asks for the page;
+  3. otherwise the site's own page.
+
+**D24. Descriptor aliases and refresh** (concept decision 13).
+- **`aliases`:** an object of page numbers and targets. A target is `name:mpp` or an address; a relative address is refused, and an address in an `https` descriptor must be `https`. At most 16 aliases.
+- **`refresh`:** a whole number of seconds from 5 to 86 400. It is used only when the service has no push, and asks for the page on screen again at that interval.
+
+**D25. Page catching by keyboard** (concept decision 11).
+- **Turning it on:** Enter turns catching on at the first link in reading order: page numbers printed on rows 1 to 23, and `LT` runs.
+- **Moving:** Right and Down move forward; Left and Up move back.
+- **Following:** Enter follows the selected link.
+- **Turning it off:** Escape or Delete, or any other key, which then does what it does.
+- **On screen:** the selected link has its colours swapped. Row 0 shows `LINK` and the destination as the decoder reports it, written only after the receiver's `LINK`, so it cannot be mistaken for the tuning screen's `GO?`.
+- **Pages with side panels** are not caught, because their text columns are not the grid's.
+- **With the pointer:** a number under the pointer names its page in the status line.
+- **Not built:** "show links", which underlines every link.
+
+**D26. Enhancement dependencies** (concept section 2 item 6). When a page is shown at Level 2.5 or 3.5, the decoder asks once for its magazine's Organization Table (`xFE`), then for the object and DRCS pages the table and the page name. Pages already stored are not asked for again. These requests do not change which page is kept fresh.
+
+**D27. Screen readers** get the page's text as the page area's label, besides egui's own description of the chrome.
+
 **D18. Keys follow the concept's section 7,** with these differences:
 - **`q` does not quit;** Cmd-Q does, as on every Mac application, so a stray key cannot close the browser.
 - **Cmd-Left and Cmd-Right** go back and forward, as well as Cmd-[ and Cmd-].
 - **Cmd-Shift-C** copies the page's text.
-- **Page catching is by pointer only:** clicking a three-digit number goes there, and clicking a Fastext prompt follows it. Keyboard page catching (Enter, then the arrows between links), its highlighting and "show links" are not built.
+- **Clicking with the pointer:** a three-digit number goes there, a Fastext prompt is followed, and an `LT` run follows its link. Keyboard page catching is D25.
 - **`.` for sub-page entry** is not built.
 
 **D19. The window's fonts are the system's, read at start;** egui's bundled fonts are left out. Their licences (Ubuntu Font Licence, OFL) are not on REQ-GEN-017's list. Pages never use these fonts; they are drawn with the teletext glyph sets.
@@ -118,7 +148,9 @@ egui's tree adds two crates whose licence, BSL-1.0, is not on REQ-GEN-017's list
 
 ## 4. What REQUIREMENTS.md needs
 
-- **Part E entries:** D1, D2, D7, D8, D11, D12, D13, D14, D18, and the concept's decisions 1 to 14, which are still only in the concept document.
+- **Part E entries:** D1, D2, D7, D8, D11, D12, D13, D14, D18, D23 to D26, and the concept's decisions 1 to 14, which are still only in the concept document.
+- **Appendix E amendments:** addresses as targets, the `://` rule, and the `LK` and `LT` lines (D23).
+- **REQ-WEB-002 amendments:** the well-known location, `aliases` and `refresh` (D8, D24).
 - **Requirements:**
   - **WEB:** sites, the well-known descriptor, the defaults and front door, refusing redirects to another site.
   - **NAV:** tab history, the tuning screen.
@@ -127,10 +159,8 @@ egui's tree adds two crates whose licence, BSL-1.0, is not on REQ-GEN-017's list
 
 ## 5. Not built yet
 
-- **Addresses in pages** (concept decision 1): the `LK` and `LT` lines and addresses as Fastext targets, with the tuning screen.
-- **The descriptor's aliases and refresh interval** (concept decision 13).
-- **Enhancement dependencies fetched by following the Magazine Organization Table** (concept section 2 item 6).
-- **Keyboard page catching** and link highlighting (concept decision 11).
+- **"Show links"** (concept decision 11).
+- **A page file carrying only its own page** (D10).
 - **One decoder per site, and a back-forward cache** that keeps the previous site's processes.
 - **The macOS menu bar, multiple windows, a file dialog, printing.**
 - **The App Sandbox, Developer ID signing and notarisation, and Sparkle updates.**

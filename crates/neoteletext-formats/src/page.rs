@@ -24,6 +24,15 @@ pub const SERVICE_NAME_BYTES: usize = 32;
 /// Link Extension links per page: four coloured keys and Index
 /// (Appendix E.1).
 pub const LINK_LINES: usize = 5;
+/// The longest address a link may name (`docs/web-native-concept.md`
+/// section 3): longer addresses make the link invalid.
+pub const LINK_ADDRESS_BYTES: usize = 256;
+/// `LK` lines per page: page numbers linked elsewhere (concept section 5
+/// item 3).
+pub const NUMBER_LINKS: usize = 8;
+/// `LT` lines per page: runs of text linked elsewhere (concept section 5
+/// item 2).
+pub const TEXT_LINKS: usize = 8;
 /// Packed enhancement lines other than X/26 (`OL,27` with designation 1 to
 /// 15, `OL,28`, `OL,29`) per page.
 pub const RAW_PACKETS: usize = 16;
@@ -157,6 +166,9 @@ pub struct LinkLine {
     pub address: PageAddress,
     /// The sub-page, `None` for any sub-page.
     pub subcode: Option<SubCode>,
+    /// The address of another site's page file, when the target is an
+    /// address (`docs/web-native-concept.md` section 3); empty otherwise.
+    pub url: Text<LINK_ADDRESS_BYTES>,
     /// The prompt text, as written.
     pub label: Text<LINK_LABEL_BYTES>,
     /// True when the label in the file was longer than this record keeps.
@@ -166,11 +178,55 @@ pub struct LinkLine {
 }
 
 impl LinkLine {
-    /// True when the target is in another service.
+    /// True when the target is in another service or at an address: both
+    /// lead to another site.
     #[must_use]
     pub const fn is_other_service(&self) -> bool {
-        !self.service.is_empty()
+        !self.service.is_empty() || !self.url.is_empty()
     }
+}
+
+/// Where a page-number or text link leads: a page of this service, a page
+/// of a named service, or an address (concept section 3).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct LinkDestination {
+    /// The other service named, empty for this service or an address.
+    pub service: Text<SERVICE_NAME_BYTES>,
+    /// The page; for an address, the page its file holds is the browser's
+    /// to find out.
+    pub address: PageAddress,
+    /// The sub-page, `None` for any sub-page.
+    pub subcode: Option<SubCode>,
+    /// The address, when the target is one.
+    pub url: Text<LINK_ADDRESS_BYTES>,
+}
+
+/// An `LK` line: typing or choosing `number` on this page leads to
+/// `destination` (concept section 5 item 3).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct NumberLink {
+    /// The page number linked.
+    pub number: PageAddress,
+    /// Where it leads.
+    pub destination: LinkDestination,
+    /// The line of the file.
+    pub line: u32,
+}
+
+/// An `LT` line: the run of `length` characters at `row` and `column` is
+/// a link to `destination` (concept section 5 item 2).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct TextLink {
+    /// The row, 1 to 23.
+    pub row: u8,
+    /// The first column.
+    pub column: u8,
+    /// The characters linked.
+    pub length: u8,
+    /// Where it leads.
+    pub destination: LinkDestination,
+    /// The line of the file.
+    pub line: u32,
 }
 
 /// The field types of the Form Extension (Appendix C.3).
@@ -548,6 +604,10 @@ pub struct PageFile {
     /// False when the `LN` lines broke Appendix E.2 rule 1, so the page has
     /// no links.
     pub links_valid: bool,
+    /// `LK` lines.
+    pub number_links: FixedVec<NumberLink, NUMBER_LINKS>,
+    /// `LT` lines.
+    pub text_links: FixedVec<TextLink, TEXT_LINKS>,
     /// The form.
     pub form: Form,
     /// Problems found while reading.
@@ -559,7 +619,7 @@ pub struct PageFile {
 }
 
 /// The default page address of files that carry none.
-const DEFAULT_ADDRESS: PageAddress = PageAddress {
+pub(crate) const DEFAULT_ADDRESS: PageAddress = PageAddress {
     magazine: Magazine::from_bits((DEFAULT_INITIAL_PAGE >> 8) as u8),
     page: PageNumber(DEFAULT_INITIAL_PAGE as u8),
 };
@@ -574,10 +634,13 @@ impl PageFile {
             service: Text::new(),
             address: DEFAULT_ADDRESS,
             subcode: None,
+            url: Text::new(),
             label: Text::new(),
             label_truncated: false,
             line: 0,
         };
+        let destination =
+            LinkDestination { service: Text::new(), address: DEFAULT_ADDRESS, subcode: None, url: Text::new() };
         Self {
             address: DEFAULT_ADDRESS,
             subpage: 0,
@@ -595,6 +658,8 @@ impl PageFile {
             fastext_row_24: false,
             links: FixedVec::new(link),
             links_valid: true,
+            number_links: FixedVec::new(NumberLink { number: DEFAULT_ADDRESS, destination, line: 0 }),
+            text_links: FixedVec::new(TextLink { row: 0, column: 0, length: 0, destination, line: 0 }),
             form: Form::new(),
             issues: FixedVec::new(PageIssue { kind: IssueKind::BadField, line: 0 }),
             considered: 0,
@@ -737,6 +802,8 @@ impl PartialEq for PageFile {
             && self.fastext_row_24 == other.fastext_row_24
             && self.links.as_slice() == other.links.as_slice()
             && self.links_valid == other.links_valid
+            && self.number_links.as_slice() == other.number_links.as_slice()
+            && self.text_links.as_slice() == other.text_links.as_slice()
             && self.form == other.form
             && self.issues.as_slice() == other.issues.as_slice()
             && self.considered == other.considered

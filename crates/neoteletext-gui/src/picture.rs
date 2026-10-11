@@ -105,6 +105,9 @@ fn broadcast_header(text: &str) -> String {
 #[must_use]
 pub fn tab_row0(tab: &Tab, clock: Option<&str>) -> Row {
     let status = tab.status.as_ref();
+    if let Some(link) = status.map(|status| status.link.as_str()).filter(|link| !link.is_empty()) {
+        return row0(Activity::Link, link, None);
+    }
     let activity = if status.is_some_and(|status| status.form) {
         Activity::Form
     } else {

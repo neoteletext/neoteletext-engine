@@ -47,8 +47,16 @@ pub struct Live {
     last_retry: Instant,
     /// The time of the latest poll, the viewer's clock.
     last_poll: Instant,
+    /// The service's refresh interval for the page on screen, when its
+    /// descriptor gives one and it has no push.
+    refresh_us: Option<u64>,
 }
 
+/// Bounds of a service's refresh interval, in seconds (concept decision 13).
+const MIN_REFRESH_SECONDS: u32 = neoteletext_web::descriptor::MIN_REFRESH_SECONDS;
+const MAX_REFRESH_SECONDS: u32 = neoteletext_web::descriptor::MAX_REFRESH_SECONDS;
+/// Microseconds in a second.
+const MICROSECONDS_PER_SECOND: u64 = 1_000_000;
 /// Microseconds between requests for the viewed page while offline, so
 /// that it is the first page checked when the network returns
 /// (REQ-WEB-009).
@@ -105,6 +113,7 @@ impl Live {
             offline_since: None,
             last_retry: Instant(0),
             last_poll: Instant(0),
+            refresh_us: None,
         }
     }
 }
@@ -172,6 +181,11 @@ impl Source for Live {
                     self.last_bytes.clear();
                     self.services = names;
                 }
+                Frame::Notice(Notice::Refresh(seconds)) => {
+                    // The descriptor bounds it; the pipe could carry any value.
+                    let bounded = seconds.clamp(MIN_REFRESH_SECONDS, MAX_REFRESH_SECONDS);
+                    self.refresh_us = Some(u64::from(bounded) * MICROSECONDS_PER_SECOND);
+                }
                 Frame::Notice(Notice::Current(mpp)) => {
                     // A page confirmed unchanged is as good as received
                     // again: it is current, and not stale (REQ-WEB-009).
@@ -199,7 +213,8 @@ impl Source for Live {
                 | Frame::Settings(_)
                 | Frame::Click(..)
                 | Frame::Screen(_)
-                | Frame::Status(_) => {}
+                | Frame::Status(_)
+                | Frame::Visit(_) => {}
             }
         }
         session.tick(now);
@@ -207,8 +222,12 @@ impl Source for Live {
         // and more often while offline, so that it is the first page
         // checked when the network returns (REQ-WEB-009). The web module's
         // cache answers without the network while the page is fresh.
-        let interval =
-            if self.offline_since.is_some() { OFFLINE_RETRY_US } else { session.decoder().config().stale_after_us / 2 };
+        let fresh = session.decoder().config().stale_after_us / 2;
+        let interval = if self.offline_since.is_some() {
+            OFFLINE_RETRY_US
+        } else {
+            self.refresh_us.map_or(fresh, |refresh| refresh.min(fresh))
+        };
         if now.since(self.last_retry) >= interval
             && let Some((page, subcode)) = self.requested
         {
@@ -232,6 +251,10 @@ impl Source for Live {
         self.last_retry = self.last_poll;
         let sub = if subcode.is_any() { u16::MAX } else { subcode.value() };
         self.send(&Frame::Request(page.mpp(), sub));
+    }
+
+    fn prefetch(&mut self, page: PageAddress) {
+        self.send(&Frame::Request(page.mpp(), u16::MAX));
     }
 
     fn notices(&mut self) -> Vec<Notice> {
@@ -310,4 +333,60 @@ pub fn descriptor_service_names(path: &Path) -> Result<Vec<Vec<u8>>, Failure> {
     let descriptor = neoteletext_web::descriptor::Descriptor::parse(&json, &base)
         .map_err(|error| (exit::INPUT, format!("{}: {error:?}", path.display())))?;
     Ok(descriptor.services().map(|service| service.short_name.as_bytes().to_vec()).collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+
+    /// A pipe end that keeps what is written.
+    #[derive(Clone, Default)]
+    struct Kept(Arc<Mutex<Vec<u8>>>);
+
+    impl Write for Kept {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().map_err(|_| std::io::Error::other("poisoned"))?.extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl Kept {
+        fn requests(&self) -> usize {
+            let bytes = self.0.lock().map(|bytes| bytes.clone()).unwrap_or_default();
+            let mut reader = bytes.as_slice();
+            std::iter::from_fn(|| pipe::read(&mut reader).ok().flatten())
+                .filter(|frame| matches!(frame, Frame::Request(..)))
+                .count()
+        }
+    }
+
+    const SECOND: u64 = 1_000_000;
+
+    /// Concept decision 13: a service's refresh interval brings the page
+    /// on screen again sooner than the stale timeout would.
+    #[test]
+    fn the_refresh_interval_asks_for_the_page_again() {
+        let (sender, frames) = mpsc::channel();
+        let kept = Kept::default();
+        let mut live = routed(frames, Box::new(kept.clone()));
+        let mut session = Session::new(neoteletext_core::config::Config::default(), 8);
+        let page = PageAddress::from_mpp(0x100).unwrap_or_else(|| unreachable!());
+        live.poll(&mut session, Instant(0));
+        live.request(page, SubCode::ANY);
+        assert_eq!(kept.requests(), 1);
+        live.poll(&mut session, Instant(6 * SECOND));
+        assert_eq!(kept.requests(), 1, "without a refresh interval, not yet");
+        sender.send(Frame::Notice(Notice::Refresh(5))).unwrap_or_else(|_| unreachable!());
+        live.poll(&mut session, Instant(7 * SECOND));
+        assert_eq!(kept.requests(), 2, "five seconds have passed since the request");
+        live.poll(&mut session, Instant(9 * SECOND));
+        assert_eq!(kept.requests(), 2);
+        live.poll(&mut session, Instant(13 * SECOND));
+        assert_eq!(kept.requests(), 3);
+    }
 }

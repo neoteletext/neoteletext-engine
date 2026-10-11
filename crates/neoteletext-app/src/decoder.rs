@@ -10,7 +10,7 @@
 //! is untrusted: the interface draws row 0 itself and confirms every other
 //! site.
 
-use crate::extras::{self, PageExtras};
+use crate::extras::{self, Destination, INDEX_KEY, PageExtras};
 use crate::interact::{ActiveForm, message_row, submission};
 use crate::pipe::{self, DisplaySettings, Frame, Notice, PageStatus, Screen, UserInput};
 use crate::present::{self, MosaicStyle, Scale};
@@ -26,7 +26,7 @@ use neoteletext_core::glyphs::GlyphSet;
 use neoteletext_core::level1::{Grid, Zoom};
 use neoteletext_core::nav::PageLinks;
 use neoteletext_core::render::{ColourMode, FlashPhase, RenderOptions, flash_visible};
-use neoteletext_core::types::{Instant, PageAddress};
+use neoteletext_core::types::{Instant, PageAddress, PageNumber};
 use neoteletext_core::viewer::{
     Action, ComposeContext, Composed, Key, KeyContext, SecurityIndicator, Viewer, ViewerEvent, ViewerState,
 };
@@ -41,6 +41,8 @@ const TICK: Duration = Duration::from_millis(40);
 const PROMPT_COLUMNS: usize = COLUMNS / 4;
 /// Digits in a page number.
 const PAGE_DIGITS: usize = 3;
+/// The page number of a magazine's Organization Table, xFE (clause 10.6).
+const MOT_PAGE: u8 = neoteletext_core::consts::PAGE_MOT;
 /// The row of the Fastext prompts.
 const FASTEXT_ROW: usize = ROWS - 1;
 
@@ -140,6 +142,24 @@ pub struct Engine {
     last_status: Option<PageStatus>,
     /// The user has chosen a page since the decoder started.
     moved: bool,
+    /// Frames for the interface made while handling its commands.
+    outgoing: Vec<Frame>,
+    /// Page catching: the selected link among [`Engine::catchable`].
+    catching: Option<usize>,
+    /// The extension data of the page last composed.
+    last_extras: Option<PageExtras>,
+    /// Enhancement pages already asked for, `0xMPP`.
+    prefetched: std::collections::HashSet<u16>,
+}
+
+/// A link page catching can select: a page number printed on the page,
+/// or an `LT` run of text.
+#[derive(Clone, PartialEq, Eq, Debug)]
+struct Catchable {
+    row: usize,
+    column: usize,
+    length: usize,
+    destination: Destination,
 }
 
 fn viewer_key(input: UserInput) -> Option<Key> {
@@ -230,10 +250,15 @@ impl Engine {
             last_screen: None,
             last_status: None,
             moved: false,
+            outgoing: Vec::new(),
+            catching: None,
+            last_extras: None,
+            prefetched: std::collections::HashSet::new(),
         }
     }
 
     fn show(&mut self, address: PageAddress) {
+        self.catching = None;
         self.viewer = Viewer::new(address);
         self.action = self.viewer.event(ViewerEvent::Started);
     }
@@ -259,7 +284,68 @@ impl Engine {
         }
     }
 
+    /// Asks once for the enhancement pages the shown page uses: its
+    /// magazine's Organization Table, then the object and DRCS pages the
+    /// table and the page name (concept section 2 item 6). A page's own
+    /// file may already have brought them; stored pages are not asked for.
+    fn prefetch_dependencies(&mut self, session: &Session, source: &mut dyn Source) {
+        let (requested, subcode) = self.viewer.requested();
+        let Some(page) = session.page(requested, subcode) else { return };
+        let config = session.decoder().config();
+        if !config.level.is_enhanced() {
+            return;
+        }
+        let table = PageAddress { magazine: requested.magazine, page: PageNumber(MOT_PAGE) };
+        let lookup = session.decoder().enhancement_lookup();
+        let links = neoteletext_core::objects::links(page, &lookup, config.level);
+        let named = [links.gpop, links.pop, links.gdrcs, links.drcs]
+            .into_iter()
+            .flatten()
+            .map(|link| PageAddress { magazine: link.magazine, page: link.page });
+        for address in std::iter::once(table).chain(named) {
+            let stored = session.page(address, neoteletext_core::types::SubCode::ANY).is_some();
+            if !stored && self.prefetched.insert(address.mpp()) {
+                source.prefetch(address);
+            }
+        }
+    }
+
+    /// The extension data of the page on screen.
+    fn shown_extras(&self, session: &Session, source: &dyn Source) -> Option<PageExtras> {
+        let (requested, subcode) = self.viewer.requested();
+        let page = session.page(requested, subcode)?;
+        source.extras(page.key.address, page.key.subcode).cloned()
+    }
+
+    /// Follows one of the page's own links (`docs/web-native-concept.md`
+    /// section 5): an address goes to the interface, which shows the tuning
+    /// screen; a named service's page goes the same way through the
+    /// fetcher's descriptor; a page of this service is shown here. The
+    /// viewer stays on the page shown until the interface moves the tab.
+    fn follow(&mut self, destination: &Destination, shown: PageAddress, source: &mut dyn Source) {
+        match destination {
+            Destination::Address(address) => {
+                self.outgoing.push(Frame::Visit(address.clone()));
+                self.show(shown);
+            }
+            Destination::Page(target) => match target.service {
+                Some(service) => {
+                    source.follow(service, target.address, target.subcode);
+                    self.show(shown);
+                }
+                None => self.show(target.address),
+            },
+        }
+    }
+
     fn click(&mut self, row: usize, column: usize, session: &mut Session, source: &mut dyn Source, now: Instant) {
+        let shown = self.viewer.requested().0;
+        if let Some(destination) =
+            self.shown_extras(session, source).and_then(|extras| extras.text_link_at(row, column).cloned())
+        {
+            self.follow(&destination, shown, source);
+            return;
+        }
         if row == FASTEXT_ROW {
             let colour = u8::try_from(column / PROMPT_COLUMNS).unwrap_or(u8::MAX);
             if colour <= 3 {
@@ -275,7 +361,102 @@ impl Engine {
         }
     }
 
+    /// The links page catching can stop at, in reading order: the page's
+    /// text links and the page numbers printed on it, rows 1 to 23. Pages
+    /// with side panels are not caught, because the text's columns are not
+    /// the grid's.
+    fn catchable(&self, extras: Option<&PageExtras>) -> Vec<Catchable> {
+        if neoteletext_core::render::row_columns(&self.grid) != COLUMNS {
+            return Vec::new();
+        }
+        let text = present::plain(&self.grid, false, MosaicStyle::Unicode16);
+        let mut found = Vec::new();
+        for (row, line) in text.lines().enumerate().take(FASTEXT_ROW).skip(1) {
+            let characters: Vec<char> = line.chars().collect();
+            let mut column = 0;
+            while column < characters.len() {
+                if let Some(link) = extras.and_then(|extras| {
+                    extras
+                        .text_links
+                        .iter()
+                        .find(|link| usize::from(link.row) == row && usize::from(link.column) == column)
+                }) {
+                    found.push(Catchable {
+                        row,
+                        column,
+                        length: usize::from(link.length),
+                        destination: link.destination.clone(),
+                    });
+                    column += usize::from(link.length);
+                } else if let Some(address) = page_number_at(line, column) {
+                    let destination = extras.and_then(|extras| extras.number_link(address).cloned()).unwrap_or(
+                        Destination::Page(neoteletext_core::nav::LinkTarget {
+                            address,
+                            subcode: neoteletext_core::types::SubCode::ANY,
+                            service: None,
+                        }),
+                    );
+                    found.push(Catchable { row, column, length: PAGE_DIGITS, destination });
+                    column += PAGE_DIGITS;
+                } else {
+                    column += 1;
+                }
+            }
+        }
+        found
+    }
+
+    /// Keys while page catching is on: the arrows move between links,
+    /// Enter follows the selected one, Escape turns catching off. Returns
+    /// true when the key was used.
+    fn catch_key(&mut self, input: UserInput, session: &mut Session, source: &mut dyn Source) -> bool {
+        let extras = self.shown_extras(session, source);
+        let links = self.catchable(extras.as_ref());
+        let Some(selected) = self.catching else {
+            if input == UserInput::Enter && !links.is_empty() {
+                self.catching = Some(0);
+                return true;
+            }
+            return false;
+        };
+        let count = links.len().max(1);
+        match input {
+            UserInput::NextSubPage | UserInput::PreviousPage => self.catching = Some((selected + 1) % count),
+            UserInput::PreviousSubPage | UserInput::NextPage => self.catching = Some((selected + count - 1) % count),
+            UserInput::Escape => self.catching = None,
+            UserInput::Enter => {
+                self.catching = None;
+                if let Some(link) = links.get(selected) {
+                    let shown = self.viewer.requested().0;
+                    match &link.destination {
+                        // A page of this site goes through the viewer, so
+                        // the descriptor's aliases still apply.
+                        Destination::Page(target) if target.service.is_none() => {
+                            self.action = Action::Request(target.address, target.subcode);
+                            self.viewer = Viewer::new(target.address);
+                            let _ = self.viewer.event(ViewerEvent::Started);
+                        }
+                        destination => {
+                            let destination = destination.clone();
+                            self.follow(&destination, shown, source);
+                        }
+                    }
+                }
+            }
+            // Every other key leaves catching and does what it does.
+            _ => {
+                self.catching = None;
+                return false;
+            }
+        }
+        true
+    }
+
     fn input(&mut self, input: UserInput, session: &mut Session, source: &mut dyn Source, now: Instant) {
+        let form_focused = self.form.as_ref().is_some_and(|form| form.focused);
+        if !form_focused && self.catch_key(input, session, source) {
+            return;
+        }
         if let Some(active) = self.form.as_mut().filter(|form| form.focused) {
             if let Some(key) = form_key(input) {
                 match active.model.key(key, now) {
@@ -315,6 +496,20 @@ impl Engine {
         let row24_shown = !self.grid.boxed_mode
             && self.viewer.zoom() != Zoom::Top
             && self.grid.cells[FASTEXT_ROW].iter().any(|cell| !cell.glyph.is_blank());
+        // A coloured key or Index whose link is an address.
+        let key_slot = match input {
+            UserInput::Colour(colour) => Some(usize::from(colour)),
+            UserInput::Index => Some(INDEX_KEY),
+            _ => None,
+        };
+        let key_address = key_slot
+            .and_then(|slot| page_extras.as_ref().and_then(|extras| extras.key_addresses.get(slot).cloned().flatten()));
+        if let Some(address) = key_address {
+            if row24_shown {
+                self.follow(&Destination::Address(address), requested, source);
+            }
+            return;
+        }
         let config = *session.decoder().config();
         let context = KeyContext {
             links: &links,
@@ -327,6 +522,15 @@ impl Engine {
         };
         self.action = self.viewer.key(key, &context);
         self.prompt = None;
+        // A number typed on a page that links it goes where the page says,
+        // before the descriptor's aliases and the site's own page
+        // (concept section 5, "Which link a typed number follows").
+        if let (UserInput::Digit(_), Action::Request(number, _)) = (input, self.action)
+            && let Some(destination) = page_extras.as_ref().and_then(|extras| extras.number_link(number)).cloned()
+        {
+            self.action = Action::None;
+            self.follow(&destination, requested, source);
+        }
     }
 
     fn notices(&mut self, session: &Session, source: &mut dyn Source) {
@@ -405,7 +609,8 @@ impl Engine {
             self.viewer.event(ViewerEvent::PagePresent);
         }
         self.compose(session, source, now);
-        let mut frames = Vec::new();
+        self.prefetch_dependencies(session, source);
+        let mut frames = std::mem::take(&mut self.outgoing);
         let screen = self.screen(session.decoder().config(), now);
         if self.last_screen.as_ref() != Some(&screen) {
             self.last_screen = Some(screen.clone());
@@ -490,6 +695,22 @@ impl Engine {
         if let Some(active) = &self.form {
             active.model.draw(&mut self.grid);
         }
+        self.last_extras.clone_from(&page_extras);
+        // The selected link is shown with its colours swapped, drawn by
+        // the receiver (concept decision 11).
+        if let Some(selected) = self.catching {
+            let links = self.catchable(page_extras.as_ref());
+            match links.get(selected) {
+                Some(link) => {
+                    for column in link.column..link.column + link.length {
+                        if let Some(cell) = self.grid.cell_mut(link.row, column) {
+                            core::mem::swap(&mut cell.foreground, &mut cell.background);
+                        }
+                    }
+                }
+                None => self.catching = None,
+            }
+        }
     }
 
     fn screen(&self, config: &Config, now: Instant) -> Screen {
@@ -532,7 +753,22 @@ impl Engine {
             found: matches!(self.viewer.state(), ViewerState::Displaying | ViewerState::Holding),
             status,
             form: self.form.as_ref().is_some_and(|form| form.focused),
+            link: self.caught_destination(),
             text,
+        }
+    }
+
+    /// Where the selected link leads, for row 0: `P` and the page for this
+    /// service, `name:mpp` for a named service, or the address.
+    fn caught_destination(&self) -> String {
+        let Some(selected) = self.catching else { return String::new() };
+        match self.catchable(self.last_extras.as_ref()).get(selected).map(|link| &link.destination) {
+            Some(Destination::Address(address)) => address.chars().take(pipe::MAX_LINK_TEXT).collect(),
+            Some(Destination::Page(target)) => match target.service {
+                Some(_) => format!("another service {:03X}", target.address.mpp()),
+                None => format!("P{:03X}", target.address.mpp()),
+            },
+            None => String::new(),
         }
     }
 }
@@ -551,5 +787,65 @@ mod tests {
         assert_eq!(page_number_at(line, 3), None);
         assert_eq!(page_number_at("099", 1), None, "magazine 0 is not a page");
         assert_eq!(page_number_at("", 0), None);
+    }
+
+    /// A source that has nothing to give and records what is asked of it.
+    #[derive(Default)]
+    struct Recorder {
+        requested: Vec<u16>,
+        prefetched: Vec<u16>,
+    }
+
+    impl Source for Recorder {
+        fn poll(&mut self, _session: &mut Session, _now: Instant) -> bool {
+            true
+        }
+
+        fn request(&mut self, page: PageAddress, _subcode: neoteletext_core::types::SubCode) {
+            self.requested.push(page.mpp());
+        }
+
+        fn prefetch(&mut self, page: PageAddress) {
+            self.prefetched.push(page.mpp());
+        }
+    }
+
+    /// A session holding the pages of a TTI text.
+    fn session_with(tti: &[u8]) -> Session {
+        use neoteletext_formats::Item;
+        use neoteletext_formats::detect::{AutoConfig, AutoReader, Format};
+        use neoteletext_formats::item::Reader;
+        let mut session = Session::new(Config::default(), 64);
+        let mut reader =
+            AutoReader::new(AutoConfig { format: Some(Format::Tti), encode_pages: true, ..AutoConfig::default() });
+        let mut packets = Vec::new();
+        let mut collect = |item: Item<'_>| {
+            if let Item::Packet { packet, meta } = item {
+                packets.push((packet, meta));
+            }
+        };
+        reader.feed(tti, &mut collect);
+        reader.finish(&mut collect);
+        for (packet, meta) in &packets {
+            session.push(packet, meta);
+        }
+        session.finish();
+        session
+    }
+
+    const GLYPHS: GlyphChoices = [&[], &[], &[]];
+
+    /// `docs/web-native-concept.md` section 2 item 6: a shown page brings
+    /// its magazine's Organization Table, once.
+    #[test]
+    fn the_organization_table_is_asked_for_once() {
+        let mut session = session_with(b"PN,10000\nOL,1,HELLO\n");
+        let mut source = Recorder::default();
+        let mut engine = Engine::new(GLYPHS);
+        for tick in 0..3 {
+            let _ = engine.step(&mut session, &mut source, Instant(tick));
+        }
+        assert_eq!(source.requested, [0x100]);
+        assert_eq!(source.prefetched, [0x1FE]);
     }
 }

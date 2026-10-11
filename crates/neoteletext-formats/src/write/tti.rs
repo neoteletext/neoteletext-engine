@@ -12,7 +12,7 @@ use neoteletext_core::types::{Magazine, PageNumber, SubCode};
 
 use crate::consts::{TTI_FL_NULL_LINK, TTI_PACKED_CHARACTER_BASE, TTI_PACKED_CHARACTERS};
 use crate::encode::pack_triplets;
-use crate::page::{FieldKind, FormField, FormMethod, PageFile, RawBody, Warning};
+use crate::page::{FieldKind, FormField, FormMethod, LinkDestination, PageFile, RawBody, Warning};
 
 /// Writes row text in the escape form: control codes as ESC followed by the
 /// code plus 0x40, so that the file is plain text (REQ-INP-014). Trailing
@@ -104,6 +104,23 @@ fn write_field(field: &FormField, page: &PageFile, index: usize, out: &mut dyn W
             write!(out, ",{column}")?;
         }
         writeln!(out)?;
+    }
+    Ok(())
+}
+
+/// A link's target as the Link Extension writes it: an address, a named
+/// service's page, or a page of this service.
+fn write_destination(destination: &LinkDestination, out: &mut dyn Write) -> io::Result<()> {
+    if !destination.url.is_empty() {
+        return out.write_all(destination.url.as_bytes());
+    }
+    if !destination.service.is_empty() {
+        out.write_all(destination.service.as_bytes())?;
+        out.write_all(b":")?;
+    }
+    out.write_all(&destination.address.ascii())?;
+    if let Some(subcode) = destination.subcode {
+        write!(out, ":{:04X}", subcode.value())?;
     }
     Ok(())
 }
@@ -201,16 +218,23 @@ fn write_page(page: &PageFile, first: &PageFile, is_first: bool, out: &mut dyn W
     write_fastext(page, out)?;
     for link in page.links.as_slice() {
         out.write_all(&[b'L', b'N', b',', link.key.letter(), b','])?;
-        if link.is_other_service() {
-            out.write_all(link.service.as_bytes())?;
-            out.write_all(b":")?;
-        }
-        out.write_all(&link.address.ascii())?;
-        if let Some(subcode) = link.subcode {
-            write!(out, ":{:04X}", subcode.value())?;
-        }
+        let destination =
+            LinkDestination { service: link.service, address: link.address, subcode: link.subcode, url: link.url };
+        write_destination(&destination, out)?;
         out.write_all(b",")?;
         out.write_all(link.label.as_bytes())?;
+        writeln!(out)?;
+    }
+    for link in page.number_links.as_slice() {
+        out.write_all(b"LK,")?;
+        out.write_all(&link.number.ascii())?;
+        out.write_all(b",")?;
+        write_destination(&link.destination, out)?;
+        writeln!(out)?;
+    }
+    for link in page.text_links.as_slice() {
+        write!(out, "LT,{},{},{},", link.row, link.column, link.length)?;
+        write_destination(&link.destination, out)?;
         writeln!(out)?;
     }
     write_form_lines(page, out)?;

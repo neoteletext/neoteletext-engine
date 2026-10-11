@@ -13,8 +13,9 @@ use neoteletext_core::types::{PageAddress, SubCode};
 use crate::consts::{TTI_COMMAND_BYTES, TTI_FL_LINKS, TTI_FL_NO_LINK, TTI_FL_NULL_LINK, TTI_PACKED_CHARACTERS};
 use crate::item::{Capacity, Diagnostic, DiagnosticKind, Item, Reader, offset_of};
 use crate::page::{
-    EnhancementPacket, FastextLink, FieldKind, FormField, FormMethod, FormOption, IssueKind, LinkKey, LinkLine,
-    PageFile, PageFunction, RawBody, RawPacket, SERVICE_NAME_BYTES, Warning,
+    DEFAULT_ADDRESS, EnhancementPacket, FastextLink, FieldKind, FormField, FormMethod, FormOption, IssueKind,
+    LINK_ADDRESS_BYTES, LinkDestination, LinkKey, LinkLine, NumberLink, PageFile, PageFunction, RawBody, RawPacket,
+    SERVICE_NAME_BYTES, TextLink, Warning,
 };
 use crate::text::Text;
 
@@ -31,8 +32,18 @@ const CODING_LAST: u32 = 0x7;
 /// The commands that belong to a page (REQ-INP-013, Appendices C and E,
 /// and `CK` of REQ-CLI-006). `OP` is `OPTION`, recognised by its first two
 /// letters.
-const PAGE_COMMANDS: [[u8; TTI_COMMAND_BYTES]; 14] =
-    [*b"SC", *b"PS", *b"OL", *b"FL", *b"LN", *b"RE", *b"PF", *b"CK", *b"FD", *b"OP", *b"FS", *b"FP", *b"FT", *b"FH"];
+const PAGE_COMMANDS: [[u8; TTI_COMMAND_BYTES]; 16] = [
+    *b"SC", *b"PS", *b"OL", *b"FL", *b"LN", *b"LK", *b"LT", *b"RE", *b"PF", *b"CK", *b"FD", *b"OP", *b"FS", *b"FP",
+    *b"FT", *b"FH",
+];
+/// What starts an address as a link target, rather than a page or a named
+/// service (`docs/web-native-concept.md` section 3: "a target containing
+/// `://` is an address").
+const ADDRESS_MARK: &[u8] = b"://";
+/// The schemes an address in a page may use.
+const ADDRESS_SCHEMES: [&[u8]; 2] = [b"https://", b"http://"];
+/// The last row a text link may be on: rows 1 to 23 are the page's text.
+const TEXT_LINK_LAST_ROW: u8 = 23;
 
 /// Codes decoded from the text of an `OL` line.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -182,6 +193,27 @@ fn service_name(text: &[u8]) -> Option<Text<SERVICE_NAME_BYTES>> {
 
 /// A link target: `mpp`, `mpp:ssss`, `name:mpp` or `name:mpp:ssss`
 /// (Appendix E.1).
+/// An address as a link target: `http` or `https`, printable ASCII
+/// without spaces or commas, and short enough to keep.
+fn link_address(text: &[u8]) -> Option<Text<LINK_ADDRESS_BYTES>> {
+    let lower_scheme = |scheme: &[u8]| text.get(..scheme.len()).is_some_and(|start| start.eq_ignore_ascii_case(scheme));
+    let valid = ADDRESS_SCHEMES.iter().any(|scheme| lower_scheme(scheme))
+        && text.iter().all(|&byte| byte.is_ascii_graphic() && byte != b',');
+    let (url, truncated) = Text::from_bytes(text);
+    (valid && !truncated).then_some(url)
+}
+
+/// A link target of Appendix E, or an address (concept section 3).
+fn link_destination(text: &[u8]) -> Option<LinkDestination> {
+    let text = text.trim_ascii();
+    if text.windows(ADDRESS_MARK.len()).any(|window| window == ADDRESS_MARK) {
+        let url = link_address(text)?;
+        return Some(LinkDestination { service: Text::new(), address: DEFAULT_ADDRESS, subcode: None, url });
+    }
+    let (service, address, subcode) = link_target(text)?;
+    Some(LinkDestination { service, address, subcode, url: Text::new() })
+}
+
 fn link_target(text: &[u8]) -> Option<(Text<SERVICE_NAME_BYTES>, PageAddress, Option<SubCode>)> {
     let mut parts = text.trim_ascii().split(|&byte| byte == b':');
     let first = parts.next()?;
@@ -327,6 +359,8 @@ impl TtiReader {
             b"OL" => self.output_line(args, out),
             b"FL" => self.fastext_line(args, out),
             b"LN" => self.link_line(args, out),
+            b"LK" => self.number_link_line(args, out),
+            b"LT" => self.text_link_line(args, out),
             b"RE" => match hex(args).filter(|&value| value <= REGION_LAST) {
                 Some(value) => self.page.region = u8::try_from(value).ok(),
                 None => self.diagnostic(bad, out),
@@ -543,10 +577,11 @@ impl TtiReader {
             [letter] => LinkKey::from_letter(*letter),
             _ => None,
         };
-        let (Some(key), Some((service, address, subcode))) = (key, link_target(target)) else {
+        let (Some(key), Some(destination)) = (key, link_destination(target)) else {
             self.issue(IssueKind::BadLinkTarget, out);
             return;
         };
+        let LinkDestination { service, address, subcode, url } = destination;
         if self.page.links.as_slice().iter().any(|link| link.key == key) {
             self.page.links_valid = false;
             self.issue(IssueKind::RepeatedKey, out);
@@ -557,9 +592,55 @@ impl TtiReader {
             self.issue(IssueKind::TooManyLinks, out);
         }
         let (label, label_truncated) = Text::from_bytes(label);
-        let link = LinkLine { key, service, address, subcode, label, label_truncated, line: self.line_number };
+        let link = LinkLine { key, service, address, subcode, url, label, label_truncated, line: self.line_number };
         if !self.page.links.push(link) {
             self.page.links_valid = false;
+            self.diagnostic(DiagnosticKind::CapacityExceeded { what: Capacity::Links }, out);
+        }
+    }
+
+    /// `LK,mpp,target`: a page number on this page that leads elsewhere.
+    fn number_link_line(&mut self, args: &[u8], out: &mut dyn FnMut(Item<'_>)) {
+        let mut fields = Args::new(args);
+        let number = page_address(fields.next().trim_ascii());
+        let destination = link_destination(fields.rest());
+        let (Some(number), Some(destination)) = (number, destination) else {
+            self.issue(IssueKind::BadLinkTarget, out);
+            return;
+        };
+        if self.page.number_links.as_slice().iter().any(|link| link.number == number) {
+            self.issue(IssueKind::RepeatedKey, out);
+            return;
+        }
+        if !self.page.number_links.push(NumberLink { number, destination, line: self.line_number }) {
+            self.diagnostic(DiagnosticKind::CapacityExceeded { what: Capacity::Links }, out);
+        }
+    }
+
+    /// `LT,row,column,length,target`: a run of text that is a link.
+    fn text_link_line(&mut self, args: &[u8], out: &mut dyn FnMut(Item<'_>)) {
+        let mut fields = Args::new(args);
+        let number = |field: &[u8]| decimal(field).and_then(|value| u8::try_from(value).ok());
+        let row = number(fields.next());
+        let column = number(fields.next());
+        let length = number(fields.next());
+        let destination = link_destination(fields.rest());
+        let columns = u8::try_from(COLUMNS).unwrap_or(u8::MAX);
+        let fits = |row: u8, column: u8, length: u8| {
+            (1..=TEXT_LINK_LAST_ROW).contains(&row)
+                && length > 0
+                && column.checked_add(length).is_some_and(|end| end <= columns)
+        };
+        let (Some(row), Some(column), Some(length), Some(destination)) = (row, column, length, destination) else {
+            self.issue(IssueKind::BadLinkTarget, out);
+            return;
+        };
+        if !fits(row, column, length) {
+            self.issue(IssueKind::BadLinkTarget, out);
+            return;
+        }
+        let link = TextLink { row, column, length, destination, line: self.line_number };
+        if !self.page.text_links.push(link) {
             self.diagnostic(DiagnosticKind::CapacityExceeded { what: Capacity::Links }, out);
         }
     }

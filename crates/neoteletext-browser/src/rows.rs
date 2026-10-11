@@ -92,6 +92,9 @@ pub enum Activity {
     },
     /// A form has the keys.
     Form,
+    /// Page catching: a link is selected, and the header shows where it
+    /// leads (concept decision 11).
+    Link,
     /// The tuning screen is waiting for confirmation.
     Tuning,
     /// The receiver's own page: the start page or an error.
@@ -126,6 +129,7 @@ pub fn status_area(activity: Activity) -> [u8; STATUS_COLUMNS] {
             fill(&mut status, &[ALPHA_RED, digits[0], digits[1], digits[2], SPACE, b'!']);
         }
         Activity::Form => fill(&mut status, &[ALPHA_YELLOW, b'F', b'O', b'R', b'M']),
+        Activity::Link => fill(&mut status, &[ALPHA_YELLOW, b'L', b'I', b'N', b'K']),
         Activity::Tuning => fill(&mut status, &[ALPHA_YELLOW, b'G', b'O', b'?']),
         Activity::Receiver => fill(&mut status, b"P---"),
     }

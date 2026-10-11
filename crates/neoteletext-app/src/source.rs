@@ -14,6 +14,10 @@ pub trait Source {
     /// Asks for a page, for sources that fetch on demand.
     fn request(&mut self, _page: PageAddress, _subcode: SubCode) {}
 
+    /// Asks for a page the shown page depends on, without making it the
+    /// page kept fresh (`docs/web-native-concept.md` section 2 item 6).
+    fn prefetch(&mut self, _page: PageAddress) {}
+
     /// Notices for the viewer since the last call.
     fn notices(&mut self) -> Vec<Notice> {
         Vec::new()

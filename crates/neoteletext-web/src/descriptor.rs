@@ -37,6 +37,16 @@ use crate::url::{Origin, Url, UrlError};
 
 /// Room for the addresses of all linked services' descriptors together.
 const SERVICE_ADDRESS_BYTES: usize = 4096;
+/// Aliases a descriptor may declare (`docs/web-native-concept.md`
+/// section 5 item 4).
+pub const MAX_ALIASES: usize = 16;
+/// Room for every alias's target together.
+const ALIAS_TARGET_BYTES: usize = 4096;
+/// The shortest refresh interval a descriptor may ask for, in seconds:
+/// more often would be a load the browser need not place on a server.
+pub const MIN_REFRESH_SECONDS: u32 = 5;
+/// The longest refresh interval, a day.
+pub const MAX_REFRESH_SECONDS: u32 = 24 * 60 * 60;
 /// Characters of `{sub}`: four hexadecimal digits.
 const SUBCODE_DIGITS: u32 = 4;
 
@@ -69,6 +79,10 @@ pub enum Member {
     ServiceDisplayName,
     /// `services[].descriptor`
     ServiceDescriptor,
+    /// `aliases`
+    Aliases,
+    /// `refresh`
+    Refresh,
 }
 
 /// Why a descriptor was rejected, with the member concerned.
@@ -135,6 +149,22 @@ pub struct Descriptor {
     pub region: Option<u8>,
     services: [Option<LinkedService>; MAX_LINKED_SERVICES],
     service_addresses: TextBuf<SERVICE_ADDRESS_BYTES>,
+    aliases: [Option<Alias>; MAX_ALIASES],
+    alias_targets: TextBuf<ALIAS_TARGET_BYTES>,
+    /// How often, in seconds, a page on screen is asked for again when the
+    /// service has no push (concept decision 13).
+    pub refresh_seconds: Option<u32>,
+}
+
+/// A page number that leads to another site on every page of this one
+/// (concept section 5 item 4): to a named service's page, `name:mpp`, or
+/// to an address, resolved against the descriptor's own.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Alias {
+    /// The page number.
+    pub page: PageAddress,
+    target_start: u16,
+    target_end: u16,
 }
 
 /// Decodes a JSON string into a fixed buffer, as UTF-8 text.
@@ -235,6 +265,18 @@ fn address(base: &Url, value: &str, member: Member) -> Result<Url, DescriptorErr
     Ok(url)
 }
 
+/// A member that is a whole number from `least` to `most`.
+fn bounded_integer(reader: &mut JsonReader<'_>, member: Member, least: u32, most: u32) -> Result<u32, DescriptorError> {
+    let value = match reader.next_token()? {
+        Some(Token::Number(number)) => integer(number),
+        _ => None,
+    };
+    value
+        .and_then(|value| u32::try_from(value).ok())
+        .filter(|value| (least..=most).contains(value))
+        .ok_or(DescriptorError::Invalid(member))
+}
+
 /// Marks a member as seen, refusing a second one.
 fn first(seen: &mut bool, member: Member) -> Result<(), DescriptorError> {
     if *seen {
@@ -263,9 +305,22 @@ impl Descriptor {
             region: None,
             services: [None; MAX_LINKED_SERVICES],
             service_addresses: TextBuf::new(),
+            aliases: [None; MAX_ALIASES],
+            alias_targets: TextBuf::new(),
+            refresh_seconds: None,
         };
-        let mut seen = [false; 7];
-        let [seen_name, seen_page, seen_template, seen_push, seen_origins, seen_region, seen_services] = &mut seen;
+        let mut seen = [false; 9];
+        let [
+            seen_name,
+            seen_page,
+            seen_template,
+            seen_push,
+            seen_origins,
+            seen_region,
+            seen_services,
+            seen_aliases,
+            seen_refresh,
+        ] = &mut seen;
         while let Some(token) = reader.next_token()? {
             let key = match token {
                 Token::Key(key) => key,
@@ -302,15 +357,18 @@ impl Descriptor {
                 descriptor.parse_origins(&mut reader, base)?;
             } else if key.equals(b"region") {
                 first(seen_region, Member::Region)?;
-                let region = match reader.next_token()? {
-                    Some(Token::Number(number)) => integer(number),
-                    _ => None,
-                };
-                let region = region.and_then(|r| u8::try_from(r).ok()).filter(|&r| r <= MAX_REGION);
-                descriptor.region = Some(region.ok_or(DescriptorError::Invalid(Member::Region))?);
+                let region = bounded_integer(&mut reader, Member::Region, 0, u32::from(MAX_REGION))?;
+                descriptor.region = Some(u8::try_from(region).map_err(|_| DescriptorError::Invalid(Member::Region))?);
             } else if key.equals(b"services") {
                 first(seen_services, Member::Services)?;
                 descriptor.parse_services(&mut reader, base)?;
+            } else if key.equals(b"aliases") {
+                first(seen_aliases, Member::Aliases)?;
+                descriptor.parse_aliases(&mut reader, base)?;
+            } else if key.equals(b"refresh") {
+                first(seen_refresh, Member::Refresh)?;
+                descriptor.refresh_seconds =
+                    Some(bounded_integer(&mut reader, Member::Refresh, MIN_REFRESH_SECONDS, MAX_REFRESH_SECONDS)?);
             } else {
                 return Err(DescriptorError::Unknown);
             }
@@ -389,6 +447,68 @@ impl Descriptor {
             *slot = Some(url.origin());
             count = count.saturating_add(1);
         }
+    }
+
+    /// `aliases`: an object of page numbers and their targets, each a
+    /// named service's page (`name:mpp`) or an address.
+    fn parse_aliases(&mut self, reader: &mut JsonReader<'_>, base: &Url) -> Result<(), DescriptorError> {
+        if reader.next_token()? != Some(Token::BeginObject) {
+            return Err(DescriptorError::Invalid(Member::Aliases));
+        }
+        let mut count = 0usize;
+        loop {
+            let key = match reader.next_token()? {
+                Some(Token::EndObject) => return Ok(()),
+                Some(Token::Key(key)) => key,
+                _ => return Err(DescriptorError::Invalid(Member::Aliases)),
+            };
+            let page = key.plain().and_then(parse_mpp).ok_or(DescriptorError::Invalid(Member::Aliases))?;
+            if self.alias(page).is_some() {
+                return Err(DescriptorError::Duplicate(Member::Aliases));
+            }
+            let value: TextBuf<MAX_URL_LENGTH> =
+                text(expect_string(reader.next_token()?, Member::Aliases)?, Member::Aliases)?;
+            let start = self.alias_targets.len();
+            if value.as_bytes().windows(3).any(|window| window == b"://") {
+                let url = address(base, value.as_str(), Member::Aliases)?;
+                if url.scheme().is_websocket() {
+                    return Err(DescriptorError::Invalid(Member::Aliases));
+                }
+                self.alias_targets.push(url.as_str().as_bytes())
+            } else {
+                // `name:mpp`, the form of Appendix E.
+                let (name, target) = value.as_str().split_once(':').ok_or(DescriptorError::Invalid(Member::Aliases))?;
+                let valid_name =
+                    !name.is_empty() && name.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'-');
+                if !valid_name || parse_mpp(target.as_bytes()).is_none() {
+                    return Err(DescriptorError::Invalid(Member::Aliases));
+                }
+                self.alias_targets.push(value.as_bytes())
+            }
+            .map_err(|_| DescriptorError::TooMany(Member::Aliases))?;
+            let end = self.alias_targets.len();
+            let narrow = |v: usize| u16::try_from(v).map_err(|_| DescriptorError::TooMany(Member::Aliases));
+            let slot = self.aliases.get_mut(count).ok_or(DescriptorError::TooMany(Member::Aliases))?;
+            *slot = Some(Alias { page, target_start: narrow(start)?, target_end: narrow(end)? });
+            count = count.saturating_add(1);
+        }
+    }
+
+    /// The alias for a page number, if the descriptor declares one.
+    #[must_use]
+    pub fn alias(&self, page: PageAddress) -> Option<&Alias> {
+        self.aliases.iter().flatten().find(|alias| alias.page == page)
+    }
+
+    /// Every alias.
+    pub fn aliases(&self) -> impl Iterator<Item = &Alias> {
+        self.aliases.iter().flatten()
+    }
+
+    /// An alias's target: `name:mpp`, or an absolute address.
+    #[must_use]
+    pub fn alias_target(&self, alias: &Alias) -> &str {
+        self.alias_targets.as_str().get(usize::from(alias.target_start)..usize::from(alias.target_end)).unwrap_or("")
     }
 
     fn parse_services(&mut self, reader: &mut JsonReader<'_>, base: &Url) -> Result<(), DescriptorError> {
@@ -679,6 +799,55 @@ mod tests {
         assert_eq!(
             Descriptor::parse(json.as_bytes(), &base()).map(|d| d.initial_page),
             Err(DescriptorError::TooMany(Member::FormOrigins))
+        );
+    }
+
+    /// `docs/web-native-concept.md` section 5 item 4: aliases lead a page
+    /// number to a named service's page or to an address.
+    #[test]
+    fn aliases() {
+        let json = r#"{"name":"A","initial_page":"100","page_template":"/{mpp}.t42",
+            "aliases":{"300":"weather:300","400":"https://sport.example/400.t42"}}"#;
+        let descriptor = Descriptor::parse(json.as_bytes(), &base()).unwrap();
+        let target = |mpp| descriptor.alias(PageAddress::from_mpp(mpp).unwrap()).map(|a| descriptor.alias_target(a));
+        assert_eq!(target(0x300), Some("weather:300"));
+        assert_eq!(target(0x400), Some("https://sport.example/400.t42"));
+        assert_eq!(target(0x500), None);
+    }
+
+    #[test]
+    fn refresh_interval() {
+        let head = r#"{"name":"A","initial_page":"100","page_template":"/{mpp}.t42","refresh":"#;
+        let parse = |value: &str| Descriptor::parse(std::format!("{head}{value}}}").as_bytes(), &base());
+        assert_eq!(parse("60").unwrap().refresh_seconds, Some(60));
+        for bad in ["1", "100000", "\"60\"", "-5", "6.5"] {
+            assert_eq!(parse(bad).map(|_| ()), Err(DescriptorError::Invalid(Member::Refresh)), "{bad}");
+        }
+    }
+
+    #[test]
+    fn bad_aliases_reject_the_descriptor() {
+        let head = r#"{"name":"A","initial_page":"100","page_template":"/{mpp}.t42","aliases":"#;
+        for (aliases, error) in [
+            (r#"{"30":"w:300"}"#, DescriptorError::Invalid(Member::Aliases)),
+            (r#"{"300":"w:3000"}"#, DescriptorError::Invalid(Member::Aliases)),
+            (r#"{"300":"w w:300"}"#, DescriptorError::Invalid(Member::Aliases)),
+            (r#"{"300":"http://plain.example/300.t42"}"#, DescriptorError::Downgrade(Member::Aliases)),
+            (r#"{"300":"wss://x.example/300.t42"}"#, DescriptorError::Invalid(Member::Aliases)),
+            (r#"{"300":"w:300","300":"w:301"}"#, DescriptorError::Duplicate(Member::Aliases)),
+            (r#"["300"]"#, DescriptorError::Invalid(Member::Aliases)),
+            // Without `://` a target is `name:mpp`; a path alone is neither.
+            (r#"{"300":"/local/300.t42"}"#, DescriptorError::Invalid(Member::Aliases)),
+        ] {
+            let json = std::format!("{head}{aliases}}}");
+            assert_eq!(Descriptor::parse(json.as_bytes(), &base()).map(|_| ()), Err(error), "{aliases}");
+        }
+        let many: std::vec::Vec<std::string::String> =
+            (0..=MAX_ALIASES).map(|n| std::format!(r#""{:03X}":"w:100""#, 0x100 + n)).collect();
+        let json = std::format!("{head}{{{}}}}}", many.join(","));
+        assert_eq!(
+            Descriptor::parse(json.as_bytes(), &base()).map(|_| ()),
+            Err(DescriptorError::TooMany(Member::Aliases))
         );
     }
 }

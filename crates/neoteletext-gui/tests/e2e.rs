@@ -5,7 +5,6 @@
 #![allow(missing_docs, clippy::unwrap_used, clippy::panic)]
 
 use neoteletext_app::pipe::UserInput;
-use neoteletext_app::sandbox::{Helper, helper_command};
 use neoteletext_browser::location::parse_input;
 use neoteletext_browser::tuning::Confirmed;
 use neoteletext_browser::{Location, Why};
@@ -16,7 +15,6 @@ mod common;
 
 use common::sites;
 use std::path::PathBuf;
-use std::process::Command;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -258,6 +256,8 @@ fn files_open_without_a_fetcher() {
 #[cfg(target_os = "macos")]
 #[test]
 fn helpers_are_confined() {
+    use neoteletext_app::sandbox::{Helper, helper_command};
+    use std::process::Command;
     let Some(sites) = sites() else { return };
     let program = PathBuf::from(env!("CARGO_BIN_EXE_neoteletext"));
     let address = format!("127.0.0.1:{}", sites.ports["news"]);
@@ -272,4 +272,106 @@ fn helpers_are_confined() {
     // Unconfined, the same test can do all three: the checks are real.
     let output = Command::new(&program).arg("sandbox-test").arg(&address).output().unwrap();
     assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "file=true network=true program=true");
+}
+
+/// Opens the news site and waits for page `mpp` with `text` on it.
+fn news_at(sites: &common::Sites, mpp: u16, text: &str) -> Browser {
+    let mut browser = Browser::new();
+    browser.type_address(&sites.address("news", &format!("/{mpp:03X}.t42")));
+    browser.confirm();
+    browser.wait_page(mpp, text);
+    browser
+}
+
+fn tuning(browser: &Browser) -> neoteletext_browser::Tuning {
+    match &browser.tab.view {
+        View::Tuning(tuning) => tuning.clone(),
+        other => panic!("expected the tuning screen, got {other:?}"),
+    }
+}
+
+/// `docs/web-native-concept.md` sections 3 and 5: a Fastext key, a page
+/// number and a run of text can each lead to an address, always through
+/// the tuning screen, which says the site did not declare it.
+#[test]
+fn links_to_addresses_go_through_the_tuning_screen() {
+    let Some(sites) = sites() else { return };
+    let weather = sites.address("weather", "");
+    let mut browser = news_at(&sites, 0x100, "TEST NEWS");
+    // Cyan is an address in an LN line.
+    browser.keys(&[UserInput::Colour(3)]);
+    browser.wait("the tuning screen for cyan", |tab| matches!(tab.view, View::Tuning(_)));
+    let screen = tuning(&browser);
+    assert_eq!(screen.destination.location, Location::Site { origin: weather.clone(), secure: false });
+    assert_eq!(screen.destination.page, Some(0x200));
+    assert!(matches!(screen.why, Why::Link { declared: None, .. }), "an address in a page is not declared");
+    browser.confirm();
+    browser.wait_page(0x200, "RAIN RADAR");
+
+    // On news page 200, 400 is linked by LK to the weather site's 300.
+    let mut browser = news_at(&sites, 0x200, "TOP STORY");
+    browser.keys(&[UserInput::Digit(4), UserInput::Digit(0), UserInput::Digit(0)]);
+    browser.wait("the tuning screen for 400", |tab| matches!(tab.view, View::Tuning(_)));
+    assert_eq!(tuning(&browser).destination.page, Some(0x300));
+    browser.tab.cancel();
+    // The page shown is still news 200: the number did not move the tab.
+    browser.wait_page(0x200, "TOP STORY");
+
+    // An LT run of text: row 8, "Somewhere".
+    browser.tab.click(8, 3);
+    browser.wait("the tuning screen for the text link", |tab| matches!(tab.view, View::Tuning(_)));
+    assert_eq!(
+        tuning(&browser).destination.location,
+        Location::Site { origin: sites.address("hostile", ""), secure: false }
+    );
+}
+
+/// Concept section 5 item 4: the descriptor's aliases send a number to
+/// another site on every page.
+#[test]
+fn aliases_lead_numbers_to_other_sites() {
+    let Some(sites) = sites() else { return };
+    let mut browser = news_at(&sites, 0x100, "TEST NEWS");
+    browser.keys(&[UserInput::Digit(5), UserInput::Digit(0), UserInput::Digit(0)]);
+    browser.wait("the tuning screen for alias 500", |tab| matches!(tab.view, View::Tuning(_)));
+    let screen = tuning(&browser);
+    assert_eq!(screen.destination.page, Some(0x200));
+    assert!(matches!(&screen.why, Why::Link { declared: Some(name), .. } if name == "weather"), "{:?}", screen.why);
+    browser.tab.cancel();
+    browser.wait_page(0x100, "TEST NEWS");
+    browser.keys(&[UserInput::Digit(6), UserInput::Digit(0), UserInput::Digit(0)]);
+    browser.wait("the tuning screen for alias 600", |tab| matches!(tab.view, View::Tuning(_)));
+    assert_eq!(tuning(&browser).destination.page, Some(0x300));
+    browser.confirm();
+    browser.wait_page(0x300, "WEATHER FORECAST");
+}
+
+/// Concept decision 11: Enter turns page catching on, the arrows move
+/// between the page's links, row 0 says where the selected one leads, and
+/// Enter follows it.
+#[test]
+fn page_catching_selects_and_follows_links() {
+    let Some(sites) = sites() else { return };
+    let mut browser = news_at(&sites, 0x100, "TEST NEWS");
+    let link = |tab: &Tab| tab.status.as_ref().map(|status| status.link.clone()).unwrap_or_default();
+    browser.keys(&[UserInput::Enter]);
+    browser.wait("the first link selected", |tab| link(tab) == "P200");
+    let row0 = picture::tab_row0(&browser.tab, None);
+    assert_eq!(&row0[1..5], b"LINK", "row 0 says page catching is on");
+    browser.keys(&[UserInput::NextSubPage]);
+    browser.wait("the second link selected", |tab| link(tab) == "P300");
+    browser.keys(&[UserInput::Escape]);
+    browser.wait("catching off", |tab| link(tab).is_empty());
+    browser.keys(&[UserInput::Enter, UserInput::NextSubPage, UserInput::Enter]);
+    browser.wait_page(0x300, "CONTACT US");
+
+    // A caught link to an address goes through the tuning screen.
+    let mut browser = news_at(&sites, 0x200, "TOP STORY");
+    browser.keys(&[UserInput::Enter]);
+    browser.wait("the first link", |tab| link(tab) == "P100");
+    browser.keys(&[UserInput::NextSubPage]);
+    let weather = sites.address("weather", "/300.t42");
+    browser.wait("the linked number 400", |tab| link(tab) == weather);
+    browser.keys(&[UserInput::Enter]);
+    browser.wait("the tuning screen", |tab| matches!(tab.view, View::Tuning(_)));
 }

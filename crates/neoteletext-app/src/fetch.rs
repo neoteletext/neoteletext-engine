@@ -437,9 +437,29 @@ fn run_web(address: &str, requests: &Receiver<Frame>, allow_local: &[IpAddr]) {
                         .collect()
                 })
                 .unwrap_or_default();
+            let aliases: Vec<(u16, String)> = agent
+                .descriptor()
+                .map(|descriptor| {
+                    descriptor
+                        .aliases()
+                        .map(|alias| (alias.page.mpp(), descriptor.alias_target(alias).to_string()))
+                        .collect()
+                })
+                .unwrap_or_default();
+            // A service that pushes keeps its pages current itself.
+            let refresh = agent
+                .descriptor()
+                .filter(|descriptor| descriptor.push().is_none())
+                .and_then(|descriptor| descriptor.refresh_seconds);
+            if let Some(seconds) = refresh
+                && send(&Frame::Notice(Notice::Refresh(seconds))).is_err()
+            {
+                break;
+            }
             let names = sites.iter().map(|(name, _)| name.clone()).collect();
             if send(&Frame::Notice(Notice::Service(names))).is_err()
                 || send(&Frame::Notice(Notice::LinkedSites(sites))).is_err()
+                || send(&Frame::Notice(Notice::Aliases(aliases))).is_err()
             {
                 break;
             }

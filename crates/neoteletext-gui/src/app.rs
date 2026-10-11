@@ -73,6 +73,8 @@ pub struct BrowserApp {
     visits: Vec<Saved>,
     recorded: HashMap<u64, (String, u16)>,
     side: Side,
+    /// What the pointer is over on the page: a page number's destination.
+    hovered: Option<String>,
     texture: Option<TextureHandle>,
     shown: Option<(u64, u64, String, u8, usize)>,
     picture: Option<Picture>,
@@ -119,6 +121,7 @@ impl BrowserApp {
             storage,
             recorded: HashMap::new(),
             side: Side::None,
+            hovered: None,
             texture: None,
             shown: None,
             picture: None,
@@ -384,7 +387,9 @@ impl BrowserApp {
             Key::ArrowDown => Some(UserInput::PreviousPage),
             Key::ArrowRight => Some(UserInput::NextSubPage),
             Key::ArrowLeft => Some(UserInput::PreviousSubPage),
-            Key::Enter if form => Some(UserInput::Enter),
+            // Enter confirms a form's field, or turns page catching on
+            // and follows the selected link (concept section 7).
+            Key::Enter => Some(UserInput::Enter),
             Key::Tab if self.tab().view == View::Page => Some(UserInput::Tab),
             Key::Backspace if form => Some(UserInput::Backspace),
             Key::Escape if form => Some(UserInput::Escape),
@@ -399,6 +404,7 @@ impl BrowserApp {
                 self.forward();
                 None
             }
+            Key::Escape | Key::Delete if self.tab().view == View::Page => Some(UserInput::Escape),
             Key::Escape | Key::Delete => {
                 self.tab_mut().cancel();
                 None
@@ -674,7 +680,7 @@ impl BrowserApp {
             (View::Page, None) => "Tuning in".to_string(),
             _ => String::new(),
         };
-        let notice = tab.notice.clone().unwrap_or_default();
+        let notice = self.hovered.clone().or_else(|| tab.notice.clone()).unwrap_or_default();
         let glyphs = ["own glyphs", "Bedstead", "both glyph sets"][usize::from(self.settings.glyphs.min(2))];
         ui.horizontal(|ui| {
             ui.label(state);
@@ -755,16 +761,30 @@ impl BrowserApp {
             egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
             Color32::WHITE,
         );
+        // Screen readers get the page's text (design section 9.6).
+        let text = self.tab().status.as_ref().map(|status| status.text.clone()).unwrap_or_default();
+        response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, &text));
+        let columns = picture.width / (picture.width / COLUMNS).max(1);
+        let cell = |position: egui::Pos2| {
+            let column = cell_index(position.x - image_rect.left(), image_rect.width(), columns)?;
+            let row = cell_index(position.y - image_rect.top(), image_rect.height(), ROWS)?;
+            Some((row, column))
+        };
+        // A page number under the pointer says where it leads, as a web
+        // browser shows a link's address (concept decision 11).
+        self.hovered = response
+            .hover_pos()
+            .and_then(cell)
+            .filter(|_| self.tab().view == View::Page)
+            .and_then(|(row, column)| {
+                let line = text.lines().nth(row)?;
+                neoteletext_app::decoder::page_number_at(line, column)
+            })
+            .map(|page| format!("Go to P{:03X}", page.mpp()));
         if response.clicked()
-            && let Some(position) = response.interact_pointer_pos()
-            && image_rect.contains(position)
+            && let Some((row, column)) = response.interact_pointer_pos().and_then(cell)
         {
-            let columns = picture.width / (picture.width / COLUMNS).max(1);
-            let column = cell_index(position.x - image_rect.left(), image_rect.width(), columns);
-            let row = cell_index(position.y - image_rect.top(), image_rect.height(), ROWS);
-            if let (Some(row), Some(column)) = (row, column) {
-                self.click(row, column);
-            }
+            self.click(row, column);
         }
     }
 

@@ -155,6 +155,14 @@ fn check_links(page: &PageFile, options: &CheckOptions<'_>, report: &mut dyn FnM
             report(Severity::Warning, Problem::Warning(Warning::PageNumberNotShown), link.line);
         }
     }
+    // A page that links a number it does not show makes typing that
+    // number mean something the viewer cannot see
+    // (`docs/web-native-concept.md` section 5).
+    for link in page.number_links.as_slice() {
+        if !text_has_number(page, link.number.ascii()) {
+            report(Severity::Warning, Problem::Warning(Warning::PageNumberNotShown), link.line);
+        }
+    }
     if page.uses_link_lines() && page.links_valid {
         let row_24 = page.row(usize::from(PACKET_ROW_24)).filter(|_| page.has_row(usize::from(PACKET_ROW_24)));
         if row_24.is_some_and(|row| row.iter().any(|&code| code > SPACE)) {
