@@ -7,8 +7,9 @@
 //!   well-formedness, confusables, independence from the Bedstead glyphs
 //!   (the stand-in for the SAA5050), and coverage, which `--complete`
 //!   requires to be whole.
-//! - `cargo xtask glyph-proof OUT.png [TEXT...]` draws every glyph, then
-//!   each TEXT as a line, for review by people (decision E.62).
+//! - `cargo xtask glyph-proof OUT.png [--compare] [TEXT...]` draws every
+//!   glyph, each beside its Bedstead glyph with `--compare`, then each TEXT
+//!   as a line, for review by people (decision E.62).
 //!
 //! The file format and the drawing rules are in `docs/glyph-style-guide.md`.
 
@@ -472,18 +473,30 @@ const PROOF_DOT: usize = 4;
 const CELL_WIDTH: usize = COLUMNS + 1;
 const CELL_HEIGHT: usize = ROWS + 1;
 
-/// `cargo xtask glyph-proof OUT.png [TEXT...]`.
+/// `cargo xtask glyph-proof OUT.png [--compare] [TEXT...]`.
 pub fn proof(root: &Path, args: &[String]) -> Result<(), String> {
     let Some((out, texts)) = args.split_first() else {
-        return Err("usage: cargo xtask glyph-proof OUT.png [TEXT...]".into());
+        return Err("usage: cargo xtask glyph-proof OUT.png [--compare] [TEXT...]".into());
     };
     let entries = parse_original(&read(root, ORIGINAL)?).map_err(|errors| errors.join("\n"))?;
     let glyphs: Vec<(char, Rows)> =
         entries.keys().filter_map(|&c| resolve(&entries, c, 0).map(|rows| (c, rows))).collect();
     // The renderer's placeholder for a character with no glyph (REQ-CHR-004).
     let missing = PLACEHOLDER;
-    let mut lines: Vec<Vec<Rows>> =
-        glyphs.chunks(PROOF_COLUMNS).map(|chunk| chunk.iter().map(|(_, rows)| *rows).collect()).collect();
+    // With --compare, each glyph is followed by the Bedstead glyph of the
+    // same character and a blank cell, for side-by-side review.
+    let (compare, texts) = match texts.split_first() {
+        Some((flag, rest)) if flag == "--compare" => (true, rest),
+        _ => (false, texts),
+    };
+    let reference = if compare { bedstead(root)? } else { BTreeMap::new() };
+    let cells: Vec<Rows> = if compare {
+        glyphs.iter().flat_map(|(c, rows)| [*rows, reference.get(c).copied().unwrap_or(missing), [0; ROWS]]).collect()
+    } else {
+        glyphs.iter().map(|(_, rows)| *rows).collect()
+    };
+    let per_line = if compare { PROOF_COLUMNS / 2 * 3 } else { PROOF_COLUMNS };
+    let mut lines: Vec<Vec<Rows>> = cells.chunks(per_line).map(<[Rows]>::to_vec).collect();
     for text in texts {
         lines.push(Vec::new());
         lines.push(

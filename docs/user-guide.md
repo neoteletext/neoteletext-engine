@@ -101,7 +101,7 @@ A live input runs in two processes (REQ-SEC-018). A fetcher process does the net
 - `iterm2`: the page is rendered at full resolution and sent as a PNG inline image (decision E.37).
 - `text`: characters with ANSI colour. Mosaics use the Unicode block mosaic characters; separated mosaics need a font with Unicode 16 separated mosaics, or `--legacy-mosaics` draws them contiguous. `--colours8` uses the eight basic colours instead of 24-bit colour.
 
-`--scale N` sets a whole-number scale factor; 0 fits the terminal. `--aspect` stretches the height by 1.2 for 4:3 proportions (REQ-RND-004). `--reveal` shows concealed text.
+`--scale N` sets a whole-number scale factor; 0 fits the terminal. `--aspect` stretches the height by 1.2 for 4:3 proportions (REQ-RND-004). `--reveal` shows concealed text. `--glyphs original|bedstead|compare` chooses the glyphs images are drawn with: the project's own (the default), the temporary Bedstead set, or the page twice side by side, original on the left. In the viewer, `G` cycles through the three.
 
 ### Images
 
@@ -132,6 +132,7 @@ At the default level, 3.5, `ttx` also keeps the enhancement pages a service send
 | `H` | Hold the page, so that new receptions do not update it. |
 | `m` | Mix: cell backgrounds become transparent, as when text is superimposed on the picture. |
 | `z` | Zoom: top half, bottom half, off. |
+| `G` | Glyphs: original, Bedstead, both side by side (images only). |
 | Tab | Enter the page's form, when it has one. |
 | `q`, Esc or Ctrl+C | Quit. |
 

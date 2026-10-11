@@ -1,6 +1,6 @@
 //! The `ttx` commands (REQ-CLI-001).
 
-use crate::output::image::{Frame, Scale, iterm2_inline, png, ppm, raster};
+use crate::output::image::{Frame, Glyphs, Scale, iterm2_inline, png, ppm, raster};
 use crate::output::text::{ColourDepth, MosaicStyle, ansi, plain};
 use crate::terminal::{self, Display, TextArea};
 use crate::{GraphicsChoice, RasterArgs};
@@ -238,7 +238,7 @@ pub fn show(
     if let (Some(reason), true) = (reason, options.verbose > 0) {
         eprintln!("ttx: using text output: {reason}");
     }
-    let frame = Frame::still(session.decoder().config(), raster_args.reveal);
+    let frame = Frame::still(session.decoder().config(), raster_args.reveal).with_glyphs(raster_args.glyphs);
     // Measure the terminal before the sandbox closes /dev/tty.
     let area = if display == Display::Iterm2 { terminal::text_area() } else { None };
     sandbox(options, None)?;
@@ -282,13 +282,23 @@ pub fn view(
     let area = if display == Display::Iterm2 { terminal::text_area() } else { None };
     // Fit the widest page, 56 columns with side panels (decision E.49).
     let widest = (COLUMNS + usize::from(SIDE_PANEL_MAX_COLUMNS)) * CELL_WIDTH;
+    // A comparison shows two pages side by side.
+    let widest = if raster_args.glyphs == Glyphs::Compare { 2 * widest } else { widest };
     let height = ROWS * Frame::still(session.decoder().config(), false).options.row_height();
     let scale = scale_for(raster_args, area, (widest, height));
     sandbox::apply(Policy { writable_directory: None, network: false, readable: &[] }, options.no_sandbox)
         .map_err(|message| (exit::INPUT, message))?;
     let depth = if colours8 { ColourDepth::Eight } else { ColourDepth::TrueColour };
-    crate::view::run(&mut session, source.as_mut(), display, scale, depth, mosaic_style(legacy_mosaics))
-        .map_err(|error| (exit::INPUT, error.to_string()))
+    crate::view::run(
+        &mut session,
+        source.as_mut(),
+        display,
+        scale,
+        depth,
+        mosaic_style(legacy_mosaics),
+        raster_args.glyphs,
+    )
+    .map_err(|error| (exit::INPUT, error.to_string()))
 }
 
 /// `ttx view` in a build without the viewer.
@@ -319,7 +329,7 @@ pub fn render(
 ) -> Result<(), Failure> {
     let selection = parse_selection(page)?;
     let mut session = input::load_for(options, selection.page())?;
-    let frame = Frame::still(session.decoder().config(), raster_args.reveal);
+    let frame = Frame::still(session.decoder().config(), raster_args.reveal).with_glyphs(raster_args.glyphs);
     let scale = scale_for(raster_args, None, (0, 0));
     let pages = selected(&session, selection)?;
     let directory: PathBuf = if selection == Selection::All {

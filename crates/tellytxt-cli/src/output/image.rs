@@ -8,7 +8,7 @@
 //! make them (REQ-RND-033).
 
 use tellytxt_core::config::Config;
-use tellytxt_core::consts::ROWS;
+use tellytxt_core::consts::{COLOUR_TRANSPARENT, PALETTE_TRANSPARENT, ROWS};
 use tellytxt_core::glyphs::GlyphSet;
 use tellytxt_core::level1::Grid;
 use tellytxt_core::render::{
@@ -42,6 +42,47 @@ pub struct Scale {
     pub aspect: bool,
 }
 
+/// Which glyphs a raster is drawn with (decision E.62): the project's own,
+/// the temporary Bedstead set, or both side by side for comparison.
+#[derive(clap::ValueEnum, Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum Glyphs {
+    /// The project's own glyphs.
+    #[default]
+    Original,
+    /// The temporary Bedstead glyphs.
+    Bedstead,
+    /// The page twice, the original glyphs on the left and Bedstead on the
+    /// right.
+    Compare,
+}
+
+impl Glyphs {
+    /// The next choice, for the viewer's glyph key.
+    #[must_use]
+    pub const fn next(self) -> Self {
+        match self {
+            Self::Original => Self::Bedstead,
+            Self::Bedstead => Self::Compare,
+            Self::Compare => Self::Original,
+        }
+    }
+
+    /// The glyph sets drawn, left to right.
+    fn sets(self) -> &'static [GlyphSet] {
+        const ORIGINAL: [GlyphSet; 1] = [GlyphSet::original()];
+        const BEDSTEAD: [GlyphSet; 1] = [GlyphSet::bedstead()];
+        const BOTH: [GlyphSet; 2] = [GlyphSet::original(), GlyphSet::bedstead()];
+        match self {
+            Self::Original => &ORIGINAL,
+            Self::Bedstead => &BEDSTEAD,
+            Self::Compare => &BOTH,
+        }
+    }
+}
+
+/// Columns of picture colour between the two pages of a comparison.
+const COMPARE_GAP: usize = 12;
+
 /// The settings of one frame (decision E.55, REQ-RND-040): the colour mode
 /// of the presentation level with its flash phase of decision E.48, and,
 /// for the palette mode, whether flashing characters show under the timing
@@ -52,13 +93,25 @@ pub struct Frame {
     pub options: RenderOptions,
     /// The phase of decision E.12, used by the palette mode only.
     pub flash_visible: bool,
+    /// The glyphs drawn.
+    pub glyphs: Glyphs,
 }
 
 impl Frame {
     /// A still image: flashing characters in their "on" phase.
     #[must_use]
     pub const fn still(config: &Config, reveal: bool) -> Self {
-        Self { options: RenderOptions::for_level(config, reveal, FlashPhase::STEADY), flash_visible: true }
+        Self {
+            options: RenderOptions::for_level(config, reveal, FlashPhase::STEADY),
+            flash_visible: true,
+            glyphs: Glyphs::Original,
+        }
+    }
+
+    /// The same frame drawn with other glyphs.
+    #[must_use]
+    pub const fn with_glyphs(self, glyphs: Glyphs) -> Self {
+        Self { glyphs, ..self }
     }
 
     /// The frame at a time on the decoder's clock. In the resolved mode
@@ -68,7 +121,7 @@ impl Frame {
     pub fn at(config: &Config, reveal: bool, now: tellytxt_core::types::Instant) -> Self {
         let options = RenderOptions::for_level(config, reveal, FlashPhase::at(now));
         let flash_visible = options.colour != ColourMode::Palette || tellytxt_core::render::flash_visible(now, config);
-        Self { options, flash_visible }
+        Self { options, flash_visible, glyphs: Glyphs::Original }
     }
 }
 
@@ -81,13 +134,30 @@ pub fn raster(grid: &Grid, frame: Frame, scale: Scale, picture: Rgba) -> Raster 
     if options.colour == ColourMode::Palette && !palette_mode_allowed(grid) {
         options.colour = ColourMode::Resolved(FlashPhase::STEADY);
     }
-    let width = row_width(grid);
+    let page_width = row_width(grid);
     let height = ROWS * options.row_height();
-    let mut indices = vec![0u8; width * height];
-    let mut buffer = IndexBuffer { format: IndexFormat::Bits8, data: &mut indices, stride: width };
-    // The buffer is sized for the whole page and the mode suits the grid,
-    // so rendering cannot fail.
-    let _ = render_screen(grid, ALL_ROWS, &GlyphSet::original(), options, &mut buffer);
+    let sets = frame.glyphs.sets();
+    // A comparison puts the pages side by side, separated by the picture.
+    let width = sets.len() * page_width + (sets.len() - 1) * COMPARE_GAP;
+    let picture_index = match options.colour {
+        ColourMode::Palette => PALETTE_TRANSPARENT,
+        ColourMode::Resolved(_) => COLOUR_TRANSPARENT,
+    };
+    let mut indices = vec![picture_index; width * height];
+    for (index, glyphs) in sets.iter().enumerate() {
+        let mut page = vec![0u8; page_width * height];
+        let mut buffer = IndexBuffer { format: IndexFormat::Bits8, data: &mut page, stride: page_width };
+        // The buffer is sized for the whole page and the mode suits the
+        // grid, so rendering cannot fail.
+        let _ = render_screen(grid, ALL_ROWS, glyphs, options, &mut buffer);
+        let left = index * (page_width + COMPARE_GAP);
+        for (row, source) in page.chunks_exact(page_width).enumerate() {
+            let start = row * width + left;
+            if let Some(target) = indices.get_mut(start..start + page_width) {
+                target.copy_from_slice(source);
+            }
+        }
+    }
     let (scaled_width, scaled_height) = scaled_size(width, height, scale.x, scale.y, scale.aspect);
     let mut scaled = vec![0u8; scaled_width * scaled_height];
     let _ = scale_indices(&indices, width, height, scale.x.max(1), scale.y.max(1), scale.aspect, &mut scaled);

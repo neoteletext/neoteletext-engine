@@ -11,7 +11,8 @@ name = "ttx"
 path = "src/main.rs"
 
 [dependencies]
-tellytxt-core = { workspace = true, features = ["default"] }
+# Bedstead too, so that glyphs can be compared (decision E.62).
+tellytxt-core = { workspace = true, features = ["default", "bedstead"] }
 # The program reads and writes every format, and `ttx check` runs the
 # page checker.
 tellytxt-formats = { workspace = true, features = ["default", "std"] }
