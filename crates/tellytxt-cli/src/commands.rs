@@ -1,6 +1,6 @@
 //! The `ttx` commands (REQ-CLI-001).
 
-use crate::output::image::{Frame, Glyphs, Scale, iterm2_inline, png, ppm, raster};
+use crate::output::image::{Frame, Scale, iterm2_inline, png, ppm, raster};
 use crate::output::text::{ColourDepth, MosaicStyle, ansi, plain};
 use crate::terminal::{self, Display, TextArea};
 use crate::{GraphicsChoice, RasterArgs};
@@ -283,7 +283,7 @@ pub fn view(
     // Fit the widest page, 56 columns with side panels (decision E.49).
     let widest = (COLUMNS + usize::from(SIDE_PANEL_MAX_COLUMNS)) * CELL_WIDTH;
     // A comparison shows two pages side by side.
-    let widest = if raster_args.glyphs == Glyphs::Compare { 2 * widest } else { widest };
+    let widest = if raster_args.glyphs == crate::output::image::Glyphs::Compare { 2 * widest } else { widest };
     let height = ROWS * Frame::still(session.decoder().config(), false).options.row_height();
     let scale = scale_for(raster_args, area, (widest, height));
     sandbox::apply(Policy { writable_directory: None, network: false, readable: &[] }, options.no_sandbox)
