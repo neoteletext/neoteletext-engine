@@ -55,7 +55,7 @@ fn large(unit: u8) -> RenderOptions {
 }
 
 fn line_of(grid: &Grid, cell: &Cell, row: usize, column: usize, line: usize, options: RenderOptions) -> CellLine {
-    cell_line(cell, grid, row, column, line, &GlyphSet::bedstead(), options)
+    cell_line(cell, grid, row, column, line, &GlyphSet::original(), options)
 }
 
 /// The twelve indices of a cell line.
@@ -68,7 +68,7 @@ fn screen(grid: &Grid, options: RenderOptions) -> Vec<u8> {
     let width = row_width(grid);
     let mut out = vec![0u8; width * ROWS * options.row_height()];
     let mut buffer = IndexBuffer { format: IndexFormat::Bits8, data: &mut out, stride: width };
-    render_screen(grid, ALL_ROWS, &GlyphSet::bedstead(), options, &mut buffer).unwrap();
+    render_screen(grid, ALL_ROWS, &GlyphSet::original(), options, &mut buffer).unwrap();
     out
 }
 
@@ -194,7 +194,7 @@ fn resolved_mode_matches_palette_mode_on_level1_pages() {
 /// that needs the resolved mode, by every drawing call.
 #[test]
 fn palette_mode_is_refused_where_it_cannot_draw() {
-    let glyphs = GlyphSet::bedstead();
+    let glyphs = GlyphSet::original();
     let palette = RenderOptions { mode: CellMode::Saa5050, rounding: true, reveal: false, colour: ColourMode::Palette };
     let refused = |grid: &Grid| {
         let mut out = vec![0u8; row_width(grid) * CELL_HEIGHT];
@@ -416,7 +416,7 @@ fn columns_shown(grid: &Grid, row: usize) -> Vec<Option<usize>> {
     let mut out = vec![0u8; width * CELL_HEIGHT];
     let palette = RenderOptions { mode: CellMode::Saa5050, rounding: true, reveal: false, colour: ColourMode::Palette };
     let mut buffer = IndexBuffer { format: IndexFormat::Bits8, data: &mut out, stride: width };
-    render_row(grid, row, Field::Both, &GlyphSet::bedstead(), palette, &mut buffer).unwrap();
+    render_row(grid, row, Field::Both, &GlyphSet::original(), palette, &mut buffer).unwrap();
     (0..width / CELL_WIDTH)
         .map(|slot| {
             let pixel = |line: usize, dot: usize| out[line * width + slot * CELL_WIDTH + dot];
@@ -480,7 +480,7 @@ fn panel_rows_render_identically_in_any_order() {
         assert_eq!(width, 672);
         let options = large(5);
         let whole = screen(&grid, options);
-        let glyphs = GlyphSet::bedstead();
+        let glyphs = GlyphSet::original();
         for row in (0..ROWS).rev() {
             let mut single = vec![0u8; width * CELL_HEIGHT];
             let mut buffer = IndexBuffer { format: IndexFormat::Bits8, data: &mut single, stride: width };
@@ -509,7 +509,7 @@ fn panels_without_storage_show_the_screen_colour() {
     grid.side_panels = SidePanels { left: 2, right: 0 };
     grid.screen_colour = CYAN;
     let mut out = vec![0u8; 42 * CELL_WIDTH];
-    render_line(&grid, 100, Zoom::Off, &GlyphSet::bedstead(), large(0), IndexFormat::Bits8, &mut out).unwrap();
+    render_line(&grid, 100, Zoom::Off, &GlyphSet::original(), large(0), IndexFormat::Bits8, &mut out).unwrap();
     assert!(out[..2 * CELL_WIDTH].iter().all(|&pixel| pixel == CYAN));
     assert!(out[2 * CELL_WIDTH..].iter().all(|&pixel| pixel == 0));
 }
@@ -603,7 +603,7 @@ fn double_width_halves_beside_the_panel_boundary() {
             &grid,
             3 * CELL_HEIGHT + line,
             Zoom::Off,
-            &GlyphSet::bedstead(),
+            &GlyphSet::original(),
             options,
             IndexFormat::Bits8,
             &mut out,
@@ -708,7 +708,7 @@ fn font_styles() {
 #[test]
 fn every_g3_position_draws() {
     let grid = Grid::EMPTY;
-    let glyphs = GlyphSet::bedstead();
+    let glyphs = GlyphSet::original();
     for offset in 0..G3_CODES {
         let code = G3_FIRST_CODE + offset as u8;
         let data = glyphs.g3(code);
@@ -737,7 +737,7 @@ fn every_g3_position_draws() {
 /// 4/E is a disc.
 #[test]
 fn g3_shapes_match_the_figure() {
-    let glyphs = GlyphSet::bedstead();
+    let glyphs = GlyphSet::original();
     let small = |code| glyphs.g3(code).small;
     let lower_left = small(0x25);
     assert_eq!(lower_left[9] & 0x800, 0x800, "2/5 fills the bottom-left corner");
@@ -923,7 +923,7 @@ fn drcs_attributes() {
 fn four_bit_format_in_the_resolved_mode() {
     let mut grid = Grid::EMPTY;
     grid.cells[2][3] = Cell { glyph: g3(0x3F), foreground: 15, background: 9, ..Cell::BLANK };
-    let glyphs = GlyphSet::bedstead();
+    let glyphs = GlyphSet::original();
     let mut out = vec![0u8; PAGE_WIDTH / 2];
     render_line(&grid, 2 * CELL_HEIGHT, Zoom::Off, &glyphs, large(0), IndexFormat::Bits4, &mut out).unwrap();
     assert_eq!(&out[3 * 6..4 * 6], &[0xFF; 6]);

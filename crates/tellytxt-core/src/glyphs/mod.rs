@@ -214,8 +214,8 @@ fn spacing_mark(combining: char) -> Option<char> {
     SPACING_MARKS.iter().find(|(mark, _)| *mark == combining).map(|(_, spacing)| *spacing)
 }
 
-// The tests draw with the Bedstead glyphs.
-#[cfg(all(test, feature = "bedstead"))]
+// The tests draw with the shipped glyph set.
+#[cfg(all(test, feature = "original"))]
 #[allow(clippy::indexing_slicing, clippy::unwrap_used)]
 mod tests {
     use super::*;
@@ -223,7 +223,7 @@ mod tests {
 
     #[test]
     fn glyphs_are_sorted_and_unique() {
-        let set = GlyphSet::bedstead();
+        let set = GlyphSet::original();
         assert!(set.entries.windows(2).all(|pair| matches!(pair, [a, b] if a.code_point < b.code_point)));
     }
 
@@ -232,7 +232,7 @@ mod tests {
     #[test]
     fn set_size_and_empty_set() {
         static NONE: [GlyphEntry; 0] = [];
-        let set = GlyphSet::bedstead();
+        let set = GlyphSet::original();
         assert_eq!(set.len(), set.entries.len());
         assert!(!set.is_empty());
         let empty = GlyphSet::from_entries(&NONE, "empty");
@@ -255,7 +255,7 @@ mod tests {
             '`', '\u{B4}', '\u{2C6}', '\u{2DC}', '\u{AF}', '\u{2D8}', '\u{2D9}', '\u{A8}', '.', '\u{2DA}', '\u{B8}',
             '_', '\u{2DD}', '\u{2DB}', '\u{2C7}',
         ];
-        let set = GlyphSet::bedstead();
+        let set = GlyphSet::original();
         let latin = CharSet::G0(G0 { set: G0Set::Latin, national: None });
         // "q" has no precomposed form with any of the marks.
         let base = set.lookup('q').unwrap();
