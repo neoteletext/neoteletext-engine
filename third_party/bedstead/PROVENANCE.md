@@ -1,6 +1,6 @@
 # Bedstead glyphs: temporary development glyph source
 
-**Status:** temporary. These glyphs are used only during development. They must be replaced by glyphs drawn for this project before any release (REQ-RND-020, decision E.25).
+**Status:** replaced. The project's own glyphs (decision E.62) are the default; the core builds these only with the non-default `bedstead` feature. The export stays in the repository because `cargo xtask glyph-check` compares every original glyph with it, to show that none was copied (REQ-RND-020). Whether to keep it, or move the reference outside the repository, is the owner's decision.
 
 ## What is here
 

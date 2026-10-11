@@ -45,4 +45,4 @@ The project is licensed under the MIT licence; see [LICENSE](LICENSE). Bundled t
 
 ## Licensing of data
 
-No standards documents, character-generator ROM glyphs, GPL code or broadcast recordings are kept in this repository. The glyphs are temporarily taken from the Bedstead font; see `third_party/bedstead/PROVENANCE.md`.
+No standards documents, character-generator ROM glyphs, GPL code or broadcast recordings are kept in this repository. The glyphs are the project's own (`crates/tellytxt-core/src/glyphs/original.txt`, decision E.62). The Bedstead font in `third_party/bedstead/` is no longer used by default; it stays as the reference the independence check compares against.

@@ -19,6 +19,7 @@ level15 = ["tellytxt-core/level15"]
 level25 = ["tellytxt-core/level25"]
 render = ["tellytxt-core/render"]
 bedstead = ["render", "tellytxt-core/bedstead"]
+original = ["render", "tellytxt-core/original"]
 viewer = ["tellytxt-core/viewer"]
 forms = ["tellytxt-core/forms"]
 # The format readers through detection; formats-all adds every reader.

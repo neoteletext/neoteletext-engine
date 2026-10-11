@@ -29,7 +29,7 @@ use tellytxt_image::palette::{Rgba, colour_map_palette};
 use tellytxt_image::scale::{scale_indices, scaled_size};
 
 /// Raise when Level 2.5 and 3.5 rendering changes on purpose (REQ-TST-030).
-const FORMAT_VERSION: u32 = 1;
+const FORMAT_VERSION: u32 = 2;
 
 const BLACK: u8 = 0;
 const RED: u8 = 1;
@@ -427,7 +427,7 @@ fn render(grid: &Grid, options: RenderOptions) -> (usize, usize, Vec<u8>) {
     let height = ROWS * options.row_height();
     let mut indices = vec![0u8; width * height];
     let mut buffer = IndexBuffer { format: IndexFormat::Bits8, data: &mut indices, stride: width };
-    render_screen(grid, ALL_ROWS, &GlyphSet::bedstead(), options, &mut buffer).unwrap();
+    render_screen(grid, ALL_ROWS, &GlyphSet::original(), options, &mut buffer).unwrap();
     (width, height, indices)
 }
 

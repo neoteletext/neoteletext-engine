@@ -1887,7 +1887,8 @@ The features of `tellytxt-core`, all on by default:
 | `level15` | The Level 1.5 pass (area L15) |
 | `level25` | The enhancement processor for Levels 2.5 and 3.5 (areas L25, OBJ and DRC) |
 | `render` | The row renderer and the generated G3 glyphs (area RND) |
-| `bedstead` | The temporary Bedstead glyph set (decision E.25); a port with its own glyphs leaves it out |
+| `original` | The project's own glyph set (REQ-RND-028, decision E.62) |
+| `bedstead` | The temporary Bedstead glyph set (decision E.25); not a default since decision E.62, kept for comparison |
 | `viewer` | The viewer state machine, navigation and history (area NAV) |
 | `forms` | The forms model (Appendix C) |
 
@@ -1939,7 +1940,9 @@ The rules are written in words in `docs/glyph-style-guide.md`, from first princi
 4. **Independence:** every drawn glyph is compared with the Bedstead glyph of the same code point, the stand-in for the SAA5050. An exact match, or a difference of one dot, fails unless `crates/tellytxt-core/src/glyphs/original-audit.txt` gives the reason. Shapes such as a full stop or a hyphen have only one sensible form.
 5. **Coverage:** reported always; required to be complete with `--complete`, which becomes part of the release check of REQ-RND-020.
 
-Recognition by people fluent in each script, and proofs of real pages, are reviewed by hand before the set replaces Bedstead.
+Recognition by people fluent in each script, and proofs of real pages, are reviewed by hand.
+
+*Amended 11 October 2026:* all 530 required characters are drawn (427 drawn, 45 copies, 58 overlays), `glyph-check --complete` passes, and the original set is the core's default; `bedstead` is no longer a default feature. The full gate runs `glyph-check --complete`, which also fails if the defaults include Bedstead. The review by readers of each script has not been done (IMPLEMENTATION-LOG.md row 54).
 
 *Reason:* REQ-RND-020 and REQ-RND-028. Writing the checks before the glyphs gives the designer feedback while drawing, and the independence check makes the clean room something the gate measures rather than a promise.
 
@@ -2351,7 +2354,7 @@ The documentation shall state:
 - the memory required per stored page;
 - the flash (code and constant data) size of the core on `thumbv6m-none-eabi`, built with `opt-level = "z"` and link-time optimisation.
 
-Continuous integration shall measure the core's flash size on that target and fail if it exceeds a budget stated in the repository. The budget shall start at 64 kilobytes. The estimate is 15 to 40 kilobytes, of which the character tables are 10 to 20 kilobytes, and the measured figure replaces the estimate. Measured on 11 October 2026 by `cargo xtask size` (decision E.61): 26,198 bytes for the core with no optional area, 45,154 bytes for a Level 1.5 receiver with the renderer and the viewer, the build the budget applies to, 65,786 bytes at Level 3.5, and 111,294 bytes with every area and the temporary Bedstead glyphs.
+Continuous integration shall measure the core's flash size on that target and fail if it exceeds a budget stated in the repository. The budget shall start at 64 kilobytes. The estimate is 15 to 40 kilobytes, of which the character tables are 10 to 20 kilobytes, and the measured figure replaces the estimate. Measured on 11 October 2026 by `cargo xtask size` (decision E.61): 26,198 bytes for the core with no optional area, 45,154 bytes for a Level 1.5 receiver with the renderer and the viewer, the build the budget applies to, 65,786 bytes at Level 3.5, and 111,294 bytes with every area and the temporary Bedstead glyphs. With the project's own glyphs (decision E.62) the full core is 86,706 bytes.
 *Verification:* Test and continuous integration size check.
 
 **REQ-GEN-010 — The Cargo workspace.**

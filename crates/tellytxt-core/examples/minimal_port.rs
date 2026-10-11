@@ -74,7 +74,7 @@ fn main() -> Result<(), std::io::Error> {
     let options = RenderOptions::from_config(&config, false);
     for text_row in 0..25 {
         let mut buffer = IndexBuffer { format: IndexFormat::Bits8, data: &mut row, stride: PAGE_WIDTH };
-        render_row(&grid, text_row, Field::First, &GlyphSet::bedstead(), options, &mut buffer)
+        render_row(&grid, text_row, Field::First, &GlyphSet::original(), options, &mut buffer)
             .map_err(|error| std::io::Error::other(format!("{error:?}")))?;
         // Show every fourth line and every sixth pixel as a character.
         for line in (0..10).step_by(4) {

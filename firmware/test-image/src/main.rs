@@ -117,6 +117,20 @@ mod render {
     static RENDER: fn(&Grid, usize, &GlyphSet, RenderOptions, &mut IndexBuffer<'_>) = render;
 }
 
+/// The project's own glyphs, as a port that uses them links them.
+#[cfg(feature = "original")]
+mod original {
+    use super::black_box;
+    use tellytxt_core::glyphs::GlyphSet;
+
+    fn glyphs() {
+        black_box(GlyphSet::original());
+    }
+
+    #[used]
+    static GLYPHS: fn() = glyphs;
+}
+
 /// The temporary Bedstead glyphs, as a port that uses them links them.
 #[cfg(feature = "bedstead")]
 mod bedstead {

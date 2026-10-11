@@ -26,6 +26,7 @@ pub const TABLE: &str = "crates/tellytxt-core/src/glyphs/original.rs";
 const CONFUSABLES: &str = "crates/tellytxt-core/src/glyphs/confusables.txt";
 const AUDIT: &str = "crates/tellytxt-core/src/glyphs/original-audit.txt";
 const BEDSTEAD: &str = "third_party/bedstead/bedstead-glyphs.txt";
+const CORE_MANIFEST: &str = "crates/tellytxt-core/Cargo.toml";
 
 /// The glyph grid (REQ-RND-010).
 const COLUMNS: usize = 5;
@@ -345,6 +346,15 @@ fn read(root: &Path, path: &str) -> Result<String, String> {
     fs::read_to_string(root.join(path)).map_err(|e| format!("{path}: {e}"))
 }
 
+/// REQ-RND-020: a release build draws no Bedstead glyph, so the core's
+/// default features must include the original set and not the Bedstead set.
+fn release_defaults(root: &Path) -> Result<Option<String>, String> {
+    let manifest = read(root, CORE_MANIFEST)?;
+    let defaults = manifest.lines().find(|line| line.starts_with("default =")).unwrap_or_default();
+    Ok((defaults.contains("\"bedstead\"") || !defaults.contains("\"original\""))
+        .then(|| format!("{CORE_MANIFEST}: the default features must include `original` and not `bedstead`")))
+}
+
 /// `cargo xtask glyph-check [--complete]`.
 pub fn check(root: &Path, args: &[String]) -> Result<(), String> {
     let complete = match args {
@@ -437,6 +447,9 @@ pub fn check(root: &Path, args: &[String]) -> Result<(), String> {
         needed.len() - missing.len(),
         needed.len()
     );
+    if complete {
+        failures.extend(release_defaults(root)?);
+    }
     if complete && !missing.is_empty() {
         let list: Vec<String> = missing.iter().map(|c| format!("U+{:04X}", u32::from(*c))).collect();
         failures.push(format!("{} required characters have no glyph: {}", missing.len(), list.join(" ")));

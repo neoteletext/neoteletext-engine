@@ -87,7 +87,7 @@ pub fn raster(grid: &Grid, frame: Frame, scale: Scale, picture: Rgba) -> Raster 
     let mut buffer = IndexBuffer { format: IndexFormat::Bits8, data: &mut indices, stride: width };
     // The buffer is sized for the whole page and the mode suits the grid,
     // so rendering cannot fail.
-    let _ = render_screen(grid, ALL_ROWS, &GlyphSet::bedstead(), options, &mut buffer);
+    let _ = render_screen(grid, ALL_ROWS, &GlyphSet::original(), options, &mut buffer);
     let (scaled_width, scaled_height) = scaled_size(width, height, scale.x, scale.y, scale.aspect);
     let mut scaled = vec![0u8; scaled_width * scaled_height];
     let _ = scale_indices(&indices, width, height, scale.x.max(1), scale.y.max(1), scale.aspect, &mut scaled);

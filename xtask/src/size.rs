@@ -41,8 +41,8 @@ const BUILDS: &[Build] = &[
     Build { name: "level15", features: "level15 render viewer", budget: Some(FLASH_BUDGET) },
     // The same at Level 3.5.
     Build { name: "level35", features: "level15 level25 render viewer", budget: None },
-    // Every area of the core, with the temporary Bedstead glyphs.
-    Build { name: "core-all", features: "level15 level25 render bedstead viewer forms", budget: None },
+    // Every area of the core, with the project's own glyphs.
+    Build { name: "core-all", features: "level15 level25 render original viewer forms", budget: None },
     // Format detection reading T42 only, then every format; the core with
     // no optional area underneath.
     Build { name: "t42", features: "formats", budget: None },

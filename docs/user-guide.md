@@ -211,4 +211,4 @@ ttx check pages/*.tti --descriptor service.json
 
 ## Glyphs
 
-The glyphs are temporary: they come from the Bedstead font (`third_party/bedstead/`) until the project's original glyph set replaces them before any release (REQ-RND-020, REQ-RND-028).
+The glyphs are the project's own, drawn for tellytxt.com in a clean room and checked against a reference by `cargo xtask glyph-check` (REQ-RND-028, decision E.62). They cover every character of every teletext character set: Latin with all national options, Cyrillic, Greek, Hebrew and Arabic.

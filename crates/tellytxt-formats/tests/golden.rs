@@ -29,7 +29,7 @@ use tellytxt_formats::item::Reader;
 use tellytxt_formats::tti::TtiReader;
 
 /// Raise when rendering changes on purpose (REQ-TST-030).
-const FORMAT_VERSION: u32 = 1;
+const FORMAT_VERSION: u32 = 2;
 
 fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -78,7 +78,7 @@ fn checksums() -> String {
             let options = RenderOptions::from_config(&config, reveal);
             let mut pixels = vec![0u8; PAGE_WIDTH * 25 * options.row_height()];
             let mut buffer = IndexBuffer { format: IndexFormat::Bits8, data: &mut pixels, stride: PAGE_WIDTH };
-            render_screen(&grid, ALL_ROWS, &GlyphSet::bedstead(), options, &mut buffer).unwrap();
+            render_screen(&grid, ALL_ROWS, &GlyphSet::original(), options, &mut buffer).unwrap();
             let _ = writeln!(out, "testcard {name} reveal={reveal} {:016x}", fnv(&pixels));
         }
     }

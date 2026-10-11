@@ -13,7 +13,7 @@ publish.workspace = true
 [features]
 # Decision E.61: each optional area of the core is a feature, all on by
 # default. Ports turn the defaults off and name what they use.
-default = ["level15", "level25", "render", "bedstead", "viewer", "forms"]
+default = ["level15", "level25", "render", "original", "viewer", "forms"]
 # The Level 1.5 pass (area L15).
 level15 = []
 # The enhancement processor for Levels 2.5 and 3.5 (areas L25, OBJ, DRC).
@@ -60,7 +60,7 @@ required-features = ["level25"]
 
 [[test]]
 name = "performance"
-required-features = ["level25", "bedstead"]
+required-features = ["level25", "original"]
 
 [[test]]
 name = "reporting"
@@ -68,4 +68,4 @@ required-features = ["level15", "level25", "viewer"]
 
 [[example]]
 name = "minimal_port"
-required-features = ["level15", "bedstead"]
+required-features = ["level15", "original"]
