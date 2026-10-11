@@ -28,6 +28,16 @@ allow = ["Unicode-3.0"]
 crate = "webpki-roots"
 allow = ["CDLA-Permissive-2.0"]
 
+[[licenses.exceptions]]
+# The Boost licence of the Windows clipboard crates of the browser's
+# toolkit, egui (docs/macos-build-decisions.md section 3).
+crate = "clipboard-win"
+allow = ["BSL-1.0"]
+
+[[licenses.exceptions]]
+crate = "error-code"
+allow = ["BSL-1.0"]
+
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"

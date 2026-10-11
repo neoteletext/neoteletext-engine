@@ -9,7 +9,11 @@ publish.workspace = true
 
 [dependencies]
 # Page extension data carries the forms model and the navigation links.
-neoteletext-core = { workspace = true, features = ["forms", "viewer"] }
+# The renderer draws the decoder process's screens and the browser's own
+# rows.
+neoteletext-core = { workspace = true, features = ["forms", "viewer", "render"] }
+# Palettes and scaling for rasters (`present`).
+neoteletext-image.workspace = true
 # Detection and `--format` reach every reader; live mode reads TTI and T42.
 neoteletext-formats = { workspace = true, features = ["std", "transport", "sliced", "pages", "tti", "ep1", "edittf", "dump"] }
 neoteletext-slicer = { workspace = true, optional = true }

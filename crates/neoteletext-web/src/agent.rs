@@ -30,7 +30,7 @@ use crate::consts::{
     DEFAULT_RESPONSE_TIMEOUT_US, IDENTITY, MAX_HOST_TEXT_LENGTH, MAX_REDIRECTS, MAX_RETRY_AFTER_US,
     MAX_SUBSCRIBED_PAGES, MAX_URL_LENGTH, MAX_VALIDATOR_LENGTH, MICROSECONDS_PER_SECOND, OPCODE_PONG, OPCODE_TEXT,
     PAGE_QUEUE, PUSH_RETRY_FIRST_US, PUSH_RETRY_MAX_US, SECURE_HOSTS, STATUS_CLIENT_ERROR_FIRST, STATUS_FOUND,
-    STATUS_MOVED_PERMANENTLY, STATUS_NOT_FOUND, STATUS_NOT_MODIFIED, STATUS_OK, STATUS_PERMANENT_REDIRECT,
+    STATUS_GONE, STATUS_MOVED_PERMANENTLY, STATUS_NOT_FOUND, STATUS_NOT_MODIFIED, STATUS_OK, STATUS_PERMANENT_REDIRECT,
     STATUS_REDIRECT_FIRST, STATUS_SEE_OTHER, STATUS_SUCCESS_FIRST, STATUS_TEMPORARY_REDIRECT, SUBSCRIBE, SUBSCRIBE_ALL,
     SUBSCRIBE_QUERY, header, media,
 };
@@ -45,9 +45,23 @@ use crate::ws::{self, FrameReader, HandshakeKey, WsError, WsMessage};
 
 /// The bytes of one T42 packet (REQ-INP-002).
 const T42_PACKET: usize = neoteletext_core::consts::PACKET_BYTES;
+/// Where a web-native site keeps its descriptor
+/// (`docs/web-native-concept.md` section 2 item 2).
+const WELL_KNOWN_DESCRIPTOR: &str = "/.well-known/teletext.json";
+/// The front door of a site without a descriptor (section 2 item 3).
+const FRONT_DOOR: &str = "/index.t42";
+/// The defaults of a site without a descriptor after its name: page 100
+/// first, and a page's file named after it (section 2 item 3).
+const DEFAULT_DESCRIPTOR_TAIL: &[u8] = b"\",\"initial_page\":\"100\",\"page_template\":\"/{mpp}.t42\"}";
+/// Room for the default descriptor: the longest host and the rest.
+const DEFAULT_DESCRIPTOR_BYTES: usize = MAX_HOST_TEXT_LENGTH + 128;
 
 /// The agent's configuration. Every security setting defaults to the safer
 /// choice (REQ-SEC-020).
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "each flag is an independent yes-or-no setting named by a requirement, not a state"
+)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Config {
     /// Largest page response body (REQ-WEB-008), at most the body buffer.
@@ -79,6 +93,13 @@ pub struct Config {
     pub cookies_total: usize,
     /// The port saves cookies between runs (REQ-SEC-013). Off by default.
     pub persist_cookies: bool,
+    /// Refuse redirects of descriptor and page requests that lead to
+    /// another origin, reporting [`Event::RedirectToOtherSite`] instead, so
+    /// that a browser can show its tuning screen before another site's
+    /// content (`docs/web-native-concept.md` section 6). An upgrade from
+    /// `http` to `https` on the same host is not another site. Off by
+    /// default, which keeps `ttx`'s behaviour.
+    pub redirects_within_site: bool,
 }
 
 impl Default for Config {
@@ -97,6 +118,7 @@ impl Default for Config {
             cookies_per_host: DEFAULT_COOKIES_PER_HOST,
             cookies_total: DEFAULT_COOKIES_TOTAL,
             persist_cookies: false,
+            redirects_within_site: false,
         }
     }
 }
@@ -189,6 +211,12 @@ pub enum Input<'a> {
     Net(NetInput<'a>),
     /// Open the service whose descriptor is at this address.
     OpenService(&'a str),
+    /// Open the web-native site at this address (`docs/web-native-concept.md`
+    /// section 2): its descriptor at `/.well-known/teletext.json`, or,
+    /// when the site has none (404 or 410), the defaults: the name is the
+    /// host, the initial page 100, page files at `/{mpp}.t42`, and the
+    /// front door `/index.t42`, which may hold any number of pages.
+    OpenSite(&'a str),
     /// Follow a link to a page of another service named in the current
     /// descriptor (Appendix E). The request is a cross-service navigation
     /// for cookies (REQ-WEB-006).
@@ -234,6 +262,9 @@ pub enum Source {
     Push,
     /// The response to a form submission (REQ-WEB-011 item 3).
     Form,
+    /// The front door of a site without a descriptor, `/index.t42`: it
+    /// may hold any number of the site's pages.
+    FrontDoor,
 }
 
 /// Page bytes for the format readers (TTI or T42), with what is known
@@ -268,6 +299,9 @@ pub enum Failure {
     Status(u16),
     /// More than five redirects (REQ-WEB-003).
     TooManyRedirects,
+    /// A redirect to another site, refused under
+    /// [`Config::redirects_within_site`].
+    RedirectToOtherSite,
     /// A redirect without a usable `Location`.
     BadRedirect,
     /// An address failed the strict parser.
@@ -414,6 +448,16 @@ pub enum Event<'a> {
     /// A link named a service the descriptor does not list: the link is
     /// null (Appendix E.2 rule 2).
     LinkUnknown,
+    /// A descriptor or page request was redirected to another site and,
+    /// under [`Config::redirects_within_site`], not followed. The browser
+    /// confirms the new site before going there.
+    RedirectToOtherSite {
+        /// The address the redirect leads to.
+        location: &'a str,
+    },
+    /// The site has no descriptor: the defaults of [`Input::OpenSite`]
+    /// apply.
+    SiteDefaults,
     /// A `Set-Cookie` header was ignored.
     CookieRejected(CookieRejected),
     /// Not every matching cookie fitted in a request.
@@ -485,7 +529,8 @@ enum Link {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Purpose {
-    Descriptor { via_link: bool },
+    Descriptor { via_link: bool, site: bool },
+    FrontDoor,
     Page { page: PageAddress, subcode: Option<SubCode> },
     Form,
 }
@@ -601,7 +646,10 @@ pub struct UserAgent<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES
     jar: CookieJar<SLOTS, COOKIE_BYTES>,
     wall_clock: Option<(Instant, u64)>,
     descriptor: Option<Descriptor>,
-    pending_descriptor: Option<(Url, bool)>,
+    pending_descriptor: Option<(Url, bool, bool)>,
+    /// The front door to fetch after the defaults of a site without a
+    /// descriptor.
+    front_door: Option<Url>,
     navigation_pending: bool,
     secure_hosts: [Option<TextBuf<MAX_HOST_TEXT_LENGTH>>; SECURE_HOSTS],
     fetch: FetchConnection,
@@ -666,6 +714,7 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             wall_clock: None,
             descriptor: None,
             pending_descriptor: None,
+            front_door: None,
             navigation_pending: false,
             secure_hosts: [None; SECURE_HOSTS],
             fetch: FetchConnection {
@@ -799,7 +848,15 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
                 | NetInput::Closed(ConnectionId::Push | ConnectionId::Live) => {}
             },
             Input::OpenService(address) => match Url::parse(address) {
-                Ok(url) if !url.scheme().is_websocket() => self.pending_descriptor = Some((url, false)),
+                Ok(url) if !url.scheme().is_websocket() => self.pending_descriptor = Some((url, false, false)),
+                Ok(_) => event(sink, Event::DescriptorFailed(Failure::Address(UrlError::Scheme))),
+                Err(error) => event(sink, Event::DescriptorFailed(Failure::Address(error))),
+            },
+            Input::OpenSite(address) => match Url::parse(address).and_then(|url| url.join(WELL_KNOWN_DESCRIPTOR)) {
+                Ok(url) if !url.scheme().is_websocket() => {
+                    self.front_door = None;
+                    self.pending_descriptor = Some((url, false, true));
+                }
                 Ok(_) => event(sink, Event::DescriptorFailed(Failure::Address(UrlError::Scheme))),
                 Err(error) => event(sink, Event::DescriptorFailed(Failure::Address(error))),
             },
@@ -836,7 +893,7 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
         let address = self.descriptor.as_ref().and_then(|d| d.service(service).map(|s| d.service_address(s)));
         match address.map(Url::parse) {
             Some(Ok(url)) => {
-                self.pending_descriptor = Some((url, true));
+                self.pending_descriptor = Some((url, true, false));
                 self.queue = [None; PAGE_QUEUE];
                 if let Some(slot) = self.queue.first_mut() {
                     *slot = Some((page, subcode));
@@ -916,9 +973,11 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
     /// Starts the next request when the fetch connection is free.
     fn dispatch(&mut self, now: Instant, sink: &mut Sink<'_>) {
         while self.fetch.exchange.is_none() {
-            let (purpose, url, method, site) = if let Some((url, via_link)) = self.pending_descriptor.take() {
+            let (purpose, url, method, site) = if let Some((url, via_link, defaults)) = self.pending_descriptor.take() {
                 let site = if via_link { Site::CrossServiceNavigation } else { Site::SameService };
-                (Purpose::Descriptor { via_link }, url, Method::Get, site)
+                (Purpose::Descriptor { via_link, site: defaults }, url, Method::Get, site)
+            } else if let Some(url) = self.front_door.take() {
+                (Purpose::FrontDoor, url, Method::Get, Site::SameService)
             } else if cfg!(feature = "forms") && self.form.phase == FormPhase::Queued {
                 let Some(url) = self.form.target else {
                     self.form.phase = FormPhase::Idle;
@@ -1215,7 +1274,9 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
         }
         let limit = match exchange.purpose {
             Purpose::Descriptor { .. } => self.config.descriptor_limit,
-            Purpose::Page { .. } | Purpose::Form => self.config.page_limit,
+            // A front door is bounded like a page: a bundled site larger
+            // than the page limit publishes page files instead.
+            Purpose::Page { .. } | Purpose::Form | Purpose::FrontDoor => self.config.page_limit,
         }
         .min(self.buffers.body.len());
         match BodyDecoder::new(head.framing, limit) {
@@ -1251,6 +1312,7 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
         let Err(failure) = result else { return };
         match purpose {
             Purpose::Descriptor { .. } => event(sink, Event::DescriptorFailed(failure)),
+            Purpose::FrontDoor => {}
             Purpose::Page { page, subcode } => event(sink, Event::FetchFailed { page, subcode, failure }),
             Purpose::Form => {
                 self.form.phase = FormPhase::Idle;
@@ -1288,10 +1350,15 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             return;
         }
         self.fetch.exchange = None;
+        if self.complete_site(now, &exchange, &head, sink) {
+            return;
+        }
         let body = self.buffers.body.get(..self.fetch.body_len).unwrap_or(&[]);
         let secure = exchange.url.is_secure();
         match exchange.purpose {
-            Purpose::Descriptor { via_link } => {
+            // complete_site handled every front door response.
+            Purpose::FrontDoor => {}
+            Purpose::Descriptor { via_link, .. } => {
                 if status != STATUS_OK {
                     event(sink, Event::DescriptorFailed(Failure::Status(status)));
                 } else if head.media != MediaType::Json {
@@ -1358,6 +1425,34 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
         }
     }
 
+    /// The responses of opening a web-native site: a missing descriptor
+    /// means the defaults, and the front door's pages are delivered.
+    /// Returns true when the response was one of these.
+    fn complete_site(&mut self, now: Instant, exchange: &Exchange, head: &ResponseHead, sink: &mut Sink<'_>) -> bool {
+        match exchange.purpose {
+            Purpose::Descriptor { site: true, .. } if head.status == STATUS_NOT_FOUND || head.status == STATUS_GONE => {
+                self.open_defaults(now, &exchange.url, sink);
+                true
+            }
+            Purpose::FrontDoor => {
+                // A site without a front door is still a site: its pages
+                // are fetched one by one.
+                if head.status == STATUS_OK && head.media.is_page() {
+                    let body = self.buffers.body.get(..self.fetch.body_len).unwrap_or(&[]);
+                    sink(Output::PageBytes(PageBytes {
+                        source: Source::FrontDoor,
+                        media: head.media,
+                        url: exchange.url.as_str(),
+                        secure: exchange.url.is_secure(),
+                        bytes: body,
+                    }));
+                }
+                true
+            }
+            _ => false,
+        }
+    }
+
     fn redirect(&mut self, now: Instant, mut exchange: Exchange, head: &ResponseHead, sink: &mut Sink<'_>) {
         self.fetch.exchange = None;
         if exchange.redirects >= MAX_REDIRECTS {
@@ -1396,6 +1491,19 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
         {
             exchange.method = Method::Get;
             self.form.body_len = 0;
+        }
+        // A browser confirms another site before showing anything from it
+        // (`docs/web-native-concept.md` section 6). Forms keep their own
+        // rule below.
+        let same_host_upgrade = next.host_text() == exchange.url.host_text() && next.is_secure();
+        if self.config.redirects_within_site
+            && exchange.purpose != Purpose::Form
+            && !next.origin().same(&exchange.url.origin())
+            && !same_host_upgrade
+        {
+            event(sink, Event::RedirectToOtherSite { location: next.as_str() });
+            self.finish_purpose(exchange.purpose, Err(Failure::RedirectToOtherSite), sink);
+            return;
         }
         // A redirect to another origin makes a form submission cross-site.
         if exchange.purpose == Purpose::Form && !next.origin().same(&exchange.url.origin()) {
@@ -1439,6 +1547,36 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
         });
         if let Some(slot) = slot.and_then(|i| self.cache.get_mut(i)) {
             *slot = Some(entry);
+        }
+    }
+
+    /// Opens a site that has no descriptor with the defaults of
+    /// [`Input::OpenSite`], built as a descriptor so that every rule of
+    /// REQ-WEB-002 applies to them too, then fetches its front door.
+    fn open_defaults(&mut self, now: Instant, well_known: &Url, sink: &mut Sink<'_>) {
+        let mut buffer = [0u8; DEFAULT_DESCRIPTOR_BYTES];
+        let mut writer = Writer::new(&mut buffer);
+        let host = well_known.host_text().as_bytes();
+        // A parsed host holds no quote or backslash; refuse rather than
+        // escape if that ever changes.
+        let written = if host.iter().any(|&byte| byte == b'"' || byte == b'\\') {
+            Err(Overflow)
+        } else {
+            writer
+                .put(b"{\"name\":\"")
+                .and_then(|()| writer.put(host))
+                .and_then(|()| writer.put(DEFAULT_DESCRIPTOR_TAIL))
+        };
+        let parsed = written.map_err(|Overflow| Failure::RequestTooLarge).and_then(|()| {
+            Descriptor::parse(writer.written(), well_known).map_err(|_| Failure::Address(UrlError::BadCharacter))
+        });
+        match parsed {
+            Ok(descriptor) => {
+                event(sink, Event::SiteDefaults);
+                self.open_descriptor(now, descriptor, false, sink);
+                self.front_door = well_known.join(FRONT_DOOR).ok();
+            }
+            Err(failure) => event(sink, Event::DescriptorFailed(failure)),
         }
     }
 

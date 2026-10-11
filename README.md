@@ -8,6 +8,14 @@ target/release/ttx show recording.t42 100
 target/release/ttx view zxnet:teefax
 ```
 
+The `neoteletext` browser opens web teletext sites, files and live feeds in a window with tabs, an address bar, back and forward, and bookmarks. Each tab's network and page decoding run in separate processes, confined on macOS so the decoder can reach neither files nor the network. Leaving a site always shows the tuning screen first.
+
+```sh
+cargo build --release -p neoteletext-gui
+target/release/neoteletext https://example.org/
+scripts/macos-app.sh            # builds neoteletext.app in target/
+```
+
 Each crate's optional parts are Cargo features, on by default, so a port or a smaller `ttx` compiles in only what it uses. The features are listed in the user guide and the porting guide.
 
 ## Documents
@@ -22,6 +30,8 @@ Each crate's optional parts are Cargo features, on by default, so a port or a sm
 | [docs/traceability.md](docs/traceability.md) | Each requirement and the files that implement and test it (`cargo xtask traceability`). |
 | [docs/sources.md](docs/sources.md) | Where test data and live feeds come from. |
 | [IMPLEMENTATION-LOG.md](IMPLEMENTATION-LOG.md) | Questions met during implementation and the decisions taken. |
+| [docs/desktop-browser.md](docs/desktop-browser.md), [docs/web-native-concept.md](docs/web-native-concept.md) | The browser's design and the web teletext concept it browses. |
+| [docs/macos-build-decisions.md](docs/macos-build-decisions.md) | The decisions taken while building the macOS browser, for review. |
 
 ## Crates
 
@@ -33,6 +43,8 @@ Each crate's optional parts are Cargo features, on by default, so a port or a sm
 | `neoteletext-web` | The sans-IO web agent: service descriptors, HTTP, WebSockets, server-sent events, cookies, forms and the zxnet feed. |
 | `neoteletext-image` | Palettes, pixel formats, scaling, PNG and PPM writers. |
 | `neoteletext-cli` | The `ttx` program. |
+| `neoteletext-browser` | Everything the browser decides, with no operating-system access: addresses, sites, history, the tuning screen and the rows the receiver draws itself. |
+| `neoteletext-gui` | The `neoteletext` browser window and its fetcher and decoder helper processes. |
 | `xtask` | Project checks: layers, dependencies, constants, glyphs (including the generated G3 set), the test corpus and the traceability table; `cargo xtask level25-stream` writes the authored Level 2.5 and 3.5 test stream. |
 
 ## Checks

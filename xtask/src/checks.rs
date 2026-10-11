@@ -181,6 +181,18 @@ const WORKSPACE_PREFIX: &str = "neoteletext-";
 /// it, which keeps the shared application layer below the programs.
 const APPLICATION_CRATES: &[(&str, &[&str])] = &[
     (
+        "neoteletext-gui",
+        &[
+            "neoteletext-app",
+            "neoteletext-browser",
+            "neoteletext-core",
+            "neoteletext-formats",
+            "neoteletext-slicer",
+            "neoteletext-web",
+            "neoteletext-image",
+        ],
+    ),
+    (
         "neoteletext-app",
         &["neoteletext-core", "neoteletext-formats", "neoteletext-slicer", "neoteletext-web", "neoteletext-image"],
     ),
@@ -243,8 +255,14 @@ fn contains_literal(code: &str, literal: &str) -> bool {
 }
 
 /// Library crates that must not touch the operating system (REQ-SEC-016).
-const LIBRARY_CRATES: &[&str] =
-    &["neoteletext-core", "neoteletext-formats", "neoteletext-slicer", "neoteletext-web", "neoteletext-image"];
+const LIBRARY_CRATES: &[&str] = &[
+    "neoteletext-core",
+    "neoteletext-formats",
+    "neoteletext-slicer",
+    "neoteletext-web",
+    "neoteletext-image",
+    "neoteletext-browser",
+];
 const FORBIDDEN: &[&str] =
     &["std::fs", "std::net", "std::process", "std::env", "std::thread", "SystemTime", "Instant::now", "std::time"];
 

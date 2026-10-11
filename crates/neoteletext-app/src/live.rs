@@ -13,14 +13,22 @@ use neoteletext_formats::detect::{AutoConfig, AutoReader, Format};
 use neoteletext_formats::item::Reader;
 use neoteletext_formats::t42::T42Variant;
 use std::collections::HashMap;
+use std::io::Write;
 use std::path::Path;
-use std::process::{Child, ChildStdin, Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{self, Receiver};
 
-/// A live source: the fetcher child and the frames it sends.
+/// Where the fetcher is: a child of this process (`ttx`), or reached
+/// through the browser's interface process, which routes its frames.
+enum Link {
+    Child(Child),
+    Routed,
+}
+
+/// A live source: the fetcher and the frames it sends.
 pub struct Live {
-    child: Child,
-    requests: ChildStdin,
+    link: Link,
+    requests: Box<dyn Write + Send>,
     frames: Receiver<Frame>,
     notices: Vec<Notice>,
     extras: HashMap<(PageAddress, SubCode), PageExtras>,
@@ -70,21 +78,35 @@ pub fn open(address: &str, no_sandbox: bool, allow_local: &[std::net::IpAddr]) -
             }
         }
     });
-    Ok(Box::new(Live {
-        child,
-        requests,
-        frames,
-        notices: Vec::new(),
-        extras: HashMap::new(),
-        services: Vec::new(),
-        shown_form_page: None,
-        ended: false,
-        last_bytes: HashMap::new(),
-        requested: None,
-        offline_since: None,
-        last_retry: Instant(0),
-        last_poll: Instant(0),
-    }))
+    Ok(Box::new(Live::new(Link::Child(child), Box::new(requests), frames)))
+}
+
+/// A live source whose fetcher is reached through the browser's interface
+/// process: `frames` are the fetcher's frames as the interface forwards
+/// them, and requests are written to `requests`.
+#[must_use]
+pub fn routed(frames: Receiver<Frame>, requests: Box<dyn Write + Send>) -> Live {
+    Live::new(Link::Routed, requests, frames)
+}
+
+impl Live {
+    fn new(link: Link, requests: Box<dyn Write + Send>, frames: Receiver<Frame>) -> Self {
+        Self {
+            link,
+            requests,
+            frames,
+            notices: Vec::new(),
+            extras: HashMap::new(),
+            services: Vec::new(),
+            shown_form_page: None,
+            ended: false,
+            last_bytes: HashMap::new(),
+            requested: None,
+            offline_since: None,
+            last_retry: Instant(0),
+            last_poll: Instant(0),
+        }
+    }
 }
 
 impl Live {
@@ -129,7 +151,16 @@ impl Live {
 impl Source for Live {
     fn poll(&mut self, session: &mut Session, now: Instant) -> bool {
         self.last_poll = now;
-        while let Ok(frame) = self.frames.try_recv() {
+        let mut disconnected = false;
+        loop {
+            let frame = match self.frames.try_recv() {
+                Ok(frame) => frame,
+                Err(mpsc::TryRecvError::Empty) => break,
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    disconnected = true;
+                    break;
+                }
+            };
             match frame {
                 Frame::Packet(bytes) => session.push_at(&Packet { bytes }, &PacketMeta::default(), now),
                 Frame::Tti(page) => self.receive(session, Format::Tti, &page, now),
@@ -159,7 +190,16 @@ impl Source for Live {
                 }
                 Frame::Notice(notice) => self.notices.push(notice),
                 // The fetcher never sends these; ignore rather than trust.
-                Frame::Request(..) | Frame::Submit(_) | Frame::Confirm(_) | Frame::Follow(..) => {}
+                Frame::Request(..)
+                | Frame::Submit(_)
+                | Frame::Confirm(_)
+                | Frame::Follow(..)
+                | Frame::Input(_)
+                | Frame::Show(..)
+                | Frame::Settings(_)
+                | Frame::Click(..)
+                | Frame::Screen(_)
+                | Frame::Status(_) => {}
             }
         }
         session.tick(now);
@@ -175,7 +215,12 @@ impl Source for Live {
             self.last_retry = now;
             self.request(page, subcode);
         }
-        if !self.ended && matches!(self.child.try_wait(), Ok(Some(_))) {
+        let gone = match &mut self.link {
+            Link::Child(child) => matches!(child.try_wait(), Ok(Some(_))),
+            // A routed fetcher is gone when the interface stops forwarding.
+            Link::Routed => disconnected,
+        };
+        if !self.ended && gone {
             self.ended = true;
             self.notices.push(Notice::Message("the fetcher process ended".into()));
         }
@@ -239,13 +284,20 @@ impl Live {
             // A form response carrying a page is shown (REQ-WEB-011).
             self.shown_form_page = first;
         }
+        if page.origin == Origin::FrontDoor
+            && let Some(first) = first
+        {
+            self.notices.push(Notice::Bundle(first.mpp()));
+        }
     }
 }
 
 impl Drop for Live {
     fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        if let Link::Child(child) = &mut self.link {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
     }
 }
 

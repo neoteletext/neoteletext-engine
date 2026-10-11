@@ -81,6 +81,8 @@ pub const STATUS_TEMPORARY_REDIRECT: u16 = 307;
 pub const STATUS_PERMANENT_REDIRECT: u16 = 308;
 /// Status 404 Not Found: "page not in this service" (REQ-WEB-003).
 pub const STATUS_NOT_FOUND: u16 = 404;
+/// 410 Gone: a site that removed its descriptor has none (RFC 9110 section 15.5.11).
+pub const STATUS_GONE: u16 = 410;
 /// Statuses from 100 to 199 are informational and carry no body.
 pub const STATUS_INFORMATIONAL_FIRST: u16 = 100;
 /// The first successful status.

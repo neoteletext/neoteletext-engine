@@ -7,7 +7,9 @@ members = [
     "crates/neoteletext-web",
     "crates/neoteletext-image",
     "crates/neoteletext-app",
+    "crates/neoteletext-browser",
     "crates/neoteletext-cli",
+    "crates/neoteletext-gui",
     "xtask",
 ]
 default-members = ["crates/neoteletext-cli"]
@@ -30,6 +32,7 @@ neoteletext-slicer = { path = "crates/neoteletext-slicer" }
 neoteletext-web = { path = "crates/neoteletext-web", default-features = false }
 neoteletext-image = { path = "crates/neoteletext-image" }
 neoteletext-app = { path = "crates/neoteletext-app", default-features = false }
+neoteletext-browser = { path = "crates/neoteletext-browser" }
 # Decision E.38: the only external crate a microcontroller crate may use.
 embedded-io = { version = "0.7.1", default-features = false }
 

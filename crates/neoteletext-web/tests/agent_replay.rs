@@ -113,6 +113,11 @@ impl Harness {
         self.take()
     }
 
+    fn open_site(&mut self, address: &str) -> Vec<Rec> {
+        self.input(Input::OpenSite(address));
+        self.take()
+    }
+
     /// Requests a page and lets the default rate limit's interval pass.
     fn fetch(&mut self, mpp: u16) -> Vec<Rec> {
         self.input(Input::FetchPage { page: PageAddress::from_mpp(mpp).unwrap(), subcode: None });
@@ -1013,4 +1018,117 @@ fn cookies_not_compiled_in_are_reported_and_never_kept() {
     assert_eq!(harness.agent.load_cookies(harness.now, &mut storage, &mut scratch), Ok(0));
     assert!(harness.agent.cookies().is_empty());
     assert_eq!(harness.agent.save_cookies(harness.now, &mut storage, &mut scratch), Ok(0));
+}
+
+// ---------------------------------------------------------------------
+// Web-native sites (docs/web-native-concept.md section 2)
+// ---------------------------------------------------------------------
+
+fn site_harness(config: Config) -> Harness {
+    let replay = Replay::new(&[("site.example", PUBLIC), ("other.example", PUBLIC_2)]);
+    Harness::new(config, replay)
+}
+
+fn not_found() -> Reply {
+    Reply::Bytes(response("404 Not Found", &["Content-Type: text/plain"], b"no"))
+}
+
+fn request_path(request: &[u8]) -> String {
+    String::from_utf8_lossy(request).split(' ').nth(1).unwrap_or_default().to_string()
+}
+
+#[test]
+fn a_site_with_a_descriptor_is_opened_from_the_well_known_address() {
+    let mut harness = site_harness(Config::default());
+    harness.replay().reply("site.example:80", json_response(&descriptor("")));
+    let records = harness.open_site("http://site.example/");
+    assert!(has_event(&records, "ServiceReady { name: \"Test\""), "{records:?}");
+    assert!(!has_event(&records, "SiteDefaults"));
+    let requests = harness.replay().requests_to("site.example:80");
+    assert_eq!(request_path(&requests[0]), "/.well-known/teletext.json");
+}
+
+#[test]
+fn a_site_without_a_descriptor_uses_the_defaults_and_its_front_door() {
+    let mut harness = site_harness(Config::default());
+    harness.replay().reply("site.example:80", not_found());
+    harness.replay().reply("site.example:80", tti_response(&[]));
+    let records = harness.open_site("http://site.example/anything");
+    assert!(has_event(&records, "SiteDefaults"), "{records:?}");
+    assert!(has_event(&records, "ServiceReady { name: \"site.example\""), "{records:?}");
+    let front = pages(&records);
+    assert_eq!(front.len(), 1, "{records:?}");
+    let Rec::Page { source, url, .. } = front[0] else { unreachable!() };
+    assert_eq!(*source, Source::FrontDoor);
+    assert_eq!(url, "http://site.example/index.t42");
+    // A page of the site is its own file.
+    harness.replay().reply("site.example:80", tti_response(&[]));
+    let records = harness.fetch(0x140);
+    let Rec::Page { url, .. } = pages(&records)[0] else { unreachable!() };
+    assert_eq!(url, "http://site.example/140.t42");
+}
+
+#[test]
+fn a_site_without_a_front_door_still_opens() {
+    let mut harness = site_harness(Config::default());
+    harness.replay().reply("site.example:80", not_found());
+    harness.replay().reply("site.example:80", not_found());
+    let records = harness.open_site("http://site.example/");
+    assert!(has_event(&records, "ServiceReady"), "{records:?}");
+    assert_eq!(pages(&records), Vec::<&Rec>::new());
+}
+
+#[test]
+fn a_broken_descriptor_is_not_replaced_by_the_defaults() {
+    // Only a missing descriptor means "no descriptor": a server error or
+    // an invalid one must not silently change how the site is read.
+    let mut harness = site_harness(Config::default());
+    harness.replay().reply("site.example:80", Reply::Bytes(response("500 Oops", &["Content-Type: text/plain"], b"")));
+    let records = harness.open_site("http://site.example/");
+    assert!(has_event(&records, "DescriptorFailed(Status(500))"), "{records:?}");
+    assert!(!has_event(&records, "SiteDefaults"));
+}
+
+#[test]
+fn redirects_to_another_site_are_reported_not_followed_in_a_browser() {
+    let config = Config { redirects_within_site: true, ..Config::default() };
+    let mut harness = site_harness(config);
+    harness.replay().reply(
+        "site.example:80",
+        Reply::Bytes(response("302 Found", &["Location: http://other.example/.well-known/teletext.json"], b"")),
+    );
+    let records = harness.open_site("http://site.example/");
+    assert!(
+        has_event(&records, "RedirectToOtherSite { location: \"http://other.example/.well-known/teletext.json\" }"),
+        "{records:?}"
+    );
+    assert!(harness.replay().requests_to("other.example:80").is_empty(), "nothing is fetched from the other site");
+}
+
+#[test]
+fn an_upgrade_to_https_on_the_same_host_is_not_another_site() {
+    let config = Config { redirects_within_site: true, ..Config::default() };
+    let mut harness = site_harness(config);
+    harness.replay().reply(
+        "site.example:80",
+        Reply::Bytes(response("301 Moved", &["Location: https://site.example/.well-known/teletext.json"], b"")),
+    );
+    harness.replay().reply(
+        "site.example:443",
+        json_response(br#"{"name":"Secure","initial_page":"100","page_template":"/{mpp}.t42"}"#),
+    );
+    let records = harness.open_site("http://site.example/");
+    assert!(!has_event(&records, "RedirectToOtherSite"), "{records:?}");
+    assert!(has_event(&records, "ServiceReady"), "{records:?}");
+}
+
+#[test]
+fn ttx_still_follows_redirects_to_other_hosts() {
+    let mut harness = site_harness(Config::default());
+    harness
+        .replay()
+        .reply("site.example:80", Reply::Bytes(response("302 Found", &["Location: http://other.example/d.json"], b"")));
+    harness.replay().reply("other.example:80", json_response(&descriptor("")));
+    let records = harness.open("http://site.example/d.json");
+    assert!(has_event(&records, "ServiceReady"), "{records:?}");
 }

@@ -467,7 +467,7 @@ pub fn slice(_options: &Options, _output: &Path, _preset: &str) -> Result<(), Fa
 /// `ttx` starts by running itself again.
 #[cfg(feature = "live")]
 pub fn fetch(address: &str, no_sandbox: bool, allow_local: &[IpAddr]) -> Result<(), Failure> {
-    neoteletext_app::fetch::run(address, no_sandbox, allow_local)
+    neoteletext_app::fetch::run(address, no_sandbox, false, allow_local)
 }
 
 /// `ttx fetch` in a build without live feeds.

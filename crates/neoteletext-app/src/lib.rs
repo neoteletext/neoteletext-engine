@@ -12,13 +12,17 @@
 //! out is refused with [`not_in_build`].
 
 pub mod convert;
+#[cfg(feature = "live")]
+pub mod decoder;
 pub mod extras;
 #[cfg(feature = "live")]
 pub mod fetch;
 pub mod input;
+pub mod interact;
 #[cfg(feature = "live")]
 pub mod live;
 pub mod pipe;
+pub mod present;
 pub mod sandbox;
 pub mod session;
 #[cfg(feature = "slice")]

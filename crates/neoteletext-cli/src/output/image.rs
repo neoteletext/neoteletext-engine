@@ -7,40 +7,15 @@
 //! (REQ-RND-030, REQ-RND-031). Rows are as wide as the page's side panels
 //! make them (REQ-RND-033).
 
+use neoteletext_app::present;
+pub use neoteletext_app::present::{Raster, Scale};
 use neoteletext_core::config::Config;
-use neoteletext_core::consts::{COLOUR_TRANSPARENT, PALETTE_TRANSPARENT, ROWS};
 use neoteletext_core::glyphs::GlyphSet;
 use neoteletext_core::level1::Grid;
-use neoteletext_core::render::{
-    ALL_ROWS, ColourMode, FlashPhase, IndexBuffer, IndexFormat, RenderOptions, palette_mode_allowed, render_screen,
-    row_width,
-};
-use neoteletext_image::palette::{Rgba, clut0_of, colour_map_palette, palette};
-use neoteletext_image::scale::{scale_indices, scaled_size};
-
-/// A rendered page: indices plus the palette they index.
-pub struct Raster {
-    /// Width in pixels.
-    pub width: usize,
-    /// Height in pixels.
-    pub height: usize,
-    /// Indices, row by row.
-    pub indices: Vec<u8>,
-    /// The palette: 144 entries in the palette mode, the 32 colours of the
-    /// page's Colour Map in the resolved mode.
-    pub palette: Vec<Rgba>,
-}
-
-/// Scaling of the output image (REQ-RND-004).
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct Scale {
-    /// Horizontal factor.
-    pub x: usize,
-    /// Vertical factor.
-    pub y: usize,
-    /// Stretch height by 1.2 for 4:3 proportions.
-    pub aspect: bool,
-}
+#[cfg(feature = "view")]
+use neoteletext_core::render::ColourMode;
+use neoteletext_core::render::{FlashPhase, RenderOptions};
+use neoteletext_image::palette::Rgba;
 
 /// Which glyphs a raster is drawn with (decision E.62): the project's own,
 /// the temporary Bedstead set, or both side by side for comparison.
@@ -79,9 +54,6 @@ impl Glyphs {
         }
     }
 }
-
-/// Columns of picture colour between the two pages of a comparison.
-const COMPARE_GAP: usize = 12;
 
 /// The settings of one frame (decision E.55, REQ-RND-040): the colour mode
 /// of the presentation level with its flash phase of decision E.48, and,
@@ -127,48 +99,10 @@ impl Frame {
 }
 
 /// Renders a grid to a scaled raster. `picture` is the colour of the
-/// picture, transparent areas (REQ-RND-006). A grid that the palette mode
-/// cannot draw is drawn in the resolved mode.
+/// picture, transparent areas (REQ-RND-006).
 #[must_use]
 pub fn raster(grid: &Grid, frame: Frame, scale: Scale, picture: Rgba) -> Raster {
-    let mut options = frame.options;
-    if options.colour == ColourMode::Palette && !palette_mode_allowed(grid) {
-        options.colour = ColourMode::Resolved(FlashPhase::STEADY);
-    }
-    let page_width = row_width(grid);
-    let height = ROWS * options.row_height();
-    let sets = frame.glyphs.sets();
-    // A comparison puts the pages side by side, separated by the picture.
-    let width = sets.len() * page_width + (sets.len() - 1) * COMPARE_GAP;
-    let picture_index = match options.colour {
-        ColourMode::Palette => PALETTE_TRANSPARENT,
-        ColourMode::Resolved(_) => COLOUR_TRANSPARENT,
-    };
-    let mut indices = vec![picture_index; width * height];
-    for (index, glyphs) in sets.iter().enumerate() {
-        let mut page = vec![0u8; page_width * height];
-        let mut buffer = IndexBuffer { format: IndexFormat::Bits8, data: &mut page, stride: page_width };
-        // The buffer is sized for the whole page and the mode suits the
-        // grid, so rendering cannot fail.
-        let _ = render_screen(grid, ALL_ROWS, glyphs, options, &mut buffer);
-        let left = index * (page_width + COMPARE_GAP);
-        for (row, source) in page.chunks_exact(page_width).enumerate() {
-            let start = row * width + left;
-            if let Some(target) = indices.get_mut(start..start + page_width) {
-                target.copy_from_slice(source);
-            }
-        }
-    }
-    let (scaled_width, scaled_height) = scaled_size(width, height, scale.x, scale.y, scale.aspect);
-    let mut scaled = vec![0u8; scaled_width * scaled_height];
-    let _ = scale_indices(&indices, width, height, scale.x.max(1), scale.y.max(1), scale.aspect, &mut scaled);
-    let palette = match options.colour {
-        ColourMode::Palette => {
-            palette(&clut0_of(&grid.colour_map), picture, frame.flash_visible, options.reveal).to_vec()
-        }
-        ColourMode::Resolved(_) => colour_map_palette(&grid.colour_map, picture).to_vec(),
-    };
-    Raster { width: scaled_width, height: scaled_height, indices: scaled, palette }
+    present::raster(grid, frame.options, frame.flash_visible, frame.glyphs.sets(), scale, picture)
 }
 
 /// Encodes a raster as PNG bytes.

@@ -22,7 +22,7 @@ Dependencies point **downward only**. A layer may use the layers below it and th
 
 ```
  ┌───────────────────────────────────────────────────────────────────────────┐
- │ L9  Applications & ports      ttx CLI · WASM host · user MCU ports          │  std / platform
+ │ L9  Applications & ports      ttx CLI · browser window · WASM host · ports │  std / platform
  ├───────────────────────────────────────────────────────────────────────────┤
  │ L8  Platform interface        traits: DataSource · Transport · Clock ·      │  the port boundary
  │                               Keys · CookieStorage · DeviceKey              │
@@ -224,8 +224,20 @@ The Web user agent (L7) sits beside the lower layers rather than above them in t
 - **The split between `neoteletext-app` and `neoteletext-cli`:**
   - `neoteletext-app` holds what any program needs. That is the session, reading inputs, both processes of live mode, sandboxing, conversion and slicing, and the `Source` trait a viewer reads pages through.
   - `neoteletext-cli` holds argument parsing, terminal output and the terminal viewer.
-  - A windowed viewer depends on `neoteletext-app` and routes the hidden `fetch` command to `neoteletext_app::fetch::run`, because live mode starts the fetcher as a second run of the same program.
+  - The browser window, `neoteletext-gui`, depends on `neoteletext-app` and `neoteletext-browser`. It routes the hidden `fetch` command to `neoteletext_app::fetch::run` and `decode` to `neoteletext_app::decoder::run`, because each tab starts its helpers as further runs of the same program. On macOS they are confined by Seatbelt profiles before they start (`neoteletext_app::sandbox::helper_command`).
+  - `neoteletext-app` also holds what both viewers share: the decoder engine (`decoder`), the form pieces (`interact`), and text and raster output (`present`).
 - **Requirements:** CLI, SEC-017 to SEC-019, GEN-018.
+
+### The browser's own layer — `neoteletext-browser`
+
+- **Owns:** everything the browser decides (`docs/desktop-browser.md` section 3.5):
+  - what an address means, and which site it names;
+  - each tab's history;
+  - when the tuning screen is shown, and the screen itself;
+  - row 0 and the other rows the receiver draws itself;
+  - the formats of the saved files.
+- **Place:** beside L8, below the applications. It uses L6 types and the L7 address parser, and has no operating-system access, which `xtask check-io` enforces as for the library crates.
+- **Why a crate of its own:** every rule of trust in the browser is written and tested once, for every front end. That includes the desktop window, `ttx view` later, and the phone shells.
 
 ### Cross-cutting modules — `neoteletext-core::{policy, config, trace}`
 
@@ -398,6 +410,8 @@ Each boundary is one narrow type. Nothing reaches past its neighbour.
 | `neoteletext-image` | L5 | Helpers `no_std`; writers `std` |
 | `neoteletext-app` | L9: the application layer shared by `ttx` and a windowed viewer: sessions, inputs, live mode's two processes, sandboxing | `std` |
 | `neoteletext-cli` | L9 (and text output of L5) | `std` |
+| `neoteletext-browser` | The browser's decisions (section 3) | `std`, no operating-system access |
+| `neoteletext-gui` | L9: the browser window, `neoteletext`, and its fetcher and decoder helpers | `std` |
 | `neoteletext-ffi` | L9: the C interface (Phase 2) | The only crate with `unsafe` |
 | `xtask` | Tooling, not shipped | `std` |
 

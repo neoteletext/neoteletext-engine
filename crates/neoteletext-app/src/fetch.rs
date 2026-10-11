@@ -213,19 +213,35 @@ fn page_request(mpp: u16, sub: u16) -> Option<(PageAddress, Option<SubCode>)> {
     PageAddress::from_mpp(mpp).map(|address| (address, (sub != u16::MAX).then(|| SubCode::new(sub))))
 }
 
+/// The prefix of a fetcher address that names a web-native site rather
+/// than a descriptor: the browser's form (`docs/web-native-concept.md`
+/// section 2).
+pub const SITE_PREFIX: &str = "site:";
+
 /// Runs the fetcher for `address` until the decoder process goes away.
-pub fn run(address: &str, no_sandbox: bool, allow_local: &[IpAddr]) -> Result<(), (u8, String)> {
+/// `sandboxed_by_parent` says the process that started this one has
+/// already confined it (the browser on macOS, `docs/desktop-browser.md`
+/// section 12.3), so no sandbox of its own is applied.
+pub fn run(
+    address: &str,
+    no_sandbox: bool,
+    sandboxed_by_parent: bool,
+    allow_local: &[IpAddr],
+) -> Result<(), (u8, String)> {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let requests = requests();
-    // Name resolution reads the resolver configuration and loads the C
-    // library's name-service modules (decision 28 of IMPLEMENTATION-LOG.md).
-    let readable: Vec<&std::path::Path> =
-        RESOLVER_PATHS.iter().map(std::path::Path::new).filter(|path| path.exists()).collect();
-    crate::sandbox::apply(
-        crate::sandbox::Policy { writable_directory: None, network: true, readable: &readable },
-        no_sandbox,
-    )
-    .map_err(|message| (crate::exit::INPUT, message))?;
+    if !sandboxed_by_parent {
+        // Name resolution reads the resolver configuration and loads the C
+        // library's name-service modules (decision 28 of
+        // IMPLEMENTATION-LOG.md).
+        let readable: Vec<&std::path::Path> =
+            RESOLVER_PATHS.iter().map(std::path::Path::new).filter(|path| path.exists()).collect();
+        crate::sandbox::apply(
+            crate::sandbox::Policy { writable_directory: None, network: true, readable: &readable },
+            no_sandbox,
+        )
+        .map_err(|message| (crate::exit::INPUT, message))?;
+    }
     if let Some(name) = address.strip_prefix("zxnet:") {
         let channel = neoteletext_web::zxnet::Channel::from_short_name(name)
             .map_err(|error| (crate::exit::USAGE, format!("unknown live feed: {error:?}")))?;
@@ -320,6 +336,9 @@ fn run_web(address: &str, requests: &Receiver<Frame>, allow_local: &[IpAddr]) {
     const COOKIE_BYTES: usize = 32 * 1024;
     let mut storage = Box::new(Storage::default());
     let mut config = neoteletext_web::agent::Config::default();
+    let site = address.strip_prefix(SITE_PREFIX);
+    // A browser confirms every other site before showing it.
+    config.redirects_within_site = site.is_some();
     for (slot, &address) in config.allowed_local.iter_mut().zip(allow_local) {
         *slot = Some(web_address(address));
     }
@@ -348,6 +367,7 @@ fn run_web(address: &str, requests: &Receiver<Frame>, allow_local: &[IpAddr]) {
                         Came::Page { .. } => pipe::Origin::Page,
                         Came::Push => pipe::Origin::Push,
                         Came::Form => pipe::Origin::Form,
+                        Came::FrontDoor => pipe::Origin::FrontDoor,
                     },
                     url: page.url.to_string(),
                     bytes: page.bytes.to_vec(),
@@ -357,9 +377,13 @@ fn run_web(address: &str, requests: &Receiver<Frame>, allow_local: &[IpAddr]) {
                     _ => send(&Frame::Tti(data)),
                 }
             }
-            Output::Event(Event::ServiceReady { initial_page, .. }) => {
+            Output::Event(Event::ServiceReady { initial_page, name, .. }) => {
                 service_ready.set(true);
-                send(&Frame::Notice(Notice::InitialPage(initial_page.mpp())))
+                send(&Frame::Notice(Notice::ServiceName(name.to_string())))
+                    .and_then(|()| send(&Frame::Notice(Notice::InitialPage(initial_page.mpp()))))
+            }
+            Output::Event(Event::RedirectToOtherSite { location }) => {
+                send(&Frame::Notice(Notice::RedirectToOtherSite(location.to_string())))
             }
             Output::Event(Event::Unencrypted { .. }) => send(&Frame::Notice(Notice::Unencrypted)),
             Output::Event(Event::ConfirmSubmission { host, plain_http, first_to_origin, .. }) => {
@@ -386,7 +410,8 @@ fn run_web(address: &str, requests: &Receiver<Frame>, allow_local: &[IpAddr]) {
             broken.set(true);
         }
     };
-    agent.handle(clock(start), Input::OpenService(address), &mut |output| sink(output, &mut pump, &mut next_tick));
+    let open = site.map_or(Input::OpenService(address), Input::OpenSite);
+    agent.handle(clock(start), open, &mut |output| sink(output, &mut pump, &mut next_tick));
     while !broken.get() {
         let mut busy = false;
         for connection in [ConnectionId::Fetch, ConnectionId::Push] {
@@ -398,16 +423,24 @@ fn run_web(address: &str, requests: &Receiver<Frame>, allow_local: &[IpAddr]) {
         if service_ready.replace(false) {
             // Tell the decoder about the (new) service's linked services
             // before any of its pages (Appendix E).
-            let names: Vec<String> = agent
+            let sites: Vec<(String, String)> = agent
                 .descriptor()
                 .map(|descriptor| {
                     descriptor
                         .services()
-                        .map(|service| String::from_utf8_lossy(service.short_name.as_bytes()).into_owned())
+                        .map(|service| {
+                            (
+                                String::from_utf8_lossy(service.short_name.as_bytes()).into_owned(),
+                                descriptor.service_address(service).to_string(),
+                            )
+                        })
                         .collect()
                 })
                 .unwrap_or_default();
-            if send(&Frame::Notice(Notice::Service(names))).is_err() {
+            let names = sites.iter().map(|(name, _)| name.clone()).collect();
+            if send(&Frame::Notice(Notice::Service(names))).is_err()
+                || send(&Frame::Notice(Notice::LinkedSites(sites))).is_err()
+            {
                 break;
             }
         }

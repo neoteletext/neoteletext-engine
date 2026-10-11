@@ -157,6 +157,85 @@ mod platform {
     }
 }
 
+/// A helper process of the browser (`docs/desktop-browser.md` section 3.1).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Helper {
+    /// The fetcher: the network only.
+    Fetcher,
+    /// A decoder: nothing at all.
+    Decoder,
+}
+
+/// A command that starts `program` as a helper. On macOS the helper is
+/// confined from its first instruction by a Seatbelt profile applied by
+/// `sandbox-exec` (decision recorded in `docs/macos-build-decisions.md`),
+/// and the second value is true: the helper is told not to apply its
+/// own. Elsewhere the helper applies its own sandbox (Landlock and
+/// seccomp on Linux) and the second value is false.
+pub fn helper_command(program: &Path, helper: Helper) -> Result<(std::process::Command, bool), String> {
+    platform_helper(program, helper)
+}
+
+#[cfg(target_os = "macos")]
+fn platform_helper(program: &Path, helper: Helper) -> Result<(std::process::Command, bool), String> {
+    let path = program.to_str().ok_or("the program's path is not text")?;
+    // The path is placed inside a quoted profile string.
+    if path.contains(['"', '\\', '\n']) {
+        return Err(format!("{path}: a character the sandbox profile cannot quote"));
+    }
+    let profile = match helper {
+        Helper::Decoder => macos::DECODER,
+        Helper::Fetcher => macos::FETCHER,
+    }
+    .replace(macos::PROGRAM, path);
+    let mut command = std::process::Command::new(macos::SANDBOX_EXEC);
+    command.arg("-p").arg(profile).arg(program);
+    Ok((command, true))
+}
+
+#[cfg(not(target_os = "macos"))]
+// The same signature as the macOS implementation, which can fail.
+#[allow(clippy::unnecessary_wraps)]
+fn platform_helper(program: &Path, _helper: Helper) -> Result<(std::process::Command, bool), String> {
+    Ok((std::process::Command::new(program), false))
+}
+
+/// The Seatbelt profiles of the browser's helpers on macOS. Each denies
+/// everything, then allows only what starting the program needs: running
+/// itself, reading the system libraries and its own file, and the root
+/// directory, which the loader reads at start. Measured on macOS 15.6.
+#[cfg(target_os = "macos")]
+mod macos {
+    /// The program that applies a profile before starting a program.
+    pub const SANDBOX_EXEC: &str = "/usr/bin/sandbox-exec";
+    /// Replaced by the helper's own path.
+    pub const PROGRAM: &str = "@PROGRAM@";
+    /// A decoder: no network, no files, no other programs.
+    pub const DECODER: &str = r#"(version 1)
+(deny default)
+(allow process-exec (literal "@PROGRAM@"))
+(allow file-read* (literal "/") (literal "@PROGRAM@") (subpath "/usr/lib") (subpath "/System")
+    (subpath "/private/var/db/dyld") (literal "/dev/urandom") (literal "/dev/null"))
+(allow sysctl-read)
+"#;
+    /// The fetcher: a decoder's allowances, outgoing connections, and
+    /// name resolution through the system's resolver service.
+    pub const FETCHER: &str = r#"(version 1)
+(deny default)
+(allow process-exec (literal "@PROGRAM@"))
+(allow file-read* (literal "/") (literal "@PROGRAM@") (subpath "/usr/lib") (subpath "/System")
+    (subpath "/private/var/db/dyld") (literal "/dev/urandom") (literal "/dev/null")
+    (literal "/etc") (literal "/private/etc/hosts") (literal "/private/etc/resolv.conf")
+    (literal "/private/var/run/resolv.conf") (literal "/private/etc/services") (literal "/private/etc/protocols"))
+(allow file-read-metadata)
+(allow sysctl-read)
+(allow system-socket)
+(allow network-outbound)
+(allow mach-lookup (global-name "com.apple.dnssd.service") (global-name "com.apple.SystemConfiguration.configd")
+    (global-name "com.apple.SystemConfiguration.DNSConfiguration"))
+"#;
+}
+
 /// The REQ-SEC-017 verification: after the sandbox is applied, opening a
 /// file, starting a program and connecting to the network must all fail.
 pub fn self_test() -> Result<(), (u8, String)> {

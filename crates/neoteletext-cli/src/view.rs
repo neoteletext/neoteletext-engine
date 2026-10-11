@@ -9,13 +9,14 @@ use crate::terminal::Display;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 use crossterm::{cursor, execute, queue, terminal};
 use neoteletext_app::extras::{self, PageExtras};
-use neoteletext_app::pipe::{Notice, Submission};
+use neoteletext_app::interact::{ActiveForm, message_row, origin_of, submission};
+use neoteletext_app::pipe::Notice;
 use neoteletext_app::session::Session;
 use neoteletext_app::source::Source;
 use neoteletext_core::acq::EnhancementReport;
 use neoteletext_core::config::Config;
 use neoteletext_core::consts::{ALPHA_YELLOW, COLUMNS, SPACE, STATUS_COLUMNS};
-use neoteletext_core::forms::{FormAction, FormKey, FormModel, Method};
+use neoteletext_core::forms::{FormAction, FormKey, FormModel};
 use neoteletext_core::fsm::PageState;
 use neoteletext_core::level1::Grid;
 use neoteletext_core::nav::PageLinks;
@@ -93,29 +94,10 @@ impl Drop for RawGuard {
     }
 }
 
-/// A form on the page being shown.
-struct ActiveForm {
-    page: PageAddress,
-    subcode: SubCode,
-    model: FormModel,
-    url: String,
-    focused: bool,
-}
-
 /// What the viewer is waiting for the user to confirm.
 enum Pending {
     /// A form submission (REQ-SEC-008 and REQ-SEC-009).
     Submission,
-}
-
-/// A receiver-drawn row 24 message, in white, as 7-bit codes.
-fn message_row(text: &str) -> [u8; COLUMNS] {
-    let mut row = [SPACE; COLUMNS];
-    row[0] = ALPHA_YELLOW;
-    for (slot, byte) in row.iter_mut().skip(1).zip(text.bytes()) {
-        *slot = if byte.is_ascii() && byte >= SPACE { byte } else { SPACE };
-    }
-    row
 }
 
 /// Writes the form's origin into the status area as a ticker (REQ-SEC-009:
@@ -146,36 +128,6 @@ fn origin_ticker(grid: &mut Grid, origin: &str, now: Instant) {
                 ..reference
             };
         }
-    }
-}
-
-/// The origin part of an address, for the ticker.
-fn origin_of(url: &str) -> String {
-    let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
-    let host = rest.split('/').next().unwrap_or(rest);
-    let scheme = url.split_once("://").map_or("", |(scheme, _)| scheme);
-    format!("{scheme}://{host}")
-}
-
-/// The submission for a form and the button pressed (REQ-WEB-011).
-fn submission(form: &ActiveForm, button: Option<usize>) -> Submission {
-    let spec = form.model.spec();
-    let mut fields = Vec::new();
-    form.model.pairs(&mut |name, value| {
-        fields.push((String::from_utf8_lossy(name).into_owned(), value.iter().collect::<String>()));
-    });
-    let action = button
-        .and_then(|index| spec.fields.as_slice().get(index))
-        .map(|field| String::from_utf8_lossy(field.action.as_slice()).into_owned())
-        .filter(|action| !action.is_empty());
-    let token = String::from_utf8_lossy(spec.token.as_slice()).into_owned();
-    Submission {
-        page_url: form.url.clone(),
-        post: spec.method == Method::Post,
-        target: String::from_utf8_lossy(spec.target.as_slice()).into_owned(),
-        token: (!token.is_empty()).then_some(token),
-        action,
-        fields,
     }
 }
 
@@ -267,7 +219,13 @@ pub fn run(
                 Notice::Offline(mpp) if PageAddress::from_mpp(mpp) == Some(viewer.requested().0) => {
                     prompt = Some(message_row("Page not available offline"));
                 }
-                Notice::Offline(_) | Notice::Current(_) => {}
+                Notice::Offline(_)
+                | Notice::Current(_)
+                | Notice::LinkedSites(_)
+                | Notice::ServiceName(_)
+                | Notice::Bundle(_) => {}
+                // Only a browser asks the fetcher to stop at other sites.
+                Notice::RedirectToOtherSite(address) => messages.push(format!("redirected to {address}")),
             }
         }
         let config: Config = *session.decoder().config();
