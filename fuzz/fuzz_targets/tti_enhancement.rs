@@ -9,13 +9,13 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use tellytxt_core::packet::decode;
-use tellytxt_formats::Item;
-use tellytxt_formats::encode::encode_page;
-use tellytxt_formats::item::Reader;
-use tellytxt_formats::page::PageFile;
-use tellytxt_formats::tti::TtiReader;
-use tellytxt_formats::write::write_tti;
+use neoteletext_core::packet::decode;
+use neoteletext_formats::Item;
+use neoteletext_formats::encode::encode_page;
+use neoteletext_formats::item::Reader;
+use neoteletext_formats::page::PageFile;
+use neoteletext_formats::tti::TtiReader;
+use neoteletext_formats::write::write_tti;
 
 /// Pages that select each row coding: an object page (010), a DRCS page
 /// (000), a table without `PF` (011), a carrier of magazine packets and a

@@ -1,4 +1,4 @@
-# tellytxt.com — software teletext receiver
+# neoteletext — software teletext receiver
 
 A software receiver for World System Teletext (ETSI EN 300 706), Presentation Levels 1.0 and 1.5. The behaviour baselines are the Philips SAA5050 (rendering) and SAA5246A (receiver).
 
@@ -40,7 +40,7 @@ No code exists yet. The project is at the requirements stage.
   - During development, `third_party/bedstead/bedstead-glyphs.txt` is a **temporary** glyph source. Read `third_party/bedstead/PROVENANCE.md` for why it is only temporary.
   - Keep glyphs as replaceable data, never hard-coded.
   - Original glyphs must replace Bedstead before any release (REQ-RND-020, decision E.25).
-- **The test corpus is downloaded at test time and pinned by checksum** (REQ-TST-022). Local corpus files, including Dan Farrimond's recovered T42 captures in `~/devel/jellytext/dan/`, are read from `$TELLYTXT_CORPUS`. Never commit sample streams or captures.
+- **The test corpus is downloaded at test time and pinned by checksum** (REQ-TST-022). Local corpus files, including Dan Farrimond's recovered T42 captures in `~/devel/jellytext/dan/`, are read from `$NEOTELETEXT_CORPUS`. Never commit sample streams or captures.
 - **Every teletext constant is defined once** (REQ-GEN-014). Never restate a value such as 0x27 or 0xE4 outside the constants module.
 - **The library stops at the row renderer.** It must have no display, video, timing or hardware-specific code (REQ-ARCH-010, decision E.29). Buffering and pixel delivery belong to the port.
 
@@ -76,13 +76,13 @@ No code exists yet. The project is at the requirements stage.
   - AMD64: Linux, Windows and macOS.
 - **Xtensa toolchain.** Xtensa builds need Espressif's toolchain fork, installed with `espup` and pinned. Fork versions 1.94 and 1.95 fail release builds (esp-rs/rust#277); 1.93 works.
 - **The workspace** (REQ-GEN-010):
-  - `tellytxt-core` (`no_std`, no allocation);
-  - `tellytxt-formats`;
-  - `tellytxt-slicer`;
-  - `tellytxt-web` (sans-IO);
-  - `tellytxt-image`;
-  - `tellytxt-cli` (the `ttx` binary);
-  - `tellytxt-ffi` (Phase 2);
+  - `neoteletext-core` (`no_std`, no allocation);
+  - `neoteletext-formats`;
+  - `neoteletext-slicer`;
+  - `neoteletext-web` (sans-IO);
+  - `neoteletext-image`;
+  - `neoteletext-cli` (the `ttx` binary);
+  - `neoteletext-ffi` (Phase 2);
   - `xtask`.
 - **Rules for the `no_std` code** (REQ-GEN-006 and REQ-GEN-016):
   - `#![forbid(unsafe_code)]`;
@@ -96,7 +96,7 @@ No code exists yet. The project is at the requirements stage.
 
 The implementation follows REQUIREMENTS.md Part F:
 
-- **Core library** (`tellytxt-core`). It is `no_std`, with no allocation, no input or output, and no clock (REQ-GEN-002). It contains:
+- **Core library** (`neoteletext-core`). It is `no_std`, with no allocation, no input or output, and no clock (REQ-GEN-002). It contains:
   - the error-protection codes;
   - packet decoding;
   - acquisition and the page store;

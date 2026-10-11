@@ -69,7 +69,7 @@ fn module_of(src: &Path, file: &Path) -> Option<String> {
 
 /// REQ-ARCH-011: each core module may use only the modules listed for it.
 pub fn layers(root: &Path) -> Result<(), String> {
-    let src = root.join("crates/tellytxt-core/src");
+    let src = root.join("crates/neoteletext-core/src");
     let mut files = Vec::new();
     rust_files(&src, &mut files);
     let mut violations = Vec::new();
@@ -115,11 +115,11 @@ fn uses(source: &str) -> BTreeSet<String> {
 /// The permitted dependencies of each library crate (REQ-GEN-017,
 /// decision E.38). `std`-only crates are not listed.
 const PERMITTED: &[(&str, &[&str])] = &[
-    ("tellytxt-core", &[]),
-    ("tellytxt-formats", &["tellytxt-core"]),
-    ("tellytxt-slicer", &["tellytxt-core"]),
-    ("tellytxt-web", &["tellytxt-core", "embedded-io"]),
-    ("tellytxt-image", &["tellytxt-core"]),
+    ("neoteletext-core", &[]),
+    ("neoteletext-formats", &["neoteletext-core"]),
+    ("neoteletext-slicer", &["neoteletext-core"]),
+    ("neoteletext-web", &["neoteletext-core", "embedded-io"]),
+    ("neoteletext-image", &["neoteletext-core"]),
 ];
 
 /// REQ-GEN-017: compares each microcontroller crate's resolved normal
@@ -173,17 +173,27 @@ pub fn dependencies(root: &Path) -> Result<(), String> {
 }
 
 /// The prefix of every crate of the workspace.
-const WORKSPACE_PREFIX: &str = "tellytxt-";
+const WORKSPACE_PREFIX: &str = "neoteletext-";
 
 /// The application crates of layer L9: `std`, free to use outside crates,
-/// and with `tellytxt-ffi` the only crates that may touch the operating
+/// and with `neoteletext-ffi` the only crates that may touch the operating
 /// system (REQ-SEC-016). Each may use only the workspace crates listed for
 /// it, which keeps the shared application layer below the programs.
 const APPLICATION_CRATES: &[(&str, &[&str])] = &[
-    ("tellytxt-app", &["tellytxt-core", "tellytxt-formats", "tellytxt-slicer", "tellytxt-web", "tellytxt-image"]),
     (
-        "tellytxt-cli",
-        &["tellytxt-app", "tellytxt-core", "tellytxt-formats", "tellytxt-slicer", "tellytxt-web", "tellytxt-image"],
+        "neoteletext-app",
+        &["neoteletext-core", "neoteletext-formats", "neoteletext-slicer", "neoteletext-web", "neoteletext-image"],
+    ),
+    (
+        "neoteletext-cli",
+        &[
+            "neoteletext-app",
+            "neoteletext-core",
+            "neoteletext-formats",
+            "neoteletext-slicer",
+            "neoteletext-web",
+            "neoteletext-image",
+        ],
     ),
 ];
 
@@ -234,7 +244,7 @@ fn contains_literal(code: &str, literal: &str) -> bool {
 
 /// Library crates that must not touch the operating system (REQ-SEC-016).
 const LIBRARY_CRATES: &[&str] =
-    &["tellytxt-core", "tellytxt-formats", "tellytxt-slicer", "tellytxt-web", "tellytxt-image"];
+    &["neoteletext-core", "neoteletext-formats", "neoteletext-slicer", "neoteletext-web", "neoteletext-image"];
 const FORBIDDEN: &[&str] =
     &["std::fs", "std::net", "std::process", "std::env", "std::thread", "SystemTime", "Instant::now", "std::time"];
 

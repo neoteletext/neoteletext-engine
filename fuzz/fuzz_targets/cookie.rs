@@ -3,7 +3,7 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use tellytxt_web::cookie::{CookieJar, parse_cookie_date};
+use neoteletext_web::cookie::{CookieJar, parse_cookie_date};
 
 /// A small jar, so that limits and eviction are reached.
 type Jar = CookieJar<4, 512>;

@@ -1,7 +1,7 @@
 <!--
 Original TTI Form System specification, version 2.0, written for the jellytext project
 (~/devel/jellytext/tti_form_system_spec.md, last modified 17 August 2025).
-Copied unchanged into tellytxt.com on 1 October 2026 as a historical record.
+Copied unchanged into neoteletext on 1 October 2026 as a historical record.
 It is superseded by the corrected version 3 in REQUIREMENTS.md Appendix C (decision E.31).
 -->
 

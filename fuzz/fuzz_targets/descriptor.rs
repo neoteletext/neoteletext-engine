@@ -2,9 +2,9 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use tellytxt_core::types::PageAddress;
-use tellytxt_web::descriptor::Descriptor;
-use tellytxt_web::url::Url;
+use neoteletext_core::types::PageAddress;
+use neoteletext_web::descriptor::Descriptor;
+use neoteletext_web::url::Url;
 
 fuzz_target!(|data: &[u8]| {
     let Ok(base) = Url::parse("https://example.org/teletext/service.json") else { return };

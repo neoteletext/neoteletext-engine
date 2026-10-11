@@ -1,4 +1,4 @@
-//! Fetches the real-broadcast corpus into `$TELLYTXT_CORPUS` and pins each
+//! Fetches the real-broadcast corpus into `$NEOTELETEXT_CORPUS` and pins each
 //! file's checksum (REQ-TST-022, REQ-SEC-022). Downloads use `curl` with
 //! ranged requests; files already present with the pinned checksum are
 //! kept. Missing sources are reported, not fatal.
@@ -12,9 +12,9 @@ const MANIFEST: &str = "tests/corpus-manifest.txt";
 const UNPINNED: &str = "unpinned";
 
 fn corpus_dir() -> Result<PathBuf, String> {
-    std::env::var_os("TELLYTXT_CORPUS")
+    std::env::var_os("NEOTELETEXT_CORPUS")
         .map(PathBuf::from)
-        .ok_or_else(|| "set TELLYTXT_CORPUS to a directory".to_string())
+        .ok_or_else(|| "set NEOTELETEXT_CORPUS to a directory".to_string())
 }
 
 fn sha256(path: &Path) -> Result<String, String> {

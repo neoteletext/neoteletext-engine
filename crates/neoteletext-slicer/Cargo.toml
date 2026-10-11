@@ -1,0 +1,18 @@
+[package]
+name = "neoteletext-slicer"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+neoteletext-core.workspace = true
+
+[features]
+# REQ-GEN-011 and REQ-GEN-016: `core::error::Error` for the error types,
+# which needs `core::fmt`.
+error-trait = []
+
+[lints]
+workspace = true

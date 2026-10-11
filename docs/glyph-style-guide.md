@@ -59,7 +59,7 @@ These must never look alike:
 - B and 8.
 - Z and 2.
 - G and 6.
-- The pairs listed in `crates/tellytxt-core/src/glyphs/confusables.txt`.
+- The pairs listed in `crates/neoteletext-core/src/glyphs/confusables.txt`.
 
 Within one character set, no two different characters may share a glyph.
 
@@ -74,7 +74,7 @@ Within one character set, no two different characters may share a glyph.
 
 ## The file
 
-The glyphs are in `crates/tellytxt-core/src/glyphs/original.txt`.
+The glyphs are in `crates/neoteletext-core/src/glyphs/original.txt`.
 
 **A drawn entry** is a header line, then nine rows of five characters: `#` for ink and `.` for none.
 

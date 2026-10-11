@@ -154,7 +154,7 @@ fn link(image_dir: &Path, target: &str, features: &str) -> Result<Image, String>
     if !status.success() {
         return Err(format!("the test image does not build for {target} with features [{features}]"));
     }
-    let path = image_dir.join("target").join(target).join("release/tellytxt-test-image");
+    let path = image_dir.join("target").join(target).join("release/neoteletext-test-image");
     let bytes = fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
     read_elf(&bytes).ok_or_else(|| format!("{}: not a little-endian ELF image", path.display()))
 }
@@ -272,8 +272,8 @@ mod tests {
             "__sync_val_compare_and_swap_4",
             "_RNvNtCs1_4core9panicking5panic",
             "_RNvNtNtCs1_4core5slice5index16slice_index_fail",
-            "_RNvMs3_NtCs3_12tellytxt_web5agent13fail_exchange",
-            "_RNvCs1_19tellytxt_test_image5panic",
+            "_RNvMs3_NtCs3_12neoteletext_web5agent13fail_exchange",
+            "_RNvCs1_19neoteletext_test_image5panic",
             "rust_begin_unwind",
         ]
         .iter()

@@ -52,7 +52,7 @@ def main():
     results = {}
     try:
         pump(4)
-        results["online index"] = "TELLYTXT TEST SERVICE" in screen()
+        results["online index"] = "NEOTELETEXT TEST SERVICE" in screen()
         server.terminate()
         server.wait()
         output.clear()
@@ -61,7 +61,7 @@ def main():
         results["unstored page offline"] = "Page not available offline" in screen()
         output.clear()
         send(b"100", 2)
-        results["stored page offline"] = "TELLYTXT TEST SERVICE" in screen()
+        results["stored page offline"] = "NEOTELETEXT TEST SERVICE" in screen()
         server, port = start_server(script, port)
         output.clear()
         send(b"300", 4)

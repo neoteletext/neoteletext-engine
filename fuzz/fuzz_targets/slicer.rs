@@ -3,7 +3,7 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use tellytxt_slicer::{Config, Preset, RawGeometry, RawReader};
+use neoteletext_slicer::{Config, Preset, RawGeometry, RawReader};
 
 const PRESETS: [Preset; 5] = [Preset::Bt8x8, Preset::Cx88, Preset::Saa7131, Preset::Tbc, Preset::TbcVbi];
 

@@ -548,7 +548,7 @@ Details are in `notes-formats.md` sections 5.1-5.2; the points that matter here:
   - These codes are at or above 0x20, so neither the 0x80 control-code translation nor the ESC form of [MRG] §3 applies.
   - A DRCS page TTI is therefore 24 lines of 40 printable characters, plus `OL,28,C…` for X/28/3.
   - SPACE padding (0x20) for unused PTUs is legal on air (p.95), and appears as spaces.
-- **Not specified anywhere public** [U]: how the MRG/wxTED tools themselves stored enhancement packets. Only the vbit2 and zxnet conventions are documented. The project's `crates/tellytxt-formats/src/tti.rs` already decodes packed OL,26/27/28/29 lines this way (`packed_triplets`).
+- **Not specified anywhere public** [U]: how the MRG/wxTED tools themselves stored enhancement packets. Only the vbit2 and zxnet conventions are documented. The project's `crates/neoteletext-formats/src/tti.rs` already decodes packed OL,26/27/28/29 lines this way (`packed_triplets`).
 
 ---------------------------------------------------------------------------------------------------
 
@@ -576,7 +576,7 @@ Details are in `notes-formats.md` sections 5.1-5.2; the points that matter here:
 ### 13.2 Observed behaviour [E]
 Method:
 - A Python generator in the session scratchpad built a T42 stream: DRCS page 1A0 with X/28/3, a MOT 1FE, and display page 100 with X/27/4, X/28/0 and X/26. Hamming 8/4 was checked against the standard table (0x15, 0x02, … 0xEA). Hamming 24/18 passed all six parity tests of cl. 8.3.
-- A C probe in `~/tellytxt-probe` on `oldvga`, outside the repository, fed each record to `vbi_decode` three times, then fetched page 100 at `VBI_WST_LEVEL_3p5` after `vbi_teletext_set_level(…, 3)`.
+- A C probe in `~/neoteletext-probe` on `oldvga`, outside the repository, fed each record to `vbi_decode` three times, then fetched page 100 at `VBI_WST_LEVEL_3p5` after `vbi_teletext_set_level(…, 3)`.
 
 Results:
 - **G3:** mode 01011 code 0x20 gave `unicode` U+EF20, and code 0x5B gave U+EF5B. zvbi stores G3 as `0xEF00 + code`, inside `vbi_is_gfx`.
@@ -611,7 +611,7 @@ Results:
   - G0/G2/diacritic composition;
   - font-style flag propagation;
   - attribute and size fields.
-- Not usable yet for DRCS: the synthetic stream never got zvbi to load a DRCS page. A real broadcast capture with Level 2.5/3.5 DRCS, from the `$TELLYTXT_CORPUS` captures, should be tried before relying on it.
+- Not usable yet for DRCS: the synthetic stream never got zvbi to load a DRCS page. A real broadcast capture with Level 2.5/3.5 DRCS, from the `$NEOTELETEXT_CORPUS` captures, should be tried before relying on it.
 - zvbi is GPL, so it may only be run as an external program at test time, never linked into the product (CLAUDE.md).
 
 ---------------------------------------------------------------------------------------------------

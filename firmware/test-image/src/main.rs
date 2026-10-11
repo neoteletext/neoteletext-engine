@@ -14,13 +14,13 @@
 #![allow(linker_messages)]
 
 use core::hint::black_box;
-use tellytxt_core::acq::{Decoder, StoredPage};
-use tellytxt_core::compose::compose_level;
-use tellytxt_core::config::Config;
-use tellytxt_core::level1::{DisplayOptions, Grid, build_grid};
-use tellytxt_core::packet::{Packet, PacketMeta, ServicePacket};
-use tellytxt_core::service;
-use tellytxt_core::types::{Instant, PageAddress, SubCode};
+use neoteletext_core::acq::{Decoder, StoredPage};
+use neoteletext_core::compose::compose_level;
+use neoteletext_core::config::Config;
+use neoteletext_core::level1::{DisplayOptions, Grid, build_grid};
+use neoteletext_core::packet::{Packet, PacketMeta, ServicePacket};
+use neoteletext_core::service;
+use neoteletext_core::types::{Instant, PageAddress, SubCode};
 
 /// The image's own panic handler: the only one REQ-GEN-019 allows.
 #[panic_handler]
@@ -71,7 +71,7 @@ static SERVICE: fn(&ServicePacket) = service_data;
 #[cfg(feature = "level25")]
 mod level25 {
     use super::{Config, Decoder, Instant, Packet, PacketMeta, StoredPage, black_box};
-    use tellytxt_core::acq::{EnhancementPacket, EnhancementReport, EnhancementStore, EnhancementSubPage};
+    use neoteletext_core::acq::{EnhancementPacket, EnhancementReport, EnhancementStore, EnhancementSubPage};
 
     fn receive(
         pages: &mut [StoredPage],
@@ -106,8 +106,8 @@ mod level25 {
 #[cfg(feature = "render")]
 mod render {
     use super::{Grid, black_box};
-    use tellytxt_core::glyphs::GlyphSet;
-    use tellytxt_core::render::{Field, IndexBuffer, RenderOptions, render_row};
+    use neoteletext_core::glyphs::GlyphSet;
+    use neoteletext_core::render::{Field, IndexBuffer, RenderOptions, render_row};
 
     fn render(grid: &Grid, row: usize, glyphs: &GlyphSet, options: RenderOptions, buffer: &mut IndexBuffer<'_>) {
         let _ = black_box(render_row(grid, row, Field::Both, glyphs, options, buffer));
@@ -121,7 +121,7 @@ mod render {
 #[cfg(feature = "original")]
 mod original {
     use super::black_box;
-    use tellytxt_core::glyphs::GlyphSet;
+    use neoteletext_core::glyphs::GlyphSet;
 
     fn glyphs() {
         black_box(GlyphSet::original());
@@ -135,7 +135,7 @@ mod original {
 #[cfg(feature = "bedstead")]
 mod bedstead {
     use super::black_box;
-    use tellytxt_core::glyphs::GlyphSet;
+    use neoteletext_core::glyphs::GlyphSet;
 
     fn glyphs() {
         black_box(GlyphSet::bedstead());
@@ -149,7 +149,7 @@ mod bedstead {
 #[cfg(feature = "viewer")]
 mod viewer {
     use super::{Grid, StoredPage, black_box};
-    use tellytxt_core::viewer::{ComposeContext, Key, KeyContext, Viewer, ViewerEvent};
+    use neoteletext_core::viewer::{ComposeContext, Key, KeyContext, Viewer, ViewerEvent};
 
     fn view(
         viewer: &mut Viewer,
@@ -182,8 +182,8 @@ mod viewer {
 #[cfg(feature = "forms")]
 mod forms {
     use super::{Grid, Instant, black_box};
-    use tellytxt_core::charset::G0;
-    use tellytxt_core::forms::{FormKey, FormModel, FormSpec};
+    use neoteletext_core::charset::G0;
+    use neoteletext_core::forms::{FormKey, FormModel, FormSpec};
 
     fn form(spec: FormSpec, g0: G0, key: FormKey, now: Instant, grid: &mut Grid) {
         if let Ok(mut model) = FormModel::new(spec, g0) {
@@ -204,8 +204,8 @@ mod forms {
 #[cfg(feature = "formats")]
 mod formats {
     use super::black_box;
-    use tellytxt_formats::detect::{AutoConfig, AutoReader};
-    use tellytxt_formats::item::Reader;
+    use neoteletext_formats::detect::{AutoConfig, AutoReader};
+    use neoteletext_formats::item::Reader;
 
     fn read(config: AutoConfig, bytes: &[u8]) {
         let mut reader = AutoReader::new(config);
@@ -225,8 +225,8 @@ mod formats {
 #[cfg(feature = "web")]
 mod web {
     use super::{Instant, black_box};
-    use tellytxt_web::agent::{Input, UserAgent};
-    use tellytxt_web::port::RandomSource;
+    use neoteletext_web::agent::{Input, UserAgent};
+    use neoteletext_web::port::RandomSource;
 
     /// A stand-in for the port's random source.
     pub struct Random;

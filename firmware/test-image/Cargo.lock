@@ -9,29 +9,29 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9eb1aa714776b75c7e67e1da744b81a129b3ff919c8712b5e1b32252c1f07cc7"
 
 [[package]]
-name = "tellytxt-core"
+name = "neoteletext-core"
 version = "0.1.0"
 
 [[package]]
-name = "tellytxt-formats"
+name = "neoteletext-formats"
 version = "0.1.0"
 dependencies = [
- "tellytxt-core",
+ "neoteletext-core",
 ]
 
 [[package]]
-name = "tellytxt-test-image"
+name = "neoteletext-test-image"
 version = "0.0.0"
 dependencies = [
- "tellytxt-core",
- "tellytxt-formats",
- "tellytxt-web",
+ "neoteletext-core",
+ "neoteletext-formats",
+ "neoteletext-web",
 ]
 
 [[package]]
-name = "tellytxt-web"
+name = "neoteletext-web"
 version = "0.1.0"
 dependencies = [
  "embedded-io",
- "tellytxt-core",
+ "neoteletext-core",
 ]

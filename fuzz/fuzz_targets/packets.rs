@@ -4,16 +4,16 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use tellytxt_core::acq::{Decoder, StoredPage};
-use tellytxt_core::config::{CellMode, Config, PresentationLevel};
-use tellytxt_core::consts::{PACKET_BYTES, PAGE_WIDTH, ROWS};
-use tellytxt_core::fsm::PageState;
-use tellytxt_core::glyphs::GlyphSet;
-use tellytxt_core::level1::{DisplayOptions, Grid, build_grid};
-use tellytxt_core::level15;
-use tellytxt_core::packet::{Packet, PacketMeta};
-use tellytxt_core::render::{ALL_ROWS, IndexBuffer, IndexFormat, RenderOptions, render_screen};
-use tellytxt_core::types::Instant;
+use neoteletext_core::acq::{Decoder, StoredPage};
+use neoteletext_core::config::{CellMode, Config, PresentationLevel};
+use neoteletext_core::consts::{PACKET_BYTES, PAGE_WIDTH, ROWS};
+use neoteletext_core::fsm::PageState;
+use neoteletext_core::glyphs::GlyphSet;
+use neoteletext_core::level1::{DisplayOptions, Grid, build_grid};
+use neoteletext_core::level15;
+use neoteletext_core::packet::{Packet, PacketMeta};
+use neoteletext_core::render::{ALL_ROWS, IndexBuffer, IndexFormat, RenderOptions, render_screen};
+use neoteletext_core::types::Instant;
 
 /// A small store, so that pages are evicted and replaced.
 const SLOTS: usize = 8;

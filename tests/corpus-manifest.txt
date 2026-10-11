@@ -1,5 +1,5 @@
 # Real-broadcast test corpus (REQ-TST-022). Downloaded at test time into
-# $TELLYTXT_CORPUS by `cargo xtask corpus`; never committed. Each line:
+# $NEOTELETEXT_CORPUS by `cargo xtask corpus`; never committed. Each line:
 #   name  bytes  sha256  url
 # `bytes` is the length of the prefix fetched with a ranged request (0 for
 # the whole file). `sha256` is pinned on first download; "unpinned" means

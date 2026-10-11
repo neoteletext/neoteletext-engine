@@ -1,16 +1,16 @@
 [workspace]
 resolver = "3"
 members = [
-    "crates/tellytxt-core",
-    "crates/tellytxt-formats",
-    "crates/tellytxt-slicer",
-    "crates/tellytxt-web",
-    "crates/tellytxt-image",
-    "crates/tellytxt-app",
-    "crates/tellytxt-cli",
+    "crates/neoteletext-core",
+    "crates/neoteletext-formats",
+    "crates/neoteletext-slicer",
+    "crates/neoteletext-web",
+    "crates/neoteletext-image",
+    "crates/neoteletext-app",
+    "crates/neoteletext-cli",
     "xtask",
 ]
-default-members = ["crates/tellytxt-cli"]
+default-members = ["crates/neoteletext-cli"]
 
 [workspace.package]
 version = "0.1.0"
@@ -24,12 +24,12 @@ publish = false
 # Decision E.61: crates name the features of the core, the formats and
 # the web module that they use, so that feature unification never brings
 # an area into a build that did not ask for it.
-tellytxt-core = { path = "crates/tellytxt-core", default-features = false }
-tellytxt-formats = { path = "crates/tellytxt-formats", default-features = false }
-tellytxt-slicer = { path = "crates/tellytxt-slicer" }
-tellytxt-web = { path = "crates/tellytxt-web", default-features = false }
-tellytxt-image = { path = "crates/tellytxt-image" }
-tellytxt-app = { path = "crates/tellytxt-app", default-features = false }
+neoteletext-core = { path = "crates/neoteletext-core", default-features = false }
+neoteletext-formats = { path = "crates/neoteletext-formats", default-features = false }
+neoteletext-slicer = { path = "crates/neoteletext-slicer" }
+neoteletext-web = { path = "crates/neoteletext-web", default-features = false }
+neoteletext-image = { path = "crates/neoteletext-image" }
+neoteletext-app = { path = "crates/neoteletext-app", default-features = false }
 # Decision E.38: the only external crate a microcontroller crate may use.
 embedded-io = { version = "0.7.1", default-features = false }
 

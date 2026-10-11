@@ -3,12 +3,12 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use tellytxt_formats::Item;
-use tellytxt_formats::detect::{AutoConfig, AutoReader, Format};
-use tellytxt_formats::item::Reader;
-use tellytxt_formats::sliced::ByteOrder;
-use tellytxt_formats::t42::T42Variant;
-use tellytxt_formats::transport::TsPacketSize;
+use neoteletext_formats::Item;
+use neoteletext_formats::detect::{AutoConfig, AutoReader, Format};
+use neoteletext_formats::item::Reader;
+use neoteletext_formats::sliced::ByteOrder;
+use neoteletext_formats::t42::T42Variant;
+use neoteletext_formats::transport::TsPacketSize;
 
 /// Detection, then each explicit format the readers support.
 const FORMATS: [Option<Format>; 15] = [

@@ -38,7 +38,7 @@ Recorded, not blocking.
 
 | # | Gap | Context |
 |---|---|---|
-| 16 | The full `ttx` grew by 16 KB of code when its application layer moved into `tellytxt-app`; the cause was not found. | Row 50 |
+| 16 | The full `ttx` grew by 16 KB of code when its application layer moved into `neoteletext-app`; the cause was not found. | Row 50 |
 | 17 | The fetcher is a second run of `ttx`, not a separate program, so a full build's decoder process still contains TLS code (its sandbox keeps it off the network). | E.61 |
 | 18 | The web agent's buffers (`agent::Storage`) do not shrink with its features. | Row 50 |
 | 19 | The Cortex-M0 test image is linked and measured but never run; core tests under QEMU system emulation remain to do. | REQ-GEN-019; round status |

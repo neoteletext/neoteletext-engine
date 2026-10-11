@@ -2,10 +2,10 @@
 # Every local gate (decision 4 of IMPLEMENTATION-LOG.md).
 #   scripts/check.sh fast   formatting, lints, tests, architecture checks
 #   scripts/check.sh full   fast, plus the amd64 target builds, release
-#                           tests and, if TELLYTXT_REMOTE names a Linux
+#                           tests and, if NEOTELETEXT_REMOTE names a Linux
 #                           host, the x86_64 Linux tests, the build for
 #                           every target (scripts/build-targets.sh) and the
-#                           fuzzing targets run there (TELLYTXT_FUZZ_SECONDS
+#                           fuzzing targets run there (NEOTELETEXT_FUZZ_SECONDS
 #                           each)
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -34,7 +34,7 @@ cargo xtask glyph-check --complete
 if [ "$mode" = "full" ]; then
     step "no_std crates on the amd64 bare-metal target (REQ-GEN-002)"
     cargo build --quiet --target x86_64-unknown-none \
-        -p tellytxt-core -p tellytxt-formats -p tellytxt-slicer -p tellytxt-web -p tellytxt-image
+        -p neoteletext-core -p neoteletext-formats -p neoteletext-slicer -p neoteletext-web -p neoteletext-image
 
     step "each crate with no optional area and with each area alone (decision E.61)"
     cargo xtask features
@@ -57,39 +57,39 @@ if [ "$mode" = "full" ]; then
         deny_done=yes
     fi
 
-    if [ -n "${TELLYTXT_REMOTE:-}" ]; then
-        step "x86_64 Linux tests on $TELLYTXT_REMOTE"
+    if [ -n "${NEOTELETEXT_REMOTE:-}" ]; then
+        step "x86_64 Linux tests on $NEOTELETEXT_REMOTE"
         rsync -a --delete --exclude target --exclude .git --exclude tmp --exclude tletxt.com \
-            --exclude fuzz/corpus --exclude fuzz/artifacts ./ "$TELLYTXT_REMOTE:tellytxt-check/"
-        ssh "$TELLYTXT_REMOTE" 'cd tellytxt-check && . ~/.cargo/env && cargo test --workspace --all-features --quiet'
+            --exclude fuzz/corpus --exclude fuzz/artifacts ./ "$NEOTELETEXT_REMOTE:neoteletext-check/"
+        ssh "$NEOTELETEXT_REMOTE" 'cd neoteletext-check && . ~/.cargo/env && cargo test --workspace --all-features --quiet'
 
-        step "every target of REQ-GEN-015 on $TELLYTXT_REMOTE"
-        ssh "$TELLYTXT_REMOTE" 'cd tellytxt-check && scripts/build-targets.sh'
+        step "every target of REQ-GEN-015 on $NEOTELETEXT_REMOTE"
+        ssh "$NEOTELETEXT_REMOTE" 'cd neoteletext-check && scripts/build-targets.sh'
 
-        step "linked Cortex-M0 test image on $TELLYTXT_REMOTE: size and symbols (REQ-GEN-009, REQ-GEN-019)"
-        ssh "$TELLYTXT_REMOTE" 'cd tellytxt-check && . ~/.cargo/env && cargo xtask size'
+        step "linked Cortex-M0 test image on $NEOTELETEXT_REMOTE: size and symbols (REQ-GEN-009, REQ-GEN-019)"
+        ssh "$NEOTELETEXT_REMOTE" 'cd neoteletext-check && . ~/.cargo/env && cargo xtask size'
 
-        if [ "$deny_done" = no ] && ssh "$TELLYTXT_REMOTE" '. ~/.cargo/env && command -v cargo-deny >/dev/null'; then
-            step "cargo-deny on $TELLYTXT_REMOTE: licences and advisories (REQ-GEN-017, REQ-SEC-014)"
-            ssh "$TELLYTXT_REMOTE" 'cd tellytxt-check && . ~/.cargo/env && cargo deny check 2>&1 | tail -1; exit ${PIPESTATUS[0]}'
+        if [ "$deny_done" = no ] && ssh "$NEOTELETEXT_REMOTE" '. ~/.cargo/env && command -v cargo-deny >/dev/null'; then
+            step "cargo-deny on $NEOTELETEXT_REMOTE: licences and advisories (REQ-GEN-017, REQ-SEC-014)"
+            ssh "$NEOTELETEXT_REMOTE" 'cd neoteletext-check && . ~/.cargo/env && cargo deny check 2>&1 | tail -1; exit ${PIPESTATUS[0]}'
             deny_done=yes
         fi
 
-        if ssh "$TELLYTXT_REMOTE" '. ~/.cargo/env && command -v cargo-llvm-cov >/dev/null'; then
-            step "core line coverage on $TELLYTXT_REMOTE, at least 90% (REQ-TST-041)"
-            ssh "$TELLYTXT_REMOTE" 'cd tellytxt-check && . ~/.cargo/env && \
-                cargo llvm-cov -p tellytxt-core --summary-only --fail-under-lines 90 2>&1 | grep -E "^TOTAL"; \
+        if ssh "$NEOTELETEXT_REMOTE" '. ~/.cargo/env && command -v cargo-llvm-cov >/dev/null'; then
+            step "core line coverage on $NEOTELETEXT_REMOTE, at least 90% (REQ-TST-041)"
+            ssh "$NEOTELETEXT_REMOTE" 'cd neoteletext-check && . ~/.cargo/env && \
+                cargo llvm-cov -p neoteletext-core --summary-only --fail-under-lines 90 2>&1 | grep -E "^TOTAL"; \
                 exit ${PIPESTATUS[0]}'
         else
-            step "cargo-llvm-cov not installed on $TELLYTXT_REMOTE: coverage SKIPPED"
+            step "cargo-llvm-cov not installed on $NEOTELETEXT_REMOTE: coverage SKIPPED"
         fi
 
         # REQ-TST-040: every target for a fixed time on each change, after
         # replaying every input that has ever found a fault.
-        seconds="${TELLYTXT_FUZZ_SECONDS:-20}"
-        if ssh "$TELLYTXT_REMOTE" '. ~/.cargo/env && command -v cargo-fuzz >/dev/null'; then
-            step "fuzzing on $TELLYTXT_REMOTE, $seconds seconds per target (REQ-TST-040)"
-            ssh "$TELLYTXT_REMOTE" "cd tellytxt-check/fuzz && . ~/.cargo/env && \
+        seconds="${NEOTELETEXT_FUZZ_SECONDS:-20}"
+        if ssh "$NEOTELETEXT_REMOTE" '. ~/.cargo/env && command -v cargo-fuzz >/dev/null'; then
+            step "fuzzing on $NEOTELETEXT_REMOTE, $seconds seconds per target (REQ-TST-040)"
+            ssh "$NEOTELETEXT_REMOTE" "cd neoteletext-check/fuzz && . ~/.cargo/env && \
                 cargo +nightly clippy --quiet -- -D warnings && \
                 for target in \$(cargo +nightly fuzz list); do \
                     mkdir -p corpus/\$target regressions/\$target && \
@@ -99,7 +99,7 @@ if [ "$mode" = "full" ]; then
                     echo \"\$target: \$(tail -1 fuzz.log)\"; \
                 done"
         else
-            step "cargo-fuzz not installed on $TELLYTXT_REMOTE: fuzzing SKIPPED"
+            step "cargo-fuzz not installed on $NEOTELETEXT_REMOTE: fuzzing SKIPPED"
         fi
     fi
 fi

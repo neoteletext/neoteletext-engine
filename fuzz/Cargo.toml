@@ -2,7 +2,7 @@
 # libFuzzer needs a nightly compiler, and the library crates must build on
 # stable without it.
 [package]
-name = "tellytxt-fuzz"
+name = "neoteletext-fuzz"
 version = "0.0.0"
 edition = "2024"
 publish = false
@@ -12,12 +12,12 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "=0.4.10"
-tellytxt-core = { path = "../crates/tellytxt-core" }
+neoteletext-core = { path = "../crates/neoteletext-core" }
 # Every format, and `std` for the TTI writer, which the enhancement-line
 # target writes back.
-tellytxt-formats = { path = "../crates/tellytxt-formats", features = ["default", "std"] }
-tellytxt-slicer = { path = "../crates/tellytxt-slicer" }
-tellytxt-web = { path = "../crates/tellytxt-web", features = ["default"] }
+neoteletext-formats = { path = "../crates/neoteletext-formats", features = ["default", "std"] }
+neoteletext-slicer = { path = "../crates/neoteletext-slicer" }
+neoteletext-web = { path = "../crates/neoteletext-web", features = ["default"] }
 
 [workspace]
 members = ["."]

@@ -38,7 +38,7 @@ PAGES = {
         "DE,Test service index",
         "PN,10000",
         "PS,8000",
-        "OL,1," + esc(YELLOW) + esc(DOUBLE_HEIGHT) + "TELLYTXT TEST SERVICE",
+        "OL,1," + esc(YELLOW) + esc(DOUBLE_HEIGHT) + "NEOTELETEXT TEST SERVICE",
         "OL,4," + esc(WHITE) + "Weather ......................... 200",
         "OL,5," + esc(WHITE) + "Contact form .................... 300",
         "OL,7," + esc(CYAN) + "Served over plain HTTP from a",

@@ -42,7 +42,7 @@ def main():
 
     results = {}
     pump(4)
-    results["index"] = "TELLYTXT TEST SERVICE" in screen()
+    results["index"] = "NEOTELETEXT TEST SERVICE" in screen()
     results["link row"] = "Weather" in screen() and "Contact" in screen()
     output.clear()
     send(b"300", 3)

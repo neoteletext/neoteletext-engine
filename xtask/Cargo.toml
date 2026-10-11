@@ -8,11 +8,11 @@ publish.workspace = true
 
 [dependencies]
 # The glyph inventory reads the character set tables (decision E.62).
-tellytxt-core = { workspace = true, features = ["render"] }
+neoteletext-core = { workspace = true, features = ["render"] }
 # The glyph proof sheets are PNG images.
-tellytxt-image = { workspace = true, features = ["std"] }
+neoteletext-image = { workspace = true, features = ["std"] }
 # The authored test stream of REQ-TST-024 is built by the formats crate.
-tellytxt-formats = { workspace = true, features = ["std", "tti"] }
+neoteletext-formats = { workspace = true, features = ["std", "tti"] }
 
 [lints]
 workspace = true

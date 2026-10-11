@@ -1,6 +1,6 @@
-# tellytxt.com — Architecture
+# neoteletext — Architecture
 
-This document describes how the code of tellytxt.com is divided into layers, what each layer owns, how data flows between them, and the rules that keep them apart.
+This document describes how the code of neoteletext is divided into layers, what each layer owns, how data flows between them, and the rules that keep them apart.
 
 - `REQUIREMENTS.md` is the authority. This document explains how the requirements are organised in code.
 - The layer rules here are made mandatory by REQ-ARCH-011.
@@ -66,7 +66,7 @@ The Web user agent (L7) sits beside the lower layers rather than above them in t
 
 ## 3. What each layer owns
 
-### Foundation — `tellytxt-core::{consts, ecc, types}`
+### Foundation — `neoteletext-core::{consts, ecc, types}`
 
 - **Owns:**
   - every teletext constant, each defined once (REQ-GEN-014), with both bit orders side by side where two exist;
@@ -79,7 +79,7 @@ The Web user agent (L7) sits beside the lower layers rather than above them in t
 - **Must not know about:** anything above it.
 - **Requirements:** GEN-014, ECC.
 
-### L0 Ingress — `tellytxt-formats`, `tellytxt-slicer`
+### L0 Ingress — `neoteletext-formats`, `neoteletext-slicer`
 
 - **Owns:** turning any byte or sample source into `Packet { bytes: [u8; 42], meta: PacketMeta }`. This covers:
   - T42 and its variants;
@@ -92,7 +92,7 @@ The Web user agent (L7) sits beside the lower layers rather than above them in t
 - **Key types:** `Packet`, `PacketMeta`, `Reader` (streaming, fed bytes in any chunk size), `Encoder`.
 - **Requirements:** INP, SLC, FSM-002.
 
-### L1 Packet decoding — `tellytxt-core::packet`
+### L1 Packet decoding — `neoteletext-core::packet`
 
 - **Owns:** validated, typed fields of a single packet:
   - the magazine and row address;
@@ -106,7 +106,7 @@ The Web user agent (L7) sits beside the lower layers rather than above them in t
 - **Key types:** `Decoded::{Header, Row, Enhancement, Links, LinksRaw, CompositionalLinks, PageData, Magazine, Service, Ignored}`, `TripletFunction`, `ObjectPacket`, `PacketError`.
 - **Requirements:** PKT.
 
-### L2 Acquisition — `tellytxt-core::{acq, fsm, service}`
+### L2 Acquisition — `neoteletext-core::{acq, fsm, service}`
 
 - **Owns:**
   - which packets belong to which page (the magazine state machines);
@@ -121,7 +121,7 @@ The Web user agent (L7) sits beside the lower layers rather than above them in t
 - **Key types:** `Decoder<const PAGES: usize>`, `PageStore`, `StoredPage`, `MagState`, `PageState`, `Event`, `EnhancementStore`, `EnhancementLookup`.
 - **Requirements:** ACQ, SVC, FSM-003, FSM-004.
 
-### L3 Presentation model — `tellytxt-core::{charset, level1, level15, colour, drcs, objects, enhance}`
+### L3 Presentation model — `neoteletext-core::{charset, level1, level15, colour, drcs, objects, enhance}`
 
 - **Owns:** one pure function, from a stored page, the magazine data and the viewer state to a `Grid` of 25 by 40 cells, with a side-panel area of columns 40 to 71 at Levels 2.5 and 3.5. Along the way it performs:
   - character set resolution;
@@ -140,7 +140,7 @@ The Web user agent (L7) sits beside the lower layers rather than above them in t
 - **Key types:** `Grid`, `Cell`, `CharRef`, `RowState`, `ColourMap`, `ColourIndex`, `DrcsPatterns`, `ObjectRef`.
 - **Requirements:** CHR, L1, L15, L25, OBJ, DRC, FSM-006, FSM-007, FSM-011, FSM-012.
 
-### L4 Rendering — `tellytxt-core::{render, glyphs}`
+### L4 Rendering — `neoteletext-core::{render, glyphs}`
 
 - **Owns:**
   - the cell raster: one line of one cell becomes 12 dots plus foreground and background indices;
@@ -156,7 +156,7 @@ The Web user agent (L7) sits beside the lower layers rather than above them in t
 - **Key functions:** `cell_line()`, `render_row()`, `render_line()`, `changed_rows()`, `palette()`, `flash_unit()`.
 - **Requirements:** RND-011 to RND-028, RND-030 to RND-041.
 
-### L5 Output adapters — `tellytxt-image`, text output in `tellytxt-cli`
+### L5 Output adapters — `neoteletext-image`, text output in `neoteletext-cli`
 
 - **Owns:**
   - conversion of palette indices to RGB565, RGB888, RGBA8888, grey and 1-bit, with byte order, stride and rotation;
@@ -166,7 +166,7 @@ The Web user agent (L7) sits beside the lower layers rather than above them in t
 - **Must not know about:** teletext rules.
 - **Requirements:** RND-005 to RND-009, RND-029, SEC-010.
 
-### L6 Interaction — `tellytxt-core::{viewer, nav, forms}`
+### L6 Interaction — `neoteletext-core::{viewer, nav, forms}`
 
 - **Owns:**
   - the viewer state machine;
@@ -180,7 +180,7 @@ The Web user agent (L7) sits beside the lower layers rather than above them in t
 - **Key types:** `Viewer`, `ViewerState`, `History<const N: usize>`, `FormModel`, `Key`, `Action`.
 - **Requirements:** NAV, FSM-005, SEC-005, SEC-009, and the model half of Appendix C.
 
-### L7 Web user agent — `tellytxt-web`
+### L7 Web user agent — `neoteletext-web`
 
 - **Owns:** everything web-specific, as sans-IO state machines:
   - the strict address parser;
@@ -201,7 +201,7 @@ The Web user agent (L7) sits beside the lower layers rather than above them in t
 - **Key types:** `Url`, `Origin`, `UserAgent`, `CookieJar<const N: usize>`, `Input`, `Output::{Send, Timer, PageBytes, Event}`.
 - **Requirements:** WEB, INP-022, SEC-006 to SEC-013.
 
-### L8 Platform interface — traits in `tellytxt-core::port` and `tellytxt-web::port`
+### L8 Platform interface — traits in `neoteletext-core::port` and `neoteletext-web::port`
 
 - **Owns:** the complete porting contract (REQ-ARCH-009), and nothing else:
   - `DataSource`;
@@ -212,7 +212,7 @@ The Web user agent (L7) sits beside the lower layers rather than above them in t
   - `DeviceKey` (Phase 2).
 - **Must not know about:** any implementation.
 
-### L9 Applications and ports — `tellytxt-app`, `tellytxt-cli`, the WebAssembly host, `tellytxt-ffi`, users' ports
+### L9 Applications and ports — `neoteletext-app`, `neoteletext-cli`, the WebAssembly host, `neoteletext-ffi`, users' ports
 
 - **Owns:**
   - real input and output;
@@ -221,13 +221,13 @@ The Web user agent (L7) sits beside the lower layers rather than above them in t
   - the privilege-separated fetcher and decoder processes;
   - the C interface.
 - **This is the only layer allowed to touch the operating system** (REQ-SEC-016).
-- **The split between `tellytxt-app` and `tellytxt-cli`:**
-  - `tellytxt-app` holds what any program needs. That is the session, reading inputs, both processes of live mode, sandboxing, conversion and slicing, and the `Source` trait a viewer reads pages through.
-  - `tellytxt-cli` holds argument parsing, terminal output and the terminal viewer.
-  - A windowed viewer depends on `tellytxt-app` and routes the hidden `fetch` command to `tellytxt_app::fetch::run`, because live mode starts the fetcher as a second run of the same program.
+- **The split between `neoteletext-app` and `neoteletext-cli`:**
+  - `neoteletext-app` holds what any program needs. That is the session, reading inputs, both processes of live mode, sandboxing, conversion and slicing, and the `Source` trait a viewer reads pages through.
+  - `neoteletext-cli` holds argument parsing, terminal output and the terminal viewer.
+  - A windowed viewer depends on `neoteletext-app` and routes the hidden `fetch` command to `neoteletext_app::fetch::run`, because live mode starts the fetcher as a second run of the same program.
 - **Requirements:** CLI, SEC-017 to SEC-019, GEN-018.
 
-### Cross-cutting modules — `tellytxt-core::{policy, config, trace}`
+### Cross-cutting modules — `neoteletext-core::{policy, config, trace}`
 
 | Module | Contents |
 |---|---|
@@ -330,7 +330,7 @@ Field groups shared with the presentation layer are foundation types in `types`:
 - `enhance::apply` rebuilds each shown row from `level1::row_codes` and the walk's events, keeping row 0 columns 0 to 7 from the Level 1 grid. The walk runs once for the page-level colours and once for each row that has events, keeping only that row's events, so that a grid needs one row of event storage (decision E.41, principle 5); the limits of Annex A.8 are checked before an object is looked for, which bounds the work by `enhance::MAX_WALK_STEPS`. `objects` finds links, definitions and bodies; `drcs::decode_character` fills `Grid::drcs`.
 - `level1::resolve_designation` follows the order of Annex C.4 and decision E.50 at each level, and the Level 1.5 pass reads every triplet through `TripletFunction` (REQ-PKT-010).
 - Phase (b): `render` draws DRCS cells from `Grid::drcs` before any glyph lookup (`GlyphSet::glyph` gives an empty glyph for a DRCS reference), and has the resolved colour mode (`ColourMode::Resolved(FlashPhase)`, chosen by `RenderOptions::for_level`), side-panel composition (`row_width`, `source_columns`, `source_cell`), double width and size, underline, invert, the font styles and the flash timing of decision E.48. The G3 glyphs are generated by `cargo xtask glyphs` from geometry into `glyphs/g3.txt` and `glyphs/g3.rs`. The image writers take the 32-entry palette of `colour_map_palette`.
-- Phase (c): `tellytxt-formats` reads and writes enhancement data and enhancement pages in TTI by page coding, sends them in the order of Annexes B.2 and B.7, and has the authoring builder of REQ-INP-025 (`author`, features `std` and `tti`), whose `streams::stream()` is the authored Level 2.5/3.5 stream; `cargo xtask level25-stream` writes it.
+- Phase (c): `neoteletext-formats` reads and writes enhancement data and enhancement pages in TTI by page coding, sends them in the order of Annexes B.2 and B.7, and has the authoring builder of REQ-INP-025 (`author`, features `std` and `tti`), whose `streams::stream()` is the authored Level 2.5/3.5 stream; `cargo xtask level25-stream` writes it.
 - Checks: `tests/golden/authored-level25.txt` pins the rendered stream (REQ-TST-024); `tests/oracles/run_cells.sh` compares it with zvbi cell by cell through `ttx text --cells` (REQ-TST-023), with `zvbi-known-differences.txt` giving the reason for each page that differs; the `enhancement` fuzz target builds grids from fuzzed page sets (REQ-TST-042).
 
 ### 4.3 Interacting
@@ -391,14 +391,14 @@ Each boundary is one narrow type. Nothing reaches past its neighbour.
 
 | Crate | Layers | Environment |
 |---|---|---|
-| `tellytxt-core` | Foundation, L1, L2, L3, L4, L6, L8 (core traits), cross-cutting | `no_std`, no allocation |
-| `tellytxt-formats` | L0: readers, detection, encoder | `no_std` readers; `std` writers |
-| `tellytxt-slicer` | L0: raw samples to packets | `no_std` |
-| `tellytxt-web` | L7 and L8 (web traits) | `no_std`, sans-IO |
-| `tellytxt-image` | L5 | Helpers `no_std`; writers `std` |
-| `tellytxt-app` | L9: the application layer shared by `ttx` and a windowed viewer: sessions, inputs, live mode's two processes, sandboxing | `std` |
-| `tellytxt-cli` | L9 (and text output of L5) | `std` |
-| `tellytxt-ffi` | L9: the C interface (Phase 2) | The only crate with `unsafe` |
+| `neoteletext-core` | Foundation, L1, L2, L3, L4, L6, L8 (core traits), cross-cutting | `no_std`, no allocation |
+| `neoteletext-formats` | L0: readers, detection, encoder | `no_std` readers; `std` writers |
+| `neoteletext-slicer` | L0: raw samples to packets | `no_std` |
+| `neoteletext-web` | L7 and L8 (web traits) | `no_std`, sans-IO |
+| `neoteletext-image` | L5 | Helpers `no_std`; writers `std` |
+| `neoteletext-app` | L9: the application layer shared by `ttx` and a windowed viewer: sessions, inputs, live mode's two processes, sandboxing | `std` |
+| `neoteletext-cli` | L9 (and text output of L5) | `std` |
+| `neoteletext-ffi` | L9: the C interface (Phase 2) | The only crate with `unsafe` |
 | `xtask` | Tooling, not shipped | `std` |
 
 ### Features: a build contains only the parts it uses
@@ -416,23 +416,23 @@ Decision E.61 makes each crate's optional areas Cargo features, all on by defaul
 
 | Crate | Features |
 |---|---|
-| `tellytxt-core` | `level15`, `level25`, `render`, `original`, `bedstead` (not default), `viewer`, `forms` |
-| `tellytxt-formats` | `transport`, `sliced`, `pages`, `tti`, `ep1`, `edittf`, `dump`, `check`, and `std` (not default) |
-| `tellytxt-web` | `push`, `forms`, `cookies` |
-| `tellytxt-app` | `live`, `slice` |
-| `tellytxt-cli` | `view`, `live`, `slice` |
+| `neoteletext-core` | `level15`, `level25`, `render`, `original`, `bedstead` (not default), `viewer`, `forms` |
+| `neoteletext-formats` | `transport`, `sliced`, `pages`, `tti`, `ep1`, `edittf`, `dump`, `check`, and `std` (not default) |
+| `neoteletext-web` | `push`, `forms`, `cookies` |
+| `neoteletext-app` | `live`, `slice` |
+| `neoteletext-cli` | `view`, `live`, `slice` |
 
 **Two checks keep this true:**
 - `cargo xtask features` lints and tests each crate with no optional area and with each area alone.
 - `cargo xtask size` links the microcontroller test image in `firmware/test-image` for a fixed set of builds, measures them against the flash budget of REQ-GEN-009, and fails on floating-point, compare-and-swap or panic routines (REQ-GEN-019).
 
-If `tellytxt-core` grows unwieldy, the natural split is `core` (Foundation to L2) and `present` (L3, L4 and L6), with the stored page as the interface between them. The layer rules do not change.
+If `neoteletext-core` grows unwieldy, the natural split is `core` (Foundation to L2) and `present` (L3, L4 and L6), with the stored page as the interface between them. The layer rules do not change.
 
 ---
 
 ## 8. The rules, and how they are enforced
 
-1. **Downward dependencies only.** Between crates this is enforced by the crate graph. Within `tellytxt-core`, a check in `xtask` reads each module's `use` statements and compares them with the allowed-dependency table in section 9. Continuous integration fails on any violation (REQ-ARCH-011).
+1. **Downward dependencies only.** Between crates this is enforced by the crate graph. Within `neoteletext-core`, a check in `xtask` reads each module's `use` statements and compares them with the allowed-dependency table in section 9. Continuous integration fails on any violation (REQ-ARCH-011).
 2. **One narrow type per boundary** (section 5). Types from two or more layers down shall not appear in a layer's public interface.
 3. **No input or output below L9.** Layers 0 to 7 are sans-IO and pure (REQ-SEC-016), enforced by clippy's `disallowed-methods` and `disallowed-types` lists.
 4. **Security decisions in one place.** Only `policy` decides. Other layers call it, and the check in rule 1 forbids them from reimplementing it by forbidding direct use of the low-level address and origin tests outside `policy` and L7.
@@ -447,7 +447,7 @@ If `tellytxt-core` grows unwieldy, the natural split is `core` (Foundation to L2
 
 ---
 
-## 9. Allowed dependencies inside `tellytxt-core`
+## 9. Allowed dependencies inside `neoteletext-core`
 
 A module may use the modules listed for it, and nothing else. The cross-cutting modules (`policy`, `config`, `trace`) may be used by any module, and may themselves use only Foundation.
 
@@ -470,6 +470,6 @@ A module may use the modules listed for it, and nothing else. The cross-cutting 
 | `viewer`, `nav`, `forms` | L6 | Foundation, `acq`, `level1`, `level15`, `enhance`, `colour`, `render` (change tracking), `service` |
 | `port` | L8 | Foundation |
 
-`tellytxt-formats` and `tellytxt-slicer` may use Foundation and `packet` only. `tellytxt-web` may use Foundation, `policy` and `config` only; it never uses the decoding layers. `tellytxt-image` may use Foundation, the `render` output types and the `colour` Colour Map type only.
+`neoteletext-formats` and `neoteletext-slicer` may use Foundation and `packet` only. `neoteletext-web` may use Foundation, `policy` and `config` only; it never uses the decoding layers. `neoteletext-image` may use Foundation, the `render` output types and the `colour` Colour Map type only.
 
 `level15` remains the Level 1.5 pass, used only at Level 1.5. The modules `colour`, `drcs`, `objects` and `enhance` serve Levels 2.5 and 3.5 (section 4.5). The G3 glyph data generated by `xtask` belongs to `glyphs`, whose dependencies do not change. The `xtask` layer check holds its own copy of this table, which shall be updated in the same change that adds these modules (REQ-ARCH-011).

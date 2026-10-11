@@ -2,7 +2,7 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use tellytxt_web::ws::FrameReader;
+use neoteletext_web::ws::FrameReader;
 
 /// Room for one message; larger messages must be refused, not overflow.
 const MESSAGE_BYTES: usize = 2048;

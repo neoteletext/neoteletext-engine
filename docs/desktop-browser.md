@@ -1,4 +1,4 @@
-# The tellytxt desktop browser: design
+# The neoteletext desktop browser: design
 
 A design for a desktop teletext browser for macOS, Linux and Windows, with tabs, an address bar, back and forward, bookmarks and the rest of what people expect of a browser. It browses the web-native teletext of `docs/web-native-concept.md`, as well as files and live feeds.
 
@@ -176,7 +176,7 @@ Other small-web browsers:
  │ draws: the browser chrome; presents decoder frames                     │
  └────────┬───────────────────────────────────────────┬───────────────────┘
           │ fetch requests / page bytes                │ commands / frames + events
-          │ (framed pipe, crates/tellytxt-app/pipe.rs) │ (framed pipe, new message kinds)
+          │ (framed pipe, crates/neoteletext-app/pipe.rs) │ (framed pipe, new message kinds)
  ┌────────▼─────────────────┐                ┌────────▼──────────────────────────┐
  │ fetcher process          │                │ decoder process, one per site      │
  │ HTTP(S), WebSocket, SSE, │  page bytes →  │ format readers, decoder, store,    │
@@ -210,7 +210,7 @@ The interface process only routes the bytes; it never parses them.
 
 ### 3.4 Messages between processes
 
-The existing framed pipe protocol (`crates/tellytxt-app/src/pipe.rs`: a kind byte, a 32-bit length and a payload, strictly parsed with bounded lengths) gains message kinds for the decoder.
+The existing framed pipe protocol (`crates/neoteletext-app/src/pipe.rs`: a kind byte, a 32-bit length and a payload, strictly parsed with bounded lengths) gains message kinds for the decoder.
 
 **Interface to decoder:**
 
@@ -243,13 +243,13 @@ Constraints on these messages:
 
 | Crate | Change |
 |---|---|
-| `tellytxt-core` | The input router of `docs/hmi.md`. Navigation stays in the viewer's existing state machine where it is per page; history moves to the tab model (section 6). |
-| `tellytxt-web` | The concept's link targets (`LK`, `LT`, addresses), descriptor aliases and well-known location, bundles, enhancement dependencies. The address display policy (section 7) lives here too, because it is security policy (`core::policy` holds the rules; the data source is a decision). |
-| `tellytxt-app` | The tab object (section 5), the navigation controller (section 6), the decoder-process side and its sandbox, and the new pipe message kinds. |
-| `tellytxt-cli` | `ttx view` becomes a front end of the tab object, so the terminal viewer gains tabs, history across sites and the tuning screen. |
-| **`tellytxt-desktop`** (new) | The egui application: the interface process (section 9). |
+| `neoteletext-core` | The input router of `docs/hmi.md`. Navigation stays in the viewer's existing state machine where it is per page; history moves to the tab model (section 6). |
+| `neoteletext-web` | The concept's link targets (`LK`, `LT`, addresses), descriptor aliases and well-known location, bundles, enhancement dependencies. The address display policy (section 7) lives here too, because it is security policy (`core::policy` holds the rules; the data source is a decision). |
+| `neoteletext-app` | The tab object (section 5), the navigation controller (section 6), the decoder-process side and its sandbox, and the new pipe message kinds. |
+| `neoteletext-cli` | `ttx view` becomes a front end of the tab object, so the terminal viewer gains tabs, history across sites and the tuning screen. |
+| **`neoteletext-desktop`** (new) | The egui application: the interface process (section 9). |
 
-The layer table of `ARCHITECTURE.md` gains `tellytxt-desktop` at L9, above `tellytxt-app`.
+The layer table of `ARCHITECTURE.md` gains `neoteletext-desktop` at L9, above `neoteletext-app`.
 
 ---
 
@@ -579,8 +579,8 @@ Notes:
 
 All of it is in the interface process only, in the platform's application data directory:
 - **macOS:** the app container.
-- **Linux:** `$XDG_DATA_HOME/tellytxt`.
-- **Windows:** `%APPDATA%\tellytxt`.
+- **Linux:** `$XDG_DATA_HOME/neoteletext`.
+- **Windows:** `%APPDATA%\neoteletext`.
 
 | Data | Rules |
 |---|---|
@@ -710,10 +710,10 @@ Each phase ends with its tests passing in the gate.
 | Phase | Work | Done when |
 |---|---|---|
 | **1. Requirements** | Record decisions 1, 2, 4 and 5 in Part E; write the WEB, NAV and new DESKTOP requirements; amend Appendix E and REQ-WEB-002. | Requirements reviewed |
-| **2. Engine: web-native model** | Section 4.2, in `tellytxt-web` and `tellytxt-app`, with tests against the local test server. | `ttx` browses a test site with aliases, bundles, dependencies and links to other sites |
+| **2. Engine: web-native model** | Section 4.2, in `neoteletext-web` and `neoteletext-app`, with tests against the local test server. | `ttx` browses a test site with aliases, bundles, dependencies and links to other sites |
 | **3. Engine: tab and navigation** | Sections 5 and 6, the input router, the address display rules; `ttx view` rebuilt on the tab object; the headless test driver. | `ttx view` has the address bar in row 0, the tuning screen, and history across sites; the headless scripts pass |
 | **4. Process split** | The decoder process and its messages (section 3.4); `ttx` uses it too. | Decoders run sandboxed on Linux; protocol fuzzing passes |
-| **5. Desktop app, first version** | `tellytxt-desktop`: window, tab strip, toolbar, address bar, page area, Fastext buttons, keyboard, menus. | Browses files, zxnet and web sites on all three platforms |
+| **5. Desktop app, first version** | `neoteletext-desktop`: window, tab strip, toolbar, address bar, page area, Fastext buttons, keyboard, menus. | Browses files, zxnet and web sites on all three platforms |
 | **6. Platform security** | Section 12 on macOS and Windows. | The sandbox tests of section 14 pass on each platform |
 | **7. Features** | Bookmarks, presets, history, session restore, page catching with the mouse, accessibility, the glyph switch, fullscreen badge. | Feature tests and snapshots pass |
 | **8. Release** | Section 13: packages, signing, updates, link handlers. | Signed packages install and update on each platform |

@@ -391,4 +391,4 @@ Settled on 11 October 2026. Decisions 1 to 5 are the owner's; decisions 6 to 14 
 2. **Amend Appendix E:** addresses as link targets, the `://` rule, and the `LK` and `LT` lines.
 3. **Amend REQ-WEB-002:** the well-known location, aliases and the refresh interval.
 4. **Amend the row 0 requirements** (REQ-SEC-005 and the header rules) for web sites.
-5. **Then build**, with regression tests, in the TTI reader, `tellytxt-web`, the viewer and `ttx`. The input structure of `docs/hmi.md` is the place to start for the key changes.
+5. **Then build**, with regression tests, in the TTI reader, `neoteletext-web`, the viewer and `ttx`. The input structure of `docs/hmi.md` is the place to start for the key changes.

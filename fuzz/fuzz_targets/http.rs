@@ -2,7 +2,7 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use tellytxt_web::http::{BodyDecoder, Framing, HeadCollector, parse_head};
+use neoteletext_web::http::{BodyDecoder, Framing, HeadCollector, parse_head};
 
 /// The body limit the agent uses is far larger; a small one exercises the
 /// limit path as well.

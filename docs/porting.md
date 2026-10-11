@@ -6,30 +6,30 @@ This is the whole of a port (REQ-ARCH-009, decision E.29). A port supplies the i
 
 | Item | How | Required |
 |---|---|---|
-| A data source | Implement `tellytxt_core::port::DataSource` (modelled on `embedded-io` `Read`), or call the format readers with bytes yourself. | Yes |
-| Somewhere to put pixels | Call the row renderer with your own buffer: `tellytxt_core::render::render_row` (a text row) or `render_line` (one screen line). The port asks; the library answers. | Yes |
-| A time source | Implement `tellytxt_core::port::Clock`: monotonic microseconds. Used for page completion, flash and reveal. | Yes |
-| Key input | Implement `tellytxt_core::port::Keys` returning `tellytxt_core::viewer::Key`. | For interactive ports |
-| Sleep | Implement `tellytxt_core::port::Sleep` if your platform must yield. | Optional |
-| A network transport | Implement the transport trait of `tellytxt-web` (connect, send, non-blocking receive, close; TLS is yours). | Only for web sources |
-| Cookie storage | Implement the cookie storage trait of `tellytxt-web`. Store saved cookies as secrets (REQ-SEC-013). | Optional |
+| A data source | Implement `neoteletext_core::port::DataSource` (modelled on `embedded-io` `Read`), or call the format readers with bytes yourself. | Yes |
+| Somewhere to put pixels | Call the row renderer with your own buffer: `neoteletext_core::render::render_row` (a text row) or `render_line` (one screen line). The port asks; the library answers. | Yes |
+| A time source | Implement `neoteletext_core::port::Clock`: monotonic microseconds. Used for page completion, flash and reveal. | Yes |
+| Key input | Implement `neoteletext_core::port::Keys` returning `neoteletext_core::viewer::Key`. | For interactive ports |
+| Sleep | Implement `neoteletext_core::port::Sleep` if your platform must yield. | Optional |
+| A network transport | Implement the transport trait of `neoteletext-web` (connect, send, non-blocking receive, close; TLS is yours). | Only for web sources |
+| Cookie storage | Implement the cookie storage trait of `neoteletext-web`. Store saved cookies as secrets (REQ-SEC-013). | Optional |
 
-A complete minimal port is `crates/tellytxt-core/examples/minimal_port.rs`, under 100 lines; it needs the core features `level15` and `original`.
+A complete minimal port is `crates/neoteletext-core/examples/minimal_port.rs`, under 100 lines; it needs the core features `level15` and `original`.
 
 ## Choosing what to compile in
 
 Every crate's optional areas are Cargo features, all on by default (decision E.61). A small port turns the defaults off and names what it uses:
 
 ```toml
-tellytxt-core = { version = "...", default-features = false, features = ["level15", "render"] }
-tellytxt-formats = { version = "...", default-features = false }  # T42 only
+neoteletext-core = { version = "...", default-features = false, features = ["level15", "render"] }
+neoteletext-formats = { version = "...", default-features = false }  # T42 only
 ```
 
 | Crate | Features |
 |---|---|
-| `tellytxt-core` | `level15`, `level25`, `render`, `original`, `bedstead`, `viewer`, `forms` |
-| `tellytxt-formats` | `transport`, `sliced`, `pages`, `tti`, `ep1`, `edittf`, `dump`, `check`, and `std` |
-| `tellytxt-web` | `push`, `forms`, `cookies` |
+| `neoteletext-core` | `level15`, `level25`, `render`, `original`, `bedstead`, `viewer`, `forms` |
+| `neoteletext-formats` | `transport`, `sliced`, `pages`, `tti`, `ep1`, `edittf`, `dump`, `check`, and `std` |
+| `neoteletext-web` | `push`, `forms`, `cookies` |
 
 Measured flash on Cortex-M0 (`cargo xtask size`, `opt-level = "z"`, link-time optimisation):
 
@@ -59,12 +59,12 @@ All state lives in memory you provide (REQ-GEN-003):
 ## Pixels and colour
 
 - The renderer writes palette indices, never colours (REQ-RND-023): 0 to 7 the colours, 8 transparent, 16 to 79 flashing, 80 to 143 concealed.
-- Flash and reveal are palette changes: refill your palette with `tellytxt_core::render::fill_palette` when the flash phase (`render::flash_visible`) or reveal changes. If your display has a hardware palette, no redraw is needed.
-- `tellytxt_image::convert` turns indices into RGB565, RGB888, RGBA8888, grey or 1-bit, with byte order, stride and rotation.
+- Flash and reveal are palette changes: refill your palette with `neoteletext_core::render::fill_palette` when the flash phase (`render::flash_visible`) or reveal changes. If your display has a hardware palette, no redraw is needed.
+- `neoteletext_image::convert` turns indices into RGB565, RGB888, RGBA8888, grey or 1-bit, with byte order, stride and rotation.
 
 ## Aspect ratio
 
-Teletext pixels are about 1.2 times taller than wide on a 4:3 television (REQ-RND-004). The library always renders 480 by 500 (or 480 by 250); scale in the port, for example with `tellytxt_image::scale::scale_indices(..., aspect: true)`, or the picture will look squashed.
+Teletext pixels are about 1.2 times taller than wide on a 4:3 television (REQ-RND-004). The library always renders 480 by 500 (or 480 by 250); scale in the port, for example with `neoteletext_image::scale::scale_indices(..., aspect: true)`, or the picture will look squashed.
 
 ## What the library will not do
 

@@ -1,6 +1,6 @@
 # Human-machine interfaces across machines: source-level design
 
-A proposal, not a requirement. It describes how the code should take input from the very different controls of the machines tellytxt targets (REQ-GEN-015), and what that means for each crate and port. Nothing here changes REQUIREMENTS.md until it is recorded as decisions in Part E. Adding any of the third-party crates named in section 5 is a library choice and needs the owner's approval first.
+A proposal, not a requirement. It describes how the code should take input from the very different controls of the machines neoteletext targets (REQ-GEN-015), and what that means for each crate and port. Nothing here changes REQUIREMENTS.md until it is recorded as decisions in Part E. Adding any of the third-party crates named in section 5 is a library choice and needs the owner's approval first.
 
 Related documents:
 
@@ -13,12 +13,12 @@ Related documents:
 
 | Piece | Where | What it does |
 |---|---|---|
-| `viewer::Key` | `crates/tellytxt-core/src/viewer.rs:20` | The page functions: digits, the four colours, Index, Home, next and previous page and sub-page, Reveal, Hold, Mix, Zoom, Back, Forward. |
-| `forms::FormKey` | `crates/tellytxt-core/src/forms.rs:250` | A second enum for forms, mixing keyboard keys (`Tab`, `Char`, `Backspace`) with remote keys (`RemoteDigit`, the colours). |
-| `forms::MULTITAP_US` | `crates/tellytxt-core/src/forms.rs:34` | Telephone-style letter entry from digits, for remotes (REQ-NAV-009). |
-| `port::Keys` | `crates/tellytxt-core/src/port.rs` | The port's key trait: `poll() -> Option<Key>`. Nothing implements it yet. |
-| `map_key`, `map_form_key` | `crates/tellytxt-cli/src/view.rs` | `ttx`'s crossterm bindings. |
-| The modal loop | `crates/tellytxt-cli/src/view.rs`, the event loop | `ttx` decides which consumer gets a key, in this order: Ctrl+C quits; a pending form submission takes Enter or F4 as yes; a focused form gets form keys; `q` or Esc quits; Tab focuses the form; otherwise the viewer. |
+| `viewer::Key` | `crates/neoteletext-core/src/viewer.rs:20` | The page functions: digits, the four colours, Index, Home, next and previous page and sub-page, Reveal, Hold, Mix, Zoom, Back, Forward. |
+| `forms::FormKey` | `crates/neoteletext-core/src/forms.rs:250` | A second enum for forms, mixing keyboard keys (`Tab`, `Char`, `Backspace`) with remote keys (`RemoteDigit`, the colours). |
+| `forms::MULTITAP_US` | `crates/neoteletext-core/src/forms.rs:34` | Telephone-style letter entry from digits, for remotes (REQ-NAV-009). |
+| `port::Keys` | `crates/neoteletext-core/src/port.rs` | The port's key trait: `poll() -> Option<Key>`. Nothing implements it yet. |
+| `map_key`, `map_form_key` | `crates/neoteletext-cli/src/view.rs` | `ttx`'s crossterm bindings. |
+| The modal loop | `crates/neoteletext-cli/src/view.rs`, the event loop | `ttx` decides which consumer gets a key, in this order: Ctrl+C quits; a pending form submission takes Enter or F4 as yes; a focused form gets form keys; `q` or Esc quits; Tab focuses the form; otherwise the viewer. |
 
 Five problems follow for anyone writing a second port.
 
@@ -43,7 +43,7 @@ Input passes through four stages. Only the first is per machine.
 ### 2.1 Controls: what the port reports (L8)
 
 ```rust
-// tellytxt-core/src/port.rs: replaces `Keys::poll -> Option<Key>`.
+// neoteletext-core/src/port.rs: replaces `Keys::poll -> Option<Key>`.
 
 /// One physical control, already named by the port's driver. A port
 /// reports what was pressed, never what it means.
@@ -103,7 +103,7 @@ pub trait Input {
 One enum replaces `viewer::Key` and `forms::FormKey`:
 
 ```rust
-// tellytxt-core/src/hmi.rs (new, layer L6 "input", per ARCHITECTURE.md).
+// neoteletext-core/src/hmi.rs (new, layer L6 "input", per ARCHITECTURE.md).
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Function {
@@ -207,9 +207,9 @@ Each subsection gives the input sources, how the driver names controls, what the
 
 ### 3.1 Terminals: `ttx` on macOS, Linux and Windows
 
-**Library.** crossterm, already a dependency of `tellytxt-cli`.
+**Library.** crossterm, already a dependency of `neoteletext-cli`.
 
-**Driver.** `crates/tellytxt-cli/src/hmi.rs` (new) turns `crossterm::event::Event` into `InputEvent`:
+**Driver.** `crates/neoteletext-cli/src/hmi.rs` (new) turns `crossterm::event::Event` into `InputEvent`:
 
 ```rust
 fn control(key: KeyEvent) -> Option<Control> {
@@ -286,7 +286,7 @@ The browser receiver of `docs/web-native-concept.md` section 13. **Libraries:** 
 
 ### 3.5 Android television
 
-Through the C interface `tellytxt-ffi` (Phase 2) and the port's own Kotlin or Java code.
+Through the C interface `neoteletext-ffi` (Phase 2) and the port's own Kotlin or Java code.
 
 - **Keys.** `KeyEvent.KEYCODE_PROG_RED`, `_GREEN`, `_YELLOW`, `_BLUE`; `KEYCODE_TV_TELETEXT`; `KEYCODE_DPAD_*` and `KEYCODE_DPAD_CENTER`; `KEYCODE_CHANNEL_UP` and `_DOWN`; `KEYCODE_BACK`; digits.
 - **Phases.** `ACTION_DOWN` and `ACTION_UP`, with `getRepeatCount()` for repeats, so `release` is true.
@@ -384,10 +384,10 @@ None is added by this document. Each is a library choice for the owner.
 
 | Crate | For | Where |
 |---|---|---|
-| crossterm | Terminals | Already used by `tellytxt-cli` |
+| crossterm | Terminals | Already used by `neoteletext-cli` |
 | winit | Desktop windows | A future desktop port |
 | web-sys, wasm-bindgen | The browser | A future WebAssembly port |
-| evdev | Linux input devices | `tellytxt-cli` on Linux, or a television-box port |
+| evdev | Linux input devices | `neoteletext-cli` on Linux, or a television-box port |
 | gilrs | Game controllers on desktops | A future desktop port |
 | infrared | IR decoding on microcontrollers | Example microcontroller ports |
 | embedded-hal, embassy | Buttons, encoders and keypads on microcontrollers | Example microcontroller ports |
@@ -396,10 +396,10 @@ The core itself gains no dependency. `hmi.rs` is plain `no_std` Rust under the e
 
 ## 6. Changes to the source, in order
 
-1. **Add `tellytxt-core/src/hmi.rs`** with `Function`, `Binding`, `BindingTable`, `Capabilities`, `Gestures`, `Router` and the default tables. Update `ARCHITECTURE.md`'s L6 section and its dependency table (REQ-ARCH-011).
+1. **Add `neoteletext-core/src/hmi.rs`** with `Function`, `Binding`, `BindingTable`, `Capabilities`, `Gestures`, `Router` and the default tables. Update `ARCHITECTURE.md`'s L6 section and its dependency table (REQ-ARCH-011).
 2. **Replace `port::Keys` with `port::Input`** (`Control`, `Phase`, `Origin`, `InputEvent`), and update `docs/porting.md`.
 3. **Change `Viewer::key` and `FormModel::key` to take `Function`.** Delete `viewer::Key` and `forms::FormKey` in the same change, as the project's rules ask, rather than keeping shims.
-4. **Move the modal loop out of `tellytxt-cli/src/view.rs` into `Router`.** `ttx` keeps only drawing, its source, and quitting.
+4. **Move the modal loop out of `neoteletext-cli/src/view.rs` into `Router`.** `ttx` keeps only drawing, its source, and quitting.
 5. **Implement `Gestures`**, with REQ-NAV-010's "hold Index for Back" as the first user.
 6. **In `ttx`:**
    - enable bracketed paste and mark pasted events;

@@ -2,7 +2,7 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use tellytxt_web::sse::SseParser;
+use neoteletext_web::sse::SseParser;
 
 /// Room for one event; larger events must be refused, not overflow.
 const EVENT_BYTES: usize = 2048;

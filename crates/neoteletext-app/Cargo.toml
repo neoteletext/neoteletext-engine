@@ -1,0 +1,43 @@
+[package]
+name = "neoteletext-app"
+description = "The neoteletext application layer shared by ttx and a windowed viewer: sessions, inputs, live mode's two processes and sandboxing"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# Page extension data carries the forms model and the navigation links.
+neoteletext-core = { workspace = true, features = ["forms", "viewer"] }
+# Detection and `--format` reach every reader; live mode reads TTI and T42.
+neoteletext-formats = { workspace = true, features = ["std", "transport", "sliced", "pages", "tti", "ep1", "edittf", "dump"] }
+neoteletext-slicer = { workspace = true, optional = true }
+# Under `live`: the whole user agent, with push, forms and cookies.
+neoteletext-web = { workspace = true, optional = true, features = ["default"] }
+embedded-io = { workspace = true, optional = true }
+rustls = { version = "0.23.32", default-features = false, features = ["ring", "std", "tls12", "logging"], optional = true }
+webpki-roots = { version = "1.0.3", optional = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# REQ-SEC-017: every build sandboxes itself.
+landlock = "0.4.3"
+seccompiler = "0.5.0"
+libc = "0.2.177"
+
+[features]
+# Decision E.61: coarse, additive areas, all on by default. A program that
+# leaves one out gets a clear refusal, never a panic.
+default = ["live", "slice"]
+# Live feeds and web services (area WEB, REQ-INP-022): the web module, TLS
+# and the fetcher process of REQ-SEC-018. Without it no TLS code is built.
+live = ["dep:neoteletext-web", "dep:embedded-io", "dep:rustls", "dep:webpki-roots"]
+# Raw sampled video through the software data slicer (area SLC).
+slice = ["dep:neoteletext-slicer"]
+
+[dev-dependencies]
+# The conversion tests compose the authored Level 2.5 and 3.5 stream.
+neoteletext-core = { workspace = true, features = ["default"] }
+
+[lints]
+workspace = true

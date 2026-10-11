@@ -1,9 +1,9 @@
-# tellytxt
+# neoteletext
 
 A software receiver for World System Teletext (ETSI EN 300 706, Presentation Levels 1.0, 1.5, 2.5 and 3.5), written in Rust. The core library is `no_std` with no allocation and runs on microcontrollers; the `ttx` command-line program decodes recordings, live feeds and web teletext services, and shows pages in the terminal (iTerm2 inline images or coloured text), as text, or as images.
 
 ```sh
-cargo build --release -p tellytxt-cli
+cargo build --release -p neoteletext-cli
 target/release/ttx show recording.t42 100
 target/release/ttx view zxnet:teefax
 ```
@@ -27,17 +27,17 @@ Each crate's optional parts are Cargo features, on by default, so a port or a sm
 
 | Crate | Role |
 |---|---|
-| `tellytxt-core` | Error protection, packets, acquisition, the page and enhancement stores, character sets, Level 1.0 and 1.5 decoding, the Level 2.5 and 3.5 enhancement processor with objects, DRCS and the Colour Map, the state machines, the row renderer and the viewer model. `no_std`, no allocation, no panics. |
-| `tellytxt-formats` | Readers and writers: T42, transport streams, PES, sliced VBI, TTI (with enhancement data and enhancement pages), EP1, edit.tf and screen dumps; and a builder for Level 2.5 and 3.5 test pages. |
-| `tellytxt-slicer` | A software data slicer for raw sampled video. |
-| `tellytxt-web` | The sans-IO web agent: service descriptors, HTTP, WebSockets, server-sent events, cookies, forms and the zxnet feed. |
-| `tellytxt-image` | Palettes, pixel formats, scaling, PNG and PPM writers. |
-| `tellytxt-cli` | The `ttx` program. |
+| `neoteletext-core` | Error protection, packets, acquisition, the page and enhancement stores, character sets, Level 1.0 and 1.5 decoding, the Level 2.5 and 3.5 enhancement processor with objects, DRCS and the Colour Map, the state machines, the row renderer and the viewer model. `no_std`, no allocation, no panics. |
+| `neoteletext-formats` | Readers and writers: T42, transport streams, PES, sliced VBI, TTI (with enhancement data and enhancement pages), EP1, edit.tf and screen dumps; and a builder for Level 2.5 and 3.5 test pages. |
+| `neoteletext-slicer` | A software data slicer for raw sampled video. |
+| `neoteletext-web` | The sans-IO web agent: service descriptors, HTTP, WebSockets, server-sent events, cookies, forms and the zxnet feed. |
+| `neoteletext-image` | Palettes, pixel formats, scaling, PNG and PPM writers. |
+| `neoteletext-cli` | The `ttx` program. |
 | `xtask` | Project checks: layers, dependencies, constants, glyphs (including the generated G3 set), the test corpus and the traceability table; `cargo xtask level25-stream` writes the authored Level 2.5 and 3.5 test stream. |
 
 ## Checks
 
-`scripts/check.sh` runs the fast checks and `scripts/check.sh full` runs everything. The git hooks in `.githooks` run them before each commit and push. Tests that need the real broadcast corpus read it from `$TELLYTXT_CORPUS` (see `cargo xtask corpus`) and say so when it is absent.
+`scripts/check.sh` runs the fast checks and `scripts/check.sh full` runs everything. The git hooks in `.githooks` run them before each commit and push. Tests that need the real broadcast corpus read it from `$NEOTELETEXT_CORPUS` (see `cargo xtask corpus`) and say so when it is absent.
 
 ## Licence
 
@@ -45,4 +45,4 @@ The project is licensed under the MIT licence; see [LICENSE](LICENSE). Bundled t
 
 ## Licensing of data
 
-No standards documents, character-generator ROM glyphs, GPL code or broadcast recordings are kept in this repository. The glyphs are the project's own (`crates/tellytxt-core/src/glyphs/original.txt`, decision E.62). The Bedstead font in `third_party/bedstead/` is no longer used by default; it stays as the reference the independence check compares against.
+No standards documents, character-generator ROM glyphs, GPL code or broadcast recordings are kept in this repository. The glyphs are the project's own (`crates/neoteletext-core/src/glyphs/original.txt`, decision E.62). The Bedstead font in `third_party/bedstead/` is no longer used by default; it stays as the reference the independence check compares against.

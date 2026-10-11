@@ -1,4 +1,4 @@
-# tellytxt.com — Software Teletext Receiver — Requirements Specification
+# neoteletext — Software Teletext Receiver — Requirements Specification
 
 **Status:** Draft 2 (consolidated) for review
 **Date:** 1 October 2026
@@ -44,7 +44,7 @@ Each requirement carries a **verification method**, which is how compliance will
 
 ### Citation conventions
 
-**Where the sources are.** The standards and datasheets cited in this document are not kept in the project directory (`~/devel/tellytxt.com`), because they must not be redistributed (see "Legal basis" below). They are in `~/devel/microcontrollers/teletext/`. Every folder path in this document, such as `specifications/`, `philips-saa5050/` or `DATASHEET-INDEX.md`, is relative to that directory.
+**Where the sources are.** The standards and datasheets cited in this document are not kept in the project directory (`~/devel/neoteletext`), because they must not be redistributed (see "Legal basis" below). They are in `~/devel/microcontrollers/teletext/`. Every folder path in this document, such as `specifications/`, `philips-saa5050/` or `DATASHEET-INDEX.md`, is relative to that directory.
 
 The research notes behind Parts A to E are in `research/` in the project directory, with a citation for each fact.
 
@@ -1316,7 +1316,7 @@ The decisions taken from this are:
 - **Item 5.** Flash and reveal are resolved at render time in the resolved colour mode, instead of by palette changes. The change tracker limits the redrawing to rows that flash or conceal. The palette technique remains for Levels 1 and 1.5.
 
 **E.30 — The web-native design, and what the jellytext project teaches.**
-tellytxt.com shall read pages from ordinary web servers as well as from broadcast data. It does so over:
+neoteletext shall read pages from ordinary web servers as well as from broadcast data. It does so over:
 - HTTP;
 - WebSockets;
 - server push;
@@ -1331,15 +1331,15 @@ web server → proxy (HTTP, sessions, cookies, TTI cache, TTI-to-T42 encoder) �
 The decisions taken from it are listed below.
 
 1. **Teletext's own formats all the way to the decoder.** A web source delivers TTI pages or T42 packets, and nothing else. Web pages enter the decoder exactly as page files and broadcast packets do (REQ-ARCH-004), so there is one decoder and one set of tests. All web-specific complexity stays in the web module (area WEB).
-2. **Stateless servers, with the session in a versioned cookie.** jellytext's notes record the idea to "store session data in cookie with versioning". A tellytxt.com client treats cookies as opaque and only stores and returns them. The versioning is a server design rule, given as guidance for page servers (REQ-WEB-012).
+2. **Stateless servers, with the session in a versioned cookie.** jellytext's notes record the idea to "store session data in cookie with versioning". A neoteletext client treats cookies as opaque and only stores and returns them. The versioning is a server design rule, given as guidance for page servers (REQ-WEB-012).
 3. **Asynchronous throughout.** The jellytext notes say the "application can be fully async by using callbacks". Every network operation shall be non-blocking and event-driven. The decoder is fed bytes as they arrive (REQ-INP-001).
-4. **Interactive forms drawn as teletext pages.** jellytext's TTI Form System adds form commands after ordinary TTI rows. Decoders that do not know the commands ignore them and still show a readable page. tellytxt.com adopts it, corrected as decision E.31 describes.
+4. **Interactive forms drawn as teletext pages.** jellytext's TTI Form System adds form commands after ordinary TTI rows. Decoders that do not know the commands ignore them and still show a readable page. neoteletext adopts it, corrected as decision E.31 describes.
 5. **The transport belongs to the port.** Network sockets and encryption are supplied by the port through the platform interface (REQ-ARCH-009). This keeps the library free of any particular network stack, and is consistent with REQ-ARCH-010. jellytext planned to embed a network stack and an encryption library on each microcontroller, which is heavy.
-6. **One platform at a time.** jellytext decided to "write for 3 platforms at once" (composite video from an ESP32, HDMI from an RP2350, and a video stream to YouTube) shortly before it was suspended. tellytxt.com keeps all platforms outside the library (REQ-ARCH-010), and streaming rendered pages as video is not part of it.
-7. **Geometry settled once.** jellytext's notes changed their minds several times about pixel sizes. tellytxt.com settles this in REQ-RND-002 to REQ-RND-004 and REQ-RND-024.
+6. **One platform at a time.** jellytext decided to "write for 3 platforms at once" (composite video from an ESP32, HDMI from an RP2350, and a video stream to YouTube) shortly before it was suspended. neoteletext keeps all platforms outside the library (REQ-ARCH-010), and streaming rendered pages as video is not part of it.
+7. **Geometry settled once.** jellytext's notes changed their minds several times about pixel sizes. neoteletext settles this in REQ-RND-002 to REQ-RND-004 and REQ-RND-024.
 
 **E.31 — Corrections made in adopting the TTI Form System.**
-jellytext's TTI Form System version 2.0 is kept unchanged in `research/jellytext-tti-form-system-spec-v2.md`. Version 3, in Appendix C, is normative for tellytxt.com. It keeps the core ideas:
+jellytext's TTI Form System version 2.0 is kept unchanged in `research/jellytext-tti-form-system-spec-v2.md`. Version 3, in Appendix C, is normative for neoteletext. It keeps the core ideas:
 - the form is drawn as ordinary TTI rows;
 - field definitions follow the row they belong to;
 - unknown commands are ignored by older decoders;
@@ -1388,7 +1388,7 @@ Sandboxing is layered, and each layer assumes the one inside it might fail:
 9. **Sandboxed test tools.** Third-party tools that parse untrusted corpus files run with no network access and read-only inputs (REQ-SEC-022).
 
 **E.34 — A deliberately minimal browser.**
-With web-native sources, tellytxt.com is a browser for a teletext web. Like any browser, it fetches, caches, keeps cookies, follows links, submits forms, applies an origin security model, sandboxes and renders. It can stay very small because teletext removes almost everything that makes browsers large:
+With web-native sources, neoteletext is a browser for a teletext web. Like any browser, it fetches, caches, keeps cookies, follows links, submits forms, applies an origin security model, sandboxes and renders. It can stay very small because teletext removes almost everything that makes browsers large:
 - no layout engine (the page is a fixed 40 by 25 grid);
 - no scripting (REQ-SEC-004);
 - no font shaping;
@@ -1402,7 +1402,7 @@ Three earlier systems teach how to keep it that way:
 - **WAP and WML**, the early mobile web, show the opposite. It grew scripting and complex page decks, became half a browser, and failed under its own complexity.
 
 The decisions taken are:
-1. **One written profile.** tellytxt.com's web behaviour is defined as one written "minimal user agent" profile (REQ-WEB-014). It lists what is supported and, as firmly, what is permanently excluded.
+1. **One written profile.** neoteletext's web behaviour is defined as one written "minimal user agent" profile (REQ-WEB-014). It lists what is supported and, as firmly, what is permanently excluded.
 2. **One security unit.** The origin is the single security unit, defined once (REQ-WEB-015), as browsers do.
 3. **A strict URL parser.** URL parsing, a classic source of browser bugs, is done by one small, strict, fuzzed parser (REQ-WEB-016). It prefers rejecting unusual addresses to being compatible with every form the web allows.
 4. **History.** Back and forward history (REQ-NAV-010) is the one basic browser function the teletext model lacked.
@@ -1415,7 +1415,7 @@ The cookie specification of 2011, RFC 6265, is out of date. Its replacement, RFC
 
 Third-party cookies remain enabled by default in Chrome after Google reversed its plan to remove them in April 2025. Safari, Firefox and Brave block them by default.
 
-tellytxt.com adopts:
+neoteletext adopts:
 - **RFC 6265bis in full**, as REQ-WEB-006 lists: size limits, the 400-day cap, rejection of control characters, name prefixes, SameSite with `Lax` as the default, and the rule that plain HTTP cannot touch `Secure` cookies.
 - **The new prefixes.**
 - **Rules stricter than any browser** wherever its model allows: host-only cookies, and no third-party context at all.
@@ -1424,7 +1424,7 @@ tellytxt.com adopts:
 Because RFC 6265bis is still a draft, REQ-WEB-006 shall be checked against the published RFC when it appears, and at each milestone's security review (REQ-SEC-023).
 
 **E.36 — Links are Fastext: four coloured links per page, drawn by the receiver.**
-tellytxt.com's only hyperlinks are the Fastext coloured keys.
+neoteletext's only hyperlinks are the Fastext coloured keys.
 - **Up to four links.** Each page may carry at most four links, one per coloured key: red, green, yellow and cyan.
 - **Index.** The standard Index key is available as well. It goes to the service's index page, and is not a content link.
 - **Typing a page number** remains ordinary teletext navigation, not a hyperlink.
@@ -1522,7 +1522,7 @@ The decisions are:
   Obsolete line folding is rejected (section 5.2, REQ-SEC-011).
 
 **E.39 — Details of the web protocols that the requirements leave open.**
-Decided while implementing `tellytxt-web` on 10 October 2026:
+Decided while implementing `neoteletext-web` on 10 October 2026:
 
 1. **Descriptor members** (REQ-WEB-002). The JSON members are:
    - `name`;
@@ -1880,7 +1880,7 @@ Only compile-time features can remove these. The rules:
 5. **Each crate's default is every feature**, so that a plain dependency works. Library crates depend on one another with default features off and name what they use, so that Cargo's feature unification never brings in an area a port did not ask for.
 6. **The gate builds and tests a fixed list of builds** from `xtask`, and measures the linked test image of REQ-GEN-009 and REQ-GEN-019.
 
-The features of `tellytxt-core`, all on by default:
+The features of `neoteletext-core`, all on by default:
 
 | Feature | Contents |
 |---|---|
@@ -1894,7 +1894,7 @@ The features of `tellytxt-core`, all on by default:
 
 `compose_level`, which applies the level's pass, moves from the viewer to its own module `compose`, and `Zoom` from the renderer to the Level 1 grid, because a port without the viewer or the renderer still composes pages.
 
-The features of `tellytxt-formats`, all on by default except `std`. T42 is always compiled. Detection recognises only the formats compiled in, and a format asked for by name that is not compiled in gives the diagnostic `FormatNotCompiled`:
+The features of `neoteletext-formats`, all on by default except `std`. T42 is always compiled. Detection recognises only the formats compiled in, and a format asked for by name that is not compiled in gives the diagnostic `FormatNotCompiled`:
 
 | Feature | Contents |
 |---|---|
@@ -1907,7 +1907,7 @@ The features of `tellytxt-formats`, all on by default except `std`. T42 is alway
 
 Detection reading T42 only is 4.3 kilobytes of code, down from 46.8.
 
-The features of `tellytxt-web`, all on by default. A request a build cannot serve gives an event or failure saying so: `Event::PushNotCompiledIn`, `FormRefused::NotCompiledIn`, `CookieRejected::NotCompiledIn`. The zxnet feed is not a feature: nothing in the user agent reaches it, so the linker already leaves it out.
+The features of `neoteletext-web`, all on by default. A request a build cannot serve gives an event or failure saying so: `Event::PushNotCompiledIn`, `FormRefused::NotCompiledIn`, `CookieRejected::NotCompiledIn`. The zxnet feed is not a feature: nothing in the user agent reaches it, so the linker already leaves it out.
 
 | Feature | Contents | Code |
 |---|---|---|
@@ -1915,16 +1915,16 @@ The features of `tellytxt-web`, all on by default. A request a build cannot serv
 | `cookies` | The cookie store's use by the agent (REQ-WEB-006) | 7.6 kilobytes |
 | `forms` | Form submission and its response (REQ-WEB-010, REQ-WEB-011) | 4.0 kilobytes |
 
-The application layer of `ttx` is a library crate of its own, `tellytxt-app`: sessions, inputs, both processes of live mode, and sandboxing, which a windowed viewer will share. Its features are `live` (the web module, TLS and the fetcher process) and `slice` (the slicer). `ttx`'s features are `view` (the interactive viewer and its terminal library), `live` and `slice`. Every command stays defined, so the help text never changes, and a command whose area is left out exits with the usage status and says so. A `ttx` without `live` contains no TLS code and is about half the size. The fetcher stays a second run of the same program: a separate fetcher binary would leave TLS out of the decoder process too, but is deferred for its packaging cost, since the decoder's sandbox already keeps it off the network.
+The application layer of `ttx` is a library crate of its own, `neoteletext-app`: sessions, inputs, both processes of live mode, and sandboxing, which a windowed viewer will share. Its features are `live` (the web module, TLS and the fetcher process) and `slice` (the slicer). `ttx`'s features are `view` (the interactive viewer and its terminal library), `live` and `slice`. Every command stays defined, so the help text never changes, and a command whose area is left out exits with the usage status and says so. A `ttx` without `live` contains no TLS code and is about half the size. The fetcher stays a second run of the same program: a separate fetcher binary would leave TLS out of the decoder process too, but is deferred for its packaging cost, since the decoder's sandbox already keeps it off the network.
 
 *Reason:* The microcontroller targets (REQ-GEN-015) and the flash budget of REQ-GEN-009.
 
 **E.62 — How the original glyphs are drawn and accepted.**
 Recorded on 11 October 2026 (REQ-DOC-004), on the owner's instruction to write the checks first and then start the glyphs of REQ-RND-028.
 
-**What is drawn.** The required characters are generated, not chosen: every code point the character set tables produce for every G0 set, every national option and every G2 set, codes 2/0 to 7/F, plus the spacing forms of the diacritical marks that decision E.26 overlays. `cargo xtask glyph-inventory` writes them to `crates/tellytxt-core/src/glyphs/required.txt`. Block mosaics are computed (REQ-CHR-005), G3 is generated from geometry (REQ-RND-037), and DRCS characters come from the service, so none of them is drawn.
+**What is drawn.** The required characters are generated, not chosen: every code point the character set tables produce for every G0 set, every national option and every G2 set, codes 2/0 to 7/F, plus the spacing forms of the diacritical marks that decision E.26 overlays. `cargo xtask glyph-inventory` writes them to `crates/neoteletext-core/src/glyphs/required.txt`. Block mosaics are computed (REQ-CHR-005), G3 is generated from geometry (REQ-RND-037), and DRCS characters come from the service, so none of them is drawn.
 
-**How it is drawn.** The glyphs are kept in `crates/tellytxt-core/src/glyphs/original.txt`, one glyph per entry, drawn as nine rows of five characters. An entry is one of three kinds:
+**How it is drawn.** The glyphs are kept in `crates/neoteletext-core/src/glyphs/original.txt`, one glyph per entry, drawn as nine rows of five characters. An entry is one of three kinds:
 - drawn;
 - a copy of another entry, for letters that share a shape across scripts, such as Latin A and Cyrillic А;
 - a base letter with a spacing mark overlaid, as decision E.26 composes at run time.
@@ -1937,7 +1937,7 @@ The rules are written in words in `docs/glyph-style-guide.md`, from first princi
 1. **Format:** every entry parses, and no code point appears twice.
 2. **Well-formedness:** no ink in the descender rows without the `descender` tag, no isolated dot without the `dots` tag, and no empty glyph except a space.
 3. **Confusables:** no two characters of one set have the same glyph, and the listed confusable pairs differ by at least two dots.
-4. **Independence:** every drawn glyph is compared with the Bedstead glyph of the same code point, the stand-in for the SAA5050. An exact match, or a difference of one dot, fails unless `crates/tellytxt-core/src/glyphs/original-audit.txt` gives the reason. Shapes such as a full stop or a hyphen have only one sensible form.
+4. **Independence:** every drawn glyph is compared with the Bedstead glyph of the same code point, the stand-in for the SAA5050. An exact match, or a difference of one dot, fails unless `crates/neoteletext-core/src/glyphs/original-audit.txt` gives the reason. Shapes such as a full stop or a hyphen have only one sensible form.
 5. **Coverage:** reported always; required to be complete with `--complete`, which becomes part of the release check of REQ-RND-020.
 
 Recognition by people fluent in each script, and proofs of real pages, are reviewed by hand.
@@ -2187,12 +2187,12 @@ Only the optional C interface crate (REQ-GEN-018) may contain `unsafe` code. It 
 *Verification:* Inspection; tests.
 
 **REQ-SEC-016 — No ambient authority in the library.**
-The library crates shall not use operating-system facilities of any kind. The library crates are `tellytxt-core`, `tellytxt-formats`, `tellytxt-slicer`, `tellytxt-web` and `tellytxt-image`, except the file-writing functions of the image writers, which take an already-open writer. They shall not use:
+The library crates shall not use operating-system facilities of any kind. The library crates are `neoteletext-core`, `neoteletext-formats`, `neoteletext-slicer`, `neoteletext-web` and `neoteletext-image`, except the file-writing functions of the image writers, which take an already-open writer. They shall not use:
 - `std::fs`, `std::net`, `std::process` or `std::env`;
 - threads;
 - the system clock.
 
-All of these come only through the platform interface (REQ-ARCH-009). The rule shall be enforced by clippy's `disallowed-methods` and `disallowed-types` lists and by a check of each crate's dependencies. Only `tellytxt-cli` and port code may use operating-system facilities.
+All of these come only through the platform interface (REQ-ARCH-009). The rule shall be enforced by clippy's `disallowed-methods` and `disallowed-types` lists and by a check of each crate's dependencies. Only `neoteletext-cli` and port code may use operating-system facilities.
 *Verification:* Continuous integration check that fails if a forbidden item appears.
 
 **REQ-SEC-017 — The command-line program sandboxes itself.**
@@ -2219,7 +2219,7 @@ They shall be joined only by a pipe carrying TTI pages or T42 packets and a smal
 *Verification:* Test that the decoder process cannot open network connections or files; fuzzing of the control messages.
 
 **REQ-SEC-019 — WebAssembly isolation.**
-`tellytxt-core` and `tellytxt-formats` shall build for `wasm32-unknown-unknown` and `wasm32-wasip1` (REQ-GEN-015). An example host shall run the decoder inside a WebAssembly runtime with limits on memory and execution time. Hosts can then isolate the decoder completely, and C programs can use it without the unsafe C interface.
+`neoteletext-core` and `neoteletext-formats` shall build for `wasm32-unknown-unknown` and `wasm32-wasip1` (REQ-GEN-015). An example host shall run the decoder inside a WebAssembly runtime with limits on memory and execution time. Hosts can then isolate the decoder completely, and C programs can use it without the unsafe C interface.
 *Phase:* Phase 1 for the builds; Phase 2 for the example host.
 *Verification:* Continuous integration builds; test of the example host with a hostile input that must hit its limits cleanly.
 
@@ -2362,18 +2362,18 @@ The project shall be a single Cargo workspace with these crates. Each optional c
 
 | Crate | Contents | Environment |
 |---|---|---|
-| `tellytxt-core` | Everything listed in REQ-GEN-002 | `no_std`, no allocation |
-| `tellytxt-formats` | The streaming readers, writers and page encoder of area INP | `no_std` readers. Writers and file helpers behind an `std` feature. |
-| `tellytxt-slicer` | The software data slicer (area SLC) | `no_std`; a `fixed-point` feature (REQ-SLC-015) |
-| `tellytxt-web` | The web-native protocols: HTTP, WebSockets, server-sent events, cookies and forms (area WEB), and the live feed reader of REQ-INP-022 | `no_std`, written "sans-IO": it consumes and produces bytes and events, and never performs input or output itself |
-| `tellytxt-image` | The pixel-format helpers (REQ-RND-018) and the image writers (REQ-RND-007) | Helpers `no_std`; image writers need `std` |
-| `tellytxt-app` | The application layer shared by `ttx` and a windowed viewer: sessions, inputs, the two processes of live mode, sandboxing (decision E.61) | `std` |
-| `tellytxt-cli` | The command-line program `ttx` (area CLI) | `std` |
-| `tellytxt-ffi` | The optional C interface (REQ-GEN-018) | Phase 2 |
+| `neoteletext-core` | Everything listed in REQ-GEN-002 | `no_std`, no allocation |
+| `neoteletext-formats` | The streaming readers, writers and page encoder of area INP | `no_std` readers. Writers and file helpers behind an `std` feature. |
+| `neoteletext-slicer` | The software data slicer (area SLC) | `no_std`; a `fixed-point` feature (REQ-SLC-015) |
+| `neoteletext-web` | The web-native protocols: HTTP, WebSockets, server-sent events, cookies and forms (area WEB), and the live feed reader of REQ-INP-022 | `no_std`, written "sans-IO": it consumes and produces bytes and events, and never performs input or output itself |
+| `neoteletext-image` | The pixel-format helpers (REQ-RND-018) and the image writers (REQ-RND-007) | Helpers `no_std`; image writers need `std` |
+| `neoteletext-app` | The application layer shared by `ttx` and a windowed viewer: sessions, inputs, the two processes of live mode, sandboxing (decision E.61) | `std` |
+| `neoteletext-cli` | The command-line program `ttx` (area CLI) | `std` |
+| `neoteletext-ffi` | The optional C interface (REQ-GEN-018) | Phase 2 |
 
 A development-tools package (`xtask`) holds project automation that is not part of the library, such as the glyph export, fetching the corpus and checking sizes.
 
-Features shall be additive. Each crate's optional areas are features, as decision E.61 lists. `cargo xtask features` builds, lints and tests each library and application crate with no optional area and with each area alone, and the workspace tests run with every feature. The mapping of the core modules of REQ-ARCH-001 to Rust modules shall be one module each within `tellytxt-core`.
+Features shall be additive. Each crate's optional areas are features, as decision E.61 lists. `cargo xtask features` builds, lints and tests each library and application crate with no optional area and with each area alone, and the workspace tests run with every feature. The mapping of the core modules of REQ-ARCH-001 to Rust modules shall be one module each within `neoteletext-core`.
 *Verification:* Continuous integration.
 
 **REQ-GEN-011 — Public interface conventions.**
@@ -2425,10 +2425,10 @@ The library shall support these targets, grouped by the four instruction-set fam
 | AMD64 | `x86_64-unknown-linux-gnu` | Linux personal computers and servers | 1 | Build and test, including fuzzing and Miri |
 | AMD64 | `x86_64-pc-windows-msvc` | Windows | 1 | Build and test |
 | AMD64 | `x86_64-apple-darwin` | Intel Apple computers | 2 | Build and test |
-| WebAssembly | `wasm32-unknown-unknown` and `wasm32-wasip1` | Isolated execution inside a WebAssembly runtime, in browsers or other hosts (REQ-SEC-019) | 2 | Build `tellytxt-core` and `tellytxt-formats` |
+| WebAssembly | `wasm32-unknown-unknown` and `wasm32-wasip1` | Isolated execution inside a WebAssembly runtime, in browsers or other hosts (REQ-SEC-019) | 2 | Build `neoteletext-core` and `neoteletext-formats` |
 
 The rules for these targets are:
-- **Which crates build where.** On bare-metal targets, the crates without `std` shall build: `tellytxt-core`, `tellytxt-formats`, `tellytxt-slicer`, `tellytxt-web` and the helpers of `tellytxt-image`. Targets with an operating system shall also build the `std` crates and the command-line program.
+- **Which crates build where.** On bare-metal targets, the crates without `std` shall build: `neoteletext-core`, `neoteletext-formats`, `neoteletext-slicer`, `neoteletext-web` and the helpers of `neoteletext-image`. Targets with an operating system shall also build the `std` crates and the command-line program.
 - **Where tests run.** Tests of logic run on the host. Cross-target tests prove that the code builds and behaves the same on each instruction-set family.
 - **Xtensa testing.** Running tests on Xtensa, in Espressif's QEMU fork or the Wokwi simulator, may be added later. Xtensa is build-only in Phase 1.
 - **Scope.** None of these targets implies any hardware support in the library (REQ-ARCH-010). The examples only indicate the class of processor.
@@ -2452,9 +2452,9 @@ Code in the `no_std` crates shall follow these rules, because some targets lack 
 **REQ-GEN-017 — Dependency policy.**
 Dependencies are judged by the microcontroller, as decision E.38 describes.
 
-- **Microcontroller crates.** These are the crates that run on bare-metal targets (REQ-GEN-015): `tellytxt-core`, `tellytxt-formats` without its `std` feature, `tellytxt-slicer`, `tellytxt-web` and the helpers of `tellytxt-image`.
-- **Crates with no dependencies.** `tellytxt-core`, `tellytxt-formats` and `tellytxt-slicer` shall have no dependencies outside the Rust distribution's `core` library. Fixed-capacity collections and bit flags shall be written in the Foundation layer.
-- **The web module.** `tellytxt-web` may depend only on `embedded-io`, with default features off. WebSocket framing, SHA-1, base64, the descriptor reader and the HTTP response-head parser shall be written in the project. Each shall be tested against the published test vectors of its standard, where the standard publishes them.
+- **Microcontroller crates.** These are the crates that run on bare-metal targets (REQ-GEN-015): `neoteletext-core`, `neoteletext-formats` without its `std` feature, `neoteletext-slicer`, `neoteletext-web` and the helpers of `neoteletext-image`.
+- **Crates with no dependencies.** `neoteletext-core`, `neoteletext-formats` and `neoteletext-slicer` shall have no dependencies outside the Rust distribution's `core` library. Fixed-capacity collections and bit flags shall be written in the Foundation layer.
+- **The web module.** `neoteletext-web` may depend only on `embedded-io`, with default features off. WebSocket framing, SHA-1, base64, the descriptor reader and the HTTP response-head parser shall be written in the project. Each shall be tested against the published test vectors of its standard, where the standard publishes them.
   *Amended 11 October 2026:* `httparse` was previously permitted as well. It was removed because of its linked panic paths (decision E.38, as amended).
 - **Rules for any new dependency.** A new dependency of a microcontroller crate, direct or indirect, needs a decision recorded in Part E. It shall:
   - build as `no_std` without allocation for `thumbv6m-none-eabi`, `riscv32imc-unknown-none-elf` and `xtensa-esp32-none-elf`;
@@ -2482,7 +2482,7 @@ The size check of REQ-GEN-009 shall measure the same image.
 
 **REQ-GEN-018 — Optional C interface.**
 *Phase:* Phase 2 (whole requirement).
-A separate crate, `tellytxt-ffi`, shall offer the core's interface to ports written in C. Its header shall be generated with `cbindgen`, and it shall be built as a static library. The crate shall be the only one allowed to contain `unsafe` code, and it shall document:
+A separate crate, `neoteletext-ffi`, shall offer the core's interface to ports written in C. Its header shall be generated with `cbindgen`, and it shall be built as a static library. The crate shall be the only one allowed to contain `unsafe` code, and it shall document:
 - that a panic aborts, because panics cannot unwind across the C boundary;
 - the requirement for a panic handler on bare-metal targets;
 - matching the floating-point calling convention of the C port.
@@ -2638,9 +2638,9 @@ The code shall be organised into the layers described in `ARCHITECTURE.md`:
 
 The following rules shall hold:
 - **Downward dependencies only.** A layer may depend only on the layers below it and on the cross-cutting modules. The cross-cutting modules may depend only on Foundation.
-- **Allowed modules.** Within `tellytxt-core`, each module may use only the modules listed for it in section 9 of `ARCHITECTURE.md`.
+- **Allowed modules.** Within `neoteletext-core`, each module may use only the modules listed for it in section 9 of `ARCHITECTURE.md`.
 - **Narrow boundaries.** Neighbouring layers communicate only through the boundary types listed in section 5 of `ARCHITECTURE.md`. Types from two or more layers down shall not appear in a layer's public interface.
-- **The web stays separate.** `tellytxt-web` shall not depend on the decoding layers (L1 to L4). Pages leave it only as bytes, which enter through L0.
+- **The web stays separate.** `neoteletext-web` shall not depend on the decoding layers (L1 to L4). Pages leave it only as bytes, which enter through L0.
 - **One place for security decisions.** Security decisions are made only in the security policy module (REQ-SEC-001).
 
 An `xtask` check shall enforce the dependency rules. It reads the crate graph and each module's `use` statements, compares them with the tables in `ARCHITECTURE.md`, and fails continuous integration on any violation.
@@ -4469,7 +4469,7 @@ When tested on 10 October 2026, only slot 0 returned rows. A page then needed to
 
 **Tolerance and reconnection.** Unknown message types and extra fields shall be ignored. After a dropped connection the reader shall reconnect after 10 seconds, giving up after 5 failed attempts. It shall treat 5 seconds without a `clock` or `header` message as a dropped connection, as the viewer does.
 
-**Build.** This reader is part of the `tellytxt-web` crate. It uses that crate's sans-IO WebSocket code and the transport supplied by the port (REQ-WEB-001), including the port's encryption. The core library remains free of networking (REQ-GEN-002).
+**Build.** This reader is part of the `neoteletext-web` crate. It uses that crate's sans-IO WebSocket code and the transport supplied by the port (REQ-WEB-001), including the port's encryption. The core library remains free of networking (REQ-GEN-002).
 *Reason:* This is the only live source of teletext with raw packet bytes found on the internet. It gives continuous real-time test data (REQ-TST-063).
 *Verification:* Test against a recorded session replayed from a file; demonstration against the live servers.
 
@@ -4741,7 +4741,7 @@ The program shall exit with:
 - **No other route.** A link to another service with no other route given in the text (Appendix E.2 rule 6).
 - **No broadcast fallback.** A form page with no fallback instruction for broadcast viewers (Appendix C.6).
 - **Unreliable placeholders.** Form placeholders using national option characters (Appendix C.4).
-- **Hidden content.** Content in row 24 of a page with links, which tellytxt.com will not display.
+- **Hidden content.** Content in row 24 of a page with links, which neoteletext will not display.
 
 A warning may be marked as considered with a line `CK,considered,<warning name>` in the page, so that it is not reported again. Other TTI readers ignore the line as an unknown command.
 
@@ -4921,7 +4921,7 @@ The tests shall use a corpus of real broadcast teletext. It shall be downloaded 
   - Sky One, 16 February 1993;
   - GMTV, 22 February 1993.
 
-  There are full and "squashed" versions, where squashed means the duplicate sub-pages have been merged. The tests shall read local corpus files from a directory given by the environment variable `TELLYTXT_CORPUS`, and shall also keep a local cached copy of every downloaded corpus file there. The tests then do not depend on outside websites being available. Corpus files shall never be committed, because the page content belongs to the broadcasters.
+  There are full and "squashed" versions, where squashed means the duplicate sub-pages have been merged. The tests shall read local corpus files from a directory given by the environment variable `NEOTELETEXT_CORPUS`, and shall also keep a local cached copy of every downloaded corpus file there. The tests then do not depend on outside websites being available. Corpus files shall never be committed, because the page content belongs to the broadcasters.
 
 Expected results for the corpus are the outputs of zvbi and vhs-teletext (REQ-TST-021), plus page counts and spot checks recorded by hand. If a source disappears and no cached copy exists, the test shall report the missing file clearly and skip, not fail. A test run that skipped corpus files shall say so in its summary, so that lost coverage is visible.
 *Verification:* Test.
@@ -4943,7 +4943,7 @@ A set of test streams shall be authored with the builder of REQ-INP-025. Between
 
 **REQ-TST-025 — Real Level 2.5 and 3.5 data.**
 The local corpus (REQ-TST-022) shall gain real pages that carry Level 2.5 and 3.5 data:
-- captures from the Teefax and NMS Ceefax feeds of REQ-INP-022, recorded through the feed reader into `$TELLYTXT_CORPUS`, of pages that carry packets X/26 or X/28, with any object, DRCS and Magazine Organization Table pages they use;
+- captures from the Teefax and NMS Ceefax feeds of REQ-INP-022, recorded through the feed reader into `$NEOTELETEXT_CORPUS`, of pages that carry packets X/26 or X/28, with any object, DRCS and Magazine Organization Table pages they use;
 - the Polish TVP pages with packets X/26 in the recording already listed in REQ-TST-022.
 
 These files shall never be committed. The tests shall decode them at Levels 2.5 and 3.5, compare them with zvbi (REQ-TST-023), and skip clearly when a file is absent.
@@ -5353,7 +5353,7 @@ The row after a row with spacing double height or double size is handled as REQ-
 
 ## F.19 Web-native page sources (WEB)
 
-This area makes tellytxt.com a web-native receiver (decision E.30). Pages and packets can be fetched from ordinary web servers, pushed by them, and interacted with through forms. Everything here lives in an optional web module. The core library stays free of networking (REQ-GEN-002), and the network transport itself is supplied by the port (REQ-WEB-001).
+This area makes neoteletext a web-native receiver (decision E.30). Pages and packets can be fetched from ordinary web servers, pushed by them, and interacted with through forms. Everything here lives in an optional web module. The core library stays free of networking (REQ-GEN-002), and the network transport itself is supplied by the port (REQ-WEB-001).
 
 **REQ-WEB-001 — The network transport is supplied by the port.**
 The web module shall contain the protocol logic for:
@@ -5429,7 +5429,7 @@ The zxnet live feed reader (REQ-INP-022) is a separate, fixed protocol and is no
 *Verification:* Test against the local test server, including dropped connections and resumption.
 
 **REQ-WEB-006 — Cookies and sessions.**
-The cookie store shall follow current cookie practice (decision E.35): the latest draft of RFC 6265bis, the replacement for RFC 6265, as implemented by current browsers, made stricter wherever tellytxt.com's single-origin model allows. The following rules apply.
+The cookie store shall follow current cookie practice (decision E.35): the latest draft of RFC 6265bis, the replacement for RFC 6265, as implemented by current browsers, made stricter wherever neoteletext's single-origin model allows. The following rules apply.
 
 *Accepting a cookie (processing `Set-Cookie`):*
 - **Malformed or empty.** A `Set-Cookie` header containing a control character (other than horizontal tab) shall be ignored entirely. So shall a cookie whose name and value are both empty.
@@ -5445,7 +5445,7 @@ The cookie store shall follow current cookie practice (decision E.35): the lates
 
   A cookie that breaks the rule for its prefix shall be ignored.
 - **SameSite.** The attribute shall be stored as `Strict`, `Lax`, `None` or, when absent or unrecognised, the default. The default shall be enforced as `Lax`.
-- **`HttpOnly` and `Partitioned`.** These shall be accepted and stored. tellytxt.com has no scripting and no embedded third-party content, so every cookie is in effect HTTP-only and first-party.
+- **`HttpOnly` and `Partitioned`.** These shall be accepted and stored. neoteletext has no scripting and no embedded third-party content, so every cookie is in effect HTTP-only and first-party.
 
 *Sending cookies:*
 - **Which cookies.** Cookies shall be sent only to the host that set them, on paths matching their `Path`, and `Secure` cookies only over encrypted connections.
@@ -5539,7 +5539,7 @@ Only one submission of the same form may be in progress at a time.
 *Verification:* Test against the local test server for success, validation failure, server error, network failure and a response carrying a TTI page.
 
 **REQ-WEB-012 — Guidance for page servers.**
-Servers built to serve tellytxt.com pages should follow these practices, which the reference test server (REQ-WEB-013) shall demonstrate:
+Servers built to serve neoteletext pages should follow these practices, which the reference test server (REQ-WEB-013) shall demonstrate:
 - **Keep no session state on the server.** Hold it in a cookie whose value begins with a format version number, so that the format can change without breaking clients that hold old cookies (decision E.30 item 2).
 - **Validate and version.** Issue a form token bound to the session, and check it on every submission. Send `ETag` validators with every page.
 - **Push only what changed.** Push only changed pages, and push each page whole, not partial rows.
@@ -5576,7 +5576,7 @@ The web module shall implement exactly the following profile, and nothing beyond
 |---|---|
 | Protocol | HTTP/1.1 over plain or TLS connections supplied by the port |
 | Methods | GET, and POST for form submission only |
-| Request headers sent | `Host`, `User-Agent` (fixed, naming tellytxt.com and its version), `Accept` (the two page media types and JSON, or `text/event-stream` for server-sent events, decision E.39), `Accept-Encoding: identity`, `Cookie`, `If-None-Match`, `If-Modified-Since`, `Content-Type` and `Content-Length` (form submissions only), `Last-Event-ID` (server-sent events only), and the WebSocket upgrade headers. No other headers are sent, in particular no `Referer`. |
+| Request headers sent | `Host`, `User-Agent` (fixed, naming neoteletext and its version), `Accept` (the two page media types and JSON, or `text/event-stream` for server-sent events, decision E.39), `Accept-Encoding: identity`, `Cookie`, `If-None-Match`, `If-Modified-Since`, `Content-Type` and `Content-Length` (form submissions only), `Last-Event-ID` (server-sent events only), and the WebSocket upgrade headers. No other headers are sent, in particular no `Referer`. |
 | Response handling | Status codes 200, 204, 301, 302, 303, 304, 307, 308, 404 and other 4xx and 5xx codes as errors. Headers: `Content-Type`, `Content-Length`, `Transfer-Encoding: chunked`, `Location`, `Set-Cookie`, `ETag`, `Last-Modified`, `Cache-Control` (`max-age`, `no-cache`, `no-store`) and `Retry-After`. Other headers are ignored. |
 | Connections | One request at a time per connection. Connections may be reused (persistent connections); pipelining is not used. |
 | Push | WebSocket (RFC 6455) and server-sent events, as REQ-WEB-005 defines |
@@ -5616,7 +5616,7 @@ A service's origin is the origin of its descriptor.
 *Verification:* Test with a table of address pairs covering case, default ports, scheme differences and internationalised host names.
 
 **REQ-WEB-016 — The strict address parser.**
-All web addresses shall be parsed by one small parser in `tellytxt-web`. This covers addresses in:
+All web addresses shall be parsed by one small parser in `neoteletext-web`. This covers addresses in:
 - descriptors;
 - page address templates;
 - redirects;
@@ -5715,7 +5715,7 @@ The following are not part of this implementation. Each could be added later as 
 | Cookie | A small value a web server asks the client to store and send back, used here for sessions. |
 | JSON | JavaScript Object Notation, the text format of the service descriptor. |
 | Origin | The scheme, host and port of a web address: the unit of web security (REQ-WEB-015). |
-| User agent | The web term for a browser or other client acting for the user. tellytxt.com is a deliberately minimal one (REQ-WEB-014). |
+| User agent | The web term for a browser or other client acting for the user. neoteletext is a deliberately minimal one (REQ-WEB-014). |
 | Colour Map, CLUT | The 32 colours of Levels 2.5 and 3.5, in four colour lookup tables (CLUTs) of eight entries each (Table 30). A colour is named by its index, 8 × CLUT + entry. |
 | DCLUT | A DRCS colour lookup table: four or sixteen Colour Map indices used by multi-colour DRCS characters (Table 8). |
 | DRCS, GDRCS | Dynamically Redefinable Characters: characters downloaded as dot patterns on DRCS pages. A Global DRCS page serves the whole magazine. |
@@ -5868,7 +5868,7 @@ The server remains the authority, and shall check everything again.
 - A decoder without form support shows the `OL` rows and ignores every other command in this appendix.
 - A version 2.0 form, which has no column or width, shall be shown as an ordinary page and not made interactive, with a diagnostic that it needs converting.
 - A conversion tool should convert version 2.0 forms to version 3 by finding the placeholders and writing their columns in. It should warn where a placeholder uses national option characters.
-- **Broadcast.** When a form page is encoded for broadcast (REQ-INP-019), the form commands are not transmitted, because a broadcast television has no way to send anything back. A form page should therefore say in its own rows how a viewer without tellytxt.com can respond, for example by a telephone number or a web address. The page checker (REQ-CLI-006) shall warn when a form page has no such text. It detects this only approximately, and the warning can be marked as considered (REQ-CLI-006).
+- **Broadcast.** When a form page is encoded for broadcast (REQ-INP-019), the form commands are not transmitted, because a broadcast television has no way to send anything back. A form page should therefore say in its own rows how a viewer without neoteletext can respond, for example by a telephone number or a web address. The page checker (REQ-CLI-006) shall warn when a form page has no such text. It detects this only approximately, and the warning can be marked as considered (REQ-CLI-006).
 
 ## C.7 Example
 
@@ -5893,7 +5893,7 @@ FS,POST,/contact
 FP,40101,40102
 ```
 
-On a decoder without form support, this page shows the labels and dotted placeholders. On tellytxt.com it is a working form. The session comes from the cookie, the token from `FT`, and the submission goes to `/contact` on the page's own origin.
+On a decoder without form support, this page shows the labels and dotted placeholders. On neoteletext it is a working form. The session comes from the cookie, the token from `FT`, and the submission goes to `/contact` on the page's own origin.
 
 ---
 
@@ -5938,7 +5938,7 @@ The research notes `research/notes-level25-enhancement.md`, `research/notes-leve
 
 | Question | Why it matters | How it will be settled |
 |---|---|---|
-| **What is the tellytxt.com product?** Who writes pages, what the server side is, and who the users are. | This document specifies the receiver and library only. The web-native design implies servers and an authoring workflow that are not specified. | A short product brief, written by the project owner, before milestone M2. |
+| **What is the neoteletext product?** Who writes pages, what the server side is, and who the users are. | This document specifies the receiver and library only. The web-native design implies servers and an authoring workflow that are not specified. | A short product brief, written by the project owner, before milestone M2. |
 | Should the receiver read the live page feeds of SRG SSR (EP1 inside JSON) and NOS (Level 1 rows)? | They are the only live sources of a real broadcaster's teletext bytes found (decision E.28, amended 10 October 2026). They are whole pages, not packets, and the NOS form has already converted accented letters. | A decision in Part E, including the broadcasters' terms of use, before any reader is written. |
 | Where can raw teletext from German broadcasters, ZDF in particular, be obtained? | German public broadcasters are the main remaining users of Level 2.5, so their data best tests what lies beyond Level 1.5. This matters more now that Levels 2.5 and 3.5 are in scope (decision E.40). Their websites publish only HTML, and ZDF's runs a bot check that must not be circumvented. Archives of the web pages (defgsus `teletext-archive-unicode` and its successors, from 2022) hold Unicode text, not teletext bytes. | A recording from a DVB receiver in Europe tuned to Astra 19.2°E or German DVB-T2. |
 | Does double-height rounding alternate its neighbour on every line (the datasheet's wording), or repeat each rounded line (all the emulators)? | Visible only on double-height diagonals | Comparison with photographs of a real SAA5050 (REQ-TST-030). E.13 follows the emulators until then. |
@@ -5983,7 +5983,7 @@ LN,key,target,label
 
 1. **At most four.** A page has at most four coloured links. A fifth coloured `LN` line, or a repeated key, makes the page's links invalid. The page is still displayed, with no links, and a diagnostic is given.
 2. **Unknown services.** A target naming a service not in the descriptor makes that link null.
-3. **Older decoders.** Older TTI readers ignore `LN` lines. A page that wants links on such readers may also carry an ordinary `FL` line. When both are present, `LN` wins in tellytxt.com.
+3. **Older decoders.** Older TTI readers ignore `LN` lines. A page that wants links on such readers may also carry an ordinary `FL` line. When both are present, `LN` wins in neoteletext.
 4. **Encoding for broadcast.** When the page encoder turns the page into packets (REQ-INP-019):
    - it writes packet X/27/0 from the links to the same service, with links to other services written as null;
    - it writes a row 24 (packet X/24) drawn as REQ-NAV-011 describes, with the "display row 24" flag set. The one difference is that a link to another service is written in white rather than its key's colour. The "»" mark still shows, but the prompt does not look like a key that works: a broadcast television cannot follow it.

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds the crates for every target of REQ-GEN-015 and prints a result
 # table; exit status 1 if any target fails. Runs on the Linux build host
-# (scripts/check.sh full runs it there through TELLYTXT_REMOTE).
+# (scripts/check.sh full runs it there through NEOTELETEXT_REMOTE).
 #
 # Mode "build" compiles and links; "test" also runs the tests under qemu
 # user-mode emulation; "check" compiles without linking or code generation,
@@ -23,9 +23,9 @@ readonly ESP="esp"
 
 # The crates that run on bare metal (REQ-GEN-017), the pair built for
 # WebAssembly, and the std crates for operating systems without a terminal.
-readonly BARE="-p tellytxt-core -p tellytxt-formats -p tellytxt-slicer -p tellytxt-web -p tellytxt-image"
-readonly WASM="-p tellytxt-core -p tellytxt-formats"
-readonly LIBRARIES_STD="$BARE --features tellytxt-formats/std,tellytxt-image/std"
+readonly BARE="-p neoteletext-core -p neoteletext-formats -p neoteletext-slicer -p neoteletext-web -p neoteletext-image"
+readonly WASM="-p neoteletext-core -p neoteletext-formats"
+readonly LIBRARIES_STD="$BARE --features neoteletext-formats/std,neoteletext-image/std"
 # Everything except the host-only xtask: the libraries and the ttx program.
 readonly ALL="--workspace --exclude xtask"
 

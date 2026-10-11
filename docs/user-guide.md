@@ -1,13 +1,13 @@
 # ttx user guide
 
-`ttx` is the command-line receiver of tellytxt (REQ-DOC-002). It decodes World System Teletext (ETSI EN 300 706, Levels 1.0 and 1.5) from recordings, live feeds and web services, and shows pages in the terminal, writes them as text or images, or converts them between formats.
+`ttx` is the command-line receiver of neoteletext (REQ-DOC-002). It decodes World System Teletext (ETSI EN 300 706, Levels 1.0 and 1.5) from recordings, live feeds and web services, and shows pages in the terminal, writes them as text or images, or converts them between formats.
 
 This build targets 64-bit Intel and AMD Linux and macOS. Graphics in the terminal use iTerm2 inline images; every other terminal gets coloured text.
 
 ## Building
 
 ```sh
-cargo build --release -p tellytxt-cli
+cargo build --release -p neoteletext-cli
 # the program is target/release/ttx
 ```
 
@@ -20,7 +20,7 @@ Every part is on by default. A smaller program leaves parts out (decision E.61):
 | `slice` | `ttx slice` |
 
 ```sh
-cargo build --release -p tellytxt-cli --no-default-features --features view
+cargo build --release -p neoteletext-cli --no-default-features --features view
 ```
 
 That program reads files, shows and converts pages, and is about half the size, with no TLS code. Every command stays in the help text. A command whose part is left out exits with status 2 and says the build does not include it. Without `view`, `show` draws images at scale 1 unless `--scale` is given.
@@ -170,7 +170,7 @@ Every command accepts these options. Each one changes a setting of REQUIREMENTS.
 
 ### Every Part E setting
 
-The library's `tellytxt_core::config::Config` holds every setting below. `ttx` exposes the ones in the table above through options and profiles; the rest keep the default.
+The library's `neoteletext_core::config::Config` holds every setting below. `ttx` exposes the ones in the table above through options and profiles; the rest keep the default.
 
 | Field | Decision | Default |
 |---|---|---|
@@ -212,4 +212,4 @@ ttx check pages/*.tti --descriptor service.json
 
 ## Glyphs
 
-The glyphs are the project's own, drawn for tellytxt.com in a clean room and checked against a reference by `cargo xtask glyph-check` (REQ-RND-028, decision E.62). They cover every character of every teletext character set: Latin with all national options, Cyrillic, Greek, Hebrew and Arabic.
+The glyphs are the project's own, drawn for neoteletext in a clean room and checked against a reference by `cargo xtask glyph-check` (REQ-RND-028, decision E.62). They cover every character of every teletext character set: Latin with all national options, Cyrillic, Greek, Hebrew and Arabic.

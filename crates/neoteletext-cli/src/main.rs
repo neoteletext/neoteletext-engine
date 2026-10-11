@@ -1,0 +1,343 @@
+//! `ttx`, the neoteletext command-line program (area CLI).
+//!
+//! Exit status (REQ-CLI-005): 0 success, 1 page not found, 2 invalid usage,
+//! 3 input unreadable or unrecognised, 4 page checker errors.
+
+mod commands;
+mod options;
+mod output;
+mod terminal;
+#[cfg(feature = "view")]
+mod view;
+
+use clap::{Args, Parser, Subcommand, ValueEnum};
+use neoteletext_app::{exit, sandbox};
+use std::path::PathBuf;
+use std::process::ExitCode;
+
+/// neoteletext: a software teletext receiver (ETSI EN 300 706 Levels 1.0, 1.5, 2.5 and 3.5).
+#[derive(Parser, Debug)]
+#[command(name = "ttx", version, about)]
+pub struct Cli {
+    #[command(subcommand)]
+    command: Command,
+}
+
+/// Options every command accepts (REQ-CLI-002).
+// Each flag is a separate command-line switch.
+#[allow(clippy::struct_excessive_bools)]
+#[derive(Args, Debug, Clone)]
+pub struct Common {
+    /// Input: a file, `-` for standard input, or `zxnet:<name>` for a live feed.
+    pub input: String,
+    /// Input format, overriding detection.
+    #[arg(long, value_enum)]
+    pub format: Option<options::FormatChoice>,
+    /// Compatibility profile.
+    #[arg(long, default_value = "en300706")]
+    pub profile: String,
+    /// Transport stream packet identifier of the teletext stream to use.
+    #[arg(long)]
+    pub pid: Option<u16>,
+    /// Seconds to collect pages from a live feed before acting (REQ-CLI-002).
+    #[arg(long, default_value_t = 20)]
+    pub duration: u64,
+    /// Pages and sub-pages to keep in memory.
+    #[arg(long, default_value_t = neoteletext_app::session::DEFAULT_PAGES)]
+    pub pages: usize,
+    /// Character set region, the Table 32 group 0 to 15 (decision E.4).
+    /// By default it follows the language a transport stream declares.
+    #[arg(long, value_parser = clap::value_parser!(u8).range(0..16))]
+    pub region: Option<u8>,
+    /// Parity failure policy (decision E.8).
+    #[arg(long, value_enum)]
+    pub parity: Option<ParityChoice>,
+    /// Presentation level, overriding the profile's (REQ-CLI-007).
+    #[arg(long, value_enum)]
+    pub level: Option<LevelChoice>,
+    /// Turn character rounding off (REQ-RND-012).
+    #[arg(long)]
+    pub no_rounding: bool,
+    /// Accept a single Start Box (decision E.17).
+    #[arg(long)]
+    pub single_start_box: bool,
+    /// Print diagnostics, and with -vv the state machine trace (REQ-FSM-010).
+    #[arg(short, long, action = clap::ArgAction::Count)]
+    pub verbose: u8,
+    /// Run without the operating-system sandbox (REQ-SEC-017).
+    #[arg(long)]
+    pub no_sandbox: bool,
+    /// Allow a web service on this local-network address, for example a
+    /// test server on 127.0.0.1 (REQ-SEC-006 is otherwise strict).
+    #[arg(long, value_name = "IP")]
+    pub allow_local: Vec<std::net::IpAddr>,
+}
+
+/// Parity policy names (decision E.8).
+#[derive(ValueEnum, Clone, Copy, Debug)]
+pub enum ParityChoice {
+    /// Keep the last character that passed.
+    KeepGood,
+    /// Show failed characters as spaces.
+    Space,
+    /// Show a visible error marker.
+    Marker,
+}
+
+/// Presentation levels (REQ-CLI-007, decision E.40).
+#[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LevelChoice {
+    /// Level 1.0.
+    #[value(name = "1")]
+    Level1,
+    /// Level 1.5.
+    #[value(name = "1.5")]
+    Level15,
+    /// Level 2.5.
+    #[value(name = "2.5")]
+    Level25,
+    /// Level 3.5.
+    #[value(name = "3.5")]
+    Level35,
+}
+
+/// Terminal display choices (REQ-RND-029).
+#[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GraphicsChoice {
+    /// Detect.
+    Auto,
+    /// iTerm2 inline images.
+    Iterm2,
+    /// Characters with ANSI colour.
+    Text,
+}
+
+/// Raster options shared by `show`, `render` and `view`.
+#[derive(Args, Debug, Clone)]
+pub struct RasterArgs {
+    /// Whole-number scale factor; 0 fits the terminal.
+    #[arg(long, default_value_t = 0)]
+    pub scale: usize,
+    /// Stretch height by 1.2 for 4:3 proportions (REQ-RND-004).
+    #[arg(long)]
+    pub aspect: bool,
+    /// Show concealed text.
+    #[arg(long)]
+    pub reveal: bool,
+    /// The glyphs to draw with: the project's own, the temporary Bedstead
+    /// set, or both side by side (decision E.62). The viewer's `G` key
+    /// cycles through them.
+    #[arg(long, value_enum, default_value_t = output::image::Glyphs::Original)]
+    pub glyphs: output::image::Glyphs,
+}
+
+#[derive(Subcommand, Debug)]
+enum Command {
+    /// List the pages and sub-pages found, with counts and error statistics.
+    List {
+        #[command(flatten)]
+        common: Common,
+    },
+    /// Display one page in the terminal.
+    Show {
+        #[command(flatten)]
+        common: Common,
+        /// Page, e.g. 100 or 100:0003.
+        page: String,
+        #[command(flatten)]
+        raster: RasterArgs,
+        /// Graphics protocol.
+        #[arg(long, value_enum, default_value = "auto")]
+        graphics: GraphicsChoice,
+        /// Write separated mosaics with contiguous characters, for older fonts.
+        #[arg(long)]
+        legacy_mosaics: bool,
+        /// Use 8 colours instead of 24-bit colour.
+        #[arg(long)]
+        colours8: bool,
+    },
+    /// Browse pages interactively in the terminal.
+    View {
+        #[command(flatten)]
+        common: Common,
+        #[command(flatten)]
+        raster: RasterArgs,
+        /// Graphics protocol.
+        #[arg(long, value_enum, default_value = "auto")]
+        graphics: GraphicsChoice,
+        /// Write separated mosaics with contiguous characters, for older fonts.
+        #[arg(long)]
+        legacy_mosaics: bool,
+        /// Use 8 colours instead of 24-bit colour.
+        #[arg(long)]
+        colours8: bool,
+    },
+    /// Write one page, or all, as image files.
+    Render {
+        #[command(flatten)]
+        common: Common,
+        /// Page, e.g. 100, 100:0003, or `all`.
+        page: String,
+        /// Output file, or directory for `all`.
+        #[arg(short, long)]
+        output: PathBuf,
+        #[command(flatten)]
+        raster: RasterArgs,
+        /// Image format.
+        #[arg(long, value_enum, default_value = "png")]
+        image: commands::ImageFormat,
+    },
+    /// Write one page, or all, as UTF-8 text.
+    Text {
+        #[command(flatten)]
+        common: Common,
+        /// Page, e.g. 100, 100:0003, or `all`.
+        page: String,
+        /// Show concealed text.
+        #[arg(long)]
+        reveal: bool,
+        /// Write separated mosaics with contiguous characters, for older fonts.
+        #[arg(long)]
+        legacy_mosaics: bool,
+        /// Write every cell with its colours and attributes instead: the
+        /// test interface of the zvbi oracle (REQ-TST-023).
+        #[arg(long, hide = true)]
+        cells: bool,
+    },
+    /// Convert between formats.
+    Convert {
+        #[command(flatten)]
+        common: Common,
+        /// Output file.
+        #[arg(short, long)]
+        output: PathBuf,
+        /// Output format.
+        #[arg(long, value_enum)]
+        to: commands::ConvertTarget,
+        /// Only this magazine and page, e.g. 100.
+        #[arg(long)]
+        page: Option<String>,
+    },
+    /// Convert raw sampled video to T42 with quality statistics.
+    Slice {
+        #[command(flatten)]
+        common: Common,
+        /// Output T42 file.
+        #[arg(short, long)]
+        output: PathBuf,
+        /// Capture geometry preset.
+        #[arg(long, default_value = "bt8x8")]
+        preset: String,
+    },
+    /// List the teletext streams, languages and subtitle pages of a transport stream.
+    Services {
+        #[command(flatten)]
+        common: Common,
+    },
+    /// Print the broadcast service data of packet 8/30.
+    ServiceInfo {
+        #[command(flatten)]
+        common: Common,
+    },
+    /// Apply the sandbox, then try to open a file, start a program and open
+    /// a network connection; all three must fail (REQ-SEC-017 verification).
+    #[command(hide = true)]
+    SandboxTest,
+    /// The fetcher process of live mode (REQ-SEC-018); started by `view`.
+    #[command(hide = true)]
+    Fetch {
+        /// The live source.
+        address: String,
+        /// Run without the sandbox.
+        #[arg(long)]
+        no_sandbox: bool,
+        /// Local-network addresses allowed.
+        #[arg(long)]
+        allow_local: Vec<std::net::IpAddr>,
+    },
+    /// Check TTI page files for authoring problems.
+    Check {
+        /// TTI files.
+        files: Vec<PathBuf>,
+        /// Service descriptor to resolve link targets against.
+        #[arg(long)]
+        descriptor: Option<PathBuf>,
+    },
+}
+
+fn main() -> ExitCode {
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(error) => {
+            let _ = error.print();
+            return if error.use_stderr() { ExitCode::from(exit::USAGE) } else { ExitCode::SUCCESS };
+        }
+    };
+    let result = match cli.command {
+        Command::List { common } => commands::list(&common.options()),
+        Command::Show { common, page, raster, graphics, legacy_mosaics, colours8 } => {
+            commands::show(&common.options(), &page, &raster, graphics, legacy_mosaics, colours8)
+        }
+        Command::View { common, raster, graphics, legacy_mosaics, colours8 } => {
+            commands::view(&common.options(), &raster, graphics, legacy_mosaics, colours8)
+        }
+        Command::Render { common, page, output, raster, image } => {
+            commands::render(&common.options(), &page, &output, &raster, image)
+        }
+        Command::Text { common, page, reveal, legacy_mosaics, cells } => {
+            commands::text(&common.options(), &page, reveal, legacy_mosaics, cells)
+        }
+        Command::Convert { common, output, to, page } => {
+            commands::convert(&common.options(), &output, to, page.as_deref())
+        }
+        Command::Slice { common, output, preset } => commands::slice(&common.options(), &output, &preset),
+        Command::Services { common } => commands::services(&common.options()),
+        Command::ServiceInfo { common } => commands::service_info(&common.options()),
+        Command::Check { files, descriptor } => commands::check(&files, descriptor.as_deref()),
+        Command::SandboxTest => sandbox::self_test(),
+        Command::Fetch { address, no_sandbox, allow_local } => commands::fetch(&address, no_sandbox, &allow_local),
+    };
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err((code, message)) => {
+            eprintln!("ttx: {message}");
+            ExitCode::from(code)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(arguments: &[&str]) -> Result<Cli, clap::Error> {
+        Cli::try_parse_from(["ttx"].iter().chain(arguments))
+    }
+
+    fn level(arguments: &[&str]) -> Option<LevelChoice> {
+        match parse(arguments).map(|cli| cli.command) {
+            Ok(Command::List { common }) => common.level,
+            other => panic!("not a list command: {other:?}"),
+        }
+    }
+
+    /// REQ-CLI-007: each level is accepted, any other value is invalid
+    /// usage, and the former `--level1-only` option is gone.
+    #[test]
+    fn level_option_takes_the_four_levels() {
+        assert_eq!(level(&["list", "in.t42"]), None);
+        for (text, expected) in [
+            ("1", LevelChoice::Level1),
+            ("1.5", LevelChoice::Level15),
+            ("2.5", LevelChoice::Level25),
+            ("3.5", LevelChoice::Level35),
+        ] {
+            assert_eq!(level(&["list", "in.t42", "--level", text]), Some(expected), "{text}");
+        }
+        for invalid in ["2", "1.0", "4", "level1"] {
+            let error = parse(&["list", "in.t42", "--level", invalid]).unwrap_err();
+            assert!(error.use_stderr(), "{invalid} is invalid usage (exit status {})", exit::USAGE);
+        }
+        assert!(parse(&["list", "in.t42", "--level1-only"]).is_err());
+    }
+}

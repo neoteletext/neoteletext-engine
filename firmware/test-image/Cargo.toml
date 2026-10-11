@@ -3,31 +3,31 @@
 # program with no `main`, which the host test run cannot link, and its
 # features choose the build being measured (decision E.61).
 [package]
-name = "tellytxt-test-image"
+name = "neoteletext-test-image"
 version = "0.0.0"
 edition = "2024"
 publish = false
 
 [dependencies]
-tellytxt-core = { path = "../../crates/tellytxt-core", default-features = false }
-tellytxt-formats = { path = "../../crates/tellytxt-formats", default-features = false }
-tellytxt-web = { path = "../../crates/tellytxt-web", default-features = false }
+neoteletext-core = { path = "../../crates/neoteletext-core", default-features = false }
+neoteletext-formats = { path = "../../crates/neoteletext-formats", default-features = false }
+neoteletext-web = { path = "../../crates/neoteletext-web", default-features = false }
 
 [features]
 # Each feature roots the entry points of one optional area, and enables it.
-level15 = ["tellytxt-core/level15"]
-level25 = ["tellytxt-core/level25"]
-render = ["tellytxt-core/render"]
-bedstead = ["render", "tellytxt-core/bedstead"]
-original = ["render", "tellytxt-core/original"]
-viewer = ["tellytxt-core/viewer"]
-forms = ["tellytxt-core/forms"]
+level15 = ["neoteletext-core/level15"]
+level25 = ["neoteletext-core/level25"]
+render = ["neoteletext-core/render"]
+bedstead = ["render", "neoteletext-core/bedstead"]
+original = ["render", "neoteletext-core/original"]
+viewer = ["neoteletext-core/viewer"]
+forms = ["neoteletext-core/forms"]
 # The format readers through detection; formats-all adds every reader.
 formats = []
-formats-all = ["formats", "tellytxt-formats/default"]
+formats-all = ["formats", "neoteletext-formats/default"]
 # The web user agent; web-all adds push, forms and cookies.
 web = []
-web-all = ["web", "tellytxt-web/default"]
+web-all = ["web", "neoteletext-web/default"]
 # REQ-GEN-019: a deliberate floating-point operation, so that the symbol
 # check can be shown to fail.
 float-probe = []

@@ -18,19 +18,19 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use tellytxt_core::acq::{Decoder, EnhancementPacket, EnhancementStore, EnhancementSubPage, StoredPage};
-use tellytxt_core::config::{CellMode, Config, PresentationLevel};
-use tellytxt_core::consts::{
+use neoteletext_core::acq::{Decoder, EnhancementPacket, EnhancementStore, EnhancementSubPage, StoredPage};
+use neoteletext_core::config::{CellMode, Config, PresentationLevel};
+use neoteletext_core::consts::{
     DATA_BYTES, ENHANCEMENT_PACKETS_LEVEL_35, HEADER_DISPLAY_BYTES, MAGAZINES, MOT_PACKETS, ROWS, TRIPLETS_PER_PACKET,
 };
-use tellytxt_core::enhance::MAX_WALK_STEPS;
-use tellytxt_core::glyphs::GlyphSet;
-use tellytxt_core::level1::{DisplayOptions, Grid, build_grid};
-use tellytxt_core::packet::{Packet, PacketMeta, Triplet, encode};
-use tellytxt_core::render::{
+use neoteletext_core::enhance::MAX_WALK_STEPS;
+use neoteletext_core::glyphs::GlyphSet;
+use neoteletext_core::level1::{DisplayOptions, Grid, build_grid};
+use neoteletext_core::packet::{Packet, PacketMeta, Triplet, encode};
+use neoteletext_core::render::{
     ALL_ROWS, ColourMode, FlashPhase, IndexBuffer, IndexFormat, RenderOptions, render_screen, row_width,
 };
-use tellytxt_core::types::{ControlBits, Instant, Magazine, PageAddress, PageNumber, SubCode};
+use neoteletext_core::types::{ControlBits, Instant, Magazine, PageAddress, PageNumber, SubCode};
 
 /// Microseconds between packets: one television line.
 const LINE_US: u64 = 64;
@@ -115,7 +115,7 @@ fuzz_target!(|input: &[u8]| {
     let mut grid: Box<Grid> = Box::new(Grid::empty());
     build_grid(&mut grid, Some(page), &magazine, &config, &DisplayOptions::default());
     let status: [_; STATUS_COLUMNS] = core::array::from_fn(|column| grid.cells[0][column]);
-    let report = tellytxt_core::compose::compose_level(
+    let report = neoteletext_core::compose::compose_level(
         &mut grid,
         page,
         &magazine,

@@ -1,13 +1,13 @@
 //! Writes the authored Level 2.5 and 3.5 test stream (REQ-TST-024) as
 //! T42, and optionally as TTI files: one per page address and `all.tti`
 //! with every page in the order of Annex B.7. The stream is generated
-//! from `tellytxt_formats::author::streams`, so it is never stored in the
+//! from `neoteletext_formats::author::streams`, so it is never stored in the
 //! repository.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use tellytxt_formats::author::streams;
+use neoteletext_formats::author::streams;
 
 /// The name of the TTI file that holds every page.
 const ALL_PAGES: &str = "all.tti";
@@ -29,7 +29,7 @@ pub fn write(arguments: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-fn write_tti(stream: &tellytxt_formats::author::Stream, directory: &Path) -> Result<(), String> {
+fn write_tti(stream: &neoteletext_formats::author::Stream, directory: &Path) -> Result<(), String> {
     fs::create_dir_all(directory).map_err(|error| format!("{}: {error}", directory.display()))?;
     let files = stream.tti_files().map_err(|error| error.to_string())?;
     for (name, text) in &files {

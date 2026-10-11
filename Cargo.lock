@@ -365,6 +365,72 @@ dependencies = [
 ]
 
 [[package]]
+name = "neoteletext-app"
+version = "0.1.0"
+dependencies = [
+ "embedded-io",
+ "landlock",
+ "libc",
+ "neoteletext-core",
+ "neoteletext-formats",
+ "neoteletext-slicer",
+ "neoteletext-web",
+ "rustls",
+ "seccompiler",
+ "webpki-roots",
+]
+
+[[package]]
+name = "neoteletext-cli"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "crossterm",
+ "neoteletext-app",
+ "neoteletext-core",
+ "neoteletext-formats",
+ "neoteletext-image",
+]
+
+[[package]]
+name = "neoteletext-core"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+]
+
+[[package]]
+name = "neoteletext-formats"
+version = "0.1.0"
+dependencies = [
+ "neoteletext-core",
+ "proptest",
+]
+
+[[package]]
+name = "neoteletext-image"
+version = "0.1.0"
+dependencies = [
+ "neoteletext-core",
+]
+
+[[package]]
+name = "neoteletext-slicer"
+version = "0.1.0"
+dependencies = [
+ "neoteletext-core",
+]
+
+[[package]]
+name = "neoteletext-web"
+version = "0.1.0"
+dependencies = [
+ "embedded-io",
+ "neoteletext-core",
+ "proptest",
+]
+
+[[package]]
 name = "num-traits"
 version = "0.2.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -707,72 +773,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tellytxt-app"
-version = "0.1.0"
-dependencies = [
- "embedded-io",
- "landlock",
- "libc",
- "rustls",
- "seccompiler",
- "tellytxt-core",
- "tellytxt-formats",
- "tellytxt-slicer",
- "tellytxt-web",
- "webpki-roots",
-]
-
-[[package]]
-name = "tellytxt-cli"
-version = "0.1.0"
-dependencies = [
- "clap",
- "crossterm",
- "tellytxt-app",
- "tellytxt-core",
- "tellytxt-formats",
- "tellytxt-image",
-]
-
-[[package]]
-name = "tellytxt-core"
-version = "0.1.0"
-dependencies = [
- "proptest",
-]
-
-[[package]]
-name = "tellytxt-formats"
-version = "0.1.0"
-dependencies = [
- "proptest",
- "tellytxt-core",
-]
-
-[[package]]
-name = "tellytxt-image"
-version = "0.1.0"
-dependencies = [
- "tellytxt-core",
-]
-
-[[package]]
-name = "tellytxt-slicer"
-version = "0.1.0"
-dependencies = [
- "tellytxt-core",
-]
-
-[[package]]
-name = "tellytxt-web"
-version = "0.1.0"
-dependencies = [
- "embedded-io",
- "proptest",
- "tellytxt-core",
-]
-
-[[package]]
 name = "tempfile"
 version = "3.27.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -988,9 +988,9 @@ checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 name = "xtask"
 version = "0.1.0"
 dependencies = [
- "tellytxt-core",
- "tellytxt-formats",
- "tellytxt-image",
+ "neoteletext-core",
+ "neoteletext-formats",
+ "neoteletext-image",
 ]
 
 [[package]]
