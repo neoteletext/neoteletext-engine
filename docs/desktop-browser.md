@@ -335,7 +335,7 @@ The decoder handles untrusted data, so it is the part to wall off. It gets two w
 This comes from `docs/web-native-concept.md` sections 2 to 9, and needs its decisions recorded as requirements first.
 
 - **Sites:**
-  - the descriptor at `/.well-known/teletext.json`, or the defaults `/index.t42` and `/{mpp}.t42` without one;
+  - the descriptor at `/.well-known/teletext.json`, or the defaults `/index.t42` and `/{mpp}.t42` without one (since decision E.70: `channel.json`, `index.t42` and `NNN.tti` or `NNN.t42` in the channel's folder, `docs/channels.md`);
   - the descriptor's aliases and refresh interval.
 - **Resources:**
   - a page file holds its page only;
@@ -477,6 +477,8 @@ Each tab has one, modelled on Chromium's [8][9]:
 - **Normalisation:** everything typed is turned into an ordinary address before the navigation starts. The address bar then shows that address.
 
 ### 7.2 Site and registrable domain
+
+*Superseded 12 October 2026 by decision E.70:* the browser's site is a channel, a folder identified by its origin and folder path, so no public suffix list is needed; see `docs/channels.md`. The display rules below still apply to the host part of the name.
 
 The registrable domain is the public suffix plus one label, from the Public Suffix List. Where the list comes from is a decision (section 15): a maintained crate, or the list fetched and pinned as data. A site is the scheme plus the registrable domain.
 

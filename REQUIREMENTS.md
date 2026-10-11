@@ -1948,7 +1948,7 @@ Recognition by people fluent in each script, and proofs of real pages, are revie
 
 *Reason:* REQ-RND-020 and REQ-RND-028. Writing the checks before the glyphs gives the designer feedback while drawing, and the independence check makes the clean room something the gate measures rather than a promise.
 
-**Decisions E.63 to E.69: the web-native browser.**
+**Decisions E.63 to E.70: the web-native browser.**
 These record the design of `docs/web-native-concept.md` (its decisions 1 to 14, settled on 11 October 2026: decisions 1 to 5 are the owner's, and 6 to 14 were recommended and accepted by the owner), the owner's decisions on the browser in `docs/desktop-browser.md` section 15, and the decisions taken while building the macOS browser on 12 October 2026, when the owner asked for the build to be completed without questions. The build's decisions are marked *(build)* below. They are listed with their reasons in `docs/macos-build-decisions.md` (D1 to D27) and await the owner's review (issue #162). The behaviour was built before these entries were written, against REQ-DOC-004; they were recorded on 12 October 2026 to restore the rule.
 
 **E.63 — Web-native sites: what a site is, where its descriptor lives, and what its files may hold.**
@@ -1966,6 +1966,7 @@ These record the design of `docs/web-native-concept.md` (its decisions 1 to 14, 
 7. **Sub-pages in addresses are not needed** (concept decision 5). An address leads to a page's file and shows its newest sub-page.
 
 *Reason:* `docs/web-native-concept.md` section 2. A simple site is then a folder of files on any static host, and nothing needs declaring. The page-file rule keeps one page's file from rewriting another page of the site.
+*Amended 12 October 2026 by decision E.70:* items 1, 2 and 3 are replaced. A site is now a channel, which is a folder; its descriptor is `channel.json` in that folder, not `/.well-known/teletext.json`; and its files have fixed names in the folder, with no page address template. Items 4 to 7 stand, applied to the channel's folder: the front door is the channel's `index.t42`, which every channel may have, with or without `channel.json`.
 
 **E.64 — Links may lead to addresses; page numbers and runs of text may be links.**
 This amends decision E.36 and Appendix E.
@@ -2048,6 +2049,44 @@ The design's other decisions (section 15: decisions 3, 4, 6, 7, 8, 12, 13 and 15
 
 *Reason:* Security overrides every other requirement (decision E.32), and the helpers parse untrusted input. A test on every run proves the confinement, by trying to read a file, connect and start a program under each profile (REQ-SEC-026).
 
+**E.70 — A channel is a folder.**
+Decided by the owner on 12 October 2026, who asked for solutions that are opinionated and easy to understand and to build. The details below were written to that instruction. This decision replaces items 1, 2 and 3 of decision E.63 and refines its items 4 and 6, and the browser's "site" becomes the "channel" throughout. The reasoning, the alternatives considered and the measurements behind it are in `docs/channels.md`.
+
+1. **A channel is a folder on a web server.** Its address is an `http` or `https` address whose path ends in `/`, such as `https://example.org/` or `https://user.github.io/ceefax/`. There is no other kind of web-native site. One server may hold any number of channels, in different folders. A folder inside a channel is a different channel, and inherits nothing from the folder that contains it.
+2. **A channel is identified by its origin and its folder.** Two addresses are in the same channel only when they have the same origin (REQ-WEB-015) and the same folder path, compared exactly, letter case included, since paths on the web are case-sensitive. The identity decides the tuning screen, the name in row 0, cookies, history, bookmarks, the confirmed channels of a session, where forms may submit, and which redirects are followed. The origin stays the unit for the protections that concern the server as a whole: the plain-HTTP marker, no downgrade, and the local-network checks.
+3. **Folder paths are restricted, so that two spellings can never name one folder, or one spelling two.** Each segment of a channel's folder path is 1 to 64 characters from the unreserved set of RFC 3986 section 2.3 (ASCII letters, digits, `-`, `.`, `_` and `~`), and is not `.` or `..` or made only of dots. Percent-encoding is not allowed in a folder path at all. A folder has at most 8 segments and its path at most 256 characters. An address that breaks these rules is refused, never repaired. Hosting services' own naming fits inside this set: GitHub user and repository names, and `~user` folders.
+4. **Every file of a channel has a fixed name, in the channel's folder.** There is no page address template for channels, and no setting for file names.
+
+   | File | Holds | Required |
+   |---|---|---|
+   | `NNN.tti` or `NNN.t42` | The page `NNN`, written as three hexadecimal digits with `A` to `F` in capitals, such as `100.tti` or `1FE.t42` | Only the initial page |
+   | `index.t42` | Any number of pages at once: a bundle, a capture or an archive | No |
+   | `channel.json` | The channel's settings | No |
+   | `contents.txt` | The channel's list of pages and sections | No |
+
+5. **Opening a channel is three requests, in order.** First `channel.json`: a valid file gives the settings, 404 or 410 means the defaults, and any other answer is a failure that stops the channel opening. Then `index.t42`: its pages are stored, 404 or 410 means there is no bundle, and any other failure is reported and the channel opens without it. Then the initial page, from the store or from its own file. The defaults are: initial page 100, no push, no linked channels, no aliases, no refresh, the default character set region, and the name shown being the channel's host and folder.
+6. **A page is found by one fixed rule.** A page in the store and confirmed current is shown from the store (REQ-WEB-004). Otherwise the browser asks for `NNN.tti`, and on 404 or 410 for `NNN.t42`, and on 404 or 410 again the page is "not found". The browser tries first the extension that last succeeded in that channel, which changes only the number of requests, never the result. A page's own file fills only pages that have been asked for, and enhancement pages (decision E.63 item 4).
+7. **`channel.json` is the service descriptor of REQ-WEB-002, with three differences.** Every member is optional. `page_template` is not allowed in it, and a file that has one is refused, because a channel's files have fixed names. A linked channel is given by its folder's address in a member `channel`. The descriptor is no longer looked for at `/.well-known/teletext.json`: RFC 8615 reserves `.well-known` for the root of a server, which is what kept a site from living in a folder.
+8. **`contents.txt` is the only map of a channel.** It is a list, one entry per line, of three kinds: a section heading, a page of the channel, and another channel. The receiver draws it as a teletext index. Nothing else is used to learn a channel's structure. The browser never lists folders, never probes page numbers and never crawls. A channel without `contents.txt` has a contents view listing the pages the viewer has received so far.
+9. **The author's tool writes the contents.** `ttx contents FOLDER` reads the author's own folder of page files and writes a `contents.txt` for it. The only crawling is done by the owner, of their own files, before publishing.
+10. **Static and dynamic servers are the same to the browser.** "Folder" is a rule about addresses, not about files on disk. A server program may generate any channel's files on request, and any number of channels from a database. The browser sees only addresses and responses.
+11. **Media types are generic in practice, so the content decides.** No teletext media type is registered with IANA, and none is in `mime-db` or the common `mime.types` files. Measured on 12 October 2026, raw.githubusercontent.com serves `.tti` as `text/plain; charset=utf-8` and `.t42` as `application/octet-stream`, jsDelivr serves both as `application/octet-stream`, and NMS Ceefax's feed serves `.tti` as `text/plain`. The extensions are also used by other formats: `.tti` by Template Toolkit and `.t42` by PostScript Type 42 fonts. A channel's files are therefore accepted with this project's own types and with these generic types, and each file must then pass the check for the format its name says. Any other type, including `text/html`, is refused, which also catches hosts that answer a missing file with an HTML page and status 200.
+12. **The channel is a boundary for everything a site was.**
+    - **Cookies** are kept per channel: a cookie set by a response from inside the folder belongs to that channel, a `Path` outside the folder is narrowed to the folder, and the channel's cookies are sent only with requests inside the folder, with its push connection, and with its form submissions.
+    - **Forms** may submit only to an address inside the channel's folder, or on an origin that `channel.json` lists in `form_origins`.
+    - **The push connection** named in `channel.json` may be anywhere on the channel's origin, because servers usually serve push from a fixed path.
+    - **Redirects** of the channel's own requests are followed only within the folder. A redirect from `http` to `https` keeps the channel when the host and folder are the same and both ports are the schemes' defaults. Any other redirect is another channel, and shows the tuning screen.
+    - **Links** to a page file in the same folder stay in the channel. Every other address is another channel.
+13. **Row 0 names the channel by its host and folder,** such as `user.github.io/ceefax`, never by the name the channel gives itself. A name too long for the row keeps the last segment of the folder and as much of the end of the host as fits.
+14. **Descriptor services keep working.** A descriptor given by an address whose file name is not `channel.json` is a service of REQ-WEB-002, with its page address template. Its channel identity is the folder that holds the descriptor, and its contents are the `contents.txt` in that folder. `ttx` keeps opening services this way. New channels are not told about templates.
+15. **What is given up, deliberately.**
+    - Collections whose files have other names, such as SPARK's `P100.tti`, are not served as they are; they are converted once into a channel folder, or read through a descriptor service (item 14).
+    - A broadcaster with several channels on one server shows the tuning screen between them, since each is a channel.
+    - A typed address without a trailing slash whose last segment contains a dot is taken as a file name, and is refused unless it is one of the channel's file names. A folder whose name contains a dot must be typed with its trailing slash.
+    - There is no bundle in TTI form: `index.t42` is the only bundle. An author of TTI pages publishes page files.
+
+*Reason:* The site as an origin could not hold a channel in a folder, which is how the easiest free hosts publish (a GitHub Pages project site is `user.github.io/project/`), and it made strangers on one shared host one site. A channel as a folder works on every static host with no configuration. Fixed names, one request per question, no inference and failing closed keep it simple to learn, to build, and to make safe.
+
 ---
 
 # Part F — Requirements
@@ -2094,7 +2133,8 @@ The requirements are delivered in two phases.
 - the basic software data slicer;
 - the web-native module (area WEB), including the live WebSocket feed reader (REQ-INP-022);
 - the command-line commands;
-- the browser (area BRW, and REQ-NAV-013 to REQ-NAV-015, REQ-SEC-025, REQ-SEC-026, REQ-WEB-018, REQ-WEB-020, REQ-WEB-022 and REQ-TST-081) on macOS and Linux, added on 12 October 2026 (decision E.68);
+- the browser (area BRW, and REQ-NAV-013 to REQ-NAV-015, REQ-SEC-025, REQ-SEC-026, REQ-WEB-018 to REQ-WEB-020, REQ-WEB-022 to REQ-WEB-027 and REQ-TST-081) on macOS and Linux, added on 12 October 2026 (decisions E.68 and E.70);
+- writing a channel's contents (REQ-CLI-008);
 - the full test suite for all of these.
 
 **Phase 2** holds the optional features and nice-to-haves. A requirement, or part of one, belongs to Phase 2 when it carries a *Phase:* note saying so. Phase 1 requirements carry no phase note. Phase 1 must not depend on anything in Phase 2.
@@ -2125,7 +2165,7 @@ The requirements are delivered in two phases.
 | REQ-SEC-019 | The example WebAssembly host. The WebAssembly builds stay in Phase 1. |
 | REQ-SEC-021 | Guidance on hardware isolation for microcontroller ports. |
 | REQ-RND-026 | The glyph line cache. |
-| Area BRW, REQ-NAV-013 to REQ-NAV-015, REQ-SEC-025, REQ-SEC-026, REQ-WEB-018, REQ-WEB-020, REQ-WEB-022 and REQ-TST-081 | The browser on Windows, Android and iOS. macOS and Linux stay in Phase 1. |
+| Area BRW, REQ-NAV-013 to REQ-NAV-015, REQ-SEC-025, REQ-SEC-026, REQ-WEB-018 to REQ-WEB-020, REQ-WEB-022 to REQ-WEB-027 and REQ-TST-081 | The browser on Windows, Android and iOS. macOS and Linux stay in Phase 1. |
 
 Tests for a Phase 2 feature are delivered with that feature.
 
@@ -2141,7 +2181,7 @@ Phase 1 is large, roughly 100 to 150 person-days, so it is delivered in mileston
 | **M4 — Raw video** | The software data slicer and its synthetic signal generator. | SLC, FSM-002, TST-060, TST-061 |
 | **M5 — Forms, links and viewer** | Interactive forms, form input, links (Appendix E), navigation and the viewer state machine. | WEB-010 to WEB-012, NAV (including history, REQ-NAV-010), FSM-005 |
 | **M6 — Levels 2.5 and 3.5** | Decode and render Presentation Levels 2.5 and 3.5 completely: the packets of both levels, storage of enhancement pages, the Colour Map, non-spacing attributes, row and screen colours, side panels, objects and default objects, DRCS, G3 glyphs, font styles and flash, with the presentation level setting and its option. The tests include the worked examples of the standard, authored streams with golden rasters, zvbi as oracle at both levels, real data, and fuzzing of every new parser. | PKT-010 to PKT-018, ACQ-016 to ACQ-022, L25, OBJ, DRC, CHR-007, CHR-011, RND-030 to RND-041, PRF-006, CLI-007, INP-023 to INP-025, FSM-011, FSM-012, TST-015 to TST-019, TST-023 to TST-025, TST-042 |
-| **M7 — Browser** | The windowed browser on macOS and Linux: tabs, the address bar, sites with and without descriptors, links to addresses, aliases, the tuning screen, row 0 drawn by the receiver, page catching, files, saved data, and helper processes confined on both systems, tested end to end against local sites. Built on 12 October 2026 ahead of these requirements; recorded in decisions E.63 to E.69. | BRW, NAV-013 to NAV-015, SEC-025, SEC-026, WEB-018 to WEB-022, TST-081 |
+| **M7 — Browser** | The windowed browser on macOS and Linux: tabs, the address bar, channels in folders with and without `channel.json`, contents files and the contents view, links to addresses, aliases, the tuning screen, row 0 drawn by the receiver, page catching, files, saved data, and helper processes confined on both systems, tested end to end against local channels; and `ttx contents`. The browser was built on 12 October 2026 ahead of these requirements (decisions E.63 to E.69); channels (decision E.70) are specified but not yet built. | BRW, NAV-013 to NAV-015, SEC-025, SEC-026, WEB-018 to WEB-027, CLI-008, TST-081 |
 
 M1 is expected to take 40 to 50 person-days. The order of M2 to M5 may be changed; each depends only on M1. M6 depends on M1, and on M2 for the captures from the live feed that REQ-TST-025 uses. M7 depends on M2 and M5.
 
@@ -2375,7 +2415,7 @@ On pages where row 24 is not displayed, the coloured keys shall do nothing. That
 *Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS (section F.0.1).
 In the browser, all of row 0 belongs to the receiver on every page, not only columns 0 to 7 (decision E.65 items 1 and 2). The interface shall replace row 0 of every frame a decoder sends, across its whole width, with the row it draws itself:
 - columns 0 to 6, the status area of REQ-SEC-005, showing the activity: the page digits, `FORM`, `LINK` or `GO?`, and the red marker for plain HTTP;
-- on web sites, the site's name from the location the interface holds, never from the page, and the clock while the name fits in columns 8 to 31; a longer name is shortened from the left and marked;
+- on channels, the channel's host and folder from the location the interface holds, never from the page or from `channel.json` (decision E.70 item 13). The name is the host, then the folder path without its last `/`, such as `user.github.io/ceefax`; the root folder adds nothing. The clock is shown in columns 32 to 39 while the name fits in columns 8 to 31. A name too long for columns 8 to 39 is shortened: the folder's last segment is kept whole, with its own start cut and marked `<` if it alone is longer than 20 characters; segments between the host and the last are replaced by `/.../`; and the host is cut from the left, marked `<`, so that its end shows;
 - for files and live feeds, the broadcast's own header text.
 
 Page digits reported by a decoder shall be shown only when they are three hexadecimal digits or `-`, and as `---` otherwise. The pages the receiver draws itself (the start page, the keys page, the tuning screen, error and loading pages) shall be built in the interface process and never pass through a decoder.
@@ -3926,7 +3966,7 @@ When a coloured key's link leads to a different service (REQ-WEB-015), and that 
 
 Pressing the same key again follows the link and marks the origin as confirmed. Any other key cancels. Links within the same service, and the Index key, are followed at once.
 
-This requirement applies to `ttx view` and to ports without a browser interface. In the browser (area BRW), every link to another site goes through the tuning screen of REQ-NAV-014 instead (decision E.65).
+This requirement applies to `ttx view` and to ports without a browser interface. In the browser (area BRW), every link to another channel goes through the tuning screen of REQ-NAV-014 instead (decision E.65).
 *Verification:* Test of confirmation, cancellation, and the already-confirmed case.
 
 **REQ-NAV-004 — Pre-fetching linked pages.**
@@ -4016,20 +4056,20 @@ A link target may be a page of the current service, a page of a named service, o
 - **page-number links** (`LK`): typing that number, or choosing the number printed on the page, while the page is shown;
 - **text links** (`LT`): choosing the linked run of text.
 
-A typed number shall follow the current page's own link for it, otherwise the descriptor's alias for it (REQ-WEB-020), otherwise the current site's page with that number. A link to a page of the current site is followed at once. A link to another site, whether by a named service or an address, shall go through the tuning screen (REQ-NAV-014). `ttx view` keeps REQ-NAV-012 for named services, and does not yet follow addresses, page-number links or text links.
-*Verification:* Test of each link source and target form, and of the order of page link, alias and site page.
+A typed number shall follow the current page's own link for it, otherwise the channel's alias for it (REQ-WEB-020), otherwise the current channel's page with that number. A link to a page of the current channel is followed at once. A link to another channel, whether by a named service or an address, shall go through the tuning screen (REQ-NAV-014); an address in the current channel's own folder is a page of the current channel (REQ-WEB-026). `ttx view` keeps REQ-NAV-012 for named services, and does not yet follow addresses, page-number links or text links.
+*Verification:* Test of each link source and target form, and of the order of page link, alias and channel page.
 
 **REQ-NAV-014 — The tuning screen.**
 *Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS (section F.0.1).
-Before the browser shows anything from another site, it shall clear rows 1 to 24 and show the tuning screen (decision E.65 item 3). The screen shall show:
-- the destination's host, in double height, shortened from the left so that its end always shows;
+Before the browser shows anything from another channel (REQ-WEB-018), it shall clear rows 1 to 24 and show the tuning screen (decision E.65 item 3). Another folder on the same origin is another channel. The screen shall show:
+- the destination's host, in double height, shortened from the left so that its end always shows, and the destination's folder on the row below it;
 - the full address, wrapped over up to four rows, with a mark when it is cut;
 - whether the connection is encrypted; a plain HTTP destination is stated in red;
-- why the browser is going there: a typed address, a choice from bookmarks or history, a restored tab, a redirect and the site that sent it, or a link and the site it is on. For a link, the name the site's descriptor gives the destination, or that the address was written in the page and not declared;
+- why the browser is going there: a typed address, a choice from bookmarks or history, a restored tab, a redirect and the channel that sent it, or a link and the channel it is on. For a link, the name the channel's `channel.json` gives the destination, or that the address was written in the page and not declared;
 - the keys: Enter to go, and Escape or Delete to stay.
 
-Row 0 shall show `GO?` and the destination. The screen shall be shown for a typed address, a bookmark or history entry, a restored tab, a link to another site, and a redirect to another site. It shall be skipped only when going back or forward to a site confirmed earlier in the same session. Confirmed sites shall not be remembered between runs. Only the viewer's own key press confirms; nothing a page or a decoder sends can.
-*Verification:* Test of each reason for the screen, of the skipped case, and that a page drawing a copy of the screen cannot confirm anything (the hostile test site of REQ-TST-081).
+Row 0 shall show `GO?` and the destination. The screen shall be shown for a typed address, a bookmark or history entry, a restored tab, a link to another channel, and a redirect to another channel. It shall be skipped only when going back or forward to a channel confirmed earlier in the same session. Confirmed channels shall not be remembered between runs. Only the viewer's own key press confirms; nothing a page or a decoder sends can.
+*Verification:* Test of each reason for the screen, of the skipped case, and that a page drawing a copy of the screen cannot confirm anything (the hostile test channel of REQ-TST-081).
 
 **REQ-NAV-015 — Page catching and showing links.**
 *Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS.
@@ -4852,6 +4892,7 @@ A command-line program named `ttx` shall provide these commands:
 | `ttx services` | List the teletext streams, languages and subtitle pages found in a transport stream. |
 | `ttx service-info` | Print the service data from packet 8/30: initial page, network identification, date, time and status message. |
 | `ttx check` | Check page files for authoring problems (REQ-CLI-006). |
+| `ttx contents` | Write a channel's `contents.txt` from a folder of page files (REQ-CLI-008). |
 *Verification:* Demonstration; test of each command.
 
 **REQ-CLI-002 — Common options.**
@@ -4916,6 +4957,18 @@ Exit status is 0 when there are no errors, and 4 when there are errors. Warnings
 **REQ-CLI-007 — The presentation level option.**
 Every command that decodes pages shall accept `--level` followed by `1`, `1.5`, `2.5` or `3.5`, which sets the presentation level of REQ-PRF-006 and overrides the level of the chosen profile. Any other value shall be invalid usage (REQ-CLI-005). The former `--level1-only` option shall be removed; `--level 1` replaces it (decision E.40).
 *Verification:* Test of each value, of an invalid value, and that `--level1-only` is rejected.
+
+**REQ-CLI-008 — Writing a channel's contents.**
+`ttx contents FOLDER` shall write a `contents.txt` for a channel from the author's own local folder of page files (decision E.70 item 9), to standard output. It shall:
+- **read only that folder,** not its subfolders, and only these files in it: `NNN.tti` and `NNN.t42` whose page numbers are decimal, and `index.t42`. It shall use no network, run under the sandbox of REQ-SEC-017 with read access to the folder only, and write no file;
+- **list every page found,** in page number order, as one `p` entry each. A page in both a page file and `index.t42` is listed once;
+- **title each page** with its TTI `DE` line when it has one, otherwise with the first row of rows 1 to 23 that is not blank, converted to printable ASCII and trimmed, otherwise with "Page NNN". Titles longer than 32 characters are cut;
+- **date each page** with the modification date, in UTC, of the file it was found in;
+- **start each magazine with a section heading,** titled with the title of the magazine's page `M00` when that page exists, and "Magazine M" otherwise;
+- **stay within REQ-WEB-025.** Beyond 800 pages, it shall stop listing and say so on standard error. A file that cannot be read, or fails the check for its format (REQ-WEB-027), is skipped with a diagnostic on standard error.
+
+The output never includes `x` entries. An author who lists other channels adds those lines by hand after the generated ones. Exit status is 0 on success, the usage status for a wrong argument, and 4 when any file was skipped or the page limit was reached.
+*Verification:* Tests with a folder holding TTI and T42 page files, an `index.t42`, a subfolder, a file with another name, an invalid file, and pages in several magazines; the output shall be exactly the expected file, and shall pass REQ-WEB-025.
 
 ---
 
@@ -5196,15 +5249,19 @@ Continuous integration shall run on every change:
 - the fuzzing runs (REQ-TST-040).
 *Verification:* Inspection.
 
-**REQ-TST-081 — End-to-end tests of the browser against local sites.**
+**REQ-TST-081 — End-to-end tests of the browser against local channels.**
 *Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS (section F.0.1).
-The browser shall be tested end to end, with its real helper processes, against local test sites, each on its own port of 127.0.0.1 so that each is its own site. The sites are test code (`tests/web-server/sites.py`) and shall include:
-- a site with a descriptor, TTI pages, aliases, `LN`, `LK` and `LT` links to another site, and a form;
-- a site without a descriptor, with a front door and page files in T42;
-- a site whose descriptor redirects to another site;
-- a hostile site whose pages try to forge row 0 and the tuning screen, and one of whose responses never ends.
+The browser shall be tested end to end, with its real helper processes, against local test channels served on 127.0.0.1. The server is test code (`tests/web-server/sites.py`), and generates every file on request, which also shows that a dynamic server and a static one look the same to the browser (decision E.70 item 10). It shall serve:
+- **a news channel** at the root of its own port, with `channel.json`, `contents.txt`, TTI pages, aliases, `LN`, `LK` and `LT` links to other channels, and a form;
+- **a weather channel** without `channel.json`, with `index.t42` and T42 page files;
+- **two channels in two folders of one port,** `/one/` and `/two/`, each with its own pages and cookies, and links and a redirect from one to the other;
+- **a channel served with the generic media types** `text/plain` and `application/octet-stream`, and one that answers a missing file with an HTML page and status 200;
+- **a redirecting channel,** whose `channel.json` redirects to another channel;
+- **a hostile channel,** whose pages try to forge row 0 and the tuning screen, and one of whose responses never ends;
+- **addresses with path tricks:** `%2F`, `..`, doubled slashes, and `/ab/` against `/a/`.
 
-The tests shall drive the browser's tabs through the same code the window uses, without a display, and shall cover typed addresses, history, links, aliases, page catching, redirects, forms, files, the hostile site, and the helpers' confinement (REQ-SEC-026). Window tests shall render the whole window without a display and check what it shows.
+The tests shall drive the browser's tabs through the same code the window uses, without a display. They shall cover typed addresses in every form of REQ-BRW-002, history, links, aliases, page catching, the contents view, redirects, forms, cookies kept apart between two channels on one origin, files, the hostile channel, the path tricks, the media types, and the helpers' confinement (REQ-SEC-026). Window tests shall render the whole window without a display and check what it shows.
+*Amended 12 October 2026* (decision E.70): channels in folders.
 *Verification:* The tests run in the gate.
 
 ---
@@ -5565,11 +5622,11 @@ A web teletext service shall be identified by the address of a small descriptor 
 - optionally, `aliases`: an object whose members map a page number to a target, either `name:mpp` or an address (decisions E.63 and E.64). An alias is one page number, never a range. A relative address shall be refused, an address in a descriptor fetched over `https` shall be `https`, and there shall be at most 16 aliases;
 - optionally, `refresh`: a whole number of seconds from 5 to 86 400, the interval at which the page on screen is asked for again when the service has no push (decision E.63).
 
-A site's descriptor is found at `/.well-known/teletext.json` on its origin (REQ-WEB-018). A descriptor may also be given by any other address, as before.
+A channel's descriptor is the file `channel.json` in the channel's folder, with the differences REQ-WEB-024 lists (decision E.70). A descriptor may also be given by any other address, as a service with a page address template (REQ-WEB-018).
 
 The page address template uses the placeholders `{m}` (magazine), `{pp}` (page number as two hexadecimal digits), `{mpp}` and `{sub}` (sub-code as four hexadecimal digits), for example `https://example.org/ttx/pages/{mpp}`. The reader shall reject a descriptor with missing required members or unknown placeholders, with a clear diagnostic.
 *Reason:* A page number is teletext's address. The template maps it to a web address without making the page files themselves aware of the web.
-*Amended 12 October 2026* (decision E.63): the well-known location, `aliases` and `refresh`.
+*Amended 12 October 2026* (decisions E.63 and E.70): `aliases`, `refresh`, and `channel.json` as a channel's descriptor.
 *Verification:* Test with valid and malformed descriptors, including aliases and refresh intervals out of range.
 
 **REQ-WEB-003 — Fetching pages.**
@@ -5577,10 +5634,10 @@ The web module shall fetch a page by expanding the template for the requested pa
 - **A TTI page file** (REQ-INP-013), media type `text/x-teletext-tti`. A file may contain several sub-pages.
 - **A T42 packet stream** (REQ-INP-002), media type `application/x-teletext-t42`.
 
-These two media types are defined by this project. For interoperability, the module shall also accept `text/plain` and `application/octet-stream`, deciding the format by the detection of REQ-INP-005. The response shall pass through the normal acquisition path, as page files do (REQ-ARCH-004).
+These two media types are defined by this project. For interoperability, the module shall also accept `text/plain` and `application/octet-stream`, deciding the format by the detection of REQ-INP-005. A channel's files are accepted and checked as REQ-WEB-027 says. The response shall pass through the normal acquisition path, as page files do (REQ-ARCH-004).
 
 The module shall:
-- follow at most 5 redirects. When the port asks for redirects to stay within the site, a redirect to another origin shall instead be reported, not followed (REQ-WEB-021);
+- follow at most 5 redirects. When the port asks for redirects to stay within the channel, a redirect that leaves the channel shall instead be reported, not followed (REQ-WEB-021);
 - treat 404 as "page not in this service";
 - report other failures as events without disturbing pages already stored.
 *Verification:* Test against the local test server of REQ-WEB-013.
@@ -5725,6 +5782,7 @@ Servers built to serve neoteletext pages should follow these practices, which th
 - **Validate and version.** Issue a form token bound to the session, and check it on every submission. Send `ETag` validators with every page.
 - **Push only what changed.** Push only changed pages, and push each page whole, not partial rows.
 - **Keep pages simple.** Serve Level 1 and Level 1.5 pages only.
+- **Publish channels as folders** (decision E.70). Serve each channel's files under their fixed names in its folder (REQ-WEB-019), whether they are files on disk or generated on request. Answer 404 for a file that does not exist, never a page with status 200. Send one of the media types of REQ-WEB-027. Keep each channel's pages, forms and redirects inside its folder, and put any variation in the folder path or the session cookie, never in a query string, which the browser never sends for a channel's files.
 
 *Verification:* Inspection of the reference server.
 
@@ -5793,7 +5851,7 @@ Two addresses have the same origin only if all three parts are equal. The one ex
 - pre-fetching (REQ-SEC-013);
 - the security indicator (REQ-SEC-005).
 
-A service's origin is the origin of its descriptor.
+A service's origin is the origin of its descriptor. In the browser, a channel (REQ-WEB-018) is narrower than an origin: the rules REQ-WEB-026 lists use the channel, and the rest use the origin.
 *Verification:* Test with a table of address pairs covering case, default ports, scheme differences and internationalised host names.
 
 **REQ-WEB-016 — The strict address parser.**
@@ -5836,52 +5894,174 @@ Where the port can keep a signing key that cannot leave the device, the web modu
 The session is then bound to that device. The server issues short-lived cookies only after the client proves it holds the key, so cookies copied from the device, or read on a plain HTTP connection, soon become useless. Ports without such storage shall simply not offer it, and sessions then work as REQ-WEB-006 describes. The implementation shall follow the W3C specification as it stands when the work is scheduled.
 *Verification:* Test against a test-server implementation of the protocol.
 
-**REQ-WEB-018 — Sites.**
+**REQ-WEB-018 — Channels: a channel is a folder.**
 *Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS (section F.0.1).
-The web module shall be able to open a site given only its origin (decision E.63), and the browser shall open sites this way. It shall fetch the descriptor from `/.well-known/teletext.json` on that origin.
-- When the descriptor is found and valid, the site is that service.
-- When the request answers 404 or 410, the site shall be given defaults, built as a descriptor and checked by the rules of REQ-WEB-002: its name is the host, its initial page is 100, its page address template is `/{mpp}.t42` on the origin, and its front door is `/index.t42`.
-- Any other failure, including a server error and an invalid descriptor, shall be reported as a failure, never replaced by the defaults.
+The web module shall be able to open a channel given only the address of its folder, and the browser shall open every web-native site this way (decision E.70). A channel is a folder on a web server: its address is an `http` or `https` address whose path ends in `/`, written in the canonical form of REQ-WEB-023.
 
-A site's identity, for every rule that depends on "the same site", is its origin (REQ-WEB-015).
-*Reason:* A simple site is then a folder of page files on any static host, and a broken descriptor cannot silently turn a site into a different one.
-*Verification:* Test against the local test server with a site that has a descriptor, one without, and one whose descriptor fails.
+**Identity.** A channel is identified by its origin (REQ-WEB-015) together with its folder path, compared exactly, including letter case. Every rule that depends on "the same channel" shall use this identity and no other: the tuning screen (REQ-NAV-014), the name in row 0 (REQ-SEC-025), cookies, forms, push, redirects and links (REQ-WEB-026), history and bookmarks (REQ-BRW-003, REQ-BRW-006), and the channels confirmed in a session. The rules that concern the server as a whole keep using the origin: the plain-HTTP marker (REQ-SEC-005), no downgrade (REQ-SEC-007) and the local-network checks (REQ-SEC-006). A folder inside a channel's folder is a different channel, and inherits nothing from it.
 
-**REQ-WEB-019 — Page files and the front door.**
-A site's pages come from two kinds of resource, with no setting to choose between them (decision E.63 item 4):
-- **The front door,** `/index.t42` on a site without a descriptor, may hold any number of pages, and every page it holds shall be stored. It is bounded by the page response limit of REQ-WEB-008.
-- **A page's own file,** the expansion of the page address template, shall fill only pages that have been asked for, and enhancement pages, whose page numbers are not decimal. Any other page in it shall be dropped.
+**Opening a channel.** The web module shall make these requests in this order, each relative to the channel's folder, and no others:
+1. **`channel.json`.**
+   - When it answers 200 with a valid file (REQ-WEB-024), the channel takes its settings.
+   - When it answers 404 or 410, the channel takes the defaults: initial page 100, no push address, no linked channels, no aliases, no refresh interval, no other form origins, and the configured default character set region.
+   - Any other answer, including a server error, a refused media type (REQ-WEB-027) and an invalid file, shall be reported as a failure, and the channel shall not open. The defaults shall never replace a file that exists but cannot be used.
+2. **`index.t42`.**
+   - When it answers 200 with whole T42 packets, every page it holds shall be stored (REQ-WEB-019).
+   - When it answers 404 or 410, the channel has no bundle.
+   - Any other failure shall be reported, and the channel shall open without the bundle.
+3. **The initial page,** from the store when the bundle held it, otherwise from its own file (REQ-WEB-019).
 
-A requested page shall be looked for first in the store, if it is there and confirmed current (REQ-WEB-004), then in its own file, and is otherwise "not found". A front door, a pushed message, a form response or a local file shall fill every page it holds. When a file or front door does not hold the page asked for, and the viewer has not chosen a page, the first page it holds shall be shown.
-*Reason:* A page file cannot then overwrite other pages of its site, while a whole capture dropped in as the front door is still a working site.
-*Verification:* Test that a page file holding other pages fills only the pages asked for and enhancement pages, and that a front door fills every page.
+`contents.txt` is not asked for when a channel opens. It is asked for when the viewer first opens the contents view (REQ-BRW-009).
+
+**Descriptor services.** A service descriptor given by an address whose file name is not `channel.json` is a service of REQ-WEB-002, with its page address template. Its channel identity is its origin and the folder that holds the descriptor, its contents are the `contents.txt` in that folder, and every rule of this requirement other than "Opening a channel" applies to it.
+*Reason:* A channel in a folder works on every static host, including a GitHub Pages project site at `user.github.io/project/`, and keeps strangers on one shared host apart. Three fixed requests answer every question about a channel, with nothing inferred.
+*Amended 12 October 2026* (decision E.70): this requirement was "Sites", which made the origin the site and looked for the descriptor at `/.well-known/teletext.json`.
+*Verification:* Tests against the local test server with a channel at the root and two channels in different folders of one origin; with and without `channel.json` and `index.t42`; with a `channel.json` that answers a server error, one that is invalid, and one served as `text/html`; and that a channel never asks for any other file when it opens.
+
+**REQ-WEB-019 — The files of a channel.**
+*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS (section F.0.1).
+A channel's files shall have these fixed names, in the channel's folder, and no others (decision E.70 item 4):
+
+| File | Holds |
+|---|---|
+| `NNN.tti` | Page `NNN` as a TTI file (REQ-INP-013), with its sub-pages |
+| `NNN.t42` | Page `NNN` as T42 packets (REQ-INP-002), with its sub-pages |
+| `index.t42` | Any number of pages, as T42 packets |
+| `channel.json` | The channel's settings (REQ-WEB-024) |
+| `contents.txt` | The channel's contents (REQ-WEB-025) |
+
+`NNN` is the page number as three hexadecimal digits, the magazine 1 to 8 first, with the digits `A` to `F` in capitals: `100.tti`, `1FE.t42`. The web module shall ask for page files only in this form.
+
+**Finding a page.** A page shall be looked for:
+1. in the store, when it is there and confirmed current (REQ-WEB-004);
+2. otherwise in `NNN.tti`; when that answers 404 or 410, in `NNN.t42`;
+3. otherwise it is "not found", and is reported so (REQ-WEB-003).
+
+Within a channel, the extension that last answered 200 shall be tried first, and the other second. This changes only the number of requests, never which file is used when both exist: when the first answers 200, the second is not asked for. Conditional requests to keep a page current (REQ-WEB-004) shall go to the file that answered.
+
+**What each file may fill.**
+- **A page's own file** shall fill only pages that have been asked for in this channel, and enhancement pages, whose page numbers are not decimal and which a page may carry for its objects and DRCS characters (decision E.63 item 5). Any other page in it shall be dropped, by its header, with a diagnostic.
+- **`index.t42`,** a pushed message, a form response and a local file shall fill every page they hold.
+- `index.t42` is bounded by the page response limit of REQ-WEB-008, 256 kilobytes by default. A channel larger than that publishes page files.
+
+When the bundle or a file does not hold the page asked for, and the viewer has not chosen a page, the first page it holds shall be shown.
+*Reason:* A page's file cannot overwrite the rest of its channel, while a whole capture published as `index.t42` is a working channel. Fixed names mean one layout to learn and to build.
+*Amended 12 October 2026* (decision E.70): fixed file names in the channel's folder replace the page address template and the front door at the root.
+*Verification:* Tests that a page is found as `.tti`, as `.t42`, and not at all; that the order of the two requests changes after a success but the result does not; that a page file holding other pages fills only the pages asked for and enhancement pages; and that `index.t42` fills every page.
 
 **REQ-WEB-020 — Aliases and refresh.**
 *Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS (section F.0.1).
-In the browser, when the site's descriptor has aliases (REQ-WEB-002), a typed number that has no link on the current page shall follow the alias for that number, if there is one (decision E.64 item 4). An alias to another site goes through the tuning screen in the browser (REQ-NAV-014). When the descriptor has a refresh interval and the service has no push, the page on screen shall be asked for again at that interval, with a conditional request (REQ-WEB-004).
+In the browser, when the channel's `channel.json` has aliases (REQ-WEB-024), a typed number that has no link on the current page shall follow the alias for that number, if there is one (decision E.64 item 4). An alias to another channel goes through the tuning screen (REQ-NAV-014). When the descriptor has a refresh interval and the service has no push, the page on screen shall be asked for again at that interval, with a conditional request (REQ-WEB-004).
 *Verification:* Test that an alias leads to its target and that a page's own link wins over it; test the refresh interval against the local test server.
 
-**REQ-WEB-021 — Redirects within the site.**
-The web module shall offer a setting under which a redirect to another origin is not followed, but reported as an event naming the new address (decision E.65 item 5). A redirect from `http` to `https` on the same host, from the default port of `http` to the default port of `https`, is within the site; a redirect to any other port is not. The browser shall use this setting; `ttx` follows redirects as REQ-WEB-003 says. The limit of five redirects applies in both cases.
-*Reason:* Otherwise a redirect would take the viewer to another site without the tuning screen.
-*Verification:* Test that a redirect to another origin is reported and not followed, and that an upgrade to `https` on the same host is followed.
+**REQ-WEB-021 — Redirects within the channel.**
+The web module shall offer a setting under which a redirect that leaves the channel is not followed, but reported as an event naming the new address (decisions E.65 item 5 and E.70 item 12). A redirect stays within the channel when the new address has the same origin and lies inside the channel's folder. A redirect from `http` to `https` also stays within the channel when the host and the folder are the same and both ports are the schemes' default ports; a redirect to any other port does not. The browser shall use this setting for every request of a channel except form submissions, which keep the rule of REQ-WEB-006; `ttx` follows redirects as REQ-WEB-003 says. The limit of five redirects applies in both cases.
+*Reason:* Otherwise a redirect would take the viewer to another channel without the tuning screen.
+*Amended 12 October 2026* (decision E.70): the boundary is the channel's folder, not the origin.
+*Verification:* Tests that a redirect to another origin and a redirect to another folder of the same origin are reported and not followed; that a redirect to a file inside the folder and an upgrade to `https` on the same host and folder are followed; and that an upgrade to another port is reported.
 
 **REQ-WEB-022 — Enhancement dependencies.**
 *Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS (section F.0.1).
 When the browser shows a page at Presentation Level 2.5 or 3.5 and its enhancement pages are not in the store, it shall ask once for its magazine's Organization Table (page xFE), then for the object and DRCS pages that the table and the page name (decision E.63 item 5). Pages already stored shall not be asked for again. These requests shall not change which page is kept current. While they load, the page is shown with what has arrived, and is drawn again as they arrive. A dependency that cannot be fetched removes only what depends on it (decision E.41).
 *Verification:* Test against the local test server that a Level 2.5 page fetches its table and object pages once.
 
+**REQ-WEB-023 — Channel addresses.**
+*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS (section F.0.1).
+A channel's address shall be checked and written in one canonical form, so that two spellings never name one channel and one spelling never names two (decision E.70 item 3). After the strict parser of REQ-WEB-016:
+- the scheme shall be `http` or `https`, and the host shall be in lower case;
+- the port shall be written only when it is not the scheme's default;
+- the address shall have no query and no fragment;
+- the folder path shall begin and end with `/`. Each segment between the slashes shall be 1 to 64 characters from the unreserved set of RFC 3986 section 2.3: the ASCII letters, the digits, `-`, `.`, `_` and `~`. No segment may be `.`, `..` or made only of dots. Percent-encoding shall not appear in a folder path. There shall be at most 8 segments, and the whole path shall be at most 256 characters.
+
+An address that breaks any of these rules shall be refused with a diagnostic that names the rule, never corrected. The root folder `/` is a channel like any other.
+
+A channel's file addresses are its folder's address followed by one of the file names of REQ-WEB-019. An address whose path is a folder followed by one of those names belongs to that folder's channel. Any other address names no channel.
+*Reason:* Path tricks such as `%2F`, `..` and doubled slashes are the classic way to make one address look like another. Refusing them outright costs nothing, because the allowed set holds the names hosting services use.
+*Verification:* A table of addresses, valid and invalid, including `%2F`, `%2E`, `..`, `.`, doubled slashes, upper-case hosts, default and explicit ports, a query, a fragment, nine segments, a segment of 65 characters, and `/ab/` against `/a/`.
+
+**REQ-WEB-024 — `channel.json`.**
+*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS (section F.0.1).
+`channel.json` is the service descriptor of REQ-WEB-002, read by the same strict, bounded reader with the same 16-kilobyte limit, with these differences (decision E.70 item 7):
+- **Every member is optional.** An absent member takes the default of REQ-WEB-018.
+- **`page_template` is not allowed.** A `channel.json` that has it shall be refused with a diagnostic, because a channel's files have fixed names.
+- **`initial_page`** is a page number of three decimal digits, the magazine 1 to 8 first.
+- **`name`,** when present, is the channel's own name for itself. It may be shown as the tab's title, but never in row 0 (REQ-SEC-025) or on the tuning screen, which name a channel only by its host and folder, and by the name the linking channel declares.
+- **`services`,** the linked channels, gives each one a short name, a display name, and either `channel`, the address of the linked channel's folder in the form of REQ-WEB-023, or `descriptor`, the address of a descriptor service (REQ-WEB-018). An entry with both, or neither, shall be refused.
+- **`aliases`, `refresh`, `push` and `form_origins`** are as REQ-WEB-002 defines them. A push address shall be on the channel's origin, in any folder.
+
+Unknown members shall be refused, as REQ-WEB-002 requires of every descriptor.
+*Verification:* Tests of an empty object, of each member alone, of `page_template`, of a linked channel given each way and both ways, of a push address on another origin, and of an unknown member.
+
+**REQ-WEB-025 — `contents.txt`.**
+*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS (section F.0.1).
+`contents.txt` lists a channel's sections, pages and linked channels, in the order they shall be shown (decision E.70 item 8). It shall be read by a strict, bounded reader:
+- **Size.** At most 64 kilobytes and 1000 lines. A larger file shall be refused whole, with a diagnostic.
+- **Characters.** Lines end with LF or CR LF. Fields are separated by one horizontal tab. A byte outside printable ASCII, other than the tab and the line ends, makes its line invalid.
+- **Ignored lines.** Empty lines, and lines whose first character is `#`, are comments.
+- **Entries.** The first field names the kind of entry:
+
+  | Kind | Fields after the kind | Meaning |
+  |---|---|---|
+  | `s` | title | A section heading |
+  | `p` | page, title, and optionally a date | A page of this channel |
+  | `x` | target, title | Another channel or a page of one |
+
+  - **The page** of a `p` entry is three decimal digits, the magazine 1 to 8 first: a page a viewer can type. Enhancement pages are not listed.
+  - **The date** of a `p` entry, when present, is when the page last changed, as `YYYY-MM-DD` (ISO 8601).
+  - **The target** of an `x` entry is `name:mpp`, a linked channel named in `channel.json`, or an address: a channel's folder, or a page file of a channel, as REQ-WEB-023 defines them.
+  - **A title** is 1 to 32 characters. A longer title shall be cut to 32.
+- **Faults.** A line of an unknown kind shall be ignored, so that later versions may add kinds. A line of a known kind with the wrong number of fields, an invalid page, date or target, or an empty title shall be ignored. The second and later `p` entries for one page shall be ignored. The number of ignored lines shall be reported, and shown in the contents view's status line.
+- **At most 800 `p` entries** are kept; later ones shall be ignored and counted.
+
+Nothing in `contents.txt` is checked against the channel's files: a listed page that does not exist is "not found" when chosen, as a typed number would be.
+*Reason:* One small text format that a person can write by hand, a server can generate, and the author's tool can write (REQ-CLI-008), is the whole of a channel's map.
+*Verification:* Tests of each kind of entry, of every fault listed, of comments and both line ends, of the size and count limits, and of a duplicate page.
+
+**REQ-WEB-026 — The channel is the boundary.**
+*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS (section F.0.1).
+In the browser, the channel shall be the boundary for these rules (decision E.70 item 12). Each is stricter than the origin-based rule of the same name, which still applies.
+- **Cookies.** Each channel has its own cookie store, under the rules of REQ-WEB-006. A cookie set by a response to a request inside the channel's folder belongs to that channel. A `Path` attribute outside the folder, including the default path, shall be narrowed to the folder; a `Path` inside it is kept. A channel's cookies shall be sent only with requests inside its folder, with its push connection, and with its form submissions, and never with another channel's requests, even on the same origin.
+- **Forms.** A form shall submit only to an address inside the channel's folder, or to an origin that `channel.json` lists in `form_origins` (REQ-WEB-008). A form whose target is elsewhere shall be refused before anything is sent, with the target shown.
+- **Push.** The push connection named in `channel.json` shall be on the channel's origin, and may be in any folder.
+- **Redirects.** As REQ-WEB-021 says.
+- **Links.** An address that is a page file in the channel's own folder is a page of the channel, followed at once. Every other address leads to another channel, through the tuning screen (REQ-NAV-014).
+*Reason:* On a shared host, another folder is often another person. The channel must not share a session, a form target or a link's trust with its neighbours.
+*Verification:* Tests with two channels on one origin: their cookies are kept apart, including a cookie set with `Path=/`; a form targeting the other channel's folder is refused; a link and a redirect into the other folder show the tuning screen.
+
+**REQ-WEB-027 — Media types and content checks of a channel's files.**
+*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS (section F.0.1).
+No teletext media type is registered, and common hosts send generic types (decision E.70 item 11). A channel's files shall therefore be accepted with these media types, whatever their parameters, such as `charset`:
+
+| File | Accepted media types |
+|---|---|
+| `NNN.tti` | `text/x-teletext-tti`, `text/plain`, `application/octet-stream` |
+| `NNN.t42`, `index.t42` | `application/x-teletext-t42`, `application/octet-stream`, `text/plain` |
+| `channel.json` | `application/json`, `text/plain`, `application/octet-stream` |
+| `contents.txt` | `text/plain`, `application/octet-stream` |
+
+Any other media type, including `text/html`, shall be refused, with a diagnostic naming the file and the type. A response with no media type shall be refused. These rules apply to responses with status 200. A 404 or 410 means the file does not exist, whatever the type and body of the response, since servers commonly answer it with an HTML page.
+
+Each file shall then pass the check for the format its name says, and is refused otherwise, never read as another format:
+- **a TTI file** shall be a TTI page file with at least one `PN` line, read by REQ-INP-013;
+- **a T42 file** shall be a whole number of 42-byte packets, every one with a valid Hamming 8/4 magazine and row address (EN 300 706 clause 8.2);
+- **`channel.json`** shall pass REQ-WEB-024;
+- **`contents.txt`** shall pass REQ-WEB-025.
+
+A refused page file is reported as a failure of that page, not as "not found", and the other extension is not then tried.
+*Reason:* A file's name and type cannot be trusted alone: `.tti` is also Template Toolkit's extension, `.t42` is also PostScript Type 42 fonts', and some hosts answer a missing file with an HTML page and status 200.
+*Verification:* Tests serving each file with each accepted type and with `text/html`, with no type, with a Template Toolkit file named `100.tti`, with a Type 42 font named `100.t42`, and with an HTML "not found" page answered with status 200.
+
 ---
 
 ## F.20 The browser (BRW)
 
-This area is the windowed browser, `neoteletext`, designed in `docs/desktop-browser.md` and `docs/web-native-concept.md`, and recorded in decisions E.63 to E.69. Its security requirements are REQ-SEC-025 and REQ-SEC-026, and its navigation requirements REQ-NAV-013 to REQ-NAV-015.
+This area is the windowed browser, `neoteletext`, designed in `docs/desktop-browser.md`, `docs/web-native-concept.md` and `docs/channels.md`, and recorded in decisions E.63 to E.70. Its security requirements are REQ-SEC-025 and REQ-SEC-026, and its navigation requirements REQ-NAV-013 to REQ-NAV-015.
 
 Every requirement in this area carries the same phase: Phase 1 on macOS and Linux, and Phase 2 on Windows, Android and iOS (section F.0.1).
 
 **REQ-BRW-001 — One program, with its behaviour in a platform-free crate.**
 *Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS.
-The browser shall be one Rust program built on egui for every platform (decision E.68 item 1). Every decision about what the browser shows and does (addresses, sites, history, the tuning screen, row 0, the receiver's own pages and the formats of saved files) shall be made in `neoteletext-browser`, a library crate with no operating-system access (REQ-SEC-016). `neoteletext-gui` holds only the window, the helper processes and storage. The program shall also be its own helpers: started with a hidden command, it runs as a tab's fetcher or decoder (REQ-SEC-026).
+The browser shall be one Rust program built on egui for every platform (decision E.68 item 1). Every decision about what the browser shows and does (addresses, channels, history, the tuning screen, row 0, the receiver's own pages, the contents view and the formats of saved files) shall be made in `neoteletext-browser`, a library crate with no operating-system access (REQ-SEC-016). `neoteletext-gui` holds only the window, the helper processes and storage. The program shall also be its own helpers: started with a hidden command, it runs as a tab's fetcher or decoder (REQ-SEC-026).
 *Verification:* Inspection; `xtask check-io` classes `neoteletext-browser` as a library crate.
 
 **REQ-BRW-002 — Tabs and the address bar.**
@@ -5889,19 +6069,21 @@ The browser shall be one Rust program built on egui for every platform (decision
 The browser window shall hold any number of tabs. Each tab has its own location, history, helper processes and cookies. The window shall have a tab strip; a toolbar with back, forward, reload and home buttons, the connection's security, the address bar and buttons for the four coloured keys; a menu with bookmarks, history, copying and settings; and a status line.
 
 The address bar shall accept:
-- `https://host/` or a bare `host`, which means `https`: the site at that origin, at its initial page (REQ-WEB-018);
-- `https://host/140.t42`, or `host 140`: that page of that site;
-- `https://host/name.json`: the service that descriptor names (REQ-WEB-002), except that the well-known descriptor's own address names the site;
+- **a channel's folder:** `https://host/`, `https://host/ceefax/`, or a bare `host` or `host/ceefax/`, which mean `https`. The channel opens at its initial page (REQ-WEB-018);
+- **a folder without its trailing slash:** `https://host/ceefax` is the folder `ceefax/` when the last segment contains no `.`. A last segment with a `.` is a file name, and must be one of the names below;
+- **a channel's file:** `https://host/ceefax/140.tti` or `140.t42` is that page of that channel; `index.t42` and `channel.json` are the channel at its initial page; `contents.txt` is the channel's contents view (REQ-BRW-009);
+- **a channel and a page number:** `host/ceefax 140`, a folder address, a space and three digits;
+- **a descriptor service:** `https://host/path/name.json`, for any file name other than `channel.json`, is the service that descriptor names (REQ-WEB-018);
 - `zxnet:name`: a known zxnet live feed (REQ-INP-022);
 - `file:///path` or `/path`: a local file (REQ-BRW-005).
 
-Every address shall pass the strict parser of REQ-WEB-016; only `http` and `https` lead to sites. A page number must be three digits of a real page. While a page is shown, the address bar shows the address of its page file, which typed back leads to the same page.
+Every address shall pass the strict parser of REQ-WEB-016 and the channel rules of REQ-WEB-023; only `http` and `https` lead to channels, and any other file name is refused with a message saying which names a channel has. A page number must be three digits of a real page. While a page is shown, the address bar shows the address of its page file, in the extension that answered, which typed back leads to the same page.
 *Verification:* Test of each accepted form and of rejected ones; a window test.
 
 **REQ-BRW-003 — Each tab's history.**
 *Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS.
-Each tab shall keep a history of the pages it has shown, across sites, of at most 100 entries, the oldest dropped first. Each entry records the location, the page and a title from the page's first line of text. A new page after going back drops the entries ahead of it. Going back or forward to another site shows the tuning screen unless that site was confirmed earlier in the session (REQ-NAV-014).
-*Verification:* Test of back, forward, the dropped entries and the cross-site case.
+Each tab shall keep a history of the pages it has shown, across channels, of at most 100 entries, the oldest dropped first. Each entry records the location, the page and a title from the page's first line of text. A new page after going back drops the entries ahead of it. Going back or forward to another channel shows the tuning screen unless that channel was confirmed earlier in the session (REQ-NAV-014).
+*Verification:* Test of back, forward, the dropped entries and the case of another channel.
 
 **REQ-BRW-004 — Keys.**
 *Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS.
@@ -5929,6 +6111,7 @@ The browser's keys shall follow decision E.67:
 | Copy the page's text | | Command-Shift-C |
 | Glyph set | `G` | |
 | The keys page | `K` | |
+| The channel's contents | `C` | |
 | Quit | | Command-Q |
 
 Escape never quits. `K` shows a page, drawn by the receiver, that lists the letter for each function first, each line fitting the 40 columns and using no character that differs between national options. While a form has the keys, typing is text, and F1 to F4 remain the coloured keys.
@@ -5936,14 +6119,14 @@ Escape never quits. `K` shows a page, drawn by the receiver, that lists the lett
 
 **REQ-BRW-005 — Files.**
 *Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS.
-The browser shall open a local file given in the address bar or dropped on the window (decision E.68 item 5). A file whose name ends in `.t42` shall be read as T42 packets, up to 256 megabytes; any other file as TTI, up to 256 kilobytes. Every page a file holds shall be stored, and the file opens at the page asked for or, failing that, its first page (REQ-WEB-019). A file is its own site for the tuning screen.
+The browser shall open a local file given in the address bar or dropped on the window (decision E.68 item 5). A file whose name ends in `.t42` shall be read as T42 packets, up to 256 megabytes; any other file as TTI, up to 256 kilobytes. Every page a file holds shall be stored, and the file opens at the page asked for or, failing that, its first page (REQ-WEB-019). A file is its own channel for the tuning screen.
 *Verification:* Test of opening each format by path; test of the first-page rule.
 
 **REQ-BRW-006 — Saved data.**
 *Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS.
 The browser shall keep bookmarks, history, the open tabs and its settings between runs, in the platform's application data directory: Application Support on macOS, `$XDG_DATA_HOME` or `~/.local/share` on Linux, `%APPDATA%` on Windows (decision E.68 item 8). Only the interface process shall write them. Each file shall be written whole, by writing a temporary file and renaming it.
 - History shall keep 30 days.
-- Confirmed sites shall not be saved.
+- Confirmed channels shall not be saved.
 - Restored tabs shall reopen at their tuning screens.
 - Cookies shall not be saved (REQ-SEC-013).
 
@@ -5959,6 +6142,25 @@ Pages shall be drawn with the teletext glyph sets only. The viewer shall be able
 *Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS.
 The window's controls shall be described to the platform's screen reader. The page area shall be labelled with the page's text, as `ttx text` gives it. The page's text shall be copyable. The rest of `docs/web-native-concept.md` section 11 (navigation row by row and link by link, and link descriptions) is not yet required.
 *Verification:* Inspection with the platform's screen reader.
+
+**REQ-BRW-009 — The contents view.**
+*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS.
+The browser shall show a channel's contents (REQ-WEB-025) as teletext screens drawn by the receiver (decision E.70 item 8).
+- **Opening it.** The `C` key, the menu's "Contents" item, and the address of the channel's `contents.txt` open the contents view of the current channel. It replaces the page area until the viewer leaves it.
+- **Fetching.** `contents.txt` shall be asked for the first time the view is opened in a visit to the channel, and with a conditional request (REQ-WEB-004) each later time. It is fetched by the tab's fetcher and checked by the interface; it never passes through a decoder, and its screens are built in the interface process like the receiver's other pages (REQ-SEC-025).
+- **Row 0** shows `LIST` in the status area, then the channel's host and folder and the clock, as REQ-SEC-025 says.
+- **Rows 1 and 2** show "Contents" in double height, with the screen number and the number of screens, such as `1/3`, at the right.
+- **Rows 4 to 23** show twenty entries per screen, in the file's order:
+  - **a section heading** in yellow, from column 1. A heading that would fall on row 23 starts the next screen instead, so that a heading is never separated from its first entry;
+  - **a page** in white: column 1 holds `*` when the entry's date is later than the viewer's previous visit to this channel recorded in the history, and a space otherwise; its title starts at column 2; dots fill the row up to column 35; and the page number is in columns 37 to 39;
+  - **another channel** in cyan: column 1 holds the receiver's mark for leaving, the right guillemet `»` from the G2 set; the title starts at column 2; and the page number, when the target names one, is in columns 37 to 39.
+- **Row 24** is drawn by the receiver: "Enter go   Left Right more   Esc back".
+- **Keys.** Up and Down move a selection, drawn with swapped colours as in page catching (REQ-NAV-015); Enter follows the selected entry; Left and Right show the previous and next screen; digits type a page number as on any page; a pointer click follows the entry under it; and Escape or Delete returns to the page shown before.
+- **Following an entry.** A page entry is found as any page of the channel (REQ-WEB-019). An entry for another channel goes through the tuning screen (REQ-NAV-014), as a link on this channel, marked as declared when its target is a `name:mpp` that `channel.json` names.
+- **Without a contents file.** When `contents.txt` answers 404 or 410, the view shall list instead the pages of this channel in the store, in page number order, each titled by the first row of rows 1 to 23 that is not blank, cut to 32 characters, with row 3 saying "No contents file: the pages received so far." When `contents.txt` fails in any other way, row 3 shall say that the contents could not be used and why, and the same list follows.
+- **Faults.** The number of lines `contents.txt` had that were ignored (REQ-WEB-025) is shown in the window's status line, never on the page.
+- **Text.** Titles are drawn by the receiver with the characters every national option shows the same; other characters are drawn as `?`.
+*Verification:* Tests of the screens drawn from a contents file with each kind of entry, a section on the last row, more than one screen and a dated entry; of each key; of the list drawn without a contents file; and a window test.
 
 ---
 
@@ -6033,11 +6235,13 @@ The following are not part of this implementation. Each could be added later as 
 | Origin Modifier | A triplet that offsets the position of the next object invoked, which is how objects reach the side panels. |
 | Side panel | Up to 16 extra columns to the left or right of the 40-column page at Levels 2.5 and 3.5 (clause 12.5). |
 | Presentation level | One of Levels 1, 1.5, 2.5 and 3.5 of EN 300 706 clause 12; a configuration setting of this receiver (REQ-PRF-006). |
-| Site | A web origin that serves teletext pages, with or without a descriptor (REQ-WEB-018, decision E.63). |
-| Front door | The file `/index.t42` of a site without a descriptor: its first page, which may hold any number of pages (REQ-WEB-019). |
-| Page file | The file of one page, at the address the page address template gives, such as `/140.t42` (REQ-WEB-019). |
-| Alias | A descriptor entry that leads one page number to another site on every page of the site (REQ-WEB-020). |
-| Tuning screen | The receiver-drawn screen shown before anything from another site, which the viewer confirms (REQ-NAV-014, decision E.65). |
+| Channel | A folder on a web server that serves teletext pages, identified by its origin and folder path (REQ-WEB-018, decision E.70). What earlier documents call a site. |
+| Channel folder | The address of a channel: an `http` or `https` address whose path ends in `/` (REQ-WEB-023). |
+| Front door, bundle | A channel's `index.t42`, which may hold any number of pages (REQ-WEB-019). |
+| Page file | The file of one page in its channel's folder, named by its number: `140.tti` or `140.t42` (REQ-WEB-019). |
+| Contents file | A channel's `contents.txt`: its sections, pages and linked channels, drawn by the receiver as an index (REQ-WEB-025, REQ-BRW-009). |
+| Alias | An entry of `channel.json` that leads one page number to another channel on every page of the channel (REQ-WEB-020). |
+| Tuning screen | The receiver-drawn screen shown before anything from another channel, which the viewer confirms (REQ-NAV-014, decision E.65). |
 | Page catching | Moving a cursor between the links on a page and following one, as some Philips televisions did with page numbers (REQ-NAV-015). |
 | Helper process | A process the browser starts for a tab: a fetcher, which holds only the network, or a decoder, which holds nothing (REQ-SEC-026). |
 
@@ -6267,8 +6471,10 @@ The research notes `research/notes-level25-enhancement.md`, `research/notes-leve
 | Should an invocation be skipped when the object number bits of its definition differ from its own? | Decision E.51 does not compare them, because the standard does not require it. Comparing would reject a misplaced pointer. | An owner decision |
 | Should the Magazine Inventory Page be interpreted? | It could guide which enhancement pages to keep when the store is full (REQ-ACQ-019). Part G item 12 leaves it uninterpreted. | An owner decision |
 | Does Level 3.5 fit the flash budget of REQ-GEN-009 on a Cortex-M0? | The enhancement processor, the G3 glyph data and the larger grid all add to the 64 kilobyte budget | The size check of REQ-GEN-009, from milestone M6 |
-| Are the decisions taken while building the macOS browser right? | Decisions E.63 to E.69 include choices marked *(build)*, taken on 12 October 2026 without the owner: among them the origin as the site, `sandbox-exec` instead of XPC services, the WebAssembly wall deferred, `q` not quitting, and the BSL-1.0 licence exception. | The owner's review (issue #162); each change is recorded as an amendment in Part E. |
+| Are the decisions taken while building the macOS browser right? | Decisions E.63 to E.69 include choices marked *(build)*, taken on 12 October 2026 without the owner: among them `sandbox-exec` instead of XPC services, the WebAssembly wall deferred, `q` not quitting, and the BSL-1.0 licence exception. | The owner's review (issue #162); each change is recorded as an amendment in Part E. |
 | The browser design's remaining decisions | `docs/desktop-browser.md` section 15 decisions 3, 4, 6, 7, 8, 12, 13 and 15 to 18 are recommendations: libraries, the input router, process isolation on macOS, Windows test machines, signing accounts, the WebAssembly wall, iOS as one process, the interface to the phone shells, minimum system versions, an outside audit, and the phone tools. | The owner's decisions (issue #150), recorded in Part E. |
+| Should a TTI bundle (`index.tti`) be allowed beside `index.t42`? | Decision E.70 keeps one bundle format to keep one request; authors of TTI pages must publish page files. | Experience with TTI-authored channels. |
+| Should declared sister channels on one origin skip the tuning screen? | Decision E.70 shows it between every two channels; a broadcaster with several channels on one server would see it often. | A decision in Part E, if a broadcaster asks. |
 | Should the tuning screen flag host names that imitate others? | The concept (section 6) says names that imitate other domains are flagged; nothing does this yet. It needs a source of confusable characters and of well-known names. | A decision in Part E before it is built. |
 | Do the Teefax and NMS Ceefax feeds carry packets X/26 and X/28, objects or DRCS pages? | REQ-TST-025 relies on them for real data of these levels, and the feeds send only requested pages (REQ-INP-022) | Captures made for REQ-TST-025 |
 
@@ -6288,9 +6494,9 @@ LN,key,target,label
 - **`target`** has one of these forms:
   - `mpp` or `mpp:ssss`: a page, and optionally a sub-page, in the same service, in hexadecimal;
   - `name:mpp` or `name:mpp:ssss`: a page in another service named in the service descriptor (REQ-WEB-002). Names are letters, digits and hyphens;
-  - an address: the address of another site's page file, such as `https://weather.example/300.t42` (decision E.64).
+  - an address: a channel's folder, or a page file in a channel's folder, such as `https://weather.example/300.t42` (decisions E.64 and E.70).
 
-  A target containing `://` is an address; any other target is a page or a named service. An address shall use `http` or `https`, shall be printable ASCII with no spaces or commas, and shall be at most 256 bytes. A target that breaks these rules makes the link invalid. An address on the page's own origin is a page of the current site.
+  A target containing `://` is an address; any other target is a page or a named service. An address shall use `http` or `https`, shall be printable ASCII with no spaces or commas, and shall be at most 256 bytes. A target that breaks these rules makes the link invalid. An address that is a page file in the page's own channel folder is a page of the current channel; any other address leads to another channel (REQ-WEB-026).
 - **`label`** is the prompt text. It is at most 9 characters for a link in the same service and 8 for a link to another service, using characters the page's G0 set can show. It is ignored for `I`.
 
 `LN` lines apply to the page or sub-page of the most recent `PN` line.

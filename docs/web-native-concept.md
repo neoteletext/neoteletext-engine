@@ -2,6 +2,8 @@
 
 The agreed design for browsing teletext over the web. Every open question was settled on 11 October 2026 (section 15). Since 12 October 2026 it is part of REQUIREMENTS.md: its decisions are decisions E.63 to E.67, and its behaviour is in REQ-WEB-002, REQ-WEB-018 to REQ-WEB-022, REQ-NAV-013 to REQ-NAV-015, REQ-SEC-025, area BRW and Appendix E. Where this document and REQUIREMENTS.md disagree, REQUIREMENTS.md wins.
 
+**Sites are now channels** (decision E.70, 12 October 2026). A site is a channel: a folder on a web server, not a whole origin. Its settings file is `channel.json` in the folder, not `/.well-known/teletext.json`; its files have fixed names in the folder (`NNN.tti`, `NNN.t42`, `index.t42`, `contents.txt`); and leaving the folder shows the tuning screen. Section 2 items 1 to 3 and decision 13's well-known location are replaced. `docs/channels.md` explains the change and how to publish a channel.
+
 It builds on what the project already specifies:
 
 - area WEB (REQ-WEB-001 to REQ-WEB-017): service descriptors, fetching, caching, push, cookies, navigation, security, offline use;
@@ -49,8 +51,8 @@ Appendix E now says that addresses never appear in pages. This design amends tha
    - a refresh interval for live pages on sites without push.
 
    A list of supported features and a search page were considered and left out. Nothing would read the features list, and a search page is an ordinary page that a site links to.
-2. **Where it lives.** At `/.well-known/teletext.json`. A file at the site root such as `index.json` could collide with the site's own files.
-3. **Sites without a descriptor.** `/index.t42` is the front door, and page 100. Typing `140` fetches `/140.t42` relative to the site's base address. A simple site is then a folder of files on any static host.
+2. **Where it lives.** At `/.well-known/teletext.json`. A file at the site root such as `index.json` could collide with the site's own files. *Replaced by decision E.70: `channel.json` in the channel's folder.*
+3. **Sites without a descriptor.** `/index.t42` is the front door, and page 100. Typing `140` fetches `/140.t42` relative to the site's base address. A simple site is then a folder of files on any static host. *Replaced by decision E.70: every channel, with or without `channel.json`, may have `index.t42`, and pages are `NNN.tti` or `NNN.t42` in its folder.*
 
 ### Resources
 

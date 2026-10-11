@@ -8,7 +8,7 @@ target/release/ttx show recording.t42 100
 target/release/ttx view zxnet:teefax
 ```
 
-The `neoteletext` browser opens web teletext sites, files and live feeds in a window with tabs, an address bar, back and forward, and bookmarks. Each tab's network and page decoding run in separate processes, confined on macOS so the decoder can reach neither files nor the network. Leaving a site always shows the tuning screen first.
+The `neoteletext` browser opens web teletext channels, files and live feeds in a window with tabs, an address bar, back and forward, and bookmarks. Each tab's network and page decoding run in separate processes, confined on macOS so the decoder can reach neither files nor the network. Leaving a channel always shows the tuning screen first. A channel is a folder of page files on any web server, static or generated: see [docs/channels.md](docs/channels.md) to publish one.
 
 ```sh
 cargo build --release -p neoteletext-gui
@@ -30,6 +30,7 @@ Each crate's optional parts are Cargo features, on by default, so a port or a sm
 | [docs/traceability.md](docs/traceability.md) | Each requirement and the files that implement and test it (`cargo xtask traceability`). |
 | [docs/sources.md](docs/sources.md) | Where test data and live feeds come from. |
 | [IMPLEMENTATION-LOG.md](IMPLEMENTATION-LOG.md) | Questions met during implementation and the decisions taken. |
+| [docs/channels.md](docs/channels.md) | Teletext channels on the web: how a television channel's pages are laid out, why a channel is a folder, the contents file, publishing as static files or from a program, and media types. |
 | [docs/desktop-browser.md](docs/desktop-browser.md), [docs/web-native-concept.md](docs/web-native-concept.md) | The browser's design and the web teletext concept it browses. |
 | [docs/macos-build-decisions.md](docs/macos-build-decisions.md) | The decisions taken while building the macOS browser, for review. |
 
