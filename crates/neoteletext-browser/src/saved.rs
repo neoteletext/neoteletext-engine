@@ -40,7 +40,7 @@ fn field(text: &str) -> String {
 pub fn write(records: &[Saved]) -> String {
     let mut out = String::new();
     for record in records {
-        let address = record.destination.location.address(record.destination.page);
+        let address = record.destination.location.address(record.destination.page, false);
         // Writing to a String cannot fail.
         let _ = writeln!(out, "{}{SEPARATOR}{}{SEPARATOR}{}", record.time, field(&record.title), field(&address));
     }

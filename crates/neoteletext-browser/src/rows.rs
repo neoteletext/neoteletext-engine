@@ -34,6 +34,11 @@ const CLOCK_COLUMN: usize = COLUMNS - CLOCK_COLUMNS;
 const TEXT_COLUMNS: usize = COLUMNS - 1;
 /// Lines of the full address on the tuning screen.
 const ADDRESS_LINES: usize = 4;
+/// The most of a channel's last folder segment row 0 shows before cutting
+/// it too (REQ-SEC-025).
+const LAST_SEGMENT_COLUMNS: usize = 20;
+/// What stands for the folder segments between the host and the last.
+const SKIPPED_SEGMENTS: &str = "/.../";
 
 /// Text as codes the receiver can draw the same under every national
 /// option: printable ASCII outside the positions where the options differ
@@ -79,6 +84,29 @@ pub fn keep_right(text: &str, width: usize) -> Vec<u8> {
     kept
 }
 
+/// A channel's name, `host/folder`, in at most `width` columns
+/// (REQ-SEC-025): whole when it fits; otherwise the folder's last segment
+/// whole (its own start cut and marked `<` when it alone is longer than
+/// [`LAST_SEGMENT_COLUMNS`]), the segments before it as `/.../`, and the
+/// end of the host, cut from the left and marked `<`.
+#[must_use]
+pub fn channel_name(label: &str, width: usize) -> Vec<u8> {
+    let codes = showable(label);
+    if codes.len() <= width {
+        return codes;
+    }
+    let Some((host, path)) = label.split_once('/') else { return keep_right(label, width) };
+    let segments: Vec<&str> = path.split('/').collect();
+    let last = segments.last().copied().unwrap_or("");
+    let last = keep_right(last, LAST_SEGMENT_COLUMNS);
+    let joiner = if segments.len() > 1 { SKIPPED_SEGMENTS } else { "/" };
+    let room = width.saturating_sub(last.len() + joiner.len());
+    let mut name = keep_right(host, room);
+    name.extend_from_slice(joiner.as_bytes());
+    name.extend_from_slice(&last);
+    name
+}
+
 /// What row 0's status area shows (the receiver's columns 0 to 6).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Activity {
@@ -97,6 +125,8 @@ pub enum Activity {
     Link,
     /// The tuning screen is waiting for confirmation.
     Tuning,
+    /// The channel's contents are shown (REQ-BRW-009).
+    Contents,
     /// The receiver's own page: the start page or an error.
     Receiver,
 }
@@ -131,6 +161,7 @@ pub fn status_area(activity: Activity) -> [u8; STATUS_COLUMNS] {
         Activity::Form => fill(&mut status, &[ALPHA_YELLOW, b'F', b'O', b'R', b'M']),
         Activity::Link => fill(&mut status, &[ALPHA_YELLOW, b'L', b'I', b'N', b'K']),
         Activity::Tuning => fill(&mut status, &[ALPHA_YELLOW, b'G', b'O', b'?']),
+        Activity::Contents => fill(&mut status, &[ALPHA_YELLOW, b'L', b'I', b'S', b'T']),
         Activity::Receiver => fill(&mut status, b"P---"),
     }
     status
@@ -147,7 +178,7 @@ pub fn header_text(label: &str, clock: Option<&str>) -> [u8; COLUMNS - HEADER_DI
     let (name, with_clock) = if codes.len() < short {
         (codes, true)
     } else {
-        (keep_right(label, COLUMNS - HEADER_DISPLAY_COLUMN - 1), false)
+        (channel_name(label, COLUMNS - HEADER_DISPLAY_COLUMN - 1), false)
     };
     // Column 8 is the space after the status area; the name follows it.
     for (slot, &code) in out.iter_mut().skip(1).zip(&name) {
@@ -201,6 +232,22 @@ pub const ADDRESS_ROWS: usize = ADDRESS_LINES;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// REQ-SEC-025: a long channel name keeps its last folder and the end
+    /// of its host.
+    #[test]
+    fn channel_names_keep_their_ends() {
+        let text = |codes: Vec<u8>| String::from_utf8(codes).unwrap();
+        assert_eq!(text(channel_name("user.github.io/ceefax", 31)), "user.github.io/ceefax");
+        let long = "raw.githubusercontent.com/spark-teletext/spark-teletext/master";
+        assert_eq!(text(channel_name(long, 31)), "<thubusercontent.com/.../master");
+        let one = "a-very-long-host-name-for-a-test.example/news";
+        assert_eq!(text(channel_name(one, 31)), "<t-name-for-a-test.example/news");
+        let deep = "h.example/a/an-extremely-long-folder-name-indeed";
+        let shown = text(channel_name(deep, 31));
+        assert!(shown.ends_with("/.../<-folder-name-indeed") && shown.len() <= 31, "{shown}");
+        assert_eq!(text(channel_name("example.org", 31)), "example.org");
+    }
 
     #[test]
     fn text_avoids_the_national_positions_and_control_codes() {

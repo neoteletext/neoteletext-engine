@@ -266,6 +266,24 @@ impl<const SLOTS: usize, const BYTES: usize> CookieJar<SLOTS, BYTES> {
         now: u64,
         wall_clock: bool,
     ) -> Result<(), CookieRejected> {
+        self.store_within(header, host, request_path, None, secure, now, wall_clock)
+    }
+
+    /// [`Self::store`], keeping the cookie inside `scope` when it is given:
+    /// a path that is not inside it, including the default path, becomes
+    /// `scope` itself. A channel's cookies are scoped to its folder
+    /// (REQ-WEB-026).
+    #[allow(clippy::too_many_arguments, reason = "the arguments of `store`, and the scope")]
+    pub fn store_within(
+        &mut self,
+        header: &[u8],
+        host: &str,
+        request_path: &str,
+        scope: Option<&str>,
+        secure: bool,
+        now: u64,
+        wall_clock: bool,
+    ) -> Result<(), CookieRejected> {
         // Section 5.6 step 1: control characters other than tab.
         if header.iter().any(|&b| (b < 0x20 && b != b'\t') || b == 0x7F) {
             return Err(CookieRejected::ControlCharacter);
@@ -298,6 +316,10 @@ impl<const SLOTS: usize, const BYTES: usize> CookieJar<SLOTS, BYTES> {
         }
 
         let path = attributes.path.unwrap_or_else(|| default_cookie_path(request_path.as_bytes()));
+        let path = match scope {
+            Some(scope) if !path.starts_with(scope.as_bytes()) => scope.as_bytes(),
+            _ => path,
+        };
         let host = host.as_bytes();
 
         // Section 5.7 step 16: plain HTTP cannot touch a Secure cookie of

@@ -11,9 +11,12 @@ use neoteletext_app::present::{Scale, raster, receiver_grid};
 use neoteletext_browser::Location;
 use neoteletext_browser::pages;
 use neoteletext_browser::rows::{Activity, Page, Row, blank, reported_digits, row0};
+use neoteletext_core::charset::{CharRef, CharSet, G2Set};
 use neoteletext_core::config::Config;
+use neoteletext_core::consts::G2_RIGHT_GUILLEMET;
 use neoteletext_core::consts::{HEADER_DISPLAY_COLUMN, ROWS, STATUS_COLUMNS};
 use neoteletext_core::glyphs::GlyphSet;
+use neoteletext_core::level1::Glyph;
 use neoteletext_core::render::{FlashPhase, RenderOptions};
 use neoteletext_image::palette::Rgba;
 
@@ -44,9 +47,21 @@ impl Picture {
 /// Renders a page the receiver draws itself.
 #[must_use]
 pub fn receiver(page: &Page, sets: &[GlyphSet]) -> Picture {
+    receiver_with_marks(page, &[], sets)
+}
+
+/// Renders a page the receiver draws itself, with the receiver's mark for
+/// leaving the channel, the G2 right guillemet, at each (row, column).
+#[must_use]
+pub fn receiver_with_marks(page: &Page, marks: &[(usize, usize)], sets: &[GlyphSet]) -> Picture {
     let mut status = [0u8; STATUS_COLUMNS];
     status.copy_from_slice(&page[0][..STATUS_COLUMNS]);
-    let grid = receiver_grid(page, status);
+    let mut grid = receiver_grid(page, status);
+    for &(row, column) in marks {
+        if let Some(cell) = grid.cell_mut(row, column) {
+            cell.glyph = Glyph::Char(CharRef::new(CharSet::G2(G2Set::Latin), G2_RIGHT_GUILLEMET));
+        }
+    }
     let options = RenderOptions::for_level(&Config::default(), false, FlashPhase::STEADY);
     let image = raster(&grid, options, true, sets, Scale { x: 1, y: 1, aspect: false }, Rgba::opaque(0, 0, 0));
     let mut rgba = Vec::with_capacity(image.indices.len() * RGBA);
@@ -67,6 +82,20 @@ pub fn screen(screen: &Screen) -> Picture {
         rgba.extend_from_slice(&[r, g, b, u8::MAX]);
     }
     Picture { width: usize::from(screen.width), height: usize::from(screen.height), rgba }
+}
+
+/// Draws row `row` of `picture` with its colours swapped: black and the
+/// row's one other colour exchange places, as a selected link is drawn
+/// (REQ-NAV-015, REQ-BRW-009).
+pub fn swap_row(picture: &mut Picture, row: usize) {
+    let height = picture.row_height();
+    let start = row * height * picture.width * RGBA;
+    let Some(pixels) = picture.rgba.get_mut(start..start + height * picture.width * RGBA) else { return };
+    let colour = pixels.as_chunks::<RGBA>().0.iter().copied().find(|pixel| *pixel != BLACK);
+    let Some(colour) = colour else { return };
+    for pixel in pixels.as_chunks_mut::<RGBA>().0 {
+        *pixel = if *pixel == BLACK { colour } else { BLACK };
+    }
 }
 
 /// Draws `row` as row 0 over `picture`: the whole width of the first row
@@ -117,13 +146,13 @@ pub fn tab_row0(tab: &Tab, clock: Option<&str>) -> Row {
         }
     };
     let label = match &tab.location {
-        Some(location @ (Location::Site { .. } | Location::Service { .. })) => location.label(),
+        Some(location @ (Location::Channel { .. } | Location::Service { .. })) => location.label(),
         Some(_) => status.map(|status| broadcast_header(&status.text)).unwrap_or_default(),
         None => String::new(),
     };
-    // A web site has the browser's clock; broadcast text brings its own.
+    // A channel has the browser's clock; broadcast text brings its own.
     let clock =
-        if matches!(tab.location, Some(Location::Site { .. } | Location::Service { .. })) { clock } else { None };
+        if matches!(tab.location, Some(Location::Channel { .. } | Location::Service { .. })) { clock } else { None };
     row0(activity, &label, clock)
 }
 
@@ -135,6 +164,15 @@ pub fn for_tab(tab: &Tab, bookmarks: &[String], clock: Option<&str>, sets: &[Gly
         View::Keys => receiver(&pages::keys(clock), sets),
         View::Tuning(tuning) => receiver(&tuning.page(clock), sets),
         View::Failed(title, detail) => receiver(&pages::error(title, detail, clock), sets),
+        View::Contents(view) => {
+            let label = tab.location.as_ref().map(Location::label).unwrap_or_default();
+            let (page, marks) = view.page(&label, clock);
+            let mut picture = receiver_with_marks(&page, &marks, sets);
+            if let Some(row) = view.selected_row() {
+                swap_row(&mut picture, row);
+            }
+            picture
+        }
         View::Page => {
             if let Some(decoded) = &tab.screen {
                 let mut picture = screen(decoded);
@@ -162,7 +200,7 @@ mod tests {
             Screen { width: 480, height: 500, palette: vec![[255, 255, 255, 255]], indices: vec![0; 480 * 500] };
         let mut tab = Tab::new(1);
         tab.view = View::Page;
-        tab.location = Some(Location::Site { origin: "https://example.org".into(), secure: true });
+        tab.location = Some(Location::Channel { folder: "https://example.org/".into(), secure: true });
         tab.screen = Some(hostile.clone());
         tab.status = Some(PageStatus { status: *b"GO? bank", found: true, ..PageStatus::default() });
         let picture = for_tab(&tab, &[], Some("12:00:00"), &SETS);
@@ -182,7 +220,7 @@ mod tests {
     #[test]
     fn row0_shows_the_site_or_the_broadcast_header() {
         let mut tab = Tab::new(1);
-        tab.location = Some(Location::Site { origin: "http://127.0.0.1:8001".into(), secure: false });
+        tab.location = Some(Location::Channel { folder: "http://127.0.0.1:8001/".into(), secure: false });
         tab.status = Some(PageStatus { status: *b"P140    ", found: true, ..PageStatus::default() });
         let row = tab_row0(&tab, Some("12:00:00"));
         assert_eq!(row[0], neoteletext_core::consts::ALPHA_RED, "plain http is marked");

@@ -2,11 +2,13 @@
 //! `tests/web-server/sites.py`: real tabs, real fetcher and decoder
 //! processes confined as they are in use, and real HTTP. The window is
 //! not opened; the tests drive the tabs it drives (REQ-TST-081). They
-//! cover REQ-WEB-018, REQ-WEB-019, REQ-WEB-021, REQ-NAV-013, REQ-NAV-014,
-//! REQ-NAV-015, REQ-SEC-025, REQ-SEC-026 and REQ-BRW-005.
+//! cover REQ-WEB-018, REQ-WEB-019, REQ-WEB-021, REQ-WEB-023, REQ-WEB-025,
+//! REQ-WEB-026, REQ-WEB-027, REQ-NAV-013, REQ-NAV-014, REQ-NAV-015,
+//! REQ-SEC-025, REQ-SEC-026, REQ-BRW-002, REQ-BRW-005 and REQ-BRW-009.
 #![allow(missing_docs, clippy::unwrap_used, clippy::panic)]
 
 use neoteletext_app::pipe::UserInput;
+use neoteletext_browser::contents_view::Key;
 use neoteletext_browser::location::parse_input;
 use neoteletext_browser::tuning::Confirmed;
 use neoteletext_browser::{Location, Why};
@@ -156,21 +158,21 @@ fn a_link_to_another_site_goes_through_the_tuning_screen() {
     browser.wait("the tuning screen again", |tab| matches!(tab.view, View::Tuning(_)));
     browser.confirm();
     browser.wait_page(0x300, "WEATHER FORECAST");
-    assert_eq!(browser.tab.location, Some(Location::Site { origin: sites.address("weather", ""), secure: false }));
+    assert_eq!(browser.tab.location, Some(Location::Channel { folder: sites.address("weather", "/"), secure: false }));
     // Back to the confirmed news site needs no tuning screen.
     browser.back();
     browser.wait_page(0x100, "TEST NEWS");
 }
 
 #[test]
-fn a_site_without_a_descriptor_is_its_front_door_and_page_files() {
+fn a_channel_without_settings_is_its_bundle_and_page_files() {
     let Some(sites) = sites() else { return };
     let mut browser = Browser::new();
     browser.type_address(&sites.address("weather", "/"));
     browser.confirm();
-    // Page 100 comes from /index.t42, the front door.
+    // Page 100 comes from index.t42, served as application/octet-stream.
     browser.wait_page(0x100, "WEATHER SITE");
-    // 300 was in the front door too; 200 is fetched from /200.t42.
+    // 300 was in the bundle too; 200 is fetched from 200.tti, then 200.t42.
     browser.keys(&[UserInput::Digit(2), UserInput::Digit(0), UserInput::Digit(0)]);
     browser.wait_page(0x200, "RAIN RADAR");
     // A page file's address shows that page.
@@ -198,7 +200,7 @@ fn a_redirect_to_another_site_is_confirmed_first() {
 fn a_form_is_sent_only_after_the_user_confirms() {
     let Some(sites) = sites() else { return };
     let mut browser = Browser::new();
-    browser.type_address(&sites.address("news", "/300.t42"));
+    browser.type_address(&sites.address("news", "/300.tti"));
     browser.confirm();
     browser.wait_page(0x300, "CONTACT US");
     browser.wait("the form to take the keys", |tab| tab.status.as_ref().is_some_and(|status| status.form));
@@ -279,7 +281,7 @@ fn helpers_are_confined() {
 /// Opens the news site and waits for page `mpp` with `text` on it.
 fn news_at(sites: &common::Sites, mpp: u16, text: &str) -> Browser {
     let mut browser = Browser::new();
-    browser.type_address(&sites.address("news", &format!("/{mpp:03X}.t42")));
+    browser.type_address(&sites.address("news", &format!("/{mpp:03X}.tti")));
     browser.confirm();
     browser.wait_page(mpp, text);
     browser
@@ -304,7 +306,7 @@ fn links_to_addresses_go_through_the_tuning_screen() {
     browser.keys(&[UserInput::Colour(3)]);
     browser.wait("the tuning screen for cyan", |tab| matches!(tab.view, View::Tuning(_)));
     let screen = tuning(&browser);
-    assert_eq!(screen.destination.location, Location::Site { origin: weather.clone(), secure: false });
+    assert_eq!(screen.destination.location, Location::Channel { folder: format!("{weather}/"), secure: false });
     assert_eq!(screen.destination.page, Some(0x200));
     assert!(matches!(screen.why, Why::Link { declared: None, .. }), "an address in a page is not declared");
     browser.confirm();
@@ -324,7 +326,7 @@ fn links_to_addresses_go_through_the_tuning_screen() {
     browser.wait("the tuning screen for the text link", |tab| matches!(tab.view, View::Tuning(_)));
     assert_eq!(
         tuning(&browser).destination.location,
-        Location::Site { origin: sites.address("hostile", ""), secure: false }
+        Location::Channel { folder: sites.address("hostile", "/"), secure: false }
     );
 }
 
@@ -376,4 +378,99 @@ fn page_catching_selects_and_follows_links() {
     browser.wait("the linked number 400", |tab| link(tab) == weather);
     browser.keys(&[UserInput::Enter]);
     browser.wait("the tuning screen", |tab| matches!(tab.view, View::Tuning(_)));
+}
+
+fn status_text(tab: &Tab) -> String {
+    tab.status.as_ref().map(|status| status.text.clone()).unwrap_or_default()
+}
+
+/// Decision E.70: two folders of one origin are two channels, each with
+/// its own cookies; a link and a redirect between them show the tuning
+/// screen.
+#[test]
+fn two_folders_of_one_origin_are_two_channels() {
+    let Some(sites) = sites() else { return };
+    let mut browser = Browser::new();
+    browser.type_address(&sites.address("pair", "/one/"));
+    browser.confirm();
+    browser.wait_page(0x100, "CHANNEL ONE");
+    assert_eq!(browser.tab.name.as_deref(), Some("Channel One"));
+    // Channel one's settings set a cookie for the whole host; it comes
+    // back inside the folder.
+    browser.tab.reload();
+    browser.wait("channel one's cookie", |tab| status_text(tab).contains("Cookies here: one=1"));
+    // A page number linked to the other folder.
+    browser.keys(&[UserInput::Digit(2), UserInput::Digit(0), UserInput::Digit(0)]);
+    browser.wait("the tuning screen for channel two", |tab| matches!(tab.view, View::Tuning(_)));
+    let screen = tuning(&browser);
+    assert_eq!(
+        screen.destination.location,
+        Location::Channel { folder: sites.address("pair", "/two/"), secure: false }
+    );
+    browser.confirm();
+    browser.wait_page(0x100, "CHANNEL TWO");
+    assert!(status_text(&browser.tab).contains("Cookies here: none"), "{}", status_text(&browser.tab));
+    // A redirect from one folder to the other is confirmed first.
+    let mut browser = Browser::new();
+    browser.type_address(&sites.address("pair", "/one/300.tti"));
+    browser.confirm();
+    browser.wait(
+        "the tuning screen for the redirect",
+        |tab| matches!(&tab.view, View::Tuning(tuning) if matches!(tuning.why, Why::Redirect { .. })),
+    );
+    // An HTML page answered with 200 is not a page.
+    let mut browser = Browser::new();
+    browser.type_address(&sites.address("pair", "/one/"));
+    browser.confirm();
+    browser.wait_page(0x100, "CHANNEL ONE");
+    browser.keys(&[UserInput::Digit(4), UserInput::Digit(0), UserInput::Digit(0)]);
+    browser.wait("the refusal of the HTML page", |tab| tab.notice.as_deref().is_some_and(|n| n.contains("MediaType")));
+}
+
+/// REQ-BRW-009: the contents view draws contents.txt, follows its pages
+/// and sends its other channels through the tuning screen.
+#[test]
+fn the_contents_view_lists_and_follows() {
+    let Some(sites) = sites() else { return };
+    let mut browser = news_at(&sites, 0x100, "TEST NEWS");
+    browser.tab.open_contents(None);
+    browser.wait("the contents view", |tab| matches!(tab.view, View::Contents(_)));
+    assert_eq!(browser.tab.notice.as_deref(), Some("1 lines of contents.txt were ignored."));
+    assert!(browser.tab.address().ends_with("/contents.txt"), "{}", browser.tab.address());
+    let sets = neoteletext_gui::GLYPHS[0];
+    let _ = picture::for_tab(&browser.tab, &[], None, sets);
+    browser.tab.contents_key(Key::Down);
+    browser.tab.contents_key(Key::Down);
+    browser.tab.contents_key(Key::Enter);
+    browser.wait_page(0x200, "TOP STORY");
+    browser.tab.open_contents(None);
+    assert!(matches!(browser.tab.view, View::Contents(_)), "fetched once a visit");
+    for _ in 0..3 {
+        browser.tab.contents_key(Key::Down);
+    }
+    browser.tab.contents_key(Key::Enter);
+    let screen = tuning(&browser);
+    assert!(matches!(&screen.why, Why::Link { declared: Some(name), .. } if name == "weather"), "{:?}", screen.why);
+    assert_eq!(screen.destination.page, Some(0x300));
+
+    // A channel without contents.txt lists the pages seen.
+    let mut browser = Browser::new();
+    browser.type_address(&sites.address("weather", "/"));
+    browser.confirm();
+    browser.wait_page(0x100, "WEATHER SITE");
+    browser.tab.open_contents(None);
+    browser.wait("the list of pages seen", |tab| matches!(tab.view, View::Contents(_)));
+    let View::Contents(view) = &browser.tab.view else { unreachable!() };
+    let (page, _) = view.page("x", None);
+    let text: String = page.iter().map(|row| String::from_utf8_lossy(row).into_owned()).collect();
+    assert!(text.contains("No contents file") && text.contains("100"), "{text}");
+}
+
+/// REQ-WEB-023: path tricks are refused in the address bar, never repaired.
+#[test]
+fn path_tricks_are_refused() {
+    let Some(sites) = sites() else { return };
+    for path in ["/one/../two/", "/one%2Ftwo/", "/one//two/"] {
+        assert!(parse_input(&sites.address("pair", path)).is_err(), "{path}");
+    }
 }

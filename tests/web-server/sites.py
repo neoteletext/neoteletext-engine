@@ -1,17 +1,22 @@
 #!/usr/bin/env python3
-"""Local web-native teletext sites for the browser's end-to-end tests.
+"""Local teletext channels for the browser's end-to-end tests (REQ-TST-081).
 
-Test code, not part of the library. Starts several sites, each on its own
-port of 127.0.0.1, so that each is its own origin and so its own site
-(docs/web-native-concept.md section 2, docs/macos-build-decisions.md):
+Test code, not part of the library. Every file is generated on request, so
+it also shows that a program and a folder of files look the same to the
+browser (decision E.70, docs/channels.md). Each server listens on its own
+port of 127.0.0.1:
 
-  news       a site with a descriptor at /.well-known/teletext.json, TTI
-             pages, a link to the weather site, and a contact form
-  weather    a site without a descriptor: the front door /index.t42 holds
-             pages 100 and 300 as T42 packets, and /200.t42 is page 200
-  redirect   its descriptor address redirects to the weather site
-  hostile    a site whose pages try to forge the receiver's row 0 and the
-             tuning screen, and one that sends a page that never ends
+  news       a channel at the root: channel.json, contents.txt, TTI pages
+             served as text/plain, links to the weather channel, a form
+  weather    a channel without channel.json: index.t42 holds pages 100 and
+             300, and 200.t42 and 300.t42 are page files, all served as
+             application/octet-stream
+  redirect   its channel.json redirects to the weather channel
+  hostile    a channel whose pages try to forge the receiver's row 0 and
+             the tuning screen, and one of whose files never ends
+  pair       two channels in two folders of one origin, /one/ and /two/:
+             their own cookies, a link and a redirect between them, a
+             contents file, and a missing page answered as HTML with 200
 
 Standard library only. Prints the ports as one JSON line, then serves until
 it is killed.
@@ -71,6 +76,24 @@ NEWS_PAGES = {
         "LN,R,100,Index",
     ]),
 }
+
+NEWS_CONTENTS = "\n".join([
+    "# The news channel's contents (REQ-WEB-025).",
+    "s\tNews",
+    "p\t100\tIndex",
+    "p\t200\tTop story\t2026-10-12",
+    "s\tElsewhere",
+    "x\tweather:300\tWeather forecast",
+    "q\ta kind from a later version",
+    "",
+])
+
+PAIR_CONTENTS = "\n".join([
+    "s\tChannel one",
+    "p\t100\tFront page",
+    "x\thttp://127.0.0.1:{port}/two/\tChannel two",
+    "",
+])
 
 FORM_PAGE = tti([
     "PN,30000",
@@ -188,37 +211,71 @@ class Site(http.server.BaseHTTPRequestHandler):
 
     def site_news(self, path):
         session = "s1"
-        if path == "/.well-known/teletext.json":
-            descriptor = {
+        # Served the way raw.githubusercontent.com serves them (decision
+        # E.70 item 11).
+        plain = "text/plain; charset=utf-8"
+        if path == "/channel.json":
+            settings = {
                 "name": "Test News",
-                "initial_page": "100",
-                "page_template": "/pages/{mpp}.tti",
                 "services": [{"name": "weather", "display_name": "Weather",
-                              "descriptor": "http://127.0.0.1:%d/.well-known/teletext.json" % self.ports["weather"]}],
+                              "channel": "http://127.0.0.1:%d/" % self.ports["weather"]}],
                 "aliases": {"500": "weather:200", "600": "http://127.0.0.1:%d/300.t42" % self.ports["weather"]},
             }
-            return self.send(200, json.dumps(descriptor), "application/json",
+            return self.send(200, json.dumps(settings), "application/json",
                              [("Set-Cookie", "session=v1.%s; Path=/; HttpOnly; SameSite=Lax" % session)])
+        if path == "/contents.txt":
+            return self.send(200, NEWS_CONTENTS, plain)
         if path == "/thanks":
             return self.send(200, THANKS_PAGE)
-        if path.startswith("/pages/") and path.endswith(".tti"):
-            page = path[len("/pages/"):-len(".tti")]
+        if path.endswith(".tti"):
+            page = path[1:-len(".tti")]
             if page == "300":
-                return self.send(200, FORM_PAGE.format(token=token_for(session)))
+                return self.send(200, FORM_PAGE.format(token=token_for(session)), plain)
             if page == "301":
-                return self.send(200, THANKS_PAGE)
+                return self.send(200, THANKS_PAGE, plain)
             if page in NEWS_PAGES:
-                return self.send(200, NEWS_PAGES[page].format(**self.ports))
+                return self.send(200, NEWS_PAGES[page].format(**self.ports), plain)
         return self.not_found()
 
     def site_weather(self, path):
+        binary = "application/octet-stream"
         if path == "/index.t42":
             front = t42_page(0x100, WEATHER[0x100], "WEATHER 100") + t42_page(0x300, WEATHER[0x300], "WEATHER 300")
-            return self.send(200, front, "application/x-teletext-t42")
+            return self.send(200, front, binary)
         if path == "/200.t42":
-            return self.send(200, t42_page(0x200, WEATHER[0x200], "WEATHER 200"), "application/x-teletext-t42")
+            return self.send(200, t42_page(0x200, WEATHER[0x200], "WEATHER 200"), binary)
         if path == "/300.t42":
-            return self.send(200, t42_page(0x300, WEATHER[0x300], "WEATHER 300"), "application/x-teletext-t42")
+            return self.send(200, t42_page(0x300, WEATHER[0x300], "WEATHER 300"), binary)
+        return self.not_found()
+
+    def site_pair(self, path):
+        plain = "text/plain"
+        port = self.ports["pair"]
+        cookies = self.headers.get("Cookie", "none")
+        if path == "/one/channel.json":
+            return self.send(200, json.dumps({"name": "Channel One"}), plain,
+                             [("Set-Cookie", "one=1; Path=/")])
+        if path == "/one/contents.txt":
+            return self.send(200, PAIR_CONTENTS.format(port=port), plain)
+        if path == "/one/100.tti":
+            return self.send(200, tti([
+                "PN,10000",
+                "OL,1," + esc(YELLOW) + "CHANNEL ONE",
+                "OL,3," + esc(WHITE) + "Cookies here: " + cookies,
+                "OL,5," + esc(WHITE) + "Channel two ....... 200",
+                "LK,200,http://127.0.0.1:%d/two/100.tti" % port,
+            ]), plain)
+        if path == "/one/300.tti":
+            return self.send(302, "", plain, [("Location", "/two/100.tti")])
+        if path == "/one/400.tti":
+            # A host that answers a missing file with an HTML page and 200.
+            return self.send(200, "<html><body>Not found</body></html>", "text/html")
+        if path == "/two/100.tti":
+            return self.send(200, tti([
+                "PN,10000",
+                "OL,1," + esc(CYAN) + "CHANNEL TWO",
+                "OL,3," + esc(WHITE) + "Cookies here: " + cookies,
+            ]), plain)
         return self.not_found()
 
     def site_redirect(self, path):
@@ -243,7 +300,7 @@ class Site(http.server.BaseHTTPRequestHandler):
 
 
 def main():
-    names = ["news", "weather", "redirect", "hostile"]
+    names = ["news", "weather", "redirect", "hostile", "pair"]
     servers = {}
     for name in names:
         handler = type(name, (Site,), {"name": name})

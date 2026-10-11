@@ -193,14 +193,18 @@ fn send(frame: &Frame) -> std::io::Result<()> {
     pipe::write(&mut out, frame)
 }
 
-/// Reads the decoder process's requests: page requests, submissions,
-/// confirmations and links to other services. Anything else is dropped.
+/// Reads the requests sent to the fetcher: page requests, submissions,
+/// confirmations, links to other services, and the browser's request for a
+/// channel's contents. Anything else is dropped.
 fn requests() -> Receiver<Frame> {
     let (sender, receiver) = mpsc::channel();
     std::thread::spawn(move || {
         let mut input = std::io::stdin().lock();
         while let Ok(Some(frame)) = pipe::read(&mut input) {
-            let wanted = matches!(frame, Frame::Request(..) | Frame::Submit(_) | Frame::Confirm(_) | Frame::Follow(..));
+            let wanted = matches!(
+                frame,
+                Frame::Request(..) | Frame::Submit(_) | Frame::Confirm(_) | Frame::Follow(..) | Frame::FetchContents
+            );
             if wanted && sender.send(frame).is_err() {
                 break;
             }
@@ -213,10 +217,12 @@ fn page_request(mpp: u16, sub: u16) -> Option<(PageAddress, Option<SubCode>)> {
     PageAddress::from_mpp(mpp).map(|address| (address, (sub != u16::MAX).then(|| SubCode::new(sub))))
 }
 
-/// The prefix of a fetcher address that names a web-native site rather
-/// than a descriptor: the browser's form (`docs/web-native-concept.md`
-/// section 2).
-pub const SITE_PREFIX: &str = "site:";
+/// The prefix of a fetcher address that names a channel's folder rather
+/// than a descriptor: the browser's form (REQ-WEB-018).
+pub const CHANNEL_PREFIX: &str = "channel:";
+
+// The pipe carries a contents file whole, up to REQ-WEB-025's limit.
+const _: () = assert!(pipe::MAX_CONTENTS == neoteletext_web::contents::MAX_BYTES);
 
 /// Runs the fetcher for `address` until the decoder process goes away.
 /// `sandboxed_by_parent` says the process that started this one has
@@ -336,9 +342,9 @@ fn run_web(address: &str, requests: &Receiver<Frame>, allow_local: &[IpAddr]) {
     const COOKIE_BYTES: usize = 32 * 1024;
     let mut storage = Box::new(Storage::default());
     let mut config = neoteletext_web::agent::Config::default();
-    let site = address.strip_prefix(SITE_PREFIX);
-    // A browser confirms every other site before showing it.
-    config.redirects_within_site = site.is_some();
+    let channel = address.strip_prefix(CHANNEL_PREFIX);
+    // A browser confirms every other channel before showing it.
+    config.redirects_within_channel = channel.is_some();
     for (slot, &address) in config.allowed_local.iter_mut().zip(allow_local) {
         *slot = Some(web_address(address));
     }
@@ -382,8 +388,16 @@ fn run_web(address: &str, requests: &Receiver<Frame>, allow_local: &[IpAddr]) {
                 send(&Frame::Notice(Notice::ServiceName(name.to_string())))
                     .and_then(|()| send(&Frame::Notice(Notice::InitialPage(initial_page.mpp()))))
             }
-            Output::Event(Event::RedirectToOtherSite { location }) => {
-                send(&Frame::Notice(Notice::RedirectToOtherSite(location.to_string())))
+            Output::Event(Event::RedirectToOtherChannel { location }) => {
+                send(&Frame::Notice(Notice::RedirectToOtherChannel(location.to_string())))
+            }
+            Output::Event(Event::Contents(bytes)) => send(&Frame::Contents(pipe::ContentsReply::File(bytes.to_vec()))),
+            Output::Event(Event::ContentsMissing) => send(&Frame::Contents(pipe::ContentsReply::Missing)),
+            Output::Event(Event::ContentsFailed(failure)) => {
+                send(&Frame::Contents(pipe::ContentsReply::Failed(format!("{failure:?}"))))
+            }
+            Output::Event(Event::BundleFailed(failure)) => {
+                send(&Frame::Notice(Notice::Message(format!("index.t42 was not used: {failure:?}"))))
             }
             Output::Event(Event::Unencrypted { .. }) => send(&Frame::Notice(Notice::Unencrypted)),
             Output::Event(Event::ConfirmSubmission { host, plain_http, first_to_origin, .. }) => {
@@ -395,12 +409,15 @@ fn run_web(address: &str, requests: &Receiver<Frame>, allow_local: &[IpAddr]) {
             }
             Output::Event(Event::SubmissionSucceeded { .. }) => send(&Frame::Notice(Notice::Submitted(true))),
             Output::Event(Event::SubmissionFailed { .. }) => send(&Frame::Notice(Notice::Submitted(false))),
+            Output::Event(Event::FetchFailed { page, failure, .. }) => send(&Frame::Notice(Notice::Message(format!(
+                "Page {} not used: {failure:?}",
+                String::from_utf8_lossy(&page.ascii())
+            )))),
             Output::Event(
                 event @ (Event::DescriptorRejected(_)
                 | Event::DescriptorFailed(_)
                 | Event::Blocked { .. }
                 | Event::DowngradeRefused { .. }
-                | Event::FetchFailed { .. }
                 | Event::SubmissionRefused(_)
                 | Event::LinkUnknown),
             ) => send(&Frame::Notice(Notice::Message(format!("{event:?}")))),
@@ -410,7 +427,7 @@ fn run_web(address: &str, requests: &Receiver<Frame>, allow_local: &[IpAddr]) {
             broken.set(true);
         }
     };
-    let open = site.map_or(Input::OpenService(address), Input::OpenSite);
+    let open = channel.map_or(Input::OpenService(address), Input::OpenChannel);
     agent.handle(clock(start), open, &mut |output| sink(output, &mut pump, &mut next_tick));
     while !broken.get() {
         let mut busy = false;
@@ -488,6 +505,7 @@ fn run_web(address: &str, requests: &Receiver<Frame>, allow_local: &[IpAddr]) {
                     agent.handle(now, Input::Submit(form), &mut out);
                 }
                 Frame::Confirm(yes) => agent.handle(now, Input::ConfirmSubmission(yes), &mut out),
+                Frame::FetchContents => agent.handle(now, Input::FetchContents, &mut out),
                 Frame::Follow(service, mpp, sub) => {
                     if let Some((page, subcode)) = page_request(mpp, sub) {
                         agent.handle(now, Input::FollowLink { service: &service, page, subcode }, &mut out);

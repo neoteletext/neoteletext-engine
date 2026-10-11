@@ -252,8 +252,11 @@ impl Source for Live {
                     }
                 }
                 Frame::Notice(notice) => self.notices.push(notice),
-                // The fetcher never sends these; ignore rather than trust.
+                // The fetcher never sends these to a decoder, and contents
+                // are the interface's alone; ignore rather than trust.
                 Frame::Request(..)
+                | Frame::FetchContents
+                | Frame::Contents(_)
                 | Frame::Submit(_)
                 | Frame::Confirm(_)
                 | Frame::Follow(..)

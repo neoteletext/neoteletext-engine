@@ -16,6 +16,8 @@ use neoteletext_core::consts::{ALPHA_RED, ALPHA_WHITE, ALPHA_YELLOW, COLUMNS, DO
 const NAME_COLUMNS: usize = COLUMNS - 2;
 /// Rows of the screen's layout.
 const NAME_ROW: usize = 4;
+/// The channel's folder, below its host in double height.
+const FOLDER_ROW: usize = 6;
 const ADDRESS_LABEL_ROW: usize = 7;
 const ADDRESS_FIRST_ROW: usize = 8;
 const SECURITY_ROW: usize = 13;
@@ -102,10 +104,23 @@ impl Tuning {
         let location = &self.destination.location;
         let mut page = titled("Going to another site", ALPHA_YELLOW);
         page[0] = row0(Activity::Tuning, &self.label(), clock);
-        let name = String::from_utf8_lossy(&keep_right(&location.label(), NAME_COLUMNS)).into_owned();
+        // The host in double height, and the folder below it: another
+        // folder on the same host is another channel (decision E.70).
+        let (host, folder) = location.host_and_folder().unwrap_or_else(|| (location.label(), String::new()));
+        let name = String::from_utf8_lossy(&keep_right(&host, NAME_COLUMNS)).into_owned();
         page[NAME_ROW] = line(&[ALPHA_CYAN, DOUBLE_HEIGHT], &name);
+        if !folder.is_empty() {
+            let folder = String::from_utf8_lossy(&keep_right(&format!("/{folder}/"), NAME_COLUMNS)).into_owned();
+            page[FOLDER_ROW] = line(&[ALPHA_CYAN], &folder);
+        }
         page[ADDRESS_LABEL_ROW] = line(&[ALPHA_WHITE], "The full address:");
-        wrap(&mut page, ADDRESS_FIRST_ROW, ADDRESS_ROWS, ALPHA_WHITE, &location.address(self.destination.page));
+        // The folder's address and the page number: which of the page's
+        // two files answers is not known until it is fetched.
+        let address = match self.destination.page {
+            Some(page) => format!("{} {page:03X}", location.address(None, false)),
+            None => location.address(None, false),
+        };
+        wrap(&mut page, ADDRESS_FIRST_ROW, ADDRESS_ROWS, ALPHA_WHITE, &address);
         page[SECURITY_ROW] = match location {
             Location::File { .. } => line(&[ALPHA_GREEN], "A file on this computer."),
             Location::Live { .. } => line(&[ALPHA_GREEN], "A live feed, encrypted."),
@@ -159,12 +174,21 @@ mod tests {
         assert_eq!(&page[0][..4], &[ALPHA_YELLOW, b'G', b'O', b'?'], "row 0 announces the screen");
         let all = text(&page);
         assert!(all.contains("bank.example"), "{all}");
-        assert!(all.contains("http://bank.example/100.t42"), "{all}");
+        assert!(all.contains("http://bank.example/ 100"), "{all}");
         assert!(all.contains("NOT ENCRYPTED"), "{all}");
         assert!(all.contains("not declared"), "{all}");
         let secure = tuning("https://w.example/", Why::Link { from: "a".into(), declared: Some("Weather".into()) });
         let all = text(&secure.page(None));
         assert!(all.contains("Encrypted (https)") && all.contains("calls it: Weather"), "{all}");
+    }
+
+    /// Another folder on the same host is another channel, so the screen
+    /// shows the folder as well as the host (decision E.70).
+    #[test]
+    fn the_screen_shows_the_folder() {
+        let screen = tuning("http://h.example/one/", Why::Typed);
+        let all = text(&screen.page(None));
+        assert!(all.contains("h.example") && all.contains("/one/"), "{all}");
     }
 
     #[test]

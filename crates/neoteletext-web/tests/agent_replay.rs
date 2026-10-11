@@ -1,6 +1,7 @@
 //! The user agent driven through the in-memory replay transport
-//! (REQ-WEB-001, REQ-WEB-013's exact replay), including sites
-//! (REQ-WEB-018) and redirects within a site (REQ-WEB-021).
+//! (REQ-WEB-001, REQ-WEB-013's exact replay), including channels
+//! (REQ-WEB-018, REQ-WEB-019, REQ-WEB-024, REQ-WEB-026, REQ-WEB-027) and
+//! redirects within a channel (REQ-WEB-021).
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects, clippy::panic)]
 
 mod common;
@@ -114,8 +115,8 @@ impl Harness {
         self.take()
     }
 
-    fn open_site(&mut self, address: &str) -> Vec<Rec> {
-        self.input(Input::OpenSite(address));
+    fn open_channel(&mut self, address: &str) -> Vec<Rec> {
+        self.input(Input::OpenChannel(address));
         self.take()
     }
 
@@ -1022,7 +1023,7 @@ fn cookies_not_compiled_in_are_reported_and_never_kept() {
 }
 
 // ---------------------------------------------------------------------
-// Web-native sites (docs/web-native-concept.md section 2)
+// Channels (decision E.70, REQ-WEB-018 to REQ-WEB-027)
 // ---------------------------------------------------------------------
 
 fn site_harness(config: Config) -> Harness {
@@ -1031,96 +1032,175 @@ fn site_harness(config: Config) -> Harness {
 }
 
 fn not_found() -> Reply {
-    Reply::Bytes(response("404 Not Found", &["Content-Type: text/plain"], b"no"))
+    Reply::Bytes(response("404 Not Found", &["Content-Type: text/html"], b"<p>no</p>"))
 }
 
 fn request_path(request: &[u8]) -> String {
     String::from_utf8_lossy(request).split(' ').nth(1).unwrap_or_default().to_string()
 }
 
+fn paths(harness: &mut Harness, host: &str) -> Vec<String> {
+    harness.replay().requests_to(host).iter().map(|request| request_path(request)).collect()
+}
+
+/// One T42 packet with a valid address: row 0 of magazine 1.
+fn packet() -> Vec<u8> {
+    let mut packet = std::vec![0x15, 0x15];
+    packet.extend_from_slice(&[0x20; 40]);
+    packet
+}
+
+fn ok(media: &str, body: &[u8]) -> Reply {
+    let header = format!("Content-Type: {media}");
+    Reply::Bytes(response("200 OK", &[header.as_str()], body))
+}
+
 #[test]
-fn a_site_with_a_descriptor_is_opened_from_the_well_known_address() {
+fn a_channel_with_settings_opens_from_its_folder() {
     let mut harness = site_harness(Config::default());
-    harness.replay().reply("site.example:80", json_response(&descriptor("")));
-    let records = harness.open_site("http://site.example/");
+    harness.replay().reply("site.example:80", json_response(br#"{"name":"Test"}"#));
+    harness.replay().reply("site.example:80", not_found());
+    let records = harness.open_channel("http://site.example/news/");
     assert!(has_event(&records, "ServiceReady { name: \"Test\""), "{records:?}");
-    assert!(!has_event(&records, "SiteDefaults"));
-    let requests = harness.replay().requests_to("site.example:80");
-    assert_eq!(request_path(&requests[0]), "/.well-known/teletext.json");
+    assert!(!has_event(&records, "ChannelDefaults"));
+    assert!(!has_event(&records, "BundleFailed"), "a missing bundle is not a failure: {records:?}");
+    assert_eq!(paths(&mut harness, "site.example:80"), ["/news/channel.json", "/news/index.t42"]);
 }
 
 #[test]
-fn a_site_without_a_descriptor_uses_the_defaults_and_its_front_door() {
+fn a_channel_without_settings_uses_the_defaults_its_bundle_and_page_files() {
     let mut harness = site_harness(Config::default());
     harness.replay().reply("site.example:80", not_found());
-    harness.replay().reply("site.example:80", tti_response(&[]));
-    let records = harness.open_site("http://site.example/anything");
-    assert!(has_event(&records, "SiteDefaults"), "{records:?}");
-    assert!(has_event(&records, "ServiceReady { name: \"site.example\""), "{records:?}");
-    let front = pages(&records);
-    assert_eq!(front.len(), 1, "{records:?}");
-    let Rec::Page { source, url, .. } = front[0] else { unreachable!() };
-    assert_eq!(*source, Source::FrontDoor);
-    assert_eq!(url, "http://site.example/index.t42");
-    // A page of the site is its own file.
-    harness.replay().reply("site.example:80", tti_response(&[]));
-    let records = harness.fetch(0x140);
-    let Rec::Page { url, .. } = pages(&records)[0] else { unreachable!() };
-    assert_eq!(url, "http://site.example/140.t42");
-}
-
-#[test]
-fn a_site_without_a_front_door_still_opens() {
-    let mut harness = site_harness(Config::default());
-    harness.replay().reply("site.example:80", not_found());
-    harness.replay().reply("site.example:80", not_found());
-    let records = harness.open_site("http://site.example/");
-    assert!(has_event(&records, "ServiceReady"), "{records:?}");
-    assert_eq!(pages(&records), Vec::<&Rec>::new());
-}
-
-#[test]
-fn a_broken_descriptor_is_not_replaced_by_the_defaults() {
-    // Only a missing descriptor means "no descriptor": a server error or
-    // an invalid one must not silently change how the site is read.
-    let mut harness = site_harness(Config::default());
-    harness.replay().reply("site.example:80", Reply::Bytes(response("500 Oops", &["Content-Type: text/plain"], b"")));
-    let records = harness.open_site("http://site.example/");
-    assert!(has_event(&records, "DescriptorFailed(Status(500))"), "{records:?}");
-    assert!(!has_event(&records, "SiteDefaults"));
-}
-
-#[test]
-fn redirects_to_another_site_are_reported_not_followed_in_a_browser() {
-    let config = Config { redirects_within_site: true, ..Config::default() };
-    let mut harness = site_harness(config);
-    harness.replay().reply(
-        "site.example:80",
-        Reply::Bytes(response("302 Found", &["Location: http://other.example/.well-known/teletext.json"], b"")),
+    harness.replay().reply("site.example:80", ok("application/octet-stream", &packet()));
+    let records = harness.open_channel("http://site.example/news/");
+    assert!(has_event(&records, "ChannelDefaults"), "{records:?}");
+    assert!(has_event(&records, "ServiceReady { name: \"site.example/news\""), "{records:?}");
+    let Rec::Page { source, url, media, .. } = pages(&records)[0] else { unreachable!() };
+    assert_eq!(
+        (*source, url.as_str(), *media),
+        (Source::FrontDoor, "http://site.example/news/index.t42", MediaType::T42)
     );
-    let records = harness.open_site("http://site.example/");
+    // A page: `NNN.tti` first, then `NNN.t42`.
+    harness.replay().reply("site.example:80", not_found());
+    harness.replay().reply("site.example:80", ok("text/plain", &packet()));
+    let records = harness.fetch(0x140);
+    let Rec::Page { url, media, .. } = pages(&records)[0] else { unreachable!() };
+    assert_eq!((url.as_str(), *media), ("http://site.example/news/140.t42", MediaType::T42));
+    assert_eq!(paths(&mut harness, "site.example:80")[2..], ["/news/140.tti", "/news/140.t42"]);
+    // The extension that answered is tried first next time.
+    harness.replay().reply("site.example:80", ok("application/x-teletext-t42", &packet()));
+    let records = harness.fetch(0x150);
+    assert_eq!(pages(&records).len(), 1, "{records:?}");
+    assert_eq!(paths(&mut harness, "site.example:80")[4..], ["/news/150.t42"]);
+    // Neither file: not found.
+    harness.replay().reply("site.example:80", not_found());
+    harness.replay().reply("site.example:80", Reply::Bytes(response("410 Gone", &[], b"")));
+    let records = harness.fetch(0x160);
+    assert!(has_event(&records, "PageNotInService"), "{records:?}");
+}
+
+#[test]
+fn a_broken_settings_file_is_not_replaced_by_the_defaults() {
+    // Only a missing file means "no settings": a server error, an invalid
+    // file, a template or an HTML page must not change how the channel is
+    // read.
+    let cases: [(Reply, &str); 3] = [
+        (Reply::Bytes(response("500 Oops", &["Content-Type: text/plain"], b"")), "DescriptorFailed(Status(500))"),
+        (json_response(br#"{"page_template":"/{mpp}.t42"}"#), "DescriptorRejected(NotForChannels(PageTemplate))"),
+        (ok("text/html", br#"{"name":"Test"}"#), "DescriptorFailed(MediaType)"),
+    ];
+    for (reply, expected) in cases {
+        let mut harness = site_harness(Config::default());
+        harness.replay().reply("site.example:80", reply);
+        let records = harness.open_channel("http://site.example/");
+        assert!(has_event(&records, expected), "{expected}: {records:?}");
+        assert!(!has_event(&records, "ChannelDefaults"));
+        assert!(!has_event(&records, "ServiceReady"));
+    }
+}
+
+#[test]
+fn settings_may_come_as_plain_text_and_link_channels() {
+    let mut harness = site_harness(Config::default());
+    let settings = br#"{"services":[{"name":"w","display_name":"W","channel":"http://other.example/w/"}]}"#;
+    harness.replay().reply("site.example:80", ok("text/plain; charset=utf-8", settings));
+    let records = harness.open_channel("http://site.example/");
+    assert!(has_event(&records, "ServiceReady"), "{records:?}");
+    let descriptor = harness.agent.descriptor().unwrap();
+    let linked = descriptor.service("w").unwrap();
+    assert!(linked.channel);
+    assert_eq!(descriptor.service_address(linked), "http://other.example/w/");
+}
+
+#[test]
+fn page_files_must_be_what_their_names_say() {
+    let mut harness = site_harness(Config::default());
+    harness.replay().reply("site.example:80", not_found());
+    harness.replay().reply("site.example:80", not_found());
+    harness.open_channel("http://site.example/");
+    // A Template Toolkit file named 100.tti: refused, and 100.t42 is not
+    // then tried.
+    harness.replay().reply("site.example:80", ok("text/plain", b"[% INCLUDE header %]\n"));
+    let records = harness.fetch(0x100);
     assert!(
-        has_event(&records, "RedirectToOtherSite { location: \"http://other.example/.well-known/teletext.json\" }"),
+        has_event(
+            &records,
+            "FetchFailed { page: PageAddress { magazine: Magazine(1), page: PageNumber(0) }, subcode: None, failure: Content }"
+        ),
         "{records:?}"
     );
-    assert!(harness.replay().requests_to("other.example:80").is_empty(), "nothing is fetched from the other site");
+    assert_eq!(paths(&mut harness, "site.example:80").last().unwrap(), "/100.tti");
+    // An HTML page answered with 200 for a missing file.
+    harness.replay().reply("site.example:80", ok("text/html", TTI));
+    let records = harness.fetch(0x110);
+    assert!(
+        has_event(
+            &records,
+            "FetchFailed { page: PageAddress { magazine: Magazine(1), page: PageNumber(16) }, subcode: None, failure: MediaType }"
+        ),
+        "{records:?}"
+    );
+    // A bundle that is not T42 is reported, and the channel works without
+    // it.
+    let mut harness = site_harness(Config::default());
+    harness.replay().reply("site.example:80", not_found());
+    harness.replay().reply("site.example:80", ok("application/octet-stream", b"not packets"));
+    let records = harness.open_channel("http://site.example/");
+    assert!(has_event(&records, "BundleFailed(Content)"), "{records:?}");
+    assert!(has_event(&records, "ServiceReady"), "{records:?}");
 }
 
 #[test]
-fn an_upgrade_to_https_on_the_same_host_is_not_another_site() {
-    let config = Config { redirects_within_site: true, ..Config::default() };
+fn redirects_that_leave_the_channel_are_reported_not_followed_in_a_browser() {
+    let config = Config { redirects_within_channel: true, ..Config::default() };
+    for location in [
+        "http://other.example/news/channel.json",
+        "http://site.example/sport/channel.json",
+        "https://site.example:8443/news/channel.json",
+    ] {
+        let mut harness = site_harness(config);
+        let header = format!("Location: {location}");
+        harness.replay().reply("site.example:80", Reply::Bytes(response("302 Found", &[header.as_str()], b"")));
+        let records = harness.open_channel("http://site.example/news/");
+        let expected = format!("RedirectToOtherChannel {{ location: \"{location}\" }}");
+        assert!(has_event(&records, &expected), "{location}: {records:?}");
+        assert!(harness.replay().requests_to("other.example:80").is_empty(), "nothing is fetched elsewhere");
+        assert_eq!(harness.replay().requests.len(), 1, "{location}");
+    }
+}
+
+#[test]
+fn redirects_inside_the_channel_and_upgrades_are_followed() {
+    let config = Config { redirects_within_channel: true, ..Config::default() };
     let mut harness = site_harness(config);
     harness.replay().reply(
         "site.example:80",
-        Reply::Bytes(response("301 Moved", &["Location: https://site.example/.well-known/teletext.json"], b"")),
+        Reply::Bytes(response("301 Moved", &["Location: https://site.example/news/channel.json"], b"")),
     );
-    harness.replay().reply(
-        "site.example:443",
-        json_response(br#"{"name":"Secure","initial_page":"100","page_template":"/{mpp}.t42"}"#),
-    );
-    let records = harness.open_site("http://site.example/");
-    assert!(!has_event(&records, "RedirectToOtherSite"), "{records:?}");
-    assert!(has_event(&records, "ServiceReady"), "{records:?}");
+    harness.replay().reply("site.example:443", json_response(br#"{"name":"Secure"}"#));
+    let records = harness.open_channel("http://site.example/news/");
+    assert!(!has_event(&records, "RedirectToOtherChannel"), "{records:?}");
+    assert!(has_event(&records, "ServiceReady { name: \"Secure\""), "{records:?}");
 }
 
 #[test]
@@ -1132,4 +1212,83 @@ fn ttx_still_follows_redirects_to_other_hosts() {
     harness.replay().reply("other.example:80", json_response(&descriptor("")));
     let records = harness.open("http://site.example/d.json");
     assert!(has_event(&records, "ServiceReady"), "{records:?}");
+}
+
+#[test]
+fn a_service_redirected_to_another_port_leaves_its_channel() {
+    let config = Config { redirects_within_channel: true, ..Config::default() };
+    let mut harness = site_harness(config);
+    harness.replay().reply(
+        "site.example:80",
+        Reply::Bytes(response("301 Moved", &["Location: https://site.example:8443/d.json"], b"")),
+    );
+    let records = harness.open("http://site.example/d.json");
+    assert!(has_event(&records, "RedirectToOtherChannel"), "{records:?}");
+}
+
+#[test]
+fn contents_are_fetched_on_request() {
+    let mut harness = site_harness(Config::default());
+    harness.replay().reply("site.example:80", not_found());
+    harness.replay().reply("site.example:80", not_found());
+    harness.open_channel("http://site.example/news/");
+    harness.replay().reply("site.example:80", ok("text/plain", b"p\t100\tIndex\n"));
+    harness.input(Input::FetchContents);
+    let records = harness.take();
+    assert!(has_event(&records, "Contents([112, 9, 49, 48, 48"), "{records:?}");
+    assert_eq!(paths(&mut harness, "site.example:80").last().unwrap(), "/news/contents.txt");
+    harness.replay().reply("site.example:80", not_found());
+    harness.input(Input::FetchContents);
+    assert!(has_event(&harness.take(), "ContentsMissing"));
+    harness.replay().reply("site.example:80", ok("text/html", b"p\t100\tIndex\n"));
+    harness.input(Input::FetchContents);
+    assert!(has_event(&harness.take(), "ContentsFailed(MediaType)"));
+}
+
+#[test]
+#[cfg(feature = "forms")]
+fn a_channel_form_submits_only_inside_its_folder() {
+    let mut harness = site_harness(Config::default());
+    harness.replay().reply("site.example:80", json_response(br#"{"form_origins":["http://other.example"]}"#));
+    harness.replay().reply("site.example:80", not_found());
+    harness.open_channel("http://site.example/one/");
+    let fields = [("a", "1")];
+    harness.input(Input::Submit(submission("http://site.example/one/100.tti", "/two/send", &fields)));
+    assert!(has_event(&harness.take(), "SubmissionRefused(Origin)"), "another folder of the same origin");
+    harness.replay().reply("site.example:80", Reply::Bytes(response("204 No Content", &[], b"")));
+    harness.input(Input::Submit(submission("http://site.example/one/100.tti", "/one/api/send", &fields)));
+    harness.input(Input::ConfirmSubmission(true));
+    assert!(has_event(&harness.take(), "SubmissionSucceeded { status: 204 }"), "inside the folder");
+    harness.replay().reply("other.example:80", Reply::Bytes(response("204 No Content", &[], b"")));
+    harness.input(Input::Submit(submission("http://site.example/one/100.tti", "http://other.example/in", &fields)));
+    harness.input(Input::ConfirmSubmission(true));
+    assert!(has_event(&harness.take(), "SubmissionSucceeded { status: 204 }"), "a listed origin");
+}
+
+#[test]
+#[cfg(feature = "cookies")]
+fn a_channel_cookie_set_for_the_whole_host_stays_in_its_folder() {
+    let mut harness = site_harness(Config::default());
+    harness
+        .replay()
+        .reply("site.example:80", Reply::Bytes(response("404 Not Found", &["Set-Cookie: s=1; Path=/"], b"")));
+    harness.replay().reply("site.example:80", not_found());
+    harness.open_channel("http://site.example/one/");
+    harness.replay().reply("site.example:80", tti_response(&[]));
+    harness.fetch(0x100);
+    let last = harness.replay().requests_to("site.example:80").last().unwrap().clone();
+    assert_eq!(header_value(&last, "Cookie").as_deref(), Some("s=1"), "sent inside the folder");
+    let mut store = neoteletext_web::cookie::CookieJar::<8, 1024>::new();
+    let out = &mut [0u8; 64];
+    store.store_within(b"s=1; Path=/", "h.example", "/one/x", Some("/one/"), false, 0, false).unwrap();
+    let mut writer = neoteletext_web::bytes::Writer::new(out);
+    let (count, _) = store.header_for(
+        "h.example",
+        "/two/100.tti",
+        false,
+        neoteletext_web::cookie::Site::SameService,
+        0,
+        &mut writer,
+    );
+    assert_eq!(count, 0, "never sent to another folder");
 }

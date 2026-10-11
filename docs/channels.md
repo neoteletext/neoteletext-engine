@@ -4,7 +4,7 @@ How neoteletext finds teletext on the web, why it works this way, and how to pub
 
 The rules are requirements in REQUIREMENTS.md: decision E.70, REQ-WEB-018 to REQ-WEB-027, REQ-BRW-009 and REQ-CLI-008. Where this document and REQUIREMENTS.md differ, REQUIREMENTS.md wins. This document gives the reasons and the background.
 
-**Status, 12 October 2026:** specified, not yet built. The browser built on 12 October still treats a whole origin as one site, with its descriptor at `/.well-known/teletext.json` (decision E.63).
+**Status, 12 October 2026:** built in the browser (`neoteletext`) and in `ttx contents`, and tested end to end against the local channels of `tests/web-server/sites.py`. `ttx view` opens services by their descriptors, not channels.
 
 ## Contents
 
@@ -174,7 +174,7 @@ They cannot give the rest:
 - **Titles and sections.** A folder named `news` could suggest a section, but turning names into page numbers needs a mapping, and a mapping is a contents file.
 - **Links.** Only the pages hold them, so a map of links means fetching every page, that is crawling. Viewers' browsers never crawl.
 
-What can be known without extra requests is what the viewer has already received: the bundle's pages and the pages seen so far. The contents view shows that list when a channel has no contents file.
+What can be known without extra requests is what the viewer has already seen. The contents view lists the pages the tab has shown on the channel when the channel has no contents file.
 
 ### 4.2 Alternatives considered
 

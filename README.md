@@ -44,7 +44,7 @@ Each crate's optional parts are Cargo features, on by default, so a port or a sm
 | `neoteletext-web` | The sans-IO web agent: service descriptors, HTTP, WebSockets, server-sent events, cookies, forms and the zxnet feed. |
 | `neoteletext-image` | Palettes, pixel formats, scaling, PNG and PPM writers. |
 | `neoteletext-cli` | The `ttx` program. |
-| `neoteletext-browser` | Everything the browser decides, with no operating-system access: addresses, sites, history, the tuning screen and the rows the receiver draws itself. |
+| `neoteletext-browser` | Everything the browser decides, with no operating-system access: addresses, channels, history, the tuning screen, the contents view and the rows the receiver draws itself. |
 | `neoteletext-gui` | The `neoteletext` browser window and its fetcher and decoder helper processes. |
 | `xtask` | Project checks: layers, dependencies, constants, glyphs (including the generated G3 set), the test corpus and the traceability table; `cargo xtask level25-stream` writes the authored Level 2.5 and 3.5 test stream. |
 

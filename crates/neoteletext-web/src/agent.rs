@@ -23,6 +23,7 @@ use neoteletext_core::policy;
 use neoteletext_core::types::{Instant, PageAddress, SubCode};
 
 use crate::bytes::{Overflow, TextBuf, Writer, copy_prefix};
+use crate::channel::{self, ChannelFile};
 use crate::consts::{
     ACCEPT_EVENT_STREAM, ACCEPT_PAGES, ALLOWED_LOCAL, CACHE_ENTRIES, CONFIRMED_ORIGINS, CRLF,
     DEFAULT_CONNECT_TIMEOUT_US, DEFAULT_COOKIES_PER_HOST, DEFAULT_COOKIES_TOTAL, DEFAULT_DESCRIPTOR_LIMIT,
@@ -45,16 +46,6 @@ use crate::ws::{self, FrameReader, HandshakeKey, WsError, WsMessage};
 
 /// The bytes of one T42 packet (REQ-INP-002).
 const T42_PACKET: usize = neoteletext_core::consts::PACKET_BYTES;
-/// Where a web-native site keeps its descriptor
-/// (`docs/web-native-concept.md` section 2 item 2).
-const WELL_KNOWN_DESCRIPTOR: &str = "/.well-known/teletext.json";
-/// The front door of a site without a descriptor (section 2 item 3).
-const FRONT_DOOR: &str = "/index.t42";
-/// The defaults of a site without a descriptor after its name: page 100
-/// first, and a page's file named after it (section 2 item 3).
-const DEFAULT_DESCRIPTOR_TAIL: &[u8] = b"\",\"initial_page\":\"100\",\"page_template\":\"/{mpp}.t42\"}";
-/// Room for the default descriptor: the longest host and the rest.
-const DEFAULT_DESCRIPTOR_BYTES: usize = MAX_HOST_TEXT_LENGTH + 128;
 
 /// The agent's configuration. Every security setting defaults to the safer
 /// choice (REQ-SEC-020).
@@ -93,13 +84,14 @@ pub struct Config {
     pub cookies_total: usize,
     /// The port saves cookies between runs (REQ-SEC-013). Off by default.
     pub persist_cookies: bool,
-    /// Refuse redirects of descriptor and page requests that lead to
-    /// another origin, reporting [`Event::RedirectToOtherSite`] instead, so
-    /// that a browser can show its tuning screen before another site's
-    /// content (`docs/web-native-concept.md` section 6). An upgrade from
-    /// `http` to `https` on the same host is not another site. Off by
-    /// default, which keeps `ttx`'s behaviour (REQ-WEB-021).
-    pub redirects_within_site: bool,
+    /// Refuse redirects of descriptor, page, bundle and contents requests
+    /// that leave the channel, reporting [`Event::RedirectToOtherChannel`]
+    /// instead, so that a browser can show its tuning screen before another
+    /// channel's content (REQ-WEB-021). An upgrade from `http` to `https`
+    /// on the same host and folder, between the default ports, keeps the
+    /// channel. For a service opened by its descriptor, the channel is its
+    /// origin. Off by default, which keeps `ttx`'s behaviour.
+    pub redirects_within_channel: bool,
 }
 
 impl Default for Config {
@@ -118,7 +110,7 @@ impl Default for Config {
             cookies_per_host: DEFAULT_COOKIES_PER_HOST,
             cookies_total: DEFAULT_COOKIES_TOTAL,
             persist_cookies: false,
-            redirects_within_site: false,
+            redirects_within_channel: false,
         }
     }
 }
@@ -211,12 +203,15 @@ pub enum Input<'a> {
     Net(NetInput<'a>),
     /// Open the service whose descriptor is at this address.
     OpenService(&'a str),
-    /// Open the web-native site at this address (`docs/web-native-concept.md`
-    /// section 2): its descriptor at `/.well-known/teletext.json`, or,
-    /// when the site has none (404 or 410), the defaults: the name is the
-    /// host, the initial page 100, page files at `/{mpp}.t42`, and the
-    /// front door `/index.t42`, which may hold any number of pages.
-    OpenSite(&'a str),
+    /// Open the channel whose folder, or one of whose files, is at this
+    /// address (REQ-WEB-018): its `channel.json`, or the defaults when it
+    /// has none (404 or 410); then its bundle `index.t42`; then pages from
+    /// `NNN.tti` or `NNN.t42` in its folder.
+    OpenChannel(&'a str),
+    /// Fetch the open channel's `contents.txt` (REQ-WEB-025), answered by
+    /// [`Event::Contents`], [`Event::ContentsMissing`] or
+    /// [`Event::ContentsFailed`].
+    FetchContents,
     /// Follow a link to a page of another service named in the current
     /// descriptor (Appendix E). The request is a cross-service navigation
     /// for cookies (REQ-WEB-006).
@@ -262,8 +257,8 @@ pub enum Source {
     Push,
     /// The response to a form submission (REQ-WEB-011 item 3).
     Form,
-    /// The front door of a site without a descriptor, `/index.t42`: it
-    /// may hold any number of the site's pages.
+    /// A channel's bundle, `index.t42`: it may hold any number of the
+    /// channel's pages (REQ-WEB-019).
     FrontDoor,
 }
 
@@ -299,9 +294,12 @@ pub enum Failure {
     Status(u16),
     /// More than five redirects (REQ-WEB-003).
     TooManyRedirects,
-    /// A redirect to another site, refused under
-    /// [`Config::redirects_within_site`].
-    RedirectToOtherSite,
+    /// A redirect that leaves the channel, refused under
+    /// [`Config::redirects_within_channel`].
+    RedirectToOtherChannel,
+    /// A channel's file did not pass the check for the format its name
+    /// says (REQ-WEB-027).
+    Content,
     /// A redirect without a usable `Location`.
     BadRedirect,
     /// An address failed the strict parser.
@@ -448,16 +446,27 @@ pub enum Event<'a> {
     /// A link named a service the descriptor does not list: the link is
     /// null (Appendix E.2 rule 2).
     LinkUnknown,
-    /// A descriptor or page request was redirected to another site and,
-    /// under [`Config::redirects_within_site`], not followed. The browser
-    /// confirms the new site before going there.
-    RedirectToOtherSite {
+    /// A request was redirected out of the channel and, under
+    /// [`Config::redirects_within_channel`], not followed. The browser
+    /// confirms the new channel before going there.
+    RedirectToOtherChannel {
         /// The address the redirect leads to.
         location: &'a str,
     },
-    /// The site has no descriptor: the defaults of [`Input::OpenSite`]
-    /// apply.
-    SiteDefaults,
+    /// The channel has no `channel.json`: the defaults apply
+    /// (REQ-WEB-018).
+    ChannelDefaults,
+    /// The channel's `index.t42` could not be used: it answered with
+    /// something other than 200, 404 or 410, or failed its checks. The
+    /// channel works without it (REQ-WEB-018).
+    BundleFailed(Failure),
+    /// The channel's `contents.txt`, unchecked: the caller reads it with
+    /// [`crate::contents::read`].
+    Contents(&'a [u8]),
+    /// The channel has no `contents.txt` (404 or 410).
+    ContentsMissing,
+    /// The channel's `contents.txt` could not be fetched or used.
+    ContentsFailed(Failure),
     /// A `Set-Cookie` header was ignored.
     CookieRejected(CookieRejected),
     /// Not every matching cookie fitted in a request.
@@ -527,12 +536,23 @@ enum Link {
     Open,
 }
 
+/// Which file a page request asks for.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum PageFile {
+    /// The descriptor's page address template (REQ-WEB-003).
+    Template,
+    /// A channel's page file (REQ-WEB-019): T42 or TTI, and whether it is
+    /// the second of the two tried.
+    Channel { t42: bool, second: bool },
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Purpose {
-    Descriptor { via_link: bool, site: bool },
+    Descriptor { via_link: bool, channel: bool },
     FrontDoor,
-    Page { page: PageAddress, subcode: Option<SubCode> },
+    Page { page: PageAddress, subcode: Option<SubCode>, file: PageFile },
     Form,
+    Contents,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -594,6 +614,8 @@ struct CacheEntry {
     last_modified: Option<TextBuf<MAX_VALIDATOR_LENGTH>>,
     fresh_until: Option<Instant>,
     used: u64,
+    /// For a channel, the page file that answered is T42.
+    t42: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -638,6 +660,10 @@ struct PushConnection {
 
 /// The web user agent: `SLOTS` cookies in `COOKIE_BYTES` bytes, random
 /// numbers from `R`.
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "each flag belongs to a different part of the agent: navigation, the fetch connection, push, the channel"
+)]
 #[derive(Debug)]
 pub struct UserAgent<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> {
     config: Config,
@@ -647,9 +673,17 @@ pub struct UserAgent<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES
     wall_clock: Option<(Instant, u64)>,
     descriptor: Option<Descriptor>,
     pending_descriptor: Option<(Url, bool, bool)>,
-    /// The front door to fetch after the defaults of a site without a
-    /// descriptor.
+    /// The open channel's folder (REQ-WEB-018), when a channel is open.
+    channel: Option<Url>,
+    /// The page file extension to try first in the channel: the one that
+    /// last answered (REQ-WEB-019).
+    t42_first: bool,
+    /// A page whose other file is to be tried next.
+    second_try: Option<(PageAddress, Option<SubCode>, bool)>,
+    /// The channel's bundle to fetch after its settings.
     front_door: Option<Url>,
+    /// The channel's contents file to fetch.
+    contents: Option<Url>,
     navigation_pending: bool,
     secure_hosts: [Option<TextBuf<MAX_HOST_TEXT_LENGTH>>; SECURE_HOSTS],
     fetch: FetchConnection,
@@ -677,6 +711,7 @@ fn write_cookie_header<const SLOTS: usize, const BYTES: usize>(
     jar: &mut CookieJar<SLOTS, BYTES>,
     writer: &mut Writer<'_>,
     url: &Url,
+    path: &str,
     site: Site,
     seconds: u64,
     body_len: usize,
@@ -689,7 +724,7 @@ fn write_cookie_header<const SLOTS: usize, const BYTES: usize>(
     let mark = writer.len();
     let started = writer.put(header::COOKIE).and_then(|()| writer.put(b": "));
     let (count, truncated) = match started {
-        Ok(()) => jar.header_for(url.host_text(), url.path(), url.is_secure(), site, seconds, writer),
+        Ok(()) => jar.header_for(url.host_text(), path, url.is_secure(), site, seconds, writer),
         Err(Overflow) => (0, true),
     };
     writer.set_reserve(0);
@@ -699,6 +734,32 @@ fn write_cookie_header<const SLOTS: usize, const BYTES: usize>(
         writer.put(CRLF)?;
     }
     Ok(truncated)
+}
+
+/// Checks a channel's page file or bundle (REQ-WEB-027): a media type
+/// accepted for its extension, and content of the format its name says.
+/// Returns the format, which the caller need not detect again.
+fn channel_file_media(t42: bool, media: MediaType, body: &[u8]) -> Result<MediaType, Failure> {
+    let (accepted, content, format) = if t42 {
+        (
+            matches!(media, MediaType::T42 | MediaType::OctetStream | MediaType::TextPlain),
+            channel::is_t42(body),
+            MediaType::T42,
+        )
+    } else {
+        (
+            matches!(media, MediaType::Tti | MediaType::TextPlain | MediaType::OctetStream),
+            channel::is_tti(body),
+            MediaType::Tti,
+        )
+    };
+    if !accepted {
+        return Err(Failure::MediaType);
+    }
+    if !content {
+        return Err(Failure::Content);
+    }
+    Ok(format)
 }
 
 impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'m, R, SLOTS, COOKIE_BYTES> {
@@ -714,7 +775,11 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             wall_clock: None,
             descriptor: None,
             pending_descriptor: None,
+            channel: None,
+            t42_first: false,
+            second_try: None,
             front_door: None,
+            contents: None,
             navigation_pending: false,
             secure_hosts: [None; SECURE_HOSTS],
             fetch: FetchConnection {
@@ -848,18 +913,21 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
                 | NetInput::Closed(ConnectionId::Push | ConnectionId::Live) => {}
             },
             Input::OpenService(address) => match Url::parse(address) {
-                Ok(url) if !url.scheme().is_websocket() => self.pending_descriptor = Some((url, false, false)),
-                Ok(_) => event(sink, Event::DescriptorFailed(Failure::Address(UrlError::Scheme))),
-                Err(error) => event(sink, Event::DescriptorFailed(Failure::Address(error))),
-            },
-            Input::OpenSite(address) => match Url::parse(address).and_then(|url| url.join(WELL_KNOWN_DESCRIPTOR)) {
                 Ok(url) if !url.scheme().is_websocket() => {
-                    self.front_door = None;
-                    self.pending_descriptor = Some((url, false, true));
+                    self.leave_channel();
+                    self.pending_descriptor = Some((url, false, false));
                 }
                 Ok(_) => event(sink, Event::DescriptorFailed(Failure::Address(UrlError::Scheme))),
                 Err(error) => event(sink, Event::DescriptorFailed(Failure::Address(error))),
             },
+            Input::OpenChannel(address) => match channel::parse_address(address) {
+                Ok(found) => self.open_channel(&found.folder, false),
+                Err(channel::ChannelError::Address(error)) => {
+                    event(sink, Event::DescriptorFailed(Failure::Address(error)));
+                }
+                Err(_) => event(sink, Event::DescriptorFailed(Failure::Address(UrlError::Path))),
+            },
+            Input::FetchContents => self.fetch_contents(sink),
             Input::FollowLink { service, page, subcode } => self.follow_link(service, page, subcode, sink),
             Input::FetchPage { page, subcode } => self.enqueue(page, subcode, sink),
             Input::Subscribe(subscription) => self.subscribe(now, subscription, sink),
@@ -889,11 +957,53 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
     // Requests
     // -----------------------------------------------------------------
 
+    /// Forgets the open channel: what follows is a service opened by its
+    /// descriptor.
+    fn leave_channel(&mut self) {
+        self.channel = None;
+        self.front_door = None;
+        self.contents = None;
+        self.second_try = None;
+    }
+
+    /// Starts opening a channel: its settings first (REQ-WEB-018).
+    fn open_channel(&mut self, folder: &Url, via_link: bool) {
+        self.leave_channel();
+        self.t42_first = false;
+        // The folder is checked, so its settings' address always joins.
+        if let Ok(settings) = channel::file_url(folder, ChannelFile::Settings) {
+            self.pending_descriptor = Some((settings, via_link, true));
+        }
+        self.channel = Some(*folder);
+    }
+
+    /// The open service's folder: its channel's, or the folder holding its
+    /// descriptor (REQ-WEB-018).
+    fn folder(&self) -> Option<Url> {
+        self.channel.or_else(|| self.descriptor.as_ref().and_then(|d| d.address().join(".").ok()))
+    }
+
+    fn fetch_contents(&mut self, sink: &mut Sink<'_>) {
+        match self.folder().map(|folder| channel::file_url(&folder, ChannelFile::Contents)) {
+            Some(Ok(url)) => self.contents = Some(url),
+            Some(Err(error)) => event(sink, Event::ContentsFailed(Failure::Address(error))),
+            None => event(sink, Event::ContentsFailed(Failure::NoService)),
+        }
+    }
+
     fn follow_link(&mut self, service: &str, page: PageAddress, subcode: Option<SubCode>, sink: &mut Sink<'_>) {
-        let address = self.descriptor.as_ref().and_then(|d| d.service(service).map(|s| d.service_address(s)));
+        let linked =
+            self.descriptor.as_ref().and_then(|d| d.service(service).map(|s| (d.service_address(s), s.channel)));
+        let address = linked.map(|(address, _)| address);
+        let to_channel = linked.is_some_and(|(_, channel)| channel);
         match address.map(Url::parse) {
             Some(Ok(url)) => {
-                self.pending_descriptor = Some((url, true, false));
+                if to_channel {
+                    self.open_channel(&url, true);
+                } else {
+                    self.leave_channel();
+                    self.pending_descriptor = Some((url, true, false));
+                }
                 self.queue = [None; PAGE_QUEUE];
                 if let Some(slot) = self.queue.first_mut() {
                     *slot = Some((page, subcode));
@@ -973,11 +1083,30 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
     /// Starts the next request when the fetch connection is free.
     fn dispatch(&mut self, now: Instant, sink: &mut Sink<'_>) {
         while self.fetch.exchange.is_none() {
-            let (purpose, url, method, site) = if let Some((url, via_link, defaults)) = self.pending_descriptor.take() {
+            let (purpose, url, method, site) = if let Some((url, via_link, channel)) = self.pending_descriptor.take() {
                 let site = if via_link { Site::CrossServiceNavigation } else { Site::SameService };
-                (Purpose::Descriptor { via_link, site: defaults }, url, Method::Get, site)
+                (Purpose::Descriptor { via_link, channel }, url, Method::Get, site)
             } else if let Some(url) = self.front_door.take() {
                 (Purpose::FrontDoor, url, Method::Get, Site::SameService)
+            } else if let Some((page, subcode, t42)) = self.second_try.take() {
+                // The other file of a page whose first answered 404 or 410
+                // (REQ-WEB-019), without waiting for the rate limit: it is
+                // the same request, completed.
+                let Some(folder) = self.channel else { continue };
+                match channel::file_url(&folder, ChannelFile::Page { page, t42 }) {
+                    Ok(url) => (
+                        Purpose::Page { page, subcode, file: PageFile::Channel { t42, second: true } },
+                        url,
+                        Method::Get,
+                        Site::SameService,
+                    ),
+                    Err(error) => {
+                        event(sink, Event::FetchFailed { page, subcode, failure: Failure::Address(error) });
+                        continue;
+                    }
+                }
+            } else if let Some(url) = self.contents.take() {
+                (Purpose::Contents, url, Method::Get, Site::SameService)
             } else if cfg!(feature = "forms") && self.form.phase == FormPhase::Queued {
                 let Some(url) = self.form.target else {
                     self.form.phase = FormPhase::Idle;
@@ -998,7 +1127,20 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
                     event(sink, Event::PageCurrent { page, subcode });
                     continue;
                 }
-                let url = match descriptor.page_url(page, subcode) {
+                let (address, file) = match self.channel {
+                    Some(folder) => {
+                        // The file that answered last time is asked again,
+                        // so its validators apply; otherwise the extension
+                        // that last answered in the channel.
+                        let t42 = self.cache_entry(page, subcode).map_or(self.t42_first, |entry| entry.t42);
+                        (
+                            channel::file_url(&folder, ChannelFile::Page { page, t42 }),
+                            PageFile::Channel { t42, second: false },
+                        )
+                    }
+                    None => (descriptor.page_url(page, subcode), PageFile::Template),
+                };
+                let url = match address {
                     Ok(url) => url,
                     Err(error) => {
                         event(sink, Event::FetchFailed { page, subcode, failure: Failure::Address(error) });
@@ -1010,7 +1152,7 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
                 } else {
                     Site::SameService
                 };
-                (Purpose::Page { page, subcode }, url, Method::Get, site)
+                (Purpose::Page { page, subcode, file }, url, Method::Get, site)
             } else {
                 return;
             };
@@ -1070,7 +1212,7 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
         http::write_header(&mut writer, header::USER_AGENT, crate::consts::USER_AGENT.as_bytes())?;
         http::write_header(&mut writer, header::ACCEPT, ACCEPT_PAGES)?;
         http::write_header(&mut writer, header::ACCEPT_ENCODING, IDENTITY)?;
-        if let Purpose::Page { page, subcode } = exchange.purpose
+        if let Purpose::Page { page, subcode, .. } = exchange.purpose
             && exchange.redirects == 0
             && let Some(entry) = self.cache.iter().flatten().find(|e| e.page == page && e.subcode == subcode)
         {
@@ -1088,7 +1230,8 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             writer.decimal(body_len as u64)?;
             writer.put(CRLF)?;
         }
-        if write_cookie_header(&mut self.jar, &mut writer, &exchange.url, exchange.site, seconds, body_len)? {
+        let path = exchange.url.path();
+        if write_cookie_header(&mut self.jar, &mut writer, &exchange.url, path, exchange.site, seconds, body_len)? {
             event(sink, Event::CookiesTruncated);
         }
         writer.put(CRLF)?;
@@ -1246,14 +1389,16 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
         let Some(exchange) = self.fetch.exchange else { return false };
         let (seconds, calendar) = self.seconds(now);
         let head_len = self.fetch.head.len();
-        let Self { buffers, jar, .. } = self;
+        let Self { buffers, jar, channel, .. } = self;
         let head_bytes = buffers.fetch_head.get(..head_len).unwrap_or(&[]);
         let host = exchange.url.host_text();
         let path = exchange.url.path();
         let secure = exchange.url.is_secure();
+        // A channel's cookies stay in its folder (REQ-WEB-026).
+        let scope = channel.as_ref().map(Url::path);
         let parsed = http::parse_head(head_bytes, &mut |value| {
             let stored = if cfg!(feature = "cookies") {
-                jar.store(value, host, path, secure, seconds, calendar)
+                jar.store_within(value, host, path, scope, secure, seconds, calendar)
             } else {
                 Err(CookieRejected::NotCompiledIn)
             };
@@ -1277,6 +1422,7 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             // A front door is bounded like a page: a bundled site larger
             // than the page limit publishes page files instead.
             Purpose::Page { .. } | Purpose::Form | Purpose::FrontDoor => self.config.page_limit,
+            Purpose::Contents => crate::contents::MAX_BYTES,
         }
         .min(self.buffers.body.len());
         match BodyDecoder::new(head.framing, limit) {
@@ -1312,8 +1458,9 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
         let Err(failure) = result else { return };
         match purpose {
             Purpose::Descriptor { .. } => event(sink, Event::DescriptorFailed(failure)),
-            Purpose::FrontDoor => {}
-            Purpose::Page { page, subcode } => event(sink, Event::FetchFailed { page, subcode, failure }),
+            Purpose::FrontDoor => event(sink, Event::BundleFailed(failure)),
+            Purpose::Contents => event(sink, Event::ContentsFailed(failure)),
+            Purpose::Page { page, subcode, .. } => event(sink, Event::FetchFailed { page, subcode, failure }),
             Purpose::Form => {
                 self.form.phase = FormPhase::Idle;
                 event(sink, Event::SubmissionFailed { status: None, failure: Some(failure) });
@@ -1350,46 +1497,44 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             return;
         }
         self.fetch.exchange = None;
-        if self.complete_site(now, &exchange, &head, sink) {
+        if self.complete_channel(now, &exchange, &head, sink) {
             return;
         }
         let body = self.buffers.body.get(..self.fetch.body_len).unwrap_or(&[]);
         let secure = exchange.url.is_secure();
         match exchange.purpose {
-            // complete_site handled every front door response.
-            Purpose::FrontDoor => {}
-            Purpose::Descriptor { via_link, .. } => {
+            // complete_channel handled every one of these.
+            Purpose::FrontDoor | Purpose::Contents => {}
+            Purpose::Descriptor { via_link, channel } => {
+                // A channel's settings may come as any type REQ-WEB-027
+                // accepts for them; a service's descriptor only as JSON.
+                let media_accepted = head.media == MediaType::Json
+                    || channel && matches!(head.media, MediaType::TextPlain | MediaType::OctetStream);
                 if status != STATUS_OK {
                     event(sink, Event::DescriptorFailed(Failure::Status(status)));
-                } else if head.media != MediaType::Json {
+                } else if !media_accepted {
                     event(sink, Event::DescriptorFailed(Failure::MediaType));
                 } else {
-                    match Descriptor::parse(body, &exchange.url) {
-                        Ok(descriptor) => self.open_descriptor(now, descriptor, via_link, sink),
+                    let parsed = if channel {
+                        Descriptor::parse_channel(body, &exchange.url)
+                    } else {
+                        Descriptor::parse(body, &exchange.url)
+                    };
+                    match parsed {
+                        Ok(descriptor) => {
+                            self.open_descriptor(now, descriptor, via_link, sink);
+                            if channel {
+                                self.front_door = self
+                                    .channel
+                                    .and_then(|folder| channel::file_url(&folder, ChannelFile::Bundle).ok());
+                            }
+                        }
                         Err(error) => event(sink, Event::DescriptorRejected(error)),
                     }
                 }
             }
-            Purpose::Page { page, subcode } => {
-                if status == STATUS_NOT_MODIFIED {
-                    self.update_cache(now, page, subcode, &head);
-                    event(sink, Event::PageCurrent { page, subcode });
-                } else if status == STATUS_NOT_FOUND {
-                    event(sink, Event::PageNotInService { page, subcode });
-                } else if status != STATUS_OK {
-                    event(sink, Event::FetchFailed { page, subcode, failure: Failure::Status(status) });
-                } else if !head.media.is_page() {
-                    event(sink, Event::FetchFailed { page, subcode, failure: Failure::MediaType });
-                } else {
-                    sink(Output::PageBytes(PageBytes {
-                        source: Source::Page { page, subcode },
-                        media: head.media,
-                        url: exchange.url.as_str(),
-                        secure,
-                        bytes: body,
-                    }));
-                    self.update_cache(now, page, subcode, &head);
-                }
+            Purpose::Page { page, subcode, file } => {
+                self.complete_page(now, &exchange, &head, (page, subcode, file), sink);
             }
             // Only a build with forms makes a form request.
             Purpose::Form if !cfg!(feature = "forms") => {}
@@ -1425,27 +1570,115 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
         }
     }
 
-    /// The responses of opening a web-native site: a missing descriptor
-    /// means the defaults, and the front door's pages are delivered.
-    /// Returns true when the response was one of these.
-    fn complete_site(&mut self, now: Instant, exchange: &Exchange, head: &ResponseHead, sink: &mut Sink<'_>) -> bool {
+    /// A page request is complete: the page's bytes, unchanged, missing
+    /// (then, for a channel, its other file), or refused (REQ-WEB-019,
+    /// REQ-WEB-027).
+    fn complete_page(
+        &mut self,
+        now: Instant,
+        exchange: &Exchange,
+        head: &ResponseHead,
+        (page, subcode, file): (PageAddress, Option<SubCode>, PageFile),
+        sink: &mut Sink<'_>,
+    ) {
+        let status = head.status;
+        let body = self.buffers.body.get(..self.fetch.body_len).unwrap_or(&[]);
+        let secure = exchange.url.is_secure();
+        let t42 = matches!(file, PageFile::Channel { t42: true, .. });
+        let missing = status == STATUS_NOT_FOUND || (file != PageFile::Template && status == STATUS_GONE);
+        if status == STATUS_NOT_MODIFIED {
+            self.update_cache(now, page, subcode, head, t42);
+            event(sink, Event::PageCurrent { page, subcode });
+        } else if missing {
+            match file {
+                // REQ-WEB-019: `NNN.tti`, then `NNN.t42`, or the
+                // other way round.
+                PageFile::Channel { t42, second: false } => self.second_try = Some((page, subcode, !t42)),
+                _ => event(sink, Event::PageNotInService { page, subcode }),
+            }
+        } else if status != STATUS_OK {
+            event(sink, Event::FetchFailed { page, subcode, failure: Failure::Status(status) });
+        } else {
+            let checked = match file {
+                PageFile::Template => {
+                    if head.media.is_page() {
+                        Ok(head.media)
+                    } else {
+                        Err(Failure::MediaType)
+                    }
+                }
+                PageFile::Channel { t42, .. } => channel_file_media(t42, head.media, body),
+            };
+            match checked {
+                Ok(media) => {
+                    sink(Output::PageBytes(PageBytes {
+                        source: Source::Page { page, subcode },
+                        media,
+                        url: exchange.url.as_str(),
+                        secure,
+                        bytes: body,
+                    }));
+                    if file != PageFile::Template {
+                        self.t42_first = t42;
+                    }
+                    self.update_cache(now, page, subcode, head, t42);
+                }
+                Err(failure) => event(sink, Event::FetchFailed { page, subcode, failure }),
+            }
+        }
+    }
+
+    /// The responses that belong to a channel (REQ-WEB-018): settings that
+    /// are missing mean the defaults, the bundle's pages are delivered,
+    /// and the contents are passed on. Returns true when the response was
+    /// one of these.
+    fn complete_channel(
+        &mut self,
+        now: Instant,
+        exchange: &Exchange,
+        head: &ResponseHead,
+        sink: &mut Sink<'_>,
+    ) -> bool {
+        let status = head.status;
+        let missing = status == STATUS_NOT_FOUND || status == STATUS_GONE;
+        let body = self.buffers.body.get(..self.fetch.body_len).unwrap_or(&[]);
         match exchange.purpose {
-            Purpose::Descriptor { site: true, .. } if head.status == STATUS_NOT_FOUND || head.status == STATUS_GONE => {
-                self.open_defaults(now, &exchange.url, sink);
+            Purpose::Descriptor { channel: true, via_link } if missing => {
+                let Some(folder) = self.channel else { return true };
+                event(sink, Event::ChannelDefaults);
+                self.open_descriptor(now, Descriptor::channel_defaults(&folder), via_link, sink);
+                self.front_door = channel::file_url(&folder, ChannelFile::Bundle).ok();
                 true
             }
             Purpose::FrontDoor => {
-                // A site without a front door is still a site: its pages
+                // A channel without a bundle is still a channel: its pages
                 // are fetched one by one.
-                if head.status == STATUS_OK && head.media.is_page() {
-                    let body = self.buffers.body.get(..self.fetch.body_len).unwrap_or(&[]);
-                    sink(Output::PageBytes(PageBytes {
-                        source: Source::FrontDoor,
-                        media: head.media,
-                        url: exchange.url.as_str(),
-                        secure: exchange.url.is_secure(),
-                        bytes: body,
-                    }));
+                if missing {
+                } else if status != STATUS_OK {
+                    event(sink, Event::BundleFailed(Failure::Status(status)));
+                } else {
+                    match channel_file_media(true, head.media, body) {
+                        Ok(media) => sink(Output::PageBytes(PageBytes {
+                            source: Source::FrontDoor,
+                            media,
+                            url: exchange.url.as_str(),
+                            secure: exchange.url.is_secure(),
+                            bytes: body,
+                        })),
+                        Err(failure) => event(sink, Event::BundleFailed(failure)),
+                    }
+                }
+                true
+            }
+            Purpose::Contents => {
+                if missing {
+                    event(sink, Event::ContentsMissing);
+                } else if status != STATUS_OK {
+                    event(sink, Event::ContentsFailed(Failure::Status(status)));
+                } else if !matches!(head.media, MediaType::TextPlain | MediaType::OctetStream) {
+                    event(sink, Event::ContentsFailed(Failure::MediaType));
+                } else {
+                    event(sink, Event::Contents(body));
                 }
                 true
             }
@@ -1492,17 +1725,14 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             exchange.method = Method::Get;
             self.form.body_len = 0;
         }
-        // A browser confirms another site before showing anything from it
-        // (`docs/web-native-concept.md` section 6). Forms keep their own
-        // rule below.
-        let same_host_upgrade = next.host_text() == exchange.url.host_text() && next.is_secure();
-        if self.config.redirects_within_site
+        // A browser confirms another channel before showing anything from
+        // it (REQ-WEB-021). Forms keep their own rule below.
+        if self.config.redirects_within_channel
             && exchange.purpose != Purpose::Form
-            && !next.origin().same(&exchange.url.origin())
-            && !same_host_upgrade
+            && !self.redirect_keeps_channel(&exchange.url, &next)
         {
-            event(sink, Event::RedirectToOtherSite { location: next.as_str() });
-            self.finish_purpose(exchange.purpose, Err(Failure::RedirectToOtherSite), sink);
+            event(sink, Event::RedirectToOtherChannel { location: next.as_str() });
+            self.finish_purpose(exchange.purpose, Err(Failure::RedirectToOtherChannel), sink);
             return;
         }
         // A redirect to another origin makes a form submission cross-site.
@@ -1517,7 +1747,30 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
         self.start_exchange(now, sink);
     }
 
-    fn update_cache(&mut self, now: Instant, page: PageAddress, subcode: Option<SubCode>, head: &ResponseHead) {
+    /// A redirect from `from` to `next` keeps the channel (REQ-WEB-021): for
+    /// a channel, inside its folder; for a service opened by its descriptor,
+    /// on the same origin. Either way, an upgrade from `http` to `https` on
+    /// the same host between the default ports keeps it.
+    fn redirect_keeps_channel(&self, from: &Url, next: &Url) -> bool {
+        if let Some(folder) = &self.channel {
+            return channel::redirect_keeps_channel(folder, next);
+        }
+        let upgrade = !from.is_secure()
+            && next.is_secure()
+            && next.host_text() == from.host_text()
+            && from.port() == crate::url::Scheme::Http.default_port()
+            && next.port() == crate::url::Scheme::Https.default_port();
+        next.origin().same(&from.origin()) || upgrade
+    }
+
+    fn update_cache(
+        &mut self,
+        now: Instant,
+        page: PageAddress,
+        subcode: Option<SubCode>,
+        head: &ResponseHead,
+        t42: bool,
+    ) {
         let index = self.cache.iter().position(|slot| slot.is_some_and(|e| e.page == page && e.subcode == subcode));
         if head.no_store {
             if let Some(slot) = index.and_then(|i| self.cache.get_mut(i)) {
@@ -1541,43 +1794,13 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             last_modified: head.last_modified.or(previous.and_then(|p| p.last_modified)),
             fresh_until,
             used: self.cache_tick,
+            t42,
         };
         let slot = index.or_else(|| self.cache.iter().position(Option::is_none)).or_else(|| {
             self.cache.iter().enumerate().min_by_key(|(_, slot)| slot.map_or(0, |e| e.used)).map(|(i, _)| i)
         });
         if let Some(slot) = slot.and_then(|i| self.cache.get_mut(i)) {
             *slot = Some(entry);
-        }
-    }
-
-    /// Opens a site that has no descriptor with the defaults of
-    /// [`Input::OpenSite`], built as a descriptor so that every rule of
-    /// REQ-WEB-002 applies to them too, then fetches its front door
-    /// (REQ-WEB-018).
-    fn open_defaults(&mut self, now: Instant, well_known: &Url, sink: &mut Sink<'_>) {
-        let mut buffer = [0u8; DEFAULT_DESCRIPTOR_BYTES];
-        let mut writer = Writer::new(&mut buffer);
-        let host = well_known.host_text().as_bytes();
-        // A parsed host holds no quote or backslash; refuse rather than
-        // escape if that ever changes.
-        let written = if host.iter().any(|&byte| byte == b'"' || byte == b'\\') {
-            Err(Overflow)
-        } else {
-            writer
-                .put(b"{\"name\":\"")
-                .and_then(|()| writer.put(host))
-                .and_then(|()| writer.put(DEFAULT_DESCRIPTOR_TAIL))
-        };
-        let parsed = written.map_err(|Overflow| Failure::RequestTooLarge).and_then(|()| {
-            Descriptor::parse(writer.written(), well_known).map_err(|_| Failure::Address(UrlError::BadCharacter))
-        });
-        match parsed {
-            Ok(descriptor) => {
-                event(sink, Event::SiteDefaults);
-                self.open_descriptor(now, descriptor, false, sink);
-                self.front_door = well_known.join(FRONT_DOOR).ok();
-            }
-            Err(failure) => event(sink, Event::DescriptorFailed(failure)),
         }
     }
 
@@ -1635,6 +1858,15 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
                 return;
             }
         };
+        // A channel's form submits inside its folder, or to an origin its
+        // settings list (REQ-WEB-026).
+        if let Some(folder) = &self.channel {
+            let listed = self.descriptor.as_ref().is_some_and(|d| d.form_origins().any(|o| o.same(&target.origin())));
+            if !channel::is_inside(folder, &target) && !listed {
+                event(sink, Event::SubmissionRefused(FormRefused::Origin));
+                return;
+            }
+        }
         let mut writer = Writer::new(self.buffers.form);
         if form::encode(submission.fields, submission.token, submission.action, &mut writer).is_err() {
             event(sink, Event::SubmissionRefused(FormRefused::TooLarge));
@@ -1832,6 +2064,10 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
         self.push.body = None;
         self.push.frames = FrameReader::new();
         self.push.sse.restart();
+        // A channel's push connection may be anywhere on its origin, and
+        // carries the channel's cookies, whose paths are its folder
+        // (REQ-WEB-026).
+        let folder = self.channel;
         let mut writer = Writer::new(self.buffers.push_request);
         if self.push.method == PushMethod::WebSocket {
             self.push.key = ws::new_key(&mut self.random);
@@ -1852,7 +2088,8 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
                 }
             }
             // Cookies go with upgrades and event streams too (REQ-WEB-006).
-            let truncated = write_cookie_header(&mut self.jar, &mut writer, &url, Site::SameService, seconds, 0)?;
+            let path = folder.as_ref().map_or(url.path(), Url::path);
+            let truncated = write_cookie_header(&mut self.jar, &mut writer, &url, path, Site::SameService, seconds, 0)?;
             writer.put(CRLF)?;
             Ok(truncated)
         })();

@@ -192,6 +192,8 @@ The Web user agent (L7) sits beside the lower layers rather than above them in t
   - the cookie store;
   - validators and caching;
   - the service descriptor;
+  - channels: which addresses name a channel's folder and files, and the checks a channel's file must pass (`channel`, decision E.70);
+  - the contents file's reader (`contents`, REQ-WEB-025);
   - push subscriptions;
   - form encoding and submission;
   - the zxnet live feed.
@@ -231,10 +233,10 @@ The Web user agent (L7) sits beside the lower layers rather than above them in t
 ### The browser's own layer — `neoteletext-browser`
 
 - **Owns:** everything the browser decides (`docs/desktop-browser.md` section 3.5):
-  - what an address means, and which site it names;
+  - what an address means, and which channel it names;
   - each tab's history;
   - when the tuning screen is shown, and the screen itself;
-  - row 0 and the other rows the receiver draws itself;
+  - row 0 and the other rows the receiver draws itself, including the contents view (REQ-BRW-009);
   - the formats of the saved files.
 - **Place:** beside L8, below the applications. It uses L6 types and the L7 address parser, and has no operating-system access, which `xtask check-io` enforces as for the library crates.
 - **Why a crate of its own:** every rule of trust in the browser is written and tested once, for every front end. That includes the desktop window, `ttx view` later, and the phone shells.

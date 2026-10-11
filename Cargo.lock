@@ -1991,6 +1991,7 @@ dependencies = [
  "neoteletext-core",
  "neoteletext-formats",
  "neoteletext-image",
+ "neoteletext-web",
 ]
 
 [[package]]

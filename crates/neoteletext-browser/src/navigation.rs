@@ -122,11 +122,11 @@ mod tests {
     use super::*;
 
     fn here() -> Location {
-        Location::Site { origin: "https://a.example".into(), secure: true }
+        Location::Channel { folder: "https://a.example/".into(), secure: true }
     }
 
     fn there() -> Location {
-        Location::Site { origin: "https://b.example".into(), secure: true }
+        Location::Channel { folder: "https://b.example/".into(), secure: true }
     }
 
     /// REQ-BRW-003.

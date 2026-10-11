@@ -227,7 +227,7 @@ pub fn run(
                 | Notice::Aliases(_)
                 | Notice::Refresh(_) => {}
                 // Only a browser asks the fetcher to stop at other sites.
-                Notice::RedirectToOtherSite(address) => messages.push(format!("redirected to {address}")),
+                Notice::RedirectToOtherChannel(address) => messages.push(format!("redirected to {address}")),
             }
         }
         let config: Config = *session.decoder().config();

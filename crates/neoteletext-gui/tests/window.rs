@@ -94,7 +94,7 @@ fn the_window_browses_with_the_keyboard() {
     harness.key_press_modifiers(eframe::egui::Modifiers::COMMAND, Key::D);
     harness.run_steps(2);
     let saved = std::fs::read_to_string(data.join("bookmarks.tsv")).unwrap();
-    assert!(saved.contains(&sites.address("news", "/100.t42")) && saved.contains("TEST NEWS"), "{saved}");
+    assert!(saved.contains(&sites.address("news", "/100.tti")) && saved.contains("TEST NEWS"), "{saved}");
     let bookmarks = Storage::new(Some(data.clone())).bookmarks();
     assert_eq!(bookmarks.len(), 1);
     // A new tab, then the keys page.

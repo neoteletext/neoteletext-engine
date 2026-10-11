@@ -41,6 +41,7 @@ The toolchain is pinned in `rust-toolchain.toml`. `scripts/check.sh full` runs e
 | `ttx services INPUT` | Lists the teletext streams, languages and subtitle pages of a transport stream. |
 | `ttx service-info INPUT` | Prints the broadcast service data of packet 8/30: network, time, programme label and status message. |
 | `ttx check FILES...` | Checks TTI page files for authoring problems. `--descriptor FILE` resolves link targets against a service descriptor. |
+| `ttx contents FOLDER` | Writes a channel's `contents.txt` to standard output from a folder of page files (`NNN.tti`, `NNN.t42`, `index.t42`): a section for each magazine and a dated entry for each page. See [channels.md](channels.md). Exits with 4 when a file was skipped. |
 
 `PAGE` is a page number such as `100`, or a page and sub-code such as `100:0003`. Pages are hexadecimal, as on a television: `1FF` is a valid diagnostic page.
 

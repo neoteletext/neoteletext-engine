@@ -25,6 +25,13 @@
 //! descriptor (REQ-WEB-014: never partly interpreted). A descriptor fetched
 //! over HTTPS that names a plain `http` or `ws` address is rejected
 //! (REQ-SEC-007).
+//!
+//! A channel's `channel.json` (REQ-WEB-024, decision E.70) is read by
+//! [`Descriptor::parse_channel`], with three differences: every member is
+//! optional, `page_template` is refused because a channel's files have
+//! fixed names, and a linked service may be a channel, given by its
+//! folder's address in a member `channel`. Its push address must be on the
+//! channel's own origin.
 
 use neoteletext_core::types::{PageAddress, SubCode};
 
@@ -47,6 +54,15 @@ const ALIAS_TARGET_BYTES: usize = 4096;
 pub const MIN_REFRESH_SECONDS: u32 = 5;
 /// The longest refresh interval, a day.
 pub const MAX_REFRESH_SECONDS: u32 = 24 * 60 * 60;
+/// The initial page when none is given (REQ-SVC-004).
+const DEFAULT_PAGE: PageAddress = match PageAddress::from_mpp(neoteletext_core::consts::DEFAULT_INITIAL_PAGE) {
+    Some(page) => page,
+    // Page 100 is always valid; this arm only keeps the constant total.
+    None => PageAddress {
+        magazine: neoteletext_core::types::Magazine::from_bits(1),
+        page: neoteletext_core::types::PageNumber(0),
+    },
+};
 /// Characters of `{sub}`: four hexadecimal digits.
 const SUBCODE_DIGITS: u32 = 4;
 
@@ -79,6 +95,8 @@ pub enum Member {
     ServiceDisplayName,
     /// `services[].descriptor`
     ServiceDescriptor,
+    /// `services[].channel`
+    ServiceChannel,
     /// `aliases`
     Aliases,
     /// `refresh`
@@ -106,6 +124,8 @@ pub enum DescriptorError {
     Downgrade(Member),
     /// More entries than this build keeps.
     TooMany(Member),
+    /// A member a channel's `channel.json` may not have (REQ-WEB-024).
+    NotForChannels(Member),
 }
 
 impl From<JsonError> for DescriptorError {
@@ -130,6 +150,9 @@ pub struct LinkedService {
     pub short_name: TextBuf<MAX_SHORT_NAME>,
     /// The name shown to the viewer.
     pub display_name: TextBuf<MAX_SERVICE_NAME>,
+    /// The address is a channel's folder (REQ-WEB-024); otherwise it is a
+    /// descriptor's.
+    pub channel: bool,
     address_start: u16,
     address_end: u16,
 }
@@ -154,6 +177,8 @@ pub struct Descriptor {
     /// How often, in seconds, a page on screen is asked for again when the
     /// service has no push (concept decision 13).
     pub refresh_seconds: Option<u32>,
+    /// This is a channel's `channel.json`, or a channel's defaults.
+    channel: bool,
 }
 
 /// A page number that leads to another site on every page of this one
@@ -290,14 +315,36 @@ impl Descriptor {
     /// Parses a descriptor fetched from `base` (its final address, after
     /// redirects).
     pub fn parse(json: &[u8], base: &Url) -> Result<Self, DescriptorError> {
-        let mut reader = JsonReader::new(json)?;
-        if reader.next_token()? != Some(Token::BeginObject) {
-            return Err(DescriptorError::Invalid(Member::Document));
+        Self::parse_with(json, base, false)
+    }
+
+    /// Parses a channel's `channel.json`, fetched from `base` (REQ-WEB-024).
+    pub fn parse_channel(json: &[u8], base: &Url) -> Result<Self, DescriptorError> {
+        Self::parse_with(json, base, true)
+    }
+
+    /// A channel's settings when it has no `channel.json` (REQ-WEB-018):
+    /// initial page 100 and nothing else, named by its host and folder.
+    /// `folder` is the channel's address, ending in `/`.
+    #[must_use]
+    pub fn channel_defaults(folder: &Url) -> Self {
+        let mut name = TextBuf::new();
+        let path = folder.path().trim_end_matches('/');
+        for part in [folder.host_text(), path] {
+            for &byte in part.as_bytes() {
+                // A long name is cut: it is only a title.
+                if name.push(&[byte]).is_err() {
+                    break;
+                }
+            }
         }
-        let mut descriptor = Self {
-            name: TextBuf::new(),
-            initial_page: PageAddress::from_mpp(neoteletext_core::consts::DEFAULT_INITIAL_PAGE)
-                .ok_or(DescriptorError::Invalid(Member::InitialPage))?,
+        Self::empty(folder, true, name)
+    }
+
+    fn empty(base: &Url, channel: bool, name: TextBuf<MAX_SERVICE_NAME>) -> Self {
+        Self {
+            name,
+            initial_page: DEFAULT_PAGE,
             template: TextBuf::new(),
             base: *base,
             push: None,
@@ -308,7 +355,22 @@ impl Descriptor {
             aliases: [None; MAX_ALIASES],
             alias_targets: TextBuf::new(),
             refresh_seconds: None,
+            channel,
+        }
+    }
+
+    fn parse_with(json: &[u8], base: &Url, channel: bool) -> Result<Self, DescriptorError> {
+        let mut reader = JsonReader::new(json)?;
+        if reader.next_token()? != Some(Token::BeginObject) {
+            return Err(DescriptorError::Invalid(Member::Document));
+        }
+        let mut descriptor = if channel {
+            let folder = base.join(".").map_err(|error| DescriptorError::Address(Member::Document, error))?;
+            Self::channel_defaults(&folder)
+        } else {
+            Self::empty(base, false, TextBuf::new())
         };
+        descriptor.base = *base;
         let mut seen = [false; 9];
         let [
             seen_name,
@@ -336,6 +398,9 @@ impl Descriptor {
                 descriptor.initial_page =
                     value.plain().and_then(parse_mpp).ok_or(DescriptorError::Invalid(Member::InitialPage))?;
             } else if key.equals(b"page_template") {
+                if channel {
+                    return Err(DescriptorError::NotForChannels(Member::PageTemplate));
+                }
                 first(seen_template, Member::PageTemplate)?;
                 let value: TextBuf<MAX_URL_LENGTH> =
                     text(expect_string(reader.next_token()?, Member::PageTemplate)?, Member::PageTemplate)?;
@@ -351,7 +416,13 @@ impl Descriptor {
                 }
             } else if key.equals(b"push") {
                 first(seen_push, Member::Push)?;
-                descriptor.push = Some(Self::parse_push(&mut reader, base)?);
+                let push = Self::parse_push(&mut reader, base)?;
+                // A channel's push is on its own origin, in any folder
+                // (REQ-WEB-024); ws and wss count as http and https.
+                if channel && !push.0.origin().same(&base.origin()) {
+                    return Err(DescriptorError::Invalid(Member::PushAddress));
+                }
+                descriptor.push = Some(push);
             } else if key.equals(b"form_origins") {
                 first(seen_origins, Member::FormOrigins)?;
                 descriptor.parse_origins(&mut reader, base)?;
@@ -374,6 +445,9 @@ impl Descriptor {
             }
         }
         reader.next_token()?;
+        if channel {
+            return Ok(descriptor);
+        }
         if !*seen_name {
             return Err(DescriptorError::Missing(Member::Name));
         }
@@ -526,6 +600,7 @@ impl Descriptor {
             let mut short_name: Option<TextBuf<MAX_SHORT_NAME>> = None;
             let mut display_name: Option<TextBuf<MAX_SERVICE_NAME>> = None;
             let mut url: Option<Url> = None;
+            let mut is_channel = false;
             while let Some(token) = reader.next_token()? {
                 let key = match token {
                     Token::Key(key) => key,
@@ -557,6 +632,19 @@ impl Descriptor {
                         Member::ServiceDescriptor,
                     )?;
                     url = Some(address(base, value.as_str(), Member::ServiceDescriptor)?);
+                } else if key.equals(b"channel") && self.channel {
+                    if url.is_some() {
+                        return Err(DescriptorError::Invalid(Member::ServiceChannel));
+                    }
+                    let value: TextBuf<MAX_URL_LENGTH> =
+                        text(expect_string(reader.next_token()?, Member::ServiceChannel)?, Member::ServiceChannel)?;
+                    let resolved = address(base, value.as_str(), Member::ServiceChannel)?;
+                    // A linked channel is a folder (REQ-WEB-023).
+                    match crate::channel::parse_address(resolved.as_str()) {
+                        Ok(found) if found.file.is_none() => url = Some(found.folder),
+                        _ => return Err(DescriptorError::Invalid(Member::ServiceChannel)),
+                    }
+                    is_channel = true;
                 } else {
                     return Err(DescriptorError::Unknown);
                 }
@@ -577,6 +665,7 @@ impl Descriptor {
             *slot = Some(LinkedService {
                 short_name,
                 display_name,
+                channel: is_channel,
                 address_start: narrow(start)?,
                 address_end: narrow(end)?,
             });
@@ -588,6 +677,12 @@ impl Descriptor {
     #[must_use]
     pub const fn address(&self) -> &Url {
         &self.base
+    }
+
+    /// This is a channel's settings (REQ-WEB-024).
+    #[must_use]
+    pub const fn is_channel(&self) -> bool {
+        self.channel
     }
 
     /// The page address template as written.
@@ -850,5 +945,47 @@ mod tests {
             Descriptor::parse(json.as_bytes(), &base()).map(|_| ()),
             Err(DescriptorError::TooMany(Member::Aliases))
         );
+    }
+
+    /// REQ-WEB-024: every member optional, no template, linked channels by
+    /// folder, push on the channel's own origin.
+    #[test]
+    fn channel_settings() {
+        let base = Url::parse("https://example.org/ceefax/channel.json").unwrap();
+        let empty = Descriptor::parse_channel(b"{}", &base).unwrap();
+        assert!(empty.is_channel());
+        assert_eq!(empty.initial_page.mpp(), 0x100);
+        assert_eq!(empty.name.as_str(), "example.org/ceefax");
+        assert_eq!(
+            Descriptor::parse_channel(br#"{"page_template":"/{mpp}.t42"}"#, &base).err(),
+            Some(DescriptorError::NotForChannels(Member::PageTemplate))
+        );
+        assert_eq!(
+            Descriptor::parse_channel(
+                br#"{"push":{"address":"wss://other.example/push","method":"websocket"}}"#,
+                &base
+            )
+            .err(),
+            Some(DescriptorError::Invalid(Member::PushAddress))
+        );
+        assert!(
+            Descriptor::parse_channel(
+                br#"{"push":{"address":"wss://example.org/live/push","method":"websocket"}}"#,
+                &base
+            )
+            .is_ok(),
+            "push may be in any folder of the origin"
+        );
+        let both = br#"{"services":[{"name":"w","display_name":"W","channel":"https://w.example/","descriptor":"https://w.example/d.json"}]}"#;
+        assert!(Descriptor::parse_channel(both, &base).is_err());
+        let file = br#"{"services":[{"name":"w","display_name":"W","channel":"https://w.example/100.tti"}]}"#;
+        assert_eq!(
+            Descriptor::parse_channel(file, &base).err(),
+            Some(DescriptorError::Invalid(Member::ServiceChannel))
+        );
+        assert_eq!(Descriptor::parse_channel(br#"{"colour":"red"}"#, &base).err(), Some(DescriptorError::Unknown));
+        // A service's descriptor may not name a channel this way.
+        let named = br#"{"name":"S","initial_page":"100","page_template":"/{mpp}","services":[{"name":"w","display_name":"W","channel":"https://w.example/"}]}"#;
+        assert_eq!(Descriptor::parse(named, &base).err(), Some(DescriptorError::Unknown));
     }
 }

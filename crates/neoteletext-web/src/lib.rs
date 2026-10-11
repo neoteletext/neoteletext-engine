@@ -17,7 +17,7 @@
 //! - Foundation: [`consts`], [`bytes`], [`base64`], [`sha1`], [`json`];
 //! - addresses and origins: [`url`];
 //! - protocols: [`http`], [`ws`], [`sse`], [`cookie`];
-//! - content: [`descriptor`], [`form`];
+//! - content: [`channel`], [`contents`], [`descriptor`], [`form`];
 //! - the machines: [`agent`] (the [`agent::UserAgent`]) and [`zxnet`]
 //!   (the [`zxnet::ZxnetFeed`]);
 //! - the web half of the platform interface (layer L8): [`port`].
@@ -53,6 +53,8 @@ pub mod http;
 pub mod sse;
 pub mod ws;
 
+pub mod channel;
+pub mod contents;
 pub mod descriptor;
 pub mod form;
 

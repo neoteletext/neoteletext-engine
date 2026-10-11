@@ -13,16 +13,18 @@ use crate::picture::{self, Picture};
 use crate::storage::Storage;
 use crate::tab::{Tab, View};
 use crate::{GLYPHS, now_seconds};
+use chrono::Datelike as _;
 use eframe::egui::{
     self, Align, Button, CentralPanel, Color32, ColorImage, Context, Event, Key, Layout, Modifiers, Panel, RichText,
     Sense, TextEdit, TextureHandle, TextureOptions, Ui, ViewportCommand,
 };
 use neoteletext_app::pipe::{DisplaySettings, UserInput};
-use neoteletext_browser::location::parse_input;
+use neoteletext_browser::contents_view::Key as ContentsKey;
+use neoteletext_browser::location::{parse_input, wants_contents};
 use neoteletext_browser::pages::START_LIST_ROW;
 use neoteletext_browser::saved::{Saved, Settings};
 use neoteletext_browser::tuning::Confirmed;
-use neoteletext_browser::{Destination, Location, Why};
+use neoteletext_browser::{ContentsDate, Destination, Location, Why};
 use neoteletext_core::consts::{COLUMNS, ROWS};
 use std::collections::HashMap;
 use std::time::Duration;
@@ -230,6 +232,36 @@ impl BrowserApp {
         }
     }
 
+    /// The date of the viewer's previous visit to the active tab's
+    /// channel, from the history of visits: the latest before the channel
+    /// was opened now (REQ-BRW-009).
+    fn previous_visit(&self) -> Option<ContentsDate> {
+        let tab = self.tab();
+        let key = tab.location.as_ref()?.site_key();
+        let seconds = self
+            .visits
+            .iter()
+            .filter(|visit| visit.time < tab.opened_at && visit.destination.location.site_key() == key)
+            .map(|visit| visit.time)
+            .max()?;
+        let date = chrono::DateTime::from_timestamp(i64::try_from(seconds).ok()?, 0)?.date_naive();
+        Some(ContentsDate {
+            year: u16::try_from(date.year()).ok()?,
+            month: u8::try_from(date.month()).ok()?,
+            day: u8::try_from(date.day()).ok()?,
+        })
+    }
+
+    /// Opens the active tab's contents view, or leaves it.
+    fn toggle_contents(&mut self) {
+        if matches!(self.tab().view, View::Contents(_)) {
+            self.tab_mut().leave_contents();
+        } else {
+            let previous = self.previous_visit();
+            self.tab_mut().open_contents(previous);
+        }
+    }
+
     fn set_glyphs(&mut self, glyphs: u8) {
         self.settings.glyphs = glyphs;
         for tab in &mut self.tabs {
@@ -306,15 +338,7 @@ impl BrowserApp {
         if self.editing {
             return;
         }
-        let tab = self.tab();
-        self.address = match &tab.view {
-            View::Tuning(tuning) => tuning.destination.location.address(tuning.destination.page),
-            _ => match (&tab.location, tab.navigation.current()) {
-                (Some(location), Some(entry)) if entry.location == *location => location.address(Some(entry.page)),
-                (Some(location), _) => location.address(None),
-                (None, _) => String::new(),
-            },
-        };
+        self.address = self.tab().address();
     }
 
     // -----------------------------------------------------------------
@@ -364,6 +388,24 @@ impl BrowserApp {
                 Key::Enter | Key::F4 => self.tab_mut().answer_submission(true),
                 Key::Escape | Key::Delete => self.tab_mut().answer_submission(false),
                 _ => {}
+            }
+            return;
+        }
+        if let View::Contents(_) = self.tab().view {
+            let contents_key = match key {
+                Key::ArrowUp => Some(ContentsKey::Up),
+                Key::ArrowDown => Some(ContentsKey::Down),
+                Key::ArrowLeft => Some(ContentsKey::Left),
+                Key::ArrowRight => Some(ContentsKey::Right),
+                Key::Enter => Some(ContentsKey::Enter),
+                Key::Escape | Key::Delete => {
+                    self.tab_mut().leave_contents();
+                    None
+                }
+                _ => None,
+            };
+            if let Some(contents_key) = contents_key {
+                self.tab_mut().contents_key(contents_key);
             }
             return;
         }
@@ -420,6 +462,16 @@ impl BrowserApp {
 
     fn text_key(&mut self, character: char) {
         let tab = self.tab();
+        if let View::Contents(_) = tab.view {
+            // Digits type a page number as on any page; `C` leaves.
+            if character == 'C' {
+                self.toggle_contents();
+            } else if let Some(digit) = character.to_digit(10) {
+                self.tab_mut().leave_contents();
+                self.tab_mut().input(UserInput::Digit(u8::try_from(digit).unwrap_or(0)));
+            }
+            return;
+        }
         if !matches!(tab.view, View::Page | View::Start | View::Keys) || tab.submission.is_some() {
             return;
         }
@@ -456,6 +508,10 @@ impl BrowserApp {
             }
             'G' => {
                 self.set_glyphs((self.settings.glyphs + 1) % 3);
+                None
+            }
+            'C' => {
+                self.toggle_contents();
                 None
             }
             _ => None,
@@ -573,7 +629,17 @@ impl BrowserApp {
                 self.editing = false;
                 if entered {
                     match parse_input(&self.address) {
-                        Ok(destination) => self.go(destination, Why::Typed),
+                        Ok(destination) => {
+                            let contents = wants_contents(&self.address);
+                            let same = self.tab().location.as_ref().map(Location::site_key)
+                                == Some(destination.location.site_key())
+                                && self.tab().is_live();
+                            self.tab_mut().contents_on_open = contents && !same;
+                            self.go(destination, Why::Typed);
+                            if contents && same {
+                                self.toggle_contents();
+                            }
+                        }
                         Err(error) => self.tab_mut().notice = Some(format!("Not an address: {error:?}")),
                     }
                 }
@@ -626,6 +692,9 @@ impl BrowserApp {
         ui.separator();
         if ui.button("Keys (K)").clicked() {
             self.tab_mut().toggle_keys();
+        }
+        if ui.button("Contents (C)").clicked() {
+            self.toggle_contents();
         }
         if ui.button("Clear the history").clicked() {
             self.visits.clear();
@@ -792,7 +861,7 @@ impl BrowserApp {
 
     fn click(&mut self, row: usize, column: usize) {
         match self.tab().view {
-            View::Page => {
+            View::Page | View::Contents(_) => {
                 if let (Ok(row), Ok(column)) = (u8::try_from(row), u8::try_from(column)) {
                     self.tab_mut().click(row, column);
                 }

@@ -1,8 +1,8 @@
 //! One tab: its helpers, its history, what it shows, and the routing of
 //! every frame between its fetcher and its decoder
-//! (`docs/desktop-browser.md` sections 3.2 and 5): links to other sites
-//! (REQ-NAV-013), aliases (REQ-WEB-020), files (REQ-BRW-005) and the
-//! routing rules of REQ-SEC-026.
+//! (`docs/desktop-browser.md` sections 3.2 and 5): links to other channels
+//! (REQ-NAV-013), aliases (REQ-WEB-020), files (REQ-BRW-005), the
+//! contents view (REQ-BRW-009) and the routing rules of REQ-SEC-026.
 //!
 //! The tab is the trusted side. It reads what the helpers send, but trusts
 //! none of it: a decoder can ask for pages, submit a form, or ask to
@@ -14,12 +14,17 @@
 //! drive tabs directly.
 
 use crate::helpers::{Helpers, Message, Options, Wake};
-use neoteletext_app::pipe::{self, DisplaySettings, Frame, Notice, Origin, PageData, PageStatus, Screen, UserInput};
-use neoteletext_browser::location::parse_input;
+use neoteletext_app::pipe::{
+    self, ContentsReply, DisplaySettings, Frame, Notice, Origin, PageData, PageStatus, Screen, UserInput,
+};
+use neoteletext_browser::ContentsDate;
+use neoteletext_browser::contents_view::{self, ContentsView, Key as ContentsKey, Target};
+use neoteletext_browser::location::{page_file, parse_input};
 use neoteletext_browser::navigation::clean_title;
 use neoteletext_browser::tuning::{self, Confirmed};
 use neoteletext_browser::{Destination, Entry, Location, Navigation, Tuning, Why};
 use neoteletext_core::consts::PACKET_BYTES;
+use std::collections::HashSet;
 
 /// The largest file opened: a long broadcast capture.
 const MAX_FILE: u64 = 256 * 1024 * 1024;
@@ -43,6 +48,8 @@ pub enum View {
     Page,
     /// Something went wrong: a title and the details.
     Failed(String, String),
+    /// The channel's contents (REQ-BRW-009).
+    Contents(Box<ContentsView>),
 }
 
 /// A form submission waiting for the user's confirmation (REQ-SEC-008,
@@ -89,6 +96,19 @@ pub struct Tab {
     /// Bumped whenever anything shown changes.
     pub version: u64,
     settings: DisplaySettings,
+    /// The channel's contents, fetched once a visit (REQ-BRW-009).
+    contents: Option<ContentsView>,
+    /// Contents have been asked of the fetcher.
+    contents_wanted: bool,
+    /// The previous visit's date, which marks changed pages.
+    contents_previous: Option<ContentsDate>,
+    /// Open the contents view as soon as the channel opens: the address
+    /// typed was its `contents.txt`.
+    pub contents_on_open: bool,
+    /// Pages whose file was T42, for the address bar (REQ-BRW-002).
+    t42_pages: HashSet<u16>,
+    /// When the channel was opened, in seconds since 1970.
+    pub opened_at: u64,
 }
 
 /// The title of a page: the first line of its text after row 0 that has
@@ -126,6 +146,12 @@ impl Tab {
             history_revert: None,
             version: 0,
             settings: DisplaySettings::default(),
+            contents: None,
+            contents_wanted: false,
+            contents_previous: None,
+            contents_on_open: false,
+            t42_pages: HashSet::new(),
+            opened_at: 0,
         }
     }
 
@@ -137,6 +163,9 @@ impl Tab {
             View::Keys => "Keys".to_string(),
             View::Tuning(tuning) => format!("{}?", tuning.label()),
             View::Failed(title, _) => title.clone(),
+            View::Contents(_) => {
+                format!("{} contents", self.location.as_ref().map(Location::label).unwrap_or_default())
+            }
             View::Page => {
                 let label = self.location.as_ref().map(Location::label).unwrap_or_default();
                 match self.navigation.current() {
@@ -220,7 +249,7 @@ impl Tab {
 
     /// The user cancelled the tuning screen: back to what was shown.
     pub fn cancel(&mut self) {
-        if !matches!(self.view, View::Tuning(_) | View::Keys) {
+        if !matches!(self.view, View::Tuning(_) | View::Keys | View::Contents(_)) {
             return;
         }
         if let Some(index) = self.history_revert.take() {
@@ -252,6 +281,10 @@ impl Tab {
         self.unencrypted = false;
         self.submission = None;
         self.notice = None;
+        self.contents = None;
+        self.contents_wanted = false;
+        self.t42_pages.clear();
+        self.opened_at = crate::now_seconds();
         self.location = Some(destination.location.clone());
         match Helpers::start(options, &destination.location, wake) {
             Ok(helpers) => {
@@ -269,6 +302,112 @@ impl Tab {
                 }
             }
             Err(problem) => self.view = View::Failed("Cannot start".to_string(), problem),
+        }
+        if std::mem::take(&mut self.contents_on_open) {
+            self.open_contents(None);
+        }
+        self.changed();
+    }
+
+    /// The address bar's text for what the tab shows (REQ-BRW-002): a
+    /// page's file in the extension that answered, a channel's
+    /// `contents.txt`, or where the tuning screen leads.
+    #[must_use]
+    pub fn address(&self) -> String {
+        match (&self.view, &self.location, self.navigation.current()) {
+            (View::Tuning(tuning), _, _) => tuning.destination.location.address(tuning.destination.page, false),
+            (View::Contents(_), Some(location), _) => {
+                format!("{}{}", location.address(None, false), contents_view::CONTENTS_FILE_NAME)
+            }
+            (_, Some(location), Some(entry)) if entry.location == *location => {
+                location.address(Some(entry.page), self.t42_pages.contains(&entry.page))
+            }
+            (_, Some(location), _) => location.address(None, false),
+            (_, None, _) => String::new(),
+        }
+    }
+
+    /// Shows the channel's contents (REQ-BRW-009), fetching them the first
+    /// time in this visit. A page dated after `previous_visit` is marked.
+    pub fn open_contents(&mut self, previous_visit: Option<ContentsDate>) {
+        let channel = matches!(self.location, Some(Location::Channel { .. } | Location::Service { .. }));
+        if !channel || self.helpers.is_none() {
+            self.notice = Some("Only a channel has contents.".to_string());
+        } else if let Some(contents) = &self.contents {
+            self.view = View::Contents(Box::new(contents.clone()));
+        } else if !self.contents_wanted {
+            self.contents_wanted = true;
+            self.contents_previous = previous_visit;
+            self.send_fetcher(&Frame::FetchContents);
+            self.notice = Some("Fetching the contents...".to_string());
+        }
+        self.changed();
+    }
+
+    /// The pages this tab has shown on its channel, for a contents view
+    /// without a contents file.
+    fn seen_pages(&self) -> Vec<(u16, String)> {
+        let (entries, _) = self.navigation.entries();
+        entries
+            .iter()
+            .filter(|entry| Some(&entry.location) == self.location.as_ref())
+            .map(|entry| (entry.page, entry.title.clone()))
+            .collect()
+    }
+
+    fn contents_arrived(&mut self, reply: ContentsReply) {
+        if !std::mem::take(&mut self.contents_wanted) {
+            return;
+        }
+        let previous_visit = self.contents_previous;
+        let seen = self.seen_pages();
+        let view = match reply {
+            ContentsReply::File(bytes) => ContentsView::from_file(&bytes, previous_visit, &seen),
+            ContentsReply::Missing => ContentsView::from_received(&seen, contents_view::NO_CONTENTS),
+            ContentsReply::Failed(why) => {
+                ContentsView::from_received(&seen, &format!("Contents unusable: {}", clean_title(&why)))
+            }
+        };
+        self.notice = (view.ignored > 0).then(|| format!("{} lines of contents.txt were ignored.", view.ignored));
+        self.contents = Some(view.clone());
+        self.view = View::Contents(Box::new(view));
+        self.changed();
+    }
+
+    /// A key in the contents view.
+    pub fn contents_key(&mut self, key: ContentsKey) {
+        let View::Contents(view) = &mut self.view else { return };
+        let target = view.key(key);
+        if let Some(contents) = &mut self.contents {
+            contents.clone_from(view);
+        }
+        if let Some(target) = target {
+            self.follow_contents(target);
+        }
+        self.changed();
+    }
+
+    /// Leaves the contents view for the page shown before it.
+    pub fn leave_contents(&mut self) {
+        if matches!(self.view, View::Contents(_)) {
+            self.view = if self.helpers.is_some() { View::Page } else { View::Start };
+            self.changed();
+        }
+    }
+
+    fn follow_contents(&mut self, target: Target) {
+        self.view = View::Page;
+        match target {
+            Target::Page(page) => self.send_decoder(&Frame::Show(page, ANY_SUBCODE)),
+            Target::Channel(target) if target.contains("://") => self.visit(&target),
+            Target::Channel(target) => {
+                let named = target.split_once(':').and_then(|(service, page)| {
+                    neoteletext_browser::location::page_number(page).map(|page| (service.to_string(), page))
+                });
+                if let Some((service, page)) = named {
+                    self.follow(&service, page);
+                }
+            }
         }
         self.changed();
     }
@@ -311,6 +450,10 @@ impl Tab {
     pub fn click(&mut self, row: u8, column: u8) {
         if self.view == View::Page {
             self.send_decoder(&Frame::Click(row, column));
+        } else if let View::Contents(view) = &self.view
+            && let Some(target) = view.at_row(usize::from(row))
+        {
+            self.follow_contents(target);
         }
     }
 
@@ -418,13 +561,13 @@ impl Tab {
                 self.name = Some(clean_title(&name));
                 self.changed();
             }
-            Frame::Notice(Notice::RedirectToOtherSite(address)) => {
+            Frame::Notice(Notice::RedirectToOtherChannel(address)) => {
                 let from = self.location.as_ref().map(Location::label).unwrap_or_default();
                 match parse_input(&address) {
                     Ok(destination) => {
                         self.view = View::Tuning(Tuning { destination, why: Why::Redirect { from } });
                     }
-                    Err(_) => self.notice = Some("The site redirected to an address that is not allowed.".into()),
+                    Err(_) => self.notice = Some("The channel redirected to an address that is not allowed.".into()),
                 }
                 self.changed();
             }
@@ -436,12 +579,22 @@ impl Tab {
                 self.unencrypted = true;
                 self.send_decoder(&Frame::Notice(Notice::Unencrypted));
             }
+            // Contents are the interface's alone; a decoder never sees them.
+            Frame::Contents(reply) => self.contents_arrived(reply),
             frame @ (Frame::Tti(_) | Frame::T42(_)) => {
-                if let Frame::Tti(page) | Frame::T42(page) = &frame
-                    && !page.secure
-                    && page.origin != Origin::Push
-                {
-                    self.unencrypted = true;
+                if let Frame::Tti(page) | Frame::T42(page) = &frame {
+                    if !page.secure && page.origin != Origin::Push {
+                        self.unencrypted = true;
+                    }
+                    if page.origin == Origin::Page
+                        && let Some((mpp, t42)) = page_file(&page.url)
+                    {
+                        if t42 {
+                            self.t42_pages.insert(mpp);
+                        } else {
+                            self.t42_pages.remove(&mpp);
+                        }
+                    }
                 }
                 self.send_decoder(&frame);
             }
@@ -489,7 +642,8 @@ impl Tab {
     }
 
     /// An address written in a page (concept section 3): through the
-    /// tuning screen, marked as not declared by the site.
+    /// tuning screen, marked as not declared by the channel; a page file in
+    /// the channel's own folder is shown at once (REQ-WEB-026).
     fn visit(&mut self, address: &str) {
         let from = self.location.as_ref().map(Location::label).unwrap_or_default();
         match parse_input(address) {

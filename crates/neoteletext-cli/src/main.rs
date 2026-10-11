@@ -4,6 +4,7 @@
 //! 3 input unreadable or unrecognised, 4 page checker errors.
 
 mod commands;
+mod contents;
 mod options;
 mod output;
 mod terminal;
@@ -255,6 +256,13 @@ enum Command {
         #[arg(long)]
         allow_local: Vec<std::net::IpAddr>,
     },
+    /// Write a channel's contents.txt, to standard output, from a folder
+    /// of page files (REQ-CLI-008).
+    Contents {
+        /// Common options; the input is the channel's folder.
+        #[command(flatten)]
+        common: Common,
+    },
     /// Check TTI page files for authoring problems.
     Check {
         /// TTI files.
@@ -294,6 +302,7 @@ fn main() -> ExitCode {
         Command::Services { common } => commands::services(&common.options()),
         Command::ServiceInfo { common } => commands::service_info(&common.options()),
         Command::Check { files, descriptor } => commands::check(&files, descriptor.as_deref()),
+        Command::Contents { common } => contents::contents(&common.options()),
         Command::SandboxTest => sandbox::self_test(),
         Command::Fetch { address, no_sandbox, allow_local } => commands::fetch(&address, no_sandbox, &allow_local),
     };

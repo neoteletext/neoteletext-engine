@@ -104,7 +104,28 @@ pub enum Frame {
     /// Decoder to interface: a link on the page leads to this address
     /// (`docs/web-native-concept.md` section 3), for the tuning screen.
     Visit(String),
+    /// Interface to fetcher: fetch the channel's `contents.txt`
+    /// (REQ-BRW-009).
+    FetchContents,
+    /// Fetcher to interface, never to a decoder: the answer to
+    /// [`Frame::FetchContents`].
+    Contents(ContentsReply),
 }
+
+/// The fetcher's answer to [`Frame::FetchContents`] (REQ-WEB-025).
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum ContentsReply {
+    /// The file, unchecked; the interface reads it.
+    File(Vec<u8>),
+    /// The channel has none (404 or 410).
+    Missing,
+    /// It could not be fetched or used, and why.
+    Failed(String),
+}
+
+/// The largest contents file carried, the limit of REQ-WEB-025; the
+/// fetcher asserts it is the web module's.
+pub const MAX_CONTENTS: usize = 64 * 1024;
 
 /// A key or character from the interface. Which of them the decoder acts
 /// on depends on whether a form has the focus, as in `ttx view`.
@@ -222,9 +243,9 @@ pub enum Notice {
     /// The descriptor's linked services: short name and descriptor
     /// address, for the browser's tuning screen.
     LinkedSites(Vec<(String, String)>),
-    /// A request was redirected to another site and not followed: its
-    /// address.
-    RedirectToOtherSite(String),
+    /// A request was redirected out of the channel and not followed: its
+    /// address (REQ-WEB-021).
+    RedirectToOtherChannel(String),
     /// The service's name, from its descriptor or its host.
     ServiceName(String),
     /// The descriptor's aliases: page numbers, `0xMPP`, and their targets,
@@ -268,6 +289,12 @@ const BUNDLE: u8 = b'b';
 const ALIASES: u8 = b'a';
 const VISIT: u8 = b'v';
 const REFRESH: u8 = b'e';
+const FETCH_CONTENTS: u8 = b'q';
+const CONTENTS: u8 = b'o';
+/// The kinds of [`ContentsReply`] on the wire.
+const CONTENTS_FILE: u8 = 0;
+const CONTENTS_MISSING: u8 = 1;
+const CONTENTS_FAILED: u8 = 2;
 /// The most strings one frame may carry.
 const MAX_STRINGS: usize = 256;
 
@@ -427,7 +454,7 @@ pub fn write(out: &mut dyn Write, frame: &Frame) -> io::Result<()> {
             }
             put(out, LINKED_SITES, &buffer)
         }
-        Frame::Notice(Notice::RedirectToOtherSite(address)) => put(out, REDIRECT, address.as_bytes()),
+        Frame::Notice(Notice::RedirectToOtherChannel(address)) => put(out, REDIRECT, address.as_bytes()),
         Frame::Notice(Notice::ServiceName(name)) => put(out, SERVICE_NAME, name.as_bytes()),
         Frame::Notice(Notice::Bundle(mpp)) => put(out, BUNDLE, &mpp.to_be_bytes()),
         Frame::Notice(Notice::Aliases(aliases)) => {
@@ -440,6 +467,8 @@ pub fn write(out: &mut dyn Write, frame: &Frame) -> io::Result<()> {
             put(out, ALIASES, &buffer)
         }
         Frame::Visit(address) => put(out, VISIT, address.as_bytes()),
+        Frame::FetchContents => put(out, FETCH_CONTENTS, &[]),
+        Frame::Contents(reply) => put(out, CONTENTS, &contents_payload(reply)),
         Frame::Notice(Notice::Refresh(seconds)) => put(out, REFRESH, &seconds.to_be_bytes()),
         Frame::Input(input) => {
             let (code, value) = input_code(*input);
@@ -471,6 +500,17 @@ pub fn write(out: &mut dyn Write, frame: &Frame) -> io::Result<()> {
             put(out, STATUS, &buffer)
         }
     }
+}
+
+/// The payload of a [`Frame::Contents`]: its kind, then the file or the
+/// reason.
+fn contents_payload(reply: &ContentsReply) -> Vec<u8> {
+    let (kind, body) = match reply {
+        ContentsReply::File(bytes) => (CONTENTS_FILE, bytes.as_slice()),
+        ContentsReply::Missing => (CONTENTS_MISSING, &[][..]),
+        ContentsReply::Failed(why) => (CONTENTS_FAILED, why.as_bytes()),
+    };
+    [&[kind][..], body].concat()
 }
 
 /// The wire form of a user input: a code and a value.
@@ -641,7 +681,7 @@ fn browser_frame(kind: u8, payload: &[u8]) -> io::Result<Frame> {
             Frame::Notice(Notice::LinkedSites(sites))
         }
         REDIRECT => {
-            Frame::Notice(Notice::RedirectToOtherSite(String::from_utf8(payload.to_vec()).map_err(|_| invalid())?))
+            Frame::Notice(Notice::RedirectToOtherChannel(String::from_utf8(payload.to_vec()).map_err(|_| invalid())?))
         }
         SERVICE_NAME => Frame::Notice(Notice::ServiceName(String::from_utf8(payload.to_vec()).map_err(|_| invalid())?)),
         BUNDLE => Frame::Notice(Notice::Bundle(u16::from_be_bytes(payload.try_into().map_err(|_| invalid())?))),
@@ -654,6 +694,19 @@ fn browser_frame(kind: u8, payload: &[u8]) -> io::Result<Frame> {
             Frame::Notice(Notice::Aliases(aliases))
         }
         VISIT => Frame::Visit(String::from_utf8(payload.to_vec()).map_err(|_| invalid())?),
+        FETCH_CONTENTS if payload.is_empty() => Frame::FetchContents,
+        CONTENTS => {
+            let kind = cursor.byte()?;
+            let body = payload.get(1..).unwrap_or(&[]);
+            Frame::Contents(match kind {
+                CONTENTS_FILE if body.len() <= MAX_CONTENTS => ContentsReply::File(body.to_vec()),
+                CONTENTS_MISSING if body.is_empty() => ContentsReply::Missing,
+                CONTENTS_FAILED if body.len() <= MAX_LINK_TEXT => {
+                    ContentsReply::Failed(String::from_utf8(body.to_vec()).map_err(|_| invalid())?)
+                }
+                _ => return Err(invalid()),
+            })
+        }
         REFRESH => Frame::Notice(Notice::Refresh(u32::from_be_bytes(payload.try_into().map_err(|_| invalid())?))),
         INPUT => {
             let code = cursor.byte()?;
@@ -732,11 +785,15 @@ mod tests {
             Frame::Follow("other".into(), 0x400, 0xFFFF),
             Frame::Tti(PageData { secure: true, origin: Origin::FrontDoor, url: "h".into(), bytes: vec![] }),
             Frame::Notice(Notice::LinkedSites(vec![("weather".into(), "https://w.example/".into())])),
-            Frame::Notice(Notice::RedirectToOtherSite("https://elsewhere.example/".into())),
+            Frame::Notice(Notice::RedirectToOtherChannel("https://elsewhere.example/".into())),
             Frame::Notice(Notice::ServiceName("Test".into())),
             Frame::Notice(Notice::Bundle(0x199)),
             Frame::Notice(Notice::Aliases(vec![(0x300, "weather:300".into())])),
             Frame::Visit("https://w.example/300.t42".into()),
+            Frame::FetchContents,
+            Frame::Contents(ContentsReply::File(b"p\t100\tIndex\n".to_vec())),
+            Frame::Contents(ContentsReply::Missing),
+            Frame::Contents(ContentsReply::Failed("MediaType".into())),
             Frame::Notice(Notice::Refresh(60)),
             Frame::Input(UserInput::Digit(7)),
             Frame::Input(UserInput::Colour(3)),
@@ -785,6 +842,9 @@ mod tests {
             &[b'K', 0, 0, 0, 5, 99, 0, 0, 0, 0],
             // A glyph choice that does not exist.
             &[b'Z', 0, 0, 0, 1, 3],
+            // A contents reply of an unknown kind, and "missing" with a body.
+            &[b'o', 0, 0, 0, 1, 3],
+            &[b'o', 0, 0, 0, 2, 1, 7],
             // A screen whose index names a colour the palette lacks.
             &[b'Y', 0, 0, 0, 11, 0, 1, 0, 1, 0, 1, 0, 0, 0, 255, 1],
             // A screen wider than the limit.
