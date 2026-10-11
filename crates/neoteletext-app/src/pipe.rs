@@ -148,6 +148,8 @@ pub enum UserInput {
     Char(char),
     /// The site's initial page.
     Home,
+    /// Underline every link on the page, or stop (concept decision 11).
+    ShowLinks,
 }
 
 /// What the interface asks the decoder to draw with.
@@ -493,6 +495,7 @@ fn input_code(input: UserInput) -> (u8, u32) {
         UserInput::Arrow(direction) => (16, u32::from(direction)),
         UserInput::Char(character) => (17, u32::from(character)),
         UserInput::Home => (18, 0),
+        UserInput::ShowLinks => (19, 0),
     }
 }
 
@@ -519,6 +522,7 @@ fn user_input(code: u8, value: u32) -> Option<UserInput> {
         16 => UserInput::Arrow(small.filter(|direction| *direction <= 3)?),
         17 => UserInput::Char(char::from_u32(value).filter(|character| !character.is_control())?),
         18 => UserInput::Home,
+        19 => UserInput::ShowLinks,
         _ => return None,
     })
 }
@@ -739,6 +743,7 @@ mod tests {
             Frame::Input(UserInput::Char('é')),
             Frame::Input(UserInput::Arrow(2)),
             Frame::Input(UserInput::Home),
+            Frame::Input(UserInput::ShowLinks),
             Frame::Show(0x140, 0xFFFF),
             Frame::Settings(DisplaySettings { glyphs: 2 }),
             Frame::Click(3, 17),

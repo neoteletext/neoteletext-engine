@@ -6,7 +6,8 @@ use crate::pipe::{self, Frame, Notice, Origin, PageData, Submission};
 use crate::session::Session;
 use crate::source::Source;
 use crate::{Failure, exit};
-use neoteletext_core::packet::{Packet, PacketMeta};
+use neoteletext_core::consts::{PACKET_HEADER, PACKET_MAGAZINE_ENHANCEMENT};
+use neoteletext_core::packet::{Decoded, Packet, PacketMeta, decode, decode_address};
 use neoteletext_core::types::{Instant, PageAddress, SubCode};
 use neoteletext_formats::Item;
 use neoteletext_formats::detect::{AutoConfig, AutoReader, Format};
@@ -50,7 +51,37 @@ pub struct Live {
     /// The service's refresh interval for the page on screen, when its
     /// descriptor gives one and it has no push.
     refresh_us: Option<u64>,
+    /// Every page asked for, `0xMPP`: a page's file may fill only these.
+    asked: std::collections::HashSet<u16>,
 }
+
+/// Which pages the bytes of one response may fill
+/// (`docs/web-native-concept.md` section 2 item 4).
+#[derive(Clone, Copy)]
+enum Fill<'a> {
+    /// Any page: a front door, a push message, a form's answer, a file.
+    Any,
+    /// A page's own file: the pages asked for, and enhancement pages,
+    /// whose numbers are not decimal and which a page's file may carry
+    /// (item 6).
+    Asked(&'a std::collections::HashSet<u16>),
+}
+
+impl Fill<'_> {
+    fn allows(self, page: PageAddress) -> bool {
+        match self {
+            Self::Any => true,
+            Self::Asked(asked) => {
+                asked.contains(&page.mpp())
+                    || page.page.tens() > DECIMAL_DIGIT_LAST
+                    || page.page.units() > DECIMAL_DIGIT_LAST
+            }
+        }
+    }
+}
+
+/// The highest digit of a page number a viewer can type.
+const DECIMAL_DIGIT_LAST: u8 = 9;
 
 /// Bounds of a service's refresh interval, in seconds (concept decision 13).
 const MIN_REFRESH_SECONDS: u32 = neoteletext_web::descriptor::MIN_REFRESH_SECONDS;
@@ -114,6 +145,7 @@ impl Live {
             last_retry: Instant(0),
             last_poll: Instant(0),
             refresh_us: None,
+            asked: std::collections::HashSet::new(),
         }
     }
 }
@@ -133,10 +165,11 @@ impl Live {
         let mut packets: Vec<(Packet, PacketMeta)> = Vec::new();
         let mut first = None;
         let services = self.services.clone();
+        let allowed = if page.origin == Origin::Page { Fill::Asked(&self.asked) } else { Fill::Any };
         let extras = &mut self.extras;
         let mut collect = |item: Item<'_>| match item {
             Item::Packet { packet, meta } => packets.push((packet, meta)),
-            Item::Page(file) => {
+            Item::Page(file) if allowed.allows(file.address) => {
                 first.get_or_insert(file.address);
                 extras.insert(extras::key(file), extras::from_page(file, &page.url, &services));
             }
@@ -144,8 +177,24 @@ impl Live {
         };
         reader.feed(&page.bytes, &mut collect);
         reader.finish(&mut collect);
+        // Each magazine's packets belong to the page its last header
+        // named; magazine-wide packets (M/29, 8/30) always pass.
+        let mut filling = [true; neoteletext_core::consts::MAGAZINES];
         for (packet, meta) in &packets {
-            session.push_at(packet, meta, now);
+            let Ok(address) = decode_address(packet) else { continue };
+            let slot = usize::from(address.magazine.bits());
+            if address.number == PACKET_HEADER
+                && let Ok(Decoded::Header(header)) = decode(packet)
+            {
+                let page = header.page.map(|number| PageAddress { magazine: header.magazine, page: number });
+                if let Some(state) = filling.get_mut(slot) {
+                    *state = page.is_some_and(|page| allowed.allows(page));
+                }
+            }
+            let magazine_wide = address.number >= PACKET_MAGAZINE_ENHANCEMENT;
+            if magazine_wide || filling.get(slot).copied().unwrap_or(false) {
+                session.push_at(packet, meta, now);
+            }
         }
         // A fetched page is complete once its bytes are in.
         session.tick(Instant(now.0.saturating_add(neoteletext_core::consts::PAGE_COMPLETION_TIMEOUT_US * 2)));
@@ -247,6 +296,7 @@ impl Source for Live {
     }
 
     fn request(&mut self, page: PageAddress, subcode: SubCode) {
+        self.asked.insert(page.mpp());
         self.requested = Some((page, subcode));
         self.last_retry = self.last_poll;
         let sub = if subcode.is_any() { u16::MAX } else { subcode.value() };
@@ -254,6 +304,7 @@ impl Source for Live {
     }
 
     fn prefetch(&mut self, page: PageAddress) {
+        self.asked.insert(page.mpp());
         self.send(&Frame::Request(page.mpp(), u16::MAX));
     }
 
@@ -388,5 +439,26 @@ mod tests {
         assert_eq!(kept.requests(), 2);
         live.poll(&mut session, Instant(13 * SECOND));
         assert_eq!(kept.requests(), 3);
+    }
+
+    /// Concept section 2 item 4: a page's own file fills only that page,
+    /// while a front door fills every page it holds.
+    #[test]
+    fn a_page_file_fills_only_its_page() {
+        let two_pages = b"PN,10000\nOL,1,ONE\nPN,20000\nOL,1,TWO\nPN,1A000\nOL,1,HEX\n".to_vec();
+        let address = |mpp| PageAddress::from_mpp(mpp).unwrap_or_else(|| unreachable!());
+        for (origin, stored) in [(Origin::Page, [true, false, true]), (Origin::FrontDoor, [true, true, true])] {
+            let (sender, frames) = mpsc::channel();
+            let mut live = routed(frames, Box::new(Kept::default()));
+            let mut session = Session::new(neoteletext_core::config::Config::default(), 8);
+            live.request(address(0x100), SubCode::ANY);
+            let page =
+                PageData { secure: true, origin, url: "https://a.example/100.t42".into(), bytes: two_pages.clone() };
+            sender.send(Frame::Tti(page)).unwrap_or_else(|_| unreachable!());
+            live.poll(&mut session, Instant(SECOND));
+            let present: Vec<bool> =
+                [0x100, 0x200, 0x1A0].iter().map(|&mpp| session.page(address(mpp), SubCode::ANY).is_some()).collect();
+            assert_eq!(present, stored, "{origin:?}");
+        }
     }
 }

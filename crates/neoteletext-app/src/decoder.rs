@@ -148,6 +148,8 @@ pub struct Engine {
     catching: Option<usize>,
     /// The extension data of the page last composed.
     last_extras: Option<PageExtras>,
+    /// Every link is underlined (concept decision 11).
+    show_links: bool,
     /// Enhancement pages already asked for, `0xMPP`.
     prefetched: std::collections::HashSet<u16>,
 }
@@ -253,6 +255,7 @@ impl Engine {
             outgoing: Vec::new(),
             catching: None,
             last_extras: None,
+            show_links: false,
             prefetched: std::collections::HashSet::new(),
         }
     }
@@ -454,6 +457,10 @@ impl Engine {
 
     fn input(&mut self, input: UserInput, session: &mut Session, source: &mut dyn Source, now: Instant) {
         let form_focused = self.form.as_ref().is_some_and(|form| form.focused);
+        if !form_focused && input == UserInput::ShowLinks {
+            self.show_links = !self.show_links;
+            return;
+        }
         if !form_focused && self.catch_key(input, session, source) {
             return;
         }
@@ -696,6 +703,17 @@ impl Engine {
             active.model.draw(&mut self.grid);
         }
         self.last_extras.clone_from(&page_extras);
+        // "Show links" underlines every link with the receiver's own
+        // underline, so no page can hide one.
+        if self.show_links {
+            for link in self.catchable(page_extras.as_ref()) {
+                for column in link.column..link.column + link.length {
+                    if let Some(cell) = self.grid.cell_mut(link.row, column) {
+                        cell.attributes = cell.attributes.with_underline(true);
+                    }
+                }
+            }
+        }
         // The selected link is shown with its colours swapped, drawn by
         // the receiver (concept decision 11).
         if let Some(selected) = self.catching {
@@ -847,5 +865,25 @@ mod tests {
         }
         assert_eq!(source.requested, [0x100]);
         assert_eq!(source.prefetched, [0x1FE]);
+    }
+
+    /// Concept decision 11: "show links" underlines every link, and only
+    /// links.
+    #[test]
+    fn show_links_underlines_the_page_numbers() {
+        let mut session = session_with(b"PN,10000\nOL,4,Sport 200 and 1234\n");
+        let mut source = Recorder::default();
+        let mut engine = Engine::new(GLYPHS);
+        let _ = engine.step(&mut session, &mut source, Instant(0));
+        let underlined = |engine: &Engine| -> Vec<usize> {
+            (0..COLUMNS).filter(|&column| engine.grid.cells[4][column].attributes.underline()).collect()
+        };
+        assert_eq!(underlined(&engine), Vec::<usize>::new());
+        engine.command(&Frame::Input(UserInput::ShowLinks), &mut session, &mut source, Instant(1));
+        let _ = engine.step(&mut session, &mut source, Instant(2));
+        assert_eq!(underlined(&engine), [6, 7, 8], "200, and not the four digits of 1234");
+        engine.command(&Frame::Input(UserInput::ShowLinks), &mut session, &mut source, Instant(3));
+        let _ = engine.step(&mut session, &mut source, Instant(4));
+        assert_eq!(underlined(&engine), Vec::<usize>::new());
     }
 }

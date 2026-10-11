@@ -440,6 +440,7 @@ impl BrowserApp {
             '?' | '*' => Some(UserInput::Reveal),
             'm' | '/' => Some(UserInput::Mix),
             'z' => Some(UserInput::Zoom),
+            'l' => Some(UserInput::ShowLinks),
             'f' => {
                 self.forward();
                 None

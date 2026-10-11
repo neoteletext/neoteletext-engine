@@ -52,8 +52,10 @@ The design is `docs/desktop-browser.md`; the concept is `docs/web-native-concept
 
 **D9. The front door is bounded by the page limit (256 KB).** A bundled site larger than that publishes page files instead.
 
-**D10. A page file may still carry other pages of its site.**
-- The concept says a page file holds only its page (section 2 item 4). Filtering by page needs per-packet page tracking in the decoder. The harm is limited to the same site.
+**D10. A page's own file fills only the pages asked for** (concept section 2 item 4).
+- Any other page in it is dropped, by its header. The exception is enhancement pages, whose numbers are not decimal and which a page's file may carry for its objects (item 6).
+- A front door, push messages, a form's answer and files fill every page they hold.
+- `ttx`'s web mode follows the same rule, since it shares the code.
 
 **D11. Redirects to another site are refused and shown as a tuning screen.**
 - In the browser the agent reports `RedirectToOtherSite` instead of following (concept section 6). An upgrade from `http` to `https` on the same host is not another site.
@@ -111,7 +113,7 @@ It is skipped only for back and forward to a site confirmed this session (concep
 - **On screen:** the selected link has its colours swapped. Row 0 shows `LINK` and the destination as the decoder reports it, written only after the receiver's `LINK`, so it cannot be mistaken for the tuning screen's `GO?`.
 - **Pages with side panels** are not caught, because their text columns are not the grid's.
 - **With the pointer:** a number under the pointer names its page in the status line.
-- **Not built:** "show links", which underlines every link.
+- **Show links:** `l` underlines every link with the receiver's own underline, and `l` again stops. The concept names no key, so `l` was chosen as the letter for "links".
 
 **D26. Enhancement dependencies** (concept section 2 item 6). When a page is shown at Level 2.5 or 3.5, the decoder asks once for its magazine's Organization Table (`xFE`), then for the object and DRCS pages the table and the page name. Pages already stored are not asked for again. These requests do not change which page is kept fresh.
 
@@ -159,8 +161,6 @@ egui's tree adds two crates whose licence, BSL-1.0, is not on REQ-GEN-017's list
 
 ## 5. Not built yet
 
-- **"Show links"** (concept decision 11).
-- **A page file carrying only its own page** (D10).
 - **One decoder per site, and a back-forward cache** that keeps the previous site's processes.
 - **The macOS menu bar, multiple windows, a file dialog, printing.**
 - **The App Sandbox, Developer ID signing and notarisation, and Sparkle updates.**
