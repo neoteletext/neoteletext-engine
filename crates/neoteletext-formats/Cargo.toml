@@ -15,7 +15,7 @@ neoteletext-core.workspace = true
 # Decision E.61: each format beyond T42 is a feature, all on by default.
 # Ports turn the defaults off and name the formats they read; T42 is always
 # compiled.
-default = ["transport", "sliced", "pages", "tti", "ep1", "edittf", "dump", "check"]
+default = ["transport", "sliced", "pages", "tti", "ep1", "edittf", "dump", "check", "bdf"]
 # MPEG-2 transport streams and raw PES files (REQ-INP-006 to 009).
 transport = []
 # Linux sliced VBI records (REQ-INP-010).
@@ -33,6 +33,8 @@ edittf = ["pages"]
 dump = ["pages"]
 # The TTI page checker (REQ-CLI-006).
 check = ["tti"]
+# The reader of 12 by 10 BDF fonts (REQ-FNT-002, decision E.72).
+bdf = []
 # REQ-GEN-010: the writers need `std::io`. It is not a default because the
 # crate is `no_std`. The page writers also need `pages`, the TTI writer and
 # the authoring module `tti`.

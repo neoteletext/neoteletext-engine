@@ -20,6 +20,9 @@
 //!   (REQ-INP-005), over the formats compiled in.
 //! - `check` (feature `check`): the TTI page checker behind `ttx check`
 //!   (REQ-CLI-006).
+//! - `bdf` (feature `bdf`): the strict reader of the 12 by 10 BDF fonts the
+//!   browser loads (REQ-FNT-002). Fonts are not teletext input, but they
+//!   are untrusted files read into fixed tables like every format here.
 //! - `write` (feature `std`): the T42 writer (REQ-INP-018) and, with `tti`,
 //!   the TTI writer (REQ-INP-014).
 //! - `author` (features `std` and `tti`): the builder for Level 2.5 and 3.5
@@ -78,6 +81,9 @@ pub mod tti;
 
 #[cfg(feature = "check")]
 pub mod check;
+
+#[cfg(feature = "bdf")]
+pub mod bdf;
 pub mod detect;
 #[cfg(feature = "pages")]
 pub mod encode;

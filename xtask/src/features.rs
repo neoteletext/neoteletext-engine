@@ -37,6 +37,7 @@ const BUILDS: &[Build] = &[
     Build { package: "neoteletext-formats", features: "tti" },
     Build { package: "neoteletext-formats", features: "ep1,edittf,dump" },
     Build { package: "neoteletext-formats", features: "check" },
+    Build { package: "neoteletext-formats", features: "bdf" },
     Build { package: "neoteletext-formats", features: "std" },
     Build { package: "neoteletext-formats", features: "std,tti" },
     Build { package: "neoteletext-web", features: "" },

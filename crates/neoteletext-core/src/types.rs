@@ -1,8 +1,8 @@
 //! Small shared types and fixed-capacity collections (Foundation).
 
 use crate::consts::{
-    COLOUR_PRIMARY_BITS, COLOUR_WORDS, DECIMAL_DIGIT_MAX, MAGAZINE_MASK, MAGAZINE_ZERO_MEANS, NIBBLE_MASK,
-    PAGE_TIME_FILLING, SUBCODE_ANY, SUBCODE_MASK,
+    CELL_FIELD_LINES, COLOUR_PRIMARY_BITS, COLOUR_WORDS, DECIMAL_DIGIT_MAX, MAGAZINE_MASK, MAGAZINE_ZERO_MEANS,
+    NIBBLE_MASK, PAGE_TIME_FILLING, SUBCODE_ANY, SUBCODE_MASK,
 };
 
 /// A magazine number, 1 to 8 (clause 7.1.2).
@@ -296,6 +296,22 @@ pub struct DrcsCharacter {
     pub subtable: u8,
     /// The character number, 0 to 47 (48 to 63 are invalid).
     pub character: u8,
+}
+
+/// One character of a loaded font (REQ-FNT-002, decision E.72): its Unicode
+/// code point and the ten lines of its 12 by 10 cell, top line first, bit
+/// 11 the leftmost dot.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub struct FontGlyph {
+    /// The Unicode code point.
+    pub code_point: u32,
+    /// The lines of the cell; bits 12 to 15 are zero.
+    pub rows: [u16; CELL_FIELD_LINES],
+}
+
+impl FontGlyph {
+    /// An empty slot of a glyph table.
+    pub const EMPTY: Self = Self { code_point: 0, rows: [0; CELL_FIELD_LINES] };
 }
 
 /// A point in time in microseconds, from a monotonic clock supplied by the

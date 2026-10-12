@@ -434,7 +434,7 @@ Decision E.61 makes each crate's optional areas Cargo features, all on by defaul
 | Crate | Features |
 |---|---|
 | `neoteletext-core` | `level15`, `level25`, `render`, `bedstead`, `viewer`, `forms`; the capabilities `objects`, `drcs`, `drcs-multicolour`, `bold`, `italic`, `side-panels`, `colours32`, `animation` (decision E.71); the profile `modern-classic` (not default) |
-| `neoteletext-formats` | `transport`, `sliced`, `pages`, `tti`, `ep1`, `edittf`, `dump`, `check`, and `std` (not default) |
+| `neoteletext-formats` | `transport`, `sliced`, `pages`, `tti`, `ep1`, `edittf`, `dump`, `check`, `bdf` (the font reader of REQ-FNT-002), and `std` (not default) |
 | `neoteletext-web` | `push`, `forms`, `cookies` |
 | `neoteletext-app` | `live`, `slice` |
 | `neoteletext-cli` | `view`, `live`, `slice` |

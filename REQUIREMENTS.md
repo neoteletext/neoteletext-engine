@@ -6339,7 +6339,10 @@ A font other than the bundled one shall be a file in the Glyph Bitmap Distributi
 - every character has `ENCODING` a Unicode scalar value, never −1 and never repeated; `DWIDTH 12 0`; `BBX 12 10 0 0`; and a `BITMAP` of exactly ten rows of four hexadecimal digits whose last four bits are zero;
 - the file is at most 256 kilobytes, with lines of at most 512 bytes.
 
+`FONT` and `SIZE` in the header, and `SWIDTH` in a character, which BDF 2.1 requires, are accepted once each, checked for their form (`SIZE` and `SWIDTH` as whole numbers) and not used. The structure lines `STARTPROPERTIES`, `ENDPROPERTIES`, `STARTCHAR` and `ENDCHAR` are part of the profile. The values `"ISO10646"`, `"C"` and `"M"` are compared without regard to case; lines may end in LF or CR LF; empty lines may follow `ENDFONT` and nowhere else.
+
 Any other keyword, a malformed number, or any rule broken refuses the whole file, with the line number; nothing of a refused file is used. The font's name is its `FAMILY_NAME` property, and its `COPYRIGHT` and `NOTICE` properties are kept with it.
+*Amended 12 October 2026* (issue #200): the owner asked for the profile to be sensible for its purpose. As first written it refused `FONT`, `SIZE` and `SWIDTH`, so it refused every file that follows BDF 2.1, including every font of the owner's collection; they are now accepted and ignored, and every other keyword outside the profile still refuses the file.
 *Verification:* Tests of a valid font and of each rule broken; a fuzz target for the reader (REQ-TST-040).
 
 **REQ-FNT-003 — Where fonts come from.**

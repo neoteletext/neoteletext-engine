@@ -797,6 +797,20 @@ pub const CELL_WIDTH: usize = 12;
 pub const CELL_HEIGHT: usize = 20;
 /// Lines of a cell in the 12-by-10 mode.
 pub const CELL_HEIGHT_SMALL: usize = 10;
+
+// ---------------------------------------------------------------------------
+// Loaded fonts (REQ-FNT-002, decision E.72): a 12 by 10 cell, the cell of
+// the standard's own downloadable characters (clause 14.1)
+// ---------------------------------------------------------------------------
+
+/// The most characters a loaded font may have.
+pub const FONT_MAX_CHARACTERS: usize = 1024;
+/// The most properties a font file may declare.
+pub const FONT_MAX_PROPERTIES: usize = 64;
+/// The largest font file, in bytes.
+pub const FONT_MAX_FILE_BYTES: usize = 256 * 1024;
+/// The longest line of a font file, in bytes, not counting its end.
+pub const FONT_MAX_LINE_BYTES: usize = 512;
 /// Page width in pixels: 40 cells of 12.
 pub const PAGE_WIDTH: usize = COLUMNS * CELL_WIDTH;
 /// Page height in the 12-by-20 mode: 25 rows of 20 lines.
