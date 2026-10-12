@@ -2167,6 +2167,17 @@ Decided by the owner on 12 October 2026, who asked whether teletext pages could 
 
 *Reason:* The niche format's main obstacle is being found. One line in a web page's head, which every host can serve, makes an ordinary address lead to its teletext edition, per site or per story, while pages stay files in channels and every rule of decision E.70 is unchanged. Pointing, rather than carrying, costs a small, bounded scanner instead of an HTML reader, and keeps the web page and the teletext page each in one place. `rel="alternate"` is how web pages already announce their feeds and translations.
 
+**E.74 — The font browser: choosing the user's font by moving through a list.**
+Decided by the owner on 13 October 2026, who asked for a panel listing every font, to be arrowed through or clicked to choose the user's default font, and who ruled that the user's font is used only where neither the site nor the page names one. This adds to decision E.72 and changes no rule of area FNT.
+
+1. **A view of the libraries, not a new source.** The panel lists the fonts of the libraries the user has added (REQ-FNT-004), in each library's order, below a first entry for Bedstead. It fetches nothing to list them beyond each library's index, as the Fonts settings do.
+2. **Moving is choosing.** Moving to an entry with the up and down arrow keys, or clicking it, chooses that font as the user's font exactly as choosing it in the Fonts settings does: it is fetched and read in a confined process (REQ-FNT-003), cached (REQ-FNT-009), saved once it has loaded, and the current page is drawn again in it (REQ-FNT-008). Choosing an entry while another is still loading makes the newer one the choice; the older one still reaches the cache. There is no separate preview: a preview would need a font that is in use without being chosen, which REQ-FNT-003 does not allow.
+3. **The order of REQ-FNT-005 is kept.** The user's font draws a page only when neither the page nor the channel names one, unless the user has set "always use my font". When the page's or the channel's font is in use, the panel says so, so that moving through the list without a visible change is not mistaken for a fault.
+4. **The keyboard.** While the panel has the keyboard, the up and down arrow keys move through the list instead of changing page; clicking the page or pressing Esc gives the keys back to the page. Left and right keep their meaning.
+5. **Its place.** The panel is on the left, so it can be open with the side panel of bookmarks, history and fonts on the right. It is turned on and off from the menu, and whether it is on is saved with the settings.
+
+*Reason:* With many fonts, choosing one at a time by title and then looking at the page is slow; moving through a list while the page changes shows each font on real pages. Keeping the order of REQ-FNT-005 means a channel's or page's own font is never displaced by browsing.
+
 ---
 
 # Part F — Requirements
@@ -6318,6 +6329,11 @@ The browser shall show a channel's contents (REQ-WEB-025) as teletext screens dr
 - **Faults.** The number of lines `contents.txt` had that were ignored (REQ-WEB-025) is shown in the window's status line, never on the page.
 - **Text.** Titles are drawn by the receiver with the characters every national option shows the same; other characters are drawn as `?`.
 *Verification:* Tests of the screens drawn from a contents file with each kind of entry, a section on the last row, more than one screen and a dated entry; of each key; of the list drawn without a contents file; and a window test.
+
+**REQ-BRW-010 — The font browser.**
+*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS.
+The menu shall have a "Font browser" item that shows or hides a panel on the left of the window, saved with the settings (decision E.74). The panel shall list "Bedstead" and then the fonts of every library the user has added, by title (REQ-FNT-004), with the user's chosen font marked. Clicking an entry, or moving to it with the up and down arrow keys while the panel has the keyboard, shall choose that font as the user's font as REQ-BRW-007 does, and Bedstead shall clear the choice. Clicking the page or pressing Esc shall return the arrow keys to the page. When the page's or the channel's font draws the page (REQ-FNT-005), the panel shall say so. With no library added, the panel shall say how to add one.
+*Verification:* A window test that shows the panel, moves through a library's fonts with the arrow keys, checks the saved font and that the page's font label follows it, and returns to Bedstead.
 
 ---
 

@@ -91,10 +91,41 @@ impl BrowserApp {
         &self.settings
     }
 
-    fn choose(&mut self, request: Request, title: String) {
+    /// Chooses a font as the user's; it becomes theirs once it has loaded.
+    pub(super) fn choose(&mut self, request: Request, title: String) {
         self.font_panel.problem = None;
         self.fonts.want(&request, &self.storage, &self.options, &self.wake, crate::now_seconds());
         self.font_panel.choosing = Some((request, title));
+    }
+
+    /// Clears the user's font, so pages that name none are drawn in
+    /// Bedstead.
+    pub(super) fn use_bedstead(&mut self) {
+        self.font_panel.choosing = None;
+        self.font_panel.problem = None;
+        self.settings.font = None;
+        self.storage.save_settings(&self.settings);
+    }
+
+    /// The SHA-256, in hexadecimal, of the font being chosen or else of the
+    /// user's font; none for Bedstead.
+    pub(super) fn wanted_font(&self) -> Option<String> {
+        if let Some((request, _)) = &self.font_panel.choosing
+            && let Some(sha256) = &request.sha256
+        {
+            return Some(hex(sha256));
+        }
+        self.settings.font.as_ref().map(|font| font.sha256.clone())
+    }
+
+    /// The font being loaded, or why the last choice failed.
+    pub(super) fn font_status(&self, ui: &mut Ui) {
+        if let Some((request, title)) = &self.font_panel.choosing {
+            ui.label(format!("Loading {}", if title.is_empty() { &request.address } else { title }));
+        }
+        if let Some(problem) = &self.font_panel.problem {
+            ui.colored_label(super::WARNING, format!("Not loaded: {problem}"));
+        }
     }
 
     /// The Fonts panel (REQ-BRW-007).
@@ -105,15 +136,9 @@ impl BrowserApp {
         let current = self.settings.font.as_ref().map_or_else(|| "Bedstead".to_string(), |font| font.title.clone());
         ui.label(RichText::new(format!("Your font: {current}")).strong());
         if self.settings.font.is_some() && ui.button("Use Bedstead").clicked() {
-            self.settings.font = None;
-            self.storage.save_settings(&self.settings);
+            self.use_bedstead();
         }
-        if let Some((request, _)) = &self.font_panel.choosing {
-            ui.label(format!("Loading {}", request.address));
-        }
-        if let Some(problem) = &self.font_panel.problem {
-            ui.colored_label(super::WARNING, format!("Not loaded: {problem}"));
-        }
+        self.font_status(ui);
         if ui.checkbox(&mut self.settings.always_my_font, "Always use my font").changed()
             | ui.checkbox(&mut self.settings.fonts_from_other_sites, "Allow fonts from other sites").changed()
         {

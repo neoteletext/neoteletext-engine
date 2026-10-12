@@ -8,6 +8,7 @@
 //! outside the page area, and row 0 inside it is drawn from the
 //! interface's own knowledge (`picture`).
 
+mod font_browser;
 mod font_settings;
 
 use crate::fonts::Fonts;
@@ -90,6 +91,8 @@ pub struct BrowserApp {
     fonts: Fonts,
     /// The Fonts panel's typing and waiting.
     font_panel: font_settings::FontPanel,
+    /// The font browser's keys and scrolling (REQ-BRW-010).
+    font_browser: font_browser::FontBrowser,
 }
 
 /// Which of `cells` equal cells across `extent` points `offset` falls in.
@@ -140,6 +143,7 @@ impl BrowserApp {
             title: String::new(),
             fonts,
             font_panel: font_settings::FontPanel::default(),
+            font_browser: font_browser::FontBrowser::default(),
         };
         for saved in app.storage.tabs() {
             app.new_tab();
@@ -534,7 +538,11 @@ impl BrowserApp {
                 Event::Key { key, pressed: true, modifiers, .. } if modifiers.ctrl && key == Key::Tab => {
                     self.command_key(context, key, modifiers);
                 }
-                Event::Key { key, pressed: true, .. } => self.named_key(context, key),
+                Event::Key { key, pressed: true, .. } => {
+                    if !self.font_browser_key(key) {
+                        self.named_key(context, key);
+                    }
+                }
                 Event::Text(text) => {
                     for character in text.chars() {
                         self.text_key(character);
@@ -673,6 +681,10 @@ impl BrowserApp {
         }
         if ui.button("Fonts").clicked() {
             self.side = if self.side == Side::Fonts { Side::None } else { Side::Fonts };
+        }
+        let mut browsing = self.settings.font_browser;
+        if ui.checkbox(&mut browsing, "Font browser").changed() {
+            self.toggle_font_browser();
         }
         ui.separator();
         if ui.button("Copy the page's text (Cmd-Shift-C)").clicked() {
@@ -852,6 +864,10 @@ impl BrowserApp {
                 neoteletext_app::decoder::page_number_at(line, column)
             })
             .map(|page| format!("Go to P{:03X}", page.mpp()));
+        if response.clicked() {
+            // Clicking the page gives the arrow keys back to it (REQ-BRW-010).
+            self.font_browser.has_keys = false;
+        }
         if response.clicked()
             && let Some((row, column)) = response.interact_pointer_pos().and_then(cell)
         {
@@ -904,6 +920,9 @@ impl eframe::App for BrowserApp {
                 .show(ui, |ui| self.confirm_bar(ui));
         }
         Panel::bottom("status").show(ui, |ui| self.status_line(ui));
+        if self.settings.font_browser {
+            Panel::left("font-browser").default_size(font_browser::PANEL_WIDTH).show(ui, |ui| self.font_browser(ui));
+        }
         if self.side != Side::None {
             Panel::right("side").default_size(260.0).show(ui, |ui| self.side_panel(ui));
         }

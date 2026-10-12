@@ -167,3 +167,54 @@ fn the_font_settings() {
     assert_eq!(std::fs::read_to_string(data.join("fonts").join("index.tsv")).unwrap(), "");
     let _ = std::fs::remove_dir_all(data);
 }
+
+/// REQ-BRW-010, decision E.74: the font browser lists a library's fonts,
+/// and clicking or arrowing through them chooses the user's font.
+#[test]
+fn the_font_browser() {
+    let Some(sites) = sites() else { return };
+    let data = data_directory("font-browser");
+    let library = sites.address("fontsite", "/lib/");
+    std::fs::create_dir_all(&data).unwrap();
+    std::fs::write(data.join("settings.txt"), format!("font_browser=1\nlibrary={library}\n")).unwrap();
+    let mut harness = harness(vec![sites.address("news", "/")], data.clone());
+    harness.run_steps(3);
+    harness.key_press(Key::Enter);
+    wait(&mut harness, "the news front page", |app| shown(app, 0x100, "NEWS"));
+    let start = Instant::now();
+    while harness.query_by_label("Library stripe").is_none() && start.elapsed() < PATIENCE {
+        harness.step();
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    // Only the index is fetched to list the fonts (REQ-FNT-004).
+    assert_eq!(harness.state().font_label(), "Bedstead (the bundled font)");
+    harness.get_by_label("Library stripe").click();
+    let ours = |title: &'static str| {
+        move |app: &BrowserApp| {
+            app.settings().font.as_ref().is_some_and(|font| font.title == title)
+                && app.font_label() == format!("{title} (your font)")
+        }
+    };
+    wait(&mut harness, "the clicked font", ours("Library stripe"));
+    harness.key_press(Key::ArrowDown);
+    wait(&mut harness, "the next font", ours("Page stripe"));
+    snapshot(&mut harness, "7-font-browser");
+    // The last entry stays chosen at the end of the list.
+    harness.key_press(Key::ArrowDown);
+    harness.run_steps(3);
+    assert!(ours("Page stripe")(harness.state()));
+    harness.key_press(Key::ArrowUp);
+    harness.key_press(Key::ArrowUp);
+    wait(&mut harness, "Bedstead", |app| {
+        app.settings().font.is_none() && app.font_label() == "Bedstead (the bundled font)"
+    });
+    // Esc gives the arrow keys back to the page: no font is chosen.
+    harness.key_press(Key::Escape);
+    harness.key_press(Key::ArrowDown);
+    harness.run_steps(3);
+    assert!(harness.state().settings().font.is_none());
+    let saved = std::fs::read_to_string(data.join("settings.txt")).unwrap();
+    assert!(saved.lines().any(|line| line == "font_browser=1"), "{saved}");
+    assert!(!saved.lines().any(|line| line.starts_with("font=")), "Bedstead is no saved font: {saved}");
+    let _ = std::fs::remove_dir_all(data);
+}
