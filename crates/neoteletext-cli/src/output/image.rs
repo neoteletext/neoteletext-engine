@@ -18,7 +18,7 @@ use neoteletext_core::render::{FlashPhase, RenderOptions};
 use neoteletext_image::palette::Rgba;
 
 /// Images are drawn in Bedstead, the one bundled font (REQ-FNT-001).
-const BEDSTEAD: GlyphSet = GlyphSet::bedstead();
+const BEDSTEAD: GlyphSet<'static> = GlyphSet::bedstead();
 
 /// The settings of one frame (decision E.55, REQ-RND-040): the colour mode
 /// of the presentation level with its flash phase of decision E.48, and,

@@ -375,6 +375,25 @@ fn text_line(glyph: &[u8; GLYPH_LINES], source: usize, options: RenderOptions) -
     }
 }
 
+/// A loaded font's character line (REQ-FNT-008): the 12 by 10 glyph drawn
+/// as given, each line twice in the 12-by-20 cell and never rounded, as a
+/// mode 0 DRCS character is (REQ-RND-038); a character no loaded font has
+/// is drawn from the bundled glyphs. Cold and out of line, so that the
+/// common case, no loaded font, costs the renderer one test (REQ-TST-050).
+#[cold]
+#[inline(never)]
+fn font_or_text_line(cell: &Cell, glyphs: &GlyphSet<'_>, source: usize, options: RenderOptions) -> u16 {
+    let Glyph::Char(character) = cell.glyph else { return 0 };
+    let Some(rows) = glyphs.loaded(character) else {
+        return text_line(&glyphs.glyph(character), source, options);
+    };
+    let line = match options.mode {
+        CellMode::Saa5050 => source / 2,
+        CellMode::Saa5246a => source,
+    };
+    rows.get(line).copied().unwrap_or(0) & CELL_MASK
+}
+
 /// The font styles (REQ-RND-039) and underline (REQ-RND-035) of a G0 or
 /// G2 character's line, after rounding. Kept out of line: Level 1 cells
 /// never have them, and the Level 1 path is every port's hot path.
@@ -586,7 +605,13 @@ pub fn cell_line<const DRCS: usize, const PANEL_ROWS: usize>(
         Glyph::Mosaic { pattern, separated } => mosaic_line(pattern, separated, source, height),
         Glyph::Char(character) => match class(character) {
             CharClass::Text => {
-                let mask = text_line(&glyphs.glyph(character), source, options);
+                // REQ-FNT-005: row 0 is the receiver's, always in the
+                // bundled glyphs.
+                let mask = if glyphs.has_fonts() && row != 0 {
+                    font_or_text_line(cell, glyphs, source, options)
+                } else {
+                    text_line(&glyphs.glyph(character), source, options)
+                };
                 if plain { mask } else { styled_line(mask, cell, source, height) }
             }
             CharClass::G3(code) => g3_line(glyphs, code, source, options.mode),
@@ -1265,6 +1290,9 @@ pub const FIELD_LINES: usize = CELL_FIELD_LINES;
 // The tests draw with the shipped glyph set.
 #[cfg(all(test, feature = "bedstead"))]
 mod level25_tests;
+// Loaded fonts fall back to the shipped glyph set.
+#[cfg(all(test, feature = "bedstead"))]
+mod font_tests;
 
 #[cfg(all(test, feature = "bedstead"))]
 #[allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]

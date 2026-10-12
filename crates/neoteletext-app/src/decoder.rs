@@ -52,7 +52,7 @@ const FASTEXT_ROW: usize = ROWS - 1;
 /// (macOS, `docs/desktop-browser.md` section 12.3).
 /// `glyphs` is the bundled font (REQ-FNT-001); the program supplies it, so
 /// this module builds with whatever the program's core has.
-pub fn run(no_sandbox: bool, sandboxed_by_parent: bool, glyphs: &'static GlyphSet) -> Result<(), Failure> {
+pub fn run(no_sandbox: bool, sandboxed_by_parent: bool, glyphs: &'static GlyphSet<'static>) -> Result<(), Failure> {
     let (fetched, fetched_frames) = mpsc::channel();
     let (commands, command_frames) = mpsc::channel();
     std::thread::spawn(move || {
@@ -130,7 +130,7 @@ pub struct Engine {
     form: Option<ActiveForm>,
     prompt: Option<[u8; COLUMNS]>,
     grid: Grid,
-    glyphs: &'static GlyphSet,
+    glyphs: &'static GlyphSet<'static>,
     unrecorded: Option<EnhancementReport>,
     last_screen: Option<Screen>,
     last_status: Option<PageStatus>,
@@ -229,7 +229,7 @@ pub fn page_number_at(line: &str, column: usize) -> Option<PageAddress> {
 impl Engine {
     /// A decoder showing nothing yet, drawing with `glyphs`.
     #[must_use]
-    pub fn new(glyphs: &'static GlyphSet) -> Self {
+    pub fn new(glyphs: &'static GlyphSet<'static>) -> Self {
         let initial = neoteletext_core::service::initial_page(None);
         let mut viewer = Viewer::new(initial);
         let action = viewer.event(ViewerEvent::Started);
@@ -841,7 +841,7 @@ mod tests {
     }
 
     static NO_GLYPHS: [neoteletext_core::glyphs::GlyphEntry; 0] = [];
-    static GLYPHS: GlyphSet = GlyphSet::from_entries(&NO_GLYPHS, "none");
+    static GLYPHS: GlyphSet<'static> = GlyphSet::from_entries(&NO_GLYPHS, "none");
 
     /// REQ-WEB-022, `docs/web-native-concept.md` section 2 item 6: a shown
     /// page brings its magazine's Organization Table, once.

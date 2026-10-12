@@ -14,6 +14,12 @@
 //!   tables, lists every character a glyph set must draw; a test reports
 //!   the ones Bedstead lacks (REQ-FNT-001).
 //!
+//! A [`GlyphSet`] may also carry up to two fonts loaded at run time
+//! (REQ-FNT-008): the font in use, then the user's font, each a table of
+//! 12 by 10 glyphs the program supplies. A text character is drawn from the
+//! first of them that has it, and otherwise from the bundled glyphs
+//! (REQ-FNT-005).
+//!
 //! DRCS characters have no glyph here: the renderer draws them from the
 //! patterns that travel with the grid (REQ-RND-038).
 
@@ -26,8 +32,11 @@ mod bedstead;
 mod g3;
 
 use crate::charset::{CharRef, CharSet, compose, to_unicode};
-use crate::consts::{CELL_FIELD_LINES, CELL_HEIGHT, DIACRITIC_NONE, G3_CODES, G3_FIRST_CODE, GLYPH_LINES};
-use crate::types::DrcsCharacter;
+use crate::consts::{
+    CELL_FIELD_LINES, CELL_HEIGHT, CELL_WIDTH, DIACRITIC_NONE, FONT_MAX_CHARACTERS, G3_CODES, G3_FIRST_CODE,
+    GLYPH_LINES,
+};
+use crate::types::{DrcsCharacter, FontGlyph};
 
 /// One G3 glyph (REQ-RND-037): each line of the cell as 12 half-dots, bit
 /// 11 the leftmost, top line first.
@@ -78,22 +87,92 @@ pub struct GlyphEntry {
     pub rows: [u8; GLYPH_LINES],
 }
 
-/// A glyph set: G0 and G2 entries sorted by code point, and the G3 set.
+/// A glyph set: G0 and G2 entries sorted by code point, the G3 set, and
+/// up to two loaded fonts, the font in use first.
 #[derive(Clone, Copy, Debug)]
-pub struct GlyphSet {
+pub struct GlyphSet<'a> {
     entries: &'static [GlyphEntry],
     /// Where the glyphs come from, for provenance records (REQ-GEN-012).
     pub provenance: &'static str,
     g3: &'static [G3Glyph; G3_CODES],
     /// Where the G3 glyphs come from (REQ-GEN-012, REQ-RND-037).
     pub g3_provenance: &'static str,
+    fonts: [Option<LoadedFont<'a>>; 2],
+}
+
+/// Why a glyph table cannot be a loaded font (REQ-FNT-003, REQ-FNT-008).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum FontTableError {
+    /// More than 1,024 glyphs.
+    TooMany,
+    /// The code points are not in strictly increasing order: unsorted or
+    /// repeated.
+    Order,
+    /// A code point is not a Unicode scalar value.
+    Code,
+    /// A line has a dot beyond the 12 of the cell.
+    Width,
+}
+
+/// A font loaded at run time (REQ-FNT-008): a table of 12 by 10 glyphs,
+/// sorted by code point. The table comes from outside the library, so it is
+/// checked for shape when the font is made; that is the check the browser's
+/// interface and its decoders make on every table they receive
+/// (`docs/font-security.md` section 3.1).
+#[derive(Clone, Copy, Debug)]
+pub struct LoadedFont<'a> {
+    glyphs: &'a [FontGlyph],
+}
+
+impl<'a> LoadedFont<'a> {
+    /// The font of a table, after checking its shape.
+    pub fn new(glyphs: &'a [FontGlyph]) -> Result<Self, FontTableError> {
+        if glyphs.len() > FONT_MAX_CHARACTERS {
+            return Err(FontTableError::TooMany);
+        }
+        if !glyphs.windows(2).all(|pair| matches!(pair, [a, b] if a.code_point < b.code_point)) {
+            return Err(FontTableError::Order);
+        }
+        for glyph in glyphs {
+            if char::from_u32(glyph.code_point).is_none() {
+                return Err(FontTableError::Code);
+            }
+            if glyph.rows.iter().any(|row| row >> CELL_WIDTH != 0) {
+                return Err(FontTableError::Width);
+            }
+        }
+        Ok(Self { glyphs })
+    }
+
+    /// Number of glyphs.
+    #[must_use]
+    pub const fn len(&self) -> usize {
+        self.glyphs.len()
+    }
+
+    /// True when the font has no glyphs.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.glyphs.is_empty()
+    }
+
+    /// The glyph of a code point: ten lines of 12 dots, bit 11 the leftmost.
+    #[must_use]
+    pub fn lookup(&self, character: char) -> Option<[u16; CELL_FIELD_LINES]> {
+        let code_point = u32::from(character);
+        self.glyphs
+            .binary_search_by_key(&code_point, |glyph| glyph.code_point)
+            .ok()
+            .and_then(|index| self.glyphs.get(index))
+            .map(|glyph| glyph.rows)
+    }
 }
 
 /// A visible placeholder for characters with no glyph (REQ-CHR-004): a
 /// hollow box.
 pub const PLACEHOLDER: [u8; GLYPH_LINES] = [0x1F, 0x11, 0x11, 0x11, 0x11, 0x11, 0x1F, 0x00, 0x00];
 
-impl GlyphSet {
+impl GlyphSet<'static> {
     #[cfg(feature = "bedstead")]
     /// Bedstead 3.261, the one bundled font (REQ-FNT-001, decision E.72).
     #[must_use]
@@ -105,7 +184,57 @@ impl GlyphSet {
     /// code point, with the generated G3 glyphs.
     #[must_use]
     pub const fn from_entries(entries: &'static [GlyphEntry], provenance: &'static str) -> Self {
-        Self { entries, provenance, g3: &g3::G3, g3_provenance: g3::PROVENANCE }
+        Self { entries, provenance, g3: &g3::G3, g3_provenance: g3::PROVENANCE, fonts: [None, None] }
+    }
+}
+
+impl<'a> GlyphSet<'a> {
+    /// The same set with loaded fonts (REQ-FNT-005): `in_use`, the font
+    /// drawing the page, then `fallback`, the user's font, for characters
+    /// `in_use` lacks; the set's own glyphs come last.
+    #[must_use]
+    pub const fn with_fonts<'b>(self, in_use: Option<LoadedFont<'b>>, fallback: Option<LoadedFont<'b>>) -> GlyphSet<'b>
+    where
+        'a: 'b,
+    {
+        GlyphSet {
+            entries: self.entries,
+            provenance: self.provenance,
+            g3: self.g3,
+            g3_provenance: self.g3_provenance,
+            fonts: [in_use, fallback],
+        }
+    }
+
+    /// The same set without loaded fonts: the receiver's own drawing
+    /// (REQ-FNT-001).
+    #[must_use]
+    pub const fn without_fonts(self) -> Self {
+        Self { fonts: [None, None], ..self }
+    }
+
+    /// True when a loaded font is set.
+    #[must_use]
+    pub const fn has_fonts(&self) -> bool {
+        self.fonts[0].is_some() || self.fonts[1].is_some()
+    }
+
+    /// The 12 by 10 glyph of a G0 or G2 character from the loaded fonts, the
+    /// font in use first (REQ-FNT-005, REQ-FNT-008); `None` when neither has
+    /// it, and the set's own glyphs draw it. A character with a diacritical
+    /// mark is found by its precomposed form only; without one it falls to
+    /// the set's own glyphs, which overlay the mark (decision E.26).
+    #[must_use]
+    pub fn loaded(&self, character: CharRef) -> Option<[u16; CELL_FIELD_LINES]> {
+        if !self.has_fonts() || !matches!(character.set, CharSet::G0(_) | CharSet::G2(_)) {
+            return None;
+        }
+        let unicode = to_unicode(character);
+        let wanted = match unicode.combining.filter(|_| character.diacritic != DIACRITIC_NONE) {
+            Some(mark) => compose(unicode.base, mark)?,
+            None => unicode.base,
+        };
+        self.fonts.iter().flatten().find_map(|font| font.lookup(wanted))
     }
 
     /// The same set with other G3 glyphs, indexed by code minus 2/0

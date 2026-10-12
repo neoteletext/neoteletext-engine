@@ -13,14 +13,15 @@ mod common;
 use neoteletext_core::acq::{Decoder, StoredPage};
 use neoteletext_core::compose::compose_level;
 use neoteletext_core::config::Config;
+use neoteletext_core::consts::CELL_FIELD_LINES;
 use neoteletext_core::consts::{PACKET_BYTES, PAGE_WIDTH};
-use neoteletext_core::glyphs::GlyphSet;
+use neoteletext_core::glyphs::{GlyphSet, LoadedFont};
 use neoteletext_core::level1::{DisplayOptions, Grid, build_grid};
 use neoteletext_core::packet::{Packet, PacketMeta};
 use neoteletext_core::render::{
     ALL_ROWS, FlashPhase, IndexBuffer, IndexFormat, RenderOptions, cell_line, render_screen,
 };
-use neoteletext_core::types::{Instant, SubCode};
+use neoteletext_core::types::{FontGlyph, Instant, SubCode};
 use std::time::Instant as Clock;
 
 /// REQ-GEN-013: twenty times 35 packets per frame at 25 frames per second.
@@ -138,6 +139,51 @@ fn row_renderer_cost() {
         }
         let rate = f64::from(rounds) / start.elapsed().as_secs_f64();
         println!("whole screens rendered per second ({name}, 8 bits): {rate:.0}; {}", pixels[0]);
+    }
+}
+
+/// REQ-TST-050, REQ-FNT-008: the same with a loaded font covering
+/// printable ASCII, every glyph a pattern, so most of the page's text is
+/// drawn from it. A test of its own: a second glyph set in the same
+/// function changes how the compiler builds the first measurement.
+#[test]
+#[ignore = "measurement; run in release mode"]
+fn row_renderer_cost_with_a_loaded_font() {
+    let Some(bytes) = capture() else {
+        eprintln!("SKIPPED: NEOTELETEXT_CORPUS with Dan's BBC1 capture is needed");
+        return;
+    };
+    let mut slots = vec![StoredPage::EMPTY; 4096];
+    let mut decoder = Decoder::new(&mut slots, Config::default());
+    for (index, chunk) in bytes.as_chunks::<PACKET_BYTES>().0.iter().enumerate() {
+        decoder.push(&Packet { bytes: *chunk }, &PacketMeta::default(), Instant(index as u64 * 64), &mut |_| {});
+    }
+    let config = Config::default();
+    let address = neoteletext_core::types::PageAddress::from_mpp(0x100).unwrap();
+    let page = decoder.store().get(address, SubCode::ANY).unwrap();
+    let mut grid = Grid::EMPTY;
+    let magazine = decoder.magazine_data(address.magazine);
+    build_grid(&mut grid, Some(page), &magazine, &config, &DisplayOptions::default());
+    let _ =
+        compose_level(&mut grid, page, &magazine, &decoder.enhancement_lookup(), &config, &DisplayOptions::default());
+    let table: Vec<FontGlyph> = (0x20u32..0x7F)
+        .map(|code_point| FontGlyph { code_point, rows: [u16::try_from(code_point).unwrap(); CELL_FIELD_LINES] })
+        .collect();
+    let glyphs = GlyphSet::bedstead().with_fonts(Some(LoadedFont::new(&table).unwrap()), None);
+    let modes = [
+        ("palette mode", RenderOptions::from_config(&config, false)),
+        ("resolved mode", RenderOptions::resolved(&config, false, FlashPhase::at_unit(0))),
+    ];
+    let mut pixels = vec![0u8; PAGE_WIDTH * 500];
+    for (name, options) in modes {
+        let rounds = 2000;
+        let start = Clock::now();
+        for _ in 0..rounds {
+            let mut buffer = IndexBuffer { format: IndexFormat::Bits8, data: &mut pixels, stride: PAGE_WIDTH };
+            render_screen(&grid, ALL_ROWS, &glyphs, options, &mut buffer).unwrap();
+        }
+        let rate = f64::from(rounds) / start.elapsed().as_secs_f64();
+        println!("whole screens rendered per second ({name}, loaded font, 8 bits): {rate:.0}; {}", pixels[0]);
     }
 }
 

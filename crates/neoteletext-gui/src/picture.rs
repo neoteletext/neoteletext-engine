@@ -46,7 +46,7 @@ impl Picture {
 
 /// The receiver's own drawing is always in Bedstead, whatever font a page
 /// names (REQ-FNT-001, REQ-FNT-005); no caller can choose otherwise.
-const BEDSTEAD: GlyphSet = GlyphSet::bedstead();
+const BEDSTEAD: GlyphSet<'static> = GlyphSet::bedstead();
 
 /// Renders a page the receiver draws itself.
 #[must_use]

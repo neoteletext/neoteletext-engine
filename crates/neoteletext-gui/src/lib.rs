@@ -18,7 +18,7 @@ use std::sync::Arc;
 
 /// Bedstead, the one bundled font (REQ-FNT-001), which a tab's decoder
 /// draws with when no other font applies.
-pub static BEDSTEAD: GlyphSet = GlyphSet::bedstead();
+pub static BEDSTEAD: GlyphSet<'static> = GlyphSet::bedstead();
 
 /// Seconds since 1970, for the history of visits.
 #[must_use]
