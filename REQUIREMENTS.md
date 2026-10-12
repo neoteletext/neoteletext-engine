@@ -1408,6 +1408,8 @@ The decisions taken are:
 3. **A strict URL parser.** URL parsing, a classic source of browser bugs, is done by one small, strict, fuzzed parser (REQ-WEB-016). It prefers rejecting unusual addresses to being compatible with every form the web allows.
 4. **History.** Back and forward history (REQ-NAV-010) is the one basic browser function the teletext model lacked.
 
+*Amended 12 October 2026 by decision E.73:* the profile handles the `Link` header, and scans the first 8,192 bytes of an HTML answer for pointers, during discovery only (REQ-WEB-028, REQ-WEB-029).
+
 **E.35 — Cookies follow current practice, not the 2011 standard.**
 The cookie specification of 2011, RFC 6265, is out of date. Its replacement, RFC 6265bis, remains an IETF draft; the latest version checked is dated 30 September 2026. The major browsers already implement it. Newer practice has been added on top since:
 - the `__Http-` and `__Host-Http-` name prefixes, shipped in Chrome 140 and Firefox 143 in 2025;
@@ -2089,6 +2091,8 @@ Decided by the owner on 12 October 2026, who asked for solutions that are opinio
 
 *Reason:* The site as an origin could not hold a channel in a folder, which is how the easiest free hosts publish (a GitHub Pages project site is `user.github.io/project/`), and it made strangers on one shared host one site. A channel as a folder works on every static host with no configuration. Fixed names, one request per question, no inference and failing closed keep it simple to learn, to build, and to make safe.
 
+*Amended 12 October 2026 by decision E.73:* a folder whose four requests all show that it holds no channel leads to discovery (REQ-WEB-028), instead of a failure.
+
 **E.71 — Capability features within Levels 2.5 and 3.5, and the modern-classic profile.**
 Recorded on 12 October 2026, on the owner's instruction to add teletext feature flags so that capabilities can be compiled out, with this "modern-classic" profile: keep the 40 by 24 grid, the classic eight-colour palette by default, contiguous and separated mosaics, no proportional spacing, non-spacing colour and character attributes, the additional international character sets, monochrome downloadable characters, reusable page objects and bold characters; leave out the 32-colour palette, italic characters, side panels, multicolour downloadable characters and animation. This amends rule 2 of decision E.61: within the enhancement area, there is one feature for each capability the owner named, not one for the whole area.
 
@@ -2134,6 +2138,34 @@ Decided by the owner on 12 October 2026. This supersedes decision E.62 and amend
 
 *Reason:* Bedstead is the most complete openly licensed teletext font and the only one of the 317 collected text fonts with a licence the project can ship that also fits the receiver. One small, exact font form keeps the reader that faces the network simple, keeps every font in the grid and look of teletext (decision E.71), and lets the 151 collected fonts that fit be used without the project distributing them.
 
+
+**E.73 — Discovery: an ordinary web address leads to a channel by pointing to it.**
+Decided by the owner on 12 October 2026, who asked whether teletext pages could be carried inside ordinary web responses, in the HTTP headers or in the HTML `<head>`, and then asked for this design. This amends decision E.34 (REQ-WEB-014 handles one more response header, `Link`, and scans the start of an HTML response for one element) and decision E.70 item 5 (a folder that holds no channel leads to discovery instead of a failure). `docs/web-discovery.md` is the design and `docs/web-discovery-security.md` its security analysis.
+
+1. **Web addresses point; they never carry pages.** A web page announces a teletext edition with a pointer to a channel, or to a page of one, and the pages still arrive as a channel's files (REQ-WEB-019), through every check they pass today (REQ-WEB-027). These were considered and refused:
+   - *Pages in an HTTP header.* A page is about 1 kilobyte as T42 and 1 to 3 kilobytes as TTI, more with sub-pages; proxies and content delivery networks commonly limit all of a response's headers to 4 to 8 kilobytes, static hosts such as GitHub Pages cannot set a header per file, and every ordinary visitor would download the page without using it.
+   - *Pages embedded in the HTML,* in a data block such as `<script type="text/x-teletext-tti">`. It would need an HTML reader that faces the network, the page would belong to no channel and so have no place for its cookies, forms and links, and its two copies, the HTML and the teletext, would drift apart.
+   - *`HEAD` requests.* A `HEAD` response has only headers, so it can carry only a `Link` header, which a `GET` brings in the same round trip. Servers often answer `HEAD` differently from `GET`, and hosts that cannot set headers can only point from the HTML, which `HEAD` never returns.
+   - *A DNS TXT record,* which the transport of REQ-WEB-001 cannot look up, and *a file under `/.well-known/`,* which belongs to the root of a server (decision E.70 item 7) and would add a second mechanism for the same thing.
+2. **Discovery runs only after the viewer has confirmed the address,** on the tuning screen as today (REQ-NAV-014), never before, and never for pre-fetching (REQ-SEC-013). It runs for:
+   - a folder address that holds no channel: `channel.json` answers 404 or 410, or with a redirect that leaves the folder, or with an HTML page; and the bundle and the asked-for page are missing in the same way. The four requests of E.70 item 5 are made first, unchanged;
+   - an address that is not a channel's: a file name that is not one of a channel's (`story.html`), or an address with a query.
+
+   It never runs for a channel's own file names, which are explicit, and never for the address a pointer leads to: there is one step, never a chain.
+3. **One request, with the redirects it needs.** The browser asks for the address with `GET`, `Accept: text/x-teletext-tti, application/x-teletext-t42, text/html;q=0.5`, no cookies and no `Referer`, and stores no cookie from the answer. It follows at most 5 redirects, to any origin, each checked for the local network and for downgrade. It reads the headers and at most the first 8,192 bytes of the body, then closes the connection.
+4. **Three ways to point, tried in this order:**
+   1. *Content negotiation through a redirect.* When the final address is a page file of a channel and the answer is a page in one of the accepted media types, that is the page. A dynamic server that sees the teletext types first in `Accept` answers `303 See Other` with the page file's address. A teletext answer at any other address is refused: pages live in channels.
+   2. *The `Link` header* of RFC 8288, with `rel="alternate"` and one of the two teletext media types as its `type`.
+   3. *A `<link>` element* with the same `rel` and `type`, within the first 8,192 bytes of an HTML answer. HTML already requires `<meta charset>` within its first 1,024 bytes for the same reason: a reader can decide from a fixed prefix. Measured on 12 October 2026, the head of the BBC News home page is 198,533 bytes long and the Guardian's 741,595, with its alternate link at byte 741,499; a pointer is therefore looked for only where the publisher has been told to put it, not wherever a head may end.
+
+   The first pointer that passes REQ-WEB-030 wins; the others are ignored.
+5. **What a pointer may lead to:** a channel's folder or one of its files, as the address bar takes them (REQ-WEB-023, REQ-BRW-002), and nothing else. A pointer from an `https` answer to an `http` target is refused (no downgrade, REQ-SEC-007); a target in the local network is refused unless the configuration allows it (REQ-SEC-006). An address holding `&`, a byte outside printable ASCII, or anything the strict parser refuses is refused rather than decoded, so no HTML character references are ever read. A relative address is resolved against the final address of the answer, and refused if a `<base>` element comes before it.
+6. **The scan is not an HTML parser.** It reads bytes, skips comments and the contents of `script`, `style`, `noscript`, `template` and `title`, reads the attributes of `link` elements, and stops at `<body`, `</head>`, the 8,192-byte limit, or the first byte it cannot read exactly. It runs in the tab's confined fetcher, and the interface receives only the address it found, which it parses again. Nothing of the HTML is shown, stored or used for anything else.
+7. **The tuning screen names what was found.** When the target is on the same origin as the address the viewer confirmed, and in its folder or one inside it, it opens at once: the viewer has already agreed to go there. Otherwise the tuning screen is shown again, giving the target and the address that announced it, with the reason "announced by". A redirect to another origin during discovery, such as `example.org` to `www.example.org`, therefore costs the viewer a second key press; that is deliberate.
+8. **The author's tool.** `ttx discover ADDRESS` makes the same request and reports the pointer it finds, every candidate it ignored and why, and where in the answer each was, so a publisher can test a page.
+9. **Phases.** As the browser: Phase 1 on macOS and Linux, Phase 2 on Windows, Android and iOS. `ttx discover` is Phase 1.
+
+*Reason:* The niche format's main obstacle is being found. One line in a web page's head, which every host can serve, makes an ordinary address lead to its teletext edition, per site or per story, while pages stay files in channels and every rule of decision E.70 is unchanged. Pointing, rather than carrying, costs a small, bounded scanner instead of an HTML reader, and keeps the web page and the teletext page each in one place. `rel="alternate"` is how web pages already announce their feeds and translations.
 
 ---
 
@@ -2182,7 +2214,7 @@ The requirements are delivered in two phases.
 - the basic software data slicer;
 - the web-native module (area WEB), including the live WebSocket feed reader (REQ-INP-022);
 - the command-line commands;
-- the browser (area BRW, and REQ-NAV-013 to REQ-NAV-015, REQ-SEC-025, REQ-SEC-026, REQ-WEB-018 to REQ-WEB-020, REQ-WEB-022 to REQ-WEB-027 and REQ-TST-081) on macOS and Linux, added on 12 October 2026 (decisions E.68 and E.70);
+- the browser (area BRW, and REQ-NAV-013 to REQ-NAV-015, REQ-SEC-025, REQ-SEC-026, REQ-WEB-018 to REQ-WEB-020, REQ-WEB-022 to REQ-WEB-030 and REQ-TST-081) on macOS and Linux, added on 12 October 2026 (decisions E.68 and E.70);
 - writing a channel's contents (REQ-CLI-008);
 - the full test suite for all of these.
 
@@ -2215,7 +2247,7 @@ The requirements are delivered in two phases.
 | REQ-SEC-021 | Guidance on hardware isolation for microcontroller ports. |
 | REQ-RND-026 | The glyph line cache. |
 | REQ-FNT-002 to REQ-FNT-009 | Loaded fonts on Windows, Android and iOS. macOS and Linux stay in Phase 1. |
-| Area BRW, REQ-NAV-013 to REQ-NAV-015, REQ-SEC-025, REQ-SEC-026, REQ-WEB-018 to REQ-WEB-020, REQ-WEB-022 to REQ-WEB-027 and REQ-TST-081 | The browser on Windows, Android and iOS. macOS and Linux stay in Phase 1. |
+| Area BRW, REQ-NAV-013 to REQ-NAV-015, REQ-SEC-025, REQ-SEC-026, REQ-WEB-018 to REQ-WEB-020, REQ-WEB-022 to REQ-WEB-030 and REQ-TST-081 | The browser on Windows, Android and iOS. macOS and Linux stay in Phase 1. |
 
 Tests for a Phase 2 feature are delivered with that feature.
 
@@ -4110,7 +4142,7 @@ A link target may be a page of the current service, a page of a named service, o
 - **page-number links** (`LK`): typing that number, or choosing the number printed on the page, while the page is shown;
 - **text links** (`LT`): choosing the linked run of text.
 
-A typed number shall follow the current page's own link for it, otherwise the channel's alias for it (REQ-WEB-020), otherwise the current channel's page with that number. A link to a page of the current channel is followed at once. A link to another channel, whether by a named service or an address, shall go through the tuning screen (REQ-NAV-014); an address in the current channel's own folder is a page of the current channel (REQ-WEB-026). `ttx view` keeps REQ-NAV-012 for named services, and does not yet follow addresses, page-number links or text links.
+A typed number shall follow the current page's own link for it, otherwise the channel's alias for it (REQ-WEB-020), otherwise the current channel's page with that number. A link to a page of the current channel is followed at once. A link to another channel, whether by a named service or an address, shall go through the tuning screen (REQ-NAV-014); an address in the current channel's own folder is a page of the current channel (REQ-WEB-026). A link to an ordinary web address goes through the tuning screen like any other, and then to discovery (REQ-WEB-028). `ttx view` keeps REQ-NAV-012 for named services, and does not yet follow addresses, page-number links or text links.
 *Verification:* Test of each link source and target form, and of the order of page link, alias and channel page.
 
 **REQ-NAV-014 — The tuning screen.**
@@ -4119,10 +4151,10 @@ Before the browser shows anything from another channel (REQ-WEB-018), it shall c
 - the destination's host, in double height, shortened from the left so that its end always shows, and the destination's folder on the row below it;
 - the channel's folder address, followed by the page number when there is one, wrapped over up to four rows, with a mark when it is cut. Which of a page's two files answers is not known until it is fetched, so the page is given by its number;
 - whether the connection is encrypted; a plain HTTP destination is stated in red;
-- why the browser is going there: a typed address, a choice from bookmarks or history, a restored tab, a redirect and the channel that sent it, or a link and the channel it is on. For a link, the name the channel's `channel.json` gives the destination, or that the address was written in the page and not declared;
+- why the browser is going there: a typed address, a choice from bookmarks or history, a restored tab, a redirect and the channel that sent it, a link and the channel it is on, or a pointer and the web address that announced it (REQ-WEB-028), with the address the viewer asked for when it differs. For a link, the name the channel's `channel.json` gives the destination, or that the address was written in the page and not declared. An ordinary web address, before discovery, is shown as such, with the note that the browser will look for its teletext edition;
 - the keys: Enter to go, and Escape or Delete to stay.
 
-Row 0 shall show `GO?` and the destination. The screen shall be shown for a typed address, a bookmark or history entry, a restored tab, a link to another channel, and a redirect to another channel. It shall be skipped only when going back or forward to a channel confirmed earlier in the same session. Confirmed channels shall not be remembered between runs. Only the viewer's own key press confirms; nothing a page or a decoder sends can.
+Row 0 shall show `GO?` and the destination. The screen shall be shown for a typed address, a bookmark or history entry, a restored tab, a link to another channel, and a redirect to another channel. It shall be skipped only when going back or forward to a channel confirmed earlier in the same session, and when discovery leads to a channel on the same origin as the address the viewer has just confirmed, in that address's folder or a folder inside it (decision E.73 item 7). For an address that is not a folder, its folder is its path up to and including the last `/`. Confirmed channels shall not be remembered between runs. Only the viewer's own key press confirms; nothing a page or a decoder sends can.
 *Verification:* Test of each reason for the screen, of the skipped case, and that a page drawing a copy of the screen cannot confirm anything (the hostile test channel of REQ-TST-081).
 
 **REQ-NAV-015 — Page catching and showing links.**
@@ -4937,6 +4969,7 @@ A command-line program named `ttx` shall provide these commands:
 | `ttx check` | Check page files for authoring problems (REQ-CLI-006). |
 | `ttx contents` | Write a channel's `contents.txt` from a folder of page files (REQ-CLI-008). |
 | `ttx font convert` | Write a font in the 12 × 10 form from a BDF of another size, where the fit is exact (REQ-FNT-010). |
+| `ttx discover` | Report the teletext edition a web address points to, and every candidate ignored (REQ-CLI-009). |
 *Verification:* Demonstration; test of each command.
 
 **REQ-CLI-002 — Common options.**
@@ -5014,6 +5047,17 @@ Every command that decodes pages shall accept `--level` followed by `1`, `1.5`, 
 
 The output never includes `x` entries. An author who lists other channels adds those lines by hand after the generated ones. Exit status is 0 on success, the usage status for a wrong argument, and 4 when any file was skipped or the page limit was reached.
 *Verification:* Tests with a folder holding TTI and T42 page files, an `index.t42`, a subfolder, a file with another name, an invalid file, and pages in several magazines; the output shall be exactly the expected file, and shall pass REQ-WEB-025.
+
+**REQ-CLI-009 — Testing a web page's pointer.**
+`ttx discover ADDRESS` shall make the discovery request of REQ-WEB-028 for an address, and print to standard output:
+- the address asked for, every redirect, and the final address;
+- the result: the target found, how it was found, and the channel it leads to; or that nothing was found;
+- every candidate that was not used, with where it was (the header field, or the byte offset in the body) and why: wrong `rel` or `type`, an `anchor` parameter, past the 8,192-byte limit or after `<body` or `</head>`, inside a comment or a script, or a target refused by REQ-WEB-030 with the rule;
+- whether the body held a `<link rel="alternate">` for a teletext type beyond the first 8,192 bytes, which the browser would not see, found by reading on to at most 1 megabyte for this report only.
+
+It shall not open the channel, and shall show nothing of the HTML beyond the candidates' attribute and parameter values. Every value taken from the answer, including addresses, header values and attribute values, shall be printed by the allow-list of REQ-SEC-010: printable ASCII as it is, and every other byte as `\xHH`, cut to 200 characters with a mark. It needs only the network: it applies the sandbox of REQ-SEC-017 with network access and no file access before it connects, and runs the scan in the same confined process. Exit status (REQ-CLI-005) is 0 when a target was found, 1 when none was, 2 for a wrong argument, and 3 when the address could not be reached or its answer could not be read.
+*Reason:* A publisher must be able to see why the browser does or does not find their pointer.
+*Verification:* Tests against the local test server for each kind of candidate.
 
 ---
 
@@ -5224,7 +5268,7 @@ The SAA5050-style rendering, including rounding and separated mosaic geometry (d
 *Verification:* Test and inspection.
 
 **REQ-TST-040 — Fuzz testing.**
-Every reader, the packet decoder, the slicer, and the HTTP, WebSocket, server-sent event, descriptor, form and address (REQ-WEB-016) parsers of the web module shall have a fuzzing target for `cargo fuzz` (libFuzzer). The targets shall run in continuous integration for a fixed time on each change, and for longer periods on a schedule. Every input that has ever found a fault shall be kept in the repository as a regression test.
+Every reader, the packet decoder, the slicer, and the HTTP, WebSocket, server-sent event, descriptor, form, address (REQ-WEB-016) and pointer (REQ-WEB-029) parsers of the web module shall have a fuzzing target for `cargo fuzz` (libFuzzer). The targets shall run in continuous integration for a fixed time on each change, and for longer periods on a schedule. Every input that has ever found a fault shall be kept in the repository as a regression test.
 *Verification:* Inspection; continuous integration logs.
 
 **REQ-TST-041 — Coverage.**
@@ -5303,9 +5347,10 @@ The browser shall be tested end to end, with its real helper processes, against 
 - **a channel served with the generic media types** `text/plain` and `application/octet-stream`, and one that answers a missing file with an HTML page and status 200;
 - **a redirecting channel,** whose `channel.json` redirects to another channel;
 - **a hostile channel,** whose pages try to forge row 0 and the tuning screen, and one of whose responses never ends;
-- **addresses with path tricks:** `%2F`, `..`, doubled slashes, and `/ab/` against `/a/`.
+- **addresses with path tricks:** `%2F`, `..`, doubled slashes, and `/ab/` against `/a/`;
+- **web pages for discovery** (REQ-WEB-028 to REQ-WEB-030): a page with a `Link` header; a page with a `<link>` early in its head; a page whose only `<link>` is past 8,192 bytes, and one inside a comment and a script; a root folder that answers every file with an HTML page and status 200; a redirect to another port before the pointer; a program that answers `303 See Other` to a page file when `Accept` puts teletext first, and one that answers teletext at a web address; pointers that are relative, relative after `<base>`, `&amp;`-encoded, to `http` from `https`, to 127.0.0.1, and to an address that is not a channel; and a page whose pointer leads to a missing channel.
 
-The tests shall drive the browser's tabs through the same code the window uses, without a display. They shall cover typed addresses in every form of REQ-BRW-002, history, links, aliases, page catching, the contents view, redirects, forms, cookies kept apart between two channels on one origin, files, the hostile channel, the path tricks, the media types, and the helpers' confinement (REQ-SEC-026). Window tests shall render the whole window without a display and check what it shows.
+The tests shall drive the browser's tabs through the same code the window uses, without a display. They shall cover typed addresses in every form of REQ-BRW-002, history, links, aliases, page catching, the contents view, redirects, forms, cookies kept apart between two channels on one origin, files, the hostile channel, the path tricks, the media types, discovery and its tuning screens, and the helpers' confinement (REQ-SEC-026). Window tests shall render the whole window without a display and check what it shows.
 *Amended 12 October 2026* (decision E.70): channels in folders.
 *Verification:* The tests run in the gate.
 
@@ -5828,6 +5873,7 @@ Servers built to serve neoteletext pages should follow these practices, which th
 - **Push only what changed.** Push only changed pages, and push each page whole, not partial rows.
 - **Keep pages simple.** Serve Level 1 and Level 1.5 pages only.
 - **Publish channels as folders** (decision E.70). Serve each channel's files under their fixed names in its folder (REQ-WEB-019), whether they are files on disk or generated on request. Answer 404 for a file that does not exist, never a page with status 200. Send one of the media types of REQ-WEB-027. Keep each channel's pages, forms and redirects inside its folder, and put any variation in the folder path or the session cookie, never in a query string, which the browser never sends for a channel's files.
+- **Point to it from the web** (decision E.73). Put `<link rel="alternate" type="text/x-teletext-tti" href="...">` in the first 8,192 bytes of each web page that has a teletext edition, directly after `<meta charset>`, naming the channel's folder or the page's file; or send the same as a `Link` header. A program may instead answer a request whose `Accept` puts the teletext types first with `303 See Other` to the page's file, sending `Vary: Accept` so that caches keep the two answers apart. Test with `ttx discover` (REQ-CLI-009).
 
 *Verification:* Inspection of the reference server.
 
@@ -5860,17 +5906,17 @@ The web module shall implement exactly the following profile, and nothing beyond
 |---|---|
 | Protocol | HTTP/1.1 over plain or TLS connections supplied by the port |
 | Methods | GET, and POST for form submission only |
-| Request headers sent | `Host`, `User-Agent` (fixed, naming neoteletext and its version), `Accept` (the two page media types and JSON, or `text/event-stream` for server-sent events, decision E.39), `Accept-Encoding: identity`, `Cookie`, `If-None-Match`, `If-Modified-Since`, `Content-Type` and `Content-Length` (form submissions only), `Last-Event-ID` (server-sent events only), and the WebSocket upgrade headers. No other headers are sent, in particular no `Referer`. |
-| Response handling | Status codes 200, 204, 301, 302, 303, 304, 307, 308, 404 and other 4xx and 5xx codes as errors. Headers: `Content-Type`, `Content-Length`, `Transfer-Encoding: chunked`, `Location`, `Set-Cookie`, `ETag`, `Last-Modified`, `Cache-Control` (`max-age`, `no-cache`, `no-store`) and `Retry-After`. Other headers are ignored. |
+| Request headers sent | `Host`, `User-Agent` (fixed, naming neoteletext and its version), `Accept` (the two page media types and JSON, or `text/event-stream` for server-sent events, decision E.39, or for discovery the value REQ-WEB-028 gives), `Accept-Encoding: identity`, `Cookie`, `If-None-Match`, `If-Modified-Since`, `Content-Type` and `Content-Length` (form submissions only), `Last-Event-ID` (server-sent events only), and the WebSocket upgrade headers. No other headers are sent, in particular no `Referer`. |
+| Response handling | Status codes 200, 204, 301, 302, 303, 304, 307, 308, 404 and other 4xx and 5xx codes as errors. Headers: `Content-Type`, `Content-Length`, `Transfer-Encoding: chunked`, `Location`, `Set-Cookie`, `ETag`, `Last-Modified`, `Cache-Control` (`max-age`, `no-cache`, `no-store`), `Retry-After`, and, for discovery only, `Link` (REQ-WEB-029). Other headers are ignored. |
 | Connections | One request at a time per connection. Connections may be reused (persistent connections); pipelining is not used. |
 | Push | WebSocket (RFC 6455) and server-sent events, as REQ-WEB-005 defines |
-| Content | TTI pages, T42 packets and the JSON service descriptor. Nothing else is interpreted. |
+| Content | TTI pages, T42 packets and the JSON service descriptor; and, for discovery only, the pointers of REQ-WEB-029 in the first 8,192 bytes of an HTML answer. Nothing else is interpreted. |
 
 *Permanently excluded:*
 - HTTP/2, HTTP/3 and pipelining;
 - compressed responses (REQ-SEC-011);
 - authentication by HTTP headers or client certificates chosen by pages;
-- HTML, CSS and any other markup;
+- HTML, CSS and any other markup, except the scan for pointers in the first 8,192 bytes of an HTML answer during discovery (REQ-WEB-029), which reads nothing else and shows nothing;
 - scripting of any kind (REQ-SEC-004);
 - images, audio, video and other media;
 - downloads to files;
@@ -5879,7 +5925,7 @@ The web module shall implement exactly the following profile, and nothing beyond
 - plugins;
 - `file:`, `data:`, `javascript:` and all other address schemes except those of REQ-WEB-016;
 - proxy auto-configuration;
-- cross-origin requests other than the permitted form origins of REQ-WEB-008.
+- cross-origin requests other than the permitted form origins of REQ-WEB-008, the fonts of REQ-FNT-003, and the redirects followed during discovery (REQ-WEB-028).
 
 Any response or message outside the profile shall be rejected with a diagnostic, never partly interpreted.
 *Verification:* Inspection; tests that each excluded feature is rejected; a test that every request sent contains only the permitted headers.
@@ -5950,6 +5996,7 @@ The web module shall be able to open a channel given only the address of its fol
    - When it answers 200 with a valid file (REQ-WEB-024), the channel takes its settings.
    - When it answers 404 or 410, the channel takes the defaults: initial page 100, no push address, no linked channels, no aliases, no refresh interval, no other form origins, and the configured default character set region.
    - Any other answer, including a server error, a refused media type (REQ-WEB-027) and an invalid file, shall be reported as a failure, and the channel shall not open. The defaults shall never replace a file that exists but cannot be used.
+   - In the browser, an answer of a redirect that leaves the folder, or of status 200 with the media type `text/html`, is a failure only when the folder turns out to hold a channel. When every request of this list answers 404, 410, a redirect that leaves the folder, or status 200 with `text/html`, the folder holds no channel, and the browser runs discovery instead (REQ-WEB-028, decision E.73). The requests after `channel.json` are therefore still made in that case.
 2. **`index.t42`.**
    - When it answers 200 with whole T42 packets, every page it holds shall be stored (REQ-WEB-019).
    - When it answers 404 or 410, the channel has no bundle.
@@ -5960,7 +6007,7 @@ The web module shall be able to open a channel given only the address of its fol
 
 **Descriptor services.** A service descriptor given by an address whose file name is not `channel.json` is a service of REQ-WEB-002, with its page address template. Its channel identity is its origin and the folder that holds the descriptor, its contents are the `contents.txt` in that folder, and every rule of this requirement other than "Opening a channel" applies to it.
 *Reason:* A channel in a folder works on every static host, including a GitHub Pages project site at `user.github.io/project/`, and keeps strangers on one shared host apart. Three fixed requests answer every question about a channel, with nothing inferred.
-*Amended 12 October 2026* (decision E.70): this requirement was "Sites", which made the origin the site and looked for the descriptor at `/.well-known/teletext.json`.
+*Amended 12 October 2026* (decision E.70): this requirement was "Sites", which made the origin the site and looked for the descriptor at `/.well-known/teletext.json`. *Amended 12 October 2026* (decision E.73): a folder that holds no channel leads to discovery.
 *Verification:* Tests against the local test server with a channel at the root and two channels in different folders of one origin; with and without `channel.json` and `index.t42`; with a `channel.json` that answers a server error, one that is invalid, and one served as `text/html`; and that a channel never asks for any other file when it opens.
 
 **REQ-WEB-019 — The files of a channel.**
@@ -6097,6 +6144,67 @@ A refused page file is reported as a failure of that page, not as "not found", a
 *Reason:* A file's name and type cannot be trusted alone: `.tti` is also Template Toolkit's extension, `.t42` is also PostScript Type 42 fonts', and some hosts answer a missing file with an HTML page and status 200.
 *Verification:* Tests serving each file with each accepted type and with `text/html`, with no type, with a Template Toolkit file named `100.tti`, with a Type 42 font named `100.t42`, and with an HTML "not found" page answered with status 200.
 
+**REQ-WEB-028 — Discovery: from a web address to a channel.**
+*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS (section F.0.1).
+The web module shall be able to find the teletext edition that an ordinary web address announces, and the browser shall use it, as decision E.73 sets out. The design is `docs/web-discovery.md`.
+
+**When it runs.** Discovery shall run only after the viewer has confirmed the address on the tuning screen (REQ-NAV-014), and only for:
+- **a folder that holds no channel.** The browser first opens the folder as a channel (REQ-WEB-018). When every one of its requests (`channel.json`, `index.t42`, and the asked-for page as `.tti` and as `.t42`) answers 404, 410, a redirect that leaves the channel's folder, or status 200 with the media type `text/html`, the folder holds no channel, and discovery runs on the address as the viewer gave it, before any trailing `/` was added. A refused media type is decided from the headers, and the body of such an answer shall not be read;
+- **an address that names no channel** (REQ-WEB-023): one whose last segment is a file name that is not one of a channel's, or one with a query.
+
+It shall never run for an address that is a channel's file (REQ-WEB-019), for pre-fetching (REQ-SEC-013), for an address a pointer led to, or because of anything a page or a decoder sends.
+
+**The request.** The web module shall make one `GET` request for the address, with these headers and no others: `Host`, the fixed `User-Agent`, `Accept: text/x-teletext-tti, application/x-teletext-t42, text/html;q=0.5`, and `Accept-Encoding: identity`. It shall send no cookie and no `Referer`, and shall ignore every `Set-Cookie` in the answers. It shall follow at most 5 redirects, to any origin, applying the local-network checks (REQ-SEC-006) to every address reached and refusing a redirect from `https` to `http` (REQ-SEC-007). The time limits of REQ-SEC-011 apply.
+
+**What it reads.** From the final answer it shall read the headers, within the limit of REQ-WEB-008, and, when the answer is status 200 with the media type `text/html`, at most the first 8,192 bytes of the body after any chunked encoding is removed. It shall then close the connection without reading further, and the connection shall not be reused. A `Content-Encoding` other than `identity` ends discovery with nothing found.
+
+**The order of the answer.** The first of these that gives a target passing REQ-WEB-030 is the result:
+1. **A page.** When the final address is a page file of a channel (`NNN.tti` or `NNN.t42`, REQ-WEB-023), and the answer is status 200 with a media type that REQ-WEB-027 accepts for that file, the result is that page of that channel. The body read for discovery is not used; the channel then opens and fetches the page as usual. A teletext media type at any other address shall be refused with a diagnostic saying that pages must be served from a channel's page files.
+2. **The `Link` header pointers** of the final answer, in the order they appear (REQ-WEB-029).
+3. **The `<link>` element pointers** in the first 8,192 bytes of the body, in the order they appear (REQ-WEB-029).
+
+When none gives a target, the result is "no teletext edition found", shown with the address asked for and, where it differs, the final address.
+
+**The result.** Discovery shall return to the browser the target address, the final address that announced it, and how it was found. The browser then goes to the target as REQ-NAV-014 says. A target that is not a channel, or whose channel cannot be opened, shall be reported as a failure; discovery shall never run on it.
+*Reason:* Decision E.73. The four requests of decision E.70 item 5 are kept first, so a channel at a folder address behaves exactly as before.
+*Verification:* Tests against the local test server (REQ-TST-081) for each case of "When it runs" and each of the three results; that no request carries a cookie or `Referer`; that a redirect to a local address, and from `https` to `http`, is refused; that no more than 8,192 bytes of a body are read, measured at the transport; and that a target that fails to open does not lead to a second discovery.
+
+**REQ-WEB-029 — Pointers: the `Link` header and the `<link>` element.**
+*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS (section F.0.1).
+A pointer is a link relation of type `alternate` whose media type is `text/x-teletext-tti` or `application/x-teletext-t42`, compared without regard to letter case, and with any parameters ignored. Both readers below shall be `no_std`, shall not allocate, shall be fuzzing targets (REQ-TST-040), and shall refuse what they cannot read exactly rather than guess.
+
+**The `Link` header** (RFC 8288 section 3). Every `Link` header field of the final answer shall be read, in order. Each link value is `<` target `>` followed by parameters, separated by `;`, with link values separated by `,` outside quoted strings. A parameter value is a token or a quoted string. A link value is a pointer when:
+- its `rel` parameter, split at spaces, contains `alternate`;
+- its `type` parameter is one of the two media types;
+- it has no `anchor` parameter, since that would make it describe some other resource.
+
+A link value that is malformed is ignored, and the reader continues with the next value of the field; a field that cannot be split into values is ignored whole. At most 16 link values shall be examined in all.
+
+**The `<link>` element.** The first 8,192 bytes of an HTML body shall be scanned as bytes, comparing names without regard to ASCII letter case. The scanner shall:
+- **stop** at a byte-order mark for UTF-16, at a zero byte, at `<body` followed by white space, `/` or `>`, at `</head`, and at the end of the 8,192 bytes, including in the middle of a construct;
+- **skip** comments from `<!--` to the next `-->`, `<!` and `<?` constructs to the next `>`, end tags to the next `>`, and the contents of the elements `script`, `style`, `noscript`, `template`, `textarea`, `title` and `xmp`, up to their end tag, as the HTML standard's raw text and escapable raw text elements are read;
+- **read the attributes of every start tag**, so that a `>` inside a quoted value does not end it: a name runs to `=`, white space, `/` or `>`; a value is double-quoted, single-quoted, or unquoted up to white space or `>`. Of two attributes with the same name, the first is used, as HTML does;
+- **note a `<base>` element** with an `href` attribute;
+- **take a `<link>` element** as a pointer when its `rel` attribute, split at white space, contains `alternate`, its `type` attribute is one of the two media types, and its `href` attribute is present. Leading and trailing white space is removed from the `href` value.
+
+At most 16 `<link>` elements with `rel` containing `alternate` shall be examined. Character references are never decoded: an `href` that holds `&` is not a valid target (REQ-WEB-030). Nothing else in the HTML is read, kept or shown.
+*Reason:* A small, exact reader of two constructs, bounded by the 8,192-byte prefix, is enough to find a pointer that the publisher has put where decision E.73 says, and is far smaller than an HTML parser.
+*Verification:* Tests of every rule above: pointers in headers and in the body, in both letter cases, with parameters, with `anchor`, malformed values, quoted commas; `<link>` elements inside comments, scripts, styles and titles (not taken), after `<body` or `</head>` (not taken), split by the 8,192-byte limit (not taken), with `>` in a quoted value, with duplicate attributes, unquoted values, and a UTF-16 body; the 17th candidate; and fuzzing.
+
+**REQ-WEB-030 — The target of a pointer.**
+*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS (section F.0.1).
+A pointer's target shall be checked before it is used, and refused, with a diagnostic naming the reason, when any check fails:
+1. **Characters.** The target holds only printable ASCII, and no `&`.
+2. **Resolution.** An absolute target is used as it is. A relative target from a `Link` header, or from a `<link>` element with no `<base>` element before it, is resolved against the final address of the answer by RFC 3986 section 5. A relative target from a `<link>` element after a `<base>` element is refused, and the publisher is told to write an absolute address.
+3. **The strict parser.** The result passes REQ-WEB-016, and its scheme is `http` or `https`.
+4. **A channel.** The result is a channel's folder, or one of a channel's files, as REQ-WEB-023 and the address bar (REQ-BRW-002) take them. A folder without its trailing `/` is refused, so that a target is never guessed.
+5. **No downgrade.** When the answer that gave the pointer came over `https`, the target is `https` (REQ-SEC-007).
+6. **The local network.** The target's host is checked by REQ-SEC-006 when it is connected to, as every address is; a target that is a literal address in a blocked range is refused at once.
+
+The browser shall receive the target from the fetcher as an address, and shall parse and check it again by rules 3 to 5 before acting on it.
+*Reason:* A pointer is input from an arbitrary web server. Refusing every target that is not plainly a channel keeps discovery from leading anywhere a typed address could not.
+*Verification:* A table of targets, valid and invalid, covering each rule, including `&amp;` in a target, a relative target with and without `<base>`, a folder without its trailing `/`, an `https` answer pointing to `http`, a target at 127.0.0.1 and at 192.168.1.1, a `javascript:` target, and a target that is a file name of no channel.
+
 ---
 
 ## F.20 The browser (BRW)
@@ -6121,9 +6229,11 @@ The address bar shall accept:
 - **a channel and a page number:** `host/ceefax 140`, a folder address, a space and three digits;
 - **a descriptor service:** `https://host/path/name.json`, for any file name other than `channel.json`, is the service that descriptor names (REQ-WEB-018);
 - `zxnet:name`: a known zxnet live feed (REQ-INP-022);
-- `file:///path` or `/path`: a local file (REQ-BRW-005).
+- `file:///path` or `/path`: a local file (REQ-BRW-005);
+- **an ordinary web address:** any other `http` or `https` address, such as `https://host/news/story.html` or one with a query, whose teletext edition is found by discovery (REQ-WEB-028). A folder address that holds no channel is also given to discovery.
 
-Every address shall pass the strict parser of REQ-WEB-016 and the channel rules of REQ-WEB-023; only `http` and `https` lead to channels, and any other file name is refused with a message saying which names a channel has. A page number must be three digits of a real page. While a page is shown, the address bar shows the address of its page file, in the extension that answered, which typed back leads to the same page.
+Every address shall pass the strict parser of REQ-WEB-016; channel addresses shall also pass the channel rules of REQ-WEB-023, and only `http` and `https` lead to channels or discovery. A page number must be three digits of a real page. While a page is shown, the address bar shows the address of its page file, in the extension that answered, which typed back leads to the same page.
+*Amended 12 October 2026* (decision E.73): ordinary web addresses lead to discovery, where any other file name was refused.
 *Verification:* Test of each accepted form and of rejected ones; a window test.
 
 **REQ-BRW-003 — Each tab's history.**
@@ -6374,6 +6484,8 @@ The following are not part of this implementation. Each could be added later as 
 | Font library | A folder with an index, `fonts.txt`, listing fonts with their checksums (REQ-FNT-004). |
 | BDF | The Glyph Bitmap Distribution Format, a text format for bitmap fonts; the form of every loaded font (REQ-FNT-002). |
 | Alias | An entry of `channel.json` that leads one page number to another channel on every page of the channel (REQ-WEB-020). |
+| Discovery | Finding the channel an ordinary web address announces, from a pointer in its answer (REQ-WEB-028, decision E.73). |
+| Pointer | A link of type `alternate` to a channel or a page file, with a teletext media type, given in a `Link` header or a `<link>` element (REQ-WEB-029). |
 | Tuning screen | The receiver-drawn screen shown before anything from another channel, which the viewer confirms (REQ-NAV-014, decision E.65). |
 | Page catching | Moving a cursor between the links on a page and following one, as some Philips televisions did with page numbers (REQ-NAV-015). |
 | Helper process | A process the browser starts for a tab: a fetcher, which holds only the network, or a decoder, which holds nothing (REQ-SEC-026). |

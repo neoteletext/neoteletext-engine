@@ -347,7 +347,7 @@ The text output of `ttx text` already gives each page as Unicode, so it is a sta
 
 ## 13. Reach
 
-- **Ordinary web sites can announce a teletext edition**, with `<link rel="alternate" type="application/x-teletext-t42" href="/index.t42">` or a DNS TXT record. The browser can then open `example.org` directly.
+- **Ordinary web sites can announce a teletext edition**, with `<link rel="alternate" type="text/x-teletext-tti" href="...">` or a `Link` header naming a channel or a page file. The browser can then open `example.org` directly. Decision E.73 and `docs/web-discovery.md` specify this; a DNS TXT record was considered and not taken.
 - **A `teletext:` link handler** on desktop systems opens `ttx` from an ordinary browser.
 - **One file, both media.** The `.t42` a site serves can be inserted into a real broadcast signal with vbit2 or a Raspberry Pi, and the stub pages and QR codes of section 5 lead television viewers to the site.
 - **Archives as sites.** A recovered capture, such as a Ceefax recording from 1990, is published as a site and browsed by page number. A parameter such as `?at=` could choose the moment of the capture to show.

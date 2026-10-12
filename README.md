@@ -33,6 +33,8 @@ Each crate's optional parts are Cargo features, on by default, so a port or a sm
 | [docs/sources.md](docs/sources.md) | Where test data and live feeds come from. |
 | [IMPLEMENTATION-LOG.md](IMPLEMENTATION-LOG.md) | Questions met during implementation and the decisions taken. |
 | [docs/channels.md](docs/channels.md) | Teletext channels on the web: how a television channel's pages are laid out, why a channel is a folder, the contents file, publishing as static files or from a program, and media types. |
+| [docs/web-discovery.md](docs/web-discovery.md) | Discovery: how an ordinary web page points to its teletext edition with one `<link>` line, and how the browser follows it from a typed web address. |
+| [docs/web-discovery-security.md](docs/web-discovery-security.md) | The security analysis of discovery. |
 | [docs/desktop-browser.md](docs/desktop-browser.md), [docs/web-native-concept.md](docs/web-native-concept.md) | The browser's design and the web teletext concept it browses. |
 | [docs/macos-build-decisions.md](docs/macos-build-decisions.md) | The decisions taken while building the macOS browser, for review. |
 

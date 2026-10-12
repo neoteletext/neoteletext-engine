@@ -346,6 +346,8 @@ Registering `vnd.` types with IANA is possible later; nothing waits for it.
 - **A folder name containing a dot** must be typed with its trailing slash, since without it the last segment reads as a file name.
 - **TTI bundles:** `index.t42` is the only bundle; authors of TTI pages publish page files.
 
+**Reaching a channel from the web:** an ordinary web page can point to a channel or to one of its pages, so that its usual address leads to the teletext edition. See [web-discovery.md](web-discovery.md) (decision E.73).
+
 **Still open** (REQUIREMENTS.md Appendix D.2):
 
 - whether to allow `index.tti` beside `index.t42`;
