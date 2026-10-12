@@ -189,6 +189,8 @@ fn platform_helper(program: &Path, helper: Helper) -> Result<(std::process::Comm
         Helper::Fetcher => macos::FETCHER,
     }
     .replace(macos::PROGRAM, path);
+    #[cfg(target_arch = "x86_64")]
+    let profile = profile + macos::ROSETTA;
     let mut command = std::process::Command::new(macos::SANDBOX_EXEC);
     command.arg("-p").arg(profile).arg(program);
     Ok((command, true))
@@ -211,6 +213,14 @@ mod macos {
     pub const SANDBOX_EXEC: &str = "/usr/bin/sandbox-exec";
     /// Replaced by the helper's own path.
     pub const PROGRAM: &str = "@PROGRAM@";
+    /// An `x86_64` helper on Apple silicon runs under Rosetta, which must
+    /// read its runtime before the helper's first instruction; without
+    /// this the helper stops with "Failed to open libRosettaRuntime"
+    /// (issue #202, measured on macOS 15.6). Read-only, and only the
+    /// runtime: the translation cache in `/private/var/db/oah` is not needed.
+    #[cfg(target_arch = "x86_64")]
+    pub const ROSETTA: &str = r#"(allow file-read* (subpath "/Library/Apple/usr/libexec/oah"))
+"#;
     /// A decoder: no network, no files, no other programs.
     pub const DECODER: &str = r#"(version 1)
 (deny default)
