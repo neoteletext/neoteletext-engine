@@ -613,6 +613,12 @@ LK,300,https://weather.example/300.t42\nLK,400,sport:100\nLT,4,0,7,http://w.exam
     assert_eq!((text_link.row, text_link.column, text_link.length), (4, 0, 7));
     assert_eq!(text_link.destination.url.as_bytes(), b"http://w.example/");
     // The writer keeps every link.
+    #[cfg(feature = "std")]
+    writer_keeps_links(page);
+}
+
+#[cfg(feature = "std")]
+fn writer_keeps_links(page: &PageFile) {
     let mut written = Vec::new();
     crate::write::write_tti(&[page], &mut written).unwrap();
     let (again, _) = read(&written);

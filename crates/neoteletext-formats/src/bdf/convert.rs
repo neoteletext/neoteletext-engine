@@ -197,8 +197,8 @@ fn hexadecimal(field: &[u8]) -> Option<u32> {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects, clippy::panic)]
 mod tests {
+    use super::super::FontErrorKind;
     use super::super::source::read_source;
-    use super::super::{FontErrorKind, read};
     use super::*;
     use core::fmt::Write as _;
     use std::string::String;
@@ -399,7 +399,7 @@ mod tests {
         let mut written = Vec::new();
         crate::write::write_font(&mut written, &carried, &table[..count]).unwrap();
         let mut read_back = vec![FontGlyph::EMPTY; FONT_MAX_CHARACTERS];
-        let loaded = read(&written, &mut read_back).unwrap();
+        let loaded = super::super::read(&written, &mut read_back).unwrap();
         assert_eq!(loaded.characters, 2);
         assert_eq!(read_back[..2], table[..2]);
         assert_eq!(

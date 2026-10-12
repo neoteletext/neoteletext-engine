@@ -85,6 +85,10 @@ name = "capabilities"
 required-features = ["level15", "level25"]
 
 [[test]]
+name = "coverage"
+required-features = ["bedstead"]
+
+[[test]]
 name = "drcs"
 required-features = ["level25", "drcs"]
 
