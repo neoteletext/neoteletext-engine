@@ -40,6 +40,7 @@ use crate::consts::{
     MAX_FORM_ORIGINS, MAX_LINKED_SERVICES, MAX_REGION, MAX_SERVICE_NAME, MAX_SHORT_NAME, MAX_URL_LENGTH,
 };
 use crate::json::{JsonError, JsonReader, JsonStr, Token, integer};
+use crate::sha256::Digest;
 use crate::url::{Origin, Url, UrlError};
 
 /// Room for the addresses of all linked services' descriptors together.
@@ -101,6 +102,12 @@ pub enum Member {
     Aliases,
     /// `refresh`
     Refresh,
+    /// `font`, a channel's font (REQ-FNT-006).
+    Font,
+    /// `font.address`
+    FontAddress,
+    /// `font.sha256`
+    FontSha256,
 }
 
 /// Why a descriptor was rejected, with the member concerned.
@@ -179,6 +186,8 @@ pub struct Descriptor {
     pub refresh_seconds: Option<u32>,
     /// This is a channel's `channel.json`, or a channel's defaults.
     channel: bool,
+    /// The channel's font and its SHA-256 (REQ-FNT-006).
+    font: Option<(Url, Digest)>,
 }
 
 /// A page number that leads to another site on every page of this one
@@ -356,6 +365,7 @@ impl Descriptor {
             alias_targets: TextBuf::new(),
             refresh_seconds: None,
             channel,
+            font: None,
         }
     }
 
@@ -371,7 +381,7 @@ impl Descriptor {
             Self::empty(base, false, TextBuf::new())
         };
         descriptor.base = *base;
-        let mut seen = [false; 9];
+        let mut seen = [false; 10];
         let [
             seen_name,
             seen_page,
@@ -382,6 +392,7 @@ impl Descriptor {
             seen_services,
             seen_aliases,
             seen_refresh,
+            seen_font,
         ] = &mut seen;
         while let Some(token) = reader.next_token()? {
             let key = match token {
@@ -436,6 +447,9 @@ impl Descriptor {
             } else if key.equals(b"aliases") {
                 first(seen_aliases, Member::Aliases)?;
                 descriptor.parse_aliases(&mut reader, base)?;
+            } else if key.equals(b"font") && channel {
+                first(seen_font, Member::Font)?;
+                descriptor.font = Some(Self::parse_font(&mut reader, base)?);
             } else if key.equals(b"refresh") {
                 first(seen_refresh, Member::Refresh)?;
                 descriptor.refresh_seconds =
@@ -458,6 +472,60 @@ impl Descriptor {
             return Err(DescriptorError::Missing(Member::PageTemplate));
         }
         Ok(descriptor)
+    }
+
+    /// `font`: an object with `address`, a file name in the channel's folder
+    /// or an address, and `sha256`, 64 hexadecimal digits; both are
+    /// required (REQ-FNT-006). The address is checked for downgrade
+    /// (REQ-SEC-007); whether it may be fetched is decided where it is
+    /// fetched (REQ-FNT-003).
+    fn parse_font(reader: &mut JsonReader<'_>, base: &Url) -> Result<(Url, Digest), DescriptorError> {
+        if reader.next_token()? != Some(Token::BeginObject) {
+            return Err(DescriptorError::Invalid(Member::Font));
+        }
+        let mut url = None;
+        let mut sha256 = None;
+        while let Some(token) = reader.next_token()? {
+            let key = match token {
+                Token::Key(key) => key,
+                Token::EndObject => break,
+                _ => return Err(DescriptorError::Invalid(Member::Font)),
+            };
+            if key.equals(b"address") {
+                if url.is_some() {
+                    return Err(DescriptorError::Duplicate(Member::FontAddress));
+                }
+                let value: TextBuf<MAX_URL_LENGTH> =
+                    text(expect_string(reader.next_token()?, Member::FontAddress)?, Member::FontAddress)?;
+                let address = address(base, value.as_str(), Member::FontAddress)?;
+                if address.scheme().is_websocket() {
+                    return Err(DescriptorError::Invalid(Member::FontAddress));
+                }
+                url = Some(address);
+            } else if key.equals(b"sha256") {
+                if sha256.is_some() {
+                    return Err(DescriptorError::Duplicate(Member::FontSha256));
+                }
+                let value = expect_string(reader.next_token()?, Member::FontSha256)?;
+                sha256 = Some(
+                    value
+                        .plain()
+                        .and_then(crate::sha256::parse_hex)
+                        .ok_or(DescriptorError::Invalid(Member::FontSha256))?,
+                );
+            } else {
+                return Err(DescriptorError::Unknown);
+            }
+        }
+        let url = url.ok_or(DescriptorError::Missing(Member::FontAddress))?;
+        let sha256 = sha256.ok_or(DescriptorError::Missing(Member::FontSha256))?;
+        Ok((url, sha256))
+    }
+
+    /// The channel's font and its SHA-256 (REQ-FNT-006).
+    #[must_use]
+    pub fn font(&self) -> Option<(&Url, &Digest)> {
+        self.font.as_ref().map(|(url, digest)| (url, digest))
     }
 
     fn parse_push(reader: &mut JsonReader<'_>, base: &Url) -> Result<(Url, PushMethod), DescriptorError> {
@@ -945,6 +1013,63 @@ mod tests {
             Descriptor::parse(json.as_bytes(), &base()).map(|_| ()),
             Err(DescriptorError::TooMany(Member::Aliases))
         );
+    }
+
+    /// REQ-FNT-006: a channel's font, by file name or address, with its
+    /// SHA-256; both are required, and only a channel may name one.
+    #[test]
+    fn channel_font() {
+        let base = Url::parse("https://example.org/ceefax/channel.json").unwrap();
+        let sha = "5ee6246b7f9bd197f47ce0741ea799a55ac08af775869a08c085803e02a3f14d";
+        let json = |font: &str| std::format!(r#"{{"font":{font}}}"#);
+        let named = Descriptor::parse_channel(
+            json(&std::format!(r#"{{"address":"teletext.bdf","sha256":"{sha}"}}"#)).as_bytes(),
+            &base,
+        )
+        .unwrap();
+        let (url, digest) = named.font().unwrap();
+        assert_eq!(url.as_str(), "https://example.org/ceefax/teletext.bdf", "in the channel's folder");
+        assert_eq!(&crate::sha256::to_hex(digest)[..], sha.as_bytes());
+        let elsewhere = Descriptor::parse_channel(
+            json(&std::format!(r#"{{"sha256":"{}","address":"https://fonts.example/f.bdf"}}"#, sha.to_uppercase()))
+                .as_bytes(),
+            &base,
+        )
+        .unwrap();
+        assert_eq!(elsewhere.font().unwrap().0.as_str(), "https://fonts.example/f.bdf");
+        assert_eq!(Descriptor::parse_channel(b"{}", &base).unwrap().font(), None);
+        for (font, error) in [
+            (r#"{"address":"f.bdf"}"#.to_string(), DescriptorError::Missing(Member::FontSha256)),
+            (std::format!(r#"{{"sha256":"{sha}"}}"#), DescriptorError::Missing(Member::FontAddress)),
+            (
+                std::format!(r#"{{"address":"f.bdf","sha256":"{}"}}"#, &sha[1..]),
+                DescriptorError::Invalid(Member::FontSha256),
+            ),
+            (
+                std::format!(r#"{{"address":"http://example.org/f.bdf","sha256":"{sha}"}}"#),
+                DescriptorError::Downgrade(Member::FontAddress),
+            ),
+            (std::format!(r#"{{"address":"f.bdf","sha256":"{sha}","x":1}}"#), DescriptorError::Unknown),
+            (
+                std::format!(r#"{{"address":"f.bdf","address":"g.bdf","sha256":"{sha}"}}"#),
+                DescriptorError::Duplicate(Member::FontAddress),
+            ),
+            (r#""f.bdf""#.to_string(), DescriptorError::Invalid(Member::Font)),
+        ] {
+            assert_eq!(Descriptor::parse_channel(json(&font).as_bytes(), &base).err(), Some(error), "{font}");
+        }
+        let twice = std::format!(
+            r#"{{"font":{{"address":"f.bdf","sha256":"{sha}"}},"font":{{"address":"f.bdf","sha256":"{sha}"}}}}"#
+        );
+        assert_eq!(
+            Descriptor::parse_channel(twice.as_bytes(), &base).err(),
+            Some(DescriptorError::Duplicate(Member::Font))
+        );
+        // A service descriptor (REQ-WEB-002) has no font member.
+        let descriptor = std::format!(
+            r#"{{"name":"S","initial_page":"100","page_template":"/{{mpp}}","font":{{"address":"f.bdf","sha256":"{sha}"}}}}"#
+        );
+        assert_eq!(Descriptor::parse(descriptor.as_bytes(), &base).err(), Some(DescriptorError::Unknown));
     }
 
     /// REQ-WEB-024: every member optional, no template, linked channels by

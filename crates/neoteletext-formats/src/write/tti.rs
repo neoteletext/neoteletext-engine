@@ -12,7 +12,7 @@ use neoteletext_core::types::{Magazine, PageNumber, SubCode};
 
 use crate::consts::{TTI_FL_NULL_LINK, TTI_PACKED_CHARACTER_BASE, TTI_PACKED_CHARACTERS};
 use crate::encode::pack_triplets;
-use crate::page::{FieldKind, FormField, FormMethod, LinkDestination, PageFile, RawBody, Warning};
+use crate::page::{FieldKind, FormField, FormMethod, LinkDestination, PageFile, PageFont, RawBody, Warning};
 
 /// Writes row text in the escape form: control codes as ESC followed by the
 /// code plus 0x40, so that the file is plain text (REQ-INP-014). Trailing
@@ -238,6 +238,15 @@ fn write_page(page: &PageFile, first: &PageFile, is_first: bool, out: &mut dyn W
         writeln!(out)?;
     }
     write_form_lines(page, out)?;
+    // REQ-FNT-007: the writer keeps the page's font; a null one came from a
+    // malformed line, which is not written back.
+    if let PageFont::Named { address, sha256 } = &page.font {
+        out.write_all(b"TF,")?;
+        out.write_all(address.as_bytes())?;
+        out.write_all(b",")?;
+        out.write_all(sha256)?;
+        writeln!(out)?;
+    }
     for warning in Warning::ALL {
         if page.considered & warning.bit() != 0 {
             out.write_all(b"CK,considered,")?;

@@ -652,3 +652,52 @@ fn bad_addresses_and_text_links_are_refused() {
     assert!(pages[0].has_issue(IssueKind::RepeatedKey));
     assert_eq!(pages[0].number_links.len(), 1);
 }
+
+const FONT_SHA: &str = "5ee6246b7f9bd197f47ce0741ea799a55ac08af775869a08c085803e02a3f14d";
+
+/// REQ-FNT-007: `TF,address,sha256` names the page's font; the address may
+/// be relative, and applies to the page of the most recent `PN` only.
+#[test]
+fn a_font_line_names_the_page_font() {
+    let text = std::format!("PN,10000\nTF,fonts/teletext.bdf,{FONT_SHA}\nOL,1,A\nPN,10100\nOL,1,B\n");
+    let (pages, diagnostics) = read(text.as_bytes());
+    assert_eq!(diagnostics, []);
+    match pages[0].font {
+        PageFont::Named { address, sha256 } => {
+            assert_eq!(address.as_bytes(), b"fonts/teletext.bdf");
+            assert_eq!(&sha256[..], FONT_SHA.as_bytes());
+        }
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(pages[1].font, PageFont::None, "the next page names none");
+    let absolute = std::format!("PN,10000\nTF,https://fonts.example/a,b/f.bdf,{}\n", FONT_SHA.to_uppercase());
+    let (pages, diagnostics) = read(absolute.as_bytes());
+    assert_eq!(diagnostics, []);
+    assert!(
+        matches!(pages[0].font, PageFont::Named { address, .. } if address.as_bytes() == b"https://fonts.example/a,b/f.bdf")
+    );
+}
+
+/// REQ-FNT-007: a second line, a malformed line or a bad checksum makes the
+/// page's font null, with a diagnostic, and the page is still read.
+#[test]
+fn a_bad_or_second_font_line_makes_the_font_null() {
+    let short = &FONT_SHA[..63];
+    let bad_digit = std::format!("{}g", &FONT_SHA[..63]);
+    for line in [
+        std::format!("TF,a.bdf,{FONT_SHA}\nTF,b.bdf,{FONT_SHA}"),
+        std::format!("TF,a.bdf,{short}"),
+        std::format!("TF,a.bdf,{bad_digit}"),
+        std::format!("TF,{FONT_SHA}"),
+        std::format!("TF,,{FONT_SHA}"),
+        std::format!("TF,a b.bdf,{FONT_SHA}"),
+        std::format!("TF,{},{FONT_SHA}", "a".repeat(257)),
+    ] {
+        let text = std::format!("PN,10000\n{line}\nOL,1,STILL SHOWN\n");
+        let (pages, diagnostics) = read(text.as_bytes());
+        assert_eq!(pages[0].font, PageFont::Null, "{line}");
+        assert!(pages[0].issues.as_slice().iter().any(|issue| issue.kind == IssueKind::BadFontLine), "{line}");
+        assert!(!diagnostics.is_empty(), "{line}");
+        assert_eq!(&pages[0].rows[1][..11], b"STILL SHOWN", "{line}");
+    }
+}

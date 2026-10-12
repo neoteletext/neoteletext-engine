@@ -110,3 +110,15 @@ fn linked_numbers_must_be_shown() {
     let page = b"PN,10000\nOL,4,Weather 300\nLK,300,https://w.example/300.t42\nLK,400,https://s.example/\n";
     assert_eq!(check(page), [(Severity::Warning, Problem::Warning(Warning::PageNumberNotShown), 4)]);
 }
+
+/// REQ-CLI-006, REQ-FNT-007: a malformed or repeated `TF` line is an error.
+#[test]
+fn bad_font_lines_are_errors() {
+    let sha = "5ee6246b7f9bd197f47ce0741ea799a55ac08af775869a08c085803e02a3f14d";
+    let good = std::format!("PN,10000\nTF,f.bdf,{sha}\nOL,1,A\n");
+    assert!(check(good.as_bytes()).iter().all(|(_, problem, _)| *problem != Problem::BadFontLine));
+    let twice = std::format!("PN,10000\nTF,f.bdf,{sha}\nTF,g.bdf,{sha}\nOL,1,A\n");
+    assert!(check(twice.as_bytes()).contains(&(Severity::Error, Problem::BadFontLine, 3)));
+    let malformed = "PN,10000\nTF,f.bdf,123\nOL,1,A\n";
+    assert!(check(malformed.as_bytes()).contains(&(Severity::Error, Problem::BadFontLine, 2)));
+}

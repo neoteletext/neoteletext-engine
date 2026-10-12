@@ -51,6 +51,8 @@ pub enum Problem {
     FormVersion2,
     /// The withdrawn `FH` command.
     WithdrawnCommand,
+    /// A `TF` line that is malformed or repeated (REQ-FNT-007).
+    BadFontLine,
     /// A warning.
     Warning(Warning),
 }
@@ -223,6 +225,7 @@ pub fn check_page(page: &PageFile, options: &CheckOptions<'_>, out: &mut dyn FnM
             IssueKind::TooManyLinks | IssueKind::RepeatedKey => Problem::TooManyLinks,
             IssueKind::BadLinkTarget => Problem::BadLinkTarget,
             IssueKind::WithdrawnCommand => Problem::WithdrawnCommand,
+            IssueKind::BadFontLine => Problem::BadFontLine,
             IssueKind::FormNeedsConversion => Problem::FormVersion2,
             IssueKind::FieldOverlap
             | IssueKind::FieldOutsideRow
