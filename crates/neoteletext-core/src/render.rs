@@ -376,22 +376,38 @@ fn text_line(glyph: &[u8; GLYPH_LINES], source: usize, options: RenderOptions) -
 }
 
 /// A loaded font's character line (REQ-FNT-008): the 12 by 10 glyph drawn
-/// as given, each line twice in the 12-by-20 cell and never rounded, as a
-/// mode 0 DRCS character is (REQ-RND-038); a character no loaded font has
-/// is drawn from the bundled glyphs. Cold and out of line, so that the
+/// as given, each line twice in the 12-by-20 cell, as a mode 0 DRCS
+/// character is (REQ-RND-038), and rounded as Bedstead is when the font is
+/// a doubled dot matrix (issue #209); a character no loaded font has is
+/// drawn from the bundled glyphs. Cold and out of line, so that the
 /// common case, no loaded font, costs the renderer one test (REQ-TST-050).
 #[cold]
 #[inline(never)]
 fn font_or_text_line(cell: &Cell, glyphs: &GlyphSet<'_>, source: usize, options: RenderOptions) -> u16 {
     let Glyph::Char(character) = cell.glyph else { return 0 };
-    let Some(rows) = glyphs.loaded(character) else {
+    let Some(loaded) = glyphs.loaded(character) else {
         return text_line(&glyphs.glyph(character), source, options);
     };
-    let line = match options.mode {
-        CellMode::Saa5050 => source / 2,
-        CellMode::Saa5246a => source,
-    };
-    rows.get(line).copied().unwrap_or(0) & CELL_MASK
+    match options.mode {
+        CellMode::Saa5050 => font_line_20(&loaded.rows, source, options.rounding && loaded.dot_matrix),
+        CellMode::Saa5246a => loaded.rows.get(source).copied().unwrap_or(0) & CELL_MASK,
+    }
+}
+
+/// Line `line` (0 to 19) of a loaded glyph in the 12-by-20 cell: each of
+/// its ten lines twice, and with `rounding` the rule of decision E.13 as
+/// the bundled glyphs get it, never across the cell's edge. Public so that
+/// a font's sample is drawn as its pages are (REQ-BRW-010).
+#[must_use]
+pub fn font_line_20(rows: &[u16; CELL_FIELD_LINES], line: usize, rounding: bool) -> u16 {
+    let cell_line = line / 2;
+    let row = |index: Option<usize>| index.and_then(|index| rows.get(index)).copied().unwrap_or(0) & CELL_MASK;
+    let a = row(Some(cell_line));
+    if !rounding {
+        return a;
+    }
+    let neighbour = if line.is_multiple_of(2) { cell_line.checked_sub(1) } else { Some(cell_line.saturating_add(1)) };
+    round(a, row(neighbour)) & CELL_MASK
 }
 
 /// The font styles (REQ-RND-039) and underline (REQ-RND-035) of a G0 or

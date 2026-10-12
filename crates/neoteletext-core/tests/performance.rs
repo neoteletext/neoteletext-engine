@@ -169,13 +169,28 @@ fn row_renderer_cost_with_a_loaded_font() {
     let table: Vec<FontGlyph> = (0x20u32..0x7F)
         .map(|code_point| FontGlyph { code_point, rows: [u16::try_from(code_point).unwrap(); CELL_FIELD_LINES] })
         .collect();
-    let glyphs = GlyphSet::bedstead().with_fonts(Some(LoadedFont::new(&table).unwrap()), None);
-    let modes = [
-        ("palette mode", RenderOptions::from_config(&config, false)),
-        ("resolved mode", RenderOptions::resolved(&config, false, FlashPhase::at_unit(0))),
-    ];
+    // Issue #209: a font of doubled dots, which is rounded, with a
+    // different diagonal in every glyph.
+    let doubled: Vec<FontGlyph> = (0x20u32..0x7F)
+        .map(|code_point| {
+            let mut rows = [0u16; CELL_FIELD_LINES];
+            for (line, row) in rows.iter_mut().enumerate() {
+                let dot = (code_point as usize + line) % 6;
+                *row = 0b11 << (dot * 2);
+            }
+            FontGlyph { code_point, rows }
+        })
+        .collect();
+    let fonts = [("half-dot font", &table), ("doubled-dot font", &doubled)];
     let mut pixels = vec![0u8; PAGE_WIDTH * 500];
-    for (name, options) in modes {
+    for ((font, table), (name, options)) in fonts.iter().flat_map(|font| {
+        [
+            ("palette mode", RenderOptions::from_config(&config, false)),
+            ("resolved mode", RenderOptions::resolved(&config, false, FlashPhase::at_unit(0))),
+        ]
+        .map(|mode| (*font, mode))
+    }) {
+        let glyphs = GlyphSet::bedstead().with_fonts(Some(LoadedFont::new(table).unwrap()), None);
         let rounds = 2000;
         let start = Clock::now();
         for _ in 0..rounds {
@@ -183,7 +198,7 @@ fn row_renderer_cost_with_a_loaded_font() {
             render_screen(&grid, ALL_ROWS, &glyphs, options, &mut buffer).unwrap();
         }
         let rate = f64::from(rounds) / start.elapsed().as_secs_f64();
-        println!("whole screens rendered per second ({name}, loaded font, 8 bits): {rate:.0}; {}", pixels[0]);
+        println!("whole screens rendered per second ({name}, {font}, 8 bits): {rate:.0}; {}", pixels[0]);
     }
 }
 

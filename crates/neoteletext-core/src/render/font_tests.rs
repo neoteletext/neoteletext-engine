@@ -201,3 +201,64 @@ fn table_shape_is_checked() {
     assert_eq!((font.len(), font.is_empty()), (1024, false));
     assert!(LoadedFont::new(&[]).unwrap().is_empty());
 }
+
+/// Bedstead's 5 by 9 glyphs as a loaded font: below the blank top line,
+/// each dot two pixels wide, as `ttx font convert` makes them.
+fn bedstead_as_loaded(entry: &crate::glyphs::GlyphEntry) -> FontGlyph {
+    let mut rows = [0u16; CELL_FIELD_LINES];
+    for (row, &dots) in rows.iter_mut().skip(1).zip(&entry.rows) {
+        *row = widen(dots);
+    }
+    FontGlyph { code_point: entry.code_point, rows }
+}
+
+/// Issue #209: a doubled dot matrix is rounded as the bundled glyphs are,
+/// so Bedstead converted from its matrices draws exactly as Bedstead.
+#[test]
+fn a_doubled_dot_font_draws_as_bedstead() {
+    let entries = GlyphSet::bedstead().entries();
+    for entry in entries {
+        let loaded = bedstead_as_loaded(entry);
+        for line in 0..CELL_HEIGHT {
+            for rounding in [true, false] {
+                assert_eq!(
+                    font_line_20(&loaded.rows, line, rounding),
+                    glyph_line_20(&entry.rows, line, rounding),
+                    "U+{:04X} line {line}, rounding {rounding}",
+                    entry.code_point
+                );
+            }
+        }
+    }
+    // Through the renderer: the letter A from the loaded font and from the
+    // bundled glyphs.
+    let a = entries.iter().find(|entry| entry.code_point == u32::from('A')).unwrap();
+    let table = [bedstead_as_loaded(a)];
+    let font = LoadedFont::new(&table).unwrap();
+    assert!(font.is_dot_matrix());
+    let glyphs = GlyphSet::bedstead().with_fonts(Some(font), None);
+    let a_cell = cell(text(b'A'));
+    assert_eq!(lines(&a_cell, &glyphs, CellMode::Saa5050), lines(&a_cell, &GlyphSet::bedstead(), CellMode::Saa5050));
+}
+
+/// Issue #209: only a font of doubled pixels is rounded, and only with
+/// rounding on.
+#[test]
+fn only_doubled_dot_fonts_are_rounded() {
+    assert!(!LoadedFont::new(&IN_USE).unwrap().is_dot_matrix(), "the half-dot pattern");
+    assert!(LoadedFont::new(&FALLBACK).unwrap().is_dot_matrix(), "whole rows are pairs");
+    assert!(!LoadedFont::new(&[]).unwrap().is_dot_matrix());
+    // A doubled diagonal gains half dots where the rows meet.
+    let mut rows = [0u16; CELL_FIELD_LINES];
+    rows[1] = 0b11_0000_0000;
+    rows[2] = 0b00_1100_0000;
+    let table = [FontGlyph { code_point: u32::from('A'), rows }];
+    let glyphs = GlyphSet::bedstead().with_fonts(Some(LoadedFont::new(&table).unwrap()), None);
+    let a_cell = cell(text(b'A'));
+    let drawn = lines(&a_cell, &glyphs, CellMode::Saa5050);
+    assert_eq!(drawn[3], 0b11_1000_0000, "the lower half of line 1 reaches toward line 2");
+    assert_eq!(drawn[4], 0b01_1100_0000, "the upper half of line 2 reaches toward line 1");
+    // The half-dot pattern is drawn as given.
+    let plain = lines(&cell(text(b'A')), &fonts(), CellMode::Saa5050);
+    assert!(plain.iter().enumerate().all(|(line, &dots)| dots == PATTERN[line / 2]));
+}

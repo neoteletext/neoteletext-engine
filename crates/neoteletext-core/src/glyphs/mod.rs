@@ -122,6 +122,21 @@ pub enum FontTableError {
 #[derive(Clone, Copy, Debug)]
 pub struct LoadedFont<'a> {
     glyphs: &'a [FontGlyph],
+    dot_matrix: bool,
+}
+
+/// The right-hand pixel of each of a 12-pixel row's six pairs.
+const PAIR_RIGHT_PIXELS: u16 = 0b0101_0101_0101;
+
+/// A glyph of a loaded font, and whether the font is a doubled dot matrix,
+/// which is rounded as Bedstead is (REQ-FNT-008, issue #209).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct LoadedGlyph {
+    /// Ten lines of 12 pixels, bit 11 the leftmost.
+    pub rows: [u16; CELL_FIELD_LINES],
+    /// Every row of every glyph of its font is made of identical pixel
+    /// pairs.
+    pub dot_matrix: bool,
 }
 
 impl<'a> LoadedFont<'a> {
@@ -141,7 +156,20 @@ impl<'a> LoadedFont<'a> {
                 return Err(FontTableError::Width);
             }
         }
-        Ok(Self { glyphs })
+        // A font converted from a 5- or 6-dot matrix (REQ-FNT-010) has
+        // every pixel doubled; one drawn at half-dot resolution does not.
+        let dot_matrix = !glyphs.is_empty()
+            && glyphs.iter().all(|glyph| glyph.rows.iter().all(|row| (row ^ (row >> 1)) & PAIR_RIGHT_PIXELS == 0));
+        Ok(Self { glyphs, dot_matrix })
+    }
+
+    /// True when every row of every glyph is made of identical pixel
+    /// pairs: a 5- or 6-dot matrix with each dot drawn two pixels wide,
+    /// which the renderer rounds as the SAA5050 rounded its matrix
+    /// (REQ-FNT-008, decision E.13).
+    #[must_use]
+    pub const fn is_dot_matrix(&self) -> bool {
+        self.dot_matrix
     }
 
     /// Number of glyphs.
@@ -232,7 +260,7 @@ impl<'a> GlyphSet<'a> {
     /// mark is found by its precomposed form only; without one it falls to
     /// the set's own glyphs, which overlay the mark (decision E.26).
     #[must_use]
-    pub fn loaded(&self, character: CharRef) -> Option<[u16; CELL_FIELD_LINES]> {
+    pub fn loaded(&self, character: CharRef) -> Option<LoadedGlyph> {
         if !self.has_fonts() || !matches!(character.set, CharSet::G0(_) | CharSet::G2(_)) {
             return None;
         }
@@ -241,7 +269,10 @@ impl<'a> GlyphSet<'a> {
             Some(mark) => compose(unicode.base, mark)?,
             None => unicode.base,
         };
-        self.fonts.iter().flatten().find_map(|font| font.lookup(wanted))
+        self.fonts
+            .iter()
+            .flatten()
+            .find_map(|font| font.lookup(wanted).map(|rows| LoadedGlyph { rows, dot_matrix: font.dot_matrix }))
     }
 
     /// The same set with other G3 glyphs, indexed by code minus 2/0

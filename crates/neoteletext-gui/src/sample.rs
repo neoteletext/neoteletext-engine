@@ -6,7 +6,8 @@
 
 use crate::picture::Picture;
 use neoteletext_core::consts::{CELL_FIELD_LINES, CELL_HEIGHT, CELL_WIDTH, COLUMNS, GLYPH_DOTS, ROWS};
-use neoteletext_core::glyphs::{GlyphEntry, PLACEHOLDER};
+use neoteletext_core::glyphs::{GlyphEntry, LoadedFont, PLACEHOLDER};
+use neoteletext_core::render::font_line_20;
 use neoteletext_core::types::FontGlyph;
 
 /// Red, green, blue and alpha.
@@ -19,8 +20,6 @@ const TEXT_INK: [u8; RGBA] = [0xFF, 0xFF, 0x00, 0xFF];
 const MISSING_INK: [u8; RGBA] = [0x60, 0x60, 0x60, 0xFF];
 /// Alternate cell backgrounds, so each glyph's extent shows.
 const PAPER: [[u8; RGBA]; 2] = [[0x00, 0x00, 0x00, 0xFF], [0x18, 0x18, 0x30, 0xFF]];
-/// Each field line drawn twice in the 20-line cell (REQ-FNT-008).
-const LINE_REPEAT: usize = CELL_HEIGHT / CELL_FIELD_LINES;
 /// Share of a line's letters the font must draw for the line to be shown.
 const COVERAGE_PERCENT: usize = 90;
 /// Sample lines, each shown when the font draws most of its letters.
@@ -59,9 +58,11 @@ struct Cell {
     ink: [u8; RGBA],
 }
 
-/// The sample of a font whose glyphs are sorted by code point.
+/// The sample of a font whose glyphs are sorted by code point, drawn as
+/// its pages are: a doubled dot matrix rounded (REQ-FNT-008, issue #209).
 #[must_use]
 pub fn sample(glyphs: &[FontGlyph]) -> Picture {
+    let rounding = LoadedFont::new(glyphs).is_ok_and(|font| font.is_dot_matrix());
     let mut lines: Vec<Vec<Cell>> = glyphs
         .chunks(COLUMNS)
         .map(|row| row.iter().map(|glyph| Cell { rows: glyph.rows, ink: INK }).collect())
@@ -80,7 +81,7 @@ pub fn sample(glyphs: &[FontGlyph]) -> Picture {
         for (column, cell) in cells.iter().enumerate() {
             let paper = PAPER[(row + column) % PAPER.len()];
             for line in 0..CELL_HEIGHT {
-                let bits = cell.rows[line / LINE_REPEAT];
+                let bits = font_line_20(&cell.rows, line, rounding);
                 for x in 0..CELL_WIDTH {
                     let lit = (bits >> (CELL_WIDTH - 1 - x)) & 1 == 1;
                     let at = ((row * CELL_HEIGHT + line) * width + column * CELL_WIDTH + x) * RGBA;
