@@ -816,10 +816,18 @@ impl BrowserApp {
     fn page_area(&mut self, ui: &mut Ui) {
         let clock = clock();
         let titles: Vec<String> = self.bookmarks.iter().map(|bookmark| bookmark.title.clone()).collect();
+        let sample = self.sample_key();
         let tab = self.tab();
-        let key = (tab.id, tab.version, clock.clone(), titles.len());
+        let key = match &sample {
+            // A sample is named by its font, apart from every tab's page.
+            Some(font) => (u64::MAX, u64::from_be_bytes(font[..8].try_into().unwrap_or_default()), String::new(), 0),
+            None => (tab.id, tab.version, clock.clone(), titles.len()),
+        };
         if self.shown.as_ref() != Some(&key) {
-            let picture = picture::for_tab(tab, &titles, Some(&clock));
+            let picture = match &sample {
+                Some(font) => self.sample_picture(font),
+                None => picture::for_tab(self.tab(), &titles, Some(&clock)),
+            };
             let image = ColorImage::from_rgba_unmultiplied([picture.width, picture.height], &picture.rgba);
             match &mut self.texture {
                 Some(texture) => texture.set(image, TextureOptions::NEAREST),
@@ -844,6 +852,15 @@ impl BrowserApp {
             egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
             Color32::WHITE,
         );
+        if sample.is_some() {
+            // The sample is no page: nothing on it to follow (REQ-BRW-010).
+            response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, "Font sample"));
+            self.hovered = None;
+            if response.clicked() {
+                self.font_browser.has_keys = false;
+            }
+            return;
+        }
         // Screen readers get the page's text (design section 9.6).
         let text = self.tab().status.as_ref().map(|status| status.text.clone()).unwrap_or_default();
         response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, &text));

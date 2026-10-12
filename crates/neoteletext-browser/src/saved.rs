@@ -103,6 +103,9 @@ pub struct Settings {
     /// The font browser lists fonts that draw the same as one listed
     /// before them (REQ-BRW-010); off by default.
     pub show_duplicate_fonts: bool,
+    /// The page area shows the chosen font's sample instead of the page
+    /// while the font browser is open (REQ-BRW-010); off by default.
+    pub show_font_sample: bool,
 }
 
 impl Default for Settings {
@@ -115,6 +118,7 @@ impl Default for Settings {
             libraries: Vec::new(),
             font_browser: false,
             show_duplicate_fonts: false,
+            show_font_sample: false,
         }
     }
 }
@@ -143,6 +147,7 @@ const OTHER_SITES_KEY: &str = "fonts_from_other_sites";
 const LIBRARY_KEY: &str = "library";
 const FONT_BROWSER_KEY: &str = "font_browser";
 const DUPLICATES_KEY: &str = "show_duplicate_fonts";
+const SAMPLE_KEY: &str = "show_font_sample";
 /// SHA-256 in hexadecimal.
 const SHA256_DIGITS: usize = 64;
 
@@ -151,12 +156,13 @@ impl Settings {
     #[must_use]
     pub fn write(&self) -> String {
         let mut out = format!(
-            "{ASPECT_KEY}={}\n{ALWAYS_KEY}={}\n{OTHER_SITES_KEY}={}\n{FONT_BROWSER_KEY}={}\n{DUPLICATES_KEY}={}\n",
+            "{ASPECT_KEY}={}\n{ALWAYS_KEY}={}\n{OTHER_SITES_KEY}={}\n{FONT_BROWSER_KEY}={}\n{DUPLICATES_KEY}={}\n{SAMPLE_KEY}={}\n",
             u8::from(self.aspect),
             u8::from(self.always_my_font),
             u8::from(self.fonts_from_other_sites),
             u8::from(self.font_browser),
-            u8::from(self.show_duplicate_fonts)
+            u8::from(self.show_duplicate_fonts),
+            u8::from(self.show_font_sample)
         );
         if let Some(font) = &self.font {
             let _ = writeln!(
@@ -185,6 +191,7 @@ impl Settings {
                 Some((OTHER_SITES_KEY, value)) => settings.fonts_from_other_sites = value.trim() != "0",
                 Some((FONT_BROWSER_KEY, value)) => settings.font_browser = value.trim() == "1",
                 Some((DUPLICATES_KEY, value)) => settings.show_duplicate_fonts = value.trim() == "1",
+                Some((SAMPLE_KEY, value)) => settings.show_font_sample = value.trim() == "1",
                 Some((FONT_KEY, value)) => settings.font = user_font(value),
                 Some((LIBRARY_KEY, value)) if !value.is_empty() && settings.libraries.len() < MAX_LIBRARIES => {
                     settings.libraries.push(value.to_string());
@@ -276,6 +283,7 @@ mod tests {
             libraries: vec!["https://lib.example/teletext/".into(), "https://other.example/".into()],
             font_browser: true,
             show_duplicate_fonts: true,
+            show_font_sample: true,
         };
         let again = Settings::read(&settings.write());
         assert_eq!(again.font.as_ref().map(|font| font.title.as_str()), Some("A font"), "no tab in a field");

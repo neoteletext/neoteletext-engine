@@ -10,6 +10,7 @@ pub mod app;
 pub mod fonts;
 pub mod helpers;
 pub mod picture;
+pub mod sample;
 pub mod storage;
 pub mod tab;
 

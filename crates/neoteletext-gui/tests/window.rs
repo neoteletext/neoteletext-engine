@@ -220,6 +220,14 @@ fn the_font_browser() {
     harness.get_by_label("Show duplicates").click();
     harness.run_steps(3);
     assert!(harness.query_by_label("Library copy").is_none());
+    // Issue #208: the sample replaces the page while it is on.
+    harness.get_by_label("Show sample").click();
+    harness.run_steps(3);
+    assert!(harness.query_by_label("Font sample").is_some(), "the sample is shown");
+    snapshot(&mut harness, "8-font-sample");
+    harness.get_by_label("Show sample").click();
+    harness.run_steps(3);
+    assert!(harness.query_by_label("Font sample").is_none(), "the page is back");
     harness.key_press(Key::ArrowUp);
     harness.key_press(Key::ArrowUp);
     wait(&mut harness, "Bedstead", |app| {

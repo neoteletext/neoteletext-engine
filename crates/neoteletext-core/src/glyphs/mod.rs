@@ -213,6 +213,13 @@ impl<'a> GlyphSet<'a> {
         Self { fonts: [None, None], ..self }
     }
 
+    /// The set's own G0 and G2 glyphs, sorted by code point: what a font
+    /// sample shows of Bedstead (REQ-BRW-010).
+    #[must_use]
+    pub const fn entries(&self) -> &'static [GlyphEntry] {
+        self.entries
+    }
+
     /// True when a loaded font is set.
     #[must_use]
     pub const fn has_fonts(&self) -> bool {

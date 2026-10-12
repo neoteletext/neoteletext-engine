@@ -5,15 +5,22 @@
 
 use super::BrowserApp;
 use crate::fonts::{Library, Request};
+use crate::picture::Picture;
+use crate::sample::{bedstead_glyphs, sample};
 use eframe::egui::{Key, RichText, ScrollArea, Ui};
 use neoteletext_app::pipe::LibraryFont;
 use neoteletext_browser::fonts::{Chooser, Scope};
-use neoteletext_web::sha256::{Digest, to_hex};
+use neoteletext_core::glyphs::GlyphSet;
+use neoteletext_web::sha256::{Digest, parse_hex, to_hex};
 use std::collections::HashSet;
 
 /// The panel's width when first shown, in points: room for a title of
 /// `neoteletext_web::fonts::MAX_TITLE` characters.
 pub(super) const PANEL_WIDTH: f32 = 240.0;
+
+/// The sample key of Bedstead, which has no file and so no SHA-256 of its
+/// own; a SHA-256 of all zeros is not expected of any file.
+const BEDSTEAD_SAMPLE: Digest = [0; 32];
 
 /// The panel's typing and scrolling.
 #[derive(Default)]
@@ -150,6 +157,9 @@ impl BrowserApp {
         if ui.checkbox(&mut self.settings.show_duplicate_fonts, "Show duplicates").changed() {
             self.storage.save_settings(&self.settings);
         }
+        if ui.checkbox(&mut self.settings.show_font_sample, "Show sample").changed() {
+            self.storage.save_settings(&self.settings);
+        }
         if hidden > 0 {
             ui.label(RichText::new(format!("Hidden: {hidden}, each drawing the same as a font above.")).weak());
         }
@@ -176,6 +186,27 @@ impl BrowserApp {
         if let Some(entry) = clicked {
             self.font_browser.has_keys = true;
             self.browser_choose(entry, &fonts);
+        }
+    }
+
+    /// What the page area shows instead of the page: the sample of the
+    /// chosen font, once it has loaded, or of Bedstead (decision E.74 item
+    /// 7), named by the font's SHA-256; none when the sample is off.
+    pub(super) fn sample_key(&self) -> Option<Digest> {
+        if !(self.settings.font_browser && self.settings.show_font_sample) {
+            return None;
+        }
+        match self.wanted_font() {
+            None => Some(BEDSTEAD_SAMPLE),
+            Some(hex) => parse_hex(hex.as_bytes()).filter(|sha256| self.fonts.font(sha256).is_some()),
+        }
+    }
+
+    /// The sample a key names.
+    pub(super) fn sample_picture(&self, key: &Digest) -> Picture {
+        match self.fonts.font(key) {
+            Some(font) if *key != BEDSTEAD_SAMPLE => sample(&font.glyphs),
+            _ => sample(&bedstead_glyphs(GlyphSet::bedstead().entries())),
         }
     }
 
