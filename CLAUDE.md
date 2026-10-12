@@ -36,10 +36,10 @@ No code exists yet. The project is at the requirements stage.
 
 - **No copyrighted source material in this repository.** Do not copy standards PDFs or datasheets here. Link to them or cite them by clause.
 - **No GPL code.** zvbi, vhs-teletext, vbit2 and QTeletextMaker may be run as external programs, or used as test oracles at test time. Their code and test files must never be copied into this repository.
-- **No glyphs from character-generator ROMs.**
-  - During development, `third_party/bedstead/bedstead-glyphs.txt` is a **temporary** glyph source. Read `third_party/bedstead/PROVENANCE.md` for why it is only temporary.
+- **One bundled font: Bedstead** (decision E.72, REQ-FNT-001).
+  - `third_party/bedstead/bedstead-glyphs.txt` is the only glyph data in the repository. Its licence and legal basis are in `third_party/bedstead/PROVENANCE.md`.
+  - Never add another font or any other glyphs from character-generator ROMs to the repository. Other fonts are 12 × 10 BDF files loaded at run time (area FNT); the owner's font collection lives in a separate repository.
   - Keep glyphs as replaceable data, never hard-coded.
-  - Original glyphs must replace Bedstead before any release (REQ-RND-020, decision E.25).
 - **The test corpus is downloaded at test time and pinned by checksum** (REQ-TST-022). Local corpus files, including Dan Farrimond's recovered T42 captures in `~/devel/jellytext/dan/`, are read from `$NEOTELETEXT_CORPUS`. Never commit sample streams or captures.
 - **Every teletext constant is defined once** (REQ-GEN-014). Never restate a value such as 0x27 or 0xE4 outside the constants module.
 - **The library stops at the row renderer.** It must have no display, video, timing or hardware-specific code (REQ-ARCH-010, decision E.29). Buffering and pixel delivery belong to the port.

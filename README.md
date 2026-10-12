@@ -24,6 +24,7 @@ Each crate's optional parts are Cargo features, on by default, so a port or a sm
 |---|---|
 | [docs/user-guide.md](docs/user-guide.md) | The `ttx` program: commands, inputs, outputs, profiles and settings. |
 | [docs/porting.md](docs/porting.md) | Writing a port of the library for a new display or device. |
+| [docs/font-security.md](docs/font-security.md) | The security analysis of the font strategy: Bedstead bundled, other 12 × 10 BDF fonts loaded when the user, channel or page names them. |
 | [docs/capabilities.md](docs/capabilities.md) | The compile-time capability features and the modern-classic profile: what keeps teletext's distinctive look and is kept, and what would dilute it and is switched off. |
 | [REQUIREMENTS.md](REQUIREMENTS.md) | The specification: requirements, decisions and open questions. |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | The layers, their boundaries and allowed dependencies. |

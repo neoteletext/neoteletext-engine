@@ -138,6 +138,8 @@ The service descriptor of REQ-WEB-002, with every member optional and no `page_t
 
 The `name` is the channel's own claim about itself. It may be the tab's title, but row 0 and the tuning screen never show it: they name a channel by its host and folder.
 
+A channel may also name its font, a 12 × 10 BDF file with its SHA-256: `"font": { "address": "teletext.bdf", "sha256": "..." }` (REQ-FNT-006). Its pages are drawn in that font unless the viewer chose otherwise; row 0 and the receiver's own pages always use Bedstead (decision E.72).
+
 ### 3.5 The boundary (REQ-WEB-021, REQ-WEB-026)
 
 The channel is the boundary for everything a site was:

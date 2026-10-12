@@ -1225,6 +1225,7 @@ By default, a framing code that differs from 0x27 in one bit is accepted, but on
 
 **For release**, the glyphs shall be drawn originally for this project, and Bedstead shall be removed. The provenance of every glyph set is recorded. No bitmap is copied from any character generator ROM.
 *Reason:* Legal basis (see "How to read this document"). A complete, well-tested glyph set lets development proceed now; original glyphs remove the remaining legal doubt before release.
+*Amended 12 October 2026 by decision E.72:* Bedstead is the bundled font for release too, and the original glyphs are removed. The owner accepts the legal position described above.
 
 **E.26 — Composition of diacritical marks.**
 When rendering pixels:
@@ -1889,7 +1890,7 @@ The features of `neoteletext-core`, all on by default:
 | `level15` | The Level 1.5 pass (area L15) |
 | `level25` | The enhancement processor for Levels 2.5 and 3.5 (areas L25, OBJ and DRC) |
 | `render` | The row renderer and the generated G3 glyphs (area RND) |
-| `original` | The project's own glyph set (REQ-RND-028, decision E.62) |
+| `original` | The project's own glyph set (REQ-RND-028, decision E.62); removed by decision E.72, when `bedstead` becomes a default feature and part of the modern-classic profile |
 | `bedstead` | The temporary Bedstead glyph set (decision E.25); not a default since decision E.62, kept for comparison |
 | `viewer` | The viewer state machine, navigation and history (area NAV) |
 | `forms` | The forms model (Appendix C) |
@@ -1947,6 +1948,7 @@ Recognition by people fluent in each script, and proofs of real pages, are revie
 *Amended 11 October 2026:* all 530 required characters are drawn (427 drawn, 45 copies, 58 overlays), `glyph-check --complete` passes, and the original set is the core's default; `bedstead` is no longer a default feature. The full gate runs `glyph-check --complete`, which also fails if the defaults include Bedstead. The review by readers of each script has not been done (IMPLEMENTATION-LOG.md row 54).
 
 *Reason:* REQ-RND-020 and REQ-RND-028. Writing the checks before the glyphs gives the designer feedback while drawing, and the independence check makes the clean room something the gate measures rather than a promise.
+*Superseded on 12 October 2026 by decision E.72:* Bedstead is the bundled font, and the original glyph set and its checks are removed.
 
 **Decisions E.63 to E.70: the web-native browser.**
 These record the design of `docs/web-native-concept.md` (its decisions 1 to 14, settled on 11 October 2026: decisions 1 to 5 are the owner's, and 6 to 14 were recommended and accepted by the owner), the owner's decisions on the browser in `docs/desktop-browser.md` section 15, and the decisions taken while building the macOS browser on 12 October 2026, when the owner asked for the build to be completed without questions. The build's decisions are marked *(build)* below. They are listed with their reasons in `docs/macos-build-decisions.md` (D1 to D27) and await the owner's review (issue #162). The behaviour was built before these entries were written, against REQ-DOC-004; they were recorded on 12 October 2026 to restore the rule.
@@ -2114,6 +2116,24 @@ Recorded on 12 October 2026, on the owner's instruction to add teletext feature 
 5. **Measured on 12 October 2026** with `cargo xtask size`, on the linked Cortex-M0 image (`thumbv6m-none-eabi`, `opt-level = "z"`, link-time optimisation) of a receiver with Level 1.5, the renderer and the viewer: 65,758 bytes with every capability of Levels 2.5 and 3.5, and 62,894 bytes with the modern-classic profile's, 2,864 bytes or about 4 percent less. Most of the enhancement processor is the non-spacing attributes and the walk, which the profile keeps.
 
 *Reason:* Teletext's distinctive look comes from its constraints: a fixed 40 by 24 grid, eight saturated colours, block mosaics, attributes set within the text, and no proportional spacing or pictures. The profile keeps the capabilities that preserve those constraints, and those that make pages more usable without changing them: non-spacing attributes, more languages, monochrome custom characters in the grid, reusable objects and bold for legibility. It switches off, without removing, the capabilities that would dilute the style: a redefinable palette of 4,096 colours, italics, a page wider than 40 columns, per-pixel colour characters that tile into bitmap images, and animation. Each remains implemented and tested, and a port that needs one compiles it in. One feature per named capability keeps each one switchable alone, while the profile names the recommended choice once. `docs/capabilities.md` explains the mechanism.
+**E.72 — Fonts: Bedstead as the one bundled font, and every other font a 12 × 10 BDF loaded when it is named.**
+Decided by the owner on 12 October 2026. This supersedes decision E.62 and amends decisions E.25 and E.34 (REQ-WEB-014 now permits one kind of third-party request: a font named with its checksum). `docs/font-security.md` is the security analysis of this decision.
+
+1. **One bundled font: Bedstead 3.261.** It is the receiver's own font and the default for every page. It keeps the 5-dot by 9-line form and the SAA5050 character rounding (REQ-RND-010, REQ-RND-012). The project's original glyph set of decision E.62, its drawing rules and its checks are removed; they remain in the git history up to commit 9dc932d. The glyph switch between sets is removed.
+   - *Licence:* CC0 1.0 for the Bedstead authors' work, and section 55 of the United Kingdom Copyright, Designs and Patents Act 1988 for the SAA5050 designs it reproduces, which permits making and using typefaces from them because the SAA5050 was marketed in 1982 or earlier. Debian files Bedstead as non-free because uses other than as a typeface might infringe (`third_party/bedstead/debian-copyright.txt`). The owner accepts that position.
+   - *Gaps:* Bedstead has no Arabic, and lacks seven Latin national characters and two G2 characters. Where a character can be composed from a base letter and a spacing mark (decision E.26), it is; otherwise it is drawn as the visible placeholder of REQ-CHR-004, until a loaded font supplies it.
+2. **Every other font has one form: a BDF file of 12 × 10 cells.** 12 × 10 is the cell of the standard's own downloadable characters (EN 300 706 clause 14.1). A font is drawn exactly as given, as monochrome DRCS characters are, without character rounding: each line twice in the 12 × 20 cell, and enlarged for double height, width and size. The profile is REQ-FNT-002; anything else is refused.
+3. **Fonts are loaded when they are named, and only then,** from any `http` or `https` address: by the user, by the channel, or by the page. The repository ships only Bedstead. The owner's collection of fonts is kept in a separate repository and published as font libraries.
+4. **Who chooses.** The page's font, then the channel's, then the user's chosen font, then Bedstead; and a user setting makes the user's font win over every channel and page. Row 0, the tuning screen, the contents view and every page the receiver draws itself always use Bedstead. Characters missing from the font in use come from the user's font, then from Bedstead, then the placeholder.
+5. **Font libraries.** A folder with a fixed-name index, `fonts.txt`, lists any number of fonts, each with its SHA-256, so fonts can be found without knowing their names.
+6. **The cache.** Fonts are stored by content, named by their SHA-256; fonts named by a channel or a page are kept apart per channel; at most 4 MB in all and 256 KB per font, the least recently used removed first; checked again whenever loaded; written only by the interface process.
+7. **The converter.** `ttx font convert` turns a BDF of another size into the 12 × 10 form, offline, only where the fit is exact and reversible: doubling every pixel's width, adding the blank top line where the SAA5050 leaves it, or halving a 12 × 20 font whose line pairs are identical. Anything else is refused.
+8. **Not fonts:** mosaics and G3 characters are drawn from geometry whatever the font (REQ-CHR-005, REQ-RND-037), and DRCS characters come from the page.
+9. **Features.** The core's `original` feature is removed; `bedstead` becomes a default feature and part of the modern-classic profile (decision E.71). The fonts of items 2 to 7 are the browser's, and `ttx`'s converter.
+10. **Phases.** Item 1 and the converter are Phase 1. Loading, choosing and caching fonts follow the browser: Phase 1 on macOS and Linux, Phase 2 on Windows, Android and iOS.
+
+*Reason:* Bedstead is the most complete openly licensed teletext font and the only one of the 317 collected text fonts with a licence the project can ship that also fits the receiver. One small, exact font form keeps the reader that faces the network simple, keeps every font in the grid and look of teletext (decision E.71), and lets the 151 collected fonts that fit be used without the project distributing them.
+
 
 ---
 
@@ -2146,6 +2166,7 @@ Recorded on 12 October 2026, on the owner's instruction to add teletext feature 
 | FSM | State machines |
 | WEB | Web-native page sources |
 | BRW | The browser (section F.20) |
+| FNT | Fonts (section F.21) |
 | SEC | Security and sandboxing, which overrides every other area (section F.0.3) |
 
 ## F.0.1 Delivery phases
@@ -2193,6 +2214,7 @@ The requirements are delivered in two phases.
 | REQ-SEC-019 | The example WebAssembly host. The WebAssembly builds stay in Phase 1. |
 | REQ-SEC-021 | Guidance on hardware isolation for microcontroller ports. |
 | REQ-RND-026 | The glyph line cache. |
+| REQ-FNT-002 to REQ-FNT-009 | Loaded fonts on Windows, Android and iOS. macOS and Linux stay in Phase 1. |
 | Area BRW, REQ-NAV-013 to REQ-NAV-015, REQ-SEC-025, REQ-SEC-026, REQ-WEB-018 to REQ-WEB-020, REQ-WEB-022 to REQ-WEB-027 and REQ-TST-081 | The browser on Windows, Android and iOS. macOS and Linux stay in Phase 1. |
 
 Tests for a Phase 2 feature are delivered with that feature.
@@ -4190,7 +4212,7 @@ A terminal graphics renderer shall show a page as exact pixels inside a terminal
 
 **REQ-RND-010 — Glyph data.**
 *Phase:* Phase 1 for the listed Latin, supplementary and G3 coverage; Phase 2 for glyphs of the other sets.
-The raster renderer shall use one glyph source in which each character is a 5-dot by 9-line pattern placed in a 6 by 10 cell, the SAA5050 geometry (Part C.3). The source shall cover:
+The raster renderer shall use one bundled glyph source, Bedstead (REQ-FNT-001), in which each character is a 5-dot by 9-line pattern placed in a 6 by 10 cell, the SAA5050 geometry (Part C.3). Loaded fonts have their own 12 by 10 form (REQ-FNT-002, REQ-FNT-008). The bundled source shall cover:
 - the Latin G0 set with every national option character;
 - the Latin G2 set;
 - the diacritical marks;
@@ -4357,24 +4379,13 @@ This palette mode is the mode of Levels 1 and 1.5. At Levels 2.5 and 3.5 the res
 The core renderer shall only ever produce the two fixed resolutions of REQ-RND-002 and REQ-RND-003. All scaling shall happen in the port, optionally using the helper below. The library shall provide a helper that scales by whole numbers and optionally stretches the height by 1.2 to give correct 4:3 proportions (REQ-RND-004). It shall use a nearest-pixel method by default and a smoothed method as an option. The porting guide shall warn about the aspect factor explicitly.
 *Verification:* Test of the helper; inspection of the porting guide.
 
-**REQ-RND-028 — The original glyph set.**
-*Phase:* Must be complete before the first public release. It is not needed for the Phase 1 milestones, which use the temporary glyphs of decision E.25.
-
-An original glyph set shall be drawn for this project, in the 5-dot by 9-line form of REQ-RND-010. It shall cover, in this order of priority:
-1. the Latin G0 set with every national option character (Table 36);
-2. the Latin G2 set and the diacritical marks;
-3. the G3 characters used at Level 1.5;
-4. Cyrillic, Greek and Hebrew;
-5. the rest of G3, which REQ-RND-037 now draws from the project's own geometry;
-6. Arabic.
-
-Glyphs shall be stored as text files that can be read and compared, with one glyph per entry, like the temporary export. Each set shall be recorded with its author and licence. The drawing shall be done without tracing the SAA5050 or Bedstead glyphs, although the grid, the rounding rule and the general style are not protected.
-*Reason:* Replacing the temporary glyphs is real design work: several hundred characters. It needs its own plan and budget, estimated at 10 to 20 days.
-*Verification:* Inspection of coverage and provenance; the release check of REQ-RND-020.
+**REQ-RND-028 — Withdrawn (the original glyph set).**
+*Withdrawn on 12 October 2026* by decision E.72: Bedstead is the bundled font, and other fonts are loaded at run time (area FNT). The original set drawn under decision E.62 remains in the git history up to commit 9dc932d. The number is kept and will not be reused.
 
 **REQ-RND-020 — Glyph provenance.**
-The glyph data used in a release shall be drawn originally for this project, as decision E.25 describes. During development, the Bedstead glyphs in `third_party/bedstead/` may be used as a temporary substitute. The glyph loader shall treat the glyph set as replaceable data, so that the substitution needs no code changes. The provenance of every glyph set shall be recorded in the repository. No glyph may be copied from the contents of a character generator ROM.
-*Verification:* Inspection. Before any release, a check shall confirm that no Bedstead-derived glyph remains.
+The bundled glyph data is Bedstead 3.261 (decision E.72, REQ-FNT-001), whose provenance and licence are recorded in `third_party/bedstead/PROVENANCE.md`. The glyph loader shall treat the glyph set as replaceable data. No other glyph set shall be included in the repository; other fonts are loaded at run time (area FNT). No glyph may be copied from the contents of a character generator ROM into the repository other than through Bedstead.
+*Amended 12 October 2026* (decision E.72): Bedstead is the bundled font, not a temporary substitute.
+*Verification:* Inspection of the repository's glyph data and its provenance.
 
 **REQ-RND-030 — The 32-entry Colour Map in output.**
 At Levels 2.5 and 3.5, colours shall be produced from the page's Colour Map (REQ-L25-030), which travels with the grid. Each 12-bit entry shall be converted to 8 bits for each primary by multiplying each 4-bit value by 17, so that 15 gives 255. Index 8, CLUT 1 entry 0, shall be transparent (REQ-RND-006). The pixel format helpers of REQ-RND-018 and the image writers shall take the Colour Map as their palette. The user's replacement colours of REQ-RND-005 shall replace the Table 30 defaults before any page data redefines them.
@@ -4925,6 +4936,7 @@ A command-line program named `ttx` shall provide these commands:
 | `ttx service-info` | Print the service data from packet 8/30: initial page, network identification, date, time and status message. |
 | `ttx check` | Check page files for authoring problems (REQ-CLI-006). |
 | `ttx contents` | Write a channel's `contents.txt` from a folder of page files (REQ-CLI-008). |
+| `ttx font convert` | Write a font in the 12 × 10 form from a BDF of another size, where the fit is exact (REQ-FNT-010). |
 *Verification:* Demonstration; test of each command.
 
 **REQ-CLI-002 — Common options.**
@@ -4970,6 +4982,7 @@ The program shall exit with:
 *Errors:*
 - **Too many links.** More than four coloured links, a repeated key, or two `LK` lines for the same page number.
 - **Bad link targets.** Targets naming services missing from a given descriptor, and `LK` or `LT` lines whose target, page number or position is invalid (Appendix E.1).
+- **Bad font lines.** A `TF` line that is malformed or repeated (REQ-FNT-007).
 - **Bad labels.** Labels too long for the prompt, or using characters the page's G0 set cannot show.
 - **Bad form fields.** Overlapping fields, fields outside the row, or version 2.0 form syntax.
 - **Withdrawn commands.** Use of the withdrawn `FH` command.
@@ -5862,7 +5875,7 @@ The web module shall implement exactly the following profile, and nothing beyond
 - images, audio, video and other media;
 - downloads to files;
 - embedding one page inside another;
-- content from a third party loaded into a page;
+- content from a third party loaded into a page, except a font named by the channel or the page at another address, which is permitted only with its SHA-256, without cookies or `Referer`, and only while the viewer allows fonts from other sites (REQ-FNT-003; `docs/font-security.md` section 3.4);
 - plugins;
 - `file:`, `data:`, `javascript:` and all other address schemes except those of REQ-WEB-016;
 - proxy auto-configuration;
@@ -6019,6 +6032,7 @@ A channel's file addresses are its folder's address followed by one of the file 
 - **`initial_page`** is a page number of three decimal digits, the magazine 1 to 8 first.
 - **`name`,** when present, is the channel's own name for itself. It may be shown as the tab's title, but never in row 0 (REQ-SEC-025) or on the tuning screen, which name a channel only by its host and folder, and by the name the linking channel declares.
 - **`services`,** the linked channels, gives each one a short name, a display name, and either `channel`, the address of the linked channel's folder in the form of REQ-WEB-023, or `descriptor`, the address of a descriptor service (REQ-WEB-018). An entry with both, or neither, shall be refused.
+- **`font`,** an object with `address` and `sha256`, names the channel's font (REQ-FNT-006).
 - **`aliases`, `refresh`, `push` and `form_origins`** are as REQ-WEB-002 defines them. A push address shall be on the channel's origin, in any folder.
 
 Unknown members shall be refused, as REQ-WEB-002 requires of every descriptor.
@@ -6165,10 +6179,11 @@ The browser shall keep bookmarks, history, the open tabs and its settings betwee
 Reading shall be strict and bounded, because the files could have been changed by anything: at most 4 megabytes per file and 10 000 records, and every stored address read back through the address bar's parser, so a stored address can never mean more than a typed one.
 *Verification:* Tests of writing and reading back, of the history limit, and of malformed files; a window test that a bookmark is kept and listed on a new tab's start page.
 
-**REQ-BRW-007 — Glyphs and the window's fonts.**
+**REQ-BRW-007 — Fonts and the window's own text.**
 *Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS.
-Pages shall be drawn with the teletext glyph sets only. The viewer shall be able to choose the project's own glyphs (REQ-RND-028), Bedstead (decision E.25), or both side by side, by the `G` key or the menu; the choice applies to every tab and is saved. The window's own text shall use the platform's fonts, read at start, and no bundled font whose licence is not on REQ-GEN-017's list.
-*Verification:* Window tests rendering each glyph choice.
+Pages shall be drawn with teletext fonts only: Bedstead, and the fonts of area FNT. The settings shall let the user choose a font, by address, from a font library (REQ-FNT-004) or from a local file; set "always use my font" (REQ-FNT-005); allow or refuse fonts from other sites (REQ-FNT-003), allowed by default; and see, pin and remove cached fonts (REQ-FNT-009). These settings apply to every tab and are saved. The window's own text shall use the platform's fonts, read at start, and no bundled font whose licence is not on REQ-GEN-017's list.
+*Amended 12 October 2026* (decision E.72): the switch between the original glyphs and Bedstead is replaced by the fonts of area FNT.
+*Verification:* Window tests of choosing a font and of the override.
 
 **REQ-BRW-008 — Accessibility.**
 *Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS.
@@ -6193,6 +6208,89 @@ The browser shall show a channel's contents (REQ-WEB-025) as teletext screens dr
 - **Faults.** The number of lines `contents.txt` had that were ignored (REQ-WEB-025) is shown in the window's status line, never on the page.
 - **Text.** Titles are drawn by the receiver with the characters every national option shows the same; other characters are drawn as `?`.
 *Verification:* Tests of the screens drawn from a contents file with each kind of entry, a section on the last row, more than one screen and a dated entry; of each key; of the list drawn without a contents file; and a window test.
+
+---
+
+## F.21 Fonts (FNT)
+
+This area is the receiver's fonts (decision E.72): the bundled Bedstead font, and fonts in one 12 × 10 form loaded when the user, the channel or the page names them. The security analysis is `docs/font-security.md`. Mosaics, G3 characters and DRCS characters are not fonts and are not affected.
+
+**REQ-FNT-001 — The bundled font.**
+The receiver shall carry one font, Bedstead 3.261, in the 5-dot by 9-line form of REQ-RND-010, drawn with the character rounding of REQ-RND-012. It is the default font of every page and the only font of the receiver's own drawing: row 0, the tuning screen, the contents view, the start, keys, error and loading pages, and any confirmation. Its provenance and licence (CC0 1.0 and section 55 of the United Kingdom Copyright, Designs and Patents Act 1988) shall be recorded in `third_party/bedstead/PROVENANCE.md`, with the SHA-256 of its export, which the gate checks. A character it lacks, and that cannot be composed from a base letter and a spacing mark (decision E.26), shall be drawn as the placeholder of REQ-CHR-004.
+*Verification:* Inspection of provenance; the gate's check of the export's SHA-256; a coverage test listing every required character Bedstead lacks.
+
+**REQ-FNT-002 — The font form.**
+*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS (section F.0.1).
+A font other than the bundled one shall be a file in the Glyph Bitmap Distribution Format (BDF) version 2.1 or 2.2, accepted only when all of these hold:
+- the file runs from `STARTFONT` to `ENDFONT`; `COMMENT` lines may appear anywhere;
+- `FONTBOUNDINGBOX 12 10 0 0`;
+- the properties include `CHARSET_REGISTRY "ISO10646"`, `CHARSET_ENCODING "1"` and `SPACING "C"` or `SPACING "M"`, and at most 64 properties in all;
+- `CHARS` gives the number of characters, at most 1,024, and exactly that many follow;
+- every character has `ENCODING` a Unicode scalar value, never −1 and never repeated; `DWIDTH 12 0`; `BBX 12 10 0 0`; and a `BITMAP` of exactly ten rows of four hexadecimal digits whose last four bits are zero;
+- the file is at most 256 kilobytes, with lines of at most 512 bytes.
+
+Any other keyword, a malformed number, or any rule broken refuses the whole file, with the line number; nothing of a refused file is used. The font's name is its `FAMILY_NAME` property, and its `COPYRIGHT` and `NOTICE` properties are kept with it.
+*Verification:* Tests of a valid font and of each rule broken; a fuzz target for the reader (REQ-TST-040).
+
+**REQ-FNT-003 — Where fonts come from.**
+*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS.
+A font may be loaded from any `http` or `https` address, or from a local file the user chooses, and only when the user, the channel (REQ-FNT-006) or the page (REQ-FNT-007) names it. Nothing else shall cause a font to be fetched. A font shall be fetched by a confined fetcher process (REQ-SEC-026) under the network rules of a channel's files: the local-network protection of REQ-SEC-006, the plain-HTTP marker of REQ-SEC-005, and no downgrade (REQ-SEC-007). A font at an address other than the channel's own origin, named by the channel or the page, is fetched only with its SHA-256, without cookies or `Referer`, and only while the viewer allows fonts from other sites (REQ-WEB-014).
+
+Fonts and library indexes shall be read only in a confined process: the tab's fetcher, or a font helper under the same confinement. The interface process shall never parse a font. It receives the font's bytes, whose SHA-256 it computes itself, and a glyph table of at most 1,024 entries, each a code point and ten 12-bit rows, whose shape it checks (`docs/font-security.md` section 3.1). When a font is named with a SHA-256, a file with any other checksum shall be refused.
+*Verification:* Tests that a font named by each of the three is fetched, that nothing else fetches one, and that a wrong checksum is refused.
+
+**REQ-FNT-004 — Font libraries.**
+*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS.
+A font library is a folder, in the form of a channel's folder (REQ-WEB-023), holding an index named `fonts.txt`. The index has one entry per line, fields separated by one tab, and comments and empty lines as `contents.txt` has (REQ-WEB-025):
+
+| Kind | Fields after the kind |
+|---|---|
+| `f` | the font: a file name in the library's folder or an address; its title, 1 to 32 characters; its SHA-256 as 64 hexadecimal digits |
+
+The index is at most 64 kilobytes and 1,000 lines; a line of an unknown kind is ignored, a malformed line is ignored and counted. The user adds a library by its address, and the browser lists its fonts by title for the user to choose; a font is fetched only when chosen.
+*Verification:* Tests of a library with fonts in its folder and elsewhere, of each fault, and that listing a library fetches no font.
+
+**REQ-FNT-005 — Which font draws a page.**
+*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS.
+The font drawing a page's rows 1 to 24 shall be the first of: the page's font (REQ-FNT-007), the channel's font (REQ-FNT-006), the user's chosen font, and Bedstead. When the user has set "always use my font", the user's chosen font, or Bedstead if none is chosen, shall be used whatever the channel or page names. Every character the font in use lacks shall come from the user's chosen font, then from Bedstead, then the placeholder (REQ-CHR-004). The receiver's own drawing shall always use Bedstead (REQ-FNT-001). The window's status line shall name the font drawing the page, and whether the page, the channel or the user chose it.
+*Verification:* Tests of each step of the order, of the user's override, of the fallback for a missing character, and that row 0 and the tuning screen are drawn in Bedstead whatever font a page names.
+
+**REQ-FNT-006 — A channel's font.**
+*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS.
+`channel.json` (REQ-WEB-024) may have a member `font`, an object with `address`, a file name in the channel's folder or an address, and `sha256`, 64 hexadecimal digits; both are required, so a font at another address always carries its checksum (REQ-WEB-014). The font is fetched when the channel opens, after its settings and bundle, and the channel's pages are drawn in Bedstead until it arrives (REQ-FNT-009).
+*Verification:* Tests of a channel with a font in its folder, one with a font elsewhere, and one whose font fails its checksum.
+
+**REQ-FNT-007 — A page's font.**
+*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS.
+A TTI page may name its font with a line `TF,address,sha256`, applying to the page or sub-page of the most recent `PN` line: the address of a font file, absolute or relative to the page's own address, and its SHA-256. Other TTI readers ignore the line as an unknown command. A page has at most one `TF` line; a second, a malformed line or a checksum that is not 64 hexadecimal digits makes the page's font null, with a diagnostic, and the page is still shown. A page from T42 packets or a broadcast cannot name a font. The TTI writer keeps the line, and the page checker (REQ-CLI-006) reports a malformed one as an error.
+*Verification:* Reader, writer and checker tests; tests that a page's font draws that page only.
+
+**REQ-FNT-008 — Drawing a loaded font.**
+*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS.
+A loaded font's character shall be drawn as its 12 × 10 bitmap with each line repeated in the 12 × 20 cell, without character rounding, and enlarged for double height, double width and double size as a mode 0 DRCS character is (REQ-RND-038). Foreground and background colours, flash, conceal, boxing, underline and the other attributes apply as to any character. The glyphs shall reach a decoder process as a bounded message of the pipe, at most one font per message, checked again on arrival.
+*Verification:* Golden rasters of a test font at every size; tests that a font message beyond its bounds is refused.
+
+**REQ-FNT-009 — The font cache.**
+*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS.
+Fonts shall be kept in the profile directory (REQ-BRW-006), written only by the interface process, each written whole through a temporary file and renamed:
+- **By content.** Each font is stored once as its original bytes in a file named by its SHA-256 alone, never by anything taken from its address.
+- **Kept apart.** Fonts named by a channel or a page are kept per channel, and used only for that channel; fonts the user chose and the fonts of libraries the user added are shared.
+- **Bounded.** At most 4 megabytes in all and 256 kilobytes per font. When a new font would exceed the total, the least recently used fonts are removed first, except those the user has pinned.
+- **Fresh.** A font named with a SHA-256 is used from the cache with no request. A font the user named by address alone is checked again at most once a day with a conditional request (REQ-WEB-004); the cached copy stays in use when the check fails.
+- **Checked on every load.** Whenever a font is loaded from the cache, the interface recomputes its SHA-256, and a confined process reads it again against REQ-FNT-002; a file that fails is deleted and fetched again.
+- **Visible.** The settings list every cached font with its name, address, licence notice and size, and let the user pin a font, remove one, or clear all.
+
+While a font is being fetched, the page is drawn in the font that would apply without it, then drawn again when it arrives. A font that cannot be fetched leaves that font in place, with a message in the status line. Cached fonts work offline.
+*Verification:* Tests of reuse without a request, of keeping channels apart, of eviction and pinning, of a file changed on disk, and of the daily check.
+
+**REQ-FNT-010 — The font converter.**
+`ttx font convert INPUT OUTPUT` shall write a font in the form of REQ-FNT-002 from a BDF of another cell size, offline, only where the conversion is exact and reversible:
+- a 5 × 10 or 6 × 10 cell: every pixel made two pixels wide, a 5-pixel cell placed in the left of the 6;
+- a 5 × 9 or 6 × 9 cell: the same, with one blank line added at the top, where the SAA5050 leaves it;
+- a 12 × 20 cell in which every pair of lines, 1 and 2, 3 and 4 and so on, is identical: every second line kept.
+
+Any other cell, any glyph larger than its cell, or any 12 × 20 glyph whose line pairs differ shall be refused, naming the first character that fails. When the input's `CHARSET_REGISTRY` is not ISO10646, the converter shall take the Unicode code point of each `ENCODING` from a mapping file given with `--map`, one `code<TAB>U+XXXX` line each, and refuse a character the map lacks. `FAMILY_NAME`, `COPYRIGHT` and `NOTICE` are carried over. The converter never reads from the network and runs under the sandbox of REQ-SEC-017.
+*Verification:* Tests of each exact conversion and its reversal, of each refusal, and that the output passes REQ-FNT-002.
 
 ---
 
@@ -6272,6 +6370,9 @@ The following are not part of this implementation. Each could be added later as 
 | Front door, bundle | A channel's `index.t42`, which may hold any number of pages (REQ-WEB-019). |
 | Page file | The file of one page in its channel's folder, named by its number: `140.tti` or `140.t42` (REQ-WEB-019). |
 | Contents file | A channel's `contents.txt`: its sections, pages and linked channels, drawn by the receiver as an index (REQ-WEB-025, REQ-BRW-009). |
+| Font | Bedstead, the receiver's bundled font, or a BDF file of 12 × 10 cells loaded when the user, the channel or the page names it (area FNT). |
+| Font library | A folder with an index, `fonts.txt`, listing fonts with their checksums (REQ-FNT-004). |
+| BDF | The Glyph Bitmap Distribution Format, a text format for bitmap fonts; the form of every loaded font (REQ-FNT-002). |
 | Alias | An entry of `channel.json` that leads one page number to another channel on every page of the channel (REQ-WEB-020). |
 | Tuning screen | The receiver-drawn screen shown before anything from another channel, which the viewer confirms (REQ-NAV-014, decision E.65). |
 | Page catching | Moving a cursor between the links on a page and following one, as some Philips televisions did with page numbers (REQ-NAV-015). |
