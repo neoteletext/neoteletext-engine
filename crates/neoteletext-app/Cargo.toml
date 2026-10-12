@@ -15,7 +15,7 @@ neoteletext-core = { workspace = true, features = ["forms", "viewer", "render"] 
 # Palettes and scaling for rasters (`present`).
 neoteletext-image.workspace = true
 # Detection and `--format` reach every reader; live mode reads TTI and T42.
-neoteletext-formats = { workspace = true, features = ["std", "transport", "sliced", "pages", "tti", "ep1", "edittf", "dump"] }
+neoteletext-formats = { workspace = true, features = ["std", "transport", "sliced", "pages", "tti", "ep1", "edittf", "dump", "bdf"] }
 neoteletext-slicer = { workspace = true, optional = true }
 # Under `live`: the whole user agent, with push, forms and cookies.
 neoteletext-web = { workspace = true, optional = true, features = ["default"] }

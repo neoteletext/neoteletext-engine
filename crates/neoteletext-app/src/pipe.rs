@@ -5,6 +5,9 @@
 //! the payload. Both sides bound the length, parse strictly and reject
 //! unknown kinds.
 
+use neoteletext_core::consts::{CELL_FIELD_LINES, FONT_MAX_CHARACTERS, FONT_MAX_FILE_BYTES};
+use neoteletext_core::glyphs::LoadedFont;
+use neoteletext_core::types::FontGlyph;
 use std::io::{self, Read, Write};
 
 /// The largest payload: one page response (REQ-WEB-008 default).
@@ -23,6 +26,18 @@ const MAX_SCREEN_FRAME: usize = MAX_SCREEN_WIDTH * MAX_SCREEN_HEIGHT + MAX_SCREE
 pub const MAX_SCREEN_TEXT: usize = 25 * (40 * 4 + 1);
 /// The longest destination of a caught link: an address.
 pub const MAX_LINK_TEXT: usize = 512;
+/// Bytes of a SHA-256 on the pipe (REQ-FNT-003).
+pub const SHA256_BYTES: usize = 32;
+/// The longest font address, or text of a font, carried.
+pub const MAX_FONT_TEXT: usize = 512;
+/// Bytes of one glyph on the pipe: its code point and ten 16-bit lines.
+const GLYPH_WIRE_BYTES: usize = 4 + 2 * CELL_FIELD_LINES;
+/// The largest glyph table: 1,024 glyphs (REQ-FNT-002).
+const MAX_TABLE_BYTES: usize = 2 + FONT_MAX_CHARACTERS * GLYPH_WIRE_BYTES;
+/// The largest font reply: the file, its table and three texts.
+const MAX_FONT_FRAME: usize = 1 + 4 + FONT_MAX_FILE_BYTES + MAX_TABLE_BYTES + 3 * (5 + MAX_FONT_TEXT);
+/// The most fonts one library listing carries (REQ-FNT-004's 1,000 lines).
+pub const MAX_LIBRARY_FONTS: usize = 1000;
 
 /// Where page bytes came from.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -108,6 +123,72 @@ pub enum Frame {
     /// Fetcher to interface, never to a decoder: the answer to
     /// [`Frame::FetchContents`].
     Contents(ContentsReply),
+    /// Interface to a font reader: the bytes of a font to read
+    /// (REQ-FNT-009), from the cache or a local file.
+    FontBytes(Vec<u8>),
+    /// Font helper to interface: a font, read in the helper's confinement
+    /// (REQ-FNT-003).
+    Font(FontReply),
+    /// Font helper to interface: a library's index, read in the helper's
+    /// confinement (REQ-FNT-004).
+    FontLibrary(LibraryReply),
+    /// Interface to decoder: the fonts to draw the page with (REQ-FNT-008).
+    Fonts(DecoderFonts),
+}
+
+/// A font read by a helper. The interface never parses the file: it
+/// computes the bytes' SHA-256 itself and checks the table's shape.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct FontData {
+    /// The file, for the cache.
+    pub bytes: Vec<u8>,
+    /// `FAMILY_NAME`, made printable.
+    pub family: Option<String>,
+    /// `COPYRIGHT`, made printable.
+    pub copyright: Option<String>,
+    /// `NOTICE`, made printable.
+    pub notice: Option<String>,
+    /// The glyphs, sorted by code point.
+    pub glyphs: Vec<FontGlyph>,
+}
+
+/// A font helper's answer.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum FontReply {
+    /// The font.
+    Loaded(FontData),
+    /// It could not be fetched or read, and why.
+    Failed(String),
+}
+
+/// One font of a library's index.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct LibraryFont {
+    /// Its address, resolved against the library's folder.
+    pub address: String,
+    /// The title the viewer chooses by.
+    pub title: String,
+    /// Its SHA-256.
+    pub sha256: [u8; SHA256_BYTES],
+}
+
+/// A library helper's answer.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum LibraryReply {
+    /// The fonts, and how many lines were ignored as malformed.
+    Listed(Vec<LibraryFont>, u32),
+    /// The index could not be fetched or read, and why.
+    Failed(String),
+}
+
+/// The fonts a decoder draws with (REQ-FNT-005, REQ-FNT-008): the font in
+/// use, then the user's font for what it lacks; an empty table is none.
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
+pub struct DecoderFonts {
+    /// The font in use.
+    pub in_use: Vec<FontGlyph>,
+    /// The user's font, for characters the font in use lacks.
+    pub fallback: Vec<FontGlyph>,
 }
 
 /// The fetcher's answer to [`Frame::FetchContents`] (REQ-WEB-025).
@@ -205,6 +286,10 @@ pub struct PageStatus {
     /// The page's text, one line per row, for accessibility, copying and
     /// tests.
     pub text: String,
+    /// The font the page names with `TF` (REQ-FNT-007): its address,
+    /// resolved against the page's, and its SHA-256. The interface parses
+    /// the address again and decides whether to fetch it.
+    pub font: Option<(String, [u8; SHA256_BYTES])>,
 }
 
 /// Notices the fetcher sends.
@@ -249,6 +334,9 @@ pub enum Notice {
     /// first page, `0xMPP`, is shown if the page asked for is not in it
     /// and the user has not moved.
     Bundle(u16),
+    /// The channel names a font in `channel.json` (REQ-FNT-006): its
+    /// address and SHA-256. The interface decides whether to fetch it.
+    ChannelFont(String, [u8; SHA256_BYTES]),
 }
 
 const PACKET: u8 = b'P';
@@ -282,6 +370,14 @@ const VISIT: u8 = b'v';
 const REFRESH: u8 = b'e';
 const FETCH_CONTENTS: u8 = b'q';
 const CONTENTS: u8 = b'o';
+const FONT_BYTES: u8 = b'f';
+const FONT: u8 = b'g';
+const FONT_LIBRARY: u8 = b'h';
+const FONTS: u8 = b'i';
+const CHANNEL_FONT: u8 = b'j';
+/// The kinds of [`FontReply`] and [`LibraryReply`] on the wire.
+const REPLY_OK: u8 = 0;
+const REPLY_FAILED: u8 = 1;
 /// The kinds of [`ContentsReply`] on the wire.
 const CONTENTS_FILE: u8 = 0;
 const CONTENTS_MISSING: u8 = 1;
@@ -357,6 +453,38 @@ impl Cursor<'_> {
 
     fn end(&self) -> io::Result<()> {
         if self.0.is_empty() { Ok(()) } else { Err(io::Error::other("malformed frame")) }
+    }
+
+    /// A glyph table of the shape every receiver checks (REQ-FNT-003,
+    /// REQ-FNT-008): at most 1,024 glyphs, strictly increasing scalar code
+    /// points, twelve dots a line.
+    fn table(&mut self) -> io::Result<Vec<FontGlyph>> {
+        let count = usize::from(self.u16()?);
+        if count > FONT_MAX_CHARACTERS {
+            return Err(io::Error::other("malformed frame"));
+        }
+        let mut glyphs = Vec::with_capacity(count);
+        for _ in 0..count {
+            let code = self.bytes(4)?;
+            let code_point = u32::from_be_bytes([code[0], code[1], code[2], code[3]]);
+            let mut rows = [0u16; CELL_FIELD_LINES];
+            for row in &mut rows {
+                *row = self.u16()?;
+            }
+            glyphs.push(FontGlyph { code_point, rows });
+        }
+        LoadedFont::new(&glyphs).map_err(|_| io::Error::other("malformed frame"))?;
+        Ok(glyphs)
+    }
+
+    /// A string of at most [`MAX_FONT_TEXT`] bytes.
+    fn short_string(&mut self) -> io::Result<String> {
+        let text = self.string()?;
+        if text.len() > MAX_FONT_TEXT { Err(io::Error::other("malformed frame")) } else { Ok(text) }
+    }
+
+    fn sha256(&mut self) -> io::Result<[u8; SHA256_BYTES]> {
+        self.bytes(SHA256_BYTES)?.try_into().map_err(|_| io::Error::other("malformed frame"))
     }
 }
 
@@ -480,14 +608,97 @@ pub fn write(out: &mut dyn Write, frame: &Frame) -> io::Result<()> {
             buffer.extend_from_slice(&screen.indices);
             put_limited(out, SCREEN, &buffer, MAX_SCREEN_FRAME)
         }
-        Frame::Status(status) => {
-            let mut buffer = [status.page.to_be_bytes(), status.subcode.to_be_bytes()].concat();
-            buffer.push(u8::from(status.found));
-            buffer.extend_from_slice(&status.status);
-            buffer.push(u8::from(status.form));
-            put_string(&mut buffer, &status.link);
-            put_string(&mut buffer, &status.text);
-            put(out, STATUS, &buffer)
+        Frame::Status(status) => put(out, STATUS, &status_payload(status)),
+        Frame::Notice(Notice::ChannelFont(..))
+        | Frame::FontBytes(_)
+        | Frame::Font(_)
+        | Frame::FontLibrary(_)
+        | Frame::Fonts(_) => write_font(out, frame),
+    }
+}
+
+/// The payload of a [`Frame::Status`].
+fn status_payload(status: &PageStatus) -> Vec<u8> {
+    let mut buffer = [status.page.to_be_bytes(), status.subcode.to_be_bytes()].concat();
+    buffer.push(u8::from(status.found));
+    buffer.extend_from_slice(&status.status);
+    buffer.push(u8::from(status.form));
+    put_string(&mut buffer, &status.link);
+    put_string(&mut buffer, &status.text);
+    buffer.push(u8::from(status.font.is_some()));
+    if let Some((address, sha256)) = &status.font {
+        put_string(&mut buffer, address);
+        buffer.extend_from_slice(sha256);
+    }
+    buffer
+}
+
+/// Writes the frames of fonts (REQ-FNT-003, REQ-FNT-004, REQ-FNT-008).
+fn write_font(out: &mut dyn Write, frame: &Frame) -> io::Result<()> {
+    match frame {
+        Frame::Notice(Notice::ChannelFont(address, sha256)) => {
+            let mut buffer = Vec::new();
+            put_string(&mut buffer, address);
+            buffer.extend_from_slice(sha256);
+            put(out, CHANNEL_FONT, &buffer)
+        }
+        Frame::FontBytes(bytes) => put(out, FONT_BYTES, bytes),
+        Frame::Font(reply) => {
+            let mut buffer = Vec::new();
+            match reply {
+                FontReply::Loaded(font) => {
+                    buffer.push(REPLY_OK);
+                    buffer.extend_from_slice(&u32::try_from(font.bytes.len()).unwrap_or(0).to_be_bytes());
+                    buffer.extend_from_slice(&font.bytes);
+                    for text in [&font.family, &font.copyright, &font.notice] {
+                        put_option(&mut buffer, text.as_ref());
+                    }
+                    put_table(&mut buffer, &font.glyphs);
+                }
+                FontReply::Failed(why) => {
+                    buffer.push(REPLY_FAILED);
+                    put_string(&mut buffer, why);
+                }
+            }
+            put_limited(out, FONT, &buffer, MAX_FONT_FRAME)
+        }
+        Frame::FontLibrary(reply) => {
+            let mut buffer = Vec::new();
+            match reply {
+                LibraryReply::Listed(fonts, ignored) => {
+                    buffer.push(REPLY_OK);
+                    buffer.extend_from_slice(&ignored.to_be_bytes());
+                    buffer.extend_from_slice(&u16::try_from(fonts.len()).unwrap_or(0).to_be_bytes());
+                    for font in fonts {
+                        put_string(&mut buffer, &font.address);
+                        put_string(&mut buffer, &font.title);
+                        buffer.extend_from_slice(&font.sha256);
+                    }
+                }
+                LibraryReply::Failed(why) => {
+                    buffer.push(REPLY_FAILED);
+                    put_string(&mut buffer, why);
+                }
+            }
+            put(out, FONT_LIBRARY, &buffer)
+        }
+        Frame::Fonts(fonts) => {
+            let mut buffer = Vec::new();
+            put_table(&mut buffer, &fonts.in_use);
+            put_table(&mut buffer, &fonts.fallback);
+            put(out, FONTS, &buffer)
+        }
+        _ => Err(io::Error::other("not a font frame")),
+    }
+}
+
+/// A glyph table: its length, then each glyph's code point and lines.
+fn put_table(buffer: &mut Vec<u8>, glyphs: &[FontGlyph]) {
+    buffer.extend_from_slice(&u16::try_from(glyphs.len()).unwrap_or(0).to_be_bytes());
+    for glyph in glyphs {
+        buffer.extend_from_slice(&glyph.code_point.to_be_bytes());
+        for row in glyph.rows {
+            buffer.extend_from_slice(&row.to_be_bytes());
         }
     }
 }
@@ -586,7 +797,11 @@ pub fn read(input: &mut dyn Read) -> io::Result<Option<Frame>> {
         Err(error) => return Err(error),
     }
     let length = u32::from_be_bytes([head[1], head[2], head[3], head[4]]) as usize;
-    let limit = if head[0] == SCREEN { MAX_SCREEN_FRAME } else { MAX_FRAME };
+    let limit = match head[0] {
+        SCREEN => MAX_SCREEN_FRAME,
+        FONT => MAX_FONT_FRAME,
+        _ => MAX_FRAME,
+    };
     if length > limit {
         return Err(io::Error::other("frame longer than the limit"));
     }
@@ -721,11 +936,92 @@ fn browser_frame(kind: u8, payload: &[u8]) -> io::Result<Frame> {
             let form = cursor.byte()? != 0;
             let link = cursor.string()?;
             let text = cursor.string()?;
+            let font = match cursor.byte()? {
+                0 => None,
+                1 => Some((cursor.short_string()?, cursor.sha256()?)),
+                _ => return Err(invalid()),
+            };
             cursor.end()?;
             if text.len() > MAX_SCREEN_TEXT || link.len() > MAX_LINK_TEXT {
                 return Err(invalid());
             }
-            Frame::Status(PageStatus { page, subcode, found, status, form, link, text })
+            Frame::Status(PageStatus { page, subcode, found, status, form, link, text, font })
+        }
+        CHANNEL_FONT | FONT_BYTES | FONT | FONT_LIBRARY | FONTS => font_frame(kind, payload)?,
+        _ => return Err(invalid()),
+    })
+}
+
+/// Reads the frames of fonts, checking every glyph table's shape
+/// (REQ-FNT-003, REQ-FNT-008).
+fn font_frame(kind: u8, payload: &[u8]) -> io::Result<Frame> {
+    let invalid = || io::Error::other("malformed frame");
+    let mut cursor = Cursor(payload);
+    Ok(match kind {
+        CHANNEL_FONT => {
+            let address = cursor.short_string()?;
+            let sha256 = cursor.sha256()?;
+            cursor.end()?;
+            Frame::Notice(Notice::ChannelFont(address, sha256))
+        }
+        FONT_BYTES if payload.len() <= FONT_MAX_FILE_BYTES => Frame::FontBytes(payload.to_vec()),
+        FONT => Frame::Font(match cursor.byte()? {
+            REPLY_OK => {
+                let length = cursor.u32()?;
+                if length > FONT_MAX_FILE_BYTES {
+                    return Err(invalid());
+                }
+                let bytes = cursor.bytes(length)?.to_vec();
+                let mut texts = [None, None, None];
+                for text in &mut texts {
+                    *text = cursor.option()?;
+                    if text.as_ref().is_some_and(|text| text.len() > MAX_FONT_TEXT) {
+                        return Err(invalid());
+                    }
+                }
+                let glyphs = cursor.table()?;
+                cursor.end()?;
+                let [family, copyright, notice] = texts;
+                FontReply::Loaded(FontData { bytes, family, copyright, notice, glyphs })
+            }
+            REPLY_FAILED => {
+                let why = cursor.short_string()?;
+                cursor.end()?;
+                FontReply::Failed(why)
+            }
+            _ => return Err(invalid()),
+        }),
+        FONT_LIBRARY => Frame::FontLibrary(match cursor.byte()? {
+            REPLY_OK => {
+                let ignored = u32::try_from(cursor.u32()?).map_err(|_| invalid())?;
+                let count = usize::from(cursor.u16()?);
+                if count > MAX_LIBRARY_FONTS {
+                    return Err(invalid());
+                }
+                let fonts = (0..count)
+                    .map(|_| {
+                        Ok(LibraryFont {
+                            address: cursor.short_string()?,
+                            title: cursor.short_string()?,
+                            sha256: cursor.sha256()?,
+                        })
+                    })
+                    .collect::<io::Result<Vec<_>>>()?;
+                cursor.end()?;
+                LibraryReply::Listed(fonts, ignored)
+            }
+            REPLY_FAILED => {
+                let why = cursor.short_string()?;
+                cursor.end()?;
+                LibraryReply::Failed(why)
+            }
+            _ => return Err(invalid()),
+        }),
+        FONTS => {
+            let in_use = cursor.table()?;
+            let fallback = cursor.table()?;
+            cursor.end()?;
+            Frame::Fonts(DecoderFonts { in_use, fallback })
         }
         _ => return Err(invalid()),
     })
@@ -734,6 +1030,89 @@ fn browser_frame(kind: u8, payload: &[u8]) -> io::Result<Frame> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn glyph(code_point: u32, row: u16) -> FontGlyph {
+        FontGlyph { code_point, rows: [row; CELL_FIELD_LINES] }
+    }
+
+    /// The bytes of a frame.
+    fn wire(frame: &Frame) -> Vec<u8> {
+        let mut buffer = Vec::new();
+        write(&mut buffer, frame).unwrap();
+        buffer
+    }
+
+    /// REQ-FNT-003, REQ-FNT-008: a glyph table of the wrong shape is refused
+    /// when a frame is read, whoever reads it; so is an oversized font.
+    #[test]
+    fn bad_glyph_tables_and_oversized_fonts_are_refused() {
+        let fonts = |in_use: Vec<FontGlyph>| Frame::Fonts(DecoderFonts { in_use, fallback: Vec::new() });
+        for (table, what) in [
+            (vec![glyph(0x42, 0), glyph(0x41, 0)], "unsorted"),
+            (vec![glyph(0x41, 0), glyph(0x41, 0)], "repeated"),
+            (vec![glyph(0xD800, 0)], "not a scalar value"),
+            (vec![glyph(0x41, 0x1000)], "a thirteenth dot"),
+            ((0..1025).map(|code| glyph(0x100 + code, 0)).collect(), "1,025 glyphs"),
+        ] {
+            let bytes = wire(&fonts(table));
+            assert!(read(&mut bytes.as_slice()).is_err(), "{what}");
+        }
+        let full: Vec<FontGlyph> = (0..1024).map(|code| glyph(0x100 + code, 0)).collect();
+        assert!(read(&mut wire(&fonts(full)).as_slice()).is_ok(), "1,024 glyphs fit");
+        // A font file larger than REQ-FNT-002 allows, in each frame.
+        let large = vec![b'x'; FONT_MAX_FILE_BYTES + 1];
+        let mut bytes = vec![FONT_BYTES];
+        bytes.extend_from_slice(&u32::try_from(large.len()).unwrap().to_be_bytes());
+        bytes.extend_from_slice(&large);
+        assert!(read(&mut bytes.as_slice()).is_err(), "font bytes too large");
+        let reply = Frame::Font(FontReply::Loaded(FontData {
+            bytes: large,
+            family: None,
+            copyright: None,
+            notice: None,
+            glyphs: Vec::new(),
+        }));
+        assert!(write(&mut Vec::new(), &reply).is_err() || read(&mut wire(&reply).as_slice()).is_err());
+        // A reply of an unknown kind, and a status whose font flag is 2.
+        assert!(read(&mut &[FONT, 0, 0, 0, 1, 7][..]).is_err());
+        assert!(read(&mut &[FONT_LIBRARY, 0, 0, 0, 1, 7][..]).is_err());
+    }
+
+    /// The frames of fonts survive the pipe (REQ-FNT-003, REQ-FNT-008).
+    #[test]
+    fn font_frames_round_trip() {
+        let frames = [
+            Frame::Status(PageStatus {
+                page: 0x100,
+                subcode: 0xFFFF,
+                found: true,
+                status: *b"P100    ",
+                form: false,
+                link: String::new(),
+                text: String::new(),
+                font: Some(("https://fonts.example/f.bdf".into(), [7; SHA256_BYTES])),
+            }),
+            Frame::Notice(Notice::ChannelFont("https://a.example/f.bdf".into(), [9; SHA256_BYTES])),
+            Frame::FontBytes(b"STARTFONT 2.1\n".to_vec()),
+            Frame::Font(FontReply::Loaded(FontData {
+                bytes: b"STARTFONT".to_vec(),
+                family: Some("Family".into()),
+                copyright: None,
+                notice: Some("CC0".into()),
+                glyphs: vec![glyph(0x41, 0x0F0), glyph(0x42, 0xFFF)],
+            })),
+            Frame::Font(FontReply::Failed("line 3: Spacing".into())),
+            Frame::FontLibrary(LibraryReply::Listed(
+                vec![LibraryFont { address: "https://l.example/f.bdf".into(), title: "F".into(), sha256: [1; 32] }],
+                2,
+            )),
+            Frame::FontLibrary(LibraryReply::Failed("TooLarge".into())),
+            Frame::Fonts(DecoderFonts { in_use: vec![glyph(0x41, 1)], fallback: Vec::new() }),
+        ];
+        for frame in &frames {
+            assert_eq!(read(&mut wire(frame).as_slice()).unwrap().as_ref(), Some(frame));
+        }
+    }
 
     #[test]
     fn frames_round_trip_and_bad_frames_are_rejected() {
@@ -800,6 +1179,7 @@ mod tests {
                 form: false,
                 link: "P200".into(),
                 text: "HELLO\n".into(),
+                font: None,
             }),
         ];
         let mut buffer = Vec::new();

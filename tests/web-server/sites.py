@@ -17,6 +17,13 @@ port of 127.0.0.1:
   pair       two channels in two folders of one origin, /one/ and /two/:
              their own cookies, a link and a redirect between them, a
              contents file, and a missing page answered as HTML with 200
+  styled     a channel whose channel.json names its font (REQ-FNT-006), and
+             pages that name their own (REQ-FNT-007): one on another site,
+             one whose checksum is wrong, one at the channel's own origin
+  fontsite   the other site's fonts and a font library, fonts.txt
+             (REQ-FNT-004), which logs the paths asked for at /log
+
+The fonts are patterns made here, one stripe per font, not typefaces.
 
 Standard library only. Prints the ports as one JSON line, then serves until
 it is killed.
@@ -172,6 +179,37 @@ HOSTILE_FRONT = {
 }
 
 
+def pattern_font(family, stripe):
+    """A 12 x 10 font in the form of REQ-FNT-002 whose letters A to E are
+    each the same vertical stripe: a test pattern, not a typeface."""
+    lines = ["STARTFONT 2.1", "FONT -test-" + family, "SIZE 10 75 75", "FONTBOUNDINGBOX 12 10 0 0",
+             "STARTPROPERTIES 4", 'FAMILY_NAME "%s"' % family, 'CHARSET_REGISTRY "ISO10646"',
+             'CHARSET_ENCODING "1"', 'SPACING "C"', "ENDPROPERTIES", "CHARS 5"]
+    for code in range(ord("A"), ord("E") + 1):
+        lines += ["STARTCHAR U+%04X" % code, "ENCODING %d" % code, "SWIDTH 1200 0", "DWIDTH 12 0",
+                  "BBX 12 10 0 0", "BITMAP"] + ["%04X" % (stripe << 4)] * 10 + ["ENDCHAR"]
+    return "\n".join(lines + ["ENDFONT", ""]).encode("ascii")
+
+
+# The stripes: the channel's font on the left third of the cell, the page's
+# on the right, the library's in the middle.
+CHANNEL_FONT = pattern_font("Channel stripe", 0xF00)
+PAGE_FONT = pattern_font("Page stripe", 0x00F)
+LIBRARY_FONT = pattern_font("Library stripe", 0x0F0)
+FONT_LOG = []
+
+
+def sha256(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def styled_page(number, title, font_line=None):
+    lines = ["PN,%s00" % number, "OL,1," + esc(WHITE) + title, "OL,2,ABCDE"]
+    if font_line:
+        lines.append(font_line)
+    return tti(lines)
+
+
 def token_for(session):
     return hmac.new(SECRET, session.encode(), hashlib.sha256).hexdigest()[:32]
 
@@ -278,6 +316,48 @@ class Site(http.server.BaseHTTPRequestHandler):
             ]), plain)
         return self.not_found()
 
+    def site_styled(self, path):
+        plain = "text/plain"
+        fonts = self.ports["fontsite"]
+        if path == "/channel.json":
+            settings = {"name": "Styled", "font": {"address": "channel.bdf", "sha256": sha256(CHANNEL_FONT)}}
+            return self.send(200, json.dumps(settings), "application/json")
+        if path == "/channel.bdf":
+            return self.send(200, CHANNEL_FONT, "application/x-font-bdf")
+        if path == "/own.bdf":
+            return self.send(200, PAGE_FONT, "application/octet-stream")
+        pages = {
+            "100": styled_page("100", "CHANNEL FONT"),
+            "200": styled_page("200", "PAGE FONT ELSEWHERE",
+                               "TF,http://127.0.0.1:%d/page.bdf,%s" % (fonts, sha256(PAGE_FONT))),
+            "300": styled_page("300", "WRONG CHECKSUM",
+                               "TF,http://127.0.0.1:%d/page.bdf,%s" % (fonts, sha256(LIBRARY_FONT))),
+            "400": styled_page("400", "PAGE FONT HERE", "TF,own.bdf,%s" % sha256(PAGE_FONT)),
+        }
+        if path.endswith(".tti") and path[1:-4] in pages:
+            return self.send(200, pages[path[1:-4]], plain)
+        return self.not_found()
+
+    def site_fontsite(self, path):
+        if path == "/log":
+            return self.send(200, "\n".join(FONT_LOG), "text/plain")
+        FONT_LOG.append(path)
+        port = self.ports["fontsite"]
+        if path == "/page.bdf":
+            return self.send(200, PAGE_FONT, "application/x-font-bdf")
+        if path == "/lib/fonts.txt":
+            index = "\n".join([
+                "# A test library (REQ-FNT-004).",
+                "f\tlibrary.bdf\tLibrary stripe\t" + sha256(LIBRARY_FONT),
+                "f\thttp://127.0.0.1:%d/page.bdf\tPage stripe\t%s" % (port, sha256(PAGE_FONT)),
+                "f\t../escape.bdf\tMalformed\t" + sha256(PAGE_FONT),
+                "",
+            ])
+            return self.send(200, index, "text/plain")
+        if path == "/lib/library.bdf":
+            return self.send(200, LIBRARY_FONT, "application/octet-stream")
+        return self.not_found()
+
     def site_redirect(self, path):
         location = "http://127.0.0.1:%d/" % self.ports["weather"]
         return self.send(302, "", "text/plain", [("Location", location)])
@@ -300,7 +380,7 @@ class Site(http.server.BaseHTTPRequestHandler):
 
 
 def main():
-    names = ["news", "weather", "redirect", "hostile", "pair"]
+    names = ["news", "weather", "redirect", "hostile", "pair", "styled", "fontsite"]
     servers = {}
     for name in names:
         handler = type(name, (Site,), {"name": name})

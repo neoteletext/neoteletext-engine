@@ -28,7 +28,7 @@ use crate::consts::{
     ACCEPT_EVENT_STREAM, ACCEPT_PAGES, ALLOWED_LOCAL, CACHE_ENTRIES, CONFIRMED_ORIGINS, CRLF,
     DEFAULT_CONNECT_TIMEOUT_US, DEFAULT_COOKIES_PER_HOST, DEFAULT_COOKIES_TOTAL, DEFAULT_DESCRIPTOR_LIMIT,
     DEFAULT_FETCH_INTERVAL_US, DEFAULT_HEADER_LIMIT, DEFAULT_PAGE_LIMIT, DEFAULT_PUSH_LIMIT,
-    DEFAULT_RESPONSE_TIMEOUT_US, IDENTITY, MAX_HOST_TEXT_LENGTH, MAX_REDIRECTS, MAX_RETRY_AFTER_US,
+    DEFAULT_RESPONSE_TIMEOUT_US, FONT_QUEUE, IDENTITY, MAX_HOST_TEXT_LENGTH, MAX_REDIRECTS, MAX_RETRY_AFTER_US,
     MAX_SUBSCRIBED_PAGES, MAX_URL_LENGTH, MAX_VALIDATOR_LENGTH, MICROSECONDS_PER_SECOND, OPCODE_PONG, OPCODE_TEXT,
     PAGE_QUEUE, PUSH_RETRY_FIRST_US, PUSH_RETRY_MAX_US, SECURE_HOSTS, STATUS_CLIENT_ERROR_FIRST, STATUS_FOUND,
     STATUS_GONE, STATUS_MOVED_PERMANENTLY, STATUS_NOT_FOUND, STATUS_NOT_MODIFIED, STATUS_OK, STATUS_PERMANENT_REDIRECT,
@@ -212,6 +212,19 @@ pub enum Input<'a> {
     /// [`Event::Contents`], [`Event::ContentsMissing`] or
     /// [`Event::ContentsFailed`].
     FetchContents,
+    /// Fetch a font, or a font library's `fonts.txt` when `index` is set
+    /// (REQ-FNT-003, REQ-FNT-004), at this absolute address, answered by
+    /// [`Event::Font`] or [`Event::FontFailed`]. No service need be open.
+    /// The request carries no cookies and none are stored from its answer;
+    /// whether the address may be fetched at all is the caller's decision
+    /// (REQ-WEB-014), and the local-network and downgrade rules apply as to
+    /// every request (REQ-SEC-006, REQ-SEC-007).
+    FetchFont {
+        /// The address.
+        address: &'a str,
+        /// A library index rather than a font.
+        index: bool,
+    },
     /// Follow a link to a page of another service named in the current
     /// descriptor (Appendix E). The request is a cross-service navigation
     /// for cookies (REQ-WEB-006).
@@ -467,6 +480,23 @@ pub enum Event<'a> {
     ContentsMissing,
     /// The channel's `contents.txt` could not be fetched or used.
     ContentsFailed(Failure),
+    /// A font or a library index, unchecked: the caller reads it in a
+    /// confined process (REQ-FNT-003).
+    Font {
+        /// A library index rather than a font.
+        index: bool,
+        /// The address it came from, after any redirects.
+        url: &'a str,
+        /// The bytes.
+        body: &'a [u8],
+    },
+    /// A font or a library index could not be fetched.
+    FontFailed {
+        /// A library index rather than a font.
+        index: bool,
+        /// Why.
+        failure: Failure,
+    },
     /// A `Set-Cookie` header was ignored.
     CookieRejected(CookieRejected),
     /// Not every matching cookie fitted in a request.
@@ -553,6 +583,7 @@ enum Purpose {
     Page { page: PageAddress, subcode: Option<SubCode>, file: PageFile },
     Form,
     Contents,
+    Font { index: bool },
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -684,6 +715,8 @@ pub struct UserAgent<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES
     front_door: Option<Url>,
     /// The channel's contents file to fetch.
     contents: Option<Url>,
+    /// Fonts and library indexes to fetch, oldest first.
+    fonts: [Option<(Url, bool)>; FONT_QUEUE],
     navigation_pending: bool,
     secure_hosts: [Option<TextBuf<MAX_HOST_TEXT_LENGTH>>; SECURE_HOSTS],
     fetch: FetchConnection,
@@ -780,6 +813,7 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             second_try: None,
             front_door: None,
             contents: None,
+            fonts: [None; FONT_QUEUE],
             navigation_pending: false,
             secure_hosts: [None; SECURE_HOSTS],
             fetch: FetchConnection {
@@ -928,6 +962,7 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
                 Err(_) => event(sink, Event::DescriptorFailed(Failure::Address(UrlError::Path))),
             },
             Input::FetchContents => self.fetch_contents(sink),
+            Input::FetchFont { address, index } => self.fetch_font(address, index, sink),
             Input::FollowLink { service, page, subcode } => self.follow_link(service, page, subcode, sink),
             Input::FetchPage { page, subcode } => self.enqueue(page, subcode, sink),
             Input::Subscribe(subscription) => self.subscribe(now, subscription, sink),
@@ -989,6 +1024,25 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             Some(Err(error)) => event(sink, Event::ContentsFailed(Failure::Address(error))),
             None => event(sink, Event::ContentsFailed(Failure::NoService)),
         }
+    }
+
+    fn fetch_font(&mut self, address: &str, index: bool, sink: &mut Sink<'_>) {
+        let url = match Url::parse(address) {
+            Ok(url) if !url.scheme().is_websocket() => url,
+            Ok(_) => return event(sink, Event::FontFailed { index, failure: Failure::Address(UrlError::Scheme) }),
+            Err(error) => return event(sink, Event::FontFailed { index, failure: Failure::Address(error) }),
+        };
+        match self.fonts.iter_mut().find(|slot| slot.is_none()) {
+            Some(slot) => *slot = Some((url, index)),
+            None => event(sink, Event::FontFailed { index, failure: Failure::QueueFull }),
+        }
+    }
+
+    /// The oldest font or index waiting, keeping the rest in order.
+    fn take_font(&mut self) -> Option<(Url, bool)> {
+        let first = self.fonts.first_mut()?.take()?;
+        self.fonts.rotate_left(1);
+        Some(first)
     }
 
     fn follow_link(&mut self, service: &str, page: PageAddress, subcode: Option<SubCode>, sink: &mut Sink<'_>) {
@@ -1107,6 +1161,9 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
                 }
             } else if let Some(url) = self.contents.take() {
                 (Purpose::Contents, url, Method::Get, Site::SameService)
+            } else if let Some((url, index)) = self.take_font() {
+                // The site is irrelevant: a font request carries no cookies.
+                (Purpose::Font { index }, url, Method::Get, Site::SameService)
             } else if cfg!(feature = "forms") && self.form.phase == FormPhase::Queued {
                 let Some(url) = self.form.target else {
                     self.form.phase = FormPhase::Idle;
@@ -1231,7 +1288,12 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             writer.put(CRLF)?;
         }
         let path = exchange.url.path();
-        if write_cookie_header(&mut self.jar, &mut writer, &exchange.url, path, exchange.site, seconds, body_len)? {
+        // REQ-FNT-003, REQ-WEB-014: fonts and library indexes go without
+        // cookies.
+        let cookies = !matches!(exchange.purpose, Purpose::Font { .. });
+        if cookies
+            && write_cookie_header(&mut self.jar, &mut writer, &exchange.url, path, exchange.site, seconds, body_len)?
+        {
             event(sink, Event::CookiesTruncated);
         }
         writer.put(CRLF)?;
@@ -1396,7 +1458,12 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
         let secure = exchange.url.is_secure();
         // A channel's cookies stay in its folder (REQ-WEB-026).
         let scope = channel.as_ref().map(Url::path);
+        // Nothing a font's answer sets is kept (REQ-FNT-003).
+        let keep_cookies = !matches!(exchange.purpose, Purpose::Font { .. });
         let parsed = http::parse_head(head_bytes, &mut |value| {
+            if !keep_cookies {
+                return;
+            }
             let stored = if cfg!(feature = "cookies") {
                 jar.store_within(value, host, path, scope, secure, seconds, calendar)
             } else {
@@ -1423,6 +1490,8 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             // than the page limit publishes page files instead.
             Purpose::Page { .. } | Purpose::Form | Purpose::FrontDoor => self.config.page_limit,
             Purpose::Contents => crate::contents::MAX_BYTES,
+            Purpose::Font { index: false } => neoteletext_core::consts::FONT_MAX_FILE_BYTES,
+            Purpose::Font { index: true } => crate::fonts::MAX_BYTES,
         }
         .min(self.buffers.body.len());
         match BodyDecoder::new(head.framing, limit) {
@@ -1460,6 +1529,7 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             Purpose::Descriptor { .. } => event(sink, Event::DescriptorFailed(failure)),
             Purpose::FrontDoor => event(sink, Event::BundleFailed(failure)),
             Purpose::Contents => event(sink, Event::ContentsFailed(failure)),
+            Purpose::Font { index } => event(sink, Event::FontFailed { index, failure }),
             Purpose::Page { page, subcode, .. } => event(sink, Event::FetchFailed { page, subcode, failure }),
             Purpose::Form => {
                 self.form.phase = FormPhase::Idle;
@@ -1504,7 +1574,7 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
         let secure = exchange.url.is_secure();
         match exchange.purpose {
             // complete_channel handled every one of these.
-            Purpose::FrontDoor | Purpose::Contents => {}
+            Purpose::FrontDoor | Purpose::Contents | Purpose::Font { .. } => {}
             Purpose::Descriptor { via_link, channel } => {
                 // A channel's settings may come as any type REQ-WEB-027
                 // accepts for them; a service's descriptor only as JSON.
@@ -1670,6 +1740,20 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
                 }
                 true
             }
+            Purpose::Font { index } => {
+                // A font may come as BDF's own type or a generic one; an
+                // index is text, like `contents.txt`.
+                let media_accepted = matches!(head.media, MediaType::TextPlain | MediaType::OctetStream)
+                    || !index && head.media == MediaType::FontBdf;
+                if status != STATUS_OK {
+                    event(sink, Event::FontFailed { index, failure: Failure::Status(status) });
+                } else if !media_accepted {
+                    event(sink, Event::FontFailed { index, failure: Failure::MediaType });
+                } else {
+                    event(sink, Event::Font { index, url: exchange.url.as_str(), body });
+                }
+                true
+            }
             Purpose::Contents => {
                 if missing {
                     event(sink, Event::ContentsMissing);
@@ -1729,6 +1813,7 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
         // it (REQ-WEB-021). Forms keep their own rule below.
         if self.config.redirects_within_channel
             && exchange.purpose != Purpose::Form
+            && !matches!(exchange.purpose, Purpose::Font { .. })
             && !self.redirect_keeps_channel(&exchange.url, &next)
         {
             event(sink, Event::RedirectToOtherChannel { location: next.as_str() });

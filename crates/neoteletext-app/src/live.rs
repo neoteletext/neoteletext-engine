@@ -265,7 +265,11 @@ impl Source for Live {
                 | Frame::Click(..)
                 | Frame::Screen(_)
                 | Frame::Status(_)
-                | Frame::Visit(_) => {}
+                | Frame::Visit(_)
+                | Frame::FontBytes(_)
+                | Frame::Font(_)
+                | Frame::FontLibrary(_)
+                | Frame::Fonts(_) => {}
             }
         }
         session.tick(now);

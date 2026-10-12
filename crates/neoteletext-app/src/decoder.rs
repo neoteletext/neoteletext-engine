@@ -42,6 +42,13 @@ const TICK: Duration = Duration::from_millis(40);
 const PROMPT_COLUMNS: usize = COLUMNS / 4;
 /// Digits in a page number.
 const PAGE_DIGITS: usize = 3;
+/// A font table as the renderer takes it; an empty table is no font. The
+/// table was checked when its frame was read, and one that fails again is
+/// not used (REQ-FNT-008).
+fn loaded(table: &[neoteletext_core::types::FontGlyph]) -> Option<neoteletext_core::glyphs::LoadedFont<'_>> {
+    if table.is_empty() { None } else { neoteletext_core::glyphs::LoadedFont::new(table).ok() }
+}
+
 /// The page number of a magazine's Organization Table, xFE (clause 10.6).
 const MOT_PAGE: u8 = neoteletext_core::consts::PAGE_MOT;
 /// The row of the Fastext prompts.
@@ -61,7 +68,7 @@ pub fn run(no_sandbox: bool, sandboxed_by_parent: bool, glyphs: &'static GlyphSe
         while let Ok(Some(frame)) = pipe::read(&mut input) {
             let delivered = match frame {
                 Frame::Packet(_) | Frame::Tti(_) | Frame::T42(_) | Frame::Notice(_) => fetched.send(frame).is_ok(),
-                Frame::Input(_) | Frame::Show(..) | Frame::Click(..) => commands.send(frame).is_ok(),
+                Frame::Input(_) | Frame::Show(..) | Frame::Click(..) | Frame::Fonts(_) => commands.send(frame).is_ok(),
                 // Frames only a decoder sends are never taken in.
                 _ => true,
             };
@@ -131,6 +138,9 @@ pub struct Engine {
     prompt: Option<[u8; COLUMNS]>,
     grid: Grid,
     glyphs: &'static GlyphSet<'static>,
+    /// The fonts the interface chose for the page (REQ-FNT-005), checked
+    /// for shape when the frame was read (REQ-FNT-008).
+    fonts: pipe::DecoderFonts,
     unrecorded: Option<EnhancementReport>,
     last_screen: Option<Screen>,
     last_status: Option<PageStatus>,
@@ -241,6 +251,7 @@ impl Engine {
             prompt: None,
             grid: Grid::EMPTY,
             glyphs,
+            fonts: pipe::DecoderFonts::default(),
             unrecorded: None,
             last_screen: None,
             last_status: None,
@@ -272,6 +283,10 @@ impl Engine {
                 }
             }
             Frame::Click(row, column) => self.click(usize::from(row), usize::from(column), session, source, now),
+            Frame::Fonts(ref fonts) => {
+                self.fonts = fonts.clone();
+                self.last_screen = None;
+            }
             _ => {}
         }
     }
@@ -724,11 +739,12 @@ impl Engine {
         let reveal = self.viewer.reveal(now);
         let options = RenderOptions::for_level(config, reveal, FlashPhase::at(now));
         let visible = options.colour != ColourMode::Palette || flash_visible(now, config);
+        let glyphs = self.glyphs.with_fonts(loaded(&self.fonts.in_use), loaded(&self.fonts.fallback));
         let raster = present::raster(
             &self.grid,
             options,
             visible,
-            self.glyphs,
+            &glyphs,
             Scale { x: 1, y: 1, aspect: false },
             Rgba::opaque(0, 0, 0),
         );
@@ -761,6 +777,7 @@ impl Engine {
             form: self.form.as_ref().is_some_and(|form| form.focused),
             link: self.caught_destination(),
             text,
+            font: self.last_extras.as_ref().and_then(|extras| extras.font.clone()),
         }
     }
 

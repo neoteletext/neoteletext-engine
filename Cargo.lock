@@ -2021,6 +2021,7 @@ dependencies = [
  "neoteletext-browser",
  "neoteletext-core",
  "neoteletext-image",
+ "neoteletext-web",
 ]
 
 [[package]]

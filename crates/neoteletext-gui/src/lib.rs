@@ -7,6 +7,7 @@
 //! starts both for each tab, confined (`helpers`).
 
 pub mod app;
+pub mod fonts;
 pub mod helpers;
 pub mod picture;
 pub mod storage;

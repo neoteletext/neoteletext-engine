@@ -9,6 +9,7 @@
 //! of trust lives here, once, so that every front end behaves alike.
 
 pub mod contents_view;
+pub mod fonts;
 pub mod location;
 pub mod navigation;
 pub mod pages;

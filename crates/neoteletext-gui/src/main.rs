@@ -7,7 +7,10 @@
 
 use eframe::egui;
 use neoteletext_gui::app::BrowserApp;
-use neoteletext_gui::helpers::{ALLOW_LOCAL, DECODE_COMMAND, FETCH_COMMAND, NO_SANDBOX, Options, SANDBOXED_BY_PARENT};
+use neoteletext_gui::helpers::{
+    ALLOW_LOCAL, DECODE_COMMAND, FETCH_COMMAND, FONT_FETCH_COMMAND, FONT_READ_COMMAND, INDEX_FLAG, NO_SANDBOX, Options,
+    SANDBOXED_BY_PARENT,
+};
 use neoteletext_gui::storage::Storage;
 use std::net::IpAddr;
 use std::path::PathBuf;
@@ -121,6 +124,17 @@ fn main() -> ExitCode {
             sandbox_test(arguments.rest.get(1).map(String::as_str));
             Ok(())
         }
+        Some(FONT_FETCH_COMMAND) => match arguments.rest.get(1) {
+            Some(address) => neoteletext_app::fetch::run_font(
+                address,
+                arguments.rest.iter().any(|argument| argument == INDEX_FLAG),
+                arguments.no_sandbox,
+                arguments.sandboxed_by_parent,
+                &arguments.options.allow_local,
+            ),
+            None => Err((neoteletext_app::exit::USAGE, "font-fetch needs an address".to_string())),
+        },
+        Some(FONT_READ_COMMAND) => neoteletext_app::font::read_run(arguments.no_sandbox, arguments.sandboxed_by_parent),
         Some(DECODE_COMMAND) => neoteletext_app::decoder::run(
             arguments.no_sandbox,
             arguments.sandboxed_by_parent,

@@ -79,33 +79,121 @@ pub fn prune_history(mut visits: Vec<Saved>, now: u64) -> Vec<Saved> {
     visits
 }
 
-/// The settings kept between runs.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+/// The settings kept between runs, for every tab (REQ-BRW-007).
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Settings {
     /// Stretch pages to the 4:3 picture of a television (REQ-RND-004).
     pub aspect: bool,
+    /// The font the user chose (REQ-FNT-005), or none: Bedstead.
+    pub font: Option<UserFont>,
+    /// "Always use my font": the user's font, or Bedstead, whatever the
+    /// channel or page names (REQ-FNT-005).
+    pub always_my_font: bool,
+    /// Allow fonts from other sites (REQ-FNT-003); allowed by default.
+    pub fonts_from_other_sites: bool,
+    /// The font libraries the user added, by their folders' addresses
+    /// (REQ-FNT-004), at most [`MAX_LIBRARIES`].
+    pub libraries: Vec<String>,
 }
 
+impl Default for Settings {
+    fn default() -> Self {
+        Self { aspect: false, font: None, always_my_font: false, fonts_from_other_sites: true, libraries: Vec::new() }
+    }
+}
+
+/// The font the user chose: its SHA-256, which finds it in the cache, where
+/// it came from, by address or local file, and its title.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct UserFont {
+    /// Its SHA-256, as 64 hexadecimal digits.
+    pub sha256: String,
+    /// Where it came from: an address, or a local file's path.
+    pub address: String,
+    /// Its title: the library's, or its name.
+    pub title: String,
+    /// The user named it by address alone, so it is checked daily
+    /// (REQ-FNT-009).
+    pub by_address: bool,
+}
+
+/// The most libraries kept.
+pub const MAX_LIBRARIES: usize = 64;
 const ASPECT_KEY: &str = "aspect";
+const FONT_KEY: &str = "font";
+const ALWAYS_KEY: &str = "always_my_font";
+const OTHER_SITES_KEY: &str = "fonts_from_other_sites";
+const LIBRARY_KEY: &str = "library";
+/// SHA-256 in hexadecimal.
+const SHA256_DIGITS: usize = 64;
 
 impl Settings {
     /// The settings as `key=value` lines.
     #[must_use]
     pub fn write(&self) -> String {
-        format!("{ASPECT_KEY}={}\n", u8::from(self.aspect))
+        let mut out = format!(
+            "{ASPECT_KEY}={}\n{ALWAYS_KEY}={}\n{OTHER_SITES_KEY}={}\n",
+            u8::from(self.aspect),
+            u8::from(self.always_my_font),
+            u8::from(self.fonts_from_other_sites)
+        );
+        if let Some(font) = &self.font {
+            let _ = writeln!(
+                out,
+                "{FONT_KEY}={}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}",
+                font.sha256,
+                u8::from(font.by_address),
+                field(&font.address),
+                field(&font.title)
+            );
+        }
+        for library in self.libraries.iter().take(MAX_LIBRARIES) {
+            let _ = writeln!(out, "{LIBRARY_KEY}={}", field(library));
+        }
+        out
     }
 
     /// Reads settings; unknown keys and bad values keep the defaults.
     #[must_use]
     pub fn read(text: &str) -> Self {
         let mut settings = Self::default();
-        for line in text.lines().take(MAX_RECORDS) {
-            if let Some((ASPECT_KEY, value)) = line.split_once('=') {
-                settings.aspect = value.trim() == "1";
+        for line in text.lines().filter(|line| line.len() <= MAX_LINE).take(MAX_RECORDS) {
+            match line.split_once('=') {
+                Some((ASPECT_KEY, value)) => settings.aspect = value.trim() == "1",
+                Some((ALWAYS_KEY, value)) => settings.always_my_font = value.trim() == "1",
+                Some((OTHER_SITES_KEY, value)) => settings.fonts_from_other_sites = value.trim() != "0",
+                Some((FONT_KEY, value)) => settings.font = user_font(value),
+                Some((LIBRARY_KEY, value)) if !value.is_empty() && settings.libraries.len() < MAX_LIBRARIES => {
+                    settings.libraries.push(value.to_string());
+                }
+                _ => {}
             }
         }
         settings
     }
+}
+
+fn user_font(value: &str) -> Option<UserFont> {
+    let mut fields = value.split(SEPARATOR);
+    let (Some(sha256), Some(by_address), Some(address), Some(title), None) =
+        (fields.next(), fields.next(), fields.next(), fields.next(), fields.next())
+    else {
+        return None;
+    };
+    if sha256.len() != SHA256_DIGITS || !sha256.bytes().all(|byte| byte.is_ascii_hexdigit()) || address.is_empty() {
+        return None;
+    }
+    let by_address = match by_address {
+        "0" => false,
+        "1" => true,
+        _ => return None,
+    };
+    Some(UserFont {
+        sha256: sha256.to_ascii_lowercase(),
+        address: address.to_string(),
+        title: title.to_string(),
+        by_address,
+    })
 }
 
 #[cfg(test)]
@@ -152,9 +240,35 @@ mod tests {
 
     #[test]
     fn settings_round_trip_and_ignore_nonsense() {
-        let settings = Settings { aspect: true };
-        assert_eq!(Settings::read(&settings.write()), settings);
+        let settings = Settings {
+            aspect: true,
+            font: Some(UserFont {
+                sha256: "5ee6246b7f9bd197f47ce0741ea799a55ac08af775869a08c085803e02a3f14d".into(),
+                address: "https://fonts.example/a.bdf".into(),
+                title: "A\tfont".into(),
+                by_address: true,
+            }),
+            always_my_font: true,
+            fonts_from_other_sites: false,
+            libraries: vec!["https://lib.example/teletext/".into(), "https://other.example/".into()],
+        };
+        let again = Settings::read(&settings.write());
+        assert_eq!(again.font.as_ref().map(|font| font.title.as_str()), Some("A font"), "no tab in a field");
+        assert_eq!(
+            Settings {
+                font: settings.font.clone().map(|font| UserFont { title: "A font".into(), ..font }),
+                ..settings.clone()
+            },
+            again
+        );
         // The retired glyph choice is an unknown key now (decision E.72).
         assert_eq!(Settings::read("glyphs=2\naspect=yes\nother=1"), Settings::default());
+        assert!(Settings::default().fonts_from_other_sites, "allowed by default (REQ-BRW-007)");
+        assert_eq!(Settings::read("font=abc\t1\thttps://x/\tX").font, None, "a bad checksum");
+        assert_eq!(
+            Settings::read("font=5ee6246b7f9bd197f47ce0741ea799a55ac08af775869a08c085803e02a3f14d\t2\thttps://x/\tX")
+                .font,
+            None
+        );
     }
 }

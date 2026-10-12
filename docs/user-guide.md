@@ -218,7 +218,9 @@ Pages are drawn in Bedstead 3.261, the one bundled font (REQ-FNT-001, decision E
 
 ## Fonts
 
-The browser draws pages in Bedstead unless the user, the channel or the page names another font. Every other font is a BDF file of 12 × 10 cells, encoded in Unicode, with at most 1,024 characters (REQ-FNT-002); anything else is refused with the line at fault.
+The browser draws pages in Bedstead unless the user, the channel or the page names another font. A channel names its font in `channel.json` (`"font": {"address": "teletext.bdf", "sha256": "…"}`) and a page with a TTI line `TF,address,sha256`; the page's font wins over the channel's, the channel's over yours, and yours over Bedstead, unless you tick "Always use my font". A character the font lacks comes from your font, then Bedstead. Row 0, the tuning screen and the browser's own pages are always in Bedstead, and the status line names the font in use and who chose it.
+
+The Fonts panel (Menu, Fonts) chooses your font by address, from a local file, or from a font library: a folder with a `fonts.txt` index listing fonts by title, each with its SHA-256 (`f`, the file name or address, the title and the checksum, separated by tabs). It also allows or refuses fonts from other sites, which a channel or page may name only with their checksum, and lists the cached fonts (at most 4 MB, 256 KB each), which you can keep, remove or clear. Fonts are read only in confined helper processes. Every other font is a BDF file of 12 × 10 cells, encoded in Unicode, with at most 1,024 characters (REQ-FNT-002); anything else is refused with the line at fault.
 
 `ttx font convert INPUT OUTPUT` makes that form from fonts of other sizes, only where nothing is lost:
 

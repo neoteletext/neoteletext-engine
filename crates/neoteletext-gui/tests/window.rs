@@ -10,6 +10,7 @@ mod common;
 use common::sites;
 use eframe::egui::{Event, Key};
 use egui_kittest::Harness;
+use egui_kittest::kittest::Queryable as _;
 use neoteletext_gui::app::BrowserApp;
 use neoteletext_gui::helpers::Options;
 use neoteletext_gui::storage::Storage;
@@ -112,5 +113,57 @@ fn the_window_browses_with_the_keyboard() {
     harness.run_steps(2);
     assert_eq!(harness.state().active_tab().view, View::Keys);
     snapshot(&mut harness, "5-keys");
+    let _ = std::fs::remove_dir_all(data);
+}
+
+/// REQ-BRW-007, REQ-FNT-004, REQ-FNT-005: the Fonts settings chosen with
+/// the pointer and the keyboard: a library added and a font chosen from it,
+/// "always use my font", fonts from other sites, and the cache cleared;
+/// each saved at once, and the status line naming the font and who chose
+/// it.
+#[test]
+fn the_font_settings() {
+    let Some(sites) = sites() else { return };
+    let data = data_directory("fonts");
+    let mut harness = harness(vec![sites.address("styled", "/")], data.clone());
+    harness.run_steps(3);
+    harness.key_press(Key::Enter);
+    wait(&mut harness, "the channel's font", |app| app.font_label() == "Channel stripe (the channel's font)");
+    harness.get_by_label("Menu").click();
+    harness.run_steps(2);
+    harness.get_by_label("Fonts").click();
+    harness.run_steps(2);
+    let library = sites.address("fontsite", "/lib/");
+    let field = harness.get_by_label("A library's address");
+    field.click();
+    field.type_text(&library);
+    harness.run_steps(2);
+    harness.get_by_label("Add library").click();
+    wait(&mut harness, "the library's listing", |app| app.settings().libraries == [library.clone()]);
+    let start = Instant::now();
+    while harness.query_by_label("Library stripe").is_none() && start.elapsed() < PATIENCE {
+        harness.step();
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    harness.get_by_label("Library stripe").click();
+    wait(&mut harness, "the user's font", |app| {
+        app.settings().font.as_ref().is_some_and(|font| font.title == "Library stripe")
+    });
+    let saved = std::fs::read_to_string(data.join("settings.txt")).unwrap();
+    assert!(saved.contains(&format!("library={library}")) && saved.contains("Library stripe"), "{saved}");
+    // The channel's font still wins until the user insists.
+    assert_eq!(harness.state().font_label(), "Channel stripe (the channel's font)");
+    harness.get_by_label("Always use my font").click();
+    wait(&mut harness, "the user's font in use", |app| app.font_label() == "Library stripe (your font)");
+    snapshot(&mut harness, "6-fonts");
+    harness.get_by_label("Allow fonts from other sites").click();
+    harness.run_steps(2);
+    let saved = std::fs::read_to_string(data.join("settings.txt")).unwrap();
+    assert!(saved.contains("always_my_font=1") && saved.contains("fonts_from_other_sites=0"), "{saved}");
+    let index = std::fs::read_to_string(data.join("fonts").join("index.tsv")).unwrap();
+    assert!(index.contains("Library stripe") && index.contains("Channel stripe"), "{index}");
+    harness.get_by_label("Remove every cached font").click();
+    harness.run_steps(2);
+    assert_eq!(std::fs::read_to_string(data.join("fonts").join("index.tsv")).unwrap(), "");
     let _ = std::fs::remove_dir_all(data);
 }

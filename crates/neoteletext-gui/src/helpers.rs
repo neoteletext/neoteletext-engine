@@ -26,6 +26,14 @@ pub const SANDBOXED_BY_PARENT: &str = "--sandboxed-by-parent";
 pub const NO_SANDBOX: &str = "--no-sandbox";
 /// Allows one local-network address (REQ-SEC-006).
 pub const ALLOW_LOCAL: &str = "--allow-local";
+/// The hidden command that fetches one font or library index
+/// (REQ-FNT-003), confined as the fetcher is.
+pub const FONT_FETCH_COMMAND: &str = "font-fetch";
+/// The hidden command that reads one font's bytes (REQ-FNT-009), confined
+/// as a decoder is.
+pub const FONT_READ_COMMAND: &str = "font-read";
+/// With [`FONT_FETCH_COMMAND`]: the address is a library's index.
+pub const INDEX_FLAG: &str = "--index";
 
 /// How helpers are started.
 #[derive(Clone, Debug)]
@@ -108,6 +116,70 @@ fn start(
         wake();
     });
     Ok(Process { child, input })
+}
+
+/// What a font helper is asked to do.
+#[derive(Clone, Debug)]
+pub enum FontJob {
+    /// Fetch a font, or a library's index, at this address.
+    Fetch {
+        /// The address.
+        address: String,
+        /// A library's index rather than a font.
+        index: bool,
+    },
+    /// Read these bytes as a font: a cached file or a local one.
+    Read(Vec<u8>),
+}
+
+/// Starts a one-shot font helper (REQ-FNT-003): the fetcher's confinement
+/// to fetch, a decoder's to read. Its one answer, already checked by the
+/// strict frame parser, arrives on the returned channel, or `None` when it
+/// ended without one; `wake` is called either way. The interface never
+/// parses a font.
+pub fn font_helper(options: &Options, job: FontJob, wake: Wake) -> Result<Receiver<Option<Frame>>, String> {
+    let (helper, arguments, input) = match job {
+        FontJob::Fetch { address, index } => {
+            let mut arguments = vec![FONT_FETCH_COMMAND.to_string(), address];
+            if index {
+                arguments.push(INDEX_FLAG.to_string());
+            }
+            for local in &options.allow_local {
+                arguments.push(ALLOW_LOCAL.to_string());
+                arguments.push(local.to_string());
+            }
+            (Helper::Fetcher, arguments, None)
+        }
+        FontJob::Read(bytes) => (Helper::Decoder, vec![FONT_READ_COMMAND.to_string()], Some(bytes)),
+    };
+    let (mut command, by_parent) = helper_command(&options.program, helper)?;
+    command.args(&arguments);
+    if by_parent {
+        command.arg(SANDBOXED_BY_PARENT);
+    }
+    if options.no_sandbox {
+        command.arg(NO_SANDBOX);
+    }
+    command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::inherit());
+    let mut child = command.spawn().map_err(|error| format!("cannot start a font helper: {error}"))?;
+    let mut stdin = child.stdin.take().ok_or("no pipe to the font helper")?;
+    let mut output = child.stdout.take().ok_or("no pipe from the font helper")?;
+    let (sender, receiver) = mpsc::channel();
+    std::thread::spawn(move || {
+        if let Some(bytes) = input
+            && pipe::write(&mut stdin, &Frame::FontBytes(bytes)).is_err()
+        {
+            let _ = sender.send(None);
+        } else {
+            drop(stdin);
+            let answer = pipe::read(&mut output).ok().flatten();
+            let _ = sender.send(answer);
+        }
+        let _ = child.kill();
+        let _ = child.wait();
+        wake();
+    });
+    Ok(receiver)
 }
 
 impl Helpers {

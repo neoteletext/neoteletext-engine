@@ -40,6 +40,9 @@ pub struct PageExtras {
     pub number_links: Vec<(PageAddress, Destination)>,
     /// `LT` lines: runs of text that are links.
     pub text_links: Vec<TextLinkExtras>,
+    /// The page's font (REQ-FNT-007): its address, resolved against the
+    /// page's own, and its SHA-256.
+    pub font: Option<(String, [u8; crate::pipe::SHA256_BYTES])>,
 }
 
 /// The coloured keys and Index.
@@ -146,6 +149,7 @@ pub fn from_page(page: &PageFile, url: &str, services: &[String]) -> PageExtras 
         key_addresses: Default::default(),
         number_links: Vec::new(),
         text_links: Vec::new(),
+        font: page_font(page, url),
     };
     if page.uses_link_lines() && page.links_valid {
         let mut links = PageLinks::default();
@@ -211,6 +215,26 @@ pub fn from_page(page: &PageFile, url: &str, services: &[String]) -> PageExtras 
         extras.form = form_spec(&page.form);
     }
     extras
+}
+
+/// The font a page names (REQ-FNT-007), its address resolved against the
+/// page's own address by the strict parser. A null font, or an address that
+/// does not resolve, names none: the page is drawn in the font that applies
+/// without it.
+#[cfg(feature = "live")]
+fn page_font(page: &PageFile, url: &str) -> Option<(String, [u8; crate::pipe::SHA256_BYTES])> {
+    let page::PageFont::Named { address, sha256 } = &page.font else { return None };
+    let base = neoteletext_web::url::Url::parse(url).ok()?;
+    let address = std::str::from_utf8(address.as_bytes()).ok()?;
+    let resolved = base.join(address).ok()?;
+    let digest = neoteletext_web::sha256::parse_hex(sha256)?;
+    Some((resolved.as_str().to_string(), digest))
+}
+
+/// Without the web module there are no web pages, and so no page fonts.
+#[cfg(not(feature = "live"))]
+fn page_font(_page: &PageFile, _url: &str) -> Option<(String, [u8; crate::pipe::SHA256_BYTES])> {
+    None
 }
 
 /// Places the "»" marks of a receiver-drawn row 24 as Latin G2 characters.

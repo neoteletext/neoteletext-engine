@@ -207,6 +207,9 @@ pub mod media {
     pub const TEXT_PLAIN: &[u8] = b"text/plain";
     /// Accepted for interoperability; the format is detected by the caller.
     pub const OCTET_STREAM: &[u8] = b"application/octet-stream";
+    /// The type common server configurations give `.bdf` files, accepted
+    /// for fonts only (REQ-FNT-003).
+    pub const FONT_BDF: &[u8] = b"application/x-font-bdf";
     /// The service descriptor (RFC 8259 section 11).
     pub const JSON: &[u8] = b"application/json";
     /// A server-sent event stream.
@@ -459,6 +462,8 @@ pub const DEFAULT_RESPONSE_TIMEOUT_US: u64 = 30 * MICROSECONDS_PER_SECOND;
 pub const MAX_RETRY_AFTER_US: u64 = 600 * MICROSECONDS_PER_SECOND;
 /// Page requests waiting for the fetch connection.
 pub const PAGE_QUEUE: usize = 16;
+/// Fonts and library indexes waiting to be fetched (REQ-FNT-003).
+pub const FONT_QUEUE: usize = 4;
 /// Pages whose validators and freshness are remembered (REQ-WEB-004).
 pub const CACHE_ENTRIES: usize = 32;
 /// Hosts remembered as reached over HTTPS this session (REQ-SEC-007).

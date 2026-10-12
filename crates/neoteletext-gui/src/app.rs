@@ -8,6 +8,9 @@
 //! outside the page area, and row 0 inside it is drawn from the
 //! interface's own knowledge (`picture`).
 
+mod font_settings;
+
+use crate::fonts::Fonts;
 use crate::helpers::{Options, Wake};
 use crate::now_seconds;
 use crate::picture::{self, Picture};
@@ -57,6 +60,7 @@ enum Side {
     None,
     Bookmarks,
     History,
+    Fonts,
 }
 
 /// The browser window's state.
@@ -82,6 +86,10 @@ pub struct BrowserApp {
     shown: Option<(u64, u64, String, usize)>,
     picture: Option<Picture>,
     title: String,
+    /// The fonts loaded and cached (area FNT).
+    fonts: Fonts,
+    /// The Fonts panel's typing and waiting.
+    font_panel: font_settings::FontPanel,
 }
 
 /// Which of `cells` equal cells across `extent` points `offset` falls in.
@@ -106,6 +114,7 @@ impl BrowserApp {
     /// screens, and then the addresses given on the command line.
     #[must_use]
     pub fn new(context: &Context, options: Options, storage: Storage, addresses: &[String]) -> Self {
+        let fonts = Fonts::new(&storage);
         let wake_context = context.clone();
         let wake: Wake = std::sync::Arc::new(move || wake_context.request_repaint());
         let mut app = Self {
@@ -129,6 +138,8 @@ impl BrowserApp {
             shown: None,
             picture: None,
             title: String::new(),
+            fonts,
+            font_panel: font_settings::FontPanel::default(),
         };
         for saved in app.storage.tabs() {
             app.new_tab();
@@ -220,6 +231,8 @@ impl BrowserApp {
     }
 
     fn reload(&mut self) {
+        // Fonts that could not be loaded are tried again.
+        self.fonts.forget_failures();
         let tab = self.tab_mut();
         match (&tab.view, tab.location.clone()) {
             (View::Failed(..), Some(location)) => {
@@ -658,6 +671,9 @@ impl BrowserApp {
         if ui.button("History").clicked() {
             self.side = if self.side == Side::History { Side::None } else { Side::History };
         }
+        if ui.button("Fonts").clicked() {
+            self.side = if self.side == Side::Fonts { Side::None } else { Side::Fonts };
+        }
         ui.separator();
         if ui.button("Copy the page's text (Cmd-Shift-C)").clicked() {
             self.copy_text(ui.ctx());
@@ -736,8 +752,9 @@ impl BrowserApp {
         ui.horizontal(|ui| {
             ui.label(state);
             ui.label(notice);
-            // REQ-FNT-005: the font drawing the page.
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| ui.label("Bedstead"));
+            // REQ-FNT-005: the font drawing the page, and who chose it.
+            let font = self.font_label();
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| ui.label(font));
         });
     }
 
@@ -773,6 +790,9 @@ impl BrowserApp {
                         }
                     }
                 });
+            }
+            Side::Fonts => {
+                egui::ScrollArea::vertical().id_salt("fonts").show(ui, |ui| self.font_panel(ui));
             }
             Side::None => {}
         }
@@ -862,6 +882,7 @@ impl eframe::App for BrowserApp {
         for tab in &mut self.tabs {
             tab.poll();
         }
+        self.update_fonts(now_seconds());
         self.record_visits();
         self.dropped_files(context);
         self.keys(context);

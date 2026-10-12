@@ -12,12 +12,14 @@ name = "neoteletext"
 path = "src/main.rs"
 
 [dependencies]
-# Every level, both glyph sets for the comparison switch (decision E.62).
+# Every level, with Bedstead, the bundled font (decision E.72).
 neoteletext-core = { workspace = true, features = ["default", "bedstead"] }
 # The fetcher and decoder processes run this program again; live feeds
 # and web sites need the `live` area.
 neoteletext-app = { workspace = true, features = ["live"] }
 neoteletext-browser.workspace = true
+# SHA-256 and the strict address parser, for the font cache (REQ-FNT-009).
+neoteletext-web = { workspace = true }
 neoteletext-image = { workspace = true }
 # The interface toolkit, decided by the owner (docs/desktop-browser.md
 # decision 2). No default fonts: their licences are outside REQ-GEN-017's

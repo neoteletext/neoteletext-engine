@@ -229,6 +229,7 @@ The Web user agent (L7) sits beside the lower layers rather than above them in t
   - `neoteletext-app` holds what any program needs. That is the session, reading inputs, both processes of live mode, sandboxing, conversion and slicing, and the `Source` trait a viewer reads pages through.
   - `neoteletext-cli` holds argument parsing, terminal output and the terminal viewer.
   - The browser window, `neoteletext-gui`, depends on `neoteletext-app` and `neoteletext-browser`. It routes the hidden `fetch` command to `neoteletext_app::fetch::run` and `decode` to `neoteletext_app::decoder::run`, because each tab starts its helpers as further runs of the same program. On macOS they are confined by Seatbelt profiles before they start (`neoteletext_app::sandbox::helper_command`).
+  - Fonts (area FNT) have two one-shot helpers of their own: `font-fetch` (`neoteletext_app::fetch::run_font`), confined as the fetcher is, fetches and reads one font or one library index; `font-read` (`neoteletext_app::font::read_run`), confined as a decoder is, reads the bytes of a cached or local font. The interface computes each font's SHA-256 itself and checks its glyph table's shape, never parsing a font; `xtask check-io` forbids the font readers in `neoteletext-gui` and `neoteletext-browser`. The window keeps the cache (`neoteletext_gui::fonts`), and each tab's decoder receives at most two checked tables in one `Fonts` frame.
   - `neoteletext-app` also holds what both viewers share: the decoder engine (`decoder`), the form pieces (`interact`), and text and raster output (`present`).
 - **Requirements:** CLI, SEC-017 to SEC-019, GEN-018.
 
@@ -239,7 +240,8 @@ The Web user agent (L7) sits beside the lower layers rather than above them in t
   - each tab's history;
   - when the tuning screen is shown, and the screen itself, including after discovery (decision E.73 item 7);
   - row 0 and the other rows the receiver draws itself, including the contents view (REQ-BRW-009);
-  - the formats of the saved files.
+  - the formats of the saved files;
+  - fonts (`fonts`): whether a font may be fetched (REQ-FNT-003), which font draws a page (REQ-FNT-005), and the model of the content-addressed cache (REQ-FNT-009).
 - **Place:** beside L8, below the applications. It uses L6 types and the L7 address parser, and has no operating-system access, which `xtask check-io` enforces as for the library crates.
 - **Why a crate of its own:** every rule of trust in the browser is written and tested once, for every front end. That includes the desktop window, `ttx view` later, and the phone shells.
 
@@ -399,6 +401,7 @@ Each boundary is one narrow type. Nothing reaches past its neighbour.
 | Untrusted bytes into L7 | HTTP, WebSocket, SSE, descriptors, cookies | The user agent profile, the strict address parser, policy checks, fuzzing (REQ-WEB-014 to REQ-WEB-016, SEC-006 to SEC-011) |
 | L7 to L0 across processes | TTI or T42 bytes and framed control messages | Both sides validate; the decoder process has no rights (REQ-SEC-018) |
 | L5 to the terminal | Text and escape sequences | Allow-list sanitising (REQ-SEC-010) |
+| Fonts from the network or the profile into the browser | BDF files and library indexes | Read only in confined helpers by strict, bounded, fuzzed readers; the interface checks the SHA-256 and the table's shape; the decoder checks the table again (REQ-FNT-002, REQ-FNT-003, REQ-FNT-008, REQ-FNT-009) |
 | L8, the port contract | Everything the platform supplies | Narrow traits; the library holds no ambient authority (REQ-SEC-016) |
 
 ---

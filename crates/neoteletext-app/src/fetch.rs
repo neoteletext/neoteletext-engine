@@ -473,6 +473,16 @@ fn run_web(address: &str, requests: &Receiver<Frame>, allow_local: &[IpAddr]) {
             {
                 break;
             }
+            // REQ-FNT-006: the channel's font; the interface decides whether
+            // to fetch it, through a font helper.
+            let font = agent
+                .descriptor()
+                .and_then(|descriptor| descriptor.font().map(|(url, digest)| (url.as_str().to_string(), *digest)));
+            if let Some((address, digest)) = font
+                && send(&Frame::Notice(Notice::ChannelFont(address, digest))).is_err()
+            {
+                break;
+            }
             let names = sites.iter().map(|(name, _)| name.clone()).collect();
             if send(&Frame::Notice(Notice::Service(names))).is_err()
                 || send(&Frame::Notice(Notice::LinkedSites(sites))).is_err()
@@ -522,4 +532,122 @@ fn run_web(address: &str, requests: &Receiver<Frame>, allow_local: &[IpAddr]) {
             std::thread::sleep(IDLE);
         }
     }
+}
+
+/// `neoteletext font-fetch`: fetches one font, or one library's `fonts.txt`
+/// when `index` is set, under the fetcher's confinement (REQ-FNT-003,
+/// REQ-FNT-004), reads it there, and writes one [`Frame::Font`] or
+/// [`Frame::FontLibrary`]. Whether the address may be fetched was decided by
+/// the interface before it started this helper; the request carries no
+/// cookies, and the local-network and downgrade rules apply.
+pub fn run_font(
+    address: &str,
+    index: bool,
+    no_sandbox: bool,
+    sandboxed_by_parent: bool,
+    allow_local: &[IpAddr],
+) -> Result<(), (u8, String)> {
+    use neoteletext_web::agent::{Event, Input, Output, Storage, UserAgent};
+    /// The jar is never used: font requests carry no cookies.
+    const COOKIE_SLOTS: usize = 1;
+    const COOKIE_BYTES: usize = 64;
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    if !sandboxed_by_parent {
+        let readable: Vec<&std::path::Path> =
+            RESOLVER_PATHS.iter().map(std::path::Path::new).filter(|path| path.exists()).collect();
+        crate::sandbox::apply(
+            crate::sandbox::Policy { writable_directory: None, network: true, readable: &readable },
+            no_sandbox,
+        )
+        .map_err(|message| (crate::exit::INPUT, message))?;
+    }
+    let mut storage = Box::new(Storage::default());
+    let mut config = neoteletext_web::agent::Config::default();
+    for (slot, &address) in config.allowed_local.iter_mut().zip(allow_local) {
+        *slot = Some(web_address(address));
+    }
+    let mut agent: Box<UserAgent<'_, SystemRandom, COOKIE_SLOTS, COOKIE_BYTES>> =
+        Box::new(UserAgent::new(config, storage.buffers(), SystemRandom));
+    let mut pump = Pump::new(StdTransport::new(allow_local));
+    let start = StdInstant::now();
+    let mut buffer = vec![0u8; READ_CHUNK];
+    let mut reply: Option<Frame> = None;
+    let mut next_tick: Option<Instant> = Some(Instant(0));
+    let sink = |output: Output<'_>,
+                pump: &mut Pump<StdTransport>,
+                next_tick: &mut Option<Instant>,
+                reply: &mut Option<Frame>| {
+        if let Some(net) = output.net() {
+            pump.execute(net);
+            return;
+        }
+        match output {
+            Output::Timer { at } => *next_tick = Some(next_tick.map_or(at, |current| current.min(at))),
+            Output::Event(Event::Font { index: false, body, .. }) => {
+                *reply = Some(Frame::Font(crate::font::read_font(body.to_vec())));
+            }
+            Output::Event(Event::Font { index: true, url, body }) => {
+                *reply = Some(Frame::FontLibrary(library(url, body)));
+            }
+            Output::Event(Event::FontFailed { index, failure }) => {
+                let why = format!("{failure:?}");
+                *reply = Some(if index {
+                    Frame::FontLibrary(pipe::LibraryReply::Failed(why))
+                } else {
+                    Frame::Font(pipe::FontReply::Failed(why))
+                });
+            }
+            _ => {}
+        }
+    };
+    agent.handle(clock(start), Input::FetchFont { address, index }, &mut |output| {
+        sink(output, &mut pump, &mut next_tick, &mut reply);
+    });
+    while reply.is_none() {
+        let mut busy = false;
+        if let Some(input) = pump.poll(ConnectionId::Fetch, &mut buffer) {
+            busy = true;
+            agent.handle(clock(start), Input::Net(input), &mut |output| {
+                sink(output, &mut pump, &mut next_tick, &mut reply);
+            });
+        }
+        if next_tick.is_some_and(|at| clock(start) >= at) {
+            next_tick = None;
+            agent.handle(clock(start), Input::Tick, &mut |output| sink(output, &mut pump, &mut next_tick, &mut reply));
+        }
+        if !busy && reply.is_none() {
+            std::thread::sleep(IDLE);
+        }
+    }
+    let frame = reply.unwrap_or(Frame::Font(pipe::FontReply::Failed("no answer".into())));
+    send(&frame).map_err(|error| (crate::exit::INPUT, error.to_string()))
+}
+
+/// A library's index, read here in the helper (REQ-FNT-004): each font's
+/// address resolved against the index's folder, and the malformed lines
+/// counted.
+fn library(url: &str, body: &[u8]) -> pipe::LibraryReply {
+    let Ok(folder) = neoteletext_web::url::Url::parse(url).and_then(|url| url.join(".")) else {
+        return pipe::LibraryReply::Failed("the index's address has no folder".into());
+    };
+    let entries = match neoteletext_web::fonts::read(body) {
+        Ok(entries) => entries,
+        Err(error) => return pipe::LibraryReply::Failed(format!("{error:?}")),
+    };
+    let mut fonts = Vec::new();
+    let mut ignored = 0u32;
+    for entry in entries {
+        match entry.ok().and_then(|font| {
+            let address = neoteletext_web::fonts::font_url(&folder, font.location).ok()?;
+            Some(pipe::LibraryFont {
+                address: address.as_str().to_string(),
+                title: font.title.to_string(),
+                sha256: font.sha256,
+            })
+        }) {
+            Some(font) if fonts.len() < pipe::MAX_LIBRARY_FONTS => fonts.push(font),
+            _ => ignored = ignored.saturating_add(1),
+        }
+    }
+    pipe::LibraryReply::Listed(fonts, ignored)
 }

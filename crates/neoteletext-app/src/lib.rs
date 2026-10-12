@@ -17,6 +17,7 @@ pub mod decoder;
 pub mod extras;
 #[cfg(feature = "live")]
 pub mod fetch;
+pub mod font;
 pub mod input;
 pub mod interact;
 #[cfg(feature = "live")]

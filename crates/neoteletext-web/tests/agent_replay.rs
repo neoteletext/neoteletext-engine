@@ -1292,3 +1292,78 @@ fn a_channel_cookie_set_for_the_whole_host_stays_in_its_folder() {
     );
     assert_eq!(count, 0, "never sent to another folder");
 }
+
+/// REQ-FNT-003, REQ-WEB-014: a font request carries no cookie, even when
+/// the jar has one for its host; nothing its answer sets is kept; it needs
+/// no open service; and a font must come as a font or a generic type.
+#[test]
+#[cfg(feature = "cookies")]
+fn font_requests_carry_no_cookies_and_keep_none() {
+    let mut harness = secure_service();
+    harness.replay().reply("secure.example:443", tti_response(&["Set-Cookie: id=1; Secure; Path=/; Max-Age=60"]));
+    harness.fetch(0x100);
+    assert!(!harness.agent.cookies().is_empty(), "the page set a cookie");
+    harness.advance(SECOND);
+    let font = b"STARTFONT 2.1\n";
+    harness.replay().reply(
+        "secure.example:443",
+        Reply::Bytes(response(
+            "200 OK",
+            &["Content-Type: application/x-font-bdf", "Set-Cookie: tracker=1; Secure; Path=/; Max-Age=60"],
+            font,
+        )),
+    );
+    harness.input(Input::FetchFont { address: "https://secure.example/fonts/f.bdf", index: false });
+    harness.advance(neoteletext_web::consts::DEFAULT_FETCH_INTERVAL_US);
+    let records = harness.take();
+    assert!(has_event(&records, "Font { index: false, url: \"https://secure.example/fonts/f.bdf\""), "{records:?}");
+    let request = harness.replay().requests_to("secure.example:443").pop().unwrap();
+    assert!(
+        String::from_utf8_lossy(&request).starts_with("GET /fonts/f.bdf "),
+        "{}",
+        String::from_utf8_lossy(&request)
+    );
+    assert_eq!(header_value(&request, "Cookie"), None, "no cookie with a font");
+    assert_eq!(header_value(&request, "Referer"), None);
+    harness.advance(SECOND);
+    harness.replay().reply("secure.example:443", tti_response(&[]));
+    harness.fetch(0x101);
+    let next = harness.replay().requests_to("secure.example:443").pop().unwrap();
+    assert_eq!(header_value(&next, "Cookie").as_deref(), Some("id=1"), "the font's cookie was not kept");
+}
+
+/// REQ-FNT-003, REQ-FNT-004: fonts and indexes with no service open, their
+/// media types, and failures reported as font failures.
+#[test]
+fn fonts_and_indexes_without_a_service() {
+    let replay = Replay::new(&[("fonts.example", PUBLIC), ("local.example", PRIVATE)]);
+    let mut harness = Harness::new(Config::default(), replay);
+    harness.replay().reply(
+        "fonts.example:443",
+        Reply::Bytes(response("200 OK", &["Content-Type: text/plain"], b"f\tx.bdf\tX\t00\n")),
+    );
+    harness.input(Input::FetchFont { address: "https://fonts.example/lib/fonts.txt", index: true });
+    assert!(has_event(&harness.take(), "Font { index: true"), "an index as text");
+    harness.advance(SECOND);
+    harness
+        .replay()
+        .reply("fonts.example:443", Reply::Bytes(response("200 OK", &["Content-Type: text/html"], b"<html>")));
+    harness.input(Input::FetchFont { address: "https://fonts.example/f.bdf", index: false });
+    let records = harness.take();
+    assert!(has_event(&records, "FontFailed { index: false, failure: MediaType }"), "{records:?}");
+    harness.advance(SECOND);
+    harness
+        .replay()
+        .reply("fonts.example:443", Reply::Bytes(response("200 OK", &["Content-Type: application/x-font-bdf"], b"x")));
+    harness.input(Input::FetchFont { address: "https://fonts.example/lib/fonts.txt", index: true });
+    assert!(has_event(&harness.take(), "FontFailed { index: true, failure: MediaType }"), "an index is never BDF");
+    harness.advance(SECOND);
+    harness.input(Input::FetchFont { address: "https://local.example/f.bdf", index: false });
+    assert!(has_event(&harness.take(), "FontFailed { index: false, failure: Blocked }"), "the local network");
+    harness.input(Input::FetchFont { address: "wss://fonts.example/f", index: false });
+    assert!(has_event(&harness.take(), "FontFailed { index: false, failure: Address(Scheme) }"));
+    harness.advance(SECOND);
+    harness.replay().reply("fonts.example:443", Reply::Bytes(response("404 Not Found", &[], b"")));
+    harness.input(Input::FetchFont { address: "https://fonts.example/gone.bdf", index: false });
+    assert!(has_event(&harness.take(), "FontFailed { index: false, failure: Status(404) }"));
+}

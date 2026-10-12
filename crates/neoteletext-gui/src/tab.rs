@@ -14,14 +14,18 @@
 //! drive tabs directly.
 
 use crate::helpers::{Helpers, Message, Options, Wake};
-use neoteletext_app::pipe::{self, ContentsReply, Frame, Notice, Origin, PageData, PageStatus, Screen, UserInput};
+use neoteletext_app::pipe::{
+    self, ContentsReply, DecoderFonts, Frame, Notice, Origin, PageData, PageStatus, Screen, UserInput,
+};
 use neoteletext_browser::ContentsDate;
 use neoteletext_browser::contents_view::{self, ContentsView, Key as ContentsKey, Target};
+use neoteletext_browser::fonts::Chooser;
 use neoteletext_browser::location::{page_file, parse_input};
 use neoteletext_browser::navigation::clean_title;
 use neoteletext_browser::tuning::{self, Confirmed};
 use neoteletext_browser::{Destination, Entry, Location, Navigation, Tuning, Why};
 use neoteletext_core::consts::PACKET_BYTES;
+use neoteletext_web::sha256::Digest;
 use std::collections::HashSet;
 
 /// The largest file opened: a long broadcast capture.
@@ -106,6 +110,14 @@ pub struct Tab {
     t42_pages: HashSet<u16>,
     /// When the channel was opened, in seconds since 1970.
     pub opened_at: u64,
+    /// The channel's font (REQ-FNT-006): its address and SHA-256.
+    pub channel_font: Option<(String, Digest)>,
+    /// The fonts last sent to the decoder, by SHA-256: the font in use and
+    /// the user's font filling in (REQ-FNT-008).
+    sent_fonts: Option<(Option<Digest>, Option<Digest>)>,
+    /// The font drawing the page and who chose it, for the status line
+    /// (REQ-FNT-005); `None` is Bedstead.
+    pub font_shown: Option<(String, Chooser)>,
 }
 
 /// The title of a page: the first line of its text after row 0 that has
@@ -148,6 +160,9 @@ impl Tab {
             contents_on_open: false,
             t42_pages: HashSet::new(),
             opened_at: 0,
+            channel_font: None,
+            sent_fonts: None,
+            font_shown: None,
         }
     }
 
@@ -281,6 +296,9 @@ impl Tab {
         self.contents_wanted = false;
         self.t42_pages.clear();
         self.opened_at = crate::now_seconds();
+        self.channel_font = None;
+        self.sent_fonts = None;
+        self.font_shown = None;
         self.location = Some(destination.location.clone());
         match Helpers::start(options, &destination.location, wake) {
             Ok(helpers) => {
@@ -452,6 +470,38 @@ impl Tab {
         }
     }
 
+    /// The font the page shown names (REQ-FNT-007), from the decoder.
+    #[must_use]
+    pub fn page_font(&self) -> Option<(String, Digest)> {
+        self.status.as_ref().and_then(|status| status.font.clone())
+    }
+
+    /// The folder of the tab's channel: the scope of its fonts in the cache
+    /// and the origin its fonts are measured against (REQ-FNT-003).
+    #[must_use]
+    pub fn channel_folder(&self) -> Option<String> {
+        match &self.location {
+            Some(Location::Channel { folder, .. } | Location::Service { folder, .. }) => Some(folder.clone()),
+            _ => None,
+        }
+    }
+
+    /// True when the fonts chosen differ from those last sent.
+    #[must_use]
+    pub fn fonts_differ(&self, signature: (Option<Digest>, Option<Digest>)) -> bool {
+        self.helpers.is_some() && self.sent_fonts != Some(signature)
+    }
+
+    /// Sends the decoder the fonts to draw with, when they changed
+    /// (REQ-FNT-008).
+    pub fn send_fonts(&mut self, signature: (Option<Digest>, Option<Digest>), fonts: DecoderFonts) {
+        if self.sent_fonts == Some(signature) || self.helpers.is_none() {
+            return;
+        }
+        self.sent_fonts = Some(signature);
+        self.send_decoder(&Frame::Fonts(fonts));
+    }
+
     /// Asks again for the page shown.
     pub fn reload(&mut self) {
         if let Some(status) = self.status.clone() {
@@ -545,6 +595,11 @@ impl Tab {
                 self.changed();
             }
             Frame::Notice(Notice::LinkedSites(sites)) => self.linked = sites,
+            // The interface decides about fonts; a decoder never sees this.
+            Frame::Notice(Notice::ChannelFont(address, sha256)) => {
+                self.channel_font = Some((address, sha256));
+                self.changed();
+            }
             Frame::Notice(Notice::Aliases(aliases)) => self.aliases = aliases,
             Frame::Notice(Notice::ServiceName(name)) => {
                 self.name = Some(clean_title(&name));

@@ -211,7 +211,7 @@ const APPLICATION_CRATES: &[(&str, &[&str])] = &[
 
 /// Files that are data tables of code points or glyphs, where the literal
 /// values are characters, not teletext constants.
-const DATA_FILES: &[&str] = &["charset/tables.rs", "glyphs/bedstead.rs", "glyphs/original.rs", "consts.rs"];
+const DATA_FILES: &[&str] = &["charset/tables.rs", "glyphs/bedstead.rs", "consts.rs"];
 /// Teletext values that must only appear in the constants module
 /// (REQ-GEN-014).
 const WATCHED_LITERALS: &[&str] = &["0x27", "0xE4", "0xe4", "6937500", "6_937_500", "0x55"];
@@ -281,21 +281,36 @@ pub fn io(root: &Path) -> Result<(), String> {
         }
     }
     for krate in LIBRARY_CRATES {
-        let mut files = Vec::new();
-        rust_files(&root.join("crates").join(krate).join("src"), &mut files);
-        for file in files {
-            let source = non_test_source(&file);
-            for (number, line) in source.lines().enumerate() {
-                let code = line.split("//").next().unwrap_or_default();
-                for item in FORBIDDEN {
-                    if code.contains(item) {
-                        violations.push(format!("{}:{}: {item}", file.display(), number + 1));
-                    }
+        forbid(&root.join("crates").join(krate).join("src"), FORBIDDEN, &mut violations);
+    }
+    // REQ-FNT-003, `docs/font-security.md` section 3.1: the browser's
+    // interface never parses a font; only its confined helpers do.
+    for krate in INTERFACE_CRATES {
+        forbid(&root.join("crates").join(krate).join("src"), FONT_READERS, &mut violations);
+    }
+    report(&violations)
+}
+
+/// The crates of the browser's interface process, which is not sandboxed.
+const INTERFACE_CRATES: &[&str] = &["neoteletext-gui", "neoteletext-browser"];
+/// The font readers, which run only in confined helpers.
+const FONT_READERS: &[&str] = &["bdf::read", "bdf::source", "font::read_font", "read_source("];
+
+/// Every use of a forbidden item in the non-test Rust files under `source`.
+fn forbid(source: &Path, items: &[&str], violations: &mut Vec<String>) {
+    let mut files = Vec::new();
+    rust_files(source, &mut files);
+    for file in files {
+        let code_of_file = non_test_source(&file);
+        for (number, line) in code_of_file.lines().enumerate() {
+            let code = line.split("//").next().unwrap_or_default();
+            for item in items {
+                if code.contains(item) {
+                    violations.push(format!("{}:{}: {item}", file.display(), number + 1));
                 }
             }
         }
     }
-    report(&violations)
 }
 
 fn report(violations: &[String]) -> Result<(), String> {

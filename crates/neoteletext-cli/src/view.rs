@@ -223,7 +223,10 @@ pub fn run(
                 | Notice::ServiceName(_)
                 | Notice::Bundle(_)
                 | Notice::Aliases(_)
-                | Notice::Refresh(_) => {}
+                | Notice::Refresh(_)
+                // Fonts are the browser's (decision E.72 item 9); `ttx`
+                // draws in Bedstead.
+                | Notice::ChannelFont(..) => {}
                 // Only a browser asks the fetcher to stop at other sites.
                 Notice::RedirectToOtherChannel(address) => messages.push(format!("redirected to {address}")),
             }
