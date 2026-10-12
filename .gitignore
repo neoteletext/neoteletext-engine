@@ -19,6 +19,10 @@
 *.pdf
 *.PDF
 
+# Python bytecode caches
+__pycache__/
+*.pyc
+
 # Editor and OS files
 .DS_Store
 *.swp
