@@ -3,7 +3,8 @@
 //! conversion is exact and reversible.
 //!
 //! - 5 by 10 and 6 by 10: every pixel made two pixels wide, a 5-pixel cell
-//!   in the left of the 6;
+//!   in the right of the 6, leaving the blank column at the left where the
+//!   renderer leaves Bedstead's;
 //! - 5 by 9 and 6 by 9: the same, below one blank line, where the SAA5050
 //!   leaves it;
 //! - 12 by 20: every second line kept, only when each pair of lines, 1 and
@@ -160,13 +161,13 @@ fn cell_rows(width: usize, height: usize, glyph: &SourceGlyph) -> Result<[u16; C
     Ok(rows)
 }
 
-/// A line of `width` pixels with every pixel made two wide, starting at the
-/// left of the 12-pixel line.
+/// A line of `width` pixels with every pixel made two wide, ending at the
+/// right of the 12-pixel line: a 5-pixel line leaves the cell's leftmost
+/// dot blank, as the renderer's `widen` does for Bedstead (issue #206).
 fn doubled(line: u16, width: usize) -> u16 {
     let mut out = 0u16;
-    for pixel in 0..width {
-        let source = width.saturating_sub(1).saturating_sub(pixel);
-        let target = CELL_WIDTH.saturating_sub(2).saturating_sub(pixel.saturating_mul(2));
+    for source in 0..width {
+        let target = source.saturating_mul(2);
         if line.checked_shr(u32::try_from(source).unwrap_or(u32::MAX)).unwrap_or(0) & 1 == 1 {
             out |= 0b11u16.checked_shl(u32::try_from(target).unwrap_or(u32::MAX)).unwrap_or(0);
         }
@@ -268,7 +269,8 @@ mod tests {
     const FIVE_NINE: [&str; 9] = ["..#..", ".#.#.", "#...#", "#...#", "#####", "#...#", "#...#", ".....", "....."];
 
     /// REQ-FNT-010: 6 by 10 and 5 by 10 double every pixel's width, the five
-    /// pixels at the left of the six; the reversal gives the source back.
+    /// pixels at the right of the six, so the blank column is at the left as
+    /// Bedstead's is (issue #206); the reversal gives the source back.
     #[test]
     fn ten_line_cells_double_the_width() {
         let six = converted(&source((6, 10), "ISO10646", &[(65, [6, 10, 0, 0], &SIX)]), None).unwrap();
@@ -278,9 +280,14 @@ mod tests {
         assert_eq!(back, bits(&SIX), "reversal");
         let five_rows: Vec<&str> = SIX.iter().map(|row| &row[..5]).collect();
         let five = converted(&source((5, 10), "ISO10646", &[(65, [5, 10, 0, 0], &five_rows)]), None).unwrap();
-        assert!(five[0].rows.iter().all(|row| row.trailing_zeros() >= 2), "the 5 pixels sit at the left of the 6");
-        let back: Vec<u16> = five[0].rows.iter().map(|&row| halved(row, 5)).collect();
+        assert!(five[0].rows.iter().all(|row| row >> 10 == 0), "the blank column is at the left");
+        let back: Vec<u16> = five[0].rows.iter().map(|&row| halved(row << 2, 5)).collect();
         assert_eq!(back, bits(&five_rows));
+        // The same design as 6 pixels with a blank left column is the same glyph.
+        let blank_left: Vec<String> = five_rows.iter().map(|row| format!(".{row}")).collect();
+        let blank_left: Vec<&str> = blank_left.iter().map(String::as_str).collect();
+        let six = converted(&source((6, 10), "ISO10646", &[(65, [6, 10, 0, 0], &blank_left)]), None).unwrap();
+        assert_eq!(six[0].rows, five[0].rows);
     }
 
     /// REQ-FNT-010: a 9-line cell gains a blank top line.
@@ -288,12 +295,12 @@ mod tests {
     fn nine_line_cells_gain_the_blank_top_line() {
         let five = converted(&source((5, 9), "ISO10646", &[(65, [5, 9, 0, 0], &FIVE_NINE)]), None).unwrap();
         assert_eq!(five[0].rows[0], 0, "the SAA5050's blank line");
-        let back: Vec<u16> = five[0].rows[1..].iter().map(|&row| halved(row, 5)).collect();
+        let back: Vec<u16> = five[0].rows[1..].iter().map(|&row| halved(row << 2, 5)).collect();
         assert_eq!(back, bits(&FIVE_NINE));
-        let six_rows: Vec<String> = FIVE_NINE.iter().map(|row| format!("{row}.")).collect();
+        let six_rows: Vec<String> = FIVE_NINE.iter().map(|row| format!(".{row}")).collect();
         let six_rows: Vec<&str> = six_rows.iter().map(String::as_str).collect();
         let six = converted(&source((6, 9), "ISO10646", &[(65, [6, 9, 0, 0], &six_rows)]), None).unwrap();
-        assert_eq!(six[0].rows, five[0].rows, "6 by 9 with a blank right column is the same glyph");
+        assert_eq!(six[0].rows, five[0].rows, "6 by 9 with a blank left column is the same glyph");
     }
 
     /// REQ-FNT-010: a 12 by 20 glyph whose line pairs match keeps every

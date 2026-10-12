@@ -2131,7 +2131,7 @@ Decided by the owner on 12 October 2026. This supersedes decision E.62 and amend
 4. **Who chooses.** The page's font, then the channel's, then the user's chosen font, then Bedstead; and a user setting makes the user's font win over every channel and page. Row 0, the tuning screen, the contents view and every page the receiver draws itself always use Bedstead. Characters missing from the font in use come from the user's font, then from Bedstead, then the placeholder.
 5. **Font libraries.** A folder with a fixed-name index, `fonts.txt`, lists any number of fonts, each with its SHA-256, so fonts can be found without knowing their names.
 6. **The cache.** Fonts are stored by content, named by their SHA-256; fonts named by a channel or a page are kept apart per channel; at most 4 MB in all and 256 KB per font, the least recently used removed first; checked again whenever loaded; written only by the interface process.
-7. **The converter.** `ttx font convert` turns a BDF of another size into the 12 × 10 form, offline, only where the fit is exact and reversible: doubling every pixel's width, adding the blank top line where the SAA5050 leaves it, or halving a 12 × 20 font whose line pairs are identical. Anything else is refused.
+7. **The converter.** `ttx font convert` turns a BDF of another size into the 12 × 10 form, offline, only where the fit is exact and reversible: doubling every pixel's width, adding the blank top line where the SAA5050 leaves it, or halving a 12 × 20 font whose line pairs are identical. Anything else is refused. *Amended 13 October 2026 by the owner (issue #206):* a 5-pixel cell goes in the right of the 6, so its blank column is at the left, where the renderer leaves Bedstead's (REQ-RND-016) and where the SAA5050 dumps of 6-dot cells have it; placed at the left, the same design was drawn one dot to the left of Bedstead and matched none of its glyphs.
 8. **Not fonts:** mosaics and G3 characters are drawn from geometry whatever the font (REQ-CHR-005, REQ-RND-037), and DRCS characters come from the page.
 9. **Features.** The core's `original` feature is removed; `bedstead` becomes a default feature and part of the modern-classic profile (decision E.71). The fonts of items 2 to 7 are the browser's, and `ttx`'s converter.
 10. **Phases.** Item 1 and the converter are Phase 1. Loading, choosing and caching fonts follow the browser: Phase 1 on macOS and Linux, Phase 2 on Windows, Android and iOS.
@@ -6414,11 +6414,12 @@ While a font is being fetched, the page is drawn in the font that would apply wi
 
 **REQ-FNT-010 — The font converter.**
 `ttx font convert INPUT OUTPUT` shall write a font in the form of REQ-FNT-002 from a BDF of another cell size, offline, only where the conversion is exact and reversible:
-- a 5 × 10 or 6 × 10 cell: every pixel made two pixels wide, a 5-pixel cell placed in the left of the 6;
+- a 5 × 10 or 6 × 10 cell: every pixel made two pixels wide, a 5-pixel cell placed in the right of the 6, so that its blank column is at the left, as Bedstead's is;
 - a 5 × 9 or 6 × 9 cell: the same, with one blank line added at the top, where the SAA5050 leaves it;
 - a 12 × 20 cell in which every pair of lines, 1 and 2, 3 and 4 and so on, is identical: every second line kept.
 
 Any other cell, any glyph larger than its cell, or any 12 × 20 glyph whose line pairs differ shall be refused, naming the first character that fails. When the input's `CHARSET_REGISTRY` is not ISO10646, the converter shall take the Unicode code point of each `ENCODING` from a mapping file given with `--map`, one `code<TAB>U+XXXX` line each, and refuse a character the map lacks. `FAMILY_NAME`, `COPYRIGHT` and `NOTICE` are carried over. The converter never reads from the network and runs under the sandbox of REQ-SEC-017.
+*Amended 13 October 2026* (decision E.72 item 7, issue #206): a 5-pixel cell was placed in the left of the 6, one dot to the left of Bedstead.
 *Verification:* Tests of each exact conversion and its reversal, of each refusal, and that the output passes REQ-FNT-002.
 
 ---

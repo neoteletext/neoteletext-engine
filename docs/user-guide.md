@@ -230,7 +230,7 @@ A font library on your own machine, such as a clone of a private repository, can
 
 | Source cell | What the converter does |
 |---|---|
-| 6 × 10, 5 × 10 | Makes every pixel two pixels wide; a 5-pixel font sits at the left of the 12-pixel cell. |
+| 6 × 10, 5 × 10 | Makes every pixel two pixels wide; a 5-pixel font sits at the right of the 12-pixel cell, leaving the blank column at the left, as Bedstead does. |
 | 6 × 9, 5 × 9 | The same, below one blank line at the top, where the SAA5050 leaves it. |
 | 12 × 20 | Keeps every second line, only when each pair of lines is identical. |
 
