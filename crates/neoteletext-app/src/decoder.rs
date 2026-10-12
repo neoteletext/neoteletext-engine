@@ -68,7 +68,9 @@ pub fn run(no_sandbox: bool, sandboxed_by_parent: bool, glyphs: &'static GlyphSe
         while let Ok(Some(frame)) = pipe::read(&mut input) {
             let delivered = match frame {
                 Frame::Packet(_) | Frame::Tti(_) | Frame::T42(_) | Frame::Notice(_) => fetched.send(frame).is_ok(),
-                Frame::Input(_) | Frame::Show(..) | Frame::Click(..) | Frame::Fonts(_) => commands.send(frame).is_ok(),
+                Frame::Input(_) | Frame::Show(..) | Frame::Click(..) | Frame::FontTable(..) | Frame::Fonts(_) => {
+                    commands.send(frame).is_ok()
+                }
                 // Frames only a decoder sends are never taken in.
                 _ => true,
             };
@@ -138,8 +140,10 @@ pub struct Engine {
     prompt: Option<[u8; COLUMNS]>,
     grid: Grid,
     glyphs: &'static GlyphSet<'static>,
-    /// The fonts the interface chose for the page (REQ-FNT-005), checked
-    /// for shape when the frame was read (REQ-FNT-008).
+    /// The fonts the interface sent, by slot, each checked for shape when
+    /// its frame was read (REQ-FNT-008).
+    font_slots: Vec<Vec<neoteletext_core::types::FontGlyph>>,
+    /// Which slots draw the page (REQ-FNT-005).
     fonts: pipe::DecoderFonts,
     unrecorded: Option<EnhancementReport>,
     /// How the shown page's character sets were chosen (REQ-BRW-011).
@@ -253,6 +257,7 @@ impl Engine {
             prompt: None,
             grid: Grid::EMPTY,
             glyphs,
+            font_slots: vec![Vec::new(); pipe::MAX_FONT_SLOTS],
             fonts: pipe::DecoderFonts::default(),
             unrecorded: None,
             designation: None,
@@ -286,8 +291,14 @@ impl Engine {
                 }
             }
             Frame::Click(row, column) => self.click(usize::from(row), usize::from(column), session, source, now),
-            Frame::Fonts(ref fonts) => {
-                self.fonts = fonts.clone();
+            Frame::FontTable(slot, ref glyphs) => {
+                if let Some(held) = self.font_slots.get_mut(usize::from(slot)) {
+                    held.clone_from(glyphs);
+                }
+                self.last_screen = None;
+            }
+            Frame::Fonts(fonts) => {
+                self.fonts = fonts;
                 self.last_screen = None;
             }
             _ => {}
@@ -747,7 +758,10 @@ impl Engine {
         let reveal = self.viewer.reveal(now);
         let options = RenderOptions::for_level(config, reveal, FlashPhase::at(now));
         let visible = options.colour != ColourMode::Palette || flash_visible(now, config);
-        let glyphs = self.glyphs.with_fonts(loaded(&self.fonts.in_use), loaded(&self.fonts.fallback));
+        let slot = |slot: Option<u8>| {
+            slot.and_then(|slot| self.font_slots.get(usize::from(slot))).and_then(|table| loaded(table))
+        };
+        let glyphs = self.glyphs.with_fonts(slot(self.fonts.in_use), self.fonts.by_set.map(slot));
         let raster = present::raster(
             &self.grid,
             options,

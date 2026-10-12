@@ -6,8 +6,11 @@
 use super::BrowserApp;
 use crate::fonts::{Library, Request, State, Work, update_tab, user_request};
 use eframe::egui::{self, RichText, TextEdit, Ui};
+use neoteletext_browser::charsets::set_label;
 use neoteletext_browser::fonts::{Chooser, Scope};
 use neoteletext_browser::saved::UserFont;
+use neoteletext_core::glyphs::LoadedFont;
+use neoteletext_core::glyphs::conformance::{FONT_SET_COUNT, conformance_masks};
 use neoteletext_web::sha256::{self, Digest, to_hex};
 use neoteletext_web::url::Url;
 
@@ -20,10 +23,23 @@ pub struct FontPanel {
     library: String,
     /// The path typed for a local file.
     path: String,
-    /// The font being chosen, and its title, until it has loaded.
-    choosing: Option<(Request, String)>,
+    /// The font being chosen, its title, and the sets it is for, until it
+    /// has loaded.
+    choosing: Option<(Request, String, Target)>,
     /// Why the last choice failed.
     problem: Option<String>,
+}
+
+/// The character sets a font is chosen for (REQ-FNT-005, decision E.75
+/// item 6).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Target {
+    /// One set, by its place in `FONT_SETS`: chosen under it in the font
+    /// browser.
+    Set(usize),
+    /// Every set the font conforms for (REQ-FNT-011): chosen by address,
+    /// from a file or from a library in the Fonts settings.
+    Conforming,
 }
 
 fn hex(sha256: &Digest) -> String {
@@ -37,10 +53,10 @@ impl BrowserApp {
     pub(super) fn update_fonts(&mut self, now: u64) {
         let changed = self.fonts.poll(&self.storage, &self.options, &self.wake, now);
         self.finish_choice();
-        let user = self.settings.font.as_ref().and_then(user_request);
+        let users = self.settings.fonts.clone().map(|font| font.as_ref().and_then(user_request));
         let work = Work { storage: &self.storage, options: &self.options, wake: &self.wake, now };
         for tab in &mut self.tabs {
-            update_tab(tab, &mut self.fonts, &self.settings, user.as_ref(), &work);
+            update_tab(tab, &mut self.fonts, &self.settings, &users, &work);
         }
         if changed {
             self.shown = None;
@@ -57,25 +73,39 @@ impl BrowserApp {
         }
     }
 
-    /// Makes a font the user chose theirs once it has loaded.
+    /// Makes a font the user chose theirs once it has loaded: for its one
+    /// set, or for every set it conforms for.
     fn finish_choice(&mut self) {
-        let Some((request, title)) = &self.font_panel.choosing else { return };
+        let Some((request, title, target)) = &self.font_panel.choosing else { return };
         match self.fonts.state(request) {
             Some(State::Ready(sha256)) => {
+                let font = self.fonts.font(sha256);
                 let title = if title.is_empty() {
-                    self.fonts.font(sha256).map(|font| font.name.clone()).unwrap_or_default()
+                    font.map(|font| font.name.clone()).unwrap_or_default()
                 } else {
                     title.clone()
                 };
-                self.settings.font = Some(UserFont {
+                let chosen = UserFont {
                     sha256: hex(sha256),
                     address: request.address.clone(),
                     title,
                     by_address: request.sha256.is_none(),
-                });
+                };
+                let sets = match *target {
+                    Target::Set(place) => 1u32.checked_shl(u32::try_from(place).unwrap_or(u32::MAX)).unwrap_or(0),
+                    Target::Conforming => font
+                        .and_then(|font| LoadedFont::new(&font.glyphs).ok())
+                        .map_or(0, |table| conformance_masks(&table).0),
+                };
+                self.font_panel.problem = (sets == 0)
+                    .then(|| "it conforms for no character set; choose it under a set in the font browser".to_string());
+                for (place, slot) in self.settings.fonts.iter_mut().enumerate() {
+                    if (sets >> place) & 1 == 1 {
+                        *slot = Some(chosen.clone());
+                    }
+                }
                 self.storage.save_settings(&self.settings);
                 self.font_panel.choosing = None;
-                self.font_panel.problem = None;
             }
             Some(State::Failed(why)) => {
                 self.font_panel.problem = Some(why.clone());
@@ -91,40 +121,46 @@ impl BrowserApp {
         &self.settings
     }
 
-    /// Chooses a font as the user's; it becomes theirs once it has loaded.
-    pub(super) fn choose(&mut self, request: Request, title: String) {
+    /// Chooses a font for some sets; it becomes the user's once it has
+    /// loaded.
+    pub(super) fn choose(&mut self, request: Request, title: String, target: Target) {
         self.font_panel.problem = None;
         self.fonts.want(&request, &self.storage, &self.options, &self.wake, crate::now_seconds());
-        self.font_panel.choosing = Some((request, title));
+        self.font_panel.choosing = Some((request, title, target));
     }
 
-    /// Clears the user's font, so pages that name none are drawn in
-    /// Bedstead.
-    pub(super) fn use_bedstead(&mut self) {
+    /// Clears the user's font for one set, or for every set, so those sets
+    /// are drawn in Bedstead.
+    pub(super) fn use_bedstead(&mut self, place: Option<usize>) {
         self.font_panel.choosing = None;
         self.font_panel.problem = None;
-        self.settings.font = None;
+        for (index, slot) in self.settings.fonts.iter_mut().enumerate() {
+            if place.is_none_or(|place| place == index) {
+                *slot = None;
+            }
+        }
         self.storage.save_settings(&self.settings);
     }
 
-    /// The SHA-256, in hexadecimal, of the font being chosen or else of the
-    /// user's font; none for Bedstead.
-    pub(super) fn wanted_font(&self) -> Option<String> {
-        if let Some((request, _)) = &self.font_panel.choosing
+    /// The SHA-256, in hexadecimal, of the font being chosen for a set or
+    /// else of the user's font for it; none for Bedstead.
+    pub(super) fn wanted_font(&self, place: usize) -> Option<String> {
+        if let Some((request, _, Target::Set(target))) = &self.font_panel.choosing
+            && *target == place
             && let Some(sha256) = &request.sha256
         {
             return Some(hex(sha256));
         }
-        self.settings.font.as_ref().map(|font| font.sha256.clone())
+        self.settings.fonts.get(place).cloned().flatten().map(|font| font.sha256)
     }
 
     /// The font being loaded, or why the last choice failed.
     pub(super) fn font_status(&self, ui: &mut Ui) {
-        if let Some((request, title)) = &self.font_panel.choosing {
+        if let Some((request, title, _)) = &self.font_panel.choosing {
             ui.label(format!("Loading {}", if title.is_empty() { &request.address } else { title }));
         }
         if let Some(problem) = &self.font_panel.problem {
-            ui.colored_label(super::WARNING, format!("Not loaded: {problem}"));
+            ui.colored_label(super::WARNING, format!("Not used: {problem}"));
         }
     }
 
@@ -133,13 +169,22 @@ impl BrowserApp {
         ui.heading("Fonts");
         ui.label("Pages are drawn in Bedstead unless you, the channel or the page choose another 12 x 10 font.");
         ui.separator();
-        let current = self.settings.font.as_ref().map_or_else(|| "Bedstead".to_string(), |font| font.title.clone());
-        ui.label(RichText::new(format!("Your font: {current}")).strong());
-        if self.settings.font.is_some() && ui.button("Use Bedstead").clicked() {
-            self.use_bedstead();
+        // Your font for each character set (REQ-FNT-005, decision E.75).
+        ui.label(RichText::new("Your fonts, by character set").strong());
+        let chosen: Vec<(usize, String)> = (0..FONT_SET_COUNT)
+            .filter_map(|place| Some((place, self.settings.fonts.get(place)?.as_ref()?.title.clone())))
+            .collect();
+        if chosen.is_empty() {
+            ui.label("Bedstead for every set.");
+        }
+        for (place, title) in &chosen {
+            ui.label(format!("{}: {title}", set_label(*place)));
+        }
+        if !chosen.is_empty() && ui.button("Use Bedstead for every set").clicked() {
+            self.use_bedstead(None);
         }
         self.font_status(ui);
-        if ui.checkbox(&mut self.settings.always_my_font, "Always use my font").changed()
+        if ui.checkbox(&mut self.settings.always_my_font, "Always use my fonts").changed()
             | ui.checkbox(&mut self.settings.fonts_from_other_sites, "Allow fonts from other sites").changed()
         {
             self.storage.save_settings(&self.settings);
@@ -153,7 +198,7 @@ impl BrowserApp {
             match Url::parse(&address) {
                 Ok(url) if !url.scheme().is_websocket() => {
                     let request = Request { address, sha256: None, chooser: Chooser::User, scope: Scope::Shared };
-                    self.choose(request, String::new());
+                    self.choose(request, String::new(), Target::Conforming);
                 }
                 _ => self.font_panel.problem = Some("not an http or https address".into()),
             }
@@ -187,7 +232,7 @@ impl BrowserApp {
                 };
                 self.font_panel.problem = None;
                 self.fonts.read_local(&request, bytes, &self.options, &self.wake);
-                self.font_panel.choosing = Some((request, String::new()));
+                self.font_panel.choosing = Some((request, String::new(), Target::Conforming));
             }
             Err(problem) => self.font_panel.problem = Some(problem),
         }
@@ -255,7 +300,7 @@ impl BrowserApp {
                 chooser: Chooser::User,
                 scope: Scope::Shared,
             };
-            self.choose(request, font.title);
+            self.choose(request, font.title, Target::Conforming);
         }
     }
 

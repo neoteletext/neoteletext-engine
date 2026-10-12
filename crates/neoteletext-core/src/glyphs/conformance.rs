@@ -24,10 +24,13 @@ const fn g0(set: G0Set) -> CharSet {
     CharSet::G0(G0 { set, national: None })
 }
 
+/// The number of character sets fonts draw (REQ-FNT-011).
+pub const FONT_SET_COUNT: usize = 24;
+
 /// The 24 character sets fonts draw, with the names libraries and reports
 /// give them, in the order of REQ-FNT-011. A set's place is its bit in the
-/// masks of [`conformance_masks`].
-pub const FONT_SETS: [(&str, CharSet); 24] = [
+/// masks of [`conformance_masks`] and its slot in a glyph set's fonts.
+pub const FONT_SETS: [(&str, CharSet); FONT_SET_COUNT] = [
     ("G0-Latin", latin(None)),
     ("G0-Latin-English", latin(Some(NationalOption::English))),
     ("G0-Latin-German", latin(Some(NationalOption::German))),
@@ -60,10 +63,39 @@ pub fn font_set_index(name: &str) -> Option<usize> {
     FONT_SETS.iter().position(|(known, _)| *known == name)
 }
 
-/// The place in [`FONT_SETS`] of a character set.
+/// The place in [`FONT_SETS`] of a character set, found without a search,
+/// for the renderer's font lookup (REQ-FNT-005).
 #[must_use]
-pub fn font_set_of(set: CharSet) -> Option<usize> {
-    FONT_SETS.iter().position(|(_, known)| *known == set)
+pub const fn font_set_of(set: CharSet) -> Option<usize> {
+    Some(match set {
+        CharSet::G0(G0 { set: G0Set::Latin, national: None }) => 0,
+        CharSet::G0(G0 { set: G0Set::Latin, national: Some(national) }) => match national {
+            NationalOption::English => 1,
+            NationalOption::German => 2,
+            NationalOption::SwedishFinnishHungarian => 3,
+            NationalOption::Italian => 4,
+            NationalOption::French => 5,
+            NationalOption::PortugueseSpanish => 6,
+            NationalOption::CzechSlovak => 7,
+            NationalOption::Polish => 8,
+            NationalOption::Turkish => 9,
+            NationalOption::SerbianCroatianSlovenian => 10,
+            NationalOption::Rumanian => 11,
+            NationalOption::Estonian => 12,
+            NationalOption::LettishLithuanian => 13,
+        },
+        CharSet::G0(G0 { set: G0Set::Cyrillic1, .. }) => 14,
+        CharSet::G0(G0 { set: G0Set::Cyrillic2, .. }) => 15,
+        CharSet::G0(G0 { set: G0Set::Cyrillic3, .. }) => 16,
+        CharSet::G0(G0 { set: G0Set::Greek, .. }) => 17,
+        CharSet::G0(G0 { set: G0Set::Arabic, .. }) => 18,
+        CharSet::G0(G0 { set: G0Set::Hebrew, .. }) => 19,
+        CharSet::G2(G2Set::Latin) => 20,
+        CharSet::G2(G2Set::Cyrillic) => 21,
+        CharSet::G2(G2Set::Greek) => 22,
+        CharSet::G2(G2Set::Arabic) => 23,
+        _ => return None,
+    })
 }
 
 /// The character a code position holds in a set, by the character set
@@ -250,7 +282,9 @@ mod tests {
         assert_ne!(conforms & bit, 0);
         assert_eq!(cell & bit, bit);
         assert_eq!(font_set_of(english), font_set_index("G0-Latin-English"));
-        assert_eq!(FONT_SETS.len(), 24);
+        for (place, (name, set)) in FONT_SETS.iter().enumerate() {
+            assert_eq!(font_set_of(*set), Some(place), "{name}");
+        }
         assert_eq!(font_set_index("G0-Latin-Klingon"), None);
     }
 }

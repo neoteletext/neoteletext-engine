@@ -15,6 +15,7 @@ use neoteletext_core::compose::compose_level;
 use neoteletext_core::config::Config;
 use neoteletext_core::consts::CELL_FIELD_LINES;
 use neoteletext_core::consts::{PACKET_BYTES, PAGE_WIDTH};
+use neoteletext_core::glyphs::conformance::FONT_SET_COUNT;
 use neoteletext_core::glyphs::{GlyphSet, LoadedFont};
 use neoteletext_core::level1::{DisplayOptions, Grid, build_grid};
 use neoteletext_core::packet::{Packet, PacketMeta};
@@ -190,7 +191,7 @@ fn row_renderer_cost_with_a_loaded_font() {
         ]
         .map(|mode| (*font, mode))
     }) {
-        let glyphs = GlyphSet::bedstead().with_fonts(Some(LoadedFont::new(table).unwrap()), None);
+        let glyphs = GlyphSet::bedstead().with_fonts(Some(LoadedFont::new(table).unwrap()), [None; FONT_SET_COUNT]);
         let rounds = 2000;
         let start = Clock::now();
         for _ in 0..rounds {

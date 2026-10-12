@@ -10,6 +10,7 @@
 #[cfg(test)]
 use super::*;
 use crate::charset::{CharRef, CharSet, G0, G0Set, G2Set, NationalOption};
+use crate::glyphs::conformance::{FONT_SET_COUNT, font_set_index};
 use crate::glyphs::{FontTableError, LoadedFont};
 use crate::level1::CellAttributes;
 use crate::types::{DrcsCharacter, FontGlyph};
@@ -43,8 +44,23 @@ fn text(code: u8) -> Glyph {
     Glyph::Char(CharRef::new(latin(), code))
 }
 
+/// No user font for any set.
+const NONE: [Option<LoadedFont<'static>>; FONT_SET_COUNT] = [None; FONT_SET_COUNT];
+
+/// A user font for one set, by its name in `FONT_SETS`.
+fn for_set(name: &str, font: LoadedFont<'static>) -> [Option<LoadedFont<'static>>; FONT_SET_COUNT] {
+    let mut by_set = NONE;
+    by_set[font_set_index(name).unwrap()] = Some(font);
+    by_set
+}
+
+/// The font in use, and the user's font for G0 Latin with the English
+/// option, the set `text` draws.
 fn fonts() -> GlyphSet<'static> {
-    GlyphSet::bedstead().with_fonts(Some(LoadedFont::new(&IN_USE).unwrap()), Some(LoadedFont::new(&FALLBACK).unwrap()))
+    GlyphSet::bedstead().with_fonts(
+        Some(LoadedFont::new(&IN_USE).unwrap()),
+        for_set("G0-Latin-English", LoadedFont::new(&FALLBACK).unwrap()),
+    )
 }
 
 fn options(mode: CellMode) -> RenderOptions {
@@ -115,8 +131,12 @@ fn fallback_order() {
     assert_eq!(lines(&cell(text(b'B')), &fonts(), CellMode::Saa5246a), OTHER.to_vec(), "then the user's font");
     let c = cell(text(b'C'));
     assert_eq!(lines(&c, &fonts(), CellMode::Saa5050), lines(&c, &bedstead, CellMode::Saa5050), "then Bedstead");
-    let only_user = bedstead.with_fonts(None, Some(LoadedFont::new(&FALLBACK).unwrap()));
+    let only_user = bedstead.with_fonts(None, for_set("G0-Latin-English", LoadedFont::new(&FALLBACK).unwrap()));
     assert_eq!(lines(&cell(text(b'A')), &only_user, CellMode::Saa5246a), OTHER.to_vec());
+    // The user's font for another set does not draw this set's characters.
+    let other_set = bedstead.with_fonts(None, for_set("G0-Latin-German", LoadedFont::new(&FALLBACK).unwrap()));
+    let a = cell(text(b'A'));
+    assert_eq!(lines(&a, &other_set, CellMode::Saa5050), lines(&a, &bedstead, CellMode::Saa5050));
     assert!(!bedstead.has_fonts() && fonts().has_fonts() && !fonts().without_fonts().has_fonts());
 }
 
@@ -180,7 +200,7 @@ fn diacritics() {
     );
     // A G2 character is looked up like a G0 one.
     let g2 = GlyphSet::bedstead()
-        .with_fonts(Some(LoadedFont::new(&[FontGlyph { code_point: '\u{A3}' as u32, rows: OTHER }]).unwrap()), None);
+        .with_fonts(Some(LoadedFont::new(&[FontGlyph { code_point: '\u{A3}' as u32, rows: OTHER }]).unwrap()), NONE);
     let pound = cell(Glyph::Char(CharRef::new(CharSet::G2(G2Set::Latin), 0x23)));
     assert_eq!(lines(&pound, &g2, CellMode::Saa5246a), OTHER.to_vec());
 }
@@ -236,7 +256,7 @@ fn a_doubled_dot_font_draws_as_bedstead() {
     let table = [bedstead_as_loaded(a)];
     let font = LoadedFont::new(&table).unwrap();
     assert!(font.is_dot_matrix());
-    let glyphs = GlyphSet::bedstead().with_fonts(Some(font), None);
+    let glyphs = GlyphSet::bedstead().with_fonts(Some(font), NONE);
     let a_cell = cell(text(b'A'));
     assert_eq!(lines(&a_cell, &glyphs, CellMode::Saa5050), lines(&a_cell, &GlyphSet::bedstead(), CellMode::Saa5050));
 }
@@ -253,7 +273,7 @@ fn only_doubled_dot_fonts_are_rounded() {
     rows[1] = 0b11_0000_0000;
     rows[2] = 0b00_1100_0000;
     let table = [FontGlyph { code_point: u32::from('A'), rows }];
-    let glyphs = GlyphSet::bedstead().with_fonts(Some(LoadedFont::new(&table).unwrap()), None);
+    let glyphs = GlyphSet::bedstead().with_fonts(Some(LoadedFont::new(&table).unwrap()), NONE);
     let a_cell = cell(text(b'A'));
     let drawn = lines(&a_cell, &glyphs, CellMode::Saa5050);
     assert_eq!(drawn[3], 0b11_1000_0000, "the lower half of line 1 reaches toward line 2");
@@ -261,4 +281,19 @@ fn only_doubled_dot_fonts_are_rounded() {
     // The half-dot pattern is drawn as given.
     let plain = lines(&cell(text(b'A')), &fonts(), CellMode::Saa5050);
     assert!(plain.iter().enumerate().all(|(line, &dots)| dots == PATTERN[line / 2]));
+}
+
+/// REQ-FNT-005, decision E.75 item 6: characters of two sets on one page
+/// are drawn from the user's fonts for their own sets.
+#[test]
+fn each_set_draws_from_its_own_font() {
+    static LATIN: [FontGlyph; 1] = [FontGlyph { code_point: 'A' as u32, rows: PATTERN }];
+    static G2: [FontGlyph; 1] = [FontGlyph { code_point: '\u{A1}' as u32, rows: OTHER }];
+    let mut by_set = for_set("G0-Latin-English", LoadedFont::new(&LATIN).unwrap());
+    by_set[font_set_index("G2-Latin").unwrap()] = Some(LoadedFont::new(&G2).unwrap());
+    let glyphs = GlyphSet::bedstead().with_fonts(None, by_set);
+    assert_eq!(lines(&cell(text(b'A')), &glyphs, CellMode::Saa5246a), PATTERN.to_vec(), "G0 from its font");
+    // G2 Latin 2/1 is the inverted exclamation mark.
+    let inverted = Glyph::Char(CharRef::new(CharSet::G2(G2Set::Latin), 0x21));
+    assert_eq!(lines(&cell(inverted), &glyphs, CellMode::Saa5246a), OTHER.to_vec(), "G2 from its own");
 }

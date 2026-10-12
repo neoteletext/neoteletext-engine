@@ -25,8 +25,14 @@ use neoteletext_browser::navigation::clean_title;
 use neoteletext_browser::tuning::{self, Confirmed};
 use neoteletext_browser::{Destination, Entry, Location, Navigation, Tuning, Why};
 use neoteletext_core::consts::PACKET_BYTES;
+use neoteletext_core::glyphs::conformance::FONT_SET_COUNT;
+use neoteletext_core::types::FontGlyph;
 use neoteletext_web::sha256::Digest;
 use std::collections::HashSet;
+
+/// The fonts sent to a decoder, by SHA-256: the font in use and the user's
+/// font for each character set (REQ-FNT-005).
+pub type FontSignature = (Option<Digest>, [Option<Digest>; FONT_SET_COUNT]);
 
 /// The largest file opened: a long broadcast capture.
 const MAX_FILE: u64 = 256 * 1024 * 1024;
@@ -113,8 +119,8 @@ pub struct Tab {
     /// The channel's font (REQ-FNT-006): its address and SHA-256.
     pub channel_font: Option<(String, Digest)>,
     /// The fonts last sent to the decoder, by SHA-256: the font in use and
-    /// the user's font filling in (REQ-FNT-008).
-    sent_fonts: Option<(Option<Digest>, Option<Digest>)>,
+    /// the user's font for each character set (REQ-FNT-008).
+    sent_fonts: Option<FontSignature>,
     /// The font drawing the page and who chose it, for the status line
     /// (REQ-FNT-005); `None` is Bedstead.
     pub font_shown: Option<(String, Chooser)>,
@@ -488,17 +494,22 @@ impl Tab {
 
     /// True when the fonts chosen differ from those last sent.
     #[must_use]
-    pub fn fonts_differ(&self, signature: (Option<Digest>, Option<Digest>)) -> bool {
-        self.helpers.is_some() && self.sent_fonts != Some(signature)
+    pub fn fonts_differ(&self, signature: &FontSignature) -> bool {
+        self.helpers.is_some() && self.sent_fonts.as_ref() != Some(signature)
     }
 
     /// Sends the decoder the fonts to draw with, when they changed
-    /// (REQ-FNT-008).
-    pub fn send_fonts(&mut self, signature: (Option<Digest>, Option<Digest>), fonts: DecoderFonts) {
-        if self.sent_fonts == Some(signature) || self.helpers.is_none() {
+    /// (REQ-FNT-008): each table to its slot, one font per message, then
+    /// which slots draw the page.
+    pub fn send_fonts(&mut self, signature: FontSignature, tables: &[&[FontGlyph]], fonts: DecoderFonts) {
+        if self.sent_fonts.as_ref() == Some(&signature) || self.helpers.is_none() {
             return;
         }
         self.sent_fonts = Some(signature);
+        for (slot, table) in tables.iter().enumerate() {
+            let Ok(slot) = u8::try_from(slot) else { break };
+            self.send_decoder(&Frame::FontTable(slot, table.to_vec()));
+        }
         self.send_decoder(&Frame::Fonts(fonts));
     }
 

@@ -269,6 +269,7 @@ impl Source for Live {
                 | Frame::FontBytes(_)
                 | Frame::Font(_)
                 | Frame::FontLibrary(_)
+                | Frame::FontTable(..)
                 | Frame::Fonts(_) => {}
             }
         }

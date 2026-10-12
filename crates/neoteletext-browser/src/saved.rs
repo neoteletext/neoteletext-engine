@@ -8,6 +8,7 @@
 //! stored address can never mean more than a typed one.
 
 use crate::location::{Destination, parse_input};
+use neoteletext_core::glyphs::conformance::{FONT_SET_COUNT, FONT_SETS, font_set_index};
 use std::fmt::Write as _;
 
 /// The most records read from one file.
@@ -88,10 +89,11 @@ pub fn prune_history(mut visits: Vec<Saved>, now: u64) -> Vec<Saved> {
 pub struct Settings {
     /// Stretch pages to the 4:3 picture of a television (REQ-RND-004).
     pub aspect: bool,
-    /// The font the user chose (REQ-FNT-005), or none: Bedstead.
-    pub font: Option<UserFont>,
-    /// "Always use my font": the user's font, or Bedstead, whatever the
-    /// channel or page names (REQ-FNT-005).
+    /// The font the user chose for each character set, by its place in
+    /// `FONT_SETS`, or none: Bedstead (REQ-FNT-005, decision E.75 item 6).
+    pub fonts: [Option<UserFont>; FONT_SET_COUNT],
+    /// "Always use my fonts": the user's font for each set, or Bedstead,
+    /// whatever the channel or page names (REQ-FNT-005).
     pub always_my_font: bool,
     /// Allow fonts from other sites (REQ-FNT-003); allowed by default.
     pub fonts_from_other_sites: bool,
@@ -112,7 +114,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             aspect: false,
-            font: None,
+            fonts: [const { None }; FONT_SET_COUNT],
             always_my_font: false,
             fonts_from_other_sites: true,
             libraries: Vec::new(),
@@ -141,7 +143,9 @@ pub struct UserFont {
 /// The most libraries kept.
 pub const MAX_LIBRARIES: usize = 64;
 const ASPECT_KEY: &str = "aspect";
-const FONT_KEY: &str = "font";
+/// A set's font is saved under this prefix and the set's name of
+/// REQ-FNT-011, such as `font.G0-Latin-German`.
+const FONT_KEY_PREFIX: &str = "font.";
 const ALWAYS_KEY: &str = "always_my_font";
 const OTHER_SITES_KEY: &str = "fonts_from_other_sites";
 const LIBRARY_KEY: &str = "library";
@@ -164,10 +168,11 @@ impl Settings {
             u8::from(self.show_duplicate_fonts),
             u8::from(self.show_font_sample)
         );
-        if let Some(font) = &self.font {
+        for ((name, _), font) in FONT_SETS.iter().zip(&self.fonts) {
+            let Some(font) = font else { continue };
             let _ = writeln!(
                 out,
-                "{FONT_KEY}={}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}",
+                "{FONT_KEY_PREFIX}{name}={}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}",
                 font.sha256,
                 u8::from(font.by_address),
                 field(&font.address),
@@ -192,7 +197,12 @@ impl Settings {
                 Some((FONT_BROWSER_KEY, value)) => settings.font_browser = value.trim() == "1",
                 Some((DUPLICATES_KEY, value)) => settings.show_duplicate_fonts = value.trim() == "1",
                 Some((SAMPLE_KEY, value)) => settings.show_font_sample = value.trim() == "1",
-                Some((FONT_KEY, value)) => settings.font = user_font(value),
+                Some((key, value)) if key.starts_with(FONT_KEY_PREFIX) => {
+                    let place = font_set_index(key.trim_start_matches(FONT_KEY_PREFIX));
+                    if let Some(slot) = place.and_then(|place| settings.fonts.get_mut(place)) {
+                        *slot = user_font(value);
+                    }
+                }
                 Some((LIBRARY_KEY, value)) if !value.is_empty() && settings.libraries.len() < MAX_LIBRARIES => {
                     settings.libraries.push(value.to_string());
                 }
@@ -270,14 +280,20 @@ mod tests {
 
     #[test]
     fn settings_round_trip_and_ignore_nonsense() {
+        let font = UserFont {
+            sha256: "5ee6246b7f9bd197f47ce0741ea799a55ac08af775869a08c085803e02a3f14d".into(),
+            address: "https://fonts.example/a.bdf".into(),
+            title: "A\tfont".into(),
+            by_address: true,
+        };
+        let german = font_set_index("G0-Latin-German").unwrap();
+        let greek = font_set_index("G2-Greek").unwrap();
+        let mut fonts = [const { None }; FONT_SET_COUNT];
+        fonts[german] = Some(font.clone());
+        fonts[greek] = Some(UserFont { by_address: false, ..font.clone() });
         let settings = Settings {
             aspect: true,
-            font: Some(UserFont {
-                sha256: "5ee6246b7f9bd197f47ce0741ea799a55ac08af775869a08c085803e02a3f14d".into(),
-                address: "https://fonts.example/a.bdf".into(),
-                title: "A\tfont".into(),
-                by_address: true,
-            }),
+            fonts,
             always_my_font: true,
             fonts_from_other_sites: false,
             libraries: vec!["https://lib.example/teletext/".into(), "https://other.example/".into()],
@@ -285,23 +301,24 @@ mod tests {
             show_duplicate_fonts: true,
             show_font_sample: true,
         };
-        let again = Settings::read(&settings.write());
-        assert_eq!(again.font.as_ref().map(|font| font.title.as_str()), Some("A font"), "no tab in a field");
-        assert_eq!(
-            Settings {
-                font: settings.font.clone().map(|font| UserFont { title: "A font".into(), ..font }),
-                ..settings.clone()
-            },
-            again
-        );
-        // The retired glyph choice is an unknown key now (decision E.72).
+        let written = settings.write();
+        assert!(written.contains("font.G0-Latin-German=") && written.contains("font.G2-Greek="), "{written}");
+        let again = Settings::read(&written);
+        assert_eq!(again.fonts[german].as_ref().map(|font| font.title.as_str()), Some("A font"), "no tab in a field");
+        let mut expected = settings.clone();
+        for slot in expected.fonts.iter_mut().flatten() {
+            slot.title = "A font".into();
+        }
+        assert_eq!(expected, again);
+        // The retired glyph choice and the single font of earlier settings are
+        // unknown keys now (decisions E.72 and E.75 item 6).
         assert_eq!(Settings::read("glyphs=2\naspect=yes\nother=1"), Settings::default());
-        assert!(Settings::default().fonts_from_other_sites, "allowed by default (REQ-BRW-007)");
-        assert_eq!(Settings::read("font=abc\t1\thttps://x/\tX").font, None, "a bad checksum");
         assert_eq!(
-            Settings::read("font=5ee6246b7f9bd197f47ce0741ea799a55ac08af775869a08c085803e02a3f14d\t2\thttps://x/\tX")
-                .font,
-            None
+            Settings::read("font=5ee6246b7f9bd197f47ce0741ea799a55ac08af775869a08c085803e02a3f14d\t1\thttps://x/\tX"),
+            Settings::default()
         );
+        assert!(Settings::default().fonts_from_other_sites, "allowed by default (REQ-BRW-007)");
+        assert!(Settings::read("font.G0-Latin-German=abc\t1\thttps://x/\tX").fonts[german].is_none(), "a bad checksum");
+        assert_eq!(Settings::read("font.G0-Klingon=x").fonts, [const { None }; FONT_SET_COUNT], "an unknown set");
     }
 }

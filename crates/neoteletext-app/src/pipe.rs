@@ -8,7 +8,7 @@
 use neoteletext_core::charset::CharSet;
 use neoteletext_core::consts::{CELL_FIELD_LINES, FONT_MAX_CHARACTERS, FONT_MAX_FILE_BYTES};
 use neoteletext_core::glyphs::LoadedFont;
-use neoteletext_core::glyphs::conformance::{FONT_SETS, font_set_of};
+use neoteletext_core::glyphs::conformance::{FONT_SET_COUNT, FONT_SETS, font_set_of};
 use neoteletext_core::level1::{DesignationReport, DesignationSource, NationalSource};
 use neoteletext_core::types::FontGlyph;
 use std::io::{self, Read, Write};
@@ -136,7 +136,10 @@ pub enum Frame {
     /// Font helper to interface: a library's index, read in the helper's
     /// confinement (REQ-FNT-004).
     FontLibrary(LibraryReply),
-    /// Interface to decoder: the fonts to draw the page with (REQ-FNT-008).
+    /// Interface to decoder: one font, for a numbered slot (REQ-FNT-008:
+    /// at most one font per message).
+    FontTable(u8, Vec<FontGlyph>),
+    /// Interface to decoder: which slots draw the page (REQ-FNT-005).
     Fonts(DecoderFonts),
 }
 
@@ -195,15 +198,29 @@ pub enum LibraryReply {
     Failed(String),
 }
 
-/// The fonts a decoder draws with (REQ-FNT-005, REQ-FNT-008): the font in
-/// use, then the user's font for what it lacks; an empty table is none.
-#[derive(Clone, PartialEq, Eq, Debug, Default)]
+/// The fonts a decoder holds, at most: the font in use and one for each
+/// character set (REQ-FNT-005, decision E.75 item 6).
+pub const MAX_FONT_SLOTS: usize = FONT_SET_COUNT + 1;
+
+/// Which of the fonts sent in [`Frame::FontTable`] draw the page
+/// (REQ-FNT-005, REQ-FNT-008): the font in use, then for a character it
+/// lacks the user's font for the character's set, each by its slot.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct DecoderFonts {
     /// The font in use.
-    pub in_use: Vec<FontGlyph>,
-    /// The user's font, for characters the font in use lacks.
-    pub fallback: Vec<FontGlyph>,
+    pub in_use: Option<u8>,
+    /// The user's font for each set of `FONT_SETS`, by its place.
+    pub by_set: [Option<u8>; FONT_SET_COUNT],
 }
+
+impl Default for DecoderFonts {
+    fn default() -> Self {
+        Self { in_use: None, by_set: [None; FONT_SET_COUNT] }
+    }
+}
+
+/// No slot, in a fonts frame.
+const NO_SLOT: u8 = u8::MAX;
 
 /// The fetcher's answer to [`Frame::FetchContents`] (REQ-WEB-025).
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -539,6 +556,7 @@ const FONT: u8 = b'g';
 const FONT_LIBRARY: u8 = b'h';
 const FONTS: u8 = b'i';
 const CHANNEL_FONT: u8 = b'j';
+const FONT_TABLE: u8 = b'l';
 /// The kinds of [`FontReply`] and [`LibraryReply`] on the wire.
 const REPLY_OK: u8 = 0;
 const REPLY_FAILED: u8 = 1;
@@ -778,6 +796,7 @@ pub fn write(out: &mut dyn Write, frame: &Frame) -> io::Result<()> {
         | Frame::FontBytes(_)
         | Frame::Font(_)
         | Frame::FontLibrary(_)
+        | Frame::FontTable(..)
         | Frame::Fonts(_) => write_font(out, frame),
     }
 }
@@ -858,10 +877,14 @@ fn write_font(out: &mut dyn Write, frame: &Frame) -> io::Result<()> {
             }
             put(out, FONT_LIBRARY, &buffer)
         }
+        Frame::FontTable(slot, glyphs) => {
+            let mut buffer = vec![*slot];
+            put_table(&mut buffer, glyphs);
+            put(out, FONT_TABLE, &buffer)
+        }
         Frame::Fonts(fonts) => {
-            let mut buffer = Vec::new();
-            put_table(&mut buffer, &fonts.in_use);
-            put_table(&mut buffer, &fonts.fallback);
+            let mut buffer = vec![fonts.in_use.unwrap_or(NO_SLOT)];
+            buffer.extend(fonts.by_set.iter().map(|slot| slot.unwrap_or(NO_SLOT)));
             put(out, FONTS, &buffer)
         }
         _ => Err(io::Error::other("not a font frame")),
@@ -1124,7 +1147,39 @@ fn browser_frame(kind: u8, payload: &[u8]) -> io::Result<Frame> {
             }
             Frame::Status(PageStatus { page, subcode, found, status, form, link, text, font, designation })
         }
-        CHANNEL_FONT | FONT_BYTES | FONT | FONT_LIBRARY | FONTS => font_frame(kind, payload)?,
+        CHANNEL_FONT | FONT_BYTES | FONT | FONT_LIBRARY | FONTS | FONT_TABLE => font_frame(kind, payload)?,
+        _ => return Err(invalid()),
+    })
+}
+
+/// Reads the frames that give a decoder its fonts: one font for a slot, or
+/// which slots draw the page (REQ-FNT-005, REQ-FNT-008).
+fn decoder_fonts_frame(kind: u8, mut cursor: Cursor<'_>) -> io::Result<Frame> {
+    let invalid = || io::Error::other("malformed frame");
+    Ok(match kind {
+        FONT_TABLE => {
+            let slot = cursor.byte()?;
+            if usize::from(slot) >= MAX_FONT_SLOTS {
+                return Err(invalid());
+            }
+            let glyphs = cursor.table()?;
+            cursor.end()?;
+            Frame::FontTable(slot, glyphs)
+        }
+        FONTS => {
+            let slot = |byte: u8| match byte {
+                NO_SLOT => Ok(None),
+                slot if usize::from(slot) < MAX_FONT_SLOTS => Ok(Some(slot)),
+                _ => Err(invalid()),
+            };
+            let in_use = slot(cursor.byte()?)?;
+            let mut by_set = [None; FONT_SET_COUNT];
+            for place in &mut by_set {
+                *place = slot(cursor.byte()?)?;
+            }
+            cursor.end()?;
+            Frame::Fonts(DecoderFonts { in_use, by_set })
+        }
         _ => return Err(invalid()),
     })
 }
@@ -1210,12 +1265,7 @@ fn font_frame(kind: u8, payload: &[u8]) -> io::Result<Frame> {
             }
             _ => return Err(invalid()),
         }),
-        FONTS => {
-            let in_use = cursor.table()?;
-            let fallback = cursor.table()?;
-            cursor.end()?;
-            Frame::Fonts(DecoderFonts { in_use, fallback })
-        }
+        FONT_TABLE | FONTS => decoder_fonts_frame(kind, cursor)?,
         _ => return Err(invalid()),
     })
 }
@@ -1239,7 +1289,7 @@ mod tests {
     /// when a frame is read, whoever reads it; so is an oversized font.
     #[test]
     fn bad_glyph_tables_and_oversized_fonts_are_refused() {
-        let fonts = |in_use: Vec<FontGlyph>| Frame::Fonts(DecoderFonts { in_use, fallback: Vec::new() });
+        let fonts = |table: Vec<FontGlyph>| Frame::FontTable(0, table);
         for (table, what) in [
             (vec![glyph(0x42, 0), glyph(0x41, 0)], "unsorted"),
             (vec![glyph(0x41, 0), glyph(0x41, 0)], "repeated"),
@@ -1267,6 +1317,14 @@ mod tests {
             validators: [None, None],
         }));
         assert!(write(&mut Vec::new(), &reply).is_err() || read(&mut wire(&reply).as_slice()).is_err());
+        // A slot beyond the fonts a decoder holds, in either frame.
+        let mut table = wire(&Frame::FontTable(0, vec![glyph(0x41, 0)]));
+        table[5] = u8::try_from(MAX_FONT_SLOTS).unwrap();
+        assert!(read(&mut table.as_slice()).is_err(), "a font for slot {MAX_FONT_SLOTS}");
+        let mut assignment = wire(&Frame::Fonts(DecoderFonts::default()));
+        let last = assignment.len() - 1;
+        assignment[last] = u8::try_from(MAX_FONT_SLOTS).unwrap();
+        assert!(read(&mut assignment.as_slice()).is_err(), "a set drawn from slot {MAX_FONT_SLOTS}");
         // A reply of an unknown kind, and a status whose font flag is 2.
         assert!(read(&mut &[FONT, 0, 0, 0, 1, 7][..]).is_err());
         assert!(read(&mut &[FONT_LIBRARY, 0, 0, 0, 1, 7][..]).is_err());
@@ -1330,7 +1388,16 @@ mod tests {
                 2,
             )),
             Frame::FontLibrary(LibraryReply::Failed("TooLarge".into())),
-            Frame::Fonts(DecoderFonts { in_use: vec![glyph(0x41, 1)], fallback: Vec::new() }),
+            Frame::FontTable(3, vec![glyph(0x41, 1)]),
+            Frame::Fonts(DecoderFonts {
+                in_use: Some(0),
+                by_set: {
+                    let mut by_set = [None; FONT_SET_COUNT];
+                    by_set[1] = Some(3);
+                    by_set[20] = Some(3);
+                    by_set
+                },
+            }),
         ];
         for frame in &frames {
             assert_eq!(read(&mut wire(frame).as_slice()).unwrap().as_ref(), Some(frame));

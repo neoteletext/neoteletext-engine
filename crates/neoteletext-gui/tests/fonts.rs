@@ -71,9 +71,9 @@ impl Run {
         let now = neoteletext_gui::now_seconds();
         self.tab.poll();
         self.fonts.poll(&self.storage, &self.options, &self.wake, now);
-        let user = self.settings.font.as_ref().and_then(user_request);
+        let users = self.settings.fonts.clone().map(|font| font.as_ref().and_then(user_request));
         let work = Work { storage: &self.storage, options: &self.options, wake: &self.wake, now };
-        update_tab(&mut self.tab, &mut self.fonts, &self.settings, user.as_ref(), &work);
+        update_tab(&mut self.tab, &mut self.fonts, &self.settings, &users, &work);
     }
 
     fn wait(&mut self, what: &str, done: impl Fn(&Self) -> bool) {
@@ -206,9 +206,11 @@ fn fonts_named_by_the_channel_the_page_the_user_and_a_library() {
     assert_eq!(ignored, 1, "the entry that climbs out of the folder");
     assert_eq!(fonts[0].address, sites.address("fontsite", "/lib/library.bdf"));
     assert!(!log(&sites).contains(&"/lib/library.bdf".to_string()), "listing fetched no font");
-    // REQ-FNT-005: the user's font from the library, with "always use my
-    // font", wins over the channel and the page.
-    run.settings.font = Some(UserFont {
+    // REQ-FNT-005: the user's font from the library for the page's set, G0
+    // Latin with the English option, with "always use my fonts", wins over
+    // the channel and the page.
+    let english = neoteletext_core::glyphs::conformance::font_set_index("G0-Latin-English").unwrap();
+    run.settings.fonts[english] = Some(UserFont {
         sha256: String::from_utf8_lossy(&to_hex(&fonts[0].sha256)).into_owned(),
         address: fonts[0].address.clone(),
         title: fonts[0].title.clone(),

@@ -19,7 +19,7 @@ use neoteletext_browser::fonts::{
 };
 use neoteletext_browser::saved::{Settings, UserFont};
 use neoteletext_core::glyphs::LoadedFont;
-use neoteletext_core::glyphs::conformance::conformance_masks;
+use neoteletext_core::glyphs::conformance::{FONT_SET_COUNT, conformance_masks};
 use neoteletext_core::types::FontGlyph;
 use neoteletext_web::sha256::{self, Digest, parse_hex};
 use neoteletext_web::url::Url;
@@ -470,12 +470,30 @@ const fn refusal(refused: Refused) -> &'static str {
     }
 }
 
+/// The decoder slot of a font: its place among the distinct fonts sent, the
+/// font in use first, then the sets' fonts in the order of `FONT_SETS`.
+fn slot_for<'f>(tables: &mut Vec<(Digest, &'f Font)>, entry: Option<(Digest, &'f Font)>) -> Option<u8> {
+    let (sha256, font) = entry?;
+    let place = tables.iter().position(|(known, _)| *known == sha256).unwrap_or_else(|| {
+        tables.push((sha256, font));
+        tables.len().saturating_sub(1)
+    });
+    u8::try_from(place).ok()
+}
+
 /// Loads the fonts a tab's page and channel name, when they may be fetched
-/// (REQ-FNT-003), chooses the font in use (REQ-FNT-005), and sends the
-/// decoder the fonts to draw with when they change (REQ-FNT-008). `user`
-/// is the user's font, already asked for.
-pub fn update_tab(tab: &mut Tab, fonts: &mut Fonts, settings: &Settings, user: Option<&Request>, work: &Work<'_>) {
-    if let Some(request) = user {
+/// (REQ-FNT-003), chooses the font in use and the user's font for each
+/// character set (REQ-FNT-005, decision E.75 item 6), and sends the decoder
+/// the fonts to draw with when they change (REQ-FNT-008). `users` are the
+/// user's fonts by set, already asked for.
+pub fn update_tab(
+    tab: &mut Tab,
+    fonts: &mut Fonts,
+    settings: &Settings,
+    users: &[Option<Request>; FONT_SET_COUNT],
+    work: &Work<'_>,
+) {
+    for request in users.iter().flatten() {
         fonts.want(request, work.storage, work.options, work.wake, work.now);
     }
     let folder = tab.channel_folder();
@@ -502,25 +520,33 @@ pub fn update_tab(tab: &mut Tab, fonts: &mut Fonts, settings: &Settings, user: O
     }
     let ready = |request: Option<&Request>| request.and_then(|request| fonts.ready(request));
     let [page, channel] = &named;
-    let (page, channel, mine) = (ready(page.as_ref()), ready(channel.as_ref()), ready(user));
-    let selection = select(
-        Available { page: page.is_some(), channel: channel.is_some(), user: mine.is_some() },
-        settings.always_my_font,
-    );
-    let in_use: Option<(Digest, &Font, Chooser)> = match selection.in_use {
+    let (page, channel) = (ready(page.as_ref()), ready(channel.as_ref()));
+    let in_use = match select(Available { page: page.is_some(), channel: channel.is_some() }, settings.always_my_font) {
         Some(Chooser::Page) => page.map(|(sha256, font)| (sha256, font, Chooser::Page)),
         Some(Chooser::Channel) => channel.map(|(sha256, font)| (sha256, font, Chooser::Channel)),
-        Some(Chooser::User) => mine.map(|(sha256, font)| (sha256, font, Chooser::User)),
-        None => None,
+        _ => None,
     };
-    let fallback = if selection.user_fills_in { mine } else { None };
-    let signature = (in_use.map(|(sha256, ..)| sha256), fallback.map(|(sha256, _)| sha256));
-    tab.font_shown = in_use.map(|(_, font, chooser)| (font.name.clone(), chooser));
-    if tab.fonts_differ(signature) {
-        let decoder_fonts = DecoderFonts {
-            in_use: in_use.map(|(_, font, _)| font.glyphs.clone()).unwrap_or_default(),
-            fallback: fallback.map(|(_, font)| font.glyphs.clone()).unwrap_or_default(),
-        };
-        tab.send_fonts(signature, decoder_fonts);
+    let mine: Vec<Option<(Digest, &Font)>> = users.iter().map(|request| ready(request.as_ref())).collect();
+    let mut tables: Vec<(Digest, &Font)> = Vec::new();
+    let in_use_slot = slot_for(&mut tables, in_use.map(|(sha256, font, _)| (sha256, font)));
+    let mut by_set = [None; FONT_SET_COUNT];
+    for (slot, entry) in by_set.iter_mut().zip(&mine) {
+        *slot = slot_for(&mut tables, *entry);
+    }
+    let mut signature_sets = [None; FONT_SET_COUNT];
+    for (digest, entry) in signature_sets.iter_mut().zip(&mine) {
+        *digest = entry.map(|(sha256, _)| sha256);
+    }
+    let signature = (in_use.map(|(sha256, ..)| sha256), signature_sets);
+    // The status line names the font in use, or the user's font for the
+    // page's G0 set (REQ-FNT-005).
+    let page_g0 = tab.status.as_ref().and_then(|status| status.designation).map(|designation| designation.g0);
+    tab.font_shown = in_use.map(|(_, font, chooser)| (font.name.clone(), chooser)).or_else(|| {
+        let (_, font) = page_g0.and_then(|place| mine.get(usize::from(place)).copied().flatten())?;
+        Some((font.name.clone(), Chooser::User))
+    });
+    if tab.fonts_differ(&signature) {
+        let glyphs: Vec<&[FontGlyph]> = tables.iter().map(|(_, font)| font.glyphs.as_slice()).collect();
+        tab.send_fonts(signature, &glyphs, DecoderFonts { in_use: in_use_slot, by_set });
     }
 }

@@ -38,6 +38,7 @@ use crate::consts::{
     GLYPH_LINES,
 };
 use crate::types::{DrcsCharacter, FontGlyph};
+use conformance::{FONT_SET_COUNT, font_set_of};
 
 /// One G3 glyph (REQ-RND-037): each line of the cell as 12 half-dots, bit
 /// 11 the leftmost, top line first.
@@ -89,7 +90,8 @@ pub struct GlyphEntry {
 }
 
 /// A glyph set: G0 and G2 entries sorted by code point, the G3 set, and
-/// up to two loaded fonts, the font in use first.
+/// loaded fonts: the font in use, and the user's font for each character
+/// set (REQ-FNT-005, decision E.75 item 6).
 #[derive(Clone, Copy, Debug)]
 pub struct GlyphSet<'a> {
     entries: &'static [GlyphEntry],
@@ -98,7 +100,8 @@ pub struct GlyphSet<'a> {
     g3: &'static [G3Glyph; G3_CODES],
     /// Where the G3 glyphs come from (REQ-GEN-012, REQ-RND-037).
     pub g3_provenance: &'static str,
-    fonts: [Option<LoadedFont<'a>>; 2],
+    in_use: Option<LoadedFont<'a>>,
+    by_set: [Option<LoadedFont<'a>>; FONT_SET_COUNT],
 }
 
 /// Why a glyph table cannot be a loaded font (REQ-FNT-003, REQ-FNT-008).
@@ -213,16 +216,28 @@ impl GlyphSet<'static> {
     /// code point, with the generated G3 glyphs.
     #[must_use]
     pub const fn from_entries(entries: &'static [GlyphEntry], provenance: &'static str) -> Self {
-        Self { entries, provenance, g3: &g3::G3, g3_provenance: g3::PROVENANCE, fonts: [None, None] }
+        Self {
+            entries,
+            provenance,
+            g3: &g3::G3,
+            g3_provenance: g3::PROVENANCE,
+            in_use: None,
+            by_set: [None; FONT_SET_COUNT],
+        }
     }
 }
 
 impl<'a> GlyphSet<'a> {
     /// The same set with loaded fonts (REQ-FNT-005): `in_use`, the font
-    /// drawing the page, then `fallback`, the user's font, for characters
-    /// `in_use` lacks; the set's own glyphs come last.
+    /// drawing the page, then for a character it lacks the user's font for
+    /// the character's own set, by its place in `FONT_SETS`; the set's own
+    /// glyphs come last.
     #[must_use]
-    pub const fn with_fonts<'b>(self, in_use: Option<LoadedFont<'b>>, fallback: Option<LoadedFont<'b>>) -> GlyphSet<'b>
+    pub const fn with_fonts<'b>(
+        self,
+        in_use: Option<LoadedFont<'b>>,
+        by_set: [Option<LoadedFont<'b>>; FONT_SET_COUNT],
+    ) -> GlyphSet<'b>
     where
         'a: 'b,
     {
@@ -231,7 +246,8 @@ impl<'a> GlyphSet<'a> {
             provenance: self.provenance,
             g3: self.g3,
             g3_provenance: self.g3_provenance,
-            fonts: [in_use, fallback],
+            in_use,
+            by_set,
         }
     }
 
@@ -239,7 +255,7 @@ impl<'a> GlyphSet<'a> {
     /// (REQ-FNT-001).
     #[must_use]
     pub const fn without_fonts(self) -> Self {
-        Self { fonts: [None, None], ..self }
+        Self { in_use: None, by_set: [None; FONT_SET_COUNT], ..self }
     }
 
     /// The set's own G0 and G2 glyphs, sorted by code point: what a font
@@ -251,13 +267,14 @@ impl<'a> GlyphSet<'a> {
 
     /// True when a loaded font is set.
     #[must_use]
-    pub const fn has_fonts(&self) -> bool {
-        self.fonts[0].is_some() || self.fonts[1].is_some()
+    pub fn has_fonts(&self) -> bool {
+        self.in_use.is_some() || self.by_set.iter().any(Option::is_some)
     }
 
-    /// The 12 by 10 glyph of a G0 or G2 character from the loaded fonts, the
-    /// font in use first (REQ-FNT-005, REQ-FNT-008); `None` when neither has
-    /// it, and the set's own glyphs draw it. A character with a diacritical
+    /// The 12 by 10 glyph of a G0 or G2 character from the loaded fonts: the
+    /// font in use, then the user's font for the character's own set
+    /// (REQ-FNT-005, REQ-FNT-008); `None` when neither has it, and the set's
+    /// own glyphs draw it. A character with a diacritical
     /// mark is found by its precomposed form only; without one it falls to
     /// the set's own glyphs, which overlay the mark (decision E.26).
     #[must_use]
@@ -270,8 +287,9 @@ impl<'a> GlyphSet<'a> {
             Some(mark) => compose(unicode.base, mark)?,
             None => unicode.base,
         };
-        self.fonts
-            .iter()
+        let for_set = font_set_of(character.set).and_then(|place| self.by_set.get(place).copied().flatten());
+        [self.in_use, for_set]
+            .into_iter()
             .flatten()
             .find_map(|font| font.lookup(wanted).map(|rows| LoadedGlyph { rows, dot_matrix: font.dot_matrix }))
     }

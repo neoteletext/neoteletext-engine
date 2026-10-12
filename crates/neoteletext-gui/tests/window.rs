@@ -69,6 +69,12 @@ fn snapshot(harness: &mut Harness<'static, BrowserApp>, name: &str) {
     }
 }
 
+/// The place of G0 Latin with the English option, the set of the test
+/// sites' pages, in the user's fonts by set (REQ-FNT-005).
+fn english() -> usize {
+    neoteletext_core::glyphs::conformance::font_set_index("G0-Latin-English").unwrap()
+}
+
 fn data_directory(name: &str) -> PathBuf {
     let directory = std::env::temp_dir().join(format!("neoteletext-window-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&directory);
@@ -147,13 +153,13 @@ fn the_font_settings() {
     }
     harness.get_by_label("Library stripe").click();
     wait(&mut harness, "the user's font", |app| {
-        app.settings().font.as_ref().is_some_and(|font| font.title == "Library stripe")
+        app.settings().fonts[english()].as_ref().is_some_and(|font| font.title == "Library stripe")
     });
     let saved = std::fs::read_to_string(data.join("settings.txt")).unwrap();
     assert!(saved.contains(&format!("library={library}")) && saved.contains("Library stripe"), "{saved}");
     // The channel's font still wins until the user insists.
     assert_eq!(harness.state().font_label(), "Channel stripe (the channel's font)");
-    harness.get_by_label("Always use my font").click();
+    harness.get_by_label("Always use my fonts").click();
     wait(&mut harness, "the user's font in use", |app| app.font_label() == "Library stripe (your font)");
     snapshot(&mut harness, "6-fonts");
     harness.get_by_label("Allow fonts from other sites").click();
@@ -202,7 +208,7 @@ fn the_font_browser() {
     harness.get_by_label("Library stripe").click();
     let ours = |title: &'static str| {
         move |app: &BrowserApp| {
-            app.settings().font.as_ref().is_some_and(|font| font.title == title)
+            app.settings().fonts[english()].as_ref().is_some_and(|font| font.title == title)
                 && app.font_label() == format!("{title} (your font)")
         }
     };
@@ -243,15 +249,15 @@ fn the_font_browser() {
     harness.key_press(Key::ArrowUp);
     harness.key_press(Key::ArrowUp);
     wait(&mut harness, "Bedstead", |app| {
-        app.settings().font.is_none() && app.font_label() == "Bedstead (the bundled font)"
+        app.settings().fonts[english()].is_none() && app.font_label() == "Bedstead (the bundled font)"
     });
     // Esc gives the arrow keys back to the page: no font is chosen.
     harness.key_press(Key::Escape);
     harness.key_press(Key::ArrowDown);
     harness.run_steps(3);
-    assert!(harness.state().settings().font.is_none());
+    assert!(harness.state().settings().fonts[english()].is_none());
     let saved = std::fs::read_to_string(data.join("settings.txt")).unwrap();
     assert!(saved.lines().any(|line| line == "font_browser=1"), "{saved}");
-    assert!(!saved.lines().any(|line| line.starts_with("font=")), "Bedstead is no saved font: {saved}");
+    assert!(!saved.lines().any(|line| line.starts_with("font.")), "Bedstead is no saved font: {saved}");
     let _ = std::fs::remove_dir_all(data);
 }

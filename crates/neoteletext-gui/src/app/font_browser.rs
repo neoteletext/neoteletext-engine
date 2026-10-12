@@ -4,6 +4,7 @@
 //! that font as the user's font (REQ-FNT-005).
 
 use super::BrowserApp;
+use super::font_settings::Target;
 use crate::fonts::{Library, Request};
 use crate::picture::Picture;
 use crate::sample::{bedstead_glyphs, sample};
@@ -11,6 +12,7 @@ use eframe::egui::{Key, RichText, ScrollArea, Ui};
 use neoteletext_app::pipe::LibraryFont;
 use neoteletext_browser::fonts::{Chooser, Scope};
 use neoteletext_core::glyphs::GlyphSet;
+use neoteletext_core::glyphs::conformance::font_set_index;
 use neoteletext_web::sha256::{Digest, parse_hex, to_hex};
 use std::collections::HashSet;
 
@@ -42,7 +44,7 @@ impl BrowserApp {
         if self.settings.show_duplicate_fonts {
             return hidden;
         }
-        let wanted = self.wanted_font();
+        let wanted = self.wanted_font(self.browser_target());
         let mut seen = HashSet::new();
         for font in self.library_fonts() {
             let chosen = wanted.as_ref().is_some_and(|wanted| to_hex(&font.sha256).as_slice() == wanted.as_bytes());
@@ -77,10 +79,22 @@ impl BrowserApp {
         self.library_fonts().into_iter().filter(|font| !hidden.contains(&font.sha256)).collect()
     }
 
+    /// The character set the list chooses for: the page's G0 set, from its
+    /// designation (REQ-BRW-011), or G0 Latin with the English option.
+    fn browser_target(&self) -> usize {
+        self.tab()
+            .status
+            .as_ref()
+            .and_then(|status| status.designation)
+            .map(|designation| usize::from(designation.g0))
+            .or_else(|| font_set_index("G0-Latin-English"))
+            .unwrap_or(0)
+    }
+
     /// The chosen entry: 0 for Bedstead, or one more than the font's place
     /// in `fonts`; none when the user's font is in no listed library.
     fn browser_chosen(&self, fonts: &[LibraryFont]) -> Option<usize> {
-        let Some(wanted) = self.wanted_font() else { return Some(0) };
+        let Some(wanted) = self.wanted_font(self.browser_target()) else { return Some(0) };
         fonts
             .iter()
             .position(|font| to_hex(&font.sha256).as_slice() == wanted.as_bytes())
@@ -92,8 +106,9 @@ impl BrowserApp {
         if self.browser_chosen(fonts) == Some(entry) {
             return;
         }
+        let target = self.browser_target();
         match entry.checked_sub(1).and_then(|place| fonts.get(place)) {
-            None => self.use_bedstead(),
+            None => self.use_bedstead(Some(target)),
             Some(font) => {
                 let request = Request {
                     address: font.address.clone(),
@@ -101,7 +116,7 @@ impl BrowserApp {
                     chooser: Chooser::User,
                     scope: Scope::Shared,
                 };
-                self.choose(request, font.title.clone());
+                self.choose(request, font.title.clone(), Target::Set(target));
             }
         }
     }
@@ -202,7 +217,7 @@ impl BrowserApp {
         if !(self.settings.font_browser && self.settings.show_font_sample) {
             return None;
         }
-        match self.wanted_font() {
+        match self.wanted_font(self.browser_target()) {
             None => Some(BEDSTEAD_SAMPLE),
             Some(hex) => parse_hex(hex.as_bytes()).filter(|sha256| self.fonts.font(sha256).is_some()),
         }

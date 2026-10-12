@@ -179,15 +179,25 @@ HOSTILE_FRONT = {
 }
 
 
-def pattern_font(family, stripe):
-    """A 12 x 10 font in the form of REQ-FNT-002 whose letters A to E are
-    each the same vertical stripe: a test pattern, not a typeface."""
+# The 96 characters of G0 Latin with the English option, as the core's
+# character set tables give them (crates/neoteletext-core/src/glyphs/required.txt).
+ENGLISH = [0x20 + n for n in range(0x5B - 0x20)] + [0x61 + n for n in range(26)] + [
+    0xA3, 0xBC, 0xBD, 0xBE, 0xF7, 0x2014, 0x2016, 0x2190, 0x2191, 0x2192, 0x25A0]
+
+
+def pattern_font(family, stripe, codes=range(ord("A"), ord("E") + 1)):
+    """A 12 x 10 font in the form of REQ-FNT-002 whose characters are each
+    the same vertical stripe, the space blank: a test pattern, not a
+    typeface. By default only A to E; with ENGLISH, complete for G0 Latin
+    with the English option (REQ-FNT-011)."""
+    codes = sorted(codes)
     lines = ["STARTFONT 2.1", "FONT -test-" + family, "SIZE 10 75 75", "FONTBOUNDINGBOX 12 10 0 0",
              "STARTPROPERTIES 4", 'FAMILY_NAME "%s"' % family, 'CHARSET_REGISTRY "ISO10646"',
-             'CHARSET_ENCODING "1"', 'SPACING "C"', "ENDPROPERTIES", "CHARS 5"]
-    for code in range(ord("A"), ord("E") + 1):
+             'CHARSET_ENCODING "1"', 'SPACING "C"', "ENDPROPERTIES", "CHARS %d" % len(codes)]
+    for code in codes:
+        row = 0 if code == 0x20 else stripe << 4
         lines += ["STARTCHAR U+%04X" % code, "ENCODING %d" % code, "SWIDTH 1200 0", "DWIDTH 12 0",
-                  "BBX 12 10 0 0", "BITMAP"] + ["%04X" % (stripe << 4)] * 10 + ["ENDCHAR"]
+                  "BBX 12 10 0 0", "BITMAP"] + ["%04X" % row] * 10 + ["ENDCHAR"]
     return "\n".join(lines + ["ENDFONT", ""]).encode("ascii")
 
 
@@ -195,10 +205,12 @@ def pattern_font(family, stripe):
 # on the right, the library's in the middle.
 CHANNEL_FONT = pattern_font("Channel stripe", 0xF00)
 PAGE_FONT = pattern_font("Page stripe", 0x00F)
-LIBRARY_FONT = pattern_font("Library stripe", 0x0F0)
+# The library's font is complete for G0 Latin English, so it conforms for a
+# set (REQ-FNT-011); the channel's and the page's are partial.
+LIBRARY_FONT = pattern_font("Library stripe", 0x0F0, ENGLISH)
 # The same glyphs under another name: a different file that draws the same
 # (REQ-BRW-010, issue #207).
-LIBRARY_COPY = pattern_font("Library copy", 0x0F0)
+LIBRARY_COPY = pattern_font("Library copy", 0x0F0, ENGLISH)
 FONT_LOG = []
 
 

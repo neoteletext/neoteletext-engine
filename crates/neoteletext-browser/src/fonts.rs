@@ -3,8 +3,8 @@
 //!
 //! - [`may_fetch`]: whether a font named by the user, the channel or the
 //!   page may be fetched at all (REQ-FNT-003, REQ-WEB-014);
-//! - [`select`]: which font draws a page, and whether the user's font fills
-//!   in what it lacks (REQ-FNT-005);
+//! - [`select`]: which named font draws a page, before the user's font
+//!   for each character set (REQ-FNT-005);
 //! - [`FontCache`]: the content-addressed cache of REQ-FNT-009, as a model
 //!   the front end stores; the files themselves are the front end's.
 //!
@@ -97,45 +97,32 @@ pub fn may_fetch(
     Ok(())
 }
 
-/// Which loaded font draws a page's rows 1 to 24 (REQ-FNT-005).
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct Selection {
-    /// The font in use, by who chose it; `None` is Bedstead.
-    pub in_use: Option<Chooser>,
-    /// The user's font fills in the characters the font in use lacks.
-    pub user_fills_in: bool,
-}
-
-/// Fonts available for a page: each true when that font is loaded.
+/// The fonts named for a page and loaded: each true when that font is
+/// loaded.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct Available {
     /// The page's font.
     pub page: bool,
     /// The channel's font.
     pub channel: bool,
-    /// The user's chosen font.
-    pub user: bool,
 }
 
-/// The first of the page's font, the channel's, the user's and Bedstead;
-/// with "always use my font", the user's font or Bedstead whatever the
-/// channel or page names. Characters the font in use lacks come from the
-/// user's font, then Bedstead (REQ-FNT-005).
+/// The font in use for a page's rows 1 to 24: the page's, else the
+/// channel's, else none; none whatever they name with "always use my
+/// fonts". A character the font in use lacks, and every character when
+/// there is none, comes from the user's font for its own character set,
+/// then Bedstead (REQ-FNT-005, decision E.75 item 6).
 #[must_use]
-pub const fn select(available: Available, always_mine: bool) -> Selection {
-    let in_use = if always_mine {
-        if available.user { Some(Chooser::User) } else { None }
+pub const fn select(available: Available, always_mine: bool) -> Option<Chooser> {
+    if always_mine {
+        None
     } else if available.page {
         Some(Chooser::Page)
     } else if available.channel {
         Some(Chooser::Channel)
-    } else if available.user {
-        Some(Chooser::User)
     } else {
         None
-    };
-    let user_fills_in = available.user && matches!(in_use, Some(Chooser::Page | Chooser::Channel));
-    Selection { in_use, user_fills_in }
+    }
 }
 
 /// What a cached font is kept for (REQ-FNT-009).
@@ -523,27 +510,11 @@ mod tests {
     /// the user's font fills in.
     #[test]
     fn the_order_of_fonts() {
-        let all = Available { page: true, channel: true, user: true };
-        assert_eq!(select(all, false), Selection { in_use: Some(Chooser::Page), user_fills_in: true });
-        assert_eq!(
-            select(Available { page: false, ..all }, false),
-            Selection { in_use: Some(Chooser::Channel), user_fills_in: true }
-        );
-        assert_eq!(
-            select(Available { page: false, channel: false, user: true }, false),
-            Selection { in_use: Some(Chooser::User), user_fills_in: false }
-        );
-        assert_eq!(select(Available::default(), false), Selection { in_use: None, user_fills_in: false });
-        assert_eq!(
-            select(Available { page: true, channel: false, user: false }, false),
-            Selection { in_use: Some(Chooser::Page), user_fills_in: false }
-        );
-        assert_eq!(select(all, true), Selection { in_use: Some(Chooser::User), user_fills_in: false }, "always mine");
-        assert_eq!(
-            select(Available { user: false, ..all }, true),
-            Selection { in_use: None, user_fills_in: false },
-            "always mine with no font of mine is Bedstead"
-        );
+        let all = Available { page: true, channel: true };
+        assert_eq!(select(all, false), Some(Chooser::Page));
+        assert_eq!(select(Available { page: false, ..all }, false), Some(Chooser::Channel));
+        assert_eq!(select(Available::default(), false), None, "the user's fonts per set, then Bedstead");
+        assert_eq!(select(all, true), None, "always mine: the user's fonts per set");
     }
 
     fn entry(byte: u8, size: u64, scope: Scope, last_used: u64) -> CacheEntry {
