@@ -52,6 +52,15 @@ if [ "$mode" = "full" ]; then
         cargo test --workspace --all-features --quiet --target x86_64-apple-darwin
     fi
 
+    # REQ-SEC-014: a dependency nothing uses is supply-chain risk for
+    # nothing. cargo-machete is pinned at 0.9.2 (installed with --locked).
+    if command -v cargo-machete >/dev/null 2>&1; then
+        step "cargo-machete: no unused dependencies (REQ-SEC-014)"
+        cargo machete
+    else
+        step "cargo-machete not installed: unused dependency check SKIPPED"
+    fi
+
     deny_done=no
     if command -v cargo-deny >/dev/null 2>&1; then
         step "cargo-deny: licences and advisories (REQ-GEN-017, REQ-SEC-014)"
