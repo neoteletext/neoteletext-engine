@@ -44,6 +44,15 @@ No code exists yet. The project is at the requirements stage.
 - **Every teletext constant is defined once** (REQ-GEN-014). Never restate a value such as 0x27 or 0xE4 outside the constants module.
 - **The library stops at the row renderer.** It must have no display, video, timing or hardware-specific code (REQ-ARCH-010, decision E.29). Buffering and pixel delivery belong to the port.
 
+## Tracking work: GitHub issues
+
+Work to be done is tracked in GitHub issues on crowdwave/neoteletext (private). What the system must do, and why, stays in REQUIREMENTS.md and `docs/`; an issue links to the requirement or decision it serves rather than restating it.
+
+- **Work starts from an issue.** If none exists, open one first.
+- **The commit closes it.** End the commit message with `Closes #123`; partial progress gets a comment naming the commit.
+- **Log what you find.** Something discovered along the way (a bug, a gap, a decision for the owner) gets an issue, not just a mention in a reply. Decisions for the owner carry the `decision` label.
+- **Keep the milestones true.** Close finished work with the commit that did it; close work the design has overtaken as "not planned" with the reason. Delete an issue only with the owner's agreement.
+
 ## Working with REQUIREMENTS.md
 
 - **Identifiers are permanent.**
