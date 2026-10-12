@@ -5,8 +5,11 @@
 //! the payload. Both sides bound the length, parse strictly and reject
 //! unknown kinds.
 
+use neoteletext_core::charset::CharSet;
 use neoteletext_core::consts::{CELL_FIELD_LINES, FONT_MAX_CHARACTERS, FONT_MAX_FILE_BYTES};
 use neoteletext_core::glyphs::LoadedFont;
+use neoteletext_core::glyphs::conformance::{FONT_SETS, font_set_of};
+use neoteletext_core::level1::{DesignationReport, DesignationSource, NationalSource};
 use neoteletext_core::types::FontGlyph;
 use std::io::{self, Read, Write};
 
@@ -301,6 +304,156 @@ pub struct PageStatus {
     /// resolved against the page's, and its SHA-256. The interface parses
     /// the address again and decides whether to fetch it.
     pub font: Option<(String, [u8; SHA256_BYTES])>,
+    /// How the page's character sets were chosen (REQ-BRW-011); none
+    /// while no page is shown.
+    pub designation: Option<PageDesignation>,
+}
+
+/// How a page's character sets were chosen, as the decoder resolved them
+/// (REQ-BRW-011): the core's report, with each character set given by its
+/// place in `FONT_SETS` (REQ-FNT-011).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct PageDesignation {
+    /// C12 to C14 of the page header, as the national option index.
+    pub header_national: u8,
+    /// The four-bit group.
+    pub group: u8,
+    /// Where the group came from.
+    pub source: DesignationSource,
+    /// The national option index used.
+    pub national: u8,
+    /// Where the national option came from.
+    pub national_source: NationalSource,
+    /// The seven-bit Table 32 value.
+    pub value: u8,
+    /// The value's entry is reserved and the fallback was used.
+    pub fallback: bool,
+    /// The default G0 set with its national option.
+    pub g0: u8,
+    /// The default G2 set.
+    pub g2: u8,
+    /// The second G0 set (Table 33), if any.
+    pub second: Option<u8>,
+    /// Display rows holding an ESC code.
+    pub esc_rows: u8,
+    /// Modified G0 and G2 Character Set Designation triplets applied.
+    pub x26_designations: u16,
+}
+
+impl PageDesignation {
+    /// The pipe's form of a designation report, with the X/26 designations
+    /// the enhancement pass applied; none when a set has no place in
+    /// `FONT_SETS`, which the tables never give.
+    #[must_use]
+    pub fn new(report: &DesignationReport, x26_designations: u32) -> Option<Self> {
+        let place = |set| font_set_of(set).and_then(|place| u8::try_from(place).ok());
+        Some(Self {
+            header_national: report.header_national,
+            group: report.group,
+            source: report.source,
+            national: report.national,
+            national_source: report.national_source,
+            value: report.value,
+            fallback: report.fallback,
+            g0: place(CharSet::G0(report.designation.g0))?,
+            g2: place(CharSet::G2(report.designation.g2))?,
+            second: match report.second {
+                Some(second) => Some(place(CharSet::G0(second))?),
+                None => None,
+            },
+            esc_rows: report.esc_rows,
+            x26_designations: u16::try_from(x26_designations).unwrap_or(u16::MAX),
+        })
+    }
+}
+
+const fn source_byte(source: DesignationSource) -> u8 {
+    match source {
+        DesignationSource::PageX28Format1 => 0,
+        DesignationSource::PageX28Format4 => 1,
+        DesignationSource::MagazineM29Format0 => 2,
+        DesignationSource::MagazineM29Format4 => 3,
+        DesignationSource::Receiver => 4,
+    }
+}
+
+const fn source_of(byte: u8) -> Option<DesignationSource> {
+    Some(match byte {
+        0 => DesignationSource::PageX28Format1,
+        1 => DesignationSource::PageX28Format4,
+        2 => DesignationSource::MagazineM29Format0,
+        3 => DesignationSource::MagazineM29Format4,
+        4 => DesignationSource::Receiver,
+        _ => return None,
+    })
+}
+
+const fn national_byte(source: NationalSource) -> u8 {
+    match source {
+        NationalSource::Header => 0,
+        NationalSource::Designation => 1,
+        NationalSource::Fixed => 2,
+    }
+}
+
+const fn national_of(byte: u8) -> Option<NationalSource> {
+    Some(match byte {
+        0 => NationalSource::Header,
+        1 => NationalSource::Designation,
+        2 => NationalSource::Fixed,
+        _ => return None,
+    })
+}
+
+/// Reads a designation record, checking every field's range.
+fn designation_record(cursor: &mut Cursor<'_>) -> io::Result<Option<PageDesignation>> {
+    let invalid = || io::Error::other("malformed frame");
+    if cursor.byte()? == 0 {
+        return Ok(None);
+    }
+    let fields: [u8; 11] = cursor.bytes(11)?.try_into().map_err(|_| invalid())?;
+    let [header_national, group, source, national, national_source, value, fallback, g0, g2, second, esc_rows] = fields;
+    let set = |place: u8| usize::from(place) < FONT_SETS.len();
+    if !(set(g0) && set(g2) && (second == u8::MAX || set(second)) && fallback <= 1) {
+        return Err(invalid());
+    }
+    Ok(Some(PageDesignation {
+        header_national,
+        group,
+        source: source_of(source).ok_or_else(invalid)?,
+        national,
+        national_source: national_of(national_source).ok_or_else(invalid)?,
+        value,
+        fallback: fallback == 1,
+        g0,
+        g2,
+        second: (second != u8::MAX).then_some(second),
+        esc_rows,
+        x26_designations: cursor.u16()?,
+    }))
+}
+
+/// The bytes of a designation record: a flag, then its fields.
+fn put_designation(buffer: &mut Vec<u8>, designation: Option<&PageDesignation>) {
+    let Some(d) = designation else {
+        buffer.push(0);
+        return;
+    };
+    buffer.push(1);
+    buffer.extend_from_slice(&[
+        d.header_national,
+        d.group,
+        source_byte(d.source),
+        d.national,
+        national_byte(d.national_source),
+        d.value,
+        u8::from(d.fallback),
+        d.g0,
+        d.g2,
+        d.second.unwrap_or(u8::MAX),
+        d.esc_rows,
+    ]);
+    buffer.extend_from_slice(&d.x26_designations.to_be_bytes());
 }
 
 /// Notices the fetcher sends.
@@ -642,6 +795,7 @@ fn status_payload(status: &PageStatus) -> Vec<u8> {
         put_string(&mut buffer, address);
         buffer.extend_from_slice(sha256);
     }
+    put_designation(&mut buffer, status.designation.as_ref());
     buffer
 }
 
@@ -963,11 +1117,12 @@ fn browser_frame(kind: u8, payload: &[u8]) -> io::Result<Frame> {
                 1 => Some((cursor.short_string()?, cursor.sha256()?)),
                 _ => return Err(invalid()),
             };
+            let designation = designation_record(&mut cursor)?;
             cursor.end()?;
             if text.len() > MAX_SCREEN_TEXT || link.len() > MAX_LINK_TEXT {
                 return Err(invalid());
             }
-            Frame::Status(PageStatus { page, subcode, found, status, form, link, text, font })
+            Frame::Status(PageStatus { page, subcode, found, status, form, link, text, font, designation })
         }
         CHANNEL_FONT | FONT_BYTES | FONT | FONT_LIBRARY | FONTS => font_frame(kind, payload)?,
         _ => return Err(invalid()),
@@ -1130,6 +1285,20 @@ mod tests {
                 link: String::new(),
                 text: String::new(),
                 font: Some(("https://fonts.example/f.bdf".into(), [7; SHA256_BYTES])),
+                designation: Some(PageDesignation {
+                    header_national: 1,
+                    group: 4,
+                    source: DesignationSource::MagazineM29Format0,
+                    national: 4,
+                    national_source: NationalSource::Header,
+                    value: 0x24,
+                    fallback: false,
+                    g0: 15,
+                    g2: 21,
+                    second: Some(1),
+                    esc_rows: 3,
+                    x26_designations: 2,
+                }),
             }),
             Frame::Notice(Notice::ChannelFont("https://a.example/f.bdf".into(), [9; SHA256_BYTES])),
             Frame::FontBytes(b"STARTFONT 2.1\n".to_vec()),
@@ -1234,6 +1403,7 @@ mod tests {
                 link: "P200".into(),
                 text: "HELLO\n".into(),
                 font: None,
+                designation: None,
             }),
         ];
         let mut buffer = Vec::new();

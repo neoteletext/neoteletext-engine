@@ -495,12 +495,15 @@ pub struct EnhancementReport {
     pub objects: u32,
     /// Triplets read, over every run of the walk.
     pub steps: u32,
+    /// Modified G0 and G2 Character Set Designation triplets applied
+    /// (Table 34, REQ-L25-012, REQ-BRW-011).
+    pub designations: u32,
 }
 
 #[cfg(feature = "level25")]
 impl EnhancementReport {
     pub(crate) const fn new(build: PageBuild, level: PresentationLevel) -> Self {
-        Self { build, level, faults: EnhancementFaults::NONE, objects: 0, steps: 0 }
+        Self { build, level, faults: EnhancementFaults::NONE, objects: 0, steps: 0, designations: 0 }
     }
 }
 

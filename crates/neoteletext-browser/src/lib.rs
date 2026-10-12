@@ -8,6 +8,7 @@
 //! program; the program asks this crate what to do and to draw. Every rule
 //! of trust lives here, once, so that every front end behaves alike.
 
+pub mod charsets;
 pub mod contents_view;
 pub mod fonts;
 pub mod location;

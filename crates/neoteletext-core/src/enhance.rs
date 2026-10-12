@@ -1202,6 +1202,8 @@ impl<'a, 's> Walker<'a, 's> {
         });
         if accepted.is_none() {
             self.report.faults.ignored_designations = self.report.faults.ignored_designations.saturating_add(1);
+        } else {
+            self.report.designations = self.report.designations.saturating_add(1);
         }
         accepted
     }

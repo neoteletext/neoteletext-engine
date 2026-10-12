@@ -8,6 +8,7 @@
 //! outside the page area, and row 0 inside it is drawn from the
 //! interface's own knowledge (`picture`).
 
+mod designation;
 mod font_browser;
 mod font_settings;
 

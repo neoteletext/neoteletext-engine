@@ -139,6 +139,12 @@ impl BrowserApp {
     /// The panel.
     pub(super) fn font_browser(&mut self, ui: &mut Ui) {
         ui.heading("Font browser");
+        if let Some(status) = &self.tab().status
+            && let Some(designation) = &status.designation
+        {
+            super::designation::section(ui, status.page, designation);
+            ui.separator();
+        }
         if let Some((name, chooser)) = &self.tab().font_shown
             && *chooser != Chooser::User
         {

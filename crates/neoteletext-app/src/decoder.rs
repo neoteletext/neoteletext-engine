@@ -13,7 +13,7 @@
 
 use crate::extras::{self, Destination, INDEX_KEY, PageExtras};
 use crate::interact::{ActiveForm, message_row, submission};
-use crate::pipe::{self, Frame, Notice, PageStatus, Screen, UserInput};
+use crate::pipe::{self, Frame, Notice, PageDesignation, PageStatus, Screen, UserInput};
 use crate::present::{self, MosaicStyle, Scale};
 use crate::session::{DEFAULT_PAGES, Session};
 use crate::source::Source;
@@ -24,7 +24,7 @@ use neoteletext_core::consts::{COLUMNS, ROWS};
 use neoteletext_core::forms::{FormAction, FormKey, FormModel};
 use neoteletext_core::fsm::PageState;
 use neoteletext_core::glyphs::GlyphSet;
-use neoteletext_core::level1::{Grid, Zoom};
+use neoteletext_core::level1::{Grid, Zoom, designation_report};
 use neoteletext_core::nav::PageLinks;
 use neoteletext_core::render::{ColourMode, FlashPhase, RenderOptions, flash_visible};
 use neoteletext_core::types::{Instant, PageAddress, PageNumber};
@@ -142,6 +142,8 @@ pub struct Engine {
     /// for shape when the frame was read (REQ-FNT-008).
     fonts: pipe::DecoderFonts,
     unrecorded: Option<EnhancementReport>,
+    /// How the shown page's character sets were chosen (REQ-BRW-011).
+    designation: Option<PageDesignation>,
     last_screen: Option<Screen>,
     last_status: Option<PageStatus>,
     /// The user has chosen a page since the decoder started.
@@ -253,6 +255,7 @@ impl Engine {
             glyphs,
             fonts: pipe::DecoderFonts::default(),
             unrecorded: None,
+            designation: None,
             last_screen: None,
             last_status: None,
             moved: false,
@@ -696,6 +699,11 @@ impl Engine {
         let context =
             ComposeContext { magazine: &magazine, config: &config, rolling_header: &rolling, store, row24, lookup };
         if let Composed::Built(report) = self.viewer.compose(&mut self.grid, page, &context) {
+            // REQ-BRW-011: how the page's character sets were chosen, from
+            // the core's own resolution and the X/26 designations applied.
+            let x26 = report.as_ref().map_or(0, |report| report.designations);
+            self.designation =
+                page.and_then(|page| PageDesignation::new(&designation_report(Some(page), &magazine, &config), x26));
             self.unrecorded = report;
         }
         if self.prompt.is_none()
@@ -778,6 +786,7 @@ impl Engine {
             link: self.caught_destination(),
             text,
             font: self.last_extras.as_ref().and_then(|extras| extras.font.clone()),
+            designation: self.designation,
         }
     }
 

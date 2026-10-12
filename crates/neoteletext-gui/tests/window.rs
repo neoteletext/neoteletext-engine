@@ -181,6 +181,17 @@ fn the_font_browser() {
     harness.run_steps(3);
     harness.key_press(Key::Enter);
     wait(&mut harness, "the news front page", |app| shown(app, 0x100, "NEWS"));
+    // REQ-BRW-011: the page's designation, step by step. A TTI page sends no
+    // X/28, so the group is the receiver's.
+    harness.run_steps(3);
+    for text in [
+        "P100: how its character sets were chosen",
+        "from the receiver's setting",
+        "Group 0000, West European",
+        "Sets this page uses: G0 Latin, English · G2 Latin",
+    ] {
+        assert!(harness.query_by_label_contains(text).is_some(), "{text}");
+    }
     let start = Instant::now();
     while harness.query_by_label("Library stripe").is_none() && start.elapsed() < PATIENCE {
         harness.step();

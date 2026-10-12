@@ -553,10 +553,64 @@ impl Default for DisplayOptions {
     }
 }
 
-/// Resolves the page's character sets (decision E.4, REQ-CHR-003): the
-/// group from the highest-priority designation, or the configured default.
-/// Returns the designation, the second G0 set, and whether a reserved entry
-/// needed the fallback.
+/// Where a page's designation group came from (REQ-BRW-011): the
+/// highest-priority packet present, in the order of Annex C.4 rule 1, or
+/// the receiver's setting when the page sends none.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum DesignationSource {
+    /// The page's packet X/28/0 Format 1.
+    PageX28Format1,
+    /// The page's packet X/28/4 (Level 3.5).
+    PageX28Format4,
+    /// The magazine's packet M/29/0.
+    MagazineM29Format0,
+    /// The magazine's packet M/29/4 (Level 3.5).
+    MagazineM29Format4,
+    /// None was sent: the receiver's configured region (decision E.4).
+    Receiver,
+}
+
+/// Where the three national option bits came from.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum NationalSource {
+    /// C12 to C14 of the page header.
+    Header,
+    /// Bits 8 to 10 of the designation, at Levels 2.5 and 3.5 (Annex E.9).
+    Designation,
+    /// The receiver's fixed setting (`Config::fixed_national_index`).
+    Fixed,
+}
+
+/// How a page's character sets were chosen, as the decoder resolved them
+/// (REQ-BRW-011, decision E.75 item 5).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct DesignationReport {
+    /// C12 to C14 of the page header, as the national option index.
+    pub header_national: u8,
+    /// The four-bit group, and where it came from.
+    pub group: u8,
+    /// Where the group came from.
+    pub source: DesignationSource,
+    /// The national option index used, and where it came from.
+    pub national: u8,
+    /// Where the national option came from.
+    pub national_source: NationalSource,
+    /// The seven-bit Table 32 value looked up.
+    pub value: u8,
+    /// The entry used: the value's, or the fallback's.
+    pub designation: Designation,
+    /// The value's entry is reserved and REQ-CHR-003's fallback was used.
+    pub fallback: bool,
+    /// The second G0 set and national option of Table 33, if any.
+    pub second: Option<G0>,
+    /// Display rows 1 to 24 holding an ESC code, which toggles to the
+    /// second set.
+    pub esc_rows: u8,
+}
+
+/// How the page's character sets are chosen (decision E.4, REQ-CHR-003,
+/// REQ-BRW-011): the group from the highest-priority designation, or the
+/// configured default.
 ///
 /// The designations are taken in the order of Annex C.4 rule 1: X/28/0
 /// format 1, X/28/4 (Level 3.5 only), M/29/0, M/29/4 (Level 3.5 only)
@@ -565,11 +619,7 @@ impl Default for DisplayOptions {
 /// 3.5, where bits 8 to 10 of the chosen designation give it when there is
 /// one (Annex E.9, decisions E.4 and E.50; REQ-L25-012).
 #[must_use]
-pub fn resolve_designation(
-    page: Option<&StoredPage>,
-    magazine: &MagazineData,
-    config: &Config,
-) -> (Designation, Option<G0>, bool) {
+pub fn designation_report(page: Option<&StoredPage>, magazine: &MagazineData, config: &Config) -> DesignationReport {
     let level_35 = config.level.is_level35();
     // A page's own X/28/0 or X/28/4 counts only when it is a basic Level 1
     // page; then the magazine's packets apply (decision E.4).
@@ -581,19 +631,57 @@ pub fn resolve_designation(
         .and_then(|page| page.page_data_level35)
         .filter(|data| level_35 && data.format.is_some_and(|format| format.function == PAGE_FUNCTION_BASIC))
         .and_then(|data| data.fields.designations);
+    let magazine_29 = magazine.data.and_then(|fields| fields.designations);
     let magazine_35 = magazine.level35.filter(|_| level_35).and_then(|fields| fields.designations);
-    let designations =
-        page_designations.or(page_35).or_else(|| magazine.data.and_then(|fields| fields.designations)).or(magazine_35);
-    let header = page.map_or(0, |page| page.control.national_index());
-    let national = config.fixed_national_index.unwrap_or_else(|| match designations {
-        Some(designations) if config.level.is_enhanced() => designations.default,
-        _ => header,
-    }) & NATIONAL_INDEX_MASK;
+    let (designations, source) = match (page_designations, page_35, magazine_29, magazine_35) {
+        (Some(found), ..) => (Some(found), DesignationSource::PageX28Format1),
+        (None, Some(found), ..) => (Some(found), DesignationSource::PageX28Format4),
+        (None, None, Some(found), _) => (Some(found), DesignationSource::MagazineM29Format0),
+        (None, None, None, Some(found)) => (Some(found), DesignationSource::MagazineM29Format4),
+        (None, None, None, None) => (None, DesignationSource::Receiver),
+    };
+    let header_national = page.map_or(0, |page| page.control.national_index()) & NATIONAL_INDEX_MASK;
+    let (national, national_source) = match (config.fixed_national_index, designations) {
+        (Some(fixed), _) => (fixed, NationalSource::Fixed),
+        (None, Some(designations)) if config.level.is_enhanced() => (designations.default, NationalSource::Designation),
+        _ => (header_national, NationalSource::Header),
+    };
+    let national = national & NATIONAL_INDEX_MASK;
     let group =
         designations.map_or(config.default_region, |designations| designations.default >> DESIGNATION_GROUP_SHIFT);
-    let (designation, fallback) = designation_with_fallback((group << DESIGNATION_GROUP_SHIFT) | national);
+    let value = (group << DESIGNATION_GROUP_SHIFT) | national;
+    let (designation, fallback) = designation_with_fallback(value);
     let second = designations.and_then(|designations| second_g0(designations.second));
-    (designation, second, fallback)
+    let esc_rows = page.map_or(0, |page| {
+        let rows = page.cells.iter().take(ROWS).skip(1);
+        let with_esc = rows.filter(|row| row.iter().any(|&byte| byte & CODE_MASK_7BIT == ESC)).count();
+        u8::try_from(with_esc).unwrap_or(u8::MAX)
+    });
+    DesignationReport {
+        header_national,
+        group,
+        source,
+        national,
+        national_source,
+        value,
+        designation,
+        fallback,
+        second,
+        esc_rows,
+    }
+}
+
+/// Resolves the page's character sets (decision E.4, REQ-CHR-003): the
+/// designation, the second G0 set, and whether a reserved entry needed the
+/// fallback, from [`designation_report`].
+#[must_use]
+pub fn resolve_designation(
+    page: Option<&StoredPage>,
+    magazine: &MagazineData,
+    config: &Config,
+) -> (Designation, Option<G0>, bool) {
+    let report = designation_report(page, magazine, config);
+    (report.designation, report.second, report.fallback)
 }
 
 /// The state record of the row attribute machine (REQ-FSM-006).
@@ -1324,6 +1412,56 @@ mod tests {
         let config = Config { level: Level::Level25, ..Config::default() };
         let header_only = resolve_designation(Some(&page), &only_35, &config).0.g0;
         assert_eq!(header_only, latin(charset::NationalOption::German), "no designation: C12 to C14");
+    }
+
+    /// REQ-BRW-011: the designation report names every step and its
+    /// source: the receiver's region for a Level 1 page, the page's X/28/0,
+    /// the magazine's M/29/0, a reserved entry's fallback, the second G0 set
+    /// and the rows with ESC.
+    #[test]
+    fn the_designation_report() {
+        use crate::config::PresentationLevel as Level;
+        use crate::packet::{PageEnhancement, PageFormat};
+        use crate::types::{ControlBits, Designations, PresentationFields};
+        let fields = |default: u8, second: u8| PresentationFields {
+            designations: Some(Designations { default, second }),
+            ..PresentationFields::default()
+        };
+        let config = Config { level: Level::Level15, ..Config::default() };
+        let mut page = StoredPage::EMPTY;
+        page.control = ControlBits(1 << 14);
+        page.cells[3][5] = crate::ecc::with_odd_parity(ESC);
+        page.cells[5][0] = crate::ecc::with_odd_parity(ESC);
+        page.cells[0][9] = crate::ecc::with_odd_parity(ESC);
+        // A Level 1 page: only C12 to C14, the group from the receiver.
+        let report = designation_report(Some(&page), &MagazineData::default(), &config);
+        assert_eq!((report.source, report.group, report.header_national), (DesignationSource::Receiver, 0, 1));
+        assert_eq!((report.national, report.national_source), (1, NationalSource::Header));
+        assert_eq!(report.designation.g0.national, Some(charset::NationalOption::German));
+        assert_eq!((report.fallback, report.second, report.esc_rows), (false, None, 2), "row 0 does not count");
+        // The page's X/28/0 Format 1 gives group 0001 and a second G0 set.
+        let second = 0b0110 << DESIGNATION_GROUP_SHIFT | 0b111;
+        let basic = Some(PageFormat { function: PAGE_FUNCTION_BASIC, coding: 0 });
+        page.page_data =
+            Some(PageEnhancement { format: basic, fields: fields(0b0001 << DESIGNATION_GROUP_SHIFT, second) });
+        let report = designation_report(Some(&page), &MagazineData::default(), &config);
+        assert_eq!(
+            (report.source, report.group, report.value),
+            (DesignationSource::PageX28Format1, 1, 0b0001 << DESIGNATION_GROUP_SHIFT | 1)
+        );
+        assert_eq!(report.second, second_g0(second));
+        assert!(report.second.is_some());
+        // Without it, the magazine's M/29/0.
+        page.page_data = None;
+        let magazine =
+            MagazineData { data: Some(fields(0b0100 << DESIGNATION_GROUP_SHIFT, 0x7F)), ..MagazineData::default() };
+        let report = designation_report(Some(&page), &magazine, &config);
+        assert_eq!((report.source, report.group), (DesignationSource::MagazineM29Format0, 0b0100));
+        // A reserved entry falls back to group 0000 with the same option.
+        let reserved = MagazineData { data: Some(fields(0b0101 << DESIGNATION_GROUP_SHIFT, 0x7F)), ..magazine };
+        let report = designation_report(Some(&page), &reserved, &config);
+        assert!(report.fallback);
+        assert_eq!(report.designation, charset::designation(1).unwrap());
     }
 
     /// REQ-TST-013's double height with its ignored lower row.

@@ -9,7 +9,7 @@ publish.workspace = true
 
 [dependencies]
 # Page addresses and the constants of the rows the browser draws.
-neoteletext-core = { workspace = true }
+neoteletext-core = { workspace = true, features = ["render"] }
 # The strict address parser and origins (REQ-WEB-015, REQ-WEB-016).
 neoteletext-web = { workspace = true }
 
