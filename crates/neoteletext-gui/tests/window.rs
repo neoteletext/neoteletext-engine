@@ -198,11 +198,28 @@ fn the_font_browser() {
     wait(&mut harness, "the clicked font", ours("Library stripe"));
     harness.key_press(Key::ArrowDown);
     wait(&mut harness, "the next font", ours("Page stripe"));
+    harness.key_press(Key::ArrowDown);
+    wait(&mut harness, "the copy", ours("Library copy"));
+    // Issue #207: once loaded, the copy draws the same as Library stripe,
+    // so leaving it hides it, and the end of the list is Page stripe.
+    harness.key_press(Key::ArrowUp);
+    wait(&mut harness, "back to the next font", ours("Page stripe"));
+    harness.run_steps(3);
+    assert!(harness.query_by_label("Library copy").is_none(), "the duplicate is hidden");
     snapshot(&mut harness, "7-font-browser");
-    // The last entry stays chosen at the end of the list.
     harness.key_press(Key::ArrowDown);
     harness.run_steps(3);
     assert!(ours("Page stripe")(harness.state()));
+    let index = std::fs::read_to_string(data.join("fonts").join("index.tsv")).unwrap();
+    let digest = |name: &str| index.lines().find(|line| line.contains(name)).and_then(|line| line.rsplit('\t').next());
+    assert_eq!(digest("Library copy"), digest("Library stripe"), "one glyph digest: {index}");
+    assert_ne!(digest("Page stripe"), digest("Library stripe"));
+    harness.get_by_label("Show duplicates").click();
+    harness.run_steps(3);
+    assert!(harness.query_by_label("Library copy").is_some(), "shown on request");
+    harness.get_by_label("Show duplicates").click();
+    harness.run_steps(3);
+    assert!(harness.query_by_label("Library copy").is_none());
     harness.key_press(Key::ArrowUp);
     harness.key_press(Key::ArrowUp);
     wait(&mut harness, "Bedstead", |app| {

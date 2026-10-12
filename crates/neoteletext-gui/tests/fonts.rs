@@ -199,7 +199,10 @@ fn fonts_named_by_the_channel_the_page_the_user_and_a_library() {
     run.fonts.list_library(&library, &run.options, &run.wake);
     run.wait("the library's listing", |run| matches!(run.fonts.library(&library), Some(Library::Listed(..))));
     let Some(Library::Listed(fonts, ignored)) = run.fonts.library(&library).cloned() else { unreachable!() };
-    assert_eq!(fonts.iter().map(|font| font.title.as_str()).collect::<Vec<_>>(), ["Library stripe", "Page stripe"]);
+    assert_eq!(
+        fonts.iter().map(|font| font.title.as_str()).collect::<Vec<_>>(),
+        ["Library stripe", "Page stripe", "Library copy"]
+    );
     assert_eq!(ignored, 1, "the entry that climbs out of the folder");
     assert_eq!(fonts[0].address, sites.address("fontsite", "/lib/library.bdf"));
     assert!(!log(&sites).contains(&"/lib/library.bdf".to_string()), "listing fetched no font");

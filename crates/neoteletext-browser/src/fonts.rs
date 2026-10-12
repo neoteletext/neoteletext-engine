@@ -10,7 +10,8 @@
 //!
 //! Nothing here reads a font: fonts are read only in confined helpers.
 
-use neoteletext_web::sha256::{Digest, parse_hex, to_hex};
+use neoteletext_core::types::FontGlyph;
+use neoteletext_web::sha256::{Digest, Sha256, parse_hex, to_hex};
 use neoteletext_web::url::{Origin, Url};
 use std::fmt::Write as _;
 
@@ -175,6 +176,27 @@ pub struct CacheEntry {
     pub etag: String,
     /// The `Last-Modified` its answer had; empty when none.
     pub last_modified: String,
+    /// The SHA-256 of its glyph table ([`glyph_digest`]), which finds fonts
+    /// that draw the same (REQ-BRW-010); none in an index written before it
+    /// was kept.
+    pub glyphs: Option<Digest>,
+}
+
+/// The SHA-256 of a glyph table: each code point as four bytes and its ten
+/// rows as two bytes each, big-endian, in the table's order, which the
+/// font reader keeps sorted by code point. Two fonts that draw every
+/// character alike have the same digest whatever their names, comments and
+/// licence lines (REQ-BRW-010, issue #207).
+#[must_use]
+pub fn glyph_digest(glyphs: &[FontGlyph]) -> Digest {
+    let mut hasher = Sha256::new();
+    for glyph in glyphs {
+        hasher.update(&glyph.code_point.to_be_bytes());
+        for row in glyph.rows {
+            hasher.update(&row.to_be_bytes());
+        }
+    }
+    hasher.finish()
 }
 
 /// The cache's index: which fonts are kept, for whom, and when they were
@@ -324,7 +346,7 @@ impl FontCache {
             };
             let _ = writeln!(
                 out,
-                "{}{SEPARATOR}{}{SEPARATOR}{scope}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}",
+                "{}{SEPARATOR}{}{SEPARATOR}{scope}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}",
                 String::from_utf8_lossy(&to_hex(&entry.sha256)),
                 entry.size,
                 u8::from(entry.named_by_checksum),
@@ -336,6 +358,7 @@ impl FontCache {
                 text(&entry.notice),
                 text(&entry.etag),
                 text(&entry.last_modified),
+                entry.glyphs.map(|glyphs| String::from_utf8_lossy(&to_hex(&glyphs)).into_owned()).unwrap_or_default(),
             );
         }
         out
@@ -349,7 +372,13 @@ impl FontCache {
         let entries = index
             .lines()
             .filter_map(|line| {
-                let fields: Vec<&str> = line.split(SEPARATOR).collect();
+                let mut fields: Vec<&str> = line.split(SEPARATOR).collect();
+                // The glyph digest was added as a thirteenth field; an
+                // entry written before it has twelve.
+                let glyphs = match fields.len() {
+                    INDEX_FIELDS => fields.pop().filter(|digest| !digest.is_empty()),
+                    _ => None,
+                };
                 let [
                     sha256,
                     size,
@@ -385,6 +414,10 @@ impl FontCache {
                     pinned: flag(pinned)?,
                     etag: (*etag).to_string(),
                     last_modified: (*last_modified).to_string(),
+                    glyphs: match glyphs {
+                        Some(digest) => Some(parse_hex(digest.as_bytes())?),
+                        None => None,
+                    },
                 };
                 Some(entry)
             })
@@ -393,6 +426,9 @@ impl FontCache {
         Self { entries }
     }
 }
+
+/// The fields of an index entry.
+const INDEX_FIELDS: usize = 13;
 
 /// A field made safe to store: no separators or line ends, at most 512
 /// bytes.
@@ -505,6 +541,7 @@ mod tests {
             pinned: false,
             etag: String::new(),
             last_modified: String::new(),
+            glyphs: None,
         }
     }
 
@@ -576,15 +613,37 @@ mod tests {
         let mut odd = entry(2, 200, Scope::Channel("https://a.example/x/".into()), 6);
         odd.name = "tab\there".into();
         odd.pinned = true;
+        odd.glyphs = Some([7; 32]);
         cache.insert(odd).unwrap();
         let text = cache.write();
         let again = FontCache::read(&text);
         assert_eq!(again.entries().len(), 2);
         assert_eq!(again.entries()[1].name, "tab here");
         assert!(again.entries()[1].pinned);
+        assert_eq!((again.entries()[0].glyphs, again.entries()[1].glyphs), (None, Some([7; 32])));
+        // An entry written before the glyph digest was kept still reads.
+        let twelve = text.lines().fold(String::new(), |mut out, line| {
+            let _ = writeln!(out, "{}", line.rsplit_once('\t').unwrap().0);
+            out
+        });
+        assert_eq!(FontCache::read(&twelve).entries().len(), 2, "twelve fields");
+        assert!(FontCache::read(&twelve).entries().iter().all(|entry| entry.glyphs.is_none()));
         let damaged =
             format!("{text}not an entry\n{}", text.lines().next().unwrap().replace("\t100\t", "\t999999999\t"));
         assert_eq!(FontCache::read(&damaged).entries().len(), 2, "both damaged lines skipped");
         assert_eq!(file_name(&[0xAB; 32]), "ab".repeat(32));
+    }
+
+    /// Issue #207: the glyph digest depends on the glyphs alone.
+    #[test]
+    fn the_glyph_digest_sees_only_the_glyphs() {
+        let a = FontGlyph { code_point: 0x41, rows: [0x0F0; 10] };
+        let b = FontGlyph { code_point: 0x42, rows: [0x0F0; 10] };
+        assert_eq!(glyph_digest(&[a, b]), glyph_digest(&[a, b]));
+        assert_ne!(glyph_digest(&[a, b]), glyph_digest(&[a]), "a glyph more");
+        let moved = FontGlyph { rows: [0x078; 10], ..b };
+        assert_ne!(glyph_digest(&[a, b]), glyph_digest(&[a, moved]), "one pixel column moved");
+        let renamed = FontGlyph { code_point: 0x43, ..b };
+        assert_ne!(glyph_digest(&[a, b]), glyph_digest(&[a, renamed]), "the same shape at another character");
     }
 }

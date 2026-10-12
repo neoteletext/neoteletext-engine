@@ -209,6 +209,8 @@ impl BrowserApp {
                 self.fonts.list_library(&folder, &self.options, &self.wake);
             }
         }
+        // The font browser's choice of hiding duplicates applies here too.
+        let hidden = self.hidden_duplicates();
         let mut chosen = None;
         let mut remove = None;
         for folder in self.settings.libraries.clone() {
@@ -231,7 +233,7 @@ impl BrowserApp {
                     ui.colored_label(super::WARNING, why.as_str());
                 }
                 Some(Library::Listed(fonts, ignored)) => {
-                    for font in fonts {
+                    for font in fonts.iter().filter(|font| !hidden.contains(&font.sha256)) {
                         if ui.link(&font.title).clicked() {
                             chosen = Some(font.clone());
                         }

@@ -196,6 +196,9 @@ def pattern_font(family, stripe):
 CHANNEL_FONT = pattern_font("Channel stripe", 0xF00)
 PAGE_FONT = pattern_font("Page stripe", 0x00F)
 LIBRARY_FONT = pattern_font("Library stripe", 0x0F0)
+# The same glyphs under another name: a different file that draws the same
+# (REQ-BRW-010, issue #207).
+LIBRARY_COPY = pattern_font("Library copy", 0x0F0)
 FONT_LOG = []
 
 
@@ -360,11 +363,14 @@ class Site(http.server.BaseHTTPRequestHandler):
                 "f\tlibrary.bdf\tLibrary stripe\t" + sha256(LIBRARY_FONT),
                 "f\thttp://127.0.0.1:%d/page.bdf\tPage stripe\t%s" % (port, sha256(PAGE_FONT)),
                 "f\t../escape.bdf\tMalformed\t" + sha256(PAGE_FONT),
+                "f\tcopy.bdf\tLibrary copy\t" + sha256(LIBRARY_COPY),
                 "",
             ])
             return self.send(200, index, "text/plain")
         if path == "/lib/library.bdf":
             return self.send(200, LIBRARY_FONT, "application/octet-stream")
+        if path == "/lib/copy.bdf":
+            return self.send(200, LIBRARY_COPY, "application/octet-stream")
         return self.not_found()
 
     def site_redirect(self, path):

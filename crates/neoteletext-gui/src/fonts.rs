@@ -14,7 +14,9 @@ use crate::helpers::{FontJob, Options, Wake, font_helper};
 use crate::storage::Storage;
 use crate::tab::Tab;
 use neoteletext_app::pipe::{DecoderFonts, FontReply, Frame, LibraryFont, LibraryReply};
-use neoteletext_browser::fonts::{Available, CacheEntry, Chooser, FontCache, Refused, Scope, may_fetch, select};
+use neoteletext_browser::fonts::{
+    Available, CacheEntry, Chooser, FontCache, Refused, Scope, glyph_digest, may_fetch, select,
+};
 use neoteletext_browser::saved::{Settings, UserFont};
 use neoteletext_core::glyphs::LoadedFont;
 use neoteletext_core::types::FontGlyph;
@@ -131,6 +133,13 @@ impl Fonts {
     #[must_use]
     pub fn state(&self, request: &Request) -> Option<&State> {
         self.states.get(&key(request))
+    }
+
+    /// The SHA-256 of a cached font's glyph table, by the file's SHA-256:
+    /// fonts with the same one draw alike (REQ-BRW-010).
+    #[must_use]
+    pub fn glyph_digest(&self, sha256: &Digest) -> Option<Digest> {
+        self.cache.find(sha256, None).and_then(|entry| entry.glyphs)
     }
 
     /// A loaded font, by its SHA-256.
@@ -377,6 +386,7 @@ impl Fonts {
             pinned: self.cache.find(&sha256, None).is_some_and(|entry| entry.pinned),
             etag: line(font.validators[0].as_ref()),
             last_modified: line(font.validators[1].as_ref()),
+            glyphs: Some(glyph_digest(&font.glyphs)),
         };
         let stored = storage.cached_font(&sha256).is_some() || storage.store_font(&sha256, &font.bytes);
         // A font that cannot be written is used now and not kept.

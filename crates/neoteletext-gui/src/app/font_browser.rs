@@ -8,7 +8,8 @@ use crate::fonts::{Library, Request};
 use eframe::egui::{Key, RichText, ScrollArea, Ui};
 use neoteletext_app::pipe::LibraryFont;
 use neoteletext_browser::fonts::{Chooser, Scope};
-use neoteletext_web::sha256::to_hex;
+use neoteletext_web::sha256::{Digest, to_hex};
+use std::collections::HashSet;
 
 /// The panel's width when first shown, in points: room for a title of
 /// `neoteletext_web::fonts::MAX_TITLE` characters.
@@ -25,9 +26,32 @@ pub struct FontBrowser {
 }
 
 impl BrowserApp {
-    /// The fonts listed after Bedstead: every listed library's, in the
-    /// order the libraries were added and each index lists them.
-    fn browser_fonts(&self) -> Vec<LibraryFont> {
+    /// The files of listed fonts that draw the same as a font listed before
+    /// them (REQ-BRW-010, issue #207), found by the glyph digests of the
+    /// fonts loaded so far; empty while duplicates are shown. The user's
+    /// font is never among them.
+    pub(super) fn hidden_duplicates(&self) -> HashSet<Digest> {
+        let mut hidden = HashSet::new();
+        if self.settings.show_duplicate_fonts {
+            return hidden;
+        }
+        let wanted = self.wanted_font();
+        let mut seen = HashSet::new();
+        for font in self.library_fonts() {
+            let chosen = wanted.as_ref().is_some_and(|wanted| to_hex(&font.sha256).as_slice() == wanted.as_bytes());
+            if let Some(glyphs) = self.fonts.glyph_digest(&font.sha256)
+                && !seen.insert(glyphs)
+                && !chosen
+            {
+                hidden.insert(font.sha256);
+            }
+        }
+        hidden
+    }
+
+    /// Every listed library's fonts, in the order the libraries were added
+    /// and each index lists them.
+    fn library_fonts(&self) -> Vec<LibraryFont> {
         self.settings
             .libraries
             .iter()
@@ -37,6 +61,13 @@ impl BrowserApp {
             })
             .flatten()
             .collect()
+    }
+
+    /// The fonts listed after Bedstead: the libraries' fonts, without the
+    /// hidden duplicates.
+    fn browser_fonts(&self) -> Vec<LibraryFont> {
+        let hidden = self.hidden_duplicates();
+        self.library_fonts().into_iter().filter(|font| !hidden.contains(&font.sha256)).collect()
     }
 
     /// The chosen entry: 0 for Bedstead, or one more than the font's place
@@ -115,6 +146,13 @@ impl BrowserApp {
             ui.label(RichText::new("Up and down choose a font; Esc gives the keys back to the page.").weak());
         }
         self.font_status(ui);
+        let hidden = self.hidden_duplicates().len();
+        if ui.checkbox(&mut self.settings.show_duplicate_fonts, "Show duplicates").changed() {
+            self.storage.save_settings(&self.settings);
+        }
+        if hidden > 0 {
+            ui.label(RichText::new(format!("Hidden: {hidden}, each drawing the same as a font above.")).weak());
+        }
         ui.separator();
         let fonts = self.browser_fonts();
         let chosen = self.browser_chosen(&fonts);
