@@ -1,6 +1,7 @@
 //! Writers (feature `std`): T42 packet streams (REQ-INP-018), whose page
-//! encoding needs the `pages` feature, and TTI page files (REQ-INP-014),
-//! which need the `tti` feature.
+//! encoding needs the `pages` feature, TTI page files (REQ-INP-014), which
+//! need the `tti` feature, and 12 by 10 BDF fonts (REQ-FNT-002), which need
+//! the `bdf` feature.
 
 use std::io::{self, Write};
 
@@ -123,6 +124,10 @@ pub fn in_transmission_order<'p>(pages: &[&'p PageFile]) -> std::vec::Vec<&'p Pa
 mod tti;
 #[cfg(feature = "tti")]
 pub use tti::write_tti;
+#[cfg(feature = "bdf")]
+mod font;
+#[cfg(feature = "bdf")]
+pub use font::{FontText, write_font};
 
 // The round trips read back what they write.
 #[cfg(all(test, feature = "tti"))]

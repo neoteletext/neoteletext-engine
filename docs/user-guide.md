@@ -41,6 +41,7 @@ The toolchain is pinned in `rust-toolchain.toml`. `scripts/check.sh full` runs e
 | `ttx services INPUT` | Lists the teletext streams, languages and subtitle pages of a transport stream. |
 | `ttx service-info INPUT` | Prints the broadcast service data of packet 8/30: network, time, programme label and status message. |
 | `ttx check FILES...` | Checks TTI page files for authoring problems. `--descriptor FILE` resolves link targets against a service descriptor. |
+| `ttx font convert INPUT OUTPUT` | Converts a BDF font of another cell size to the 12 × 10 form the browser loads, only where the conversion is exact. See "Fonts" below. |
 | `ttx contents FOLDER` | Writes a channel's `contents.txt` to standard output from a folder of page files (`NNN.tti`, `NNN.t42`, `index.t42`): a section for each magazine and a dated entry for each page. See [channels.md](channels.md). Exits with 4 when a file was skipped. |
 
 `PAGE` is a page number such as `100`, or a page and sub-code such as `100:0003`. Pages are hexadecimal, as on a television: `1FF` is a valid diagnostic page.
@@ -214,3 +215,25 @@ ttx check pages/*.tti --descriptor service.json
 ## Glyphs
 
 Pages are drawn in Bedstead 3.261, the one bundled font (REQ-FNT-001, decision E.72), with the SAA5050's character rounding. It covers Latin with every national option, Cyrillic, Greek and Hebrew. It has no Arabic, and lacks six Latin national characters (Ă ă Ğ ğ Ƶ ₺) and two G2 characters (― ™); a character it lacks is composed from a base letter and a mark where that is possible, and otherwise drawn as a hollow box. The browser can load other fonts: 12 × 10 BDF files named by the user, a channel or a page (area FNT).
+
+## Fonts
+
+The browser draws pages in Bedstead unless the user, the channel or the page names another font. Every other font is a BDF file of 12 × 10 cells, encoded in Unicode, with at most 1,024 characters (REQ-FNT-002); anything else is refused with the line at fault.
+
+`ttx font convert INPUT OUTPUT` makes that form from fonts of other sizes, only where nothing is lost:
+
+| Source cell | What the converter does |
+|---|---|
+| 6 × 10, 5 × 10 | Makes every pixel two pixels wide; a 5-pixel font sits at the left of the 12-pixel cell. |
+| 6 × 9, 5 × 9 | The same, below one blank line at the top, where the SAA5050 leaves it. |
+| 12 × 20 | Keeps every second line, only when each pair of lines is identical. |
+
+Any other cell, a glyph larger than its cell, or a 12 × 20 glyph whose pair of lines differs (a font drawn with character rounding, for instance) is refused, naming the first character that fails. A font whose `CHARSET_REGISTRY` is not ISO10646 needs `--map FILE`: one line for each character, its code as the font's `ENCODING` writes it, a tab, and its Unicode code point:
+
+```
+65	U+0041
+35	U+00A3
+```
+
+`FAMILY_NAME`, `COPYRIGHT` and `NOTICE` are carried over. The converter reads only its two files and never the network, and runs under the sandbox on Linux.
+

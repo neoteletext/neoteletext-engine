@@ -18,6 +18,9 @@ use neoteletext_core::consts::{
 };
 use neoteletext_core::types::FontGlyph;
 
+pub mod convert;
+pub mod source;
+
 // The cell's 12 and 10 fit an `i32` with room to spare.
 #[allow(clippy::cast_possible_wrap)]
 const WIDTH: i32 = CELL_WIDTH as i32;
@@ -117,6 +120,12 @@ pub enum FontErrorKind {
     NoEnd,
     /// Something other than empty lines follows `ENDFONT`.
     AfterEnd,
+    /// A source font's cell is not one REQ-FNT-010 converts.
+    Cell,
+    /// A source glyph reaches outside its cell.
+    GlyphTooLarge,
+    /// A source font has more than one bit per pixel.
+    Greyscale,
 }
 
 /// Where the reader is in the file.

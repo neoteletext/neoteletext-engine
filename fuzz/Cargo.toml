@@ -114,3 +114,10 @@ path = "fuzz_targets/bdf.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "bdf_convert"
+path = "fuzz_targets/bdf_convert.rs"
+test = false
+doc = false
+bench = false

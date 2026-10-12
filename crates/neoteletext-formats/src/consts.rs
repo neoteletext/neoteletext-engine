@@ -377,6 +377,23 @@ pub const DUMP_BYTES_25: usize = 1000;
 /// Bytes of a 24-row dump.
 pub const DUMP_BYTES_24: usize = 960;
 
+// ---------------------------------------------------------------------------
+// Source fonts of the converter (REQ-FNT-010): BDF files of other cell
+// sizes, read offline. Larger than the loaded-font limits of REQ-FNT-002,
+// because a source font may hold many characters the map leaves out.
+// ---------------------------------------------------------------------------
+
+/// The largest source font, in bytes.
+pub const SOURCE_FONT_MAX_FILE_BYTES: usize = 1024 * 1024;
+/// The longest line of a source font, in bytes.
+pub const SOURCE_FONT_MAX_LINE_BYTES: usize = 4096;
+/// The most characters a source font may have.
+pub const SOURCE_FONT_MAX_CHARACTERS: usize = 4096;
+/// The most properties a source font may declare.
+pub const SOURCE_FONT_MAX_PROPERTIES: usize = 1024;
+/// The largest mapping file of `--map`, in bytes.
+pub const FONT_MAP_MAX_FILE_BYTES: usize = 256 * 1024;
+
 #[cfg(test)]
 mod tests {
     use super::*;

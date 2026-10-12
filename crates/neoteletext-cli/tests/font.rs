@@ -1,0 +1,82 @@
+//! `ttx font convert` (REQ-FNT-010): an exact conversion is written in the
+//! form of REQ-FNT-002, a refusal names the character and writes nothing
+//! usable, and a font outside ISO10646 needs the map.
+#![allow(missing_docs)]
+
+use neoteletext_core::consts::FONT_MAX_CHARACTERS;
+use neoteletext_core::types::FontGlyph;
+use std::fmt::Write as _;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Output};
+
+fn ttx(arguments: &[&str]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_ttx")).args(arguments).output().expect("run ttx")
+}
+
+/// A fresh folder of the test's own: tests run in parallel.
+fn folder(name: &str) -> PathBuf {
+    let folder = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
+    let _ = std::fs::remove_dir_all(&folder);
+    std::fs::create_dir_all(&folder).expect("make the test folder");
+    folder
+}
+
+/// A 6 by 10 source font with characters 65 and 66, both a block in the
+/// middle of the cell, in the given registry.
+fn source(registry: &str, rows_of_b: [&str; 10]) -> String {
+    let block = ["00", "00", "78", "78", "78", "78", "78", "78", "00", "00"];
+    let mut text = format!(
+        "STARTFONT 2.1\nFONT -test-source\nSIZE 10 75 75\nFONTBOUNDINGBOX 6 10 0 0\nSTARTPROPERTIES 3\n\
+         FAMILY_NAME \"Test\"\nCHARSET_REGISTRY \"{registry}\"\nCHARSET_ENCODING \"1\"\nENDPROPERTIES\nCHARS 2\n"
+    );
+    for (code, rows) in [(65, block), (66, rows_of_b)] {
+        let _ = write!(text, "STARTCHAR c{code}\nENCODING {code}\nDWIDTH 6 0\nBBX 6 10 0 0\nBITMAP\n");
+        for row in rows {
+            text.push_str(row);
+            text.push('\n');
+        }
+        text.push_str("ENDCHAR\n");
+    }
+    text.push_str("ENDFONT\n");
+    text
+}
+
+const BLOCK: [&str; 10] = ["00", "00", "78", "78", "78", "78", "78", "78", "00", "00"];
+
+#[test]
+fn an_exact_conversion_is_written_and_loads() {
+    let folder = folder("font-convert-exact");
+    let input = folder.join("source.bdf");
+    let output = folder.join("font.bdf");
+    std::fs::write(&input, source("ISO10646", BLOCK)).unwrap();
+    let run = ttx(&["font", "convert", input.to_str().unwrap(), output.to_str().unwrap()]);
+    assert!(run.status.success(), "{}", String::from_utf8_lossy(&run.stderr));
+    let written = std::fs::read(&output).unwrap();
+    let mut glyphs = vec![FontGlyph::EMPTY; FONT_MAX_CHARACTERS];
+    let font = neoteletext_formats::bdf::read(&written, &mut glyphs).expect("REQ-FNT-002 form");
+    assert_eq!((font.characters, font.family), (2, Some(&b"Test"[..])));
+    // 0x78 in six pixels is ".####." doubled: "..########..".
+    assert_eq!(glyphs[0].rows, [0, 0, 0x3FC, 0x3FC, 0x3FC, 0x3FC, 0x3FC, 0x3FC, 0, 0]);
+}
+
+#[test]
+fn refusals_name_the_character() {
+    let folder = folder("font-convert-refusals");
+    let input = folder.join("source.bdf");
+    let output = folder.join("font.bdf");
+    std::fs::write(&input, source("Teletext", BLOCK)).unwrap();
+    let run = ttx(&["font", "convert", input.to_str().unwrap(), output.to_str().unwrap()]);
+    assert_eq!(run.status.code(), Some(3));
+    let message = String::from_utf8_lossy(&run.stderr);
+    assert!(message.contains("character 65") && message.contains("--map"), "{message}");
+    let map = folder.join("map.txt");
+    std::fs::write(&map, "65\tU+0041\n66\tU+0042\n").unwrap();
+    let run =
+        ttx(&["font", "convert", "--map", map.to_str().unwrap(), input.to_str().unwrap(), output.to_str().unwrap()]);
+    assert!(run.status.success(), "{}", String::from_utf8_lossy(&run.stderr));
+    // A cell with no exact conversion is refused at its line.
+    std::fs::write(&input, source("ISO10646", BLOCK).replace("FONTBOUNDINGBOX 6 10", "FONTBOUNDINGBOX 8 10")).unwrap();
+    let run = ttx(&["font", "convert", input.to_str().unwrap(), output.to_str().unwrap()]);
+    let message = String::from_utf8_lossy(&run.stderr);
+    assert!(!run.status.success() && message.contains(":4: the cell is not"), "{message}");
+}

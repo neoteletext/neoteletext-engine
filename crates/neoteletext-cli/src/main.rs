@@ -5,6 +5,7 @@
 
 mod commands;
 mod contents;
+mod font;
 mod options;
 mod output;
 mod terminal;
@@ -266,6 +267,11 @@ enum Command {
         #[arg(long)]
         descriptor: Option<PathBuf>,
     },
+    /// Work with the fonts the browser loads (area FNT).
+    Font {
+        #[command(subcommand)]
+        action: FontCommand,
+    },
 }
 
 fn main() -> ExitCode {
@@ -297,6 +303,9 @@ fn main() -> ExitCode {
         Command::Services { common } => commands::services(&common.options()),
         Command::ServiceInfo { common } => commands::service_info(&common.options()),
         Command::Check { files, descriptor } => commands::check(&files, descriptor.as_deref()),
+        Command::Font { action: FontCommand::Convert { input, output, map, no_sandbox } } => {
+            font::convert_font(&input, &output, map.as_deref(), no_sandbox)
+        }
         Command::Contents { common } => contents::contents(&common.options()),
         Command::SandboxTest => sandbox::self_test(),
         Command::Fetch { address, no_sandbox, allow_local } => commands::fetch(&address, no_sandbox, &allow_local),
@@ -308,6 +317,28 @@ fn main() -> ExitCode {
             ExitCode::from(code)
         }
     }
+}
+
+/// The font commands (REQ-FNT-010).
+#[derive(Subcommand, Debug)]
+enum FontCommand {
+    /// Convert a BDF font of another cell size to the 12 x 10 form, only
+    /// where the conversion is exact: 5 x 10 and 6 x 10 with every pixel
+    /// doubled in width, 5 x 9 and 6 x 9 the same below a blank line, and
+    /// 12 x 20 with identical line pairs halved.
+    Convert {
+        /// The source font.
+        input: PathBuf,
+        /// The 12 x 10 font to write.
+        output: PathBuf,
+        /// For a font not in ISO10646: one `code<TAB>U+XXXX` line per
+        /// character, the code as the font's ENCODING writes it.
+        #[arg(long)]
+        map: Option<PathBuf>,
+        /// Run without the operating-system sandbox (REQ-SEC-017).
+        #[arg(long)]
+        no_sandbox: bool,
+    },
 }
 
 #[cfg(test)]
