@@ -262,7 +262,6 @@ impl Source for Live {
                 | Frame::Follow(..)
                 | Frame::Input(_)
                 | Frame::Show(..)
-                | Frame::Settings(_)
                 | Frame::Click(..)
                 | Frame::Screen(_)
                 | Frame::Status(_)

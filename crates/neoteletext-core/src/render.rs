@@ -1263,10 +1263,10 @@ pub const ALL_ROWS: u32 = (1 << ROWS) - 1;
 pub const FIELD_LINES: usize = CELL_FIELD_LINES;
 
 // The tests draw with the shipped glyph set.
-#[cfg(all(test, feature = "original"))]
+#[cfg(all(test, feature = "bedstead"))]
 mod level25_tests;
 
-#[cfg(all(test, feature = "original"))]
+#[cfg(all(test, feature = "bedstead"))]
 #[allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 mod tests {
     use super::*;
@@ -1330,7 +1330,7 @@ mod tests {
         let g0 = CharSet::G0(G0 { set: G0Set::Latin, national: Some(NationalOption::English) });
         grid.cells[2][3].glyph = Glyph::Char(CharRef::new(g0, b'A'));
         grid.cells[2][4].glyph = Glyph::Mosaic { pattern: 0x15, separated: false };
-        let glyphs = GlyphSet::original();
+        let glyphs = GlyphSet::bedstead();
         let mut whole = vec![0u8; PAGE_WIDTH * 500];
         let mut buffer = IndexBuffer { format: IndexFormat::Bits8, data: &mut whole, stride: PAGE_WIDTH };
         render_screen(&grid, ALL_ROWS, &glyphs, options(), &mut buffer).unwrap();

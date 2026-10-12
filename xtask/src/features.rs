@@ -28,7 +28,6 @@ const BUILDS: &[Build] = &[
     Build { package: "neoteletext-core", features: "modern-classic" },
     Build { package: "neoteletext-core", features: "render" },
     Build { package: "neoteletext-core", features: "bedstead" },
-    Build { package: "neoteletext-core", features: "original" },
     Build { package: "neoteletext-core", features: "viewer" },
     Build { package: "neoteletext-core", features: "forms" },
     Build { package: "neoteletext-formats", features: "" },

@@ -44,16 +44,20 @@ impl Picture {
     }
 }
 
+/// The receiver's own drawing is always in Bedstead, whatever font a page
+/// names (REQ-FNT-001, REQ-FNT-005); no caller can choose otherwise.
+const BEDSTEAD: GlyphSet = GlyphSet::bedstead();
+
 /// Renders a page the receiver draws itself.
 #[must_use]
-pub fn receiver(page: &Page, sets: &[GlyphSet]) -> Picture {
-    receiver_with_marks(page, &[], sets)
+pub fn receiver(page: &Page) -> Picture {
+    receiver_with_marks(page, &[])
 }
 
 /// Renders a page the receiver draws itself, with the receiver's mark for
 /// leaving the channel, the G2 right guillemet, at each (row, column).
 #[must_use]
-pub fn receiver_with_marks(page: &Page, marks: &[(usize, usize)], sets: &[GlyphSet]) -> Picture {
+pub fn receiver_with_marks(page: &Page, marks: &[(usize, usize)]) -> Picture {
     let mut status = [0u8; STATUS_COLUMNS];
     status.copy_from_slice(&page[0][..STATUS_COLUMNS]);
     let mut grid = receiver_grid(page, status);
@@ -63,7 +67,7 @@ pub fn receiver_with_marks(page: &Page, marks: &[(usize, usize)], sets: &[GlyphS
         }
     }
     let options = RenderOptions::for_level(&Config::default(), false, FlashPhase::STEADY);
-    let image = raster(&grid, options, true, sets, Scale { x: 1, y: 1, aspect: false }, Rgba::opaque(0, 0, 0));
+    let image = raster(&grid, options, true, &BEDSTEAD, Scale { x: 1, y: 1, aspect: false }, Rgba::opaque(0, 0, 0));
     let mut rgba = Vec::with_capacity(image.indices.len() * RGBA);
     for &index in &image.indices {
         let colour = image.palette.get(usize::from(index)).copied().unwrap_or(Rgba::opaque(0, 0, 0));
@@ -100,10 +104,10 @@ pub fn swap_row(picture: &mut Picture, row: usize) {
 
 /// Draws `row` as row 0 over `picture`: the whole width of the first row
 /// is cleared to black first, then the row is drawn centred.
-pub fn overlay_row0(picture: &mut Picture, row: &Row, sets: &[GlyphSet]) {
+pub fn overlay_row0(picture: &mut Picture, row: &Row) {
     let mut page = [blank(); ROWS];
     page[0] = *row;
-    let drawn = receiver(&page, sets);
+    let drawn = receiver(&page);
     let lines = drawn.row_height().min(picture.row_height());
     for line in 0..lines {
         let start = line * picture.width * RGBA;
@@ -158,16 +162,16 @@ pub fn tab_row0(tab: &Tab, clock: Option<&str>) -> Row {
 
 /// What a tab's page area shows now.
 #[must_use]
-pub fn for_tab(tab: &Tab, bookmarks: &[String], clock: Option<&str>, sets: &[GlyphSet]) -> Picture {
+pub fn for_tab(tab: &Tab, bookmarks: &[String], clock: Option<&str>) -> Picture {
     match &tab.view {
-        View::Start => receiver(&pages::start(bookmarks, clock), sets),
-        View::Keys => receiver(&pages::keys(clock), sets),
-        View::Tuning(tuning) => receiver(&tuning.page(clock), sets),
-        View::Failed(title, detail) => receiver(&pages::error(title, detail, clock), sets),
+        View::Start => receiver(&pages::start(bookmarks, clock)),
+        View::Keys => receiver(&pages::keys(clock)),
+        View::Tuning(tuning) => receiver(&tuning.page(clock)),
+        View::Failed(title, detail) => receiver(&pages::error(title, detail, clock)),
         View::Contents(view) => {
             let label = tab.location.as_ref().map(Location::label).unwrap_or_default();
             let (page, marks) = view.page(&label, clock);
-            let mut picture = receiver_with_marks(&page, &marks, sets);
+            let mut picture = receiver_with_marks(&page, &marks);
             if let Some(row) = view.selected_row() {
                 swap_row(&mut picture, row);
             }
@@ -176,11 +180,11 @@ pub fn for_tab(tab: &Tab, bookmarks: &[String], clock: Option<&str>, sets: &[Gly
         View::Page => {
             if let Some(decoded) = &tab.screen {
                 let mut picture = screen(decoded);
-                overlay_row0(&mut picture, &tab_row0(tab, clock), sets);
+                overlay_row0(&mut picture, &tab_row0(tab, clock));
                 picture
             } else {
                 let label = tab.location.as_ref().map(Location::label).unwrap_or_default();
-                receiver(&pages::loading(&label, clock), sets)
+                receiver(&pages::loading(&label, clock))
             }
         }
     }
@@ -190,8 +194,6 @@ pub fn for_tab(tab: &Tab, bookmarks: &[String], clock: Option<&str>, sets: &[Gly
 mod tests {
     use super::*;
     use neoteletext_app::pipe::PageStatus;
-
-    const SETS: [GlyphSet; 1] = [GlyphSet::original()];
 
     #[test]
     fn a_decoder_cannot_draw_row_0() {
@@ -203,15 +205,12 @@ mod tests {
         tab.location = Some(Location::Channel { folder: "https://example.org/".into(), secure: true });
         tab.screen = Some(hostile.clone());
         tab.status = Some(PageStatus { status: *b"GO? bank", found: true, ..PageStatus::default() });
-        let picture = for_tab(&tab, &[], Some("12:00:00"), &SETS);
-        let honest_row0 = receiver(
-            &{
-                let mut page = [blank(); ROWS];
-                page[0] = row0(Activity::Page { digits: *b"---", unencrypted: false }, "example.org", Some("12:00:00"));
-                page
-            },
-            &SETS,
-        );
+        let picture = for_tab(&tab, &[], Some("12:00:00"));
+        let honest_row0 = receiver(&{
+            let mut page = [blank(); ROWS];
+            page[0] = row0(Activity::Page { digits: *b"---", unencrypted: false }, "example.org", Some("12:00:00"));
+            page
+        });
         let row_bytes = picture.row_height() * picture.width * RGBA;
         assert_eq!(&picture.rgba[..row_bytes], &honest_row0.rgba[..row_bytes], "row 0 is the receiver's alone");
         assert_eq!(picture.rgba[row_bytes..row_bytes + RGBA], [255, 255, 255, 255], "row 1 is the page's");

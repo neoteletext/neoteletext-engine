@@ -80,7 +80,7 @@ fn presentation_and_drawing_costs() {
         let _ = compose_level(&mut grid, page, &magazine, &decoder.enhancement_lookup(), &config, &options);
     }
     let grids = f64::from(rounds) / start.elapsed().as_secs_f64();
-    let glyphs = GlyphSet::original();
+    let glyphs = GlyphSet::bedstead();
     let options = RenderOptions::from_config(&config, false);
     let start = Clock::now();
     let mut draws = 0u64;
@@ -123,7 +123,7 @@ fn row_renderer_cost() {
     build_grid(&mut grid, Some(page), &magazine, &config, &DisplayOptions::default());
     let _ =
         compose_level(&mut grid, page, &magazine, &decoder.enhancement_lookup(), &config, &DisplayOptions::default());
-    let glyphs = GlyphSet::original();
+    let glyphs = GlyphSet::bedstead();
     let modes = [
         ("palette mode", RenderOptions::from_config(&config, false)),
         ("resolved mode", RenderOptions::resolved(&config, false, FlashPhase::at_unit(0))),

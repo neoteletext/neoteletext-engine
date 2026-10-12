@@ -1,7 +1,8 @@
 //! Project automation (REQ-GEN-010): `cargo xtask <command>`.
 //!
 //! - `glyphs`: regenerate the core's glyph tables: Bedstead from its export,
-//!   and the G3 set from the project's own geometry (REQ-RND-037).
+//!   the G3 set from the project's own geometry (REQ-RND-037), and the list
+//!   of required characters from the character set tables.
 //! - `corpus`: fetch and pin the real-broadcast test corpus (REQ-TST-022).
 //! - `traceability`: write docs/traceability.md (REQ-DOC-003).
 //! - `check-layers`: enforce the module dependency table of ARCHITECTURE.md
@@ -16,11 +17,8 @@
 //!   crate (REQ-SEC-016).
 //! - `level25-stream OUT.t42 [--tti DIR]`: write the authored Level 2.5 and
 //!   3.5 test stream (REQ-TST-024).
-//! - `glyph-inventory`: write the characters the original glyph set must
-//!   draw (decision E.62).
-//! - `glyph-check [--complete]`: check the original glyph set (decision
-//!   E.62).
-//! - `glyph-proof OUT.png [TEXT...]`: draw the original glyphs for review.
+//! - `check-bedstead`: check the Bedstead export against the SHA-256 in its
+//!   provenance record (REQ-FNT-001).
 //! - `features`: lint and test the fixed list of feature builds of decision
 //!   E.61.
 //! - `size [--target TRIPLE]`: link the microcontroller test image for each
@@ -33,7 +31,6 @@ mod features;
 mod g3;
 mod glyphs;
 mod level25;
-mod original;
 mod size;
 mod trace;
 
@@ -57,14 +54,12 @@ fn main() -> ExitCode {
         "check-constants" => checks::constants(&root),
         "check-io" => checks::io(&root),
         "level25-stream" => level25::write(&std::env::args().skip(2).collect::<Vec<_>>()),
-        "glyph-inventory" => original::inventory(&root),
-        "glyph-check" => original::check(&root, &std::env::args().skip(2).collect::<Vec<_>>()),
-        "glyph-proof" => original::proof(&root, &std::env::args().skip(2).collect::<Vec<_>>()),
+        "check-bedstead" => glyphs::check_bedstead(&root),
         "features" => features::run(&root),
         "size" => size::run(&root, &std::env::args().skip(2).collect::<Vec<_>>()),
         _ => Err(format!(
             "usage: cargo xtask <glyphs|corpus|traceability|check-layers|check-deps|check-constants|check-io|\
-             level25-stream|glyph-inventory|glyph-check|glyph-proof|features|size> (got {command:?})"
+             check-bedstead|level25-stream|features|size> (got {command:?})"
         )),
     };
     match result {

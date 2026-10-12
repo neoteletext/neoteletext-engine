@@ -74,7 +74,7 @@ Each capability is a Cargo feature of `neoteletext-core`:
 | `side-panels` | `level25` | Side panels |
 | `colours32` | `level25` | Colour lookup tables 2 and 3, and redefinition of any table |
 | `animation` | `level25` | The additional flash functions |
-| `modern-classic` | — | The profile: `level15`, `level25`, `render`, `original`, `viewer`, `forms`, `objects`, `drcs` and `bold` |
+| `modern-classic` | — | The profile: `level15`, `level25`, `render`, `bedstead`, `viewer`, `forms`, `objects`, `drcs` and `bold` |
 
 **The default build has every feature on.** That is the rule of decision E.61, so that a plain dependency works. It is also what `ttx`, the browser and the conformance tests use, because they must show the whole of the standard. A port chooses the profile by turning the defaults off:
 

@@ -9,8 +9,8 @@ use std::io::{self, Read, Write};
 
 /// The largest payload: one page response (REQ-WEB-008 default).
 pub const MAX_FRAME: usize = 256 * 1024;
-/// The widest screen a decoder may send: two pages side by side for the
-/// glyph comparison, each with both side panels, plus the gap.
+/// The widest screen a decoder may send: a page with both side panels, 72
+/// columns of 12 pixels, with room.
 pub const MAX_SCREEN_WIDTH: usize = 2048;
 /// The tallest screen a decoder may send: 25 rows of 20 lines, with room.
 pub const MAX_SCREEN_HEIGHT: usize = 1024;
@@ -92,8 +92,6 @@ pub enum Frame {
     /// Interface to decoder: show this page (`0xMPP`, sub-code or 0xFFFF),
     /// for the browser's own back and forward.
     Show(u16, u16),
-    /// Interface to decoder: the display settings.
-    Settings(DisplaySettings),
     /// Interface to decoder: the pointer pressed this cell (row, column),
     /// for page catching and the Fastext prompts.
     Click(u8, u8),
@@ -171,13 +169,6 @@ pub enum UserInput {
     Home,
     /// Underline every link on the page, or stop (concept decision 11).
     ShowLinks,
-}
-
-/// What the interface asks the decoder to draw with.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
-pub struct DisplaySettings {
-    /// The glyphs: 0 original, 1 Bedstead, 2 both side by side.
-    pub glyphs: u8,
 }
 
 /// A rendered page: palette indices row by row and the palette, opaque
@@ -278,7 +269,7 @@ const CONFIRM: u8 = b'C';
 const FOLLOW: u8 = b'L';
 const INPUT: u8 = b'k';
 const SHOW_PAGE: u8 = b'V';
-const SETTINGS: u8 = b'Z';
+// b'Z' carried the glyph choice until decision E.72 removed it; it is not reused.
 const CLICK: u8 = b'Q';
 const SCREEN: u8 = b'Y';
 const STATUS: u8 = b'X';
@@ -477,7 +468,6 @@ pub fn write(out: &mut dyn Write, frame: &Frame) -> io::Result<()> {
             put(out, INPUT, &buffer)
         }
         Frame::Show(mpp, sub) => put(out, SHOW_PAGE, &[mpp.to_be_bytes(), sub.to_be_bytes()].concat()),
-        Frame::Settings(settings) => put(out, SETTINGS, &[settings.glyphs]),
         Frame::Click(row, column) => put(out, CLICK, &[*row, *column]),
         Frame::Screen(screen) => {
             let mut buffer = Vec::with_capacity(screen.indices.len() + screen.palette.len() * 4 + 6);
@@ -718,13 +708,6 @@ fn browser_frame(kind: u8, payload: &[u8]) -> io::Result<Frame> {
             let [a, b, c, d]: [u8; 4] = payload.try_into().map_err(|_| invalid())?;
             Frame::Show(u16::from_be_bytes([a, b]), u16::from_be_bytes([c, d]))
         }
-        SETTINGS => {
-            let [glyphs]: [u8; 1] = payload.try_into().map_err(|_| invalid())?;
-            if glyphs > 2 {
-                return Err(invalid());
-            }
-            Frame::Settings(DisplaySettings { glyphs })
-        }
         CLICK => {
             let [row, column]: [u8; 2] = payload.try_into().map_err(|_| invalid())?;
             Frame::Click(row, column)
@@ -802,7 +785,6 @@ mod tests {
             Frame::Input(UserInput::Home),
             Frame::Input(UserInput::ShowLinks),
             Frame::Show(0x140, 0xFFFF),
-            Frame::Settings(DisplaySettings { glyphs: 2 }),
             Frame::Click(3, 17),
             Frame::Screen(Screen {
                 width: 2,
@@ -840,8 +822,8 @@ mod tests {
             &[b'K', 0, 0, 0, 5, 0, 0, 0, 0, 10],
             &[b'K', 0, 0, 0, 5, 17, 0, 0, 0, 7],
             &[b'K', 0, 0, 0, 5, 99, 0, 0, 0, 0],
-            // A glyph choice that does not exist.
-            &[b'Z', 0, 0, 0, 1, 3],
+            // The retired glyph-choice kind is unknown now.
+            &[b'Z', 0, 0, 0, 1, 0],
             // A contents reply of an unknown kind, and "missing" with a body.
             &[b'o', 0, 0, 0, 1, 3],
             &[b'o', 0, 0, 0, 2, 1, 7],

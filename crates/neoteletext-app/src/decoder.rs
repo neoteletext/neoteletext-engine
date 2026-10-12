@@ -13,7 +13,7 @@
 
 use crate::extras::{self, Destination, INDEX_KEY, PageExtras};
 use crate::interact::{ActiveForm, message_row, submission};
-use crate::pipe::{self, DisplaySettings, Frame, Notice, PageStatus, Screen, UserInput};
+use crate::pipe::{self, Frame, Notice, PageStatus, Screen, UserInput};
 use crate::present::{self, MosaicStyle, Scale};
 use crate::session::{DEFAULT_PAGES, Session};
 use crate::source::Source;
@@ -47,16 +47,12 @@ const MOT_PAGE: u8 = neoteletext_core::consts::PAGE_MOT;
 /// The row of the Fastext prompts.
 const FASTEXT_ROW: usize = ROWS - 1;
 
-/// The glyph sets a decoder can draw with, indexed by
-/// [`DisplaySettings::glyphs`]: the project's own, Bedstead, and both
-/// side by side (decision E.62). The program supplies them, so this
-/// module builds with whichever sets the program's core has.
-pub type GlyphChoices = [&'static [GlyphSet]; 3];
-
 /// Runs the decoder process until the interface closes its input.
 /// `sandboxed_by_parent` says the interface already confined this process
 /// (macOS, `docs/desktop-browser.md` section 12.3).
-pub fn run(no_sandbox: bool, sandboxed_by_parent: bool, glyphs: GlyphChoices) -> Result<(), Failure> {
+/// `glyphs` is the bundled font (REQ-FNT-001); the program supplies it, so
+/// this module builds with whatever the program's core has.
+pub fn run(no_sandbox: bool, sandboxed_by_parent: bool, glyphs: &'static GlyphSet) -> Result<(), Failure> {
     let (fetched, fetched_frames) = mpsc::channel();
     let (commands, command_frames) = mpsc::channel();
     std::thread::spawn(move || {
@@ -65,9 +61,7 @@ pub fn run(no_sandbox: bool, sandboxed_by_parent: bool, glyphs: GlyphChoices) ->
         while let Ok(Some(frame)) = pipe::read(&mut input) {
             let delivered = match frame {
                 Frame::Packet(_) | Frame::Tti(_) | Frame::T42(_) | Frame::Notice(_) => fetched.send(frame).is_ok(),
-                Frame::Input(_) | Frame::Show(..) | Frame::Settings(_) | Frame::Click(..) => {
-                    commands.send(frame).is_ok()
-                }
+                Frame::Input(_) | Frame::Show(..) | Frame::Click(..) => commands.send(frame).is_ok(),
                 // Frames only a decoder sends are never taken in.
                 _ => true,
             };
@@ -136,8 +130,7 @@ pub struct Engine {
     form: Option<ActiveForm>,
     prompt: Option<[u8; COLUMNS]>,
     grid: Grid,
-    glyphs: GlyphChoices,
-    settings: DisplaySettings,
+    glyphs: &'static GlyphSet,
     unrecorded: Option<EnhancementReport>,
     last_screen: Option<Screen>,
     last_status: Option<PageStatus>,
@@ -236,7 +229,7 @@ pub fn page_number_at(line: &str, column: usize) -> Option<PageAddress> {
 impl Engine {
     /// A decoder showing nothing yet, drawing with `glyphs`.
     #[must_use]
-    pub fn new(glyphs: GlyphChoices) -> Self {
+    pub fn new(glyphs: &'static GlyphSet) -> Self {
         let initial = neoteletext_core::service::initial_page(None);
         let mut viewer = Viewer::new(initial);
         let action = viewer.event(ViewerEvent::Started);
@@ -248,7 +241,6 @@ impl Engine {
             prompt: None,
             grid: Grid::EMPTY,
             glyphs,
-            settings: DisplaySettings::default(),
             unrecorded: None,
             last_screen: None,
             last_status: None,
@@ -278,10 +270,6 @@ impl Engine {
                 if let Some(address) = PageAddress::from_mpp(mpp) {
                     self.show(address);
                 }
-            }
-            Frame::Settings(settings) => {
-                self.settings = settings;
-                self.last_screen = None;
             }
             Frame::Click(row, column) => self.click(usize::from(row), usize::from(column), session, source, now),
             _ => {}
@@ -736,12 +724,11 @@ impl Engine {
         let reveal = self.viewer.reveal(now);
         let options = RenderOptions::for_level(config, reveal, FlashPhase::at(now));
         let visible = options.colour != ColourMode::Palette || flash_visible(now, config);
-        let sets = self.glyphs.get(usize::from(self.settings.glyphs)).copied().unwrap_or(self.glyphs[0]);
         let raster = present::raster(
             &self.grid,
             options,
             visible,
-            sets,
+            self.glyphs,
             Scale { x: 1, y: 1, aspect: false },
             Rgba::opaque(0, 0, 0),
         );
@@ -853,7 +840,8 @@ mod tests {
         session
     }
 
-    const GLYPHS: GlyphChoices = [&[], &[], &[]];
+    static NO_GLYPHS: [neoteletext_core::glyphs::GlyphEntry; 0] = [];
+    static GLYPHS: GlyphSet = GlyphSet::from_entries(&NO_GLYPHS, "none");
 
     /// REQ-WEB-022, `docs/web-native-concept.md` section 2 item 6: a shown
     /// page brings its magazine's Organization Table, once.
@@ -861,7 +849,7 @@ mod tests {
     fn the_organization_table_is_asked_for_once() {
         let mut session = session_with(b"PN,10000\nOL,1,HELLO\n");
         let mut source = Recorder::default();
-        let mut engine = Engine::new(GLYPHS);
+        let mut engine = Engine::new(&GLYPHS);
         for tick in 0..3 {
             let _ = engine.step(&mut session, &mut source, Instant(tick));
         }
@@ -875,7 +863,7 @@ mod tests {
     fn show_links_underlines_the_page_numbers() {
         let mut session = session_with(b"PN,10000\nOL,4,Sport 200 and 1234\n");
         let mut source = Recorder::default();
-        let mut engine = Engine::new(GLYPHS);
+        let mut engine = Engine::new(&GLYPHS);
         let _ = engine.step(&mut session, &mut source, Instant(0));
         let underlined = |engine: &Engine| -> Vec<usize> {
             (0..COLUMNS).filter(|&column| engine.grid.cells[4][column].attributes.underline()).collect()

@@ -44,8 +44,8 @@ const BUILDS: &[Build] = &[
     // The same with only the modern-classic profile's capabilities
     // (decision E.71, REQ-GEN-020).
     Build { name: "modern-classic", features: "level15 modern-classic render viewer", budget: None },
-    // Every area of the core, with the project's own glyphs.
-    Build { name: "core-all", features: "level15 capabilities render original viewer forms", budget: None },
+    // Every area of the core, with Bedstead.
+    Build { name: "core-all", features: "level15 capabilities render bedstead viewer forms", budget: None },
     // Format detection reading T42 only, then every format; the core with
     // no optional area underneath.
     Build { name: "t42", features: "formats", budget: None },

@@ -379,6 +379,14 @@ pub const BASE64_BITS: u32 = 6;
 pub const SHA1_DIGEST_BYTES: usize = 20;
 /// The block length of SHA-1 (RFC 3174 section 4).
 pub const SHA1_BLOCK_BYTES: usize = 64;
+
+/// Bytes of a SHA-256 digest (FIPS 180-4 section 1), which names a font
+/// (REQ-FNT-003, REQ-FNT-009).
+pub const SHA256_DIGEST_BYTES: usize = 32;
+/// Bytes of a SHA-256 message block (FIPS 180-4 section 5.2.1).
+pub const SHA256_BLOCK_BYTES: usize = 64;
+/// Hexadecimal digits that write a SHA-256 digest (REQ-FNT-004).
+pub const SHA256_HEX_DIGITS: usize = 2 * SHA256_DIGEST_BYTES;
 /// The deepest JSON nesting the reader accepts (RFC 8259 section 9 allows
 /// a limit).
 pub const MAX_JSON_DEPTH: usize = 16;

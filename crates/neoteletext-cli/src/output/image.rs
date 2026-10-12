@@ -17,43 +17,8 @@ use neoteletext_core::render::ColourMode;
 use neoteletext_core::render::{FlashPhase, RenderOptions};
 use neoteletext_image::palette::Rgba;
 
-/// Which glyphs a raster is drawn with (decision E.62): the project's own,
-/// the temporary Bedstead set, or both side by side for comparison.
-#[derive(clap::ValueEnum, Clone, Copy, PartialEq, Eq, Debug, Default)]
-pub enum Glyphs {
-    /// The project's own glyphs.
-    #[default]
-    Original,
-    /// The temporary Bedstead glyphs.
-    Bedstead,
-    /// The page twice, the original glyphs on the left and Bedstead on the
-    /// right.
-    Compare,
-}
-
-impl Glyphs {
-    /// The next choice, for the viewer's glyph key.
-    #[must_use]
-    pub const fn next(self) -> Self {
-        match self {
-            Self::Original => Self::Bedstead,
-            Self::Bedstead => Self::Compare,
-            Self::Compare => Self::Original,
-        }
-    }
-
-    /// The glyph sets drawn, left to right.
-    fn sets(self) -> &'static [GlyphSet] {
-        const ORIGINAL: [GlyphSet; 1] = [GlyphSet::original()];
-        const BEDSTEAD: [GlyphSet; 1] = [GlyphSet::bedstead()];
-        const BOTH: [GlyphSet; 2] = [GlyphSet::original(), GlyphSet::bedstead()];
-        match self {
-            Self::Original => &ORIGINAL,
-            Self::Bedstead => &BEDSTEAD,
-            Self::Compare => &BOTH,
-        }
-    }
-}
+/// Images are drawn in Bedstead, the one bundled font (REQ-FNT-001).
+const BEDSTEAD: GlyphSet = GlyphSet::bedstead();
 
 /// The settings of one frame (decision E.55, REQ-RND-040): the colour mode
 /// of the presentation level with its flash phase of decision E.48, and,
@@ -65,25 +30,13 @@ pub struct Frame {
     pub options: RenderOptions,
     /// The phase of decision E.12, used by the palette mode only.
     pub flash_visible: bool,
-    /// The glyphs drawn.
-    pub glyphs: Glyphs,
 }
 
 impl Frame {
     /// A still image: flashing characters in their "on" phase.
     #[must_use]
     pub const fn still(config: &Config, reveal: bool) -> Self {
-        Self {
-            options: RenderOptions::for_level(config, reveal, FlashPhase::STEADY),
-            flash_visible: true,
-            glyphs: Glyphs::Original,
-        }
-    }
-
-    /// The same frame drawn with other glyphs.
-    #[must_use]
-    pub const fn with_glyphs(self, glyphs: Glyphs) -> Self {
-        Self { glyphs, ..self }
+        Self { options: RenderOptions::for_level(config, reveal, FlashPhase::STEADY), flash_visible: true }
     }
 
     /// The frame at a time on the decoder's clock. In the resolved mode
@@ -94,7 +47,7 @@ impl Frame {
         let options = RenderOptions::for_level(config, reveal, FlashPhase::at(now));
         let flash_visible =
             options.colour != ColourMode::Palette || neoteletext_core::render::flash_visible(now, config);
-        Self { options, flash_visible, glyphs: Glyphs::Original }
+        Self { options, flash_visible }
     }
 }
 
@@ -102,7 +55,7 @@ impl Frame {
 /// picture, transparent areas (REQ-RND-006).
 #[must_use]
 pub fn raster(grid: &Grid, frame: Frame, scale: Scale, picture: Rgba) -> Raster {
-    present::raster(grid, frame.options, frame.flash_visible, frame.glyphs.sets(), scale, picture)
+    present::raster(grid, frame.options, frame.flash_visible, &BEDSTEAD, scale, picture)
 }
 
 /// Encodes a raster as PNG bytes.

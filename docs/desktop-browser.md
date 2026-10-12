@@ -42,7 +42,7 @@ The file keeps its name because the GitHub plan links to it.
 - **The same behaviour everywhere.** Navigation, the tuning screen, address display and every security rule are one body of Rust code, tested once, on all five platforms. A platform supplies only a window, input, storage and its sandbox.
 - **Everything the concept settled.** Sites, links to page numbers and addresses, aliases, the tuning screen, row 0 as location bar, page catching, presets, and the keyboard mapping of `docs/web-native-concept.md`.
 - **Every input.** Web teletext sites, zxnet live feeds, and local files in every format `ttx` reads (T42, TTI, transport streams and the rest).
-- **Faithful pages.** The page area is the same raster `ttx` renders: 12 by 20 cells with rounding, Levels 1 to 3.5, side panels, flash, reveal, mix, zoom, and the glyph switch between the original set and Bedstead.
+- **Faithful pages.** The page area is the same raster `ttx` renders: 12 by 20 cells with rounding, Levels 1 to 3.5, side panels, flash, reveal, mix, zoom, and the fonts of area FNT: Bedstead, and any 12 × 10 font the user, the channel or the page names (decision E.72).
 
 ### Constraints from the project
 
@@ -325,7 +325,7 @@ The decoder handles untrusted data, so it is the part to wall off. It gets two w
 
 ### 4.1 Already built
 
-- **Decoding:** every format reader, the decoder and page store, Levels 1 to 3.5, and the renderer with the original and Bedstead glyphs.
+- **Decoding:** every format reader, the decoder and page store, Levels 1 to 3.5, and the renderer with Bedstead and loaded fonts.
 - **Web:** the sans-IO web user agent (HTTP, WebSocket, server-sent events, cookies, forms, descriptors) and the zxnet feed.
 - **Processes:** the fetcher process, the framed pipe, and the Linux sandbox.
 - **Viewing:** the viewer state machine (page entry, Fastext, sub-pages, hold, reveal, mix, zoom) and the forms model.
@@ -605,7 +605,7 @@ A criterion that egui and the shell together cannot meet comes back to the owner
 │                 │ Red     Green  Yellow  Cyan  │ ← row 24          │
 │                 └──────────────────────────────┘                   │
 ├────────────────────────────────────────────────────────────────────┤
-│ Searching P300…                     Level 3.5 · original glyphs    │  status line
+│ Searching P300…                 Level 3.5 · Bedstead (bundled)     │  status line
 └────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -658,7 +658,7 @@ A criterion that egui and the shell together cannot meet comes back to the owner
 |---|---|
 | **File** | New Tab, New Window, Open File…, Open Address…, Close Tab, Save Page As (PNG, TTI, T42), Print |
 | **Edit** | Copy page text (UTF-8, as `ttx text`), Copy address, Find in page |
-| **View** | Reveal, Mix, Zoom (top, bottom, off), Hold, Flash on/off, Aspect 4:3, Glyphs (Original, Bedstead, Compare), Presentation level (1, 1.5, 2.5, 3.5), Profile, Actual size, Zoom in/out, Fullscreen, Show links (page catching) |
+| **View** | Reveal, Mix, Zoom (top, bottom, off), Hold, Flash on/off, Aspect 4:3, Font (the settings of REQ-BRW-007), Presentation level (1, 1.5, 2.5, 3.5), Profile, Actual size, Zoom in/out, Fullscreen, Show links (page catching) |
 | **Go** | Back, Forward, Home, Index, Next/Previous page, Next/Previous sub-page, Enter page number, Presets |
 | **Bookmarks** | Bookmark this page, Show bookmarks, the bookmarks themselves |
 | **History** | Recently closed tabs, the history list |
@@ -921,7 +921,7 @@ Each phase ends with its tests passing in the gate.
 | **5. App, first version** | `neoteletext-gui` on Windows, macOS and Linux: window, tab strip, toolbar, address bar, page area, Fastext buttons, keyboard, menus. | Browses files, zxnet and web sites on all three desktop platforms |
 | **6. Phones** | The Android and iOS shells (section 3.5), the phone layout, touch input, the Android service stubs. | Browses the same sites on the Android emulator and phone, the iOS simulator and iPhone |
 | **7. Platform security** | Section 12 on macOS, Windows, Android and iOS. | The sandbox tests of section 14 pass on each platform |
-| **8. Features** | Bookmarks, presets, history, session restore, page catching with mouse and touch, accessibility, the glyph switch, fullscreen badge. | Feature tests and snapshots pass on all five platforms |
+| **8. Features** | Bookmarks, presets, history, session restore, page catching with mouse and touch, accessibility, fonts (area FNT), fullscreen badge. | Feature tests and snapshots pass on all five platforms |
 | **9. Release** | Section 13: packages, signing, store review, updates, link handlers; the audit of decision 17. | Signed packages install and update on each platform |
 
 Phases 2 to 4 benefit `ttx` directly, and are worth doing whatever is decided about the apps.

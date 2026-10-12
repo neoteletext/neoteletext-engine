@@ -14,7 +14,7 @@ This is the whole of a port (REQ-ARCH-009, decision E.29). A port supplies the i
 | A network transport | Implement the transport trait of `neoteletext-web` (connect, send, non-blocking receive, close; TLS is yours). | Only for web sources |
 | Cookie storage | Implement the cookie storage trait of `neoteletext-web`. Store saved cookies as secrets (REQ-SEC-013). | Optional |
 
-A complete minimal port is `crates/neoteletext-core/examples/minimal_port.rs`, under 100 lines; it needs the core features `level15` and `original`.
+A complete minimal port is `crates/neoteletext-core/examples/minimal_port.rs`, under 100 lines; it needs the core features `level15` and `bedstead`.
 
 ## Choosing what to compile in
 
@@ -27,7 +27,7 @@ neoteletext-formats = { version = "...", default-features = false }  # T42 only
 
 | Crate | Features |
 |---|---|
-| `neoteletext-core` | `level15`, `level25`, `render`, `original`, `bedstead`, `viewer`, `forms`; the capabilities of Levels 2.5 and 3.5 `objects`, `drcs`, `drcs-multicolour`, `bold`, `italic`, `side-panels`, `colours32`, `animation`; and the profile `modern-classic` |
+| `neoteletext-core` | `level15`, `level25`, `render`, `bedstead`, `viewer`, `forms`; the capabilities of Levels 2.5 and 3.5 `objects`, `drcs`, `drcs-multicolour`, `bold`, `italic`, `side-panels`, `colours32`, `animation`; and the profile `modern-classic` |
 | `neoteletext-formats` | `transport`, `sliced`, `pages`, `tti`, `ep1`, `edittf`, `dump`, `check`, and `std` |
 | `neoteletext-web` | `push`, `forms`, `cookies` |
 
@@ -45,14 +45,14 @@ Measured flash on Cortex-M0 on 12 October 2026 (`cargo xtask size`, `opt-level =
 | Level 1.5 receiver with the renderer and the viewer; your own glyphs | 43,002 bytes |
 | The same at Level 3.5, every capability | 65,758 bytes |
 | The same with the `modern-classic` profile's capabilities | 62,894 bytes |
-| Every core area, with the project's own glyphs | 86,710 bytes |
+| Every core area, with Bedstead | 111,258 bytes |
 | Format detection reading T42 only, with the bare core | 29,126 bytes |
 | Format detection reading every format, with the bare core | 58,737 bytes |
 
 Notes on the builds:
 - **A configured level that is not compiled in** falls back to the highest one that is (`PresentationLevel::available`).
-- **Glyphs:** `original` is the project's own glyph set (`GlyphSet::original`), on by default. Without it, supply your own glyphs with `GlyphSet::from_entries`. `bedstead` is the temporary development set, kept for comparison only.
-- **The minimal port example** needs `level15` and `original`.
+- **Glyphs:** `bedstead` is Bedstead 3.261, the bundled font (`GlyphSet::bedstead`), on by default. Without it, supply your own glyphs with `GlyphSet::from_entries`.
+- **The minimal port example** needs `level15` and `bedstead`.
 
 ## Memory
 

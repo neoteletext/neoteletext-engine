@@ -3,8 +3,8 @@
 
 use super::GlyphEntry;
 
-/// Where these glyphs come from (REQ-GEN-012, decision E.25).
-pub(super) const PROVENANCE: &str = "Bedstead 3.261 (temporary development glyphs; see third_party/bedstead/PROVENANCE.md)";
+/// Where these glyphs come from (REQ-GEN-012, REQ-FNT-001).
+pub(super) const PROVENANCE: &str = "Bedstead 3.261, the bundled font (see third_party/bedstead/PROVENANCE.md)";
 
 pub(super) static GLYPHS: [GlyphEntry; 2066] = [
     GlyphEntry { code_point: 0x0020, rows: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00] },

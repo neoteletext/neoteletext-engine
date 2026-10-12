@@ -14,9 +14,7 @@
 //! drive tabs directly.
 
 use crate::helpers::{Helpers, Message, Options, Wake};
-use neoteletext_app::pipe::{
-    self, ContentsReply, DisplaySettings, Frame, Notice, Origin, PageData, PageStatus, Screen, UserInput,
-};
+use neoteletext_app::pipe::{self, ContentsReply, Frame, Notice, Origin, PageData, PageStatus, Screen, UserInput};
 use neoteletext_browser::ContentsDate;
 use neoteletext_browser::contents_view::{self, ContentsView, Key as ContentsKey, Target};
 use neoteletext_browser::location::{page_file, parse_input};
@@ -95,7 +93,6 @@ pub struct Tab {
     history_revert: Option<usize>,
     /// Bumped whenever anything shown changes.
     pub version: u64,
-    settings: DisplaySettings,
     /// The channel's contents, fetched once a visit (REQ-BRW-009).
     contents: Option<ContentsView>,
     /// Contents have been asked of the fetcher.
@@ -145,7 +142,6 @@ impl Tab {
             history_target: None,
             history_revert: None,
             version: 0,
-            settings: DisplaySettings::default(),
             contents: None,
             contents_wanted: false,
             contents_previous: None,
@@ -290,7 +286,6 @@ impl Tab {
             Ok(helpers) => {
                 self.helpers = Some(helpers);
                 self.view = View::Page;
-                self.send_decoder(&Frame::Settings(self.settings));
                 if let Some(page) = destination.page {
                     self.send_decoder(&Frame::Show(page, ANY_SUBCODE));
                 }
@@ -455,12 +450,6 @@ impl Tab {
         {
             self.follow_contents(target);
         }
-    }
-
-    /// The display settings changed.
-    pub fn set_settings(&mut self, settings: DisplaySettings) {
-        self.settings = settings;
-        self.send_decoder(&Frame::Settings(settings));
     }
 
     /// Asks again for the page shown.

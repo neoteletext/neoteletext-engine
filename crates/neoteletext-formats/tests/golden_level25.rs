@@ -36,7 +36,7 @@ use std::path::PathBuf;
 
 /// Raise when the stream, enhancement or rendering changes on purpose
 /// (REQ-TST-030).
-const FORMAT_VERSION: u32 = 4;
+const FORMAT_VERSION: u32 = 5;
 /// One line period between packets, as the command-line program uses.
 const LINE_US: u64 = 64;
 /// The flash units of decision E.48 a still page is drawn at: the start of
@@ -102,7 +102,7 @@ fn checksums() -> String {
                     let height = ROWS * options.row_height();
                     let mut indices = vec![0u8; width * height];
                     let mut buffer = IndexBuffer { format: IndexFormat::Bits8, data: &mut indices, stride: width };
-                    render_screen(&grid, ALL_ROWS, &GlyphSet::original(), options, &mut buffer).unwrap();
+                    render_screen(&grid, ALL_ROWS, &GlyphSet::bedstead(), options, &mut buffer).unwrap();
                     let _ = writeln!(
                         out,
                         "{mpp} level={level_name} {size} unit={unit} reveal={reveal} {width}x{height} {:016x}",

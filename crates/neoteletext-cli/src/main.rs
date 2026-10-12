@@ -125,11 +125,6 @@ pub struct RasterArgs {
     /// Show concealed text.
     #[arg(long)]
     pub reveal: bool,
-    /// The glyphs to draw with: the project's own, the temporary Bedstead
-    /// set, or both side by side (decision E.62). The viewer's `G` key
-    /// cycles through them.
-    #[arg(long, value_enum, default_value_t = output::image::Glyphs::Original)]
-    pub glyphs: output::image::Glyphs,
 }
 
 #[derive(Subcommand, Debug)]

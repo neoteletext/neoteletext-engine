@@ -225,15 +225,14 @@ fn a_hostile_page_cannot_forge_row_0_or_the_tuning_screen() {
     browser.confirm();
     browser.wait_page(0x100, "bank.example");
     assert_eq!(browser.tab.view, View::Page, "a page that draws a tuning screen is still just a page");
-    let sets = neoteletext_gui::GLYPHS[0];
-    let shown = picture::for_tab(&browser.tab, &[], Some("12:00:00"), sets);
+    let shown = picture::for_tab(&browser.tab, &[], Some("12:00:00"));
     let row0 = picture::tab_row0(&browser.tab, Some("12:00:00"));
     let header = String::from_utf8_lossy(&row0).into_owned();
     assert!(header.contains(&format!("127.0.0.1:{}", sites.ports["hostile"])), "row 0 names the real site: {header}");
     assert!(!header.contains("bank"), "the page's own header never reaches row 0: {header}");
     let mut page = [neoteletext_browser::rows::blank(); 25];
     page[0] = row0;
-    let honest = picture::receiver(&page, sets);
+    let honest = picture::receiver(&page);
     let row_bytes = shown.row_height() * shown.width * 4;
     assert_eq!(&shown.rgba[..row_bytes], &honest.rgba[..row_bytes]);
     // A page that never finishes does not stop the tab.
@@ -437,8 +436,7 @@ fn the_contents_view_lists_and_follows() {
     browser.wait("the contents view", |tab| matches!(tab.view, View::Contents(_)));
     assert_eq!(browser.tab.notice.as_deref(), Some("1 lines of contents.txt were ignored."));
     assert!(browser.tab.address().ends_with("/contents.txt"), "{}", browser.tab.address());
-    let sets = neoteletext_gui::GLYPHS[0];
-    let _ = picture::for_tab(&browser.tab, &[], None, sets);
+    let _ = picture::for_tab(&browser.tab, &[], None);
     browser.tab.contents_key(Key::Down);
     browser.tab.contents_key(Key::Down);
     browser.tab.contents_key(Key::Enter);

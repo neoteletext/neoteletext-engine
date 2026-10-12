@@ -3,7 +3,7 @@
 //! with forms (Appendix C, REQ-NAV-009), the TTI Link Extension (Appendix
 //! E, REQ-NAV-011 and 012) and the security confirmations of area SEC.
 
-use crate::output::image::{Frame, Glyphs, Scale, iterm2_inline, png, raster};
+use crate::output::image::{Frame, Scale, iterm2_inline, png, raster};
 use crate::output::text::{ColourDepth, MosaicStyle, ansi};
 use crate::terminal::Display;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
@@ -140,9 +140,7 @@ pub fn run(
     scale: Scale,
     depth: ColourDepth,
     mosaics: MosaicStyle,
-    glyphs: Glyphs,
 ) -> std::io::Result<()> {
-    let mut glyphs = glyphs;
     terminal::enable_raw_mode()?;
     let guard = RawGuard;
     let mut out = std::io::stdout();
@@ -328,7 +326,7 @@ pub fn run(
         }
         let reveal = viewer.reveal(now);
         // Images change with the flash phase; text flashes by itself.
-        let frame = Frame::at(&config, reveal, now).with_glyphs(glyphs);
+        let frame = Frame::at(&config, reveal, now);
         let state = (grid, (display == Display::Iterm2).then_some(frame), reveal);
         if last_drawn.as_ref() != Some(&state) {
             draw(&mut out, &grid, display, scale, depth, mosaics, frame)?;
@@ -364,11 +362,6 @@ pub fn run(
                         FormAction::None => {}
                     }
                 }
-                continue;
-            }
-            // Cycle the glyphs: original, Bedstead, both side by side.
-            if key.code == KeyCode::Char('G') {
-                glyphs = glyphs.next();
                 continue;
             }
             if matches!(key.code, KeyCode::Char('q') | KeyCode::Esc) {

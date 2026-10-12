@@ -102,7 +102,7 @@ A live input runs in two processes (REQ-SEC-018). A fetcher process does the net
 - `iterm2`: the page is rendered at full resolution and sent as a PNG inline image (decision E.37).
 - `text`: characters with ANSI colour. Mosaics use the Unicode block mosaic characters; separated mosaics need a font with Unicode 16 separated mosaics, or `--legacy-mosaics` draws them contiguous. `--colours8` uses the eight basic colours instead of 24-bit colour.
 
-`--scale N` sets a whole-number scale factor; 0 fits the terminal. `--aspect` stretches the height by 1.2 for 4:3 proportions (REQ-RND-004). `--reveal` shows concealed text. `--glyphs original|bedstead|compare` chooses the glyphs images are drawn with: the project's own (the default), the temporary Bedstead set, or the page twice side by side, original on the left. In the viewer, `G` cycles through the three.
+`--scale N` sets a whole-number scale factor; 0 fits the terminal. `--aspect` stretches the height by 1.2 for 4:3 proportions (REQ-RND-004). `--reveal` shows concealed text.
 
 ### Images
 
@@ -213,4 +213,4 @@ ttx check pages/*.tti --descriptor service.json
 
 ## Glyphs
 
-The glyphs are the project's own, drawn for neoteletext in a clean room and checked against a reference by `cargo xtask glyph-check` (REQ-RND-028, decision E.62). They cover every character of every teletext character set: Latin with all national options, Cyrillic, Greek, Hebrew and Arabic.
+Pages are drawn in Bedstead 3.261, the one bundled font (REQ-FNT-001, decision E.72), with the SAA5050's character rounding. It covers Latin with every national option, Cyrillic, Greek and Hebrew. It has no Arabic, and lacks six Latin national characters (Ă ă Ğ ğ Ƶ ₺) and two G2 characters (― ™); a character it lacks is composed from a base letter and a mark where that is possible, and otherwise drawn as a hollow box. The browser can load other fonts: 12 × 10 BDF files named by the user, a channel or a page (area FNT).

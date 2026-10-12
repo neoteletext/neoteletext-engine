@@ -7,7 +7,7 @@
 //! Every character written passes the allow-list of REQ-SEC-010.
 
 use neoteletext_core::charset::{compose, mosaic_to_unicode, to_unicode};
-use neoteletext_core::consts::{COLOUR_TRANSPARENT, PALETTE_TRANSPARENT, ROWS};
+use neoteletext_core::consts::ROWS;
 use neoteletext_core::glyphs::GlyphSet;
 use neoteletext_core::level1::{Cell, Glyph, Grid, Size, Width};
 use neoteletext_core::policy::is_safe_output_char;
@@ -118,11 +118,7 @@ pub struct Scale {
     pub aspect: bool,
 }
 
-/// Columns of picture colour between the two pages of a comparison.
-const COMPARE_GAP: usize = 12;
-
-/// Renders a grid to a scaled raster with each of `sets`, side by side.
-/// `picture` is the colour of the picture, transparent areas
+/// Renders a grid to a scaled raster with `glyphs`. `picture` is the colour of the picture, transparent areas
 /// (REQ-RND-006). A grid that the palette mode cannot draw is drawn in the
 /// resolved mode. `flash_visible` is the phase of decision E.12, used by
 /// the palette mode only.
@@ -131,7 +127,7 @@ pub fn raster(
     grid: &Grid,
     options: RenderOptions,
     flash_visible: bool,
-    sets: &[GlyphSet],
+    glyphs: &GlyphSet,
     scale: Scale,
     picture: Rgba,
 ) -> Raster {
@@ -139,29 +135,13 @@ pub fn raster(
     if options.colour == ColourMode::Palette && !palette_mode_allowed(grid) {
         options.colour = ColourMode::Resolved(FlashPhase::STEADY);
     }
-    let page_width = row_width(grid);
+    let width = row_width(grid);
     let height = ROWS * options.row_height();
-    // A comparison puts the pages side by side, separated by the picture.
-    let width = sets.len() * page_width + sets.len().saturating_sub(1) * COMPARE_GAP;
-    let picture_index = match options.colour {
-        ColourMode::Palette => PALETTE_TRANSPARENT,
-        ColourMode::Resolved(_) => COLOUR_TRANSPARENT,
-    };
-    let mut indices = vec![picture_index; width * height];
-    for (index, glyphs) in sets.iter().enumerate() {
-        let mut page = vec![0u8; page_width * height];
-        let mut buffer = IndexBuffer { format: IndexFormat::Bits8, data: &mut page, stride: page_width };
-        // The buffer is sized for the whole page and the mode suits the
-        // grid, so rendering cannot fail.
-        let _ = render_screen(grid, ALL_ROWS, glyphs, options, &mut buffer);
-        let left = index * (page_width + COMPARE_GAP);
-        for (row, source) in page.chunks_exact(page_width).enumerate() {
-            let start = row * width + left;
-            if let Some(target) = indices.get_mut(start..start + page_width) {
-                target.copy_from_slice(source);
-            }
-        }
-    }
+    let mut indices = vec![0u8; width * height];
+    let mut buffer = IndexBuffer { format: IndexFormat::Bits8, data: &mut indices, stride: width };
+    // The buffer is sized for the whole page and the mode suits the grid,
+    // so rendering cannot fail.
+    let _ = render_screen(grid, ALL_ROWS, glyphs, options, &mut buffer);
     let (scaled_width, scaled_height) = scaled_size(width, height, scale.x, scale.y, scale.aspect);
     let mut scaled = vec![0u8; scaled_width * scaled_height];
     let _ = scale_indices(&indices, width, height, scale.x.max(1), scale.y.max(1), scale.aspect, &mut scaled);

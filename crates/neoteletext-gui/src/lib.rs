@@ -13,17 +13,12 @@ pub mod storage;
 pub mod tab;
 
 use eframe::egui;
-use neoteletext_app::decoder::GlyphChoices;
 use neoteletext_core::glyphs::GlyphSet;
 use std::sync::Arc;
 
-const ORIGINAL: [GlyphSet; 1] = [GlyphSet::original()];
-const BEDSTEAD: [GlyphSet; 1] = [GlyphSet::bedstead()];
-const BOTH: [GlyphSet; 2] = [GlyphSet::original(), GlyphSet::bedstead()];
-
-/// The glyph sets by setting: the project's own, Bedstead, and both side
-/// by side (decision E.62).
-pub const GLYPHS: GlyphChoices = [&ORIGINAL, &BEDSTEAD, &BOTH];
+/// Bedstead, the one bundled font (REQ-FNT-001), which a tab's decoder
+/// draws with when no other font applies.
+pub static BEDSTEAD: GlyphSet = GlyphSet::bedstead();
 
 /// Seconds since 1970, for the history of visits.
 #[must_use]

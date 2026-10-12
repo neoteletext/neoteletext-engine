@@ -7,10 +7,10 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
-# The glyph inventory reads the character set tables (decision E.62).
+# The list of required characters reads the character set tables.
 neoteletext-core = { workspace = true, features = ["render"] }
-# The glyph proof sheets are PNG images.
-neoteletext-image = { workspace = true, features = ["std"] }
+# The Bedstead export is checked by SHA-256 (REQ-FNT-001).
+neoteletext-web = { workspace = true }
 # The authored test stream of REQ-TST-024 is built by the formats crate.
 neoteletext-formats = { workspace = true, features = ["std", "tti"] }
 

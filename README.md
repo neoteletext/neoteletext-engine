@@ -62,4 +62,4 @@ The project is licensed under the MIT licence; see [LICENSE](LICENSE). Bundled t
 
 ## Licensing of data
 
-No standards documents, character-generator ROM glyphs, GPL code or broadcast recordings are kept in this repository. The glyphs are the project's own (`crates/neoteletext-core/src/glyphs/original.txt`, decision E.62). The Bedstead font in `third_party/bedstead/` is no longer used by default; it stays as the reference the independence check compares against.
+No standards documents, GPL code or broadcast recordings are kept in this repository. The one bundled font is Bedstead 3.261 (`third_party/bedstead/`, decision E.72), whose provenance, licence and checksum are recorded in `third_party/bedstead/PROVENANCE.md`; no other glyphs are kept here. Other fonts are 12 × 10 BDF files that the browser loads when the user, a channel or a page names them (area FNT).

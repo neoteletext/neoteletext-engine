@@ -9,16 +9,16 @@
 //! interface's own knowledge (`picture`).
 
 use crate::helpers::{Options, Wake};
+use crate::now_seconds;
 use crate::picture::{self, Picture};
 use crate::storage::Storage;
 use crate::tab::{Tab, View};
-use crate::{GLYPHS, now_seconds};
 use chrono::Datelike as _;
 use eframe::egui::{
     self, Align, Button, CentralPanel, Color32, ColorImage, Context, Event, Key, Layout, Modifiers, Panel, RichText,
     Sense, TextEdit, TextureHandle, TextureOptions, Ui, ViewportCommand,
 };
-use neoteletext_app::pipe::{DisplaySettings, UserInput};
+use neoteletext_app::pipe::UserInput;
 use neoteletext_browser::contents_view::Key as ContentsKey;
 use neoteletext_browser::location::{parse_input, wants_contents};
 use neoteletext_browser::pages::START_LIST_ROW;
@@ -79,7 +79,7 @@ pub struct BrowserApp {
     /// What the pointer is over on the page: a page number's destination.
     hovered: Option<String>,
     texture: Option<TextureHandle>,
-    shown: Option<(u64, u64, String, u8, usize)>,
+    shown: Option<(u64, u64, String, usize)>,
     picture: Option<Picture>,
     title: String,
 }
@@ -176,8 +176,7 @@ impl BrowserApp {
         if self.tabs.len() >= MAX_TABS {
             return;
         }
-        let mut tab = Tab::new(self.next_id);
-        tab.set_settings(DisplaySettings { glyphs: self.settings.glyphs });
+        let tab = Tab::new(self.next_id);
         self.next_id += 1;
         self.tabs.push(tab);
         self.active = self.tabs.len() - 1;
@@ -260,14 +259,6 @@ impl BrowserApp {
             let previous = self.previous_visit();
             self.tab_mut().open_contents(previous);
         }
-    }
-
-    fn set_glyphs(&mut self, glyphs: u8) {
-        self.settings.glyphs = glyphs;
-        for tab in &mut self.tabs {
-            tab.set_settings(DisplaySettings { glyphs });
-        }
-        self.storage.save_settings(&self.settings);
     }
 
     /// The address and page shown now, as a bookmark or a history entry.
@@ -506,10 +497,6 @@ impl BrowserApp {
                 self.tab_mut().toggle_keys();
                 None
             }
-            'G' => {
-                self.set_glyphs((self.settings.glyphs + 1) % 3);
-                None
-            }
             'C' => {
                 self.toggle_contents();
                 None
@@ -679,12 +666,6 @@ impl BrowserApp {
             ui.ctx().copy_text(self.address.clone());
         }
         ui.separator();
-        ui.label("Glyphs (G)");
-        for (value, name) in [(0, "The project's own"), (1, "Bedstead"), (2, "Both, side by side")] {
-            if ui.radio(self.settings.glyphs == value, name).clicked() {
-                self.set_glyphs(value);
-            }
-        }
         if ui.checkbox(&mut self.settings.aspect, "4:3 picture").changed() {
             self.storage.save_settings(&self.settings);
             self.shown = None;
@@ -752,11 +733,11 @@ impl BrowserApp {
             _ => String::new(),
         };
         let notice = self.hovered.clone().or_else(|| tab.notice.clone()).unwrap_or_default();
-        let glyphs = ["own glyphs", "Bedstead", "both glyph sets"][usize::from(self.settings.glyphs.min(2))];
         ui.horizontal(|ui| {
             ui.label(state);
             ui.label(notice);
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| ui.label(glyphs));
+            // REQ-FNT-005: the font drawing the page.
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| ui.label("Bedstead"));
         });
     }
 
@@ -804,10 +785,9 @@ impl BrowserApp {
         let clock = clock();
         let titles: Vec<String> = self.bookmarks.iter().map(|bookmark| bookmark.title.clone()).collect();
         let tab = self.tab();
-        let key = (tab.id, tab.version, clock.clone(), self.settings.glyphs, titles.len());
+        let key = (tab.id, tab.version, clock.clone(), titles.len());
         if self.shown.as_ref() != Some(&key) {
-            let sets = GLYPHS[usize::from(self.settings.glyphs.min(2))];
-            let picture = picture::for_tab(tab, &titles, Some(&clock), sets);
+            let picture = picture::for_tab(tab, &titles, Some(&clock));
             let image = ColorImage::from_rgba_unmultiplied([picture.width, picture.height], &picture.rgba);
             match &mut self.texture {
                 Some(texture) => texture.set(image, TextureOptions::NEAREST),

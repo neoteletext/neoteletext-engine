@@ -433,7 +433,7 @@ Decision E.61 makes each crate's optional areas Cargo features, all on by defaul
 
 | Crate | Features |
 |---|---|
-| `neoteletext-core` | `level15`, `level25`, `render`, `original`, `bedstead` (not default), `viewer`, `forms`; the capabilities `objects`, `drcs`, `drcs-multicolour`, `bold`, `italic`, `side-panels`, `colours32`, `animation` (decision E.71); the profile `modern-classic` (not default) |
+| `neoteletext-core` | `level15`, `level25`, `render`, `bedstead`, `viewer`, `forms`; the capabilities `objects`, `drcs`, `drcs-multicolour`, `bold`, `italic`, `side-panels`, `colours32`, `animation` (decision E.71); the profile `modern-classic` (not default) |
 | `neoteletext-formats` | `transport`, `sliced`, `pages`, `tti`, `ep1`, `edittf`, `dump`, `check`, and `std` (not default) |
 | `neoteletext-web` | `push`, `forms`, `cookies` |
 | `neoteletext-app` | `live`, `slice` |
@@ -454,7 +454,7 @@ If `neoteletext-core` grows unwieldy, the natural split is `core` (Foundation to
 3. **No input or output below L9.** Layers 0 to 7 are sans-IO and pure (REQ-SEC-016), enforced by clippy's `disallowed-methods` and `disallowed-types` lists.
 4. **Security decisions in one place.** Only `policy` decides. Other layers call it, and the check in rule 1 forbids them from reimplementing it by forbidding direct use of the low-level address and origin tests outside `policy` and L7.
 5. **Pure presentation.** L3 and L4 are pure functions of their inputs (REQ-ARCH-006). They can be recomputed or cached at will without touching acquisition.
-6. **Data, not code, for what changes.** Glyphs, character tables and profiles are data (REQ-RND-020), so the project's original glyphs replaced Bedstead without logic changes (decision E.62).
+6. **Data, not code, for what changes.** Glyphs, character tables and profiles are data (REQ-RND-020): the bundled font is a generated table, and every other font is a file loaded at run time (area FNT, decision E.72).
 7. **Every state machine lives in the layer that owns its state:**
    - the slicer machine in L0;
    - the magazine and page machines in L2;

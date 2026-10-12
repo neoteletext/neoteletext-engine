@@ -121,9 +121,11 @@ fn main() -> ExitCode {
             sandbox_test(arguments.rest.get(1).map(String::as_str));
             Ok(())
         }
-        Some(DECODE_COMMAND) => {
-            neoteletext_app::decoder::run(arguments.no_sandbox, arguments.sandboxed_by_parent, neoteletext_gui::GLYPHS)
-        }
+        Some(DECODE_COMMAND) => neoteletext_app::decoder::run(
+            arguments.no_sandbox,
+            arguments.sandboxed_by_parent,
+            &neoteletext_gui::BEDSTEAD,
+        ),
         _ => window(arguments).map_err(|message| (neoteletext_app::exit::INPUT, message)),
     };
     match result {

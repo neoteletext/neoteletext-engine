@@ -46,7 +46,7 @@ pub fn keys(clock: Option<&str>) -> Page {
 const KEY_COLUMNS: usize = 12;
 /// The keys page's lines: the key, then what it does. Each fits in a row,
 /// and none uses a character that differs between national options.
-const KEYS: [(&str, &str); 22] = [
+const KEYS: [(&str, &str); 21] = [
     ("0-9", "Page number"),
     ("r g y c", "Colours (F1 to F4)"),
     ("i", "Index (End)"),
@@ -66,7 +66,6 @@ const KEYS: [(&str, &str); 22] = [
     ("Cmd-D", "Bookmark this page"),
     ("Cmd-Left", "Back (Page Up)"),
     ("Cmd-Right", "Forward (Page Down)"),
-    ("G", "Glyphs"),
     ("C", "Contents"),
     ("K", "This page"),
 ];

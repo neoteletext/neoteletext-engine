@@ -82,20 +82,17 @@ pub fn prune_history(mut visits: Vec<Saved>, now: u64) -> Vec<Saved> {
 /// The settings kept between runs.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct Settings {
-    /// The glyphs: 0 the project's own, 1 Bedstead, 2 both.
-    pub glyphs: u8,
     /// Stretch pages to the 4:3 picture of a television (REQ-RND-004).
     pub aspect: bool,
 }
 
-const GLYPHS_KEY: &str = "glyphs";
 const ASPECT_KEY: &str = "aspect";
 
 impl Settings {
     /// The settings as `key=value` lines.
     #[must_use]
     pub fn write(&self) -> String {
-        format!("{GLYPHS_KEY}={}\n{ASPECT_KEY}={}\n", self.glyphs, u8::from(self.aspect))
+        format!("{ASPECT_KEY}={}\n", u8::from(self.aspect))
     }
 
     /// Reads settings; unknown keys and bad values keep the defaults.
@@ -103,14 +100,8 @@ impl Settings {
     pub fn read(text: &str) -> Self {
         let mut settings = Self::default();
         for line in text.lines().take(MAX_RECORDS) {
-            match line.split_once('=') {
-                Some((GLYPHS_KEY, value)) => {
-                    if let Ok(glyphs @ 0..=2) = value.trim().parse::<u8>() {
-                        settings.glyphs = glyphs;
-                    }
-                }
-                Some((ASPECT_KEY, value)) => settings.aspect = value.trim() == "1",
-                _ => {}
+            if let Some((ASPECT_KEY, value)) = line.split_once('=') {
+                settings.aspect = value.trim() == "1";
             }
         }
         settings
@@ -161,8 +152,9 @@ mod tests {
 
     #[test]
     fn settings_round_trip_and_ignore_nonsense() {
-        let settings = Settings { glyphs: 2, aspect: true };
+        let settings = Settings { aspect: true };
         assert_eq!(Settings::read(&settings.write()), settings);
-        assert_eq!(Settings::read("glyphs=9\naspect=yes\nother=1"), Settings::default());
+        // The retired glyph choice is an unknown key now (decision E.72).
+        assert_eq!(Settings::read("glyphs=2\naspect=yes\nother=1"), Settings::default());
     }
 }

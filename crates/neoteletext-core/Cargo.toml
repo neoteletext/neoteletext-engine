@@ -17,7 +17,7 @@ default = [
     "level15",
     "level25",
     "render",
-    "original",
+    "bedstead",
     "viewer",
     "forms",
     "objects",
@@ -53,13 +53,11 @@ animation = ["level25"]
 # The modern-classic profile (decision E.71): Level 1.5, and of Levels 2.5
 # and 3.5 only the non-spacing attributes, objects, monochrome DRCS and
 # bold. Used with the default features off.
-modern-classic = ["level15", "level25", "render", "original", "viewer", "forms", "objects", "drcs", "bold"]
+modern-classic = ["level15", "level25", "render", "bedstead", "viewer", "forms", "objects", "drcs", "bold"]
 # The row renderer and the generated G3 glyphs (area RND).
 render = []
-# The temporary Bedstead glyph set (decision E.25).
+# Bedstead, the one bundled font (REQ-FNT-001, decision E.72).
 bedstead = ["render"]
-# The project's own glyphs (REQ-RND-028, decision E.62).
-original = ["render"]
 # The viewer state machine, navigation and history (area NAV).
 viewer = []
 # The forms model (Appendix C).
@@ -112,7 +110,7 @@ required-features = ["level25", "objects"]
 
 [[test]]
 name = "performance"
-required-features = ["level25", "original"]
+required-features = ["level25", "bedstead"]
 
 [[test]]
 name = "reporting"
@@ -120,4 +118,4 @@ required-features = ["level15", "level25", "viewer"]
 
 [[example]]
 name = "minimal_port"
-required-features = ["level15", "original"]
+required-features = ["level15", "bedstead"]

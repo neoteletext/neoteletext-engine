@@ -4340,7 +4340,7 @@ version = "0.1.0"
 dependencies = [
  "neoteletext-core",
  "neoteletext-formats",
- "neoteletext-image",
+ "neoteletext-web",
 ]
 
 [[package]]

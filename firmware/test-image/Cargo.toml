@@ -33,7 +33,6 @@ capabilities = [
 modern-classic = ["level25", "neoteletext-core/objects", "neoteletext-core/drcs", "neoteletext-core/bold"]
 render = ["neoteletext-core/render"]
 bedstead = ["render", "neoteletext-core/bedstead"]
-original = ["render", "neoteletext-core/original"]
 viewer = ["neoteletext-core/viewer"]
 forms = ["neoteletext-core/forms"]
 # The format readers through detection; formats-all adds every reader.

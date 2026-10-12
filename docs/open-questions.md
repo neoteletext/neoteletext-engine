@@ -19,8 +19,8 @@ Everything still open on 12 October 2026, grouped by what each item needs before
 
 | # | Item | Context |
 |---|---|---|
-| 7 | **Review of the original glyphs by fluent readers** of Greek, Cyrillic, Hebrew and Arabic, and a Latin review. Known weak glyphs: `m`, `ø`, `©` against `®`, `Ă` and `Ğ`, the fractions, the one-dot pairs `¨`/`ˇ` and `˜`/`˝`, the Arabic three-dot letters (one dot from their two-dot partners), and ح ج خ without a deep bowl. | Row 54; `cargo xtask glyph-proof OUT.png [--compare]`; `ttx … --glyphs compare` |
-| 8 | **Arabic glyph independence cannot be audited**: Bedstead has no Arabic. A different reference, or a human check, is needed. | E.62; row 54 |
+| 7 | Withdrawn: the review of the original glyphs. Decision E.72 removed the original set; Bedstead is the bundled font. | E.72 |
+| 8 | Withdrawn: the audit of Arabic glyph independence, for the same reason. Arabic text needs a loaded font (area FNT). | E.72 |
 | 9 | **German Level 2.5 broadcast data**: a recording of ZDF or other German services from Astra 19.2°E or DVB-T2. | REQUIREMENTS.md Appendix D.2 |
 | 10 | **A real broadcast with objects, DRCS pages or side panels.** None found; these are tested on the authored stream only. | REQ-TST-025; Level 2.5 and 3.5 round status |
 | 11 | **TTI files written by vbit2**, to test the reader against. | REQ-INP-023 |
