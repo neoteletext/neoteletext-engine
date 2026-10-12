@@ -34,8 +34,9 @@ pub const MAX_FONT_TEXT: usize = 512;
 const GLYPH_WIRE_BYTES: usize = 4 + 2 * CELL_FIELD_LINES;
 /// The largest glyph table: 1,024 glyphs (REQ-FNT-002).
 const MAX_TABLE_BYTES: usize = 2 + FONT_MAX_CHARACTERS * GLYPH_WIRE_BYTES;
-/// The largest font reply: the file, its table and three texts.
-const MAX_FONT_FRAME: usize = 1 + 4 + FONT_MAX_FILE_BYTES + MAX_TABLE_BYTES + 3 * (5 + MAX_FONT_TEXT);
+/// The largest font reply: the file, its table, three texts and two
+/// validators.
+const MAX_FONT_FRAME: usize = 1 + 4 + FONT_MAX_FILE_BYTES + MAX_TABLE_BYTES + 5 * (5 + MAX_FONT_TEXT);
 /// The most fonts one library listing carries (REQ-FNT-004's 1,000 lines).
 pub const MAX_LIBRARY_FONTS: usize = 1000;
 
@@ -150,6 +151,9 @@ pub struct FontData {
     pub notice: Option<String>,
     /// The glyphs, sorted by code point.
     pub glyphs: Vec<FontGlyph>,
+    /// The answer's `ETag` and `Last-Modified`, kept for the daily check of
+    /// a font named by address alone (REQ-FNT-009).
+    pub validators: [Option<String>; 2],
 }
 
 /// A font helper's answer.
@@ -157,6 +161,8 @@ pub struct FontData {
 pub enum FontReply {
     /// The font.
     Loaded(FontData),
+    /// The copy the interface holds is current (REQ-FNT-009).
+    Current,
     /// It could not be fetched or read, and why.
     Failed(String),
 }
@@ -378,6 +384,7 @@ const CHANNEL_FONT: u8 = b'j';
 /// The kinds of [`FontReply`] and [`LibraryReply`] on the wire.
 const REPLY_OK: u8 = 0;
 const REPLY_FAILED: u8 = 1;
+const REPLY_CURRENT: u8 = 2;
 /// The kinds of [`ContentsReply`] on the wire.
 const CONTENTS_FILE: u8 = 0;
 const CONTENTS_MISSING: u8 = 1;
@@ -650,11 +657,13 @@ fn write_font(out: &mut dyn Write, frame: &Frame) -> io::Result<()> {
                     buffer.push(REPLY_OK);
                     buffer.extend_from_slice(&u32::try_from(font.bytes.len()).unwrap_or(0).to_be_bytes());
                     buffer.extend_from_slice(&font.bytes);
-                    for text in [&font.family, &font.copyright, &font.notice] {
+                    let [etag, last_modified] = &font.validators;
+                    for text in [&font.family, &font.copyright, &font.notice, etag, last_modified] {
                         put_option(&mut buffer, text.as_ref());
                     }
                     put_table(&mut buffer, &font.glyphs);
                 }
+                FontReply::Current => buffer.push(REPLY_CURRENT),
                 FontReply::Failed(why) => {
                     buffer.push(REPLY_FAILED);
                     put_string(&mut buffer, why);
@@ -972,7 +981,7 @@ fn font_frame(kind: u8, payload: &[u8]) -> io::Result<Frame> {
                     return Err(invalid());
                 }
                 let bytes = cursor.bytes(length)?.to_vec();
-                let mut texts = [None, None, None];
+                let mut texts = [None, None, None, None, None];
                 for text in &mut texts {
                     *text = cursor.option()?;
                     if text.as_ref().is_some_and(|text| text.len() > MAX_FONT_TEXT) {
@@ -981,9 +990,17 @@ fn font_frame(kind: u8, payload: &[u8]) -> io::Result<Frame> {
                 }
                 let glyphs = cursor.table()?;
                 cursor.end()?;
-                let [family, copyright, notice] = texts;
-                FontReply::Loaded(FontData { bytes, family, copyright, notice, glyphs })
+                let [family, copyright, notice, etag, last_modified] = texts;
+                FontReply::Loaded(FontData {
+                    bytes,
+                    family,
+                    copyright,
+                    notice,
+                    glyphs,
+                    validators: [etag, last_modified],
+                })
             }
+            REPLY_CURRENT if payload.len() == 1 => FontReply::Current,
             REPLY_FAILED => {
                 let why = cursor.short_string()?;
                 cursor.end()?;
@@ -1071,6 +1088,7 @@ mod tests {
             copyright: None,
             notice: None,
             glyphs: Vec::new(),
+            validators: [None, None],
         }));
         assert!(write(&mut Vec::new(), &reply).is_err() || read(&mut wire(&reply).as_slice()).is_err());
         // A reply of an unknown kind, and a status whose font flag is 2.
@@ -1100,7 +1118,9 @@ mod tests {
                 copyright: None,
                 notice: Some("CC0".into()),
                 glyphs: vec![glyph(0x41, 0x0F0), glyph(0x42, 0xFFF)],
+                validators: [Some("\"v1\"".into()), None],
             })),
+            Frame::Font(FontReply::Current),
             Frame::Font(FontReply::Failed("line 3: Spacing".into())),
             Frame::FontLibrary(LibraryReply::Listed(
                 vec![LibraryFont { address: "https://l.example/f.bdf".into(), title: "F".into(), sha256: [1; 32] }],

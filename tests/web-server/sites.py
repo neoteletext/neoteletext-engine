@@ -344,7 +344,16 @@ class Site(http.server.BaseHTTPRequestHandler):
         FONT_LOG.append(path)
         port = self.ports["fontsite"]
         if path == "/page.bdf":
-            return self.send(200, PAGE_FONT, "application/x-font-bdf")
+            # REQ-FNT-009: the daily check is a conditional request.
+            etag = '"page-v1"'
+            if self.headers.get("If-None-Match") == etag:
+                FONT_LOG.append(path + " 304")
+                self.send_response(304)
+                self.send_header("ETag", etag)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return None
+            return self.send(200, PAGE_FONT, "application/x-font-bdf", [("ETag", etag)])
         if path == "/lib/fonts.txt":
             index = "\n".join([
                 "# A test library (REQ-FNT-004).",

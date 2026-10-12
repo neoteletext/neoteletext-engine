@@ -224,3 +224,38 @@ fn fonts_named_by_the_channel_the_page_the_user_and_a_library() {
     again.wait_drawn("the page's font from the cache", "Page stripe", Some(Chooser::Page), PAGE_STRIPE);
     assert_eq!(log(&sites).iter().filter(|path| *path == "/page.bdf").count(), fetched, "no new request");
 }
+
+/// REQ-FNT-009: a font the user named by address alone is checked again
+/// after a day with a conditional request; when the server says it is
+/// current, the cached copy is used.
+#[test]
+fn a_font_named_by_address_is_checked_daily() {
+    let Some(sites) = sites() else { return };
+    let path = profile("fonts-daily");
+    let request = Request {
+        address: sites.address("fontsite", "/page.bdf"),
+        sha256: None,
+        chooser: Chooser::User,
+        scope: Scope::Shared,
+    };
+    let mut run = Run::new(path.clone());
+    let now = neoteletext_gui::now_seconds();
+    run.fonts.want(&request, &run.storage, &run.options, &run.wake, now);
+    run.wait("the font by address", |run| matches!(run.fonts.state(&request), Some(State::Ready(_))));
+    let mut index = run.storage.font_index();
+    let entry = index.find_address(&request.address).cloned().unwrap();
+    assert!(!entry.named_by_checksum);
+    assert_eq!(entry.etag, "\"page-v1\"", "the validator is kept");
+    // A day later.
+    index.mark_checked(&entry.sha256, now - neoteletext_browser::fonts::RECHECK_SECONDS);
+    run.storage.save_font_index(&index);
+    drop(run);
+    let mut later = Run::new(path);
+    let before = log(&sites).len();
+    later.fonts.want(&request, &later.storage, &later.options, &later.wake, now);
+    later.wait("the checked font", |run| matches!(run.fonts.state(&request), Some(State::Ready(_))));
+    let asked: Vec<String> = log(&sites).into_iter().skip(before).collect();
+    // The site logs each request's path, then a 304 it answered.
+    assert_eq!(asked, ["/page.bdf", "/page.bdf 304"], "one conditional request, answered 304");
+    assert!(later.storage.font_index().find_address(&request.address).is_some_and(|entry| entry.checked >= now));
+}

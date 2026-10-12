@@ -34,6 +34,10 @@ pub const FONT_FETCH_COMMAND: &str = "font-fetch";
 pub const FONT_READ_COMMAND: &str = "font-read";
 /// With [`FONT_FETCH_COMMAND`]: the address is a library's index.
 pub const INDEX_FLAG: &str = "--index";
+/// With [`FONT_FETCH_COMMAND`]: the `ETag` of the copy held (REQ-FNT-009).
+pub const ETAG_FLAG: &str = "--etag";
+/// With [`FONT_FETCH_COMMAND`]: the `Last-Modified` of the copy held.
+pub const LAST_MODIFIED_FLAG: &str = "--last-modified";
 
 /// How helpers are started.
 #[derive(Clone, Debug)]
@@ -127,6 +131,9 @@ pub enum FontJob {
         address: String,
         /// A library's index rather than a font.
         index: bool,
+        /// The `ETag` and `Last-Modified` of the copy held, for a
+        /// conditional request (REQ-FNT-009).
+        validators: [Option<String>; 2],
     },
     /// Read these bytes as a font: a cached file or a local one.
     Read(Vec<u8>),
@@ -139,10 +146,16 @@ pub enum FontJob {
 /// parses a font.
 pub fn font_helper(options: &Options, job: FontJob, wake: Wake) -> Result<Receiver<Option<Frame>>, String> {
     let (helper, arguments, input) = match job {
-        FontJob::Fetch { address, index } => {
+        FontJob::Fetch { address, index, validators } => {
             let mut arguments = vec![FONT_FETCH_COMMAND.to_string(), address];
             if index {
                 arguments.push(INDEX_FLAG.to_string());
+            }
+            for (flag, value) in [ETAG_FLAG, LAST_MODIFIED_FLAG].into_iter().zip(validators) {
+                if let Some(value) = value {
+                    arguments.push(flag.to_string());
+                    arguments.push(value);
+                }
             }
             for local in &options.allow_local {
                 arguments.push(ALLOW_LOCAL.to_string());

@@ -183,17 +183,21 @@ impl Fonts {
             None => self.cache.find_address(&request.address).cloned(),
         };
         let mut fallback = None;
+        let mut validators = [None, None];
         if let Some(entry) = cached {
             if request.sha256.is_none() && FontCache::due_for_check(&entry, now) {
-                // REQ-FNT-009: fetched again at most daily, the cached copy
-                // kept for when the check fails.
+                // REQ-FNT-009: checked again at most daily with a
+                // conditional request, the cached copy kept for when the
+                // check fails or the server says it is current.
                 fallback = Some(entry.sha256);
+                let present = |value: &str| (!value.is_empty()).then(|| value.to_string());
+                validators = [present(&entry.etag), present(&entry.last_modified)];
             } else if self.read_cached(&key, request, &entry, storage, options, wake) {
                 return;
             }
         }
         if request.address.contains("://") {
-            let job = FontJob::Fetch { address: request.address.clone(), index: false };
+            let job = FontJob::Fetch { address: request.address.clone(), index: false, validators };
             self.start(key, request.clone(), job, None, fallback, options, wake);
         } else {
             self.states.insert(key, State::Failed("not in the cache; choose the file again".into()));
@@ -242,7 +246,8 @@ impl Fonts {
             self.libraries.insert(folder.to_string(), Library::Failed("not a library's address".into()));
             return;
         };
-        match font_helper(options, FontJob::Fetch { address: index.as_str().to_string(), index: true }, wake.clone()) {
+        let job = FontJob::Fetch { address: index.as_str().to_string(), index: true, validators: [None, None] };
+        match font_helper(options, job, wake.clone()) {
             Ok(answer) => {
                 self.libraries.insert(folder.to_string(), Library::Loading);
                 self.jobs.push(Job::Library { address: folder.to_string(), answer });
@@ -282,19 +287,24 @@ impl Fonts {
         for job in jobs {
             match job {
                 Job::Font { key, request, bytes, fallback, answer } => {
-                    let state = match answer.try_recv() {
-                        Ok(frame) => self.answer(&request, bytes.as_deref(), frame, storage, now),
+                    // `None` is the server's answer that the copy held is
+                    // current (REQ-FNT-009).
+                    let outcome = match answer.try_recv() {
+                        Ok(Some(Frame::Font(FontReply::Current))) => None,
+                        Ok(frame) => Some(self.answer(&request, bytes.as_deref(), frame, storage, now)),
                         Err(TryRecvError::Empty) => {
                             self.jobs.push(Job::Font { key, request, bytes, fallback, answer });
                             continue;
                         }
-                        Err(TryRecvError::Disconnected) => State::Failed("the font helper ended".into()),
+                        Err(TryRecvError::Disconnected) => Some(State::Failed("the font helper ended".into())),
                     };
                     changed = true;
-                    // REQ-FNT-009: when the daily check fails, the cached
-                    // copy stays in use.
+                    let current = outcome.is_none();
+                    let state = outcome.unwrap_or_else(|| State::Failed("current, but no copy is cached".into()));
+                    // REQ-FNT-009: when the copy held is current, or the
+                    // daily check fails, the cached copy is used.
                     let cached = fallback.and_then(|sha256| self.cache.find(&sha256, None).cloned());
-                    if let (State::Failed(_), Some(entry)) = (&state, cached) {
+                    if let (true, Some(entry)) = (current || matches!(state, State::Failed(_)), cached) {
                         self.cache.mark_checked(&entry.sha256, now);
                         storage.save_font_index(&self.cache);
                         if self.read_cached(&key, &request, &entry, storage, options, wake) {
@@ -365,6 +375,8 @@ impl Fonts {
             last_used: now,
             checked: now,
             pinned: self.cache.find(&sha256, None).is_some_and(|entry| entry.pinned),
+            etag: line(font.validators[0].as_ref()),
+            last_modified: line(font.validators[1].as_ref()),
         };
         let stored = storage.cached_font(&sha256).is_some() || storage.store_font(&sha256, &font.bytes);
         // A font that cannot be written is used now and not kept.

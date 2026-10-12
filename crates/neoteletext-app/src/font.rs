@@ -25,7 +25,7 @@ pub fn read_font(bytes: Vec<u8>) -> FontReply {
             let family = font.family.map(printable);
             let copyright = font.copyright.map(printable);
             let notice = font.notice.map(printable);
-            FontReply::Loaded(FontData { bytes, family, copyright, notice, glyphs })
+            FontReply::Loaded(FontData { bytes, family, copyright, notice, glyphs, validators: [None, None] })
         }
         Err(error) => FontReply::Failed(format!("line {}: {:?}", error.line, error.kind)),
     }

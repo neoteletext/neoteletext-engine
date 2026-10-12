@@ -224,6 +224,11 @@ pub enum Input<'a> {
         address: &'a str,
         /// A library index rather than a font.
         index: bool,
+        /// The `ETag` of the copy the caller holds, for the conditional
+        /// request of a font's daily check (REQ-FNT-009, REQ-WEB-004).
+        etag: Option<&'a str>,
+        /// The `Last-Modified` of that copy.
+        last_modified: Option<&'a str>,
     },
     /// Follow a link to a page of another service named in the current
     /// descriptor (Appendix E). The request is a cross-service navigation
@@ -489,6 +494,16 @@ pub enum Event<'a> {
         url: &'a str,
         /// The bytes.
         body: &'a [u8],
+        /// Its `ETag`, kept for the next conditional request.
+        etag: Option<&'a str>,
+        /// Its `Last-Modified`.
+        last_modified: Option<&'a str>,
+    },
+    /// The copy the caller holds is current: the server answered 304 to
+    /// the conditional request (REQ-FNT-009).
+    FontCurrent {
+        /// A library index rather than a font.
+        index: bool,
     },
     /// A font or a library index could not be fetched.
     FontFailed {
@@ -584,6 +599,21 @@ enum Purpose {
     Form,
     Contents,
     Font { index: bool },
+}
+
+/// A copy's validators (REQ-WEB-004).
+#[derive(Clone, Copy, Debug, Default)]
+struct Validators {
+    etag: Option<TextBuf<MAX_VALIDATOR_LENGTH>>,
+    last_modified: Option<TextBuf<MAX_VALIDATOR_LENGTH>>,
+}
+
+/// A font or library index waiting to be fetched.
+#[derive(Clone, Copy, Debug)]
+struct FontFetch {
+    url: Url,
+    index: bool,
+    validators: Validators,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -716,7 +746,9 @@ pub struct UserAgent<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES
     /// The channel's contents file to fetch.
     contents: Option<Url>,
     /// Fonts and library indexes to fetch, oldest first.
-    fonts: [Option<(Url, bool)>; FONT_QUEUE],
+    fonts: [Option<FontFetch>; FONT_QUEUE],
+    /// The validators of the font being fetched now.
+    font_validators: Validators,
     navigation_pending: bool,
     secure_hosts: [Option<TextBuf<MAX_HOST_TEXT_LENGTH>>; SECURE_HOSTS],
     fetch: FetchConnection,
@@ -814,6 +846,7 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             front_door: None,
             contents: None,
             fonts: [None; FONT_QUEUE],
+            font_validators: Validators::default(),
             navigation_pending: false,
             secure_hosts: [None; SECURE_HOSTS],
             fetch: FetchConnection {
@@ -962,7 +995,13 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
                 Err(_) => event(sink, Event::DescriptorFailed(Failure::Address(UrlError::Path))),
             },
             Input::FetchContents => self.fetch_contents(sink),
-            Input::FetchFont { address, index } => self.fetch_font(address, index, sink),
+            Input::FetchFont { address, index, etag, last_modified } => {
+                let validators = Validators {
+                    etag: etag.and_then(|value| TextBuf::from_bytes(value.as_bytes())),
+                    last_modified: last_modified.and_then(|value| TextBuf::from_bytes(value.as_bytes())),
+                };
+                self.fetch_font(address, index, &validators, sink);
+            }
             Input::FollowLink { service, page, subcode } => self.follow_link(service, page, subcode, sink),
             Input::FetchPage { page, subcode } => self.enqueue(page, subcode, sink),
             Input::Subscribe(subscription) => self.subscribe(now, subscription, sink),
@@ -1026,20 +1065,20 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
         }
     }
 
-    fn fetch_font(&mut self, address: &str, index: bool, sink: &mut Sink<'_>) {
+    fn fetch_font(&mut self, address: &str, index: bool, validators: &Validators, sink: &mut Sink<'_>) {
         let url = match Url::parse(address) {
             Ok(url) if !url.scheme().is_websocket() => url,
             Ok(_) => return event(sink, Event::FontFailed { index, failure: Failure::Address(UrlError::Scheme) }),
             Err(error) => return event(sink, Event::FontFailed { index, failure: Failure::Address(error) }),
         };
         match self.fonts.iter_mut().find(|slot| slot.is_none()) {
-            Some(slot) => *slot = Some((url, index)),
+            Some(slot) => *slot = Some(FontFetch { url, index, validators: *validators }),
             None => event(sink, Event::FontFailed { index, failure: Failure::QueueFull }),
         }
     }
 
     /// The oldest font or index waiting, keeping the rest in order.
-    fn take_font(&mut self) -> Option<(Url, bool)> {
+    fn take_font(&mut self) -> Option<FontFetch> {
         let first = self.fonts.first_mut()?.take()?;
         self.fonts.rotate_left(1);
         Some(first)
@@ -1161,9 +1200,10 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
                 }
             } else if let Some(url) = self.contents.take() {
                 (Purpose::Contents, url, Method::Get, Site::SameService)
-            } else if let Some((url, index)) = self.take_font() {
+            } else if let Some(font) = self.take_font() {
+                self.font_validators = font.validators;
                 // The site is irrelevant: a font request carries no cookies.
-                (Purpose::Font { index }, url, Method::Get, Site::SameService)
+                (Purpose::Font { index: font.index }, font.url, Method::Get, Site::SameService)
             } else if cfg!(feature = "forms") && self.form.phase == FormPhase::Queued {
                 let Some(url) = self.form.target else {
                     self.form.phase = FormPhase::Idle;
@@ -1277,6 +1317,15 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
                 http::write_header(&mut writer, header::IF_NONE_MATCH, etag.as_bytes())?;
             }
             if let Some(date) = &entry.last_modified {
+                http::write_header(&mut writer, header::IF_MODIFIED_SINCE, date.as_bytes())?;
+            }
+        }
+        // REQ-FNT-009: a font's daily check is a conditional request.
+        if matches!(exchange.purpose, Purpose::Font { .. }) && exchange.redirects == 0 {
+            if let Some(etag) = &self.font_validators.etag {
+                http::write_header(&mut writer, header::IF_NONE_MATCH, etag.as_bytes())?;
+            }
+            if let Some(date) = &self.font_validators.last_modified {
                 http::write_header(&mut writer, header::IF_MODIFIED_SINCE, date.as_bytes())?;
             }
         }
@@ -1745,12 +1794,23 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
                 // index is text, like `contents.txt`.
                 let media_accepted = matches!(head.media, MediaType::TextPlain | MediaType::OctetStream)
                     || !index && head.media == MediaType::FontBdf;
-                if status != STATUS_OK {
+                if status == STATUS_NOT_MODIFIED {
+                    event(sink, Event::FontCurrent { index });
+                } else if status != STATUS_OK {
                     event(sink, Event::FontFailed { index, failure: Failure::Status(status) });
                 } else if !media_accepted {
                     event(sink, Event::FontFailed { index, failure: Failure::MediaType });
                 } else {
-                    event(sink, Event::Font { index, url: exchange.url.as_str(), body });
+                    event(
+                        sink,
+                        Event::Font {
+                            index,
+                            url: exchange.url.as_str(),
+                            body,
+                            etag: head.etag.as_ref().map(TextBuf::as_str),
+                            last_modified: head.last_modified.as_ref().map(TextBuf::as_str),
+                        },
+                    );
                 }
                 true
             }

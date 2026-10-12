@@ -540,9 +540,11 @@ fn run_web(address: &str, requests: &Receiver<Frame>, allow_local: &[IpAddr]) {
 /// [`Frame::FontLibrary`]. Whether the address may be fetched was decided by
 /// the interface before it started this helper; the request carries no
 /// cookies, and the local-network and downgrade rules apply.
+#[allow(clippy::too_many_arguments)] // The address, its validators and how to run.
 pub fn run_font(
     address: &str,
     index: bool,
+    validators: [Option<&str>; 2],
     no_sandbox: bool,
     sandboxed_by_parent: bool,
     allow_local: &[IpAddr],
@@ -583,10 +585,15 @@ pub fn run_font(
         }
         match output {
             Output::Timer { at } => *next_tick = Some(next_tick.map_or(at, |current| current.min(at))),
-            Output::Event(Event::Font { index: false, body, .. }) => {
-                *reply = Some(Frame::Font(crate::font::read_font(body.to_vec())));
+            Output::Event(Event::Font { index: false, body, etag, last_modified, .. }) => {
+                let mut answer = crate::font::read_font(body.to_vec());
+                if let pipe::FontReply::Loaded(font) = &mut answer {
+                    font.validators = [etag.map(str::to_string), last_modified.map(str::to_string)];
+                }
+                *reply = Some(Frame::Font(answer));
             }
-            Output::Event(Event::Font { index: true, url, body }) => {
+            Output::Event(Event::FontCurrent { .. }) => *reply = Some(Frame::Font(pipe::FontReply::Current)),
+            Output::Event(Event::Font { index: true, url, body, .. }) => {
                 *reply = Some(Frame::FontLibrary(library(url, body)));
             }
             Output::Event(Event::FontFailed { index, failure }) => {
@@ -600,7 +607,8 @@ pub fn run_font(
             _ => {}
         }
     };
-    agent.handle(clock(start), Input::FetchFont { address, index }, &mut |output| {
+    let [etag, last_modified] = validators;
+    agent.handle(clock(start), Input::FetchFont { address, index, etag, last_modified }, &mut |output| {
         sink(output, &mut pump, &mut next_tick, &mut reply);
     });
     while reply.is_none() {

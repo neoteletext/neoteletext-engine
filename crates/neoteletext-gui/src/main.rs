@@ -8,8 +8,8 @@
 use eframe::egui;
 use neoteletext_gui::app::BrowserApp;
 use neoteletext_gui::helpers::{
-    ALLOW_LOCAL, DECODE_COMMAND, FETCH_COMMAND, FONT_FETCH_COMMAND, FONT_READ_COMMAND, INDEX_FLAG, NO_SANDBOX, Options,
-    SANDBOXED_BY_PARENT,
+    ALLOW_LOCAL, DECODE_COMMAND, ETAG_FLAG, FETCH_COMMAND, FONT_FETCH_COMMAND, FONT_READ_COMMAND, INDEX_FLAG,
+    LAST_MODIFIED_FLAG, NO_SANDBOX, Options, SANDBOXED_BY_PARENT,
 };
 use neoteletext_gui::storage::Storage;
 use std::net::IpAddr;
@@ -102,6 +102,11 @@ fn window(arguments: Arguments) -> Result<(), String> {
     .map_err(|error| error.to_string())
 }
 
+/// The value after `flag` among a helper's arguments.
+fn flag_value<'a>(arguments: &'a [String], flag: &str) -> Option<&'a str> {
+    arguments.iter().position(|argument| argument == flag).and_then(|at| arguments.get(at + 1)).map(String::as_str)
+}
+
 fn main() -> ExitCode {
     let arguments = match arguments() {
         Ok(arguments) => arguments,
@@ -128,6 +133,7 @@ fn main() -> ExitCode {
             Some(address) => neoteletext_app::fetch::run_font(
                 address,
                 arguments.rest.iter().any(|argument| argument == INDEX_FLAG),
+                [flag_value(&arguments.rest, ETAG_FLAG), flag_value(&arguments.rest, LAST_MODIFIED_FLAG)],
                 arguments.no_sandbox,
                 arguments.sandboxed_by_parent,
                 &arguments.options.allow_local,

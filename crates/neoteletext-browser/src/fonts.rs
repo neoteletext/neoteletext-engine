@@ -170,6 +170,11 @@ pub struct CacheEntry {
     pub checked: u64,
     /// The user keeps it whatever the limit.
     pub pinned: bool,
+    /// The `ETag` its answer had, for the conditional request of the daily
+    /// check; empty when none.
+    pub etag: String,
+    /// The `Last-Modified` its answer had; empty when none.
+    pub last_modified: String,
 }
 
 /// The cache's index: which fonts are kept, for whom, and when they were
@@ -319,7 +324,7 @@ impl FontCache {
             };
             let _ = writeln!(
                 out,
-                "{}{SEPARATOR}{}{SEPARATOR}{scope}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}",
+                "{}{SEPARATOR}{}{SEPARATOR}{scope}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}",
                 String::from_utf8_lossy(&to_hex(&entry.sha256)),
                 entry.size,
                 u8::from(entry.named_by_checksum),
@@ -329,6 +334,8 @@ impl FontCache {
                 text(&entry.address),
                 text(&entry.name),
                 text(&entry.notice),
+                text(&entry.etag),
+                text(&entry.last_modified),
             );
         }
         out
@@ -343,8 +350,20 @@ impl FontCache {
             .lines()
             .filter_map(|line| {
                 let fields: Vec<&str> = line.split(SEPARATOR).collect();
-                let [sha256, size, scope, by_checksum, last_used, checked, pinned, address, name, notice] =
-                    fields.as_slice()
+                let [
+                    sha256,
+                    size,
+                    scope,
+                    by_checksum,
+                    last_used,
+                    checked,
+                    pinned,
+                    address,
+                    name,
+                    notice,
+                    etag,
+                    last_modified,
+                ] = fields.as_slice()
                 else {
                     return None;
                 };
@@ -364,6 +383,8 @@ impl FontCache {
                     last_used: last_used.parse().ok()?,
                     checked: checked.parse().ok()?,
                     pinned: flag(pinned)?,
+                    etag: (*etag).to_string(),
+                    last_modified: (*last_modified).to_string(),
                 };
                 Some(entry)
             })
@@ -482,6 +503,8 @@ mod tests {
             last_used,
             checked: last_used,
             pinned: false,
+            etag: String::new(),
+            last_modified: String::new(),
         }
     }
 

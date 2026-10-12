@@ -1313,7 +1313,12 @@ fn font_requests_carry_no_cookies_and_keep_none() {
             font,
         )),
     );
-    harness.input(Input::FetchFont { address: "https://secure.example/fonts/f.bdf", index: false });
+    harness.input(Input::FetchFont {
+        address: "https://secure.example/fonts/f.bdf",
+        index: false,
+        etag: None,
+        last_modified: None,
+    });
     harness.advance(neoteletext_web::consts::DEFAULT_FETCH_INTERVAL_US);
     let records = harness.take();
     assert!(has_event(&records, "Font { index: false, url: \"https://secure.example/fonts/f.bdf\""), "{records:?}");
@@ -1342,28 +1347,90 @@ fn fonts_and_indexes_without_a_service() {
         "fonts.example:443",
         Reply::Bytes(response("200 OK", &["Content-Type: text/plain"], b"f\tx.bdf\tX\t00\n")),
     );
-    harness.input(Input::FetchFont { address: "https://fonts.example/lib/fonts.txt", index: true });
+    harness.input(Input::FetchFont {
+        address: "https://fonts.example/lib/fonts.txt",
+        index: true,
+        etag: None,
+        last_modified: None,
+    });
     assert!(has_event(&harness.take(), "Font { index: true"), "an index as text");
     harness.advance(SECOND);
     harness
         .replay()
         .reply("fonts.example:443", Reply::Bytes(response("200 OK", &["Content-Type: text/html"], b"<html>")));
-    harness.input(Input::FetchFont { address: "https://fonts.example/f.bdf", index: false });
+    harness.input(Input::FetchFont {
+        address: "https://fonts.example/f.bdf",
+        index: false,
+        etag: None,
+        last_modified: None,
+    });
     let records = harness.take();
     assert!(has_event(&records, "FontFailed { index: false, failure: MediaType }"), "{records:?}");
     harness.advance(SECOND);
     harness
         .replay()
         .reply("fonts.example:443", Reply::Bytes(response("200 OK", &["Content-Type: application/x-font-bdf"], b"x")));
-    harness.input(Input::FetchFont { address: "https://fonts.example/lib/fonts.txt", index: true });
+    harness.input(Input::FetchFont {
+        address: "https://fonts.example/lib/fonts.txt",
+        index: true,
+        etag: None,
+        last_modified: None,
+    });
     assert!(has_event(&harness.take(), "FontFailed { index: true, failure: MediaType }"), "an index is never BDF");
     harness.advance(SECOND);
-    harness.input(Input::FetchFont { address: "https://local.example/f.bdf", index: false });
+    harness.input(Input::FetchFont {
+        address: "https://local.example/f.bdf",
+        index: false,
+        etag: None,
+        last_modified: None,
+    });
     assert!(has_event(&harness.take(), "FontFailed { index: false, failure: Blocked }"), "the local network");
-    harness.input(Input::FetchFont { address: "wss://fonts.example/f", index: false });
+    harness.input(Input::FetchFont { address: "wss://fonts.example/f", index: false, etag: None, last_modified: None });
     assert!(has_event(&harness.take(), "FontFailed { index: false, failure: Address(Scheme) }"));
     harness.advance(SECOND);
     harness.replay().reply("fonts.example:443", Reply::Bytes(response("404 Not Found", &[], b"")));
-    harness.input(Input::FetchFont { address: "https://fonts.example/gone.bdf", index: false });
+    harness.input(Input::FetchFont {
+        address: "https://fonts.example/gone.bdf",
+        index: false,
+        etag: None,
+        last_modified: None,
+    });
     assert!(has_event(&harness.take(), "FontFailed { index: false, failure: Status(404) }"));
+}
+
+/// REQ-FNT-009, REQ-WEB-004: the daily check of a font named by address
+/// alone is a conditional request; 304 says the copy held is current, and a
+/// new answer reports its validators for the next check.
+#[test]
+fn a_font_check_is_a_conditional_request() {
+    let replay = Replay::new(&[("fonts.example", PUBLIC)]);
+    let mut harness = Harness::new(Config::default(), replay);
+    harness.replay().reply("fonts.example:443", Reply::Bytes(response("304 Not Modified", &[], b"")));
+    harness.input(Input::FetchFont {
+        address: "https://fonts.example/f.bdf",
+        index: false,
+        etag: Some("\"v1\""),
+        last_modified: Some("Mon, 12 Oct 2026 10:00:00 GMT"),
+    });
+    let records = harness.take();
+    assert!(has_event(&records, "FontCurrent { index: false }"), "{records:?}");
+    let request = harness.replay().requests_to("fonts.example:443").pop().unwrap();
+    assert_eq!(header_value(&request, "If-None-Match").as_deref(), Some("\"v1\""));
+    assert_eq!(header_value(&request, "If-Modified-Since").as_deref(), Some("Mon, 12 Oct 2026 10:00:00 GMT"));
+    harness.advance(SECOND);
+    harness.replay().reply(
+        "fonts.example:443",
+        Reply::Bytes(response("200 OK", &["Content-Type: application/x-font-bdf", "ETag: \"v2\""], b"STARTFONT 2.1\n")),
+    );
+    harness.input(Input::FetchFont {
+        address: "https://fonts.example/f.bdf",
+        index: false,
+        etag: None,
+        last_modified: None,
+    });
+    let records = harness.take();
+    let font = events(&records).into_iter().find(|event| event.starts_with("Font {")).unwrap_or_default();
+    assert!(font.contains(r#"etag: Some("\"v2\"")"#) && font.contains("last_modified: None"), "{font}");
+    let request = harness.replay().requests_to("fonts.example:443").pop().unwrap();
+    assert_eq!(header_value(&request, "If-None-Match"), None, "no validator, no condition");
 }
