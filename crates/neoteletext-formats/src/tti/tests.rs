@@ -128,6 +128,17 @@ fn carousel_sub_pages_and_file_level_description() {
     assert_eq!(&pages[2].row(1).unwrap()[..5], b"Three");
 }
 
+/// Every carriage return before a line feed belongs to the line ending
+/// (REQ-INP-013), so no value ends in one: the writer could not write such
+/// a value back unchanged (issue #203, found by fuzzing).
+#[test]
+fn carriage_returns_before_a_line_feed_end_the_line() {
+    let (pages, _) = read(b"PN,10000\nDS,Source\r\r\nDE,Description\r\r\r\nOL,1,Row\r\r\n");
+    assert_eq!(pages[0].source.as_bytes(), b"Source");
+    assert_eq!(pages[0].description.as_bytes(), b"Description");
+    assert_eq!(&pages[0].row(1).unwrap()[..4], b"Row ");
+}
+
 #[test]
 fn reports_long_rows_and_lines_with_offsets() {
     let mut text = b"PN,10000\nOL,1,".to_vec();

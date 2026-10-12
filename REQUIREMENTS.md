@@ -4590,7 +4590,7 @@ The last four bytes of each bt8x8 frame may hold a frame sequence number written
 
 **REQ-INP-013 — TTI page files.**
 The reader shall accept TTI page files (MRG Systems format, with the extensions used by vbit2):
-- Lines may end with carriage return and line feed, or line feed alone.
+- Lines may end with carriage return and line feed, or line feed alone. Every carriage return directly before the line feed is part of the line ending, so no value read ends in one; a value that did could not be written back unchanged.
 - Commands are recognised by their first two letters.
 
 The commands shall be handled as follows:

@@ -324,7 +324,10 @@ impl TtiReader {
         }
         let line = self.line;
         let mut text = line.get(..self.len).unwrap_or(&[]);
-        if let Some(stripped) = text.strip_suffix(b"\r") {
+        // Every carriage return before the line feed is line ending
+        // (REQ-INP-013): a value kept with one could not be written back
+        // unchanged, since the writer's line feed would make it CR LF.
+        while let Some(stripped) = text.strip_suffix(b"\r") {
             text = stripped;
         }
         self.command(text, out);
