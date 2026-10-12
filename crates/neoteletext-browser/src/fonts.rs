@@ -180,6 +180,11 @@ pub struct CacheEntry {
     /// that draw the same (REQ-BRW-010); none in an index written before it
     /// was kept.
     pub glyphs: Option<Digest>,
+    /// The character sets it conforms for and those it also meets the
+    /// SAA5050 cell profile for, a bit per set of REQ-FNT-011, computed from
+    /// its glyph table when it loaded (decision E.75 item 3); none in an
+    /// index written before it was kept.
+    pub sets: Option<(u32, u32)>,
 }
 
 /// The SHA-256 of a glyph table: each code point as four bytes and its ten
@@ -346,7 +351,7 @@ impl FontCache {
             };
             let _ = writeln!(
                 out,
-                "{}{SEPARATOR}{}{SEPARATOR}{scope}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}",
+                "{}{SEPARATOR}{}{SEPARATOR}{scope}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}{}",
                 String::from_utf8_lossy(&to_hex(&entry.sha256)),
                 entry.size,
                 u8::from(entry.named_by_checksum),
@@ -359,6 +364,7 @@ impl FontCache {
                 text(&entry.etag),
                 text(&entry.last_modified),
                 entry.glyphs.map(|glyphs| String::from_utf8_lossy(&to_hex(&glyphs)).into_owned()).unwrap_or_default(),
+                entry.sets.map(|(sets, cell)| format!("{sets:x}/{cell:x}")).unwrap_or_default(),
             );
         }
         out
@@ -373,10 +379,14 @@ impl FontCache {
             .lines()
             .filter_map(|line| {
                 let mut fields: Vec<&str> = line.split(SEPARATOR).collect();
-                // The glyph digest was added as a thirteenth field; an
-                // entry written before it has twelve.
+                // The glyph digest was added as a thirteenth field and the
+                // conformance as a fourteenth; older entries have fewer.
+                let sets = match fields.len() {
+                    INDEX_FIELDS => fields.pop().filter(|sets| !sets.is_empty()),
+                    _ => None,
+                };
                 let glyphs = match fields.len() {
-                    INDEX_FIELDS => fields.pop().filter(|digest| !digest.is_empty()),
+                    GLYPHS_FIELDS => fields.pop().filter(|digest| !digest.is_empty()),
                     _ => None,
                 };
                 let [
@@ -418,6 +428,13 @@ impl FontCache {
                         Some(digest) => Some(parse_hex(digest.as_bytes())?),
                         None => None,
                     },
+                    sets: match sets {
+                        Some(field) => {
+                            let (sets, cell) = field.split_once('/')?;
+                            Some((u32::from_str_radix(sets, 16).ok()?, u32::from_str_radix(cell, 16).ok()?))
+                        }
+                        None => None,
+                    },
                 };
                 Some(entry)
             })
@@ -428,7 +445,9 @@ impl FontCache {
 }
 
 /// The fields of an index entry.
-const INDEX_FIELDS: usize = 13;
+const INDEX_FIELDS: usize = 14;
+/// The fields of an entry written before the conformance was kept.
+const GLYPHS_FIELDS: usize = 13;
 
 /// A field made safe to store: no separators or line ends, at most 512
 /// bytes.
@@ -542,6 +561,7 @@ mod tests {
             etag: String::new(),
             last_modified: String::new(),
             glyphs: None,
+            sets: None,
         }
     }
 
@@ -614,6 +634,7 @@ mod tests {
         odd.name = "tab\there".into();
         odd.pinned = true;
         odd.glyphs = Some([7; 32]);
+        odd.sets = Some((0x00FF_0001, 0x1));
         cache.insert(odd).unwrap();
         let text = cache.write();
         let again = FontCache::read(&text);
@@ -621,11 +642,19 @@ mod tests {
         assert_eq!(again.entries()[1].name, "tab here");
         assert!(again.entries()[1].pinned);
         assert_eq!((again.entries()[0].glyphs, again.entries()[1].glyphs), (None, Some([7; 32])));
-        // An entry written before the glyph digest was kept still reads.
-        let twelve = text.lines().fold(String::new(), |mut out, line| {
-            let _ = writeln!(out, "{}", line.rsplit_once('\t').unwrap().0);
-            out
-        });
+        assert_eq!((again.entries()[0].sets, again.entries()[1].sets), (None, Some((0x00FF_0001, 0x1))));
+        // Entries written before the conformance, and before the glyph
+        // digest, were kept still read.
+        let drop_last = |text: &str| {
+            text.lines().fold(String::new(), |mut out, line| {
+                let _ = writeln!(out, "{}", line.rsplit_once('\t').unwrap().0);
+                out
+            })
+        };
+        let thirteen = drop_last(&text);
+        assert_eq!(FontCache::read(&thirteen).entries()[1].glyphs, Some([7; 32]), "thirteen fields");
+        assert!(FontCache::read(&thirteen).entries().iter().all(|entry| entry.sets.is_none()));
+        let twelve = drop_last(&thirteen);
         assert_eq!(FontCache::read(&twelve).entries().len(), 2, "twelve fields");
         assert!(FontCache::read(&twelve).entries().iter().all(|entry| entry.glyphs.is_none()));
         let damaged =

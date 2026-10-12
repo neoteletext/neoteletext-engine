@@ -176,6 +176,11 @@ pub struct LibraryFont {
     pub title: String,
     /// Its SHA-256.
     pub sha256: [u8; SHA256_BYTES],
+    /// The character sets the index says it conforms for, and of those the
+    /// sets it also meets the SAA5050 cell profile for, a bit per set of
+    /// `neoteletext_core::glyphs::conformance::FONT_SETS`; none without a
+    /// `c` line (REQ-FNT-004, REQ-FNT-011).
+    pub conformance: Option<(u32, u32)>,
 }
 
 /// A library helper's answer.
@@ -682,6 +687,14 @@ fn write_font(out: &mut dyn Write, frame: &Frame) -> io::Result<()> {
                         put_string(&mut buffer, &font.address);
                         put_string(&mut buffer, &font.title);
                         buffer.extend_from_slice(&font.sha256);
+                        match font.conformance {
+                            None => buffer.push(0),
+                            Some((sets, cell)) => {
+                                buffer.push(1);
+                                buffer.extend_from_slice(&sets.to_be_bytes());
+                                buffer.extend_from_slice(&cell.to_be_bytes());
+                            }
+                        }
                     }
                 }
                 LibraryReply::Failed(why) => {
@@ -1021,6 +1034,14 @@ fn font_frame(kind: u8, payload: &[u8]) -> io::Result<Frame> {
                             address: cursor.short_string()?,
                             title: cursor.short_string()?,
                             sha256: cursor.sha256()?,
+                            conformance: match cursor.byte()? {
+                                0 => None,
+                                1 => Some((
+                                    u32::try_from(cursor.u32()?).map_err(|_| invalid())?,
+                                    u32::try_from(cursor.u32()?).map_err(|_| invalid())?,
+                                )),
+                                _ => return Err(invalid()),
+                            },
                         })
                     })
                     .collect::<io::Result<Vec<_>>>()?;
@@ -1123,7 +1144,20 @@ mod tests {
             Frame::Font(FontReply::Current),
             Frame::Font(FontReply::Failed("line 3: Spacing".into())),
             Frame::FontLibrary(LibraryReply::Listed(
-                vec![LibraryFont { address: "https://l.example/f.bdf".into(), title: "F".into(), sha256: [1; 32] }],
+                vec![
+                    LibraryFont {
+                        address: "https://l.example/f.bdf".into(),
+                        title: "F".into(),
+                        sha256: [1; 32],
+                        conformance: None,
+                    },
+                    LibraryFont {
+                        address: "https://l.example/g.bdf".into(),
+                        title: "G".into(),
+                        sha256: [2; 32],
+                        conformance: Some((0x00FF_FFFF, 0x0000_0002)),
+                    },
+                ],
                 2,
             )),
             Frame::FontLibrary(LibraryReply::Failed("TooLarge".into())),

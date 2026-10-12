@@ -211,7 +211,8 @@ fn the_font_browser() {
     harness.run_steps(3);
     assert!(ours("Page stripe")(harness.state()));
     let index = std::fs::read_to_string(data.join("fonts").join("index.tsv")).unwrap();
-    let digest = |name: &str| index.lines().find(|line| line.contains(name)).and_then(|line| line.rsplit('\t').next());
+    // The glyph digest is the index's thirteenth field (REQ-FNT-009).
+    let digest = |name: &str| index.lines().find(|line| line.contains(name)).and_then(|line| line.split('\t').nth(12));
     assert_eq!(digest("Library copy"), digest("Library stripe"), "one glyph digest: {index}");
     assert_ne!(digest("Page stripe"), digest("Library stripe"));
     harness.get_by_label("Show duplicates").click();

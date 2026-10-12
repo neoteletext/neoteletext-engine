@@ -1,13 +1,17 @@
 //! `ttx font convert` (REQ-FNT-010, decision E.72 item 7): a BDF font of
 //! another cell size to the 12 by 10 form the browser loads, offline and
-//! sandboxed, only where the conversion is exact.
+//! sandboxed, only where the conversion is exact. `ttx font sets`
+//! (REQ-FNT-011, decision E.75): the character sets a font conforms for.
 
 use neoteletext_app::sandbox::{self, Policy};
 use neoteletext_app::{Failure, exit};
-use neoteletext_core::consts::FONT_MAX_CHARACTERS;
+use neoteletext_core::consts::{FONT_MAX_CHARACTERS, FONT_MAX_FILE_BYTES};
+use neoteletext_core::glyphs::LoadedFont;
+use neoteletext_core::glyphs::conformance::{FONT_SETS, Failure as RuleFailure, SET_POSITIONS, conformance};
 use neoteletext_core::types::FontGlyph;
 use neoteletext_formats::bdf::FontErrorKind;
 use neoteletext_formats::bdf::convert::{ConvertError, convert, read_map};
+use neoteletext_formats::bdf::read;
 use neoteletext_formats::bdf::source::{SourceGlyph, read_source};
 use neoteletext_formats::consts::{FONT_MAP_MAX_FILE_BYTES, SOURCE_FONT_MAX_CHARACTERS, SOURCE_FONT_MAX_FILE_BYTES};
 use neoteletext_formats::write::{FontText, write_font};
@@ -65,6 +69,40 @@ pub fn convert_font(input: &Path, output: &Path, map: Option<&Path>, no_sandbox:
         .and_then(|()| out.flush())
         .map_err(|error| (exit::INPUT, format!("{}: {error}", output.display())))?;
     eprintln!("{}: {count} characters from a {} x {} cell", output.display(), font.width, font.height);
+    Ok(())
+}
+
+/// `ttx font sets FONT [--library-line NAME]`.
+pub fn font_sets(path: &Path, library_line: Option<&str>, no_sandbox: bool) -> Result<(), Failure> {
+    let bytes = read_bounded(path, FONT_MAX_FILE_BYTES)?;
+    sandbox::apply(Policy { writable_directory: None, network: false, readable: &[] }, no_sandbox)
+        .map_err(|message| (exit::INPUT, message))?;
+    let name = path.display();
+    let mut glyphs = vec![FontGlyph::EMPTY; FONT_MAX_CHARACTERS];
+    let font = read(&bytes, &mut glyphs)
+        .map_err(|error| (exit::INPUT, format!("{name}:{}: {:?} (REQ-FNT-011 rule 1)", error.line, error.kind)))?;
+    let table = LoadedFont::new(glyphs.get(..font.characters).unwrap_or(&[]))
+        .map_err(|error| (exit::INPUT, format!("{name}: {error:?}")))?;
+    let results: Vec<_> = FONT_SETS.iter().map(|(set_name, set)| (*set_name, conformance(&table, *set))).collect();
+    if let Some(file) = library_line {
+        let sets: Vec<String> = results
+            .iter()
+            .filter(|(_, result)| result.conforms())
+            .map(|(set_name, result)| format!("{set_name}{}", if result.saa5050_cell { "*" } else { "" }))
+            .collect();
+        println!("c\t{file}\t{}", sets.join(" "));
+        return Ok(());
+    }
+    for (set_name, result) in &results {
+        let verdict = match result.failure {
+            None if result.saa5050_cell => "conforms, SAA5050 cell".to_string(),
+            None => "conforms".to_string(),
+            Some(RuleFailure::Missing(code)) => format!("rule 2: no glyph at {:X}/{:X}", code >> 4, code & 0xF),
+            Some(RuleFailure::Space) => "rule 3: the space is missing or not blank".to_string(),
+            Some(RuleFailure::Blank(code)) => format!("rule 4: blank glyph at {:X}/{:X}", code >> 4, code & 0xF),
+        };
+        println!("{set_name:34} {:>2}/{SET_POSITIONS}  {verdict}", result.drawn);
+    }
     Ok(())
 }
 

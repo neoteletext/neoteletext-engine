@@ -306,6 +306,9 @@ fn main() -> ExitCode {
         Command::Font { action: FontCommand::Convert { input, output, map, no_sandbox } } => {
             font::convert_font(&input, &output, map.as_deref(), no_sandbox)
         }
+        Command::Font { action: FontCommand::Sets { font, library_line, no_sandbox } } => {
+            font::font_sets(&font, library_line.as_deref(), no_sandbox)
+        }
         Command::Contents { common } => contents::contents(&common.options()),
         Command::SandboxTest => sandbox::self_test(),
         Command::Fetch { address, no_sandbox, allow_local } => commands::fetch(&address, no_sandbox, &allow_local),
@@ -335,6 +338,20 @@ enum FontCommand {
         /// character, the code as the font's ENCODING writes it.
         #[arg(long)]
         map: Option<PathBuf>,
+        /// Run without the operating-system sandbox (REQ-SEC-017).
+        #[arg(long)]
+        no_sandbox: bool,
+    },
+    /// Report the character sets a 12 x 10 font conforms for (REQ-FNT-011):
+    /// for each of the 24 sets, whether it conforms, the positions it
+    /// draws, the SAA5050 cell profile, and the first rule that fails.
+    Sets {
+        /// The 12 x 10 font.
+        font: PathBuf,
+        /// Print only the font library's `c` line (REQ-FNT-004) for the
+        /// font under this file name.
+        #[arg(long, value_name = "NAME")]
+        library_line: Option<String>,
         /// Run without the operating-system sandbox (REQ-SEC-017).
         #[arg(long)]
         no_sandbox: bool,

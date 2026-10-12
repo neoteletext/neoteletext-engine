@@ -80,3 +80,52 @@ fn refusals_name_the_character() {
     let message = String::from_utf8_lossy(&run.stderr);
     assert!(!run.status.success() && message.contains(":4: the cell is not"), "{message}");
 }
+
+/// A 12 x 10 font of every character of G0 Latin with the English option,
+/// each drawn with one dot clear of the top line and the left column, under
+/// a family name.
+fn english_font(family: &str) -> Vec<u8> {
+    use neoteletext_core::charset::{CharSet, G0, G0Set, NationalOption};
+    use neoteletext_core::glyphs::conformance::assigned;
+    let set = CharSet::G0(G0 { set: G0Set::Latin, national: Some(NationalOption::English) });
+    let mut glyphs: Vec<FontGlyph> = (0x20u8..=0x7F)
+        .filter_map(|code| assigned(set, code))
+        .map(|c| FontGlyph {
+            code_point: u32::from(c),
+            rows: if c == ' ' { [0; 10] } else { [0, 0x0C0, 0x0C0, 0, 0, 0, 0, 0, 0, 0] },
+        })
+        .collect();
+    glyphs.sort_by_key(|glyph| glyph.code_point);
+    let text = neoteletext_formats::write::FontText {
+        family: Some(family.as_bytes()),
+        copyright: None,
+        notice: None,
+        comment: "test",
+    };
+    let mut out = Vec::new();
+    neoteletext_formats::write::write_font(&mut out, &text, &glyphs).unwrap();
+    out
+}
+
+/// REQ-FNT-011: `ttx font sets` reports each set, and the library line
+/// names exactly the sets the font conforms for; the name does not count.
+#[test]
+fn font_sets_reports_conformance() {
+    let folder = folder("font-sets");
+    let font = folder.join("english.bdf");
+    std::fs::write(&font, english_font("English test")).unwrap();
+    let run = ttx(&["font", "sets", font.to_str().unwrap()]);
+    assert!(run.status.success(), "{}", String::from_utf8_lossy(&run.stderr));
+    let report = String::from_utf8(run.stdout).unwrap();
+    let line = |set: &str| report.lines().find(|line| line.split_whitespace().next() == Some(set)).unwrap().to_string();
+    assert!(line("G0-Latin-English").ends_with("96/96  conforms, SAA5050 cell"), "{report}");
+    assert!(line("G0-Latin-German").contains("rule 2: no glyph at 4/0"), "German § is missing: {report}");
+    assert_eq!(report.lines().count(), 24);
+    let run = ttx(&["font", "sets", "--library-line", "english.bdf", font.to_str().unwrap()]);
+    assert_eq!(String::from_utf8(run.stdout).unwrap(), "c\tenglish.bdf\tG0-Latin-English*\n");
+    // Rule 5: another family name, the same glyphs, the same conformance.
+    let renamed = folder.join("renamed.bdf");
+    std::fs::write(&renamed, english_font("Another name")).unwrap();
+    let again = ttx(&["font", "sets", "--library-line", "english.bdf", renamed.to_str().unwrap()]);
+    assert_eq!(String::from_utf8(again.stdout).unwrap(), "c\tenglish.bdf\tG0-Latin-English*\n");
+}

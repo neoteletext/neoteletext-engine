@@ -4,8 +4,10 @@
 //! standard output (decision 26 of IMPLEMENTATION-LOG.md).
 
 use crate::pipe::{self, Frame, Notice};
+use neoteletext_core::glyphs::conformance::font_set_index;
 use neoteletext_core::policy::{ipv4_blocked, ipv6_blocked};
 use neoteletext_core::types::{Instant, PageAddress, SubCode};
+use neoteletext_web::fonts::Entry;
 use neoteletext_web::port::{ConnectionId, LinkState, Pump, RandomSource, Received, Security, Transport};
 use neoteletext_web::url::IpAddress;
 use std::io::{Read, Write};
@@ -631,9 +633,20 @@ pub fn run_font(
     send(&frame).map_err(|error| (crate::exit::INPUT, error.to_string()))
 }
 
+/// The masks of a `c` line's sets, a bit per set of `FONT_SETS`; none when
+/// a name is not a set of REQ-FNT-011.
+fn conformance_masks(line: &neoteletext_web::fonts::Conformance<'_>) -> Option<(u32, u32)> {
+    line.sets().try_fold((0u32, 0u32), |(sets, cell), (name, profile)| {
+        let bit = 1u32.checked_shl(u32::try_from(font_set_index(name)?).ok()?)?;
+        Some((sets | bit, if profile { cell | bit } else { cell }))
+    })
+}
+
 /// A library's index, read here in the helper (REQ-FNT-004): each font's
-/// address resolved against the index's folder, and the malformed lines
-/// counted.
+/// address resolved against the index's folder, its `c` line's conformance
+/// attached (decision E.75 item 3), and the malformed lines counted: a `c`
+/// line naming an unknown set, a font no `f` line lists, or a font a `c`
+/// line already named.
 fn library(url: &str, body: &[u8]) -> pipe::LibraryReply {
     let Ok(folder) = neoteletext_web::url::Url::parse(url).and_then(|url| url.join(".")) else {
         return pipe::LibraryReply::Failed("the index's address has no folder".into());
@@ -643,19 +656,69 @@ fn library(url: &str, body: &[u8]) -> pipe::LibraryReply {
         Err(error) => return pipe::LibraryReply::Failed(format!("{error:?}")),
     };
     let mut fonts = Vec::new();
+    let mut locations = Vec::new();
+    let mut conformance = Vec::new();
     let mut ignored = 0u32;
     for entry in entries {
-        match entry.ok().and_then(|font| {
-            let address = neoteletext_web::fonts::font_url(&folder, font.location).ok()?;
-            Some(pipe::LibraryFont {
-                address: address.as_str().to_string(),
-                title: font.title.to_string(),
-                sha256: font.sha256,
-            })
-        }) {
-            Some(font) if fonts.len() < pipe::MAX_LIBRARY_FONTS => fonts.push(font),
+        match entry {
+            Ok(Entry::Font(font)) => {
+                let listed =
+                    neoteletext_web::fonts::font_url(&folder, font.location).ok().map(|address| pipe::LibraryFont {
+                        address: address.as_str().to_string(),
+                        title: font.title.to_string(),
+                        sha256: font.sha256,
+                        conformance: None,
+                    });
+                match listed {
+                    Some(listed) if fonts.len() < pipe::MAX_LIBRARY_FONTS => {
+                        fonts.push(listed);
+                        locations.push(font.location);
+                    }
+                    _ => ignored = ignored.saturating_add(1),
+                }
+            }
+            Ok(Entry::Conformance(line)) => conformance.push(line),
+            Err(_) => ignored = ignored.saturating_add(1),
+        }
+    }
+    // A `c` line may come before or after its font's `f` line.
+    for line in conformance {
+        let place = locations.iter().position(|location| *location == line.location);
+        match (place.and_then(|at| fonts.get_mut(at)), conformance_masks(&line)) {
+            (Some(font), Some(masks)) if font.conformance.is_none() => font.conformance = Some(masks),
             _ => ignored = ignored.saturating_add(1),
         }
     }
     pipe::LibraryReply::Listed(fonts, ignored)
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
+mod tests {
+    use super::*;
+
+    const SHA: &str = "5ee6246b7f9bd197f47ce0741ea799a55ac08af775869a08c085803e02a3f14d";
+
+    /// REQ-FNT-004, decision E.75 item 3: a `c` line attaches its sets to
+    /// its font, before or after the `f` line; one for no listed font, a
+    /// second one, or an unknown set's name is ignored and counted.
+    #[test]
+    fn conformance_lines_attach_to_their_fonts() {
+        let english = 1u32 << font_set_index("G0-Latin-English").unwrap();
+        let greek = 1u32 << font_set_index("G0-Greek").unwrap();
+        let index = format!(
+            "c\tb.bdf\tG0-Greek\nf\ta.bdf\tA\t{SHA}\nf\tb.bdf\tB\t{SHA}\nf\tc.bdf\tC\t{SHA}\n\
+             c\ta.bdf\tG0-Latin-English* G0-Greek\nc\ta.bdf\tG0-Greek\nc\tnone.bdf\tG0-Greek\n\
+             c\tc.bdf\tG0-Klingon\n"
+        );
+        let pipe::LibraryReply::Listed(fonts, ignored) = library("https://lib.example/x/fonts.txt", index.as_bytes())
+        else {
+            panic!("not listed")
+        };
+        assert_eq!(fonts[0].conformance, Some((english | greek, english)));
+        assert_eq!(fonts[1].conformance, Some((greek, 0)), "a c line before its f line");
+        assert_eq!(fonts[2].conformance, None, "an unknown set's name");
+        assert_eq!(fonts[0].address, "https://lib.example/x/a.bdf");
+        assert_eq!(ignored, 3, "the second c line for a.bdf, the one for none.bdf, and G0-Klingon");
+    }
 }

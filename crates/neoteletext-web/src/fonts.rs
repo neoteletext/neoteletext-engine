@@ -10,7 +10,13 @@
 //! # comments and empty lines are ignored
 //! f→bedstead-teletext.bdf→Bedstead teletext→5ee6…f14d
 //! f→https://fonts.example/zvbi.bdf→zvbi 12 x 10→9a1c…07b2
+//! c→bedstead-teletext.bdf→G0-Latin-English* G0-Greek*
 //! ```
+//!
+//! A `c` line states the character sets a listed font conforms for
+//! (REQ-FNT-011, decision E.75 item 3), each name followed by `*` when the
+//! font also meets the SAA5050 cell profile. The names are checked by the
+//! caller, which knows them.
 //!
 //! The reader is strict and bounded and allocates nothing: [`read`] checks
 //! the file's size and line count, then [`Entries`] yields each font or a
@@ -58,6 +64,51 @@ pub enum Fault {
     Title,
     /// A checksum that is not 64 hexadecimal digits.
     Checksum,
+    /// A `c` line's sets that are not names separated by single spaces.
+    Sets,
+}
+
+/// One line of an index.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Entry<'a> {
+    /// An `f` line: a font.
+    Font(Font<'a>),
+    /// A `c` line: the character sets a font conforms for.
+    Conformance(Conformance<'a>),
+}
+
+/// The character sets a listed font conforms for (REQ-FNT-004).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Conformance<'a> {
+    /// The font, as its `f` line gives it.
+    pub location: &'a str,
+    /// The sets' names, separated by single spaces, each perhaps ending in
+    /// `*`; empty when the font conforms for none.
+    pub sets: &'a str,
+}
+
+impl<'a> Conformance<'a> {
+    /// Each set's name, and whether the font meets the SAA5050 cell profile
+    /// for it.
+    pub fn sets(&self) -> impl Iterator<Item = (&'a str, bool)> {
+        self.sets
+            .split(' ')
+            .filter(|token| !token.is_empty())
+            .map(|token| token.strip_suffix('*').map_or((token, false), |name| (name, true)))
+    }
+}
+
+/// A `c` line's sets field: names of letters, digits and hyphens, each
+/// perhaps ending in `*`, separated by single spaces.
+fn sets_field(field: &str) -> Result<&str, Fault> {
+    if field.is_empty() {
+        return Ok(field);
+    }
+    let name_ok = |token: &str| {
+        let name = token.strip_suffix('*').unwrap_or(token);
+        !name.is_empty() && name.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+    };
+    if field.split(' ').all(name_ok) { Ok(field) } else { Err(Fault::Sets) }
 }
 
 /// One font of a library.
@@ -134,7 +185,7 @@ fn location(field: &str) -> Result<&str, Fault> {
 }
 
 impl<'a> Iterator for Entries<'a> {
-    type Item = Result<Font<'a>, LineFault>;
+    type Item = Result<Entry<'a>, LineFault>;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
@@ -151,19 +202,19 @@ impl<'a> Iterator for Entries<'a> {
             // Printable ASCII is UTF-8.
             let Ok(text) = core::str::from_utf8(raw) else { return fail(Fault::Character) };
             let mut fields = text.split(char::from(TAB));
-            if fields.next() != Some("f") {
-                // A kind for a later version.
-                continue;
-            }
-            let entry = match [fields.next(), fields.next(), fields.next(), fields.next()] {
-                [Some(place), Some(title), Some(sha256), None] => location(place).and_then(|location| {
+            let entry = match (fields.next(), [fields.next(), fields.next(), fields.next(), fields.next()]) {
+                (Some("f"), [Some(place), Some(title), Some(sha256), None]) => location(place).and_then(|location| {
                     if title.is_empty() || title.len() > MAX_TITLE {
                         return Err(Fault::Title);
                     }
                     let sha256 = parse_hex(sha256.as_bytes()).ok_or(Fault::Checksum)?;
-                    Ok(Font { location, title, sha256 })
+                    Ok(Entry::Font(Font { location, title, sha256 }))
                 }),
-                _ => Err(Fault::Fields),
+                (Some("c"), [Some(place), Some(sets), None, None]) => location(place)
+                    .and_then(|location| Ok(Entry::Conformance(Conformance { location, sets: sets_field(sets)? }))),
+                (Some("f" | "c"), _) => Err(Fault::Fields),
+                // A kind for a later version.
+                _ => continue,
             };
             return Some(entry.map_err(|fault| LineFault { line, fault }));
         }
@@ -171,7 +222,7 @@ impl<'a> Iterator for Entries<'a> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
 mod tests {
     use super::*;
     use std::string::String;
@@ -180,8 +231,15 @@ mod tests {
 
     const SHA: &str = "5ee6246b7f9bd197f47ce0741ea799a55ac08af775869a08c085803e02a3f14d";
 
-    fn all(text: &str) -> Vec<Result<Font<'_>, LineFault>> {
+    fn all(text: &str) -> Vec<Result<Entry<'_>, LineFault>> {
         read(text.as_bytes()).unwrap().collect()
+    }
+
+    fn font(entry: Result<Entry<'_>, LineFault>) -> Font<'_> {
+        match entry {
+            Ok(Entry::Font(font)) => font,
+            other => panic!("not a font: {other:?}"),
+        }
     }
 
     /// REQ-FNT-004: fonts in the folder and elsewhere, with comments, empty
@@ -192,7 +250,7 @@ mod tests {
             "# fonts\r\n\nf\tbedstead.bdf\tBedstead\t{SHA}\r\nz\tsomething\tnew\nf\thttps://fonts.example/z.bdf\tzvbi 12 x 10\t{}\n",
             SHA.to_uppercase()
         );
-        let fonts: Vec<Font<'_>> = all(&text).into_iter().map(Result::unwrap).collect();
+        let fonts: Vec<Font<'_>> = all(&text).into_iter().map(font).collect();
         assert_eq!(fonts.len(), 2);
         assert_eq!((fonts[0].location, fonts[0].title), ("bedstead.bdf", "Bedstead"));
         assert_eq!(&crate::sha256::to_hex(&fonts[1].sha256)[..], SHA.as_bytes());
@@ -219,12 +277,28 @@ mod tests {
             (format!("f\tf.bdf\t\t{SHA}"), Fault::Title),
             (format!("f\tf.bdf\t{long}\t{SHA}"), Fault::Title),
             (format!("f\tf.bdf\tTitle\t{}", &SHA[1..]), Fault::Checksum),
+            (String::from("c\tf.bdf"), Fault::Fields),
+            (String::from("c\t../f.bdf\tG0-Greek"), Fault::Location),
+            (String::from("c\tf.bdf\tG0-Greek  G2-Greek"), Fault::Sets),
+            (String::from("c\tf.bdf\tG0_Greek"), Fault::Sets),
+            (String::from("c\tf.bdf\t*"), Fault::Sets),
         ];
         for (line, fault) in cases {
             let text = format!("# first\n{line}\n");
             assert_eq!(all(&text), [Err(LineFault { line: 2, fault })], "{line}");
         }
         assert_eq!(all(&format!("f\tf.bdf\t{}\t{SHA}", "t".repeat(MAX_TITLE))).len(), 1, "32 characters fit");
+    }
+
+    /// REQ-FNT-004, decision E.75 item 3: a `c` line's sets and profile.
+    #[test]
+    fn conformance_lines() {
+        let entries = all("c\tf.bdf\tG0-Latin-English* G0-Greek\nc\tnone.bdf\t\n");
+        let Ok(Entry::Conformance(first)) = entries[0] else { panic!("{entries:?}") };
+        assert_eq!(first.location, "f.bdf");
+        assert_eq!(first.sets().collect::<Vec<_>>(), [("G0-Latin-English", true), ("G0-Greek", false)]);
+        let Ok(Entry::Conformance(none)) = entries[1] else { panic!("{entries:?}") };
+        assert_eq!(none.sets().count(), 0, "a font conforming for no set");
     }
 
     #[test]

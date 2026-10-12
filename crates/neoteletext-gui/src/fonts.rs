@@ -19,6 +19,7 @@ use neoteletext_browser::fonts::{
 };
 use neoteletext_browser::saved::{Settings, UserFont};
 use neoteletext_core::glyphs::LoadedFont;
+use neoteletext_core::glyphs::conformance::conformance_masks;
 use neoteletext_core::types::FontGlyph;
 use neoteletext_web::sha256::{self, Digest, parse_hex};
 use neoteletext_web::url::Url;
@@ -140,6 +141,14 @@ impl Fonts {
     #[must_use]
     pub fn glyph_digest(&self, sha256: &Digest) -> Option<Digest> {
         self.cache.find(sha256, None).and_then(|entry| entry.glyphs)
+    }
+
+    /// The character sets a cached font conforms for, and those it also
+    /// meets the SAA5050 cell profile for, as computed when it loaded
+    /// (REQ-FNT-011, decision E.75 item 3).
+    #[must_use]
+    pub fn computed_sets(&self, sha256: &Digest) -> Option<(u32, u32)> {
+        self.cache.find(sha256, None).and_then(|entry| entry.sets)
     }
 
     /// A loaded font, by its SHA-256.
@@ -387,6 +396,7 @@ impl Fonts {
             etag: line(font.validators[0].as_ref()),
             last_modified: line(font.validators[1].as_ref()),
             glyphs: Some(glyph_digest(&font.glyphs)),
+            sets: LoadedFont::new(&font.glyphs).ok().map(|table| conformance_masks(&table)),
         };
         let stored = storage.cached_font(&sha256).is_some() || storage.store_font(&sha256, &font.bytes);
         // A font that cannot be written is used now and not kept.
