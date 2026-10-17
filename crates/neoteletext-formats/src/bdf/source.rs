@@ -3,7 +3,7 @@
 //! 5 by 9, 6 by 9, 5 by 10, 6 by 10, or 12 by 20.
 //!
 //! The converter reads files of any origin, offline and sandboxed
-//! (`docs/font-security.md` section 3.10), so this reader is as strict and
+//! (`docs/spec/design/font-security.md` section 3.10), so this reader is as strict and
 //! bounded as the reader of loaded fonts. It accepts every keyword of BDF
 //! 2.1, places each glyph in the cell by its `BBX`, refuses a glyph larger
 //! than the cell, and refuses any other cell at its `FONTBOUNDINGBOX` line.

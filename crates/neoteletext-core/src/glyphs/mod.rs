@@ -122,7 +122,7 @@ pub enum FontTableError {
 /// sorted by code point. The table comes from outside the library, so it is
 /// checked for shape when the font is made; that is the check the browser's
 /// interface and its decoders make on every table they receive
-/// (`docs/font-security.md` section 3.1).
+/// (`docs/spec/design/font-security.md` section 3.1).
 #[derive(Clone, Copy, Debug)]
 pub struct LoadedFont<'a> {
     glyphs: &'a [FontGlyph],

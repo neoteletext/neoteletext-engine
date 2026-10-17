@@ -2,26 +2,45 @@
 
 A software receiver for World System Teletext (ETSI EN 300 706), Presentation Levels 1.0 and 1.5. The behaviour baselines are the Philips SAA5050 (rendering) and SAA5246A (receiver).
 
-No code exists yet. The project is at the requirements stage.
+The library and `neottx` are implemented; work continues feature by feature. Since 16 October 2026 this repository is the core teletext rendering engine only (decision E.76): the windowed browser built on it is a prototype in `prototypes/browser/`, a Cargo workspace of its own outside the engine's workspace and gates. Do not add browser code to the engine's crates.
+
+## How work proceeds: rapid iteration, then integration
+
+The owner shapes behaviour by asking for changes and looking at the result. Work therefore runs in two modes (owner's instruction, 13 October 2026).
+
+**Rapid iteration (the default while a feature's behaviour is being shaped).**
+- Make the change, then rebuild `neottx` with the fast `iterate` profile, `cargo build --profile iterate -p neoteletext-cli` (seconds, not the release profile's minute and more), and show the result with `target/iterate/neottx` (for example `show` to an image). The browser prototype has the same profile: `cargo build --profile iterate -p neoteletext-gui` in `prototypes/browser`. Check the output, then tell the owner it is ready to look at.
+- Do not write tests, user guide text, requirement prose, implementation log rows or traceability during this mode, and commit as rarely as possible: the pre-commit gate takes over ten minutes. Never bypass the hooks; batch the work instead.
+- Run the existing tests of the code touched when that is quick, to catch breakage early.
+- **Accumulate everything owed in `TECH-DEBT.md`** as you go: tests to write, requirements and decisions to record, documents to update, verification to run (full gate, sizes, fuzzing), shortcuts taken and loose ends noticed. Nothing deferred may exist only in a reply.
+
+**Integration (when the owner says a feature works as they expect).**
+- Work through that feature's items in `TECH-DEBT.md`: record the decision in Part E and the requirements, write the tests (each failing on the old code), update the user guide, ARCHITECTURE.md and the other documents, add the implementation log row, regenerate traceability, and open or close the GitHub issues.
+- Commit through the gates in small commits that close their issues, and run the full gate before merging to `main`. Remove each item from `TECH-DEBT.md` when it is done.
+
+The rules below about issues and the specification (`docs/spec/`) apply at integration: behaviour may be tried before it is recorded, but none is committed without its decision and requirements.
 
 ## Key documents
 
-- `REQUIREMENTS.md` is the specification and the single source of truth. Its parts:
+- **`docs/spec/` is the specification and the single source of truth.** It was one file, `REQUIREMENTS.md`, until 18 October 2026, and is now split so that each fact has one home. `REQUIREMENTS.md` is a one-page index of where each old part went; `docs/spec/README.md` is the map:
 
-  | Part | Contents |
-  |---|---|
-  | A and B | Walkthroughs of Levels 1.0 and 1.5 |
-  | C and D | The SAA5050 and SAA5246A |
-  | E | The decision register |
-  | F | The numbered requirements, including the phase plan (F.0.1) and the milestones M1 to M5 (F.0.2) |
-  | G | What is out of scope |
-  | Appendix C | The TTI Form Extension, version 3 (normative) |
-  | Appendix D | Open questions: which are answered, with evidence, and which remain open |
+  | File | Contents | Was |
+  |---|---|---|
+  | `requirements/<area>.md` | The numbered requirements, one file per area; the only normative text | Part F |
+  | `requirements/README.md` | The areas, the phase plan (F.0.1) and the milestones (F.0.2) | F.0 to F.0.2 |
+  | `requirements/sec.md` | Security, which overrides every other area | F.0.3 |
+  | `requirements/out-of-scope.md` | What is out of scope | Part G |
+  | `requirements/tti-form-extension.md`, `tti-link-extension.md` | The TTI extensions (normative) | Appendices C and E |
+  | `decisions.md` | The decision register: what was chosen and why, pointing to the design | Part E |
+  | `design/*.md` | How things work: Levels 1.0 and 1.5, the SAA5050 and SAA5246A, character sets and fonts, languages | Parts A to D |
+  | `glossary.md`, `source-documents.md`, `open-questions-record.md` | Glossary, sources, open questions | Appendices A, B and D |
 
-- `ARCHITECTURE.md` describes the code's layers (Foundation, then L0 Ingress to L9 Applications), their boundary types, trust boundaries and the allowed-dependency table. REQ-ARCH-011 makes it mandatory, and it is enforced by an `xtask` check. Keep it in step with `REQUIREMENTS.md`.
+  **Each fact has one home.** A requirement states behaviour; a decision states the choice and its reason and links to the design; a design document explains; `ARCHITECTURE.md` says where code lives; `research/` holds the evidence. Link rather than restate.
+
+- `ARCHITECTURE.md` describes the code's layers (Foundation, then L0 Ingress to L9 Applications), their boundary types, trust boundaries and the allowed-dependency table. REQ-ARCH-011 makes it mandatory, and it is enforced by an `xtask` check. Keep it in step with `docs/spec/`.
 - `research/notes-*.md` are the cited research notes behind Parts A to E. `research/answers-*.md` are the reports that answered the open questions: SAA5050 behaviour from emulators, the historic specifications, and Rust targets. Check a claim here before changing it.
-- `research/jellytext-tti-form-system-spec-v2.md` is the original forms specification from the earlier jellytext project, kept for history. The normative, corrected version 3 is REQUIREMENTS.md Appendix C; decision E.31 explains the changes.
-- The source standards and datasheets are in `~/devel/microcontrollers/teletext/`. All folder paths cited in `REQUIREMENTS.md` (`specifications/`, `philips-saa5050/` and so on) are relative to that directory.
+- `research/jellytext-tti-form-system-spec-v2.md` is the original forms specification from the earlier jellytext project, kept for history. The normative, corrected version 3 is `docs/spec/requirements/tti-form-extension.md` (formerly Appendix C); decision E.31 explains the changes.
+- The source standards and datasheets are in `~/devel/teletext-reference/`. All folder paths cited in `docs/spec/` (`teletext-standards/`, `teletext-fonts/manufacturers/philips/datasheets/saa5050/` and so on) are relative to that directory.
 
 ## Rules that must not be broken
 
@@ -30,15 +49,16 @@ No code exists yet. The project is at the requirements stage.
   - No executable content, ever.
   - Row 0 columns 0 to 7 belong to the receiver alone.
   - Library crates have no operating-system access; enforced by clippy's disallowed lists.
-  - `ttx` sandboxes itself: Landlock and seccomp on Linux.
+  - `neottx` sandboxes itself: Landlock and seccomp on Linux.
   - Web mode runs as a fetcher process and a decoder process.
   - Plain HTTP is allowed by the owner's decision (E.32), with the safeguards of REQ-SEC-008.
 
 - **No copyrighted source material in this repository.** Do not copy standards PDFs or datasheets here. Link to them or cite them by clause.
 - **No GPL code.** zvbi, vhs-teletext, vbit2 and QTeletextMaker may be run as external programs, or used as test oracles at test time. Their code and test files must never be copied into this repository.
-- **One bundled font: Bedstead** (decision E.72, REQ-FNT-001).
-  - `third_party/bedstead/bedstead-glyphs.txt` is the only glyph data in the repository. Its licence and legal basis are in `third_party/bedstead/PROVENANCE.md`.
-  - Never add another font or any other glyphs from character-generator ROMs to the repository. Other fonts are 12 × 10 BDF files loaded at run time (area FNT); the owner's font collection lives in a separate repository.
+- **One bundled font: Bedstead** (decisions E.72 and E.77, REQ-FNT-001).
+  - `third_party/bedstead/bedstead-glyphs.txt` is the only font compiled into the receiver. Its licence and legal basis are in `third_party/bedstead/PROVENANCE.md`.
+  - The only other glyph data in the repository is the Noto-derived 12 × 20 fonts in `third_party/noto/`, with their converter (decision E.77, REQ-FNT-012). They are loaded at run time, never compiled in.
+  - Never add any other font, or any glyphs from character-generator ROMs, to the repository. Other fonts are 12 × 10 or 12 × 20 BDF files loaded at run time (area FNT); the owner's font collection lives in a separate repository.
   - Keep glyphs as replaceable data, never hard-coded.
 - **The test corpus is downloaded at test time and pinned by checksum** (REQ-TST-022). Local corpus files, including Dan Farrimond's recovered T42 captures in `~/devel/jellytext/dan/`, are read from `$NEOTELETEXT_CORPUS`. Never commit sample streams or captures.
 - **Every teletext constant is defined once** (REQ-GEN-014). Never restate a value such as 0x27 or 0xE4 outside the constants module.
@@ -46,33 +66,33 @@ No code exists yet. The project is at the requirements stage.
 
 ## Tracking work: GitHub issues
 
-Work to be done is tracked in GitHub issues on crowdwave/neoteletext (private). What the system must do, and why, stays in REQUIREMENTS.md and `docs/`; an issue links to the requirement or decision it serves rather than restating it.
+Work to be done is tracked in GitHub issues on crowdwave/neoteletext (private). What the system must do, and why, stays in `docs/spec/`; an issue links to the requirement or decision it serves rather than restating it.
 
-- **Work starts from an issue.** If none exists, open one first.
+- **Work starts from an issue.** If none exists, open one first. During rapid iteration, one issue per feature is enough; small changes go on `TECH-DEBT.md`.
 - **The commit closes it.** End the commit message with `Closes #123`; partial progress gets a comment naming the commit.
 - **Log what you find.** Something discovered along the way (a bug, a gap, a decision for the owner) gets an issue, not just a mention in a reply. Decisions for the owner carry the `decision` label.
 - **Keep the milestones true.** Close finished work with the commit that did it; close work the design has overtaken as "not planned" with the reason. Delete an issue only with the owner's agreement.
 
-## Working with REQUIREMENTS.md
+## Working with the specification (`docs/spec/`)
 
 - **Identifiers are permanent.**
   - Requirement numbers (`REQ-<AREA>-<NNN>`) are never reused.
   - Gaps in the numbering are deliberate.
   - A dropped requirement is marked "Withdrawn", with its date and reason, and keeps its number.
-- **Record decisions before changing behaviour.** Any behaviour the standard leaves open must first be recorded or amended in Part E (REQ-DOC-004).
-- **Tag phases.** A Phase 2 requirement carries a `*Phase:*` line directly under its title, and is listed in the table in section F.0.1. Phase 1 requirements have no tag.
-- **Keep state machine tables and prose in step.** The tables in area FSM (section F.18) are the normative form of acquisition, slicer, lifecycle, viewer, row-attribute and Level 1.5 behaviour. If a table and a prose requirement disagree, fix both.
+- **Record decisions before committing behaviour.** Any behaviour the standard leaves open must be recorded or amended in `docs/spec/decisions.md` (REQ-DOC-004) before the change is committed; during rapid iteration, note it in `TECH-DEBT.md` and record it at integration.
+- **Tag phases.** A Phase 2 requirement carries a `*Phase:*` line directly under its title, and is listed in the table in section F.0.1 (`docs/spec/requirements/README.md`). Phase 1 requirements have no tag.
+- **Keep state machine tables and prose in step.** The tables in area FSM (`docs/spec/requirements/fsm.md`) are the normative form of acquisition, slicer, lifecycle, viewer, row-attribute and Level 1.5 behaviour. If a table and a prose requirement disagree, fix both.
 - **Check references after editing.** Every `REQ-` reference must resolve to a definition:
 
   ```sh
-  grep -o 'REQ-[A-Z0-9]*-[0-9]*' REQUIREMENTS.md | sort -u > /tmp/refs
-  grep -o '^\*\*REQ-[A-Z0-9]*-[0-9]*' REQUIREMENTS.md | sed 's/\*\*//' | sort -u > /tmp/defs
+  cat docs/spec/*.md docs/spec/*/*.md | grep -o 'REQ-[A-Z0-9]*-[0-9]*' | sort -u > /tmp/refs
+  cat docs/spec/requirements/*.md | grep -o '^\*\*REQ-[A-Z0-9]*-[0-9]*' | sed 's/\*\*//' | sort -u > /tmp/defs
   comm -23 /tmp/refs /tmp/defs   # must print nothing
   ```
 
 - **Writing style.**
   - Write every requirement as full narrative sentences, not terse fragments.
-  - Spell terms out rather than abbreviating them; the glossary is Appendix A.
+  - Spell terms out rather than abbreviating them; the glossary is `docs/spec/glossary.md`.
   - Cite the standard by clause or table, for example "EN 300 706 clause 9.3.1".
 
 ## Implementation language and targets
@@ -90,7 +110,7 @@ Work to be done is tracked in GitHub issues on crowdwave/neoteletext (private). 
   - `neoteletext-slicer`;
   - `neoteletext-web` (sans-IO);
   - `neoteletext-image`;
-  - `neoteletext-cli` (the `ttx` binary);
+  - `neoteletext-cli` (the `neottx` binary);
   - `neoteletext-ffi` (Phase 2);
   - `xtask`.
 - **Rules for the `no_std` code** (REQ-GEN-006 and REQ-GEN-016):
@@ -103,7 +123,7 @@ Work to be done is tracked in GitHub issues on crowdwave/neoteletext (private). 
 
 ## Architecture in brief
 
-The implementation follows REQUIREMENTS.md Part F:
+The implementation follows the requirements in `docs/spec/requirements/`:
 
 - **Core library** (`neoteletext-core`). It is `no_std`, with no allocation, no input or output, and no clock (REQ-GEN-002). It contains:
   - the error-protection codes;
@@ -123,4 +143,4 @@ The implementation follows REQUIREMENTS.md Part F:
   - the web-native module (area WEB, section F.19). It is written sans-IO. It reads pages from web servers over HTTP or HTTPS, WebSockets and server-sent events, keeps cookie sessions, runs forms, and includes the zxnet live feed (REQ-INP-022). Web pages arrive as TTI or T42 and go through the same decoder. The port supplies the network transport through `embedded-io`-style traits.
   - the pixel-format helpers;
   - the image writers;
-  - the command-line program `ttx`.
+  - the command-line program `neottx`.

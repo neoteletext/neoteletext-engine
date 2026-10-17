@@ -1,42 +1,31 @@
 # neoteletext
 
-A software receiver for World System Teletext (ETSI EN 300 706, Presentation Levels 1.0, 1.5, 2.5 and 3.5), written in Rust. The core library is `no_std` with no allocation and runs on microcontrollers; the `ttx` command-line program decodes recordings, live feeds and web teletext services, and shows pages in the terminal (iTerm2 inline images or coloured text), as text, or as images.
+A software receiver for World System Teletext (ETSI EN 300 706, Presentation Levels 1.0, 1.5, 2.5 and 3.5), written in Rust. The core library is `no_std` with no allocation and runs on microcontrollers; the `neottx` command-line program decodes recordings, live feeds and web teletext services, and shows pages in the terminal (iTerm2 inline images or coloured text), as text, or as images.
 
 ```sh
 cargo build --release -p neoteletext-cli
-target/release/ttx show recording.t42 100
-target/release/ttx view zxnet:teefax
+target/release/neottx show recording.t42 100
+target/release/neottx view zxnet:teefax
 ```
 
-The `neoteletext` browser opens web teletext channels, files and live feeds in a window with tabs, an address bar, back and forward, and bookmarks. Each tab's network and page decoding run in separate processes, confined on macOS so the decoder can reach neither files nor the network. Leaving a channel always shows the tuning screen first. A channel is a folder of page files on any web server, static or generated: see [docs/channels.md](docs/channels.md) to publish one.
+A windowed browser built on the engine, with tabs, channels and a tuning screen, is kept as a prototype in [prototypes/browser/](prototypes/browser/README.md), outside the engine's workspace and gates (decision E.76).
 
-```sh
-cargo build --release -p neoteletext-gui
-target/release/neoteletext https://example.org/
-scripts/macos-app.sh            # builds neoteletext.app in target/
-```
-
-Each crate's optional parts are Cargo features, on by default, so a port or a smaller `ttx` compiles in only what it uses. The features are listed in the user guide and the porting guide. The decoder's capabilities from the later teletext levels are features too: the recommended `modern-classic` profile keeps those that preserve teletext's look or make it more usable, and switches off those that would dilute it, such as colour bitmap characters, the 32-colour palette and animation ([docs/capabilities.md](docs/capabilities.md)).
+Each crate's optional parts are Cargo features, on by default, so a port or a smaller `neottx` compiles in only what it uses. The features are listed in the user guide and the porting guide. The decoder's capabilities from the later teletext levels are features too: the recommended `modern-classic` profile keeps those that preserve teletext's look or make it more usable, and switches off those that would dilute it, such as colour bitmap characters, the 32-colour palette and animation ([docs/spec/design/capabilities.md](docs/spec/design/capabilities.md)).
 
 ## Documents
 
 | Document | Contents |
 |---|---|
-| [docs/user-guide.md](docs/user-guide.md) | The `ttx` program: commands, inputs, outputs, profiles and settings. |
-| [docs/porting.md](docs/porting.md) | Writing a port of the library for a new display or device. |
-| [docs/font-security.md](docs/font-security.md) | The security analysis of the font strategy: Bedstead bundled, other 12 × 10 BDF fonts loaded when the user, channel or page names them. |
-| [docs/capabilities.md](docs/capabilities.md) | The compile-time capability features and the modern-classic profile: what keeps teletext's distinctive look and is kept, and what would dilute it and is switched off. |
-| [REQUIREMENTS.md](REQUIREMENTS.md) | The specification: requirements, decisions and open questions. |
+| [docs/user-guide.md](docs/user-guide.md) | The `neottx` program: commands, inputs, outputs, profiles and settings. |
+| [docs/spec/design/porting.md](docs/spec/design/porting.md) | Writing a port of the library for a new display or device. |
+| [docs/spec/design/font-security.md](docs/spec/design/font-security.md) | The security analysis of the font strategy: Bedstead bundled, other 12 × 10 BDF fonts loaded when the user, channel or page names them. |
+| [docs/spec/design/capabilities.md](docs/spec/design/capabilities.md) | The compile-time capability features and the modern-classic profile: what keeps teletext's distinctive look and is kept, and what would dilute it and is switched off. |
+| [docs/spec/](docs/spec/README.md) | The specification: requirements, decisions, design and open questions. |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | The layers, their boundaries and allowed dependencies. |
 | [THREAT-MODEL.md](THREAT-MODEL.md), [SECURITY.md](SECURITY.md) | Security design and reporting. |
 | [docs/traceability.md](docs/traceability.md) | Each requirement and the files that implement and test it (`cargo xtask traceability`). |
-| [docs/sources.md](docs/sources.md) | Where test data and live feeds come from. |
+| [docs/spec/module-sources.md](docs/spec/module-sources.md) | Where test data and live feeds come from. |
 | [IMPLEMENTATION-LOG.md](IMPLEMENTATION-LOG.md) | Questions met during implementation and the decisions taken. |
-| [docs/channels.md](docs/channels.md) | Teletext channels on the web: how a television channel's pages are laid out, why a channel is a folder, the contents file, publishing as static files or from a program, and media types. |
-| [docs/web-discovery.md](docs/web-discovery.md) | Discovery: how an ordinary web page points to its teletext edition with one `<link>` line, and how the browser follows it from a typed web address. |
-| [docs/web-discovery-security.md](docs/web-discovery-security.md) | The security analysis of discovery. |
-| [docs/desktop-browser.md](docs/desktop-browser.md), [docs/web-native-concept.md](docs/web-native-concept.md) | The browser's design and the web teletext concept it browses. |
-| [docs/macos-build-decisions.md](docs/macos-build-decisions.md) | The decisions taken while building the macOS browser, for review. |
 
 ## Crates
 
@@ -47,9 +36,7 @@ Each crate's optional parts are Cargo features, on by default, so a port or a sm
 | `neoteletext-slicer` | A software data slicer for raw sampled video. |
 | `neoteletext-web` | The sans-IO web agent: service descriptors, HTTP, WebSockets, server-sent events, cookies, forms and the zxnet feed. |
 | `neoteletext-image` | Palettes, pixel formats, scaling, PNG and PPM writers. |
-| `neoteletext-cli` | The `ttx` program. |
-| `neoteletext-browser` | Everything the browser decides, with no operating-system access: addresses, channels, history, the tuning screen, the contents view and the rows the receiver draws itself. |
-| `neoteletext-gui` | The `neoteletext` browser window and its fetcher and decoder helper processes. |
+| `neoteletext-cli` | The `neottx` program. |
 | `xtask` | Project checks: layers, dependencies, constants, glyphs (including the generated G3 set), the test corpus and the traceability table; `cargo xtask level25-stream` writes the authored Level 2.5 and 3.5 test stream. |
 
 ## Checks

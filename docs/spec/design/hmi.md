@@ -4,10 +4,10 @@ A proposal, not a requirement. It describes how the code should take input from 
 
 Related documents:
 
-- `docs/web-native-concept.md` section 7: the desktop keyboard mapping for the web browser concept;
+- `prototypes/browser/docs/web-native-concept.md` section 7: the desktop keyboard mapping for the web browser concept;
 - REQUIREMENTS.md area NAV: REQ-NAV-001 to REQ-NAV-012, especially REQ-NAV-009 (forms from a keyboard or a remote) and REQ-NAV-010 (Back and Forward);
 - `ARCHITECTURE.md` layers L6 (Interaction) and L8 (Platform interface);
-- `docs/porting.md`.
+- `docs/spec/design/porting.md`.
 
 ## 1. What the code does today
 
@@ -17,8 +17,8 @@ Related documents:
 | `forms::FormKey` | `crates/neoteletext-core/src/forms.rs:250` | A second enum for forms, mixing keyboard keys (`Tab`, `Char`, `Backspace`) with remote keys (`RemoteDigit`, the colours). |
 | `forms::MULTITAP_US` | `crates/neoteletext-core/src/forms.rs:34` | Telephone-style letter entry from digits, for remotes (REQ-NAV-009). |
 | `port::Keys` | `crates/neoteletext-core/src/port.rs` | The port's key trait: `poll() -> Option<Key>`. Nothing implements it yet. |
-| `map_key`, `map_form_key` | `crates/neoteletext-cli/src/view.rs` | `ttx`'s crossterm bindings. |
-| The modal loop | `crates/neoteletext-cli/src/view.rs`, the event loop | `ttx` decides which consumer gets a key, in this order: Ctrl+C quits; a pending form submission takes Enter or F4 as yes; a focused form gets form keys; `q` or Esc quits; Tab focuses the form; otherwise the viewer. |
+| `map_key`, `map_form_key` | `crates/neoteletext-cli/src/view.rs` | `neottx`'s crossterm bindings. |
+| The modal loop | `crates/neoteletext-cli/src/view.rs`, the event loop | `neottx` decides which consumer gets a key, in this order: Ctrl+C quits; a pending form submission takes Enter or F4 as yes; a focused form gets form keys; `q` or Esc quits; Tab focuses the form; otherwise the viewer. |
 
 Five problems follow for anyone writing a second port.
 
@@ -178,7 +178,7 @@ impl Router {
 pub enum Routed { Viewer(Action), Form(FormAction), Address(AddressAction), Quit, None }
 ```
 
-The order `ttx` now hard-codes in `view.rs` moves here, with one test per mode:
+The order `neottx` now hard-codes in `view.rs` moves here, with one test per mode:
 
 1. **Confirm.** A pending confirmation takes only Confirm (or the same coloured key, REQ-NAV-012) as yes; every other function cancels. Events whose origin is `Paste` or `Synthetic` always cancel.
 2. **Form.** A focused form takes text and field functions; the colour keys keep their REQ-NAV-009 meanings; Cancel leaves the form.
@@ -205,7 +205,7 @@ This implements REQ-NAV-010's default "hold Index for Back" on remotes that repo
 
 Each subsection gives the input sources, how the driver names controls, what the machine lacks, and where the code lives.
 
-### 3.1 Terminals: `ttx` on macOS, Linux and Windows
+### 3.1 Terminals: `neottx` on macOS, Linux and Windows
 
 **Library.** crossterm, already a dependency of `neoteletext-cli`.
 
@@ -238,7 +238,7 @@ fn phase(kind: KeyEventKind) -> Phase {
 **Capabilities and limits.**
 
 - **Release events** arrive only when the terminal supports the kitty keyboard protocol and the program pushes `KeyboardEnhancementFlags::REPORT_EVENT_TYPES`. Otherwise `release` is false. The driver probes with `crossterm::terminal::supports_keyboard_enhancement()`, and pops the flags in `RawGuard::drop`.
-- **The keypad.** It is distinguishable from the main keys only with the same protocol (`KeyEventState::KEYPAD`). The bindings in `docs/web-native-concept.md` section 7 never need to distinguish them.
+- **The keypad.** It is distinguishable from the main keys only with the same protocol (`KeyEventState::KEYPAD`). The bindings in `prototypes/browser/docs/web-native-concept.md` section 7 never need to distinguish them.
 - **Pasted text.** `EnableBracketedPaste` makes a paste arrive as `Event::Paste(String)`. The driver emits its characters as `Char` events with `Origin::Paste`, so a pasted `r r` or a newline can never follow a link or confirm a submission (section 2.5 rule 1). Today the viewer does not enable bracketed paste, so a paste arrives as ordinary key presses.
 - **Mouse.** `EnableMouseCapture` reports `MouseEvent { column, row, .. }` in terminal cells. With text output, one terminal cell is one teletext cell. With iTerm2 images, the driver divides by the cell size in pixels from `terminal::text_area()`. The viewer does not capture the mouse today.
 - **macOS.**
@@ -257,13 +257,13 @@ A future port, not in the workspace. **Library:** winit, which needs approval.
 
 ### 3.3 The web browser: WebAssembly
 
-The browser receiver of `docs/web-native-concept.md` section 13. **Libraries:** `web-sys` and `wasm-bindgen`, which need approval.
+The browser receiver of `prototypes/browser/docs/web-native-concept.md` section 13. **Libraries:** `web-sys` and `wasm-bindgen`, which need approval.
 
 - **Keys.** `KeyboardEvent.code()` gives physical names (`"F1"`, `"Numpad7"`, `"ArrowUp"`), `key()` gives text, and `repeat()` gives auto-repeat. `keyup` gives release.
 - **Keys the browser keeps.** Ctrl+L, Ctrl+W, Ctrl+T and F11 cannot be taken reliably, and F5 and F1 should not be. The browser table binds Address and Refresh to other keys, for example `/` and `R`, and leaves the browser's own keys alone.
 - **Pointer and touch.** `PointerEvent` coordinates are divided by the canvas cell size to give `Control::Cell`.
 - **Game controllers.** The Gamepad API's standard mapping puts A, B, X and Y at buttons 0 to 3 and the D-pad at 12 to 15. Controllers are polled each animation frame and compared with the previous state to get press and release.
-- **Screen readers.** A hidden DOM text layer, from the same Unicode text `ttx text` produces, with `aria-live` on row 0 and row 24 (`docs/web-native-concept.md` section 11).
+- **Screen readers.** A hidden DOM text layer, from the same Unicode text `neottx text` produces, with `aria-live` on row 0 and row 24 (`prototypes/browser/docs/web-native-concept.md` section 11).
 
 ### 3.4 Linux television boxes: Raspberry Pi, set-top boxes
 
@@ -282,7 +282,7 @@ The browser receiver of `docs/web-native-concept.md` section 13. **Libraries:** 
   | `KEY_TEXT`, `KEY_INFO`, `KEY_SUBTITLE` | `Remote(Text…)` |
 
 - **HDMI-CEC.** The television's own remote reaches the box over HDMI. The kernel's CEC framework, for adapters that pass remote keys through, delivers them as evdev keys too. The CEC "User Control" codes list the coloured keys as F1 (Blue), F2 (Red), F3 (Green), F4 (Yellow). A CEC driver that maps F1 to red by number swaps every colour. The keymap on the device must be checked against the remote.
-- **The sandbox.** `ttx` closes the file system with Landlock after start-up. The port opens its `/dev/input` devices first, as `ttx` measures the terminal before closing it, and the seccomp filter must allow `read` and `ioctl(EVIOCGRAB)` on them.
+- **The sandbox.** `neottx` closes the file system with Landlock after start-up. The port opens its `/dev/input` devices first, as `neottx` measures the terminal before closing it, and the seccomp filter must allow `read` and `ioctl(EVIOCGRAB)` on them.
 
 ### 3.5 Android television
 
@@ -328,7 +328,7 @@ They are found on desktops (gilrs, which needs approval), in browsers (Gamepad A
 
 ### 3.9 Headless
 
-`ttx list`, `show`, `text`, `render` and `convert` take no input. Their command-line arguments are their interface, and they do not create an `Input` at all.
+`neottx list`, `show`, `text`, `render` and `convert` take no input. Their command-line arguments are their interface, and they do not create an `Input` at all.
 
 ## 4. Mapping functions to machines
 
@@ -376,7 +376,7 @@ Text is needed for form fields and web addresses. Each `TextEntry` value gives o
 
 - `Multitap`: the existing letter entry from digits (`MULTITAP_US`).
 - `OnScreen`: an on-screen keyboard drawn by the core in rows 1 to 23, chosen with the arrows and Confirm. The page is hidden while it is shown, so it cannot be imitated.
-- `None`: forms needing letters, and address entry, are refused with a message. Channel presets replace typed addresses (`docs/web-native-concept.md` section 9).
+- `None`: forms needing letters, and address entry, are refused with a message. Channel presets replace typed addresses (`prototypes/browser/docs/web-native-concept.md` section 9).
 
 ## 5. Third-party crates this would need
 
@@ -397,11 +397,11 @@ The core itself gains no dependency. `hmi.rs` is plain `no_std` Rust under the e
 ## 6. Changes to the source, in order
 
 1. **Add `neoteletext-core/src/hmi.rs`** with `Function`, `Binding`, `BindingTable`, `Capabilities`, `Gestures`, `Router` and the default tables. Update `ARCHITECTURE.md`'s L6 section and its dependency table (REQ-ARCH-011).
-2. **Replace `port::Keys` with `port::Input`** (`Control`, `Phase`, `Origin`, `InputEvent`), and update `docs/porting.md`.
+2. **Replace `port::Keys` with `port::Input`** (`Control`, `Phase`, `Origin`, `InputEvent`), and update `docs/spec/design/porting.md`.
 3. **Change `Viewer::key` and `FormModel::key` to take `Function`.** Delete `viewer::Key` and `forms::FormKey` in the same change, as the project's rules ask, rather than keeping shims.
-4. **Move the modal loop out of `neoteletext-cli/src/view.rs` into `Router`.** `ttx` keeps only drawing, its source, and quitting.
+4. **Move the modal loop out of `neoteletext-cli/src/view.rs` into `Router`.** `neottx` keeps only drawing, its source, and quitting.
 5. **Implement `Gestures`**, with REQ-NAV-010's "hold Index for Back" as the first user.
-6. **In `ttx`:**
+6. **In `neottx`:**
    - enable bracketed paste and mark pasted events;
    - enable the kitty keyboard protocol when the terminal supports it;
    - optionally enable the mouse.

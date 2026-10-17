@@ -2,9 +2,9 @@
 
 This document describes how the code of neoteletext is divided into layers, what each layer owns, how data flows between them, and the rules that keep them apart.
 
-- `REQUIREMENTS.md` is the authority. This document explains how the requirements are organised in code.
+- The specification in `docs/spec/` is the authority. This document explains how the requirements are organised in code.
 - The layer rules here are made mandatory by REQ-ARCH-011.
-- Where this document and `REQUIREMENTS.md` disagree, `REQUIREMENTS.md` wins, and this document shall be corrected.
+- Where this document and the specification disagree, the specification wins, and this document shall be corrected.
 
 ---
 
@@ -22,7 +22,7 @@ Dependencies point **downward only**. A layer may use the layers below it and th
 
 ```
  ┌───────────────────────────────────────────────────────────────────────────┐
- │ L9  Applications & ports      ttx CLI · browser window · WASM host · ports │  std / platform
+ │ L9  Applications & ports      neottx CLI · WASM host · ports              │  std / platform
  ├───────────────────────────────────────────────────────────────────────────┤
  │ L8  Platform interface        traits: DataSource · Transport · Clock ·      │  the port boundary
  │                               Keys · CookieStorage · DeviceKey              │
@@ -121,23 +121,26 @@ The Web user agent (L7) sits beside the lower layers rather than above them in t
 - **Key types:** `Decoder<const PAGES: usize>`, `PageStore`, `StoredPage`, `MagState`, `PageState`, `Event`, `EnhancementStore`, `EnhancementLookup`.
 - **Requirements:** ACQ, SVC, FSM-003, FSM-004.
 
-### L3 Presentation model — `neoteletext-core::{charset, level1, level15, colour, drcs, objects, enhance}`
+### L3 Presentation model — `neoteletext-core::{charset, level1, level15, colour, drcs, objects, enhance, joining}`
 
 - **Owns:** one pure function, from a stored page, the magazine data and the viewer state to a `Grid` of 25 by 40 cells, with a side-panel area of columns 40 to 71 at Levels 2.5 and 3.5. Along the way it performs:
   - character set resolution;
   - the per-cell attribute machine;
   - double height;
   - the Level 1.5 overwrite walk, in `level15`, used at Level 1.5 only;
-  - at Levels 2.5 and 3.5, the enhancement processor and the modules it uses, described in section 4.5.
+  - at Levels 2.5 and 3.5, the enhancement processor and the modules it uses, described in section 4.5;
+  - for neoteletext's own Arabic-script sets, the joining pass of `joining`, run after the level's pass (REQ-CHR-015, section 4.6).
 
   Every teletext feature that crosses rows is resolved here, so rows are independent from here upward (decision E.29). At Levels 2.5 and 3.5 that includes objects, row colours, side panels and the row extension of the Font Style triplet.
 - **The modules of Levels 2.5 and 3.5:**
   - `colour`: the Colour Map of 32 entries, the colour index type, and the re-mapping table. Its default values are the Table 30 constants of `consts`.
   - `drcs`: decodes the stored bytes of DRCS pages into the patterns and colour tables that the grid carries for its DRCS cells (area DRC).
   - `objects`: finds objects. It reads the links of X/27/4, X/27/5 and the Magazine Organization Table, the pointer tables of object pages and the local definitions, and checks each definition (area OBJ).
+  - `joining` (feature `extended-sets`): gives each letter of a group 1001 set its joined form from its neighbours in the row, after X/26 has been applied (decision E.79). It reads and writes only the grid's cells.
   - `enhance`: the enhancement processor. It runs after the Level 1 grid is built, walks the local enhancement data, objects and default objects (REQ-FSM-011), resolves each row (REQ-FSM-012), and builds the page's Colour Map, screen and row colours and side panels (area L25).
 - **Must not know about:** where the page came from, pixels, buffering. Stored bytes are decoded only through the decoders of L1, and enhancement pages are reached only through the read-only lookup of L2.
 - **Key types:** `Grid`, `Cell`, `CharRef`, `RowState`, `ColourMap`, `ColourIndex`, `DrcsPatterns`, `ObjectRef`.
+- **Character sets.** `charset` holds the standard's tables and, behind the feature `extended-sets`, neoteletext's own: the designations of the reserved values and the G0 and G2 tables of decisions E.78 to E.81 (section 4.6). Every one is constant data generated from a reviewed file.
 - **Requirements:** CHR, L1, L15, L25, OBJ, DRC, FSM-006, FSM-007, FSM-011, FSM-012.
 
 ### L4 Rendering — `neoteletext-core::{render, glyphs}`
@@ -150,7 +153,7 @@ The Web user agent (L7) sits beside the lower layers rather than above them in t
   - the composition of each row from the left panel, the main page and the right panel (decision E.49);
   - double width, underline, the Level 3.5 font styles and DRCS drawing, all inside the cell raster;
   - the glyph data, which is replaceable, including the G3 data generated by `xtask` from the project's own geometry (decision E.50);
-  - fonts loaded at run time (area FNT): `glyphs::LoadedFont` borrows a checked table of `types::FontGlyph`, and a `GlyphSet` carries up to two, the font in use and the user's font, before its own glyphs. The cell raster draws their 12 by 10 glyphs like mode 0 DRCS characters, in rows 1 to 24 only (REQ-FNT-005, REQ-FNT-008);
+  - fonts loaded at run time (area FNT): `glyphs::LoadedFont` borrows a checked table of `types::FontGlyph`, and a `GlyphSet` carries up to two, the font in use and the user's font, before its own glyphs. The cell raster draws their 12 by 10 glyphs like mode 0 DRCS characters, and their 12 by 20 glyphs line for line (decision E.77), in rows 1 to 24 only (REQ-FNT-005, REQ-FNT-008);
   - the optional glyph line cache;
   - change tracking, including the rows that flash or conceal.
 - **Must not know about:** pixel formats, screens, buffering strategy, timing of display.
@@ -228,22 +231,10 @@ The Web user agent (L7) sits beside the lower layers rather than above them in t
 - **The split between `neoteletext-app` and `neoteletext-cli`:**
   - `neoteletext-app` holds what any program needs. That is the session, reading inputs, both processes of live mode, sandboxing, conversion and slicing, and the `Source` trait a viewer reads pages through.
   - `neoteletext-cli` holds argument parsing, terminal output and the terminal viewer.
-  - The browser window, `neoteletext-gui`, depends on `neoteletext-app` and `neoteletext-browser`. It routes the hidden `fetch` command to `neoteletext_app::fetch::run` and `decode` to `neoteletext_app::decoder::run`, because each tab starts its helpers as further runs of the same program. On macOS they are confined by Seatbelt profiles before they start (`neoteletext_app::sandbox::helper_command`).
-  - Fonts (area FNT) have two one-shot helpers of their own: `font-fetch` (`neoteletext_app::fetch::run_font`), confined as the fetcher is, fetches and reads one font or one library index; `font-read` (`neoteletext_app::font::read_run`), confined as a decoder is, reads the bytes of a cached or local font. The interface computes each font's SHA-256 itself and checks its glyph table's shape, never parsing a font; `xtask check-io` forbids the font readers in `neoteletext-gui` and `neoteletext-browser`. The window keeps the cache (`neoteletext_gui::fonts`), and each tab's decoder receives at most two checked tables in one `Fonts` frame.
-  - `neoteletext-app` also holds what both viewers share: the decoder engine (`decoder`), the form pieces (`interact`), and text and raster output (`present`).
+  - The browser prototype in `prototypes/browser/` (decision E.76) uses `neoteletext-app` from outside this workspace: its window starts `neoteletext_app::fetch::run` as a tab's fetcher and the font helpers `font-fetch` (`neoteletext_app::fetch::run_font`) and `font-read` (`neoteletext_app::font::read_run`), confined on macOS by `neoteletext_app::sandbox::helper_command`. Its decoder process and its own layer, `neoteletext-browser`, live in the prototype.
+  - `neoteletext-app` also holds what viewers share: the form pieces (`interact`), and text and raster output (`present`).
+  - `neoteletext-app::write_text` (feature `write-text`) turns Unicode text into a page in any set: it encodes with the core's `charset` tables, reorders right-to-left text with the `unicode-bidi` crate, lays out Thai and Lao rows, and writes tones and rarer marks as X/26 triplets (decision E.82, REQ-CLI-010). `neottx write-text` is its command.
 - **Requirements:** CLI, SEC-017 to SEC-019, GEN-018.
-
-### The browser's own layer — `neoteletext-browser`
-
-- **Owns:** everything the browser decides (`docs/desktop-browser.md` section 3.5):
-  - what an address means, and which channel it names;
-  - each tab's history;
-  - when the tuning screen is shown, and the screen itself, including after discovery (decision E.73 item 7);
-  - row 0 and the other rows the receiver draws itself, including the contents view (REQ-BRW-009);
-  - the formats of the saved files;
-  - fonts (`fonts`): whether a font may be fetched (REQ-FNT-003), which font draws a page (REQ-FNT-005), and the model of the content-addressed cache (REQ-FNT-009).
-- **Place:** beside L8, below the applications. It uses L6 types and the L7 address parser, and has no operating-system access, which `xtask check-io` enforces as for the library crates.
-- **Why a crate of its own:** every rule of trust in the browser is written and tested once, for every front end. That includes the desktop window, `ttx view` later, and the phone shells.
 
 ### Cross-cutting modules — `neoteletext-core::{policy, config, trace}`
 
@@ -343,13 +334,13 @@ Field groups shared with the presentation layer are foundation types in `types`:
 
 **What each phase built.**
 
-- Phase (a): `compose::compose_level` dispatches on `Config::level` (through `PresentationLevel::available`, decision E.61): nothing at Level 1, `level15::apply` at Level 1.5, and `enhance::apply` at Levels 2.5 and 3.5; `viewer::Viewer::compose` and the command-line program's `Session::grid` both call it, and `ComposeContext` carries the `EnhancementLookup`. `enhance::apply` returns an `acq::EnhancementReport`: the `PageBuild`, the `EnhancementFaults` it met, the objects it ran and the triplets it read. `Viewer::compose` returns it in `Composed::Built`, for the port to record; `Session::grid` records it itself, and `ttx list` builds every page at Levels 2.5 and 3.5 to show the counts.
-- Trace (REQ-FSM-010): `compose::compose_level_traced`, `level15::apply_traced` and `enhance::apply_traced` take a `trace::TraceSink` (the build time and a `&mut dyn FnMut(TraceEntry)`) and, when `Config::trace` is on, report the transitions of `Machine::TripletWalk` or of the page-level run of `Machine::EnhancementWalk`, with state, event and action names from `level15::walk_*_name`, `enhance::walk_*_name` and `TripletFunction::name`. A transition that met a fault names it as its action. The untraced functions are unchanged; `Session::grid` uses the traced one, so that `ttx -vv` prints the walk with the other traces.
+- Phase (a): `compose::compose_level` dispatches on `Config::level` (through `PresentationLevel::available`, decision E.61): nothing at Level 1, `level15::apply` at Level 1.5, and `enhance::apply` at Levels 2.5 and 3.5; `viewer::Viewer::compose` and the command-line program's `Session::grid` both call it, and `ComposeContext` carries the `EnhancementLookup`. `enhance::apply` returns an `acq::EnhancementReport`: the `PageBuild`, the `EnhancementFaults` it met, the objects it ran and the triplets it read. `Viewer::compose` returns it in `Composed::Built`, for the port to record; `Session::grid` records it itself, and `neottx list` builds every page at Levels 2.5 and 3.5 to show the counts.
+- Trace (REQ-FSM-010): `compose::compose_level_traced`, `level15::apply_traced` and `enhance::apply_traced` take a `trace::TraceSink` (the build time and a `&mut dyn FnMut(TraceEntry)`) and, when `Config::trace` is on, report the transitions of `Machine::TripletWalk` or of the page-level run of `Machine::EnhancementWalk`, with state, event and action names from `level15::walk_*_name`, `enhance::walk_*_name` and `TripletFunction::name`. A transition that met a fault names it as its action. The untraced functions are unchanged; `Session::grid` uses the traced one, so that `neottx -vv` prints the walk with the other traces.
 - `enhance::apply` rebuilds each shown row from `level1::row_codes` and the walk's events, keeping row 0 columns 0 to 7 from the Level 1 grid. The walk runs once for the page-level colours and once for each row that has events, keeping only that row's events, so that a grid needs one row of event storage (decision E.41, principle 5); the limits of Annex A.8 are checked before an object is looked for, which bounds the work by `enhance::MAX_WALK_STEPS`. `objects` finds links, definitions and bodies; `drcs::decode_character` fills `Grid::drcs`.
 - `level1::resolve_designation` follows the order of Annex C.4 and decision E.50 at each level, and the Level 1.5 pass reads every triplet through `TripletFunction` (REQ-PKT-010).
 - Phase (b): `render` draws DRCS cells from `Grid::drcs` before any glyph lookup (`GlyphSet::glyph` gives an empty glyph for a DRCS reference), and has the resolved colour mode (`ColourMode::Resolved(FlashPhase)`, chosen by `RenderOptions::for_level`), side-panel composition (`row_width`, `source_columns`, `source_cell`), double width and size, underline, invert, the font styles and the flash timing of decision E.48. The G3 glyphs are generated by `cargo xtask glyphs` from geometry into `glyphs/g3.txt` and `glyphs/g3.rs`. The image writers take the 32-entry palette of `colour_map_palette`.
 - Phase (c): `neoteletext-formats` reads and writes enhancement data and enhancement pages in TTI by page coding, sends them in the order of Annexes B.2 and B.7, and has the authoring builder of REQ-INP-025 (`author`, features `std` and `tti`), whose `streams::stream()` is the authored Level 2.5/3.5 stream; `cargo xtask level25-stream` writes it.
-- Checks: `tests/golden/authored-level25.txt` pins the rendered stream (REQ-TST-024); `tests/oracles/run_cells.sh` compares it with zvbi cell by cell through `ttx text --cells` (REQ-TST-023), with `zvbi-known-differences.txt` giving the reason for each page that differs; the `enhancement` fuzz target builds grids from fuzzed page sets (REQ-TST-042).
+- Checks: `tests/golden/authored-level25.txt` pins the rendered stream (REQ-TST-024); `tests/oracles/run_cells.sh` compares it with zvbi cell by cell through `neottx text --cells` (REQ-TST-023), with `zvbi-known-differences.txt` giving the reason for each page that differs; the `enhancement` fuzz target builds grids from fuzzed page sets (REQ-TST-042).
 
 ### 4.3 Interacting
 
@@ -371,6 +362,28 @@ L9 event loop:
 ```
 
 In privilege-separated mode (REQ-SEC-018), the dashed line between L7 and L0 is a pipe between two processes, carrying only TTI or T42 bytes and a small, fixed set of framed control messages.
+
+### 4.6 Languages beyond the standard's sets
+
+Decisions E.77 to E.82 extend the receiver to about 55 more languages without changing how a page is sent (`docs/spec/design/languages.md` is the design). Every row of every new set is still one byte per cell, read as EN 300 706 defines, so the flows above do not change. This is where each part lives:
+
+| Part | Layer and module | Notes |
+|---|---|---|
+| Designations of the reserved values (REQ-CHR-012) | L3, `charset` (`tables.rs`) | New rows in the Table 32, 33 and 34 lookups. Each new designation names Latin English as its second G0 set. Behind the core feature `extended-sets`; without it the values stay reserved and fall back as REQ-CHR-003 describes. |
+| The new G0 and G2 code tables (REQ-CHR-013, REQ-CHR-016) | L3, `charset` | Constant tables like the standard's, generated by `xtask` from reviewed data files, one per set. `G0Set` and `G2Set` gain variants, and `NationalOption` gains the African Latin and Vietnamese options. Characters stay a set and a 7-bit code (REQ-CHR-001). |
+| Marks from the page's G2 set (REQ-CHR-014) | L3, `charset`, used by `level15` and `enhance` | Column 4 of each G2 set that holds marks; the Vietnamese set's 4/C is the hook above. |
+| Arabic-script joining (REQ-CHR-015) | L3, new module `joining` | One bounded pass per row after the presentation level's pass, called from `compose`. It records each letter's form in the cell, and `glyphs` maps the letter and form to a presentation-form or private-use code point. |
+| Thai and Lao (REQ-CHR-016) | L3, `charset` only | Tables, designations, ESC and X/26 G2 characters. No receiver rule; marks are ordinary characters in their own cells. |
+| 12 × 20 loaded glyphs (REQ-FNT-002, REQ-FNT-008) | Foundation `types::FontGlyph`, L4 `glyphs` and `render`, L0 `bdf` | A glyph holds ten or twenty 12-bit rows; `LoadedGlyph` records which, and the cell raster draws a 20-row glyph line for line. |
+| The Noto-derived fonts (REQ-FNT-012) | Data in `third_party/noto/`, not code | Loaded at run time like any font. `xtask check-noto` checks them; the converter is a Python tool beside them, outside the workspace. |
+| Writing pages from text (REQ-CLI-010) | L9, `neoteletext-app::write_text` | Behind the feature `write-text`, which brings in the `unicode-bidi` crate. It uses the core's `charset` tables to encode and `neoteletext-formats`' page builders and TTI writer to write. It lives in L9 because L0 may not use `charset` (section 9). |
+
+```
+UTF-8 text ──► L9 write_text (encode with L3 charset tables; reorder with unicode-bidi;
+                                 Thai rows; X/26 tones and G2 marks)
+               └─► L0 author::DisplayPage ──► TTI writer ──► page file
+page file ──► flow 4.1 ──► L3 compose (level pass, then joining) ──► L4 (Noto 12 × 20 glyphs)
+```
 
 ---
 
@@ -401,7 +414,7 @@ Each boundary is one narrow type. Nothing reaches past its neighbour.
 | Untrusted bytes into L7 | HTTP, WebSocket, SSE, descriptors, cookies | The user agent profile, the strict address parser, policy checks, fuzzing (REQ-WEB-014 to REQ-WEB-016, SEC-006 to SEC-011) |
 | L7 to L0 across processes | TTI or T42 bytes and framed control messages | Both sides validate; the decoder process has no rights (REQ-SEC-018) |
 | L5 to the terminal | Text and escape sequences | Allow-list sanitising (REQ-SEC-010) |
-| Fonts from the network or the profile into the browser | BDF files and library indexes | Read only in confined helpers by strict, bounded, fuzzed readers; the interface checks the SHA-256 and the table's shape; the decoder checks the table again (REQ-FNT-002, REQ-FNT-003, REQ-FNT-008, REQ-FNT-009) |
+| Fonts from the network or a file into a confined helper | BDF files and library indexes | Read only in confined helpers by strict, bounded, fuzzed readers; the interface checks the SHA-256 and the table's shape; the decoder checks the table again (REQ-FNT-002, REQ-FNT-003, REQ-FNT-008, REQ-FNT-009) |
 | L8, the port contract | Everything the platform supplies | Narrow traits; the library holds no ambient authority (REQ-SEC-016) |
 
 ---
@@ -415,10 +428,8 @@ Each boundary is one narrow type. Nothing reaches past its neighbour.
 | `neoteletext-slicer` | L0: raw samples to packets | `no_std` |
 | `neoteletext-web` | L7 and L8 (web traits) | `no_std`, sans-IO |
 | `neoteletext-image` | L5 | Helpers `no_std`; writers `std` |
-| `neoteletext-app` | L9: the application layer shared by `ttx` and a windowed viewer: sessions, inputs, live mode's two processes, sandboxing | `std` |
+| `neoteletext-app` | L9: the application layer shared by `neottx` and a windowed viewer: sessions, inputs, live mode's two processes, sandboxing | `std` |
 | `neoteletext-cli` | L9 (and text output of L5) | `std` |
-| `neoteletext-browser` | The browser's decisions (section 3) | `std`, no operating-system access |
-| `neoteletext-gui` | L9: the browser window, `neoteletext`, and its fetcher and decoder helpers | `std` |
 | `neoteletext-ffi` | L9: the C interface (Phase 2) | The only crate with `unsafe` |
 | `xtask` | Tooling, not shipped | `std` |
 
@@ -426,21 +437,21 @@ Each boundary is one narrow type. Nothing reaches past its neighbour.
 
 Decision E.61 makes each crate's optional areas Cargo features, all on by default, because the linker cannot remove code reachable through a run-time choice. The rules that keep them safe:
 
-- **Additive and coarse:** one feature per area of REQUIREMENTS.md Part F, never one per function.
+- **Additive and coarse:** one feature per requirement area (`docs/spec/requirements/`), never one per function.
 - **Types and acquisition are never optional.** Only processing is behind a feature, so enabling one never breaks code written without it, and Level 1.5 keeps reading the character set designations of X/28 and M/29.
 - **Crates name what they use.** The workspace dependencies have default features off, so feature unification never brings an area back into a build that left it out.
 - **A request a build cannot serve is answered, never ignored or panicked on:**
   - a configured level that is not compiled in falls back (`PresentationLevel::available`);
   - a format that is not compiled in gives `FormatNotCompiled`;
   - push, forms and cookies give their `NotCompiledIn` values;
-  - a `ttx` command whose area is left out says so and exits with the usage status.
+  - a `neottx` command whose area is left out says so and exits with the usage status.
 
 | Crate | Features |
 |---|---|
-| `neoteletext-core` | `level15`, `level25`, `render`, `bedstead`, `viewer`, `forms`; the capabilities `objects`, `drcs`, `drcs-multicolour`, `bold`, `italic`, `side-panels`, `colours32`, `animation` (decision E.71); the profile `modern-classic` (not default) |
+| `neoteletext-core` | `level15`, `level25`, `render`, `bedstead`, `viewer`, `forms`, `extended-sets` (neoteletext's own character sets and the joining pass, decision E.78); the capabilities `objects`, `drcs`, `drcs-multicolour`, `bold`, `italic`, `side-panels`, `colours32`, `animation` (decision E.71); the profile `modern-classic` (not default) |
 | `neoteletext-formats` | `transport`, `sliced`, `pages`, `tti`, `ep1`, `edittf`, `dump`, `check`, `bdf` (the font reader of REQ-FNT-002), and `std` (not default) |
 | `neoteletext-web` | `push`, `forms`, `cookies` |
-| `neoteletext-app` | `live`, `slice` |
+| `neoteletext-app` | `live`, `slice`, `write-text` (the text-to-page writer and its `unicode-bidi` dependency) |
 | `neoteletext-cli` | `view`, `live`, `slice` |
 
 **Two checks keep this true:**
@@ -458,7 +469,7 @@ If `neoteletext-core` grows unwieldy, the natural split is `core` (Foundation to
 3. **No input or output below L9.** Layers 0 to 7 are sans-IO and pure (REQ-SEC-016), enforced by clippy's `disallowed-methods` and `disallowed-types` lists.
 4. **Security decisions in one place.** Only `policy` decides. Other layers call it, and the check in rule 1 forbids them from reimplementing it by forbidding direct use of the low-level address and origin tests outside `policy` and L7.
 5. **Pure presentation.** L3 and L4 are pure functions of their inputs (REQ-ARCH-006). They can be recomputed or cached at will without touching acquisition.
-6. **Data, not code, for what changes.** Glyphs, character tables and profiles are data (REQ-RND-020): the bundled font is a generated table, and every other font is a file loaded at run time (area FNT, decision E.72).
+6. **Data, not code, for what changes.** Glyphs, character tables and profiles are data (REQ-RND-020): the bundled font is a generated table, and every other font is a file loaded at run time (area FNT, decision E.72). The Noto-derived fonts are such files, kept in `third_party/noto/` and checked by `xtask check-noto` (decision E.77). neoteletext's own character tables are generated from reviewed data files, as the standard's are.
 7. **Every state machine lives in the layer that owns its state:**
    - the slicer machine in L0;
    - the magazine and page machines in L2;
@@ -485,6 +496,7 @@ A module may use the modules listed for it, and nothing else. The cross-cutting 
 | `colour` | L3 | Foundation |
 | `drcs` | L3 | Foundation, `packet` (X/28/1, X/28/3 and M/29/1 field types), `acq` (read-only enhancement lookup), `colour` |
 | `objects` | L3 | Foundation, `packet` (triplet, link and table types), `acq` (read-only stored page types and enhancement lookup) |
+| `joining` | L3 | Foundation, `charset`, `level1` (grid types) |
 | `enhance` | L3 | Foundation, `charset`, `level1` (grid types and the Level 1 row machine), `packet` (triplet and X/28 field types), `acq` (read-only stored page types and enhancement lookup), `colour`, `objects`, `drcs` |
 | `glyphs` | L4 | Foundation, `charset` (character references) |
 | `render` | L4 | Foundation, `glyphs`, `level1` (grid types), `colour` (Colour Map), `drcs` (pattern types) |
@@ -493,4 +505,4 @@ A module may use the modules listed for it, and nothing else. The cross-cutting 
 
 `neoteletext-formats` and `neoteletext-slicer` may use Foundation and `packet` only. `neoteletext-web` may use Foundation, `policy` and `config` only; it never uses the decoding layers. `neoteletext-image` may use Foundation, the `render` output types and the `colour` Colour Map type only.
 
-`level15` remains the Level 1.5 pass, used only at Level 1.5. The modules `colour`, `drcs`, `objects` and `enhance` serve Levels 2.5 and 3.5 (section 4.5). The G3 glyph data generated by `xtask` belongs to `glyphs`, whose dependencies do not change. The `xtask` layer check holds its own copy of this table, which shall be updated in the same change that adds these modules (REQ-ARCH-011).
+`level15` remains the Level 1.5 pass, used only at Level 1.5. The modules `colour`, `drcs`, `objects` and `enhance` serve Levels 2.5 and 3.5 (section 4.5). The G3 glyph data generated by `xtask` belongs to `glyphs`, whose dependencies do not change. The `xtask` layer check holds its own copy of this table, which shall be updated in the same change that adds these modules (REQ-ARCH-011). `joining` (decision E.79) is added to it in the change that creates the module.

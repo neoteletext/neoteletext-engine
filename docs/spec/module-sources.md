@@ -1,6 +1,6 @@
 # Sources record
 
-The standards clauses and tables each module is written from (REQ-DOC-005, and the legal basis section of REQUIREMENTS.md). Clause and table numbers are those of ETSI EN 300 706 V1.2.1 unless another document is named. Copies of the standards are kept outside the repository (`~/devel/microcontrollers/teletext/specifications/`).
+The standards clauses and tables each module is written from (REQ-DOC-005, and the legal basis section of REQUIREMENTS.md). Clause and table numbers are those of ETSI EN 300 706 V1.2.1 unless another document is named. Copies of the standards are kept outside the repository (`~/devel/teletext-reference/teletext-standards/`).
 
 | Module | Sources |
 |---|---|
@@ -17,4 +17,4 @@ The standards clauses and tables each module is written from (REQ-DOC-005, and t
 | `neoteletext-core::policy` | RFC 1918, RFC 6598, RFC 3927, RFC 4193, RFC 4291 (blocked address ranges); REQUIREMENTS.md area SEC |
 | `neoteletext-image::png` | PNG specification (ISO/IEC 15948) sections 5, 9, 11; RFC 1950 (zlib) and RFC 1951 (deflate, fixed Huffman codes section 3.2.6) |
 | `neoteletext-image::palette` | Table 30 (CLUT 0) |
-| `ttx` iTerm2 output | iTerm2 inline images protocol (OSC 1337 `File=`), as documented by iTerm2; RFC 4648 (base64) |
+| `neottx` iTerm2 output | iTerm2 inline images protocol (OSC 1337 `File=`), as documented by iTerm2; RFC 4648 (base64) |

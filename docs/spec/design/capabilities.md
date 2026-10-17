@@ -76,7 +76,7 @@ Each capability is a Cargo feature of `neoteletext-core`:
 | `animation` | `level25` | The additional flash functions |
 | `modern-classic` | — | The profile: `level15`, `level25`, `render`, `bedstead`, `viewer`, `forms`, `objects`, `drcs` and `bold` |
 
-**The default build has every feature on.** That is the rule of decision E.61, so that a plain dependency works. It is also what `ttx`, the browser and the conformance tests use, because they must show the whole of the standard. A port chooses the profile by turning the defaults off:
+**The default build has every feature on.** That is the rule of decision E.61, so that a plain dependency works. It is also what `neottx`, the browser and the conformance tests use, because they must show the whole of the standard. A port chooses the profile by turning the defaults off:
 
 ```toml
 neoteletext-core = { version = "...", default-features = false, features = ["modern-classic"] }

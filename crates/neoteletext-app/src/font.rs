@@ -1,5 +1,5 @@
 //! The browser's font helpers (REQ-FNT-003, REQ-FNT-009,
-//! `docs/font-security.md` section 3.1). Fonts are read only in a confined
+//! `docs/spec/design/font-security.md` section 3.1). Fonts are read only in a confined
 //! process: the interface sends bytes to a reader and receives a glyph
 //! table, whose shape it checks, and never parses a font itself.
 //!

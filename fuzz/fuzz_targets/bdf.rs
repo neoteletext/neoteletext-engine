@@ -1,6 +1,6 @@
 //! The BDF font reader (REQ-TST-040, REQ-FNT-002): it never panics, and a
 //! font it accepts meets every rule the interface checks again
-//! (`docs/font-security.md` section 3.1).
+//! (`docs/spec/design/font-security.md` section 3.1).
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;

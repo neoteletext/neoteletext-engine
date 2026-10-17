@@ -9,7 +9,7 @@
 //! when the row renderer has filled the port's buffer. Display drivers,
 //! scan-out, buffering strategy and timing stay on the port's side, so
 //! nothing here names a device, a display or a video standard.
-//! The porting guide is `docs/porting.md`.
+//! The porting guide is `docs/spec/design/porting.md`.
 
 use crate::types::Instant;
 

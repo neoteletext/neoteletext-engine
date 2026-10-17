@@ -1,6 +1,6 @@
 # Bedstead: the bundled font
 
-**Status:** Bedstead 3.261 is neoteletext's one bundled font (decision E.72, REQ-FNT-001). It is the default font of every page and the only font of the receiver's own drawing. Every other font is a 12 × 10 BDF file loaded at run time (area FNT) and never kept in this repository.
+**Status:** Bedstead 3.261 is neoteletext's one bundled font (decision E.72, REQ-FNT-001). It is the default font of every page and the only font of the receiver's own drawing. Every other font is a BDF file loaded at run time (area FNT). The only other fonts kept in this repository are the Noto-derived fonts of `third_party/noto/` (decision E.77, REQ-FNT-012), which are not compiled in.
 
 **Export SHA-256:** `5ee6246b7f9bd197f47ce0741ea799a55ac08af775869a08c085803e02a3f14d`, the SHA-256 of `bedstead-glyphs.txt`. `cargo xtask check-bedstead`, run by every gate, fails if the file differs.
 

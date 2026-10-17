@@ -1,5 +1,5 @@
 //! The traceability table (REQ-DOC-003): for every requirement defined in
-//! REQUIREMENTS.md, the source files and test files that name it. A
+//! `docs/spec/requirements/`, the source files and test files that name it. A
 //! requirement no file names is listed as such, so gaps stay visible.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -24,10 +24,50 @@ fn files(dir: &Path, out: &mut Vec<PathBuf>) {
 /// requirement, such as a lint that enforces it.
 const ROOT_FILES: [&str; 3] = ["Cargo.toml", "clippy.toml", "rust-toolchain.toml"];
 /// Documents that record checks by inspection, besides those in docs/.
-const RECORD_FILES: [&str; 5] =
-    ["ARCHITECTURE.md", "THREAT-MODEL.md", "SECURITY.md", "IMPLEMENTATION-LOG.md", "README.md"];
+const RECORD_FILES: [&str; 7] = [
+    "ARCHITECTURE.md",
+    "THREAT-MODEL.md",
+    "SECURITY.md",
+    "IMPLEMENTATION-LOG.md",
+    "README.md",
+    "docs/spec/module-sources.md",
+    "docs/spec/open-questions.md",
+];
 /// The generated table, which must not count as a record of itself.
 const TABLE: &str = "docs/traceability.md";
+/// The requirement files, in the order of the specification's areas
+/// (`docs/spec/requirements/README.md`), so the table keeps that order.
+const REQUIREMENT_FILES: [&str; 26] = [
+    "sec",
+    "gen",
+    "arch",
+    "ecc",
+    "pkt",
+    "acq",
+    "svc",
+    "chr",
+    "l1",
+    "l15",
+    "l25",
+    "obj",
+    "drc",
+    "nav",
+    "rnd",
+    "inp",
+    "slc",
+    "prf",
+    "cli",
+    "tst",
+    "doc",
+    "fsm",
+    "web",
+    "brw",
+    "fnt",
+    "out-of-scope",
+];
+/// The design documents, which record checks by inspection as the other
+/// documents in docs/ do.
+const DESIGN_DIR: &str = "docs/spec/design";
 
 fn identifiers(text: &str) -> BTreeSet<String> {
     let mut found = BTreeSet::new();
@@ -45,7 +85,12 @@ fn identifiers(text: &str) -> BTreeSet<String> {
 
 /// Writes docs/traceability.md.
 pub fn generate(root: &Path) -> Result<(), String> {
-    let spec = fs::read_to_string(root.join("REQUIREMENTS.md")).map_err(|e| e.to_string())?;
+    let mut spec = String::new();
+    for name in REQUIREMENT_FILES {
+        let path = root.join("docs/spec/requirements").join(format!("{name}.md"));
+        spec.push_str(&fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?);
+        spec.push('\n');
+    }
     let mut defined: Vec<(String, String, bool, bool)> = Vec::new();
     let mut lines = spec.lines().peekable();
     while let Some(line) = lines.next() {
@@ -71,13 +116,15 @@ pub fn generate(root: &Path) -> Result<(), String> {
     // The written records of checks by inspection (REQ-DOC-003).
     let mut records: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     let mut record_paths: Vec<PathBuf> = RECORD_FILES.iter().map(|name| root.join(name)).collect();
-    if let Ok(entries) = fs::read_dir(root.join("docs")) {
-        record_paths.extend(
-            entries
-                .flatten()
-                .map(|entry| entry.path())
-                .filter(|path| path.extension().is_some_and(|ext| ext == "md") && !path.ends_with(TABLE)),
-        );
+    for dir in ["docs", DESIGN_DIR] {
+        if let Ok(entries) = fs::read_dir(root.join(dir)) {
+            record_paths.extend(
+                entries
+                    .flatten()
+                    .map(|entry| entry.path())
+                    .filter(|path| path.extension().is_some_and(|ext| ext == "md") && !path.ends_with(TABLE)),
+            );
+        }
     }
     record_paths.sort();
     for path in &record_paths {

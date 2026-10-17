@@ -50,7 +50,7 @@ A screen reader reads the page's codes (REQ-BRW-008), and copying copies the cod
 
 ### 3.4 Fonts from other sites track the viewer
 
-A channel or page naming a font at another address makes the browser contact that address. Its host learns the viewer's network address and when they read the channel. A request on a page's behalf to a third party is what REQ-WEB-014 permanently excludes ("content from a third party loaded into a page"), and what the web-native concept refused (`docs/web-native-concept.md` section 12: "The browser makes no requests to other sites on a page's behalf").
+A channel or page naming a font at another address makes the browser contact that address. Its host learns the viewer's network address and when they read the channel. A request on a page's behalf to a third party is what REQ-WEB-014 permanently excludes ("content from a third party loaded into a page"), and what the web-native concept refused (`prototypes/browser/docs/web-native-concept.md` section 12: "The browser makes no requests to other sites on a page's behalf").
 
 - **The conflict:** the owner requires fonts from any address, named by the channel or the page. **Changed by this analysis:** REQ-WEB-014 is amended to allow exactly this one kind of third-party request, under these limits, in place of a silent exception:
   - a channel's or page's font from another address must be named with its SHA-256 (REQ-FNT-006, REQ-FNT-007), so the request fetches one known file and can carry nothing back to the page;
@@ -96,10 +96,10 @@ The decoder draws the page, so it needs the font's glyphs.
 
 ### 3.10 The converter reads untrusted fonts
 
-`ttx font convert` reads BDF files of any size and origin, for example from a collection downloaded from the internet.
+`neottx font convert` reads BDF files of any size and origin, for example from a collection downloaded from the internet.
 
 - **Answer:** it runs offline, under the sandbox of REQ-SEC-017, with the same bounded, strict reading, and refuses anything that is not an exact conversion (REQ-FNT-010). It is a fuzz target.
-- **Remaining risk:** contained by the sandbox, as for every `ttx` input.
+- **Remaining risk:** contained by the sandbox, as for every `neottx` input.
 
 ### 3.11 The bundled font's provenance
 

@@ -2,7 +2,7 @@
 //! the Glyph Bitmap Distribution Format (BDF) versions 2.1 and 2.2, whose
 //! every character is a 12 by 10 cell named by its Unicode code point.
 //!
-//! The reader faces fonts from the network (`docs/font-security.md` section
+//! The reader faces fonts from the network (`docs/spec/design/font-security.md` section
 //! 3.1), so it is strict and bounded: the file, each line, the properties
 //! and the characters all have limits, every line must be one the profile
 //! names, and the first fault refuses the whole file with its line number.
