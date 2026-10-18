@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compares `ttx text FILE all` with the zvbi oracle on the same T42 files
+"""Compares `neottx text FILE all` with the zvbi oracle on the same T42 files
 (REQ-TST-021). Test code; run on a host with zvbi, see run_zvbi.sh.
 
 What is compared, and why only this:
@@ -7,9 +7,9 @@ What is compared, and why only this:
 - for each page and sub-page both have, the letters and digits of rows 1
   to 24. Row 0 is left out because columns 0 to 7 belong to each receiver
   and the clock rolls. zvbi prints a double-height row's characters again
-  in the row below, where ttx leaves the lower row empty (REQ-L1-008);
+  in the row below, where neottx leaves the lower row empty (REQ-L1-008);
   such rows are counted apart, not as differences. Mosaics, spaces and punctuation are left out
-  because the two print mosaics differently (ttx as Unicode block mosaics,
+  because the two print mosaics differently (neottx as Unicode block mosaics,
   zvbi as approximations), so only text decoding is compared: parity,
   Hamming, character sets and national options.
 
@@ -46,8 +46,8 @@ def main():
     ours, theirs = pages(sys.argv[1]), pages(sys.argv[2])
     our_numbers = {page for page, _ in ours}
     their_numbers = {page for page, _ in theirs}
-    print(f"pages: ttx {len(our_numbers)}, zvbi {len(their_numbers)}, both {len(our_numbers & their_numbers)}")
-    print(f"  only ttx: {' '.join(sorted(our_numbers - their_numbers)) or '-'}")
+    print(f"pages: neottx {len(our_numbers)}, zvbi {len(their_numbers)}, both {len(our_numbers & their_numbers)}")
+    print(f"  only neottx: {' '.join(sorted(our_numbers - their_numbers)) or '-'}")
     print(f"  only zvbi: {' '.join(sorted(their_numbers - our_numbers)) or '-'}")
     common = sorted(set(ours) & set(theirs))
     rows = same = lower_halves = 0
@@ -72,7 +72,7 @@ def main():
     print(f"sub-pages in both: {len(common)}; text rows {rows}, identical {same} ({share:.1f}%);"
           f" double-height lower rows {lower_halves}")
     for (page, sub), index, a, b in differing[:40]:
-        print(f"  {page}:{sub:04X} row {index:2}: ttx {a[:34]!r}")
+        print(f"  {page}:{sub:04X} row {index:2}: neottx {a[:34]!r}")
         print(f"  {' ' * len(page)} {' ' * 4}        zvbi {b[:34]!r}")
     if len(differing) > 40:
         print(f"  ... {len(differing) - 40} more rows differ")

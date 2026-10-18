@@ -1,13 +1,13 @@
 /*
  * Test oracle for REQ-TST-021: decodes a T42 file with the system's zvbi
- * library and prints every cached page in the layout of `ttx text FILE
+ * library and prints every cached page in the layout of `neottx text FILE
  * all`, so the two decoders can be compared. zvbi is run as a separate
  * program at test time (REQ-TST-001); none of its code is copied here.
  *
  * Build: cc -O2 zvbi_pages.c $(pkg-config --cflags --libs zvbi-0.2)
  * Usage: zvbi_pages FILE.t42 [GROUP]
  * GROUP is the default character set group of EN 300 706 Table 32, 0 to
- * 10, as given to `ttx --region`.
+ * 10, as given to `neottx --region`.
  */
 #include <libzvbi.h>
 #include <stdio.h>

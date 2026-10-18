@@ -1,5 +1,5 @@
 //! Presenting a grid for any front end: plain text (REQ-RND-008) and a
-//! palette-index raster (REQ-RND-007), shared by `ttx` and the browser's
+//! palette-index raster (REQ-RND-007), shared by `neottx` and the browser's
 //! decoder process.
 //!
 //! Text: rows are composed with their side panels, G3 characters convert

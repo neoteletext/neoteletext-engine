@@ -1,6 +1,6 @@
 # ETSI EN 300 706 V1.2.1 (2003-04): objects, object pages and the links that carry them (Levels 2.5 and 3.5)
 
-Source: EN_300_706_v1.2.1_Enhanced_Teletext.pdf, in `~/devel/microcontrollers/teletext/specifications/`. **PDF page number = printed ETSI page number** for this file (checked again on pp. 3-9, 22-31, 37-59, 62-95, 104-105, 120-147, 152). "p.N" means both.
+Source: EN_300_706_v1.2.1_Enhanced_Teletext.pdf, in `~/devel/teletext-reference/teletext-standards/`. **PDF page number = printed ETSI page number** for this file (checked again on pp. 3-9, 22-31, 37-59, 62-95, 104-105, 120-147, 152). "p.N" means both.
 Cross-check: clauses 10.5 and 10.6 and Tables 15 and 16 were also read in ETS 300 706 (May 1997), pp. 44-45 and 54-60. They agree in substance with the 2003 text. The only difference found is a label typo in the 1997 DRCS-association figure ("POP Link" where "DRCS Link" is meant). Nothing else in the 1997 edition was compared.
 
 Conventions:

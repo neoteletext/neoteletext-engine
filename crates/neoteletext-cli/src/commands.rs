@@ -1,4 +1,4 @@
-//! The `ttx` commands (REQ-CLI-001).
+//! The `neottx` commands (REQ-CLI-001).
 
 use crate::output::image::{Frame, Scale, iterm2_inline, png, ppm, raster};
 use crate::output::text::{ColourDepth, MosaicStyle, ansi, plain};
@@ -113,7 +113,7 @@ fn sandbox(options: &Options, writable: Option<&Path>) -> Result<(), Failure> {
         .map_err(|message| (exit::INPUT, message))
 }
 
-/// `ttx list`.
+/// `neottx list`.
 pub fn list(options: &Options) -> Result<(), Failure> {
     let mut session = input::load(options)?;
     sandbox(options, None)?;
@@ -182,7 +182,7 @@ fn mosaic_style(legacy: bool) -> MosaicStyle {
     if legacy { MosaicStyle::Legacy } else { MosaicStyle::Unicode16 }
 }
 
-/// `ttx text`.
+/// `neottx text`.
 pub fn text(options: &Options, page: &str, reveal: bool, legacy_mosaics: bool, cells: bool) -> Result<(), Failure> {
     let selection = parse_selection(page)?;
     let mut session = input::load_for(options, selection.page())?;
@@ -219,7 +219,7 @@ fn scale_for(raster_args: &RasterArgs, area: Option<TextArea>, (width, height): 
     Scale { x: factor, y: factor, aspect: raster_args.aspect }
 }
 
-/// `ttx show`.
+/// `neottx show`.
 pub fn show(
     options: &Options,
     page: &str,
@@ -236,7 +236,7 @@ pub fn show(
     let is_terminal = std::io::stdout().is_terminal();
     let (display, reason) = terminal::detect(display(graphics), is_terminal);
     if let (Some(reason), true) = (reason, options.verbose > 0) {
-        eprintln!("ttx: using text output: {reason}");
+        eprintln!("neottx: using text output: {reason}");
     }
     let frame = Frame::still(session.decoder().config(), raster_args.reveal);
     // Measure the terminal before the sandbox closes /dev/tty.
@@ -267,7 +267,7 @@ pub fn show(
     Ok(())
 }
 
-/// `ttx view`.
+/// `neottx view`.
 #[cfg(feature = "view")]
 pub fn view(
     options: &Options,
@@ -291,7 +291,7 @@ pub fn view(
         .map_err(|error| (exit::INPUT, error.to_string()))
 }
 
-/// `ttx view` in a build without the viewer.
+/// `neottx view` in a build without the viewer.
 #[cfg(not(feature = "view"))]
 pub fn view(
     _options: &Options,
@@ -309,7 +309,7 @@ fn page_file_name(key: PageKey, extension: &str) -> String {
     name.bytes().filter(|&byte| is_safe_file_name_byte(byte)).map(char::from).collect()
 }
 
-/// `ttx render`.
+/// `neottx render`.
 pub fn render(
     options: &Options,
     page: &str,
@@ -358,7 +358,7 @@ pub fn render(
     Ok(())
 }
 
-/// `ttx service-info`.
+/// `neottx service-info`.
 pub fn service_info(options: &Options) -> Result<(), Failure> {
     let session = input::load(options)?;
     sandbox(options, None)?;
@@ -395,7 +395,7 @@ pub fn service_info(options: &Options) -> Result<(), Failure> {
     Ok(())
 }
 
-/// `ttx services`: the teletext streams of a transport stream (REQ-INP-007).
+/// `neottx services`: the teletext streams of a transport stream (REQ-INP-007).
 pub fn services(options: &Options) -> Result<(), Failure> {
     let mut input = input::open(options)?;
     let mut reader = input::reader(options, false);
@@ -423,7 +423,7 @@ pub fn services(options: &Options) -> Result<(), Failure> {
     Ok(())
 }
 
-/// `ttx convert`.
+/// `neottx convert`.
 pub fn convert(options: &Options, output: &Path, to: ConvertTarget, page: Option<&str>) -> Result<(), Failure> {
     let filter = match page {
         Some(text) => match parse_selection(text)? {
@@ -439,7 +439,7 @@ pub fn convert(options: &Options, output: &Path, to: ConvertTarget, page: Option
     conversion::convert(options, output, target, filter)
 }
 
-/// `ttx slice`.
+/// `neottx slice`.
 #[cfg(feature = "slice")]
 pub fn slice(options: &Options, output: &Path, preset: &str) -> Result<(), Failure> {
     let counters = neoteletext_app::slice::slice(options, output, preset)?;
@@ -447,20 +447,20 @@ pub fn slice(options: &Options, output: &Path, preset: &str) -> Result<(), Failu
     Ok(())
 }
 
-/// `ttx slice` in a build without the slicer.
+/// `neottx slice` in a build without the slicer.
 #[cfg(not(feature = "slice"))]
 pub fn slice(_options: &Options, _output: &Path, _preset: &str) -> Result<(), Failure> {
     Err(neoteletext_app::not_in_build("raw video slicing", "slice"))
 }
 
-/// `ttx fetch`, the fetcher process of live mode (REQ-SEC-018), which
-/// `ttx` starts by running itself again.
+/// `neottx fetch`, the fetcher process of live mode (REQ-SEC-018), which
+/// `neottx` starts by running itself again.
 #[cfg(feature = "live")]
 pub fn fetch(address: &str, no_sandbox: bool, allow_local: &[IpAddr]) -> Result<(), Failure> {
     neoteletext_app::fetch::run(address, no_sandbox, false, allow_local)
 }
 
-/// `ttx fetch` in a build without live feeds.
+/// `neottx fetch` in a build without live feeds.
 #[cfg(not(feature = "live"))]
 pub fn fetch(_address: &str, _no_sandbox: bool, _allow_local: &[IpAddr]) -> Result<(), Failure> {
     Err(neoteletext_app::not_in_build("the fetcher process of live mode", "live"))
@@ -479,7 +479,7 @@ fn descriptor_service_names(_path: &Path) -> Result<Vec<Vec<u8>>, Failure> {
     Err(neoteletext_app::not_in_build("service descriptors (--descriptor)", "live"))
 }
 
-/// `ttx check`: the page checker (REQ-CLI-006). Exit status 4 on errors.
+/// `neottx check`: the page checker (REQ-CLI-006). Exit status 4 on errors.
 pub fn check(files: &[PathBuf], descriptor: Option<&Path>) -> Result<(), Failure> {
     use neoteletext_formats::check::{CheckOptions, Severity, check_page};
     let services: Vec<Vec<u8>> = match descriptor {

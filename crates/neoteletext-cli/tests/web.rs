@@ -35,8 +35,8 @@ fn server() -> Option<Server> {
     Some(Server { child, port })
 }
 
-fn ttx(arguments: &[&str]) -> (bool, String, String) {
-    let output = Command::new(env!("CARGO_BIN_EXE_ttx")).args(arguments).output().expect("run ttx");
+fn neottx(arguments: &[&str]) -> (bool, String, String) {
+    let output = Command::new(env!("CARGO_BIN_EXE_neottx")).args(arguments).output().expect("run neottx");
     (
         output.status.success(),
         String::from_utf8_lossy(&output.stdout).into_owned(),
@@ -48,8 +48,8 @@ fn ttx(arguments: &[&str]) -> (bool, String, String) {
 fn page_is_fetched_from_a_web_service() {
     let Some(server) = server() else { return };
     let url = format!("http://127.0.0.1:{}/service.json", server.port);
-    let (ok, text, errors) = ttx(&["text", &url, "100", "--allow-local", "127.0.0.1", "--duration", "15"]);
-    assert!(ok, "ttx failed: {errors}");
+    let (ok, text, errors) = neottx(&["text", &url, "100", "--allow-local", "127.0.0.1", "--duration", "15"]);
+    assert!(ok, "neottx failed: {errors}");
     assert!(text.contains("NEOTELETEXT TEST SERVICE"), "{text}");
     assert!(text.contains("Contact form"), "{text}");
     // The TTI Link Extension row drawn from the LN lines (REQ-NAV-011).
@@ -61,7 +61,7 @@ fn page_is_fetched_from_a_web_service() {
 fn local_addresses_are_blocked_unless_named() {
     let Some(server) = server() else { return };
     let url = format!("http://127.0.0.1:{}/service.json", server.port);
-    let (ok, _, errors) = ttx(&["text", &url, "100", "--duration", "5"]);
+    let (ok, _, errors) = neottx(&["text", &url, "100", "--duration", "5"]);
     assert!(!ok);
     assert!(errors.contains("Blocked"), "REQ-SEC-006: {errors}");
 }
@@ -70,12 +70,12 @@ fn local_addresses_are_blocked_unless_named() {
 fn faults_do_not_crash_the_receiver() {
     let Some(server) = server() else { return };
     for fault in ["drop", "big", "media", "loop", "ambiguous"] {
-        // A descriptor address that misbehaves: ttx must fail cleanly.
+        // A descriptor address that misbehaves: neottx must fail cleanly.
         let url = format!("http://127.0.0.1:{}/fault/{fault}", server.port);
-        let output = Command::new(env!("CARGO_BIN_EXE_ttx"))
+        let output = Command::new(env!("CARGO_BIN_EXE_neottx"))
             .args(["text", &url, "100", "--allow-local", "127.0.0.1", "--duration", "5"])
             .output()
-            .expect("run ttx");
+            .expect("run neottx");
         assert_eq!(output.status.code(), Some(1), "fault {fault}: {}", String::from_utf8_lossy(&output.stderr));
     }
 }
@@ -88,7 +88,7 @@ fn viewer_fills_and_submits_a_form() {
     let output = Command::new("python3")
         .arg("-I")
         .arg(script)
-        .arg(env!("CARGO_BIN_EXE_ttx"))
+        .arg(env!("CARGO_BIN_EXE_neottx"))
         .arg(server.port.to_string())
         .output()
         .expect("run the viewer driver");
@@ -105,7 +105,7 @@ fn viewer_works_offline_and_recovers() {
     let output = match Command::new("python3")
         .arg("-I")
         .arg(directory.join("drive_offline.py"))
-        .arg(env!("CARGO_BIN_EXE_ttx"))
+        .arg(env!("CARGO_BIN_EXE_neottx"))
         .arg(directory.join("server.py"))
         .output()
     {

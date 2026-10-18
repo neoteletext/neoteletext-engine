@@ -1,4 +1,4 @@
-//! The interactive viewer, `ttx view` (REQ-CLI-004, decision 19 of
+//! The interactive viewer, `neottx view` (REQ-CLI-004, decision 19 of
 //! IMPLEMENTATION-LOG.md): the core viewer machine driven by terminal keys,
 //! with forms (Appendix C, REQ-NAV-009), the TTI Link Extension (Appendix
 //! E, REQ-NAV-011 and 012) and the security confirmations of area SEC.
@@ -224,7 +224,7 @@ pub fn run(
                 | Notice::Bundle(_)
                 | Notice::Aliases(_)
                 | Notice::Refresh(_)
-                // Fonts are the browser's (decision E.72 item 9); `ttx`
+                // Fonts are the browser's (decision E.72 item 9); `neottx`
                 // draws in Bedstead.
                 | Notice::ChannelFont(..) => {}
                 // Only a browser asks the fetcher to stop at other sites.
@@ -406,7 +406,7 @@ pub fn run(
     };
     drop(guard);
     for message in messages {
-        eprintln!("ttx: {message}");
+        eprintln!("neottx: {message}");
     }
     result
 }

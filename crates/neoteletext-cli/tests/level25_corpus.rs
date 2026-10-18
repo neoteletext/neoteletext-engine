@@ -33,21 +33,21 @@ fn corpus_file(name: &str) -> Option<PathBuf> {
     }
 }
 
-/// Row `row` of page 341 as `ttx text` writes it at a level.
+/// Row `row` of page 341 as `neottx text` writes it at a level.
 fn row(path: &PathBuf, level: &str, row: usize) -> Vec<char> {
     page_row(path, "341", level, row)
 }
 
-/// Row `row` of a page as `ttx text` writes it at a level.
+/// Row `row` of a page as `neottx text` writes it at a level.
 fn page_row(path: &PathBuf, page: &str, level: &str, row: usize) -> Vec<char> {
-    let output = Command::new(env!("CARGO_BIN_EXE_ttx"))
+    let output = Command::new(env!("CARGO_BIN_EXE_neottx"))
         .arg("text")
         .arg(path)
         .arg(page)
         .args(["--level", level])
         .output()
-        .expect("run ttx");
-    assert!(output.status.success(), "ttx failed: {}", String::from_utf8_lossy(&output.stderr));
+        .expect("run neottx");
+    assert!(output.status.success(), "neottx failed: {}", String::from_utf8_lossy(&output.stderr));
     let text = String::from_utf8_lossy(&output.stdout).into_owned();
     text.lines().nth(row).unwrap_or_default().chars().collect()
 }

@@ -90,7 +90,7 @@ pub struct Config {
     /// channel's content (REQ-WEB-021). An upgrade from `http` to `https`
     /// on the same host and folder, between the default ports, keeps the
     /// channel. For a service opened by its descriptor, the channel is its
-    /// origin. Off by default, which keeps `ttx`'s behaviour.
+    /// origin. Off by default, which keeps `neottx`'s behaviour.
     pub redirects_within_channel: bool,
 }
 

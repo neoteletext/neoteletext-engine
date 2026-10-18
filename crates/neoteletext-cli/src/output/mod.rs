@@ -1,4 +1,4 @@
-//! Output adapters of `ttx` (layer L5).
+//! Output adapters of `neottx` (layer L5).
 
 pub mod cells;
 pub mod image;

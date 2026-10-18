@@ -18,7 +18,7 @@
 //!   REQ-INP-019).
 //! - [`detect`]: format detection and the [`detect::AutoReader`]
 //!   (REQ-INP-005), over the formats compiled in.
-//! - `check` (feature `check`): the TTI page checker behind `ttx check`
+//! - `check` (feature `check`): the TTI page checker behind `neottx check`
 //!   (REQ-CLI-006).
 //! - `bdf` (feature `bdf`): the strict reader of the 12 by 10 BDF fonts the
 //!   browser loads (REQ-FNT-002). Fonts are not teletext input, but they

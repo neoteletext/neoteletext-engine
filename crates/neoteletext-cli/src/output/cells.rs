@@ -1,4 +1,4 @@
-//! The cell dump of `ttx text --cells`, a test interface for the zvbi
+//! The cell dump of `neottx text --cells`, a test interface for the zvbi
 //! oracle at Levels 2.5 and 3.5 (REQ-TST-023): every cell of the main page
 //! area with its character, Colour Map indices, size and attributes, so
 //! `tests/oracles/compare_cells.py` can compare it cell by cell with
@@ -9,7 +9,7 @@
 //! code points:
 //! - `S`, a space or nothing in the foreground;
 //! - `U+XXXX`, a G0 or G2 character, precomposed with its mark where
-//!   Unicode allows, as `ttx text` writes it;
+//!   Unicode allows, as `neottx text` writes it;
 //! - `M` and the two hex digits of the block pattern, then `c` or `s`;
 //! - `G3:XX`, a G3 character by its code;
 //! - `Dn` (normal) or `Dg` (global), the sub-table in hex, `:`, and the

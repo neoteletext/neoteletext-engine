@@ -4,19 +4,19 @@ Purpose: facts for the requirements of a C teletext receiver that slices raw sam
 Everything below cites a source. Anything marked **UNVERIFIED** could not be confirmed in the local documents.
 Arithmetic that I derived is marked **DERIVED** and shows its working.
 
-## Source key (all paths relative to `/Users/andrewstuart/devel/microcontrollers/teletext/`)
+## Source key (all paths relative to `/Users/andrewstuart/devel/teletext-reference/`)
 
 | Key | Document | Page convention used |
 |---|---|---|
-| EN706 | `specifications/EN_300_706_v1.2.1_Enhanced_Teletext.pdf` (ETSI EN 300 706 V1.2.1, 2003-04) | printed ETSI page number |
-| ETS706-97 | `specifications/ETS_300_706_Enhanced_Teletext_1997.pdf` | cross-check only |
-| BT653 | `specifications/ITU-R_BT.653-3_Teletext_Systems_1998.pdf` (Rec. ITU-R BT.653-3) | printed page (PDF page in brackets) |
-| SAA5231 | `philips-saa5231/SAA5231_Teletext_Video_Processor_VIP2_Philips.pdf` (Product spec, Nov 1986) | printed page |
-| SDA5231 | `siemens-sda5231/SDA5231-5_Data_Slicer_for_Teletext_Siemens.pdf` (Preliminary Data; scanned, no text layer) | printed page (PDF page = printed − 4) |
-| SAA5246A | `philips-saa5246a/PHILIPS-SAA5246A-INTEGRATED-VIP-TELETEXT-(IVT1.0)-HANDBOOK.PDF` (Jan 1993) | printed page |
-| SAA5030 | `databooks/Philips_1979_ICs_for_Digital_Systems_in_Radio_and_TV_part6b.pdf`, SAA5030/SAA5040 sheets | PDF page |
-| TPU2735 | `itt-tpu2735/TPU2735_Teletext_Processor_Unit_ITT.pdf` | printed page |
-| GEN | `TELETEXT-GENERATION-ANALYSIS.md` (existing analysis written from the generation side) | section |
+| EN706 | `teletext-standards/EN_300_706_v1.2.1_Enhanced_Teletext.pdf` (ETSI EN 300 706 V1.2.1, 2003-04) | printed ETSI page number |
+| ETS706-97 | `teletext-standards/ETS_300_706_Enhanced_Teletext_1997.pdf` | cross-check only |
+| BT653 | `teletext-standards/ITU-R_BT.653-3_Teletext_Systems_1998.pdf` (Rec. ITU-R BT.653-3) | printed page (PDF page in brackets) |
+| SAA5231 | `teletext-fonts/manufacturers/philips/datasheets/saa5231/SAA5231_Teletext_Video_Processor_VIP2_Philips.pdf` (Product spec, Nov 1986) | printed page |
+| SDA5231 | `teletext-fonts/manufacturers/siemens-itt-micronas/datasheets/sda5231/SDA5231-5_Data_Slicer_for_Teletext_Siemens.pdf` (Preliminary Data; scanned, no text layer) | printed page (PDF page = printed − 4) |
+| SAA5246A | `teletext-fonts/manufacturers/philips/datasheets/saa5246a/PHILIPS-SAA5246A-INTEGRATED-VIP-TELETEXT-(IVT1.0)-HANDBOOK.PDF` (Jan 1993) | printed page |
+| SAA5030 | `teletext-fonts/manufacturers/philips/datasheets/databooks/Philips_1979_ICs_for_Digital_Systems_in_Radio_and_TV_part6b.pdf`, SAA5030/SAA5040 sheets | PDF page |
+| TPU2735 | `teletext-fonts/manufacturers/siemens-itt-micronas/datasheets/tpu2735/TPU2735_Teletext_Processor_Unit_ITT.pdf` | printed page |
+| GEN | `~/devel/tellyboy/docs/TELETEXT-GENERATION-ANALYSIS.md` (existing analysis written from the generation side) | section |
 
 ---
 

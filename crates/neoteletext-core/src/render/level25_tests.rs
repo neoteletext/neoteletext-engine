@@ -18,7 +18,6 @@ use crate::colour::SidePanels;
 use crate::consts::{G3_CODES, G3_FIRST_CODE, PAGE_WIDTH};
 use crate::drcs::DrcsPattern;
 use crate::level1::CellAttributes;
-#[cfg(all(feature = "bold", feature = "italic"))]
 use crate::level1::FontStyle;
 use crate::types::DrcsCharacter;
 use std::vec;

@@ -7,12 +7,12 @@ members = [
     "crates/neoteletext-web",
     "crates/neoteletext-image",
     "crates/neoteletext-app",
-    "crates/neoteletext-browser",
     "crates/neoteletext-cli",
-    "crates/neoteletext-gui",
     "xtask",
 ]
 default-members = ["crates/neoteletext-cli"]
+# The browser prototype is a workspace of its own (prototypes/browser).
+exclude = ["prototypes"]
 
 [workspace.package]
 version = "0.1.0"
@@ -32,7 +32,6 @@ neoteletext-slicer = { path = "crates/neoteletext-slicer" }
 neoteletext-web = { path = "crates/neoteletext-web", default-features = false }
 neoteletext-image = { path = "crates/neoteletext-image" }
 neoteletext-app = { path = "crates/neoteletext-app", default-features = false }
-neoteletext-browser = { path = "crates/neoteletext-browser" }
 # Decision E.38: the only external crate a microcontroller crate may use.
 embedded-io = { version = "0.7.1", default-features = false }
 
@@ -62,3 +61,11 @@ codegen-units = 1
 
 [profile.dev]
 panic = "abort"
+
+# Fast rebuilds while behaviour is being shaped (scripts/try.sh): release
+# optimisation without link-time optimisation, built incrementally.
+[profile.iterate]
+inherits = "release"
+lto = false
+codegen-units = 16
+incremental = true

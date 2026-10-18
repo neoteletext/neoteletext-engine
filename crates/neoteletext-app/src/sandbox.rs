@@ -1,9 +1,9 @@
 //! Self-sandboxing (REQ-SEC-017, decision E.33 layer 5).
 //!
-//! After opening its inputs and outputs, `ttx` restricts itself so that it
+//! After opening its inputs and outputs, `neottx` restricts itself so that it
 //! cannot open other files, start programs, or use the network outside web
 //! mode. Linux uses Landlock and a seccomp filter (Phase 1). Other systems
-//! are Phase 2: `ttx` says so and continues (decision 15 of
+//! are Phase 2: `neottx` says so and continues (decision 15 of
 //! IMPLEMENTATION-LOG.md).
 
 use std::path::Path;
@@ -23,7 +23,7 @@ pub struct Policy<'a> {
 /// Applies the sandbox. `allow_unsandboxed` is `--no-sandbox`.
 pub fn apply(policy: Policy<'_>, allow_unsandboxed: bool) -> Result<(), String> {
     if allow_unsandboxed {
-        eprintln!("ttx: running without a sandbox (--no-sandbox)");
+        eprintln!("neottx: running without a sandbox (--no-sandbox)");
         return Ok(());
     }
     platform::apply(policy)
@@ -91,7 +91,7 @@ mod platform {
     fn seccomp(policy: Policy<'_>) -> Result<(), String> {
         let Some(arch) = target_arch() else {
             eprintln!(
-                "ttx: note: no seccomp filter exists for this architecture; only the Landlock sandbox applies (REQ-SEC-017)"
+                "neottx: note: no seccomp filter exists for this architecture; only the Landlock sandbox applies (REQ-SEC-017)"
             );
             return Ok(());
         };
@@ -151,13 +151,13 @@ mod platform {
         let network = if policy.network { "" } else { " and the network" };
         let _ = policy.readable;
         eprintln!(
-            "ttx: note: self-sandboxing is not implemented on this system yet (REQ-SEC-017 Phase 2); access to {files}{network} is not blocked"
+            "neottx: note: self-sandboxing is not implemented on this system yet (REQ-SEC-017 Phase 2); access to {files}{network} is not blocked"
         );
         Ok(())
     }
 }
 
-/// A helper process of the browser (REQ-SEC-026, `docs/desktop-browser.md`
+/// A helper process of the browser (REQ-SEC-026, `prototypes/browser/docs/desktop-browser.md`
 /// section 3.1).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Helper {
@@ -169,7 +169,7 @@ pub enum Helper {
 
 /// A command that starts `program` as a helper. On macOS the helper is
 /// confined from its first instruction by a Seatbelt profile applied by
-/// `sandbox-exec` (decision recorded in `docs/macos-build-decisions.md`),
+/// `sandbox-exec` (decision recorded in `prototypes/browser/docs/macos-build-decisions.md`),
 /// and the second value is true: the helper is told not to apply its
 /// own. Elsewhere the helper applies its own sandbox (Landlock and
 /// seccomp on Linux) and the second value is false.

@@ -15,14 +15,15 @@ pub enum ScaleError {
 /// The output size for an input size, factors and aspect correction.
 #[must_use]
 pub fn scaled_size(width: usize, height: usize, x_factor: usize, y_factor: usize, aspect: bool) -> (usize, usize) {
-    let out_height = height.saturating_mul(y_factor);
-    let out_height = if aspect {
-        // REQ-RND-004: pixels about 1.2 times taller than wide.
-        out_height.saturating_mul(ASPECT_NUMERATOR) / ASPECT_DENOMINATOR
+    let out_width = width.saturating_mul(x_factor);
+    let out_width = if aspect {
+        // REQ-RND-004: on a 4:3 display a pixel is 16/13 times wider than
+        // tall, so the width is stretched.
+        out_width.saturating_mul(ASPECT_NUMERATOR) / ASPECT_DENOMINATOR
     } else {
-        out_height
+        out_width
     };
-    (width.saturating_mul(x_factor), out_height)
+    (out_width, height.saturating_mul(y_factor))
 }
 
 /// Scales an image of single-byte pixels (palette indices) by nearest
@@ -52,7 +53,8 @@ pub fn scale_indices(
         let target = out.get_mut(oy.saturating_mul(out_width)..oy.saturating_add(1).saturating_mul(out_width));
         let Some(target) = target else { return Err(ScaleError::BufferTooSmall) };
         for (ox, pixel) in target.iter_mut().enumerate() {
-            *pixel = source.get(ox.checked_div(x_factor).unwrap_or(0)).copied().unwrap_or(0);
+            let sx = ox.saturating_mul(width).checked_div(out_width).unwrap_or(0).min(width.saturating_sub(1));
+            *pixel = source.get(sx).copied().unwrap_or(0);
         }
     }
     Ok((out_width, out_height))
@@ -79,7 +81,7 @@ pub fn scale_rgb_smoothed(
         return Err(ScaleError::BufferTooSmall);
     }
     let sample = |x: usize, y: usize, channel: usize| -> u16 {
-        let sx = x.checked_div(x_factor).unwrap_or(0).min(width.saturating_sub(1));
+        let sx = x.saturating_mul(width).checked_div(out_width).unwrap_or(0).min(width.saturating_sub(1));
         let sy = y.saturating_mul(height).checked_div(out_height).unwrap_or(0).min(height.saturating_sub(1));
         let index = sy.saturating_mul(width).saturating_add(sx).saturating_mul(3).saturating_add(channel);
         u16::from(input.get(index).copied().unwrap_or(0))
@@ -114,7 +116,11 @@ mod tests {
         let mut out = [0u8; 16];
         assert_eq!(scale_indices(&input, 2, 2, 2, 2, false, &mut out).unwrap(), (4, 4));
         assert_eq!(&out[..8], &[1, 1, 2, 2, 1, 1, 2, 2]);
-        assert_eq!(scaled_size(480, 500, 1, 1, true), (480, 600));
+        // REQ-RND-004: the width is stretched by 16/13 for a 4:3 display.
+        assert_eq!(scaled_size(480, 500, 1, 1, true), (590, 500));
+        let mut stretched = [0u8; 4 * 2];
+        assert_eq!(scale_indices(&input, 2, 2, 2, 1, true, &mut stretched).unwrap(), (4, 2));
+        assert_eq!(&stretched[..4], &[1, 1, 2, 2], "columns map back to the source");
         assert_eq!(scale_indices(&input, 2, 2, 0, 1, false, &mut out), Err(ScaleError::ZeroFactor));
     }
 }

@@ -20,15 +20,24 @@
 
 mod common;
 
-use common::{display_page, drcs_page, link, local_data, null_link, ptu, set_position, x27};
+use common::{display_page, local_data, set_position};
+#[cfg(not(feature = "drcs-multicolour"))]
+use common::{drcs_page, link, null_link, ptu, x27};
+#[cfg(not(feature = "drcs-multicolour"))]
 use neoteletext_core::config::PresentationLevel;
+#[cfg(not(feature = "drcs-multicolour"))]
 use neoteletext_core::consts::{
     DRCS_PTU_BYTES, DRCS_PTUS, LINK_FUNCTION_DRCS, LINK_FUNCTION_GDRCS, LINK_FUNCTION_GPOP, LINK_FUNCTION_POP,
 };
 use neoteletext_core::packet::{Packet, TripletFunction};
+#[cfg(not(feature = "drcs-multicolour"))]
 use neoteletext_core::types::{DrcsCharacter, DrcsTable};
 
+// Only the DRCS tests below use these, so only builds without
+// multicolour DRCS have them.
+#[cfg(not(feature = "drcs-multicolour"))]
 const L35: PresentationLevel = PresentationLevel::Level35;
+#[cfg(not(feature = "drcs-multicolour"))]
 /// The DRCS page of these tests.
 const DRCS: u16 = 0x1B0;
 
@@ -37,6 +46,7 @@ fn page(rows: &[(u8, &[u8])], local: &[TripletFunction]) -> Vec<Packet> {
     display_page(0, rows, local_data(local))
 }
 
+#[cfg(not(feature = "drcs-multicolour"))]
 /// Page 100 with a DRCS link and one DRCS character at row 1, column 0,
 /// then the DRCS page, with mode codes when given.
 fn drcs_stream(modes: Option<[u8; DRCS_PTUS]>) -> Vec<Packet> {
@@ -58,6 +68,7 @@ fn drcs_stream(modes: Option<[u8; DRCS_PTUS]>) -> Vec<Packet> {
     packets
 }
 
+#[cfg(not(feature = "drcs-multicolour"))]
 fn first_drcs() -> DrcsCharacter {
     DrcsCharacter { table: DrcsTable::Normal, subtable: 0, character: 0 }
 }

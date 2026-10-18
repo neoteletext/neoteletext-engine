@@ -138,7 +138,7 @@ epic(
 epic(
     "NAV", "Tabs and navigation history",
     ["desktop-browser", "area/navigation", "security"], P3,
-    "The per-tab navigation controller and tab lifecycle of docs/desktop-browser.md section 6, shared by ttx view and the desktop app.",
+    "The per-tab navigation controller and tab lifecycle of docs/desktop-browser.md section 6, shared by neottx view and the desktop app.",
     [
         "Chromium: NavigationController in the browser process; a flat list of entries, pending index −1 or an existing entry, forward entries pruned on a new commit; "
         "replacement for location.replace and client redirects; server redirects never commit; about 50 entries; back-forward cache 600 s, least recently used out. "

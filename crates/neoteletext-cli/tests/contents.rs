@@ -1,12 +1,12 @@
-//! `ttx contents` (REQ-CLI-008): a channel's `contents.txt` written from a
+//! `neottx contents` (REQ-CLI-008): a channel's `contents.txt` written from a
 //! folder of page files, which the contents reader of REQ-WEB-025 accepts.
 #![allow(missing_docs)]
 
 use std::path::Path;
 use std::process::{Command, Output};
 
-fn ttx(arguments: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_ttx")).args(arguments).output().expect("run ttx")
+fn neottx(arguments: &[&str]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_neottx")).args(arguments).output().expect("run neottx")
 }
 
 fn write(folder: &Path, name: &str, text: &str) {
@@ -21,9 +21,9 @@ fn a_folder_of_page_files_gives_its_contents() {
     write(&folder, "100.tti", "DE,News index\nPN,10000\nOL,1,INDEX\n");
     write(&folder, "101.tti", "PN,10100\nOL,1,\nOL,2,  Top story today\n");
     write(&folder, "301.tti", "PN,30100\nOL,1,SPORT\n");
-    // Page 400 as T42, converted by ttx itself.
+    // Page 400 as T42, converted by neottx itself.
     write(&folder, "400.source", "PN,40000\nOL,1,WEATHER\n");
-    let converted = ttx(&[
+    let converted = neottx(&[
         "convert",
         folder.join("400.source").to_str().unwrap(),
         "--format",
@@ -39,7 +39,7 @@ fn a_folder_of_page_files_gives_its_contents() {
     write(&folder.join("sub"), "500.tti", "PN,50000\nOL,1,ELSEWHERE\n");
     write(&folder, "600.tti", "[% INCLUDE header %]\n");
 
-    let output = ttx(&["contents", folder.to_str().unwrap()]);
+    let output = neottx(&["contents", folder.to_str().unwrap()]);
     assert_eq!(output.status.code(), Some(4), "a file was skipped");
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("600.tti") && stderr.contains("skipped"), "{stderr}");

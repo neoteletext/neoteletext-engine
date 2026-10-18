@@ -40,6 +40,7 @@ __pycache__/
 
 # Fuzzing output (fuzz/.gitignore covers the fuzz workspace itself)
 /fuzz/target/
+/prototypes/browser/target/
 /fuzz/corpus/
 /fuzz/artifacts/
 /fuzz/coverage/

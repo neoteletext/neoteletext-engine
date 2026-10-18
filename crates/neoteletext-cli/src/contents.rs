@@ -1,4 +1,4 @@
-//! `ttx contents FOLDER` (REQ-CLI-008, decision E.70 item 9): writes a
+//! `neottx contents FOLDER` (REQ-CLI-008, decision E.70 item 9): writes a
 //! channel's `contents.txt` from the author's own folder of page files.
 //!
 //! The folder is listed and its files read and decoded first; then the
@@ -94,7 +94,7 @@ fn description(bytes: &[u8]) -> Option<String> {
 /// when it cannot be read or fails the check for its format
 /// (REQ-WEB-027).
 fn load(options: &Options, path: &Path, file: ChannelFile, modified: Option<SystemTime>) -> Option<Loaded> {
-    let report = |why: &str| eprintln!("ttx: {}: skipped: {why}", path.display());
+    let report = |why: &str| eprintln!("neottx: {}: skipped: {why}", path.display());
     let bytes = match std::fs::read(path) {
         Ok(bytes) => bytes,
         Err(error) => {
@@ -127,7 +127,7 @@ fn load(options: &Options, path: &Path, file: ChannelFile, modified: Option<Syst
     }
 }
 
-/// `ttx contents FOLDER`.
+/// `neottx contents FOLDER`.
 pub fn contents(options: &Options) -> Result<(), Failure> {
     let folder = Path::new(&options.input);
     let listing = std::fs::read_dir(folder).map_err(|error| (exit::INPUT, format!("{}: {error}", folder.display())))?;
@@ -168,7 +168,7 @@ pub fn contents(options: &Options) -> Result<(), Failure> {
         };
         for page in wanted {
             if !file.session.pages().iter().any(|stored| stored.key.address == page) {
-                eprintln!("ttx: {}: skipped: it does not hold its page", file.path.display());
+                eprintln!("neottx: {}: skipped: it does not hold its page", file.path.display());
                 skipped += 1;
                 continue;
             }

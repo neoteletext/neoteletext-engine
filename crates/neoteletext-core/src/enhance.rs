@@ -109,6 +109,13 @@ enum Flash {
     },
 }
 
+/// Whether the non-spacing attribute triplets (Table 27) take effect: the
+/// Level 2.5 and 3.5 attributes that change the display without using a
+/// character cell, unlike the Level 1 spacing attributes. Off by default
+/// (feature `nonspacing-attributes`, the owner's choice); when off, each
+/// sets only the column, as reserved data does.
+const ATTRIBUTES: bool = cfg!(feature = "nonspacing-attributes");
+
 /// Level 1 Flash at Levels 2.5 and 3.5: slow, normal mode (decision E.48).
 const LEVEL_1_FLASH: Flash = Flash::On { mode: FlashMode::Normal, rate: Rate::Fixed(FlashRate::Slow), start: 0 };
 
@@ -1121,25 +1128,25 @@ impl<'a, 's> Walker<'a, 's> {
         let mut change = AttrChange::default();
         let mut extra_rows = 0;
         let character = match function {
-            TripletFunction::ForegroundColour { colour, .. } if colour.is_defined() => {
+            TripletFunction::ForegroundColour { colour, .. } if ATTRIBUTES && colour.is_defined() => {
                 change.foreground = Some(colour.index);
                 None
             }
-            TripletFunction::BackgroundColour { colour, .. } if colour.is_defined() => {
+            TripletFunction::BackgroundColour { colour, .. } if ATTRIBUTES && colour.is_defined() => {
                 change.background = Some(colour.index);
                 None
             }
-            TripletFunction::AdditionalFlash { mode, rate, reserved, .. } => {
+            TripletFunction::AdditionalFlash { mode, rate, reserved, .. } if ATTRIBUTES => {
                 // The phases count from the absolute column, set below.
                 let Some(flash) = flash_of(mode, rate, reserved, 0) else { return };
                 change.flash = Some(flash);
                 None
             }
-            TripletFunction::DisplayAttributes { attributes, .. } => {
+            TripletFunction::DisplayAttributes { attributes, .. } if ATTRIBUTES => {
                 change.display = Some(attributes);
                 None
             }
-            TripletFunction::FontStyle { style, .. } if level_35 => {
+            TripletFunction::FontStyle { style, .. } if ATTRIBUTES && level_35 => {
                 change.font = Some(font_of(style));
                 extra_rows = style.rows;
                 None

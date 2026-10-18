@@ -1,6 +1,6 @@
 //! The framed messages between the fetcher and decoder processes
 //! (REQ-SEC-018, decision 26 of IMPLEMENTATION-LOG.md), and between the
-//! browser's interface process and both (`docs/desktop-browser.md`
+//! browser's interface process and both (`prototypes/browser/docs/desktop-browser.md`
 //! section 3.4). Each frame is a kind byte, a 32-bit big-endian length and
 //! the payload. Both sides bound the length, parse strictly and reject
 //! unknown kinds.
@@ -119,7 +119,7 @@ pub enum Frame {
     /// Decoder to interface: what the page shows and where the viewer is.
     Status(PageStatus),
     /// Decoder to interface: a link on the page leads to this address
-    /// (`docs/web-native-concept.md` section 3), for the tuning screen.
+    /// (`prototypes/browser/docs/web-native-concept.md` section 3), for the tuning screen.
     Visit(String),
     /// Interface to fetcher: fetch the channel's `contents.txt`
     /// (REQ-BRW-009).
@@ -238,7 +238,7 @@ pub enum ContentsReply {
 pub const MAX_CONTENTS: usize = 64 * 1024;
 
 /// A key or character from the interface. Which of them the decoder acts
-/// on depends on whether a form has the focus, as in `ttx view`.
+/// on depends on whether a form has the focus, as in `neottx view`.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum UserInput {
     /// A digit key, 0 to 9.
@@ -281,6 +281,8 @@ pub enum UserInput {
     Home,
     /// Underline every link on the page, or stop (concept decision 11).
     ShowLinks,
+    /// Character rounding on or off (REQ-RND-012), the viewer's setting.
+    Rounding(bool),
 }
 
 /// A rendered page: palette indices row by row and the palette, opaque
@@ -310,7 +312,7 @@ pub struct PageStatus {
     pub status: [u8; 8],
     /// A form on the page has the focus.
     pub form: bool,
-    /// Page catching is on (`docs/web-native-concept.md` section 5), and
+    /// Page catching is on (`prototypes/browser/docs/web-native-concept.md` section 5), and
     /// this is where the selected link leads, as the decoder sees it;
     /// empty when catching is off.
     pub link: String,
@@ -936,6 +938,7 @@ fn input_code(input: UserInput) -> (u8, u32) {
         UserInput::Char(character) => (17, u32::from(character)),
         UserInput::Home => (18, 0),
         UserInput::ShowLinks => (19, 0),
+        UserInput::Rounding(on) => (20, u32::from(on)),
     }
 }
 
@@ -963,6 +966,11 @@ fn user_input(code: u8, value: u32) -> Option<UserInput> {
         17 => UserInput::Char(char::from_u32(value).filter(|character| !character.is_control())?),
         18 => UserInput::Home,
         19 => UserInput::ShowLinks,
+        20 => UserInput::Rounding(match value {
+            0 => false,
+            1 => true,
+            _ => return None,
+        }),
         _ => return None,
     })
 }
@@ -1070,7 +1078,7 @@ pub fn read(input: &mut dyn Read) -> io::Result<Option<Frame>> {
     Ok(Some(frame))
 }
 
-/// The frames of the browser's interface process (`docs/desktop-browser.md`
+/// The frames of the browser's interface process (`prototypes/browser/docs/desktop-browser.md`
 /// section 3.4), read as strictly as the rest.
 fn browser_frame(kind: u8, payload: &[u8]) -> io::Result<Frame> {
     let invalid = || io::Error::other("malformed frame");

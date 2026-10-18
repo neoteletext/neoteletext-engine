@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Drives `ttx view` through a pseudo-terminal against the test server:
+"""Drives `neottx view` through a pseudo-terminal against the test server:
 index, link row, form entry, plain-HTTP confirmation, submission and the
 response page (REQ-NAV-009, REQ-WEB-011, REQ-SEC-008). Test code.
 
@@ -15,11 +15,11 @@ import time
 
 
 def main():
-    ttx, port = sys.argv[1], sys.argv[2]
+    neottx, port = sys.argv[1], sys.argv[2]
     pid, fd = pty.fork()
     if pid == 0:
         os.environ["TERM"] = "xterm-256color"
-        os.execv(ttx, ["ttx", "view", f"http://127.0.0.1:{port}/service.json",
+        os.execv(neottx, ["neottx", "view", f"http://127.0.0.1:{port}/service.json",
                        "--allow-local", "127.0.0.1", "--graphics", "text", "--no-sandbox"])
     output = bytearray()
 

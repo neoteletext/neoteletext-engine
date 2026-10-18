@@ -19,7 +19,7 @@ use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{self, Receiver};
 
-/// Where the fetcher is: a child of this process (`ttx`), or reached
+/// Where the fetcher is: a child of this process (`neottx`), or reached
 /// through the browser's interface process, which routes its frames.
 enum Link {
     Child(Child),
@@ -56,7 +56,7 @@ pub struct Live {
 }
 
 /// Which pages the bytes of one response may fill (REQ-WEB-019,
-/// `docs/web-native-concept.md` section 2 item 4).
+/// `prototypes/browser/docs/web-native-concept.md` section 2 item 4).
 #[derive(Clone, Copy)]
 enum Fill<'a> {
     /// Any page: a front door, a push message, a form's answer, a file.
@@ -383,7 +383,7 @@ impl Drop for Live {
 }
 
 /// The short names of the services a descriptor file lists, for
-/// `ttx check --descriptor` (REQ-CLI-006).
+/// `neottx check --descriptor` (REQ-CLI-006).
 pub fn descriptor_service_names(path: &Path) -> Result<Vec<Vec<u8>>, Failure> {
     let json = std::fs::read(path).map_err(|error| (exit::INPUT, format!("{}: {error}", path.display())))?;
     let base = neoteletext_web::url::Url::parse("https://localhost/descriptor.json")

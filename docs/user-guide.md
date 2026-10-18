@@ -1,6 +1,6 @@
-# ttx user guide
+# neottx user guide
 
-`ttx` is the command-line receiver of neoteletext (REQ-DOC-002). It decodes World System Teletext (ETSI EN 300 706, Levels 1.0 and 1.5) from recordings, live feeds and web services, and shows pages in the terminal, writes them as text or images, or converts them between formats.
+`neottx` is the command-line receiver of neoteletext (REQ-DOC-002). It decodes World System Teletext (ETSI EN 300 706, Levels 1.0 and 1.5) from recordings, live feeds and web services, and shows pages in the terminal, writes them as text or images, or converts them between formats.
 
 This build targets 64-bit Intel and AMD Linux and macOS. Graphics in the terminal use iTerm2 inline images; every other terminal gets coloured text.
 
@@ -8,16 +8,16 @@ This build targets 64-bit Intel and AMD Linux and macOS. Graphics in the termina
 
 ```sh
 cargo build --release -p neoteletext-cli
-# the program is target/release/ttx
+# the program is target/release/neottx
 ```
 
 Every part is on by default. A smaller program leaves parts out (decision E.61):
 
 | Feature | What it adds |
 |---|---|
-| `view` | `ttx view`, the interactive viewer, and image sizing to fit the terminal in `show` |
+| `view` | `neottx view`, the interactive viewer, and image sizing to fit the terminal in `show` |
 | `live` | Live feeds and web services (`zxnet:`, `wss://`, `http(s)://`), `check --descriptor`, and the TLS code they need |
-| `slice` | `ttx slice` |
+| `slice` | `neottx slice` |
 
 ```sh
 cargo build --release -p neoteletext-cli --no-default-features --features view
@@ -31,19 +31,19 @@ The toolchain is pinned in `rust-toolchain.toml`. `scripts/check.sh full` runs e
 
 | Command | What it does |
 |---|---|
-| `ttx list INPUT` | Lists the pages and sub-pages found, with reception counts and error statistics. |
-| `ttx show INPUT PAGE` | Shows one page in the terminal and exits. |
-| `ttx view INPUT` | Browses pages interactively. |
-| `ttx text INPUT PAGE` | Writes one page, or `all`, as UTF-8 text on standard output. |
-| `ttx render INPUT PAGE -o FILE` | Writes one page as a PNG or PPM image; with `all`, `-o` names a directory. |
-| `ttx convert INPUT --to t42\|tti -o FILE` | Converts a recording or page files to T42 packets or TTI pages. `--page 100` keeps one page. |
-| `ttx slice RAW -o OUT.t42` | Slices raw sampled video into T42 packets and prints quality statistics. |
-| `ttx services INPUT` | Lists the teletext streams, languages and subtitle pages of a transport stream. |
-| `ttx service-info INPUT` | Prints the broadcast service data of packet 8/30: network, time, programme label and status message. |
-| `ttx check FILES...` | Checks TTI page files for authoring problems. `--descriptor FILE` resolves link targets against a service descriptor. |
-| `ttx font convert INPUT OUTPUT` | Converts a BDF font of another cell size to the 12 × 10 form the browser loads, only where the conversion is exact. See "Fonts" below. |
-| `ttx font sets FONT` | Reports, for each of the 24 teletext character sets, whether a 12 × 10 font conforms for it (REQ-FNT-011), how many of its 96 positions it draws, and the first rule it fails; `--library-line NAME` prints the font's `c` line for a library's `fonts.txt`. |
-| `ttx contents FOLDER` | Writes a channel's `contents.txt` to standard output from a folder of page files (`NNN.tti`, `NNN.t42`, `index.t42`): a section for each magazine and a dated entry for each page. See [channels.md](channels.md). Exits with 4 when a file was skipped. |
+| `neottx list INPUT` | Lists the pages and sub-pages found, with reception counts and error statistics. |
+| `neottx show INPUT PAGE` | Shows one page in the terminal and exits. |
+| `neottx view INPUT` | Browses pages interactively. |
+| `neottx text INPUT PAGE` | Writes one page, or `all`, as UTF-8 text on standard output. |
+| `neottx render INPUT PAGE -o FILE` | Writes one page as a PNG or PPM image; with `all`, `-o` names a directory. |
+| `neottx convert INPUT --to t42\|tti -o FILE` | Converts a recording or page files to T42 packets or TTI pages. `--page 100` keeps one page. |
+| `neottx slice RAW -o OUT.t42` | Slices raw sampled video into T42 packets and prints quality statistics. |
+| `neottx services INPUT` | Lists the teletext streams, languages and subtitle pages of a transport stream. |
+| `neottx service-info INPUT` | Prints the broadcast service data of packet 8/30: network, time, programme label and status message. |
+| `neottx check FILES...` | Checks TTI page files for authoring problems. `--descriptor FILE` resolves link targets against a service descriptor. |
+| `neottx font convert INPUT OUTPUT` | Converts a BDF font of another cell size to the 12 × 10 form the browser loads, only where the conversion is exact. See "Fonts" below. |
+| `neottx font sets FONT` | Reports, for each of the 24 teletext character sets, whether a 12 × 10 font conforms for it (REQ-FNT-011), how many of its 96 positions it draws, and the first rule it fails; `--library-line NAME` prints the font's `c` line for a library's `fonts.txt`. |
+| `neottx contents FOLDER` | Writes a channel's `contents.txt` to standard output from a folder of page files (`NNN.tti`, `NNN.t42`, `index.t42`): a section for each magazine and a dated entry for each page. See [channels.md](channels.md). Exits with 4 when a file was skipped. |
 
 `PAGE` is a page number such as `100`, or a page and sub-code such as `100:0003`. Pages are hexadecimal, as on a television: `1FF` is a valid diagnostic page.
 
@@ -55,7 +55,7 @@ The toolchain is pinned in `rust-toolchain.toml`. `scripts/check.sh full` runs e
 | 1 | The requested page was not found. |
 | 2 | Invalid usage. |
 | 3 | The input could not be read or recognised. |
-| 4 | `ttx check` found errors. |
+| 4 | `neottx check` found errors. |
 
 ## Inputs
 
@@ -82,7 +82,7 @@ The format of a file is detected from its content. `--format` overrides detectio
 | `edittf` | edit.tf and zxnet page addresses (the page is in the URL fragment). |
 | `dump` | Raw 40 by 25 screen dumps. |
 
-In a transport stream, the first teletext stream is used unless `--pid` names one. `ttx services` lists the choices.
+In a transport stream, the first teletext stream is used unless `--pid` names one. `neottx services` lists the choices.
 
 ### Live feeds and web services
 
@@ -104,7 +104,7 @@ A live input runs in two processes (REQ-SEC-018). A fetcher process does the net
 - `iterm2`: the page is rendered at full resolution and sent as a PNG inline image (decision E.37).
 - `text`: characters with ANSI colour. Mosaics use the Unicode block mosaic characters; separated mosaics need a font with Unicode 16 separated mosaics, or `--legacy-mosaics` draws them contiguous. `--colours8` uses the eight basic colours instead of 24-bit colour.
 
-`--scale N` sets a whole-number scale factor; 0 fits the terminal. `--aspect` stretches the height by 1.2 for 4:3 proportions (REQ-RND-004). `--reveal` shows concealed text.
+`--scale N` sets a whole-number scale factor; 0 fits the terminal. `--aspect` stretches the width by 16/13 (about 1.23) for the proportions of a 4:3 television, on which each pixel was wider than tall (REQ-RND-004). `--reveal` shows concealed text.
 
 ### Images
 
@@ -116,11 +116,11 @@ A live input runs in two processes (REQ-SEC-018). A fetcher process does the net
 
 ### Levels 2.5 and 3.5
 
-At the default level, 3.5, `ttx` also keeps the enhancement pages a service sends (object pages, DRCS pages and the Magazine Organization Table) and the magazine packets M/29, and draws each page with them: the page's own Colour Map of 32 colours, screen and row colours, side panels, double width and double size, underline, invert, the additional flash modes, the Level 3.5 font styles, the G3 set, objects and DRCS characters. A fault in any of these removes only what depends on it; the Level 1 page always shows. `--level 1.5` shows a page as a Level 1.5 receiver would, without re-acquiring anything. `cargo xtask level25-stream FILE.t42` writes a test stream with a page for each feature, indexed on page 100.
+At the default level, 3.5, `neottx` also keeps the enhancement pages a service sends (object pages, DRCS pages and the Magazine Organization Table) and the magazine packets M/29, and draws each page with them: the page's own Colour Map of 32 colours, screen and row colours, side panels, double width and double size, underline, invert, the additional flash modes, the Level 3.5 font styles, the G3 set, objects and DRCS characters. A fault in any of these removes only what depends on it; the Level 1 page always shows. `--level 1.5` shows a page as a Level 1.5 receiver would, without re-acquiring anything. `cargo xtask level25-stream FILE.t42` writes a test stream with a page for each feature, indexed on page 100.
 
 ## The viewer
 
-`ttx view INPUT` opens on the initial page (the service's own, or 100).
+`neottx view INPUT` opens on the initial page (the service's own, or 100).
 
 | Key | Action |
 |---|---|
@@ -173,7 +173,7 @@ Every command accepts these options. Each one changes a setting of REQUIREMENTS.
 
 ### Every Part E setting
 
-The library's `neoteletext_core::config::Config` holds every setting below. `ttx` exposes the ones in the table above through options and profiles; the rest keep the default.
+The library's `neoteletext_core::config::Config` holds every setting below. `neottx` exposes the ones in the table above through options and profiles; the rest keep the default.
 
 | Field | Decision | Default |
 |---|---|---|
@@ -203,14 +203,14 @@ The library's `neoteletext_core::config::Config` holds every setting below. `ttx
 ## Examples
 
 ```sh
-ttx list recording.t42
-ttx show recording.t42 100
-ttx view broadcast.ts --pid 0x46
-ttx text zxnet:teefax 100
-ttx render recording.t42 all -o pages/
-ttx convert broadcast.ts --to t42 -o broadcast.t42
-ttx view https://example.org/service.json
-ttx check pages/*.tti --descriptor service.json
+neottx list recording.t42
+neottx show recording.t42 100
+neottx view broadcast.ts --pid 0x46
+neottx text zxnet:teefax 100
+neottx render recording.t42 all -o pages/
+neottx convert broadcast.ts --to t42 -o broadcast.t42
+neottx view https://example.org/service.json
+neottx check pages/*.tti --descriptor service.json
 ```
 
 ## Glyphs
@@ -231,16 +231,16 @@ A font library on your own machine, such as a clone of a private repository, can
 
 ### Character sets and conformance
 
-A teletext decoder held a glyph at every one of the 96 code positions, 2/0 to 7/F, of each character set it supported. A font *conforms* for a character set when, by the rules of REQ-FNT-011: it is a valid 12 × 10 font; it has a glyph for every character the standard assigns to the set's positions; its space is blank, which also draws the positions the standard leaves empty; and none of its characters is blank. The rules look only at the glyphs, never at the font's name. The 24 sets are G0 Latin and its 13 national options, the three G0 Cyrillic options, G0 Greek, Arabic and Hebrew, and G2 Latin, Cyrillic, Greek and Arabic. A font conforming for a set may also meet the *SAA5050 cell* profile: every glyph leaves the top line and the leftmost dot column blank, as the chip did. `ttx font sets FONT` reports all of this:
+A teletext decoder held a glyph at every one of the 96 code positions, 2/0 to 7/F, of each character set it supported. A font *conforms* for a character set when, by the rules of REQ-FNT-011: it is a valid 12 × 10 font; it has a glyph for every character the standard assigns to the set's positions; its space is blank, which also draws the positions the standard leaves empty; and none of its characters is blank. The rules look only at the glyphs, never at the font's name. The 24 sets are G0 Latin and its 13 national options, the three G0 Cyrillic options, G0 Greek, Arabic and Hebrew, and G2 Latin, Cyrillic, Greek and Arabic. A font conforming for a set may also meet the *SAA5050 cell* profile: every glyph leaves the top line and the leftmost dot column blank, as the chip did. `neottx font sets FONT` reports all of this:
 
 ```text
 G0-Cyrillic-2                      96/96  conforms, SAA5050 cell
 G0-Cyrillic-3                      90/96  rule 2: no glyph at 2/6
 ```
 
-A library's `fonts.txt` may state each font's conformance on a `c` line: `c`, the font's file name or address as its `f` line gives it, and the sets separated by spaces, each followed by `*` for the SAA5050 cell profile. `ttx font sets --library-line NAME FONT` writes that line. The browser uses it to list fonts before loading them, and recomputes conformance from the glyphs once a font has loaded.
+A library's `fonts.txt` may state each font's conformance on a `c` line: `c`, the font's file name or address as its `f` line gives it, and the sets separated by spaces, each followed by `*` for the SAA5050 cell profile. `neottx font sets --library-line NAME FONT` writes that line. The browser uses it to list fonts before loading them, and recomputes conformance from the glyphs once a font has loaded.
 
-`ttx font convert INPUT OUTPUT` makes that form from fonts of other sizes, only where nothing is lost:
+`neottx font convert INPUT OUTPUT` makes that form from fonts of other sizes, only where nothing is lost:
 
 | Source cell | What the converter does |
 |---|---|

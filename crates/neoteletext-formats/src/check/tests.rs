@@ -103,7 +103,7 @@ fn warning_names_round_trip() {
     assert_eq!(Warning::from_name(b"HIDDEN-CONTENT"), Some(Warning::HiddenContent));
 }
 
-/// `docs/web-native-concept.md` section 5: a page that links a number it
+/// `prototypes/browser/docs/web-native-concept.md` section 5: a page that links a number it
 /// does not show is warned about; one that shows it is not.
 #[test]
 fn linked_numbers_must_be_shown() {

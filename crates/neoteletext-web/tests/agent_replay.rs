@@ -1204,7 +1204,7 @@ fn redirects_inside_the_channel_and_upgrades_are_followed() {
 }
 
 #[test]
-fn ttx_still_follows_redirects_to_other_hosts() {
+fn neottx_still_follows_redirects_to_other_hosts() {
     let mut harness = site_harness(Config::default());
     harness
         .replay()

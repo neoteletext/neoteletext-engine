@@ -9,16 +9,16 @@ use std::process::Command;
 #[cfg(any(not(feature = "live"), not(feature = "view"), not(feature = "slice")))]
 const USAGE: i32 = 2;
 
-/// Runs ttx; the exit status and standard error.
+/// Runs neottx; the exit status and standard error.
 #[cfg(any(not(feature = "live"), not(feature = "view"), not(feature = "slice")))]
-fn ttx(arguments: &[&str]) -> (Option<i32>, String) {
-    let output = Command::new(env!("CARGO_BIN_EXE_ttx")).args(arguments).output().expect("run ttx");
+fn neottx(arguments: &[&str]) -> (Option<i32>, String) {
+    let output = Command::new(env!("CARGO_BIN_EXE_neottx")).args(arguments).output().expect("run neottx");
     (output.status.code(), String::from_utf8_lossy(&output.stderr).into_owned())
 }
 
 #[cfg(any(not(feature = "live"), not(feature = "view"), not(feature = "slice")))]
 fn assert_refused(arguments: &[&str], feature: &str) {
-    let (status, errors) = ttx(arguments);
+    let (status, errors) = neottx(arguments);
     assert_eq!(status, Some(USAGE), "{arguments:?}: {errors}");
     assert!(errors.contains("not in this build"), "{arguments:?}: {errors}");
     assert!(errors.contains(&format!("`{feature}`")), "{arguments:?} names the feature: {errors}");
@@ -62,7 +62,7 @@ fn slicing_is_refused_without_slice() {
 /// The commands stay defined in every build, so the help text is the same.
 #[test]
 fn every_command_is_in_the_help() {
-    let output = Command::new(env!("CARGO_BIN_EXE_ttx")).arg("--help").output().expect("run ttx");
+    let output = Command::new(env!("CARGO_BIN_EXE_neottx")).arg("--help").output().expect("run neottx");
     let help = String::from_utf8_lossy(&output.stdout);
     for command in ["list", "show", "view", "render", "text", "convert", "slice", "services", "service-info", "check"] {
         assert!(help.lines().any(|line| line.trim_start().starts_with(command)), "{command}: {help}");

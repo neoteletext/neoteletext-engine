@@ -4,9 +4,9 @@ Compiled 2026-10-01. Every fact carries a source. "UNVERIFIED" marks anything I 
 Local spec text was extracted with pdftotext into this scratchpad (EN_300_472..., DVB_A041..., en300706.txt, en301775.txt, en300468.txt, ttiformat.txt, rdd08.txt).
 
 Abbreviations for sources:
-- [EN472] ETSI EN 300 472 V1.3.1 (2003-05), local file specifications/EN_300_472_v1.3.1_Teletext_in_DVB.pdf
-- [A041] DVB BlueBook A041 (June 2016, EN 300 472 v1.4.1 content), local file specifications/DVB_A041_Teletext.pdf
-- [EN706] ETSI EN 300 706 V1.2.1 (2003-04), local file specifications/EN_300_706_v1.2.1_Enhanced_Teletext.pdf
+- [EN472] ETSI EN 300 472 V1.3.1 (2003-05), local file teletext-standards/EN_300_472_v1.3.1_Teletext_in_DVB.pdf
+- [A041] DVB BlueBook A041 (June 2016, EN 300 472 v1.4.1 content), local file teletext-standards/DVB_A041_Teletext.pdf
+- [EN706] ETSI EN 300 706 V1.2.1 (2003-04), local file teletext-standards/EN_300_706_v1.2.1_Enhanced_Teletext.pdf
 - [EN775] ETSI EN 301 775 V1.2.1 (2003-05), https://www.etsi.org/deliver/etsi_en/301700_301799/301775/01.02.01_60/en_301775v010201p.pdf
 - [EN468] ETSI EN 300 468 V1.17.1 (2022-10), https://www.etsi.org/deliver/etsi_en/300400_300499/300468/01.17.01_60/en_300468v011701p.pdf
 - [KSLICED] https://docs.kernel.org/userspace-api/media/v4l/dev-sliced-vbi.html

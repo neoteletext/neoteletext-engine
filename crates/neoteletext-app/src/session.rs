@@ -152,7 +152,7 @@ impl Session {
         self.decoder.store().get(address, subcode)
     }
 
-    /// The grid of a page as `ttx show`, `text` and `render` present it:
+    /// The grid of a page as `neottx show`, `text` and `render` present it:
     /// row 0 with the status area showing the page number (decision E.10),
     /// Level 1 then the pass of the presentation level (REQ-PRF-006).
     /// `None` when the page is not stored. At Levels 2.5 and 3.5 the faults
@@ -188,7 +188,7 @@ impl Session {
     /// forgets them.
     pub fn print_trace(&mut self) {
         for event in self.trace.drain(..) {
-            eprintln!("ttx: {event:?}");
+            eprintln!("neottx: {event:?}");
         }
     }
 

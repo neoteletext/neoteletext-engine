@@ -223,7 +223,7 @@ fn table_shape_is_checked() {
 }
 
 /// Bedstead's 5 by 9 glyphs as a loaded font: below the blank top line,
-/// each dot two pixels wide, as `ttx font convert` makes them.
+/// each dot two pixels wide, as `neottx font convert` makes them.
 fn bedstead_as_loaded(entry: &crate::glyphs::GlyphEntry) -> FontGlyph {
     let mut rows = [0u16; CELL_FIELD_LINES];
     for (row, &dots) in rows.iter_mut().skip(1).zip(&entry.rows) {

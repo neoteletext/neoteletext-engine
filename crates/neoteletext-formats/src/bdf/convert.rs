@@ -401,7 +401,7 @@ mod tests {
             family: font.family,
             copyright: font.copyright,
             notice: font.notice,
-            comment: "Converted by ttx font convert from a 6 x 10 cell (REQ-FNT-010)",
+            comment: "Converted by neottx font convert from a 6 x 10 cell (REQ-FNT-010)",
         };
         let mut written = Vec::new();
         crate::write::write_font(&mut written, &carried, &table[..count]).unwrap();

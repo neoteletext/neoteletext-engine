@@ -6,8 +6,8 @@
 # Mode "build" compiles and links; "test" also runs the tests under qemu
 # user-mode emulation; "check" compiles without linking or code generation,
 # for targets whose SDK cannot exist on this host (Apple, Windows MSVC and
-# ESP-IDF). The Apple targets' ttx program is built and tested on the Mac by
-# scripts/check.sh full. ttx for Windows is built with the MinGW toolchain,
+# ESP-IDF). The Apple targets' neottx program is built and tested on the Mac by
+# scripts/check.sh full. neottx for Windows is built with the MinGW toolchain,
 # because its TLS library's C code needs the Windows SDK headers under MSVC
 # (IMPLEMENTATION-LOG.md decision 39).
 set -uo pipefail
@@ -26,7 +26,7 @@ readonly ESP="esp"
 readonly BARE="-p neoteletext-core -p neoteletext-formats -p neoteletext-slicer -p neoteletext-web -p neoteletext-image"
 readonly WASM="-p neoteletext-core -p neoteletext-formats"
 readonly LIBRARIES_STD="$BARE --features neoteletext-formats/std,neoteletext-image/std"
-# Everything except the host-only xtask: the libraries and the ttx program.
+# Everything except the host-only xtask: the libraries and the neottx program.
 readonly ALL="--workspace --exclude xtask"
 
 # target | crates | mode | toolchain | extra flags

@@ -532,10 +532,12 @@ fn images_with_side_panels() {
     assert!(trns.iter().enumerate().all(|(index, &alpha)| index == 8 || alpha == 255));
     // Scaling by 2 and the 4:3 correction.
     let (scaled_width, scaled_height) = scaled_size(width, height, 2, 2, true);
-    assert_eq!((scaled_width, scaled_height), (1728, 1200));
+    // REQ-RND-004: the width stretched by 16/13, the height by the factor.
+    assert_eq!((scaled_width, scaled_height), (864 * 2 * 16 / 13, 1000));
     let mut scaled = vec![0u8; scaled_width * scaled_height];
     scale_indices(&indices, width, height, 2, 2, true, &mut scaled).unwrap();
-    assert_eq!(&scaled[..2 * width][..4], &[indices[0], indices[0], indices[1], indices[1]]);
+    let source_column = |x: usize| indices[x * width / scaled_width];
+    assert!((0..scaled_width).all(|x| scaled[x] == source_column(x)), "each column from its source column");
     // The PPM takes the fill colour for transparent pixels.
     let mut ppm = Vec::new();
     neoteletext_image::ppm::write(

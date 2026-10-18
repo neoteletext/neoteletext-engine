@@ -1,6 +1,6 @@
-//! `ttx font convert` (REQ-FNT-010, decision E.72 item 7): a BDF font of
+//! `neottx font convert` (REQ-FNT-010, decision E.72 item 7): a BDF font of
 //! another cell size to the 12 by 10 form the browser loads, offline and
-//! sandboxed, only where the conversion is exact. `ttx font sets`
+//! sandboxed, only where the conversion is exact. `neottx font sets`
 //! (REQ-FNT-011, decision E.75): the character sets a font conforms for.
 
 use neoteletext_app::sandbox::{self, Policy};
@@ -31,7 +31,7 @@ fn read_bounded(path: &Path, limit: usize) -> Result<Vec<u8>, Failure> {
     Ok(bytes)
 }
 
-/// `ttx font convert INPUT OUTPUT [--map FILE]`.
+/// `neottx font convert INPUT OUTPUT [--map FILE]`.
 pub fn convert_font(input: &Path, output: &Path, map: Option<&Path>, no_sandbox: bool) -> Result<(), Failure> {
     let source = read_bounded(input, SOURCE_FONT_MAX_FILE_BYTES)?;
     let map_text = map.map(|path| read_bounded(path, FONT_MAP_MAX_FILE_BYTES)).transpose()?;
@@ -58,7 +58,7 @@ pub fn convert_font(input: &Path, output: &Path, map: Option<&Path>, no_sandbox:
     let count = convert(&font, &glyphs, pairs, &mut table)
         .map_err(|error| (exit::INPUT, format!("{name}: {}", conversion_fault(error))))?;
     let comment = format!(
-        "Converted by ttx font convert from a {} x {} cell (REQ-FNT-010); every pixel kept.",
+        "Converted by neottx font convert from a {} x {} cell (REQ-FNT-010); every pixel kept.",
         font.width, font.height
     );
     let text = FontText { family: font.family, copyright: font.copyright, notice: font.notice, comment: &comment };
@@ -72,7 +72,7 @@ pub fn convert_font(input: &Path, output: &Path, map: Option<&Path>, no_sandbox:
     Ok(())
 }
 
-/// `ttx font sets FONT [--library-line NAME]`.
+/// `neottx font sets FONT [--library-line NAME]`.
 pub fn font_sets(path: &Path, library_line: Option<&str>, no_sandbox: bool) -> Result<(), Failure> {
     let bytes = read_bounded(path, FONT_MAX_FILE_BYTES)?;
     sandbox::apply(Policy { writable_directory: None, network: false, readable: &[] }, no_sandbox)

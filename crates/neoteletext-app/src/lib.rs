@@ -1,4 +1,4 @@
-//! The application layer of neoteletext (layer L9), shared by the `ttx`
+//! The application layer of neoteletext (layer L9), shared by the `neottx`
 //! command-line program and a future windowed viewer: decoding sessions,
 //! reading inputs, the two processes of live mode (REQ-SEC-018) and the
 //! operating-system sandbox (REQ-SEC-017).
@@ -12,8 +12,6 @@
 //! out is refused with [`not_in_build`].
 
 pub mod convert;
-#[cfg(feature = "live")]
-pub mod decoder;
 pub mod extras;
 #[cfg(feature = "live")]
 pub mod fetch;

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Drives `ttx view` through a pseudo-terminal while the test server stops
+"""Drives `neottx view` through a pseudo-terminal while the test server stops
 and starts again (REQ-WEB-009): stored pages stay viewable, a page that is
 not stored says it is not available offline, and pages arrive again once
 the server is back. Test code.
@@ -23,12 +23,12 @@ def start_server(script, port):
 
 
 def main():
-    ttx, script = sys.argv[1], sys.argv[2]
+    neottx, script = sys.argv[1], sys.argv[2]
     server, port = start_server(script, 0)
     pid, fd = pty.fork()
     if pid == 0:
         os.environ["TERM"] = "xterm-256color"
-        os.execv(ttx, ["ttx", "view", f"http://127.0.0.1:{port}/service.json",
+        os.execv(neottx, ["neottx", "view", f"http://127.0.0.1:{port}/service.json",
                        "--allow-local", "127.0.0.1", "--graphics", "text", "--no-sandbox"])
     output = bytearray()
 

@@ -1,6 +1,6 @@
 # ETSI EN 300 706 V1.2.1 (2003-04): DRCS, the G3 set and the character repertoire at Levels 2.5 and 3.5
 
-Compiled 2026-10-10. Source: `specifications/EN_300_706_v1.2.1_Enhanced_Teletext.pdf` (relative to `~/devel/microcontrollers/teletext/`). The printed ETSI page number equals the PDF page number; "p.N" means both. Tables and level ticks were read from the page images, not from a text extraction. Where the 1997 edition (`specifications/ETS_300_706_Enhanced_Teletext_1997.pdf`, "ETS 1997") was checked, it is said so.
+Compiled 2026-10-10. Source: `teletext-standards/EN_300_706_v1.2.1_Enhanced_Teletext.pdf` (relative to `~/devel/teletext-reference/`). The printed ETSI page number equals the PDF page number; "p.N" means both. Tables and level ticks were read from the page images, not from a text extraction. Where the 1997 edition (`teletext-standards/ETS_300_706_Enhanced_Teletext_1997.pdf`, "ETS 1997") was checked, it is said so.
 
 Markers:
 - **[V]** read directly in the standard at the cited place.

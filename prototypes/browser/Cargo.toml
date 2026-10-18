@@ -1,0 +1,63 @@
+# The browser prototype (moved out of the engine's workspace on 16 October
+# 2026): the egui window and its browser model, built against the engine's
+# crates. It is not part of the engine's gates; see README.md here.
+[workspace]
+resolver = "3"
+members = ["crates/neoteletext-browser", "crates/neoteletext-gui"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+# REQ-GEN-001: at most three stable releases behind 1.99.
+rust-version = "1.96"
+license = "MIT"
+publish = false
+
+[workspace.dependencies]
+# Decision E.61: crates name the features of the core, the formats and
+# the web module that they use, so that feature unification never brings
+# an area into a build that did not ask for it.
+neoteletext-core = { path = "../../crates/neoteletext-core", default-features = false }
+neoteletext-formats = { path = "../../crates/neoteletext-formats", default-features = false }
+neoteletext-slicer = { path = "../../crates/neoteletext-slicer" }
+neoteletext-web = { path = "../../crates/neoteletext-web", default-features = false }
+neoteletext-image = { path = "../../crates/neoteletext-image" }
+neoteletext-app = { path = "../../crates/neoteletext-app", default-features = false }
+neoteletext-browser = { path = "crates/neoteletext-browser" }
+# Decision E.38: the only external crate a microcontroller crate may use.
+embedded-io = { version = "0.7.1", default-features = false }
+
+[workspace.lints.rust]
+# REQ-SEC-015: only the C interface crate (REQ-GEN-018) may contain unsafe
+# code, and it will override this lint for itself alone.
+unsafe_code = "forbid"
+# REQ-DOC-001: every public item is documented; warnings are errors in the
+# gates.
+missing_docs = "warn"
+unused_qualifications = "warn"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+# Narrow, justified exceptions to pedantic (REQ-GEN-006):
+# teletext code is full of deliberate u8/u16/u32 narrowing after range checks.
+cast_possible_truncation = "allow"
+# Module and type names repeat by design (charset::Charset, packet::Packet).
+module_name_repetitions = "allow"
+# Error docs are written per type, not per function.
+missing_errors_doc = "allow"
+
+[profile.release]
+panic = "abort"
+lto = true
+codegen-units = 1
+
+[profile.dev]
+panic = "abort"
+
+# Fast rebuilds while behaviour is being shaped (scripts/try.sh): release
+# optimisation without link-time optimisation, built incrementally.
+[profile.iterate]
+inherits = "release"
+lto = false
+codegen-units = 16
+incremental = true

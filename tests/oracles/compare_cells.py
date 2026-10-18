@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compares `ttx text FILE all --cells` with zvbi_cells at Level 2.5 or 3.5,
+"""Compares `neottx text FILE all --cells` with zvbi_cells at Level 2.5 or 3.5,
 cell by cell (REQ-TST-023). Test code; run on a host with zvbi, see
 run_cells.sh.
 
@@ -15,9 +15,9 @@ Colours are Colour Map indices: zvbi's default RGB values differ from EN
 300 706 Table 30 at CLUT 1 entries 5 and 6 (decision E.40).
 
 Normalised before comparing:
-- a transparent cell (index 8) in ttx's dump takes its row colour, as zvbi
+- a transparent cell (index 8) in neottx's dump takes its row colour, as zvbi
   does when it builds the page; the renderer shows the same (Table C.1);
-- an inverted cell in ttx's dump has its colours swapped, as zvbi stores it;
+- an inverted cell in neottx's dump has its colours swapped, as zvbi stores it;
 - the unassigned G3 positions and 5/F (Table 48 notes 1 and 2) are spaces
   in both;
 - G2 characters for which the two decoders chose different but equivalent
@@ -44,7 +44,7 @@ ZVBI_G3_FIRST, ZVBI_G3_LAST = 0xEF20, 0xEF7F
 ZVBI_DRCS_FIRST, ZVBI_DRCS_LAST = 0xF000, 0xF7FF
 ZVBI_DRCS_CHARACTERS = 64
 DRCS_SUBTABLES = 16
-# zvbi's vbi_size values, by (vertical, horizontal) role in ttx's dump.
+# zvbi's vbi_size values, by (vertical, horizontal) role in neottx's dump.
 ZVBI_SIZES = {
     "NN": 0, "NL": 1, "TN": 2, "TL": 3, "NR": 4, "TR": 4, "BR": 5, "BN": 6, "BL": 7,
 }
@@ -53,7 +53,7 @@ COMPARED_FLAGS = set("ufc")
 # G3 5/F is the background-colour space; 6/E, 6/F, 7/E and 7/F are
 # unassigned (Table 48 notes 1 and 2).
 G3_SPACES = {"G3:5F", "G3:6E", "G3:6F", "G3:7E", "G3:7F"}
-# zvbi's code point -> ttx's, for G2 characters both decoders draw alike.
+# zvbi's code point -> neottx's, for G2 characters both decoders draw alike.
 EQUIVALENT = {
     "U+00A0": "S",  # G2 2/0: no-break space; a space
     "U+00A6": "U+007C",  # broken bar / vertical line
@@ -95,8 +95,8 @@ def zvbi_character(code):
     return EQUIVALENT.get(unicode, unicode)
 
 
-def ttx_character(token):
-    """ttx's character, with a space character and an empty mosaic counted as
+def neottx_character(token):
+    """neottx's character, with a space character and an empty mosaic counted as
     nothing in the foreground, as zvbi does."""
     return "S" if token in ("M00c", "M00s", f"U+{SPACE:04X}") or token in G3_SPACES else token
 
@@ -126,15 +126,15 @@ def read(path, zvbi):
                 if zvbi:
                     character, size = zvbi_character(int(character, 16)), int(size)
                 else:
-                    character, size = ttx_character(character), ZVBI_SIZES[size]
+                    character, size = neottx_character(character), ZVBI_SIZES[size]
                     # zvbi puts the row colour into a transparent cell when it
-                    # builds the page; ttx keeps index 8 and the renderer
+                    # builds the page; neottx keeps index 8 and the renderer
                     # shows the row colour there (Table C.1). Same display.
                     if foreground == TRANSPARENT:
                         foreground = row_colour
                     if background == TRANSPARENT:
                         background = row_colour
-                    # zvbi swaps the colours of an inverted cell; ttx keeps
+                    # zvbi swaps the colours of an inverted cell; neottx keeps
                     # the flag and the renderer swaps them (REQ-RND-036).
                     if "x" in flags:
                         foreground, background = background, foreground
@@ -164,10 +164,10 @@ def main():
         del arguments[at:at + 2]
     ours, theirs = read(arguments[0], False), read(arguments[1], True)
     common = sorted(set(ours) & set(theirs))
-    print(f"pages: ttx {len(ours)}, zvbi {len(theirs)}, compared {len(common)}")
+    print(f"pages: neottx {len(ours)}, zvbi {len(theirs)}, compared {len(common)}")
     only_ours = sorted(f"{p}:{s:04X}" for p, s in set(ours) - set(theirs))
     only_theirs = sorted(f"{p}:{s:04X}" for p, s in set(theirs) - set(ours))
-    print(f"  only ttx: {' '.join(only_ours) or '-'}")
+    print(f"  only neottx: {' '.join(only_ours) or '-'}")
     print(f"  only zvbi: {' '.join(only_theirs) or '-'}")
     compared = 0
     differences = collections.Counter()
@@ -212,7 +212,7 @@ def main():
     if differences:
         print(f"  by field: {dict(differences)}")
     for (page, sub), number, column, fields, a, b in examples:
-        print(f"  {page}:{sub:04X} r{number:02} c{column:02} {','.join(fields)}: ttx {a[:4]} {''.join(sorted(a[4]))}"
+        print(f"  {page}:{sub:04X} r{number:02} c{column:02} {','.join(fields)}: neottx {a[:4]} {''.join(sorted(a[4]))}"
               f" zvbi {b[:4]} {''.join(sorted(b[4]))}")
     sys.exit(0 if not unexplained else 1)
 

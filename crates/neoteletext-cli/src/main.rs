@@ -1,4 +1,4 @@
-//! `ttx`, the neoteletext command-line program (area CLI).
+//! `neottx`, the neoteletext command-line program (area CLI).
 //!
 //! Exit status (REQ-CLI-005): 0 success, 1 page not found, 2 invalid usage,
 //! 3 input unreadable or unrecognised, 4 page checker errors.
@@ -19,7 +19,7 @@ use std::process::ExitCode;
 
 /// neoteletext: a software teletext receiver (ETSI EN 300 706 Levels 1.0, 1.5, 2.5 and 3.5).
 #[derive(Parser, Debug)]
-#[command(name = "ttx", version, about)]
+#[command(name = "neottx", version, about)]
 pub struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -316,7 +316,7 @@ fn main() -> ExitCode {
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err((code, message)) => {
-            eprintln!("ttx: {message}");
+            eprintln!("neottx: {message}");
             ExitCode::from(code)
         }
     }
@@ -363,7 +363,7 @@ mod tests {
     use super::*;
 
     fn parse(arguments: &[&str]) -> Result<Cli, clap::Error> {
-        Cli::try_parse_from(["ttx"].iter().chain(arguments))
+        Cli::try_parse_from(["neottx"].iter().chain(arguments))
     }
 
     fn level(arguments: &[&str]) -> Option<LevelChoice> {

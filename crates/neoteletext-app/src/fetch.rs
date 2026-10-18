@@ -228,7 +228,7 @@ const _: () = assert!(pipe::MAX_CONTENTS == neoteletext_web::contents::MAX_BYTES
 
 /// Runs the fetcher for `address` until the decoder process goes away.
 /// `sandboxed_by_parent` says the process that started this one has
-/// already confined it (the browser on macOS, `docs/desktop-browser.md`
+/// already confined it (the browser on macOS, `prototypes/browser/docs/desktop-browser.md`
 /// section 12.3), so no sandbox of its own is applied.
 pub fn run(
     address: &str,

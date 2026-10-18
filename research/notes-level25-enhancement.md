@@ -1,6 +1,6 @@
 # ETSI EN 300 706 V1.2.1 (2003-04): Levels 2.5 and 3.5 — enhancement triplets, colour model, side panels and page-level packets
 
-Source: `specifications/EN_300_706_v1.2.1_Enhanced_Teletext.pdf` (relative to `~/devel/microcontrollers/teletext/`). Printed ETSI page number = PDF page number throughout. "p.N" means both.
+Source: `teletext-standards/EN_300_706_v1.2.1_Enhanced_Teletext.pdf` (relative to `~/devel/teletext-reference/`). Printed ETSI page number = PDF page number throughout. "p.N" means both.
 
 Conventions:
 - **[V]** = read directly in the standard at the cited place (tables and tick marks were read from the page images, not from a text extraction).

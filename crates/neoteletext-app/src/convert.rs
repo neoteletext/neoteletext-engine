@@ -1,5 +1,5 @@
 //! Converting between formats (REQ-INP-014, REQ-INP-018), and stored
-//! pages back to page files for `ttx convert --to tti`: display pages with
+//! pages back to page files for `neottx convert --to tti`: display pages with
 //! their packets 26 to 28, enhancement pages coded by their page coding,
 //! and each magazine's packets M/29 on its page mFF (REQ-INP-023).
 

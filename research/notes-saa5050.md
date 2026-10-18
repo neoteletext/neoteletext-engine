@@ -6,10 +6,10 @@ Written as input to a requirements document for a C software teletext decoder th
 
 | Key | Document | Page scheme used in citations |
 |---|---|---|
-| **[S]** | `philips-saa5050/SAA5050-55_Teletext_Character_Generator_Philips.pdf`: a Signetics "Linear LSI Products" datasheet, *Teletext Character Generator SAA5050/55*. It is an ABBYY OCR of a scan, 17 PDF pages, and the pages are undated. | `S p.N (5-2xx)`: N is the PDF page index and 5-2xx is the printed page. PDF p.1 is printed 5-255, and so on up to PDF p.17, printed 5-271. |
-| **[DB]** | `databooks/Philips_1979_ICs_for_Digital_Systems_in_Radio_and_TV_part6b.pdf`: the Philips 1979 databook, 395 PDF pages, with most data sheets dated August 1978. | `DB p.N (<part> p.M)`: N is the **PDF page index** and M is the data sheet's own printed page number. |
+| **[S]** | `teletext-fonts/manufacturers/philips/datasheets/saa5050/SAA5050-55_Teletext_Character_Generator_Philips.pdf`: a Signetics "Linear LSI Products" datasheet, *Teletext Character Generator SAA5050/55*. It is an ABBYY OCR of a scan, 17 PDF pages, and the pages are undated. | `S p.N (5-2xx)`: N is the PDF page index and 5-2xx is the printed page. PDF p.1 is printed 5-255, and so on up to PDF p.17, printed 5-271. |
+| **[DB]** | `teletext-fonts/manufacturers/philips/datasheets/databooks/Philips_1979_ICs_for_Digital_Systems_in_Radio_and_TV_part6b.pdf`: the Philips 1979 databook, 395 PDF pages, with most data sheets dated August 1978. | `DB p.N (<part> p.M)`: N is the **PDF page index** and M is the data sheet's own printed page number. |
 
-**Page-number check against DATASHEET-INDEX.md.** The index page numbers are PDF indices, and most are right. These ones are not:
+**Page-number check against catalog/indexes/DATASHEET-INDEX.md.** The index page numbers are PDF indices, and most are right. These ones are not:
 - The SAA5040 starts at DB p.156, not p.152. Pages 152–154 are the end of the SAA5030 data sheet.
 - The index lists p.141 under SAA5050, but DB p.141 is the SAA5020's application data. It only *mentions* the SAA5050.
 - The SAA5050 data sheet itself runs from DB p.180 to p.191.
@@ -326,7 +326,7 @@ The code grid is from S p.13 (5-267) Table 1 and DB p.188 (SAA5050 p.9) Table 1:
 - Set-at (the code's own cell is affected): Steady, Normal Height, Conceal, Contiguous, Separated, Black Background, New Background, Hold Graphics.
 - Set-after (takes effect from the next cell): Alpha and Graphics colour codes, Flash, Start Box, End Box, Double Height, Release Graphics.
 - One detail is recalled as SAA5050-specific: a change of height (normal ↔ double) clears the held-graphics character.
-- Treat this as a checklist to confirm against ETS 300 706 §12.2, which is in `specifications/`. The datasheets do not provide it.
+- Treat this as a checklist to confirm against ETS 300 706 §12.2, which is in `teletext-standards/`. The datasheets do not provide it.
 
 ---
 
@@ -575,7 +575,7 @@ Sources: S p.11 (5-265) Fig.9; DB p.187 (SAA5050 p.8) Fig.3.
 - Double height as used in the BBC Micro: the lower row is used for bottom halves (§7).
 - Separated-mosaic gap geometry (§8).
 - The 48/16-field flash duty (§8).
-- These are all recalled from emulator sources and ETS 300 706 knowledge. Confirm them against `specifications/` (ETS 300 706) and, if possible, the MAME `saa5050.cpp` source before writing requirements.
+- These are all recalled from emulator sources and ETS 300 706 knowledge. Confirm them against `teletext-standards/` (ETS 300 706) and, if possible, the MAME `saa5050.cpp` source before writing requirements.
 
 ---
 

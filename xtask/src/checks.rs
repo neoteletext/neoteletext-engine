@@ -181,18 +181,6 @@ const WORKSPACE_PREFIX: &str = "neoteletext-";
 /// it, which keeps the shared application layer below the programs.
 const APPLICATION_CRATES: &[(&str, &[&str])] = &[
     (
-        "neoteletext-gui",
-        &[
-            "neoteletext-app",
-            "neoteletext-browser",
-            "neoteletext-core",
-            "neoteletext-formats",
-            "neoteletext-slicer",
-            "neoteletext-web",
-            "neoteletext-image",
-        ],
-    ),
-    (
         "neoteletext-app",
         &["neoteletext-core", "neoteletext-formats", "neoteletext-slicer", "neoteletext-web", "neoteletext-image"],
     ),
@@ -255,14 +243,8 @@ fn contains_literal(code: &str, literal: &str) -> bool {
 }
 
 /// Library crates that must not touch the operating system (REQ-SEC-016).
-const LIBRARY_CRATES: &[&str] = &[
-    "neoteletext-core",
-    "neoteletext-formats",
-    "neoteletext-slicer",
-    "neoteletext-web",
-    "neoteletext-image",
-    "neoteletext-browser",
-];
+const LIBRARY_CRATES: &[&str] =
+    &["neoteletext-core", "neoteletext-formats", "neoteletext-slicer", "neoteletext-web", "neoteletext-image"];
 const FORBIDDEN: &[&str] =
     &["std::fs", "std::net", "std::process", "std::env", "std::thread", "SystemTime", "Instant::now", "std::time"];
 
@@ -283,18 +265,8 @@ pub fn io(root: &Path) -> Result<(), String> {
     for krate in LIBRARY_CRATES {
         forbid(&root.join("crates").join(krate).join("src"), FORBIDDEN, &mut violations);
     }
-    // REQ-FNT-003, `docs/font-security.md` section 3.1: the browser's
-    // interface never parses a font; only its confined helpers do.
-    for krate in INTERFACE_CRATES {
-        forbid(&root.join("crates").join(krate).join("src"), FONT_READERS, &mut violations);
-    }
     report(&violations)
 }
-
-/// The crates of the browser's interface process, which is not sandboxed.
-const INTERFACE_CRATES: &[&str] = &["neoteletext-gui", "neoteletext-browser"];
-/// The font readers, which run only in confined helpers.
-const FONT_READERS: &[&str] = &["bdf::read", "bdf::source", "font::read_font", "read_source("];
 
 /// Every use of a forbidden item in the non-test Rust files under `source`.
 fn forbid(source: &Path, items: &[&str], violations: &mut Vec<String>) {

@@ -15,7 +15,7 @@ use std::fs::File;
 use std::io::Read;
 use std::net::IpAddr;
 
-/// What to read and how to decode it: the options every `ttx` command
+/// What to read and how to decode it: the options every `neottx` command
 /// accepts (REQ-CLI-002), free of any argument parser.
 // Each flag is a separate user choice.
 #[allow(clippy::struct_excessive_bools)]
@@ -123,7 +123,7 @@ fn load_live(options: &Options, wanted: Option<PageAddress>) -> Result<Session, 
                         asked_initial = true;
                     }
                 }
-                crate::pipe::Notice::Message(text) => eprintln!("ttx: {text}"),
+                crate::pipe::Notice::Message(text) => eprintln!("neottx: {text}"),
                 _ => {}
             }
         }
@@ -206,16 +206,16 @@ pub fn load_for(options: &Options, wanted: Option<PageAddress>) -> Result<Sessio
         Item::Detected(format) => {
             detected = Some(format);
             if verbose > 0 {
-                eprintln!("ttx: detected format {format:?}");
+                eprintln!("neottx: detected format {format:?}");
             }
         }
         Item::Diagnostic(diagnostic) if verbose > 0 => {
-            eprintln!("ttx: input byte {}: {:?}", diagnostic.offset, diagnostic.kind);
+            eprintln!("neottx: input byte {}: {:?}", diagnostic.offset, diagnostic.kind);
         }
         Item::StreamSelected { program, pid } => {
             selected_pid = Some(pid);
             if verbose > 0 {
-                eprintln!("ttx: using teletext stream PID {pid:#06x}, program {program:?}");
+                eprintln!("neottx: using teletext stream PID {pid:#06x}, program {program:?}");
             }
         }
         Item::TeletextEntry { pid, entry, .. } => languages.push((pid, entry.language)),
@@ -228,7 +228,7 @@ pub fn load_for(options: &Options, wanted: Option<PageAddress>) -> Result<Sessio
         let mut config = *session.decoder().config();
         config.default_region = region_for_language(language);
         if verbose > 0 {
-            eprintln!("ttx: region {} from language {}", config.default_region, String::from_utf8_lossy(&language));
+            eprintln!("neottx: region {} from language {}", config.default_region, String::from_utf8_lossy(&language));
         }
         session.decoder_mut().set_config(config);
     }

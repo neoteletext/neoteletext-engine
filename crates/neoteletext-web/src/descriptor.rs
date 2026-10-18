@@ -45,7 +45,7 @@ use crate::url::{Origin, Url, UrlError};
 
 /// Room for the addresses of all linked services' descriptors together.
 const SERVICE_ADDRESS_BYTES: usize = 4096;
-/// Aliases a descriptor may declare (`docs/web-native-concept.md`
+/// Aliases a descriptor may declare (`prototypes/browser/docs/web-native-concept.md`
 /// section 5 item 4).
 pub const MAX_ALIASES: usize = 16;
 /// Room for every alias's target together.
@@ -966,7 +966,7 @@ mod tests {
         );
     }
 
-    /// `docs/web-native-concept.md` section 5 item 4: aliases lead a page
+    /// `prototypes/browser/docs/web-native-concept.md` section 5 item 4: aliases lead a page
     /// number to a named service's page or to an address.
     #[test]
     fn aliases() {

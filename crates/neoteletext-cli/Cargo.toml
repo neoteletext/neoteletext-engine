@@ -7,18 +7,18 @@ license.workspace = true
 publish.workspace = true
 
 [[bin]]
-name = "ttx"
+name = "neottx"
 path = "src/main.rs"
 
 [dependencies]
 # Bedstead too, so that glyphs can be compared (decision E.62).
 neoteletext-core = { workspace = true, features = ["default", "bedstead"] }
-# The program reads and writes every format, and `ttx check` runs the
+# The program reads and writes every format, and `neottx check` runs the
 # page checker.
 neoteletext-formats = { workspace = true, features = ["default", "std"] }
 neoteletext-image = { workspace = true, features = ["std"] }
 neoteletext-app.workspace = true
-# The channel rules and the contents format of `ttx contents` (REQ-CLI-008).
+# The channel rules and the contents format of `neottx contents` (REQ-CLI-008).
 neoteletext-web.workspace = true
 clap = { version = "4.5.48", features = ["derive"] }
 crossterm = { version = "0.29.0", optional = true }
@@ -28,11 +28,11 @@ crossterm = { version = "0.29.0", optional = true }
 # stay defined in every build, so the help text does not change; a command
 # whose area is left out says so.
 default = ["view", "live", "slice"]
-# The interactive viewer, `ttx view`, and the terminal library it drives.
+# The interactive viewer, `neottx view`, and the terminal library it drives.
 view = ["dep:crossterm"]
 # Live feeds and web services, and the fetcher process (REQ-SEC-018).
 live = ["neoteletext-app/live"]
-# `ttx slice`: raw sampled video through the software data slicer.
+# `neottx slice`: raw sampled video through the software data slicer.
 slice = ["neoteletext-app/slice"]
 
 [lints]

@@ -817,11 +817,14 @@ pub const PAGE_WIDTH: usize = COLUMNS * CELL_WIDTH;
 pub const PAGE_HEIGHT: usize = ROWS * CELL_HEIGHT;
 /// Contiguous mosaic block rows: 3/10, 4/10 and 3/10 of the cell (E.14).
 pub const MOSAIC_ROW_TENTHS: [usize; 3] = [3, 4, 3];
-/// Pixels are about 1.2 times taller than wide on a 4:3 display
-/// (REQ-RND-004), expressed as a ratio of whole numbers: 6 / 5.
-pub const ASPECT_NUMERATOR: usize = 6;
+/// On a 4:3 PAL display a pixel of the 12-by-20 cell is wider than tall
+/// (REQ-RND-004): a half-dot, 83 ns of the 52 µs active line, is 1/624 of
+/// the screen's width, and a line, one of 576 visible lines with the height
+/// three quarters of the width, is 1/768 of it. The width is stretched by
+/// 768 / 624, which is 16 / 13.
+pub const ASPECT_NUMERATOR: usize = 16;
 /// Denominator of the aspect factor.
-pub const ASPECT_DENOMINATOR: usize = 5;
+pub const ASPECT_DENOMINATOR: usize = 13;
 
 // ---------------------------------------------------------------------------
 // Palette indices (REQ-RND-023)

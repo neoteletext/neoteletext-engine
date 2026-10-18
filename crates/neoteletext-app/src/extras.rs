@@ -33,7 +33,7 @@ pub struct PageExtras {
     /// The form, when the page has an interactive one.
     pub form: Option<FormSpec>,
     /// The addresses the coloured keys and Index lead to, when an `LN`
-    /// line names an address (`docs/web-native-concept.md` section 3);
+    /// line names an address (`prototypes/browser/docs/web-native-concept.md` section 3);
     /// indexed red, green, yellow, cyan, Index.
     pub key_addresses: [Option<String>; KEYS_WITH_INDEX],
     /// `LK` lines: page numbers on this page that lead elsewhere.

@@ -586,7 +586,7 @@ DECISIONS = [
     ("Obtain German Level 2.5 broadcast data", "A recording of ZDF or other German services (Appendix D.2).", ["outside-help"]),
     ("Find a real broadcast with objects, DRCS pages or side panels", "Only the authored stream tests them today (REQ-TST-025).", ["outside-help"]),
     ("Obtain TTI files written by vbit2", "To test the TTI reader against (REQ-INP-023).", ["outside-help"]),
-    ("Find the cause of the 16 KB growth of ttx", "The full ttx grew when its application layer moved into its own crate. Row 50.", ["tech-gap"]),
+    ("Find the cause of the 16 KB growth of neottx", "The full neottx grew when its application layer moved into its own crate. Row 50.", ["tech-gap"]),
     ("Shrink the web agent's buffers per feature", "agent::Storage does not shrink with its features.", ["tech-gap"]),
     ("Run the core under QEMU system emulation", "The Cortex-M0 test image is measured but never run.", ["tech-gap", "area/testing"]),
     ("Run the zvbi comparisons in the gate", "They are run by hand on the build host today.", ["tech-gap", "area/testing"]),

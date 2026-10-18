@@ -4,7 +4,7 @@
  * cell by cell: character, Colour Map indices, size and attributes. zvbi
  * is run as a separate program at test time (REQ-TST-001); none of its
  * code is copied here. compare_cells.py compares the output with
- * `ttx cells`.
+ * `neottx cells`.
  *
  * Colours are printed as Colour Map indices, never as zvbi's RGB values:
  * zvbi's default map differs from EN 300 706 Table 30 at CLUT 1 entries 5

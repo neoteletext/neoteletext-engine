@@ -713,7 +713,7 @@ Table 33 rules (cl. 15.3, p. 102):
   - It describes the user model: keys "+", red (next group), blue (next block), "−" (back), and a decoder-generated 25th commentary row.
   - "The combination of TOP and parallel transmissions for Level 1 and 1.5 services is not recommended…"
 - E.15 (p. 137): TOP AIT/MPT/MPT-EX commonly at 1F1–1F4, assigned via the BTT. A.10: 1F0 reserved for the BTT.
-- **EN 300 708 (ETS 300 708, March 1997, specifications/ets_300708e01p.pdf):** a full-text search (pdftotext, 1911 lines) for "TOP", "Table of pages", "BTT" and "navigat" found **no mention of TOP**. EN 300 708 covers data broadcasting only.
+- **EN 300 708 (ETS 300 708, March 1997, teletext-standards/ets_300708e01p.pdf):** a full-text search (pdftotext, 1911 lines) for "TOP", "Table of pages", "BTT" and "navigat" found **no mention of TOP**. EN 300 708 covers data broadcasting only.
 - Conclusion: a TOP implementation needs IRT/ARD-ZDF guideline 8 R 5, which is not in the local specification set.
 
 ---------------------------------------------------------------------------------------------------

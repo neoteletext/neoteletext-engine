@@ -23,11 +23,8 @@ default = [
     "objects",
     "drcs",
     "drcs-multicolour",
-    "bold",
-    "italic",
     "side-panels",
     "colours32",
-    "animation",
 ]
 # The Level 1.5 pass (area L15).
 level15 = []
@@ -35,6 +32,11 @@ level15 = []
 # non-spacing attributes and characters. The capabilities below are each a
 # feature of their own (decision E.71, REQ-GEN-020).
 level25 = []
+# The non-spacing attributes (Table 27): colours, flash, display
+# attributes and font style placed by X/26 triplets. Off by default, the
+# owner's choice: without it those triplets only set the column, and
+# characters, objects and DRCS are still placed.
+nonspacing-attributes = ["level25"]
 # Active, Adaptive and Passive objects, and default objects (area OBJ).
 objects = ["level25"]
 # Dynamically redefinable characters, mode 0 (area DRC).
@@ -42,18 +44,24 @@ drcs = ["level25"]
 # DRCS modes 1, 2 and 3: multicolour characters (clause 14.2).
 drcs-multicolour = ["drcs"]
 # Bold and italic characters (Table 28, Font Style).
-bold = ["level25"]
-italic = ["level25"]
+bold = ["nonspacing-attributes"]
+italic = ["nonspacing-attributes"]
 # Side panels (clause 12.5).
 side-panels = ["level25"]
 # CLUTs 2 and 3 and the redefinition of any CLUT (clause 12.4).
 colours32 = ["level25"]
 # Additional Flash Functions: flash modes, fast rates and phases (Table 29).
-animation = ["level25"]
+animation = ["nonspacing-attributes"]
+# The classic profile: teletext as nearly every service sent it and nearly
+# every receiver showed it, Level 1.5 and nothing of Levels 2.5 and 3.5.
+# A page using a later level shows as a Level 1.5 receiver showed it. Pair
+# it with `Config::saa5246a()`, or `Config::saa5050()` for Level 1.0. Used
+# with the default features off.
+classic = ["level15", "render", "bedstead", "viewer"]
 # The modern-classic profile (decision E.71): Level 1.5, and of Levels 2.5
 # and 3.5 only the non-spacing attributes, objects, monochrome DRCS and
 # bold. Used with the default features off.
-modern-classic = ["level15", "level25", "render", "bedstead", "viewer", "forms", "objects", "drcs", "bold"]
+modern-classic = ["level15", "level25", "nonspacing-attributes", "render", "bedstead", "viewer", "forms", "objects", "drcs", "bold"]
 # The row renderer and the generated G3 glyphs (area RND).
 render = []
 # Bedstead, the one bundled font (REQ-FNT-001, decision E.72).
@@ -101,11 +109,8 @@ required-features = [
     "objects",
     "drcs",
     "drcs-multicolour",
-    "bold",
-    "italic",
     "side-panels",
     "colours32",
-    "animation",
 ]
 
 [[test]]

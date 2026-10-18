@@ -4,10 +4,10 @@
 
 | Key | Document | Notes |
 |---|---|---|
-| **[H]** | `philips-saa5246a/PHILIPS-SAA5246A-INTEGRATED-VIP-TELETEXT-(IVT1.0)-HANDBOOK.PDF`. Philips *Product specification*, January 1993, 50 pp. | This is the main source. `[H p.N]` means PDF page N, which matches the printed page number. |
-| **[F]** | `philips-saa5246a/SAA5246Afont.PDF.pdf`, 20 pp. | This is an extract of [H] pages 27–46: [F p.1] = [H p.27] … [F p.20] = [H p.46]. It adds nothing to [H]. |
-| **[5243]** | `philips-saa5243/SAA5243_ECCT_Philips.pdf`. SAA5243 series ECCT, March 1991, 34 pp. | Scanned, with no text layer. It was read visually. |
-| **[5281]** | `philips-saa5281/SAA5281_Integrated_VIP_and_Teletext_IVT1.8_Philips.pdf`. IVT1.8*, Preliminary specification, 1996 Nov 04, 48 pp. | |
+| **[H]** | `teletext-fonts/manufacturers/philips/datasheets/saa5246a/PHILIPS-SAA5246A-INTEGRATED-VIP-TELETEXT-(IVT1.0)-HANDBOOK.PDF`. Philips *Product specification*, January 1993, 50 pp. | This is the main source. `[H p.N]` means PDF page N, which matches the printed page number. |
+| **[F]** | `teletext-fonts/manufacturers/philips/datasheets/saa5246a/SAA5246Afont.PDF.pdf`, 20 pp. | This is an extract of [H] pages 27–46: [F p.1] = [H p.27] … [F p.20] = [H p.46]. It adds nothing to [H]. |
+| **[5243]** | `teletext-fonts/manufacturers/philips/datasheets/saa5243/SAA5243_ECCT_Philips.pdf`. SAA5243 series ECCT, March 1991, 34 pp. | Scanned, with no text layer. It was read visually. |
+| **[5281]** | `teletext-fonts/manufacturers/philips/datasheets/saa5281/SAA5281_Integrated_VIP_and_Teletext_IVT1.8_Philips.pdf`. IVT1.8*, Preliminary specification, 1996 Nov 04, 48 pp. | |
 
 Notation:
 - **INFERRED** means the point follows from the cited material but is not stated in it.
