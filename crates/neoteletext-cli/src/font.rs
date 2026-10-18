@@ -1,5 +1,5 @@
 //! `neottx font convert` (REQ-FNT-010, decision E.72 item 7): a BDF font of
-//! another cell size to the 12 by 10 form the browser loads, offline and
+//! another cell size to the 12 by 10 form `neottx render --font` loads, offline and
 //! sandboxed, only where the conversion is exact. `neottx font sets`
 //! (REQ-FNT-011, decision E.75): the character sets a font conforms for.
 

@@ -26,7 +26,7 @@
 | DOC | Documentation | `doc.md` |
 | FSM | State machines | `fsm.md` |
 | WEB | Web-native page sources | `web.md` |
-| BRW | The browser (section F.20) | `brw.md` |
+| BRW | The browser (section F.20), withdrawn on 18 October 2026: the browser was removed from this repository | `brw.md` |
 | FNT | Fonts (section F.21) | `fnt.md` |
 | SEC | Security and sandboxing, which overrides every other area (section F.0.3) | `sec.md` |
 
@@ -43,7 +43,7 @@ The requirements are delivered in two phases.
 - the basic software data slicer;
 - the web-native module (area WEB), including the live WebSocket feed reader (REQ-INP-022);
 - the command-line commands;
-- the browser (area BRW, and REQ-NAV-013 to REQ-NAV-015, REQ-SEC-025, REQ-SEC-026, REQ-WEB-018 to REQ-WEB-020, REQ-WEB-022 to REQ-WEB-030 and REQ-TST-081) on macOS and Linux, added on 12 October 2026 (decisions E.68 and E.70);
+- channels (REQ-WEB-018 to REQ-WEB-020 and REQ-WEB-022 to REQ-WEB-027), added on 12 October 2026 (decision E.70). The browser added with them was removed from this repository on 18 October 2026, and its requirements were withdrawn (decision E.76);
 - writing a channel's contents (REQ-CLI-008);
 - the full test suite for all of these.
 
@@ -75,9 +75,7 @@ The requirements are delivered in two phases.
 | REQ-SEC-019 | The example WebAssembly host. The WebAssembly builds stay in Phase 1. |
 | REQ-SEC-021 | Guidance on hardware isolation for microcontroller ports. |
 | REQ-RND-026 | The glyph line cache. |
-| REQ-FNT-002 to REQ-FNT-009 | Loaded fonts on Windows, Android and iOS. macOS and Linux stay in Phase 1. |
 | REQ-CHR-012 to REQ-CHR-016 and REQ-CLI-010 | neoteletext's own character sets for about 55 more languages, the joining of Arabic-script letters, Thai and Lao, and writing pages in these sets (decision E.78). |
-| Area BRW, REQ-NAV-013 to REQ-NAV-015, REQ-SEC-025, REQ-SEC-026, REQ-WEB-018 to REQ-WEB-020, REQ-WEB-022 to REQ-WEB-030 and REQ-TST-081 | The browser on Windows, Android and iOS. macOS and Linux stay in Phase 1. |
 
 Tests for a Phase 2 feature are delivered with that feature.
 
@@ -93,7 +91,7 @@ Phase 1 is large, roughly 100 to 150 person-days, so it is delivered in mileston
 | **M4 — Raw video** | The software data slicer and its synthetic signal generator. | SLC, FSM-002, TST-060, TST-061 |
 | **M5 — Forms, links and viewer** | Interactive forms, form input, links (Appendix E), navigation and the viewer state machine. | WEB-010 to WEB-012, NAV (including history, REQ-NAV-010), FSM-005 |
 | **M6 — Levels 2.5 and 3.5** | Decode and render Presentation Levels 2.5 and 3.5 completely: the packets of both levels, storage of enhancement pages, the Colour Map, non-spacing attributes, row and screen colours, side panels, objects and default objects, DRCS, G3 glyphs, font styles and flash, with the presentation level setting and its option. The tests include the worked examples of the standard, authored streams with golden rasters, zvbi as oracle at both levels, real data, and fuzzing of every new parser. | PKT-010 to PKT-018, ACQ-016 to ACQ-022, L25, OBJ, DRC, CHR-007, CHR-011, RND-030 to RND-041, PRF-006, CLI-007, INP-023 to INP-025, FSM-011, FSM-012, TST-015 to TST-019, TST-023 to TST-025, TST-042 |
-| **M7 — Browser** | The windowed browser on macOS and Linux: tabs, the address bar, channels in folders with and without `channel.json`, contents files and the contents view, links to addresses, aliases, the tuning screen, row 0 drawn by the receiver, page catching, files, saved data, and helper processes confined on both systems, tested end to end against local channels; and `neottx contents`. The browser was built on 12 October 2026 ahead of these requirements (decisions E.63 to E.69); channels (decision E.70) were specified, then built, the same day. | BRW, NAV-013 to NAV-015, SEC-025, SEC-026, WEB-018 to WEB-027, CLI-008, TST-081 |
+| **M7 — Channels** | Channels in folders with and without `channel.json`, contents files, aliases and redirects within the channel, and `neottx contents`. A windowed browser was built on 12 October 2026 as part of this milestone (decisions E.63 to E.69); it was moved out of the engine on 16 October 2026 and removed from this repository on 18 October 2026 (decision E.76), and its requirements were withdrawn. | WEB-018 to WEB-027, CLI-008 |
 
 M1 is expected to take 40 to 50 person-days. The order of M2 to M5 may be changed; each depends only on M1. M6 depends on M1, and on M2 for the captures from the live feed that REQ-TST-025 uses. M7 depends on M2 and M5.
 

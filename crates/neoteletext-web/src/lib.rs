@@ -57,7 +57,6 @@ pub mod ws;
 pub mod channel;
 pub mod contents;
 pub mod descriptor;
-pub mod fonts;
 pub mod form;
 
 pub mod agent;

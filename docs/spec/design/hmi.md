@@ -1,10 +1,12 @@
 # Human-machine interfaces across machines: source-level design
 
+*Note of 18 October 2026:* the windowed browser was removed from this repository and is maintained in the separate neoteletext-browser repository (decision E.76). What this design says of the browser, its tuning screen and its address bar applies there; the rest stays the engine's design.
+
 A proposal, not a requirement. It describes how the code should take input from the very different controls of the machines neoteletext targets (REQ-GEN-015), and what that means for each crate and port. Nothing here changes REQUIREMENTS.md until it is recorded as decisions in Part E. Adding any of the third-party crates named in section 5 is a library choice and needs the owner's approval first.
 
 Related documents:
 
-- `prototypes/browser/docs/web-native-concept.md` section 7: the desktop keyboard mapping for the web browser concept;
+- `docs/web-native-concept.md` of the neoteletext-browser repository section 7: the desktop keyboard mapping for the web browser concept;
 - REQUIREMENTS.md area NAV: REQ-NAV-001 to REQ-NAV-012, especially REQ-NAV-009 (forms from a keyboard or a remote) and REQ-NAV-010 (Back and Forward);
 - `ARCHITECTURE.md` layers L6 (Interaction) and L8 (Platform interface);
 - `docs/spec/design/porting.md`.
@@ -238,7 +240,7 @@ fn phase(kind: KeyEventKind) -> Phase {
 **Capabilities and limits.**
 
 - **Release events** arrive only when the terminal supports the kitty keyboard protocol and the program pushes `KeyboardEnhancementFlags::REPORT_EVENT_TYPES`. Otherwise `release` is false. The driver probes with `crossterm::terminal::supports_keyboard_enhancement()`, and pops the flags in `RawGuard::drop`.
-- **The keypad.** It is distinguishable from the main keys only with the same protocol (`KeyEventState::KEYPAD`). The bindings in `prototypes/browser/docs/web-native-concept.md` section 7 never need to distinguish them.
+- **The keypad.** It is distinguishable from the main keys only with the same protocol (`KeyEventState::KEYPAD`). The bindings in `docs/web-native-concept.md` of the neoteletext-browser repository section 7 never need to distinguish them.
 - **Pasted text.** `EnableBracketedPaste` makes a paste arrive as `Event::Paste(String)`. The driver emits its characters as `Char` events with `Origin::Paste`, so a pasted `r r` or a newline can never follow a link or confirm a submission (section 2.5 rule 1). Today the viewer does not enable bracketed paste, so a paste arrives as ordinary key presses.
 - **Mouse.** `EnableMouseCapture` reports `MouseEvent { column, row, .. }` in terminal cells. With text output, one terminal cell is one teletext cell. With iTerm2 images, the driver divides by the cell size in pixels from `terminal::text_area()`. The viewer does not capture the mouse today.
 - **macOS.**
@@ -257,13 +259,13 @@ A future port, not in the workspace. **Library:** winit, which needs approval.
 
 ### 3.3 The web browser: WebAssembly
 
-The browser receiver of `prototypes/browser/docs/web-native-concept.md` section 13. **Libraries:** `web-sys` and `wasm-bindgen`, which need approval.
+The browser receiver of `docs/web-native-concept.md` of the neoteletext-browser repository section 13. **Libraries:** `web-sys` and `wasm-bindgen`, which need approval.
 
 - **Keys.** `KeyboardEvent.code()` gives physical names (`"F1"`, `"Numpad7"`, `"ArrowUp"`), `key()` gives text, and `repeat()` gives auto-repeat. `keyup` gives release.
 - **Keys the browser keeps.** Ctrl+L, Ctrl+W, Ctrl+T and F11 cannot be taken reliably, and F5 and F1 should not be. The browser table binds Address and Refresh to other keys, for example `/` and `R`, and leaves the browser's own keys alone.
 - **Pointer and touch.** `PointerEvent` coordinates are divided by the canvas cell size to give `Control::Cell`.
 - **Game controllers.** The Gamepad API's standard mapping puts A, B, X and Y at buttons 0 to 3 and the D-pad at 12 to 15. Controllers are polled each animation frame and compared with the previous state to get press and release.
-- **Screen readers.** A hidden DOM text layer, from the same Unicode text `neottx text` produces, with `aria-live` on row 0 and row 24 (`prototypes/browser/docs/web-native-concept.md` section 11).
+- **Screen readers.** A hidden DOM text layer, from the same Unicode text `neottx text` produces, with `aria-live` on row 0 and row 24 (`docs/web-native-concept.md` of the neoteletext-browser repository section 11).
 
 ### 3.4 Linux television boxes: Raspberry Pi, set-top boxes
 
@@ -376,7 +378,7 @@ Text is needed for form fields and web addresses. Each `TextEntry` value gives o
 
 - `Multitap`: the existing letter entry from digits (`MULTITAP_US`).
 - `OnScreen`: an on-screen keyboard drawn by the core in rows 1 to 23, chosen with the arrows and Confirm. The page is hidden while it is shown, so it cannot be imitated.
-- `None`: forms needing letters, and address entry, are refused with a message. Channel presets replace typed addresses (`prototypes/browser/docs/web-native-concept.md` section 9).
+- `None`: forms needing letters, and address entry, are refused with a message. Channel presets replace typed addresses (`docs/web-native-concept.md` of the neoteletext-browser repository section 9).
 
 ## 5. Third-party crates this would need
 

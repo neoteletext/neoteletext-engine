@@ -384,7 +384,7 @@ pub const SHA1_DIGEST_BYTES: usize = 20;
 pub const SHA1_BLOCK_BYTES: usize = 64;
 
 /// Bytes of a SHA-256 digest (FIPS 180-4 section 1), which names a font
-/// (REQ-FNT-003, REQ-FNT-009).
+/// (REQ-FNT-006).
 pub const SHA256_DIGEST_BYTES: usize = 32;
 /// Bytes of a SHA-256 message block (FIPS 180-4 section 5.2.1).
 pub const SHA256_BLOCK_BYTES: usize = 64;
@@ -462,8 +462,6 @@ pub const DEFAULT_RESPONSE_TIMEOUT_US: u64 = 30 * MICROSECONDS_PER_SECOND;
 pub const MAX_RETRY_AFTER_US: u64 = 600 * MICROSECONDS_PER_SECOND;
 /// Page requests waiting for the fetch connection.
 pub const PAGE_QUEUE: usize = 16;
-/// Fonts and library indexes waiting to be fetched (REQ-FNT-003).
-pub const FONT_QUEUE: usize = 4;
 /// Pages whose validators and freshness are remembered (REQ-WEB-004).
 pub const CACHE_ENTRIES: usize = 32;
 /// Hosts remembered as reached over HTTPS this session (REQ-SEC-007).

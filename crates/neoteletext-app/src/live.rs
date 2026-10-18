@@ -19,16 +19,11 @@ use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{self, Receiver};
 
-/// Where the fetcher is: a child of this process (`neottx`), or reached
-/// through the browser's interface process, which routes its frames.
-enum Link {
-    Child(Child),
-    Routed,
-}
-
 /// A live source: the fetcher and the frames it sends.
 pub struct Live {
-    link: Link,
+    /// The fetcher process; none when the frames come from a channel, as
+    /// in the tests.
+    child: Option<Child>,
     requests: Box<dyn Write + Send>,
     frames: Receiver<Frame>,
     notices: Vec<Notice>,
@@ -55,8 +50,7 @@ pub struct Live {
     asked: std::collections::HashSet<u16>,
 }
 
-/// Which pages the bytes of one response may fill (REQ-WEB-019,
-/// `prototypes/browser/docs/web-native-concept.md` section 2 item 4).
+/// Which pages the bytes of one response may fill (REQ-WEB-019).
 #[derive(Clone, Copy)]
 enum Fill<'a> {
     /// Any page: a front door, a push message, a form's answer, a file.
@@ -117,21 +111,20 @@ pub fn open(address: &str, no_sandbox: bool, allow_local: &[std::net::IpAddr]) -
             }
         }
     });
-    Ok(Box::new(Live::new(Link::Child(child), Box::new(requests), frames)))
+    Ok(Box::new(Live::new(Some(child), Box::new(requests), frames)))
 }
 
-/// A live source whose fetcher is reached through the browser's interface
-/// process: `frames` are the fetcher's frames as the interface forwards
-/// them, and requests are written to `requests`.
-#[must_use]
-pub fn routed(frames: Receiver<Frame>, requests: Box<dyn Write + Send>) -> Live {
-    Live::new(Link::Routed, requests, frames)
+/// A live source fed `frames` from a channel, writing its requests to
+/// `requests`, for the tests.
+#[cfg(test)]
+fn routed(frames: Receiver<Frame>, requests: Box<dyn Write + Send>) -> Live {
+    Live::new(None, requests, frames)
 }
 
 impl Live {
-    fn new(link: Link, requests: Box<dyn Write + Send>, frames: Receiver<Frame>) -> Self {
+    fn new(child: Option<Child>, requests: Box<dyn Write + Send>, frames: Receiver<Frame>) -> Self {
         Self {
-            link,
+            child,
             requests,
             frames,
             notices: Vec::new(),
@@ -252,25 +245,9 @@ impl Source for Live {
                     }
                 }
                 Frame::Notice(notice) => self.notices.push(notice),
-                // The fetcher never sends these to a decoder, and contents
-                // are the interface's alone; ignore rather than trust.
-                Frame::Request(..)
-                | Frame::FetchContents
-                | Frame::Contents(_)
-                | Frame::Submit(_)
-                | Frame::Confirm(_)
-                | Frame::Follow(..)
-                | Frame::Input(_)
-                | Frame::Show(..)
-                | Frame::Click(..)
-                | Frame::Screen(_)
-                | Frame::Status(_)
-                | Frame::Visit(_)
-                | Frame::FontBytes(_)
-                | Frame::Font(_)
-                | Frame::FontLibrary(_)
-                | Frame::FontTable(..)
-                | Frame::Fonts(_) => {}
+                // The fetcher never sends these to a decoder; ignore rather
+                // than trust.
+                Frame::Request(..) | Frame::Submit(_) | Frame::Confirm(_) | Frame::Follow(..) => {}
             }
         }
         session.tick(now);
@@ -290,10 +267,9 @@ impl Source for Live {
             self.last_retry = now;
             self.request(page, subcode);
         }
-        let gone = match &mut self.link {
-            Link::Child(child) => matches!(child.try_wait(), Ok(Some(_))),
-            // A routed fetcher is gone when the interface stops forwarding.
-            Link::Routed => disconnected,
+        let gone = match &mut self.child {
+            Some(child) => matches!(child.try_wait(), Ok(Some(_))),
+            None => disconnected,
         };
         if !self.ended && gone {
             self.ended = true;
@@ -375,7 +351,7 @@ impl Live {
 
 impl Drop for Live {
     fn drop(&mut self) {
-        if let Link::Child(child) = &mut self.link {
+        if let Some(child) = &mut self.child {
             let _ = child.kill();
             let _ = child.wait();
         }

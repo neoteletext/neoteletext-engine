@@ -45,7 +45,7 @@ When a coloured key's link leads to a different service (REQ-WEB-015), and that 
 
 Pressing the same key again follows the link and marks the origin as confirmed. Any other key cancels. Links within the same service, and the Index key, are followed at once.
 
-This requirement applies to `neottx view` and to ports without a browser interface. In the browser (area BRW), every link to another channel goes through the tuning screen of REQ-NAV-014 instead (decision E.65).
+This requirement applies to `neottx view` and to every port.
 *Verification:* Test of confirmation, cancellation, and the already-confirmed case.
 
 **REQ-NAV-004 — Pre-fetching linked pages.**
@@ -128,8 +128,8 @@ The viewer shall keep a history of the pages it has displayed, like a browser. E
 
 *Verification:* Test of back, forward, clearing and the form case.
 
-**REQ-NAV-013 — Links to addresses, page numbers and runs of text.** Moved to `prototypes/browser/docs/requirements.md` on 16 October 2026: it concerns the browser prototype only.
+**REQ-NAV-013 — Links to addresses, page numbers and runs of text.** Moved out of the engine on 16 October 2026 (decision E.76), and withdrawn on 18 October 2026: it concerned only the browser, which was removed from this repository and is maintained in the separate neoteletext-browser repository.
 
-**REQ-NAV-014 — The tuning screen.** Moved to `prototypes/browser/docs/requirements.md` on 16 October 2026: it concerns the browser prototype only.
+**REQ-NAV-014 — The tuning screen.** Moved out of the engine on 16 October 2026 (decision E.76), and withdrawn on 18 October 2026: it concerned only the browser, which was removed from this repository and is maintained in the separate neoteletext-browser repository.
 
-**REQ-NAV-015 — Page catching and showing links.** Moved to `prototypes/browser/docs/requirements.md` on 16 October 2026: it concerns the browser prototype only.
+**REQ-NAV-015 — Page catching and showing links.** Moved out of the engine on 16 October 2026 (decision E.76), and withdrawn on 18 October 2026: it concerned only the browser, which was removed from this repository and is maintained in the separate neoteletext-browser repository.

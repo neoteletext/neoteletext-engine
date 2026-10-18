@@ -3,11 +3,10 @@
 This area is the receiver's fonts (decision E.72): the bundled Bedstead font, and fonts in one 12 × 10 form loaded when the user, the channel or the page names them. The security analysis is `docs/spec/design/font-security.md`. Mosaics, G3 characters and DRCS characters are not fonts and are not affected.
 
 **REQ-FNT-001 — The bundled font.**
-The receiver shall carry one font, Bedstead 3.261, in the 5-dot by 9-line form of REQ-RND-010, drawn with the character rounding of REQ-RND-012. It is the default font of every page and the only font of the receiver's own drawing: row 0, the tuning screen, the contents view, the start, keys, error and loading pages, and any confirmation. It is the only font compiled into the receiver; the Noto-derived fonts of REQ-FNT-012 are kept in the repository but loaded at run time (decision E.77). Its provenance and licence (CC0 1.0 and section 55 of the United Kingdom Copyright, Designs and Patents Act 1988) shall be recorded in `third_party/bedstead/PROVENANCE.md`, with the SHA-256 of its export, which the gate checks. A character it lacks, and that cannot be composed from a base letter and a spacing mark (decision E.26), shall be drawn as the placeholder of REQ-CHR-004.
+The receiver shall carry one font, Bedstead 3.261, in the 5-dot by 9-line form of REQ-RND-010, drawn with the character rounding of REQ-RND-012. It is the default font of every page and the only font of the receiver's own drawing: row 0's status area, the receiver's row 24 messages and any confirmation. It is the only font compiled into the receiver; the Noto-derived fonts of REQ-FNT-012 are kept in the repository but loaded at run time (decision E.77). Its provenance and licence (CC0 1.0 and section 55 of the United Kingdom Copyright, Designs and Patents Act 1988) shall be recorded in `third_party/bedstead/PROVENANCE.md`, with the SHA-256 of its export, which the gate checks. A character it lacks, and that cannot be composed from a base letter and a spacing mark (decision E.26), shall be drawn as the placeholder of REQ-CHR-004.
 *Verification:* Inspection of provenance; the gate's check of the export's SHA-256; a coverage test listing every required character Bedstead lacks.
 
 **REQ-FNT-002 — The font form.**
-*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS (section F.0.1).
 A font other than the bundled one shall be a file in the Glyph Bitmap Distribution Format (BDF) version 2.1 or 2.2, accepted only when all of these hold:
 - the file runs from `STARTFONT` to `ENDFONT`; `COMMENT` lines may appear anywhere;
 - `FONTBOUNDINGBOX 12 10 0 0`;
@@ -24,14 +23,12 @@ Any other keyword, a malformed number, or any rule broken refuses the whole file
 *Verification:* Tests of a valid font of each height and of each rule broken; a fuzz target for the reader (REQ-TST-040) with fonts of both heights.
 
 **REQ-FNT-003 — Where fonts come from.**
-*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS.
-A font may be loaded from any `http` or `https` address, or from a local file the user chooses, and only when the user, the channel (REQ-FNT-006) or the page (REQ-FNT-007) names it. Nothing else shall cause a font to be fetched. A font shall be fetched by a confined fetcher process (REQ-SEC-026) under the network rules of a channel's files: the local-network protection of REQ-SEC-006, the plain-HTTP marker of REQ-SEC-005, and no downgrade (REQ-SEC-007). A font at an address other than the channel's own origin, named by the channel or the page, is fetched only with its SHA-256, without cookies or `Referer`, and only while the viewer allows fonts from other sites (REQ-WEB-014).
+A font may be loaded from a local file the user names, as `neottx render --font` does, or from an `http` or `https` address, and only when the user, the channel (REQ-FNT-006) or the page (REQ-FNT-007) names it. Nothing else shall cause a font to be fetched. A font shall be fetched by the confined fetcher process of REQ-SEC-018 under the network rules of a channel's files: the local-network protection of REQ-SEC-006, the plain-HTTP marker of REQ-SEC-005, and no downgrade (REQ-SEC-007). A font at an address other than the channel's own origin, named by the channel or the page, is fetched only with its SHA-256, without cookies or `Referer`, and only while the viewer allows fonts from other sites (REQ-WEB-014).
 
-Fonts and library indexes shall be read only in a confined process: the tab's fetcher, or a font helper under the same confinement. The interface process shall never parse a font. It receives the font's bytes, whose SHA-256 it computes itself, and a glyph table of at most 1,024 entries, each a code point and ten or twenty 12-bit rows, all of one height (decision E.77), whose shape it checks (`docs/spec/design/font-security.md` section 3.1). When a font is named with a SHA-256, a file with any other checksum shall be refused.
+Fonts and library indexes shall be read only in a confined process: the fetcher, or the decoder, of REQ-SEC-018. The process that draws the page shall never parse a font. It receives the font's bytes, whose SHA-256 it computes itself, and a glyph table of at most 1,024 entries, each a code point and ten or twenty 12-bit rows, all of one height (decision E.77), whose shape it checks (`docs/spec/design/font-security.md` section 3.1). When a font is named with a SHA-256, a file with any other checksum shall be refused.
 *Verification:* Tests that a font named by each of the three is fetched, that nothing else fetches one, and that a wrong checksum is refused.
 
 **REQ-FNT-004 — Font libraries.**
-*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS.
 A font library is a folder, in the form of a channel's folder (REQ-WEB-023), holding an index named `fonts.txt`. The index has one entry per line, fields separated by one tab, and comments and empty lines as `contents.txt` has (REQ-WEB-025):
 
 | Kind | Fields after the kind |
@@ -39,45 +36,30 @@ A font library is a folder, in the form of a channel's folder (REQ-WEB-023), hol
 | `f` | the font: a file name in the library's folder or an address; its title, 1 to 32 characters; its SHA-256 as 64 hexadecimal digits |
 | `c` | the conformance of a font listed by an `f` line: the same file name or address; then the character sets it conforms for (REQ-FNT-011), separated by single spaces, each a set's name as REQ-FNT-011 gives it, followed by `*` when the font also meets the SAA5050 cell profile for that set |
 
-The index is at most 64 kilobytes and 1,000 lines; a line of an unknown kind is ignored, a malformed line is ignored and counted. A `c` line for a font no `f` line lists, a second `c` line for a font, or an unknown set name makes that line malformed. The user adds a library by its address, and the browser lists its fonts by title for the user to choose; a font is fetched only when chosen. The conformance a `c` line states is used only to list the font before it is loaded; once loaded, the browser uses the conformance it computes (decision E.75 item 3).
+The index is at most 64 kilobytes and 1,000 lines; a line of an unknown kind is ignored, a malformed line is ignored and counted. A `c` line for a font no `f` line lists, a second `c` line for a font, or an unknown set name makes that line malformed. A port lists a library's fonts by title for the user to choose; a font is fetched only when chosen. The conformance a `c` line states is used only to list the font before it is loaded; once loaded, the conformance computed from the font is used (decision E.75 item 3).
 *Amended 13 October 2026* (decision E.75, issue #213): the `c` line.
 *Verification:* Tests of a library with fonts in its folder and elsewhere, of each fault, of `c` lines and their faults, and that listing a library fetches no font.
 
 **REQ-FNT-005 — Which font draws a page.**
-*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS.
-The user chooses at most one font for each character set of REQ-FNT-011 (decision E.75 item 6). A character on a page's rows 1 to 24 shall be drawn from the first of: the page's font (REQ-FNT-007), the channel's font (REQ-FNT-006), the user's font for the character's own set, and Bedstead. When the user has set "always use my fonts", the user's font for the character's set, or Bedstead if none is chosen for it, shall be used whatever the channel or page names. A character the font in use lacks shall come from the user's font for its set, then from Bedstead, then the placeholder (REQ-CHR-004). The receiver's own drawing shall always use Bedstead (REQ-FNT-001). The window's status line shall name the font drawing the page, and whether the page, the channel or the user chose it.
+The user chooses at most one font for each character set of REQ-FNT-011 (decision E.75 item 6). A character on a page's rows 1 to 24 shall be drawn from the first of: the page's font (REQ-FNT-007), the channel's font (REQ-FNT-006), the user's font for the character's own set, and Bedstead. When the user has set "always use my fonts", the user's font for the character's set, or Bedstead if none is chosen for it, shall be used whatever the channel or page names. A character the font in use lacks shall come from the user's font for its set, then from Bedstead, then the placeholder (REQ-CHR-004). The receiver's own drawing shall always use Bedstead (REQ-FNT-001).
 *Amended 13 October 2026* (decision E.75 item 6, issue #216): one user font per character set, replacing the single user font.
-*Verification:* Tests of each step of the order, that characters of two sets on one page come from the fonts chosen for their sets, of the user's override, of the fallback for a missing character, and that row 0 and the tuning screen are drawn in Bedstead whatever font a page names.
+*Verification:* Tests of each step of the order, that characters of two sets on one page come from the fonts chosen for their sets, of the user's override, of the fallback for a missing character, and that row 0's status area is drawn in Bedstead whatever font a page names.
 
 **REQ-FNT-006 — A channel's font.**
-*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS.
-`channel.json` (REQ-WEB-024) may have a member `font`, an object with `address`, a file name in the channel's folder or an address, and `sha256`, 64 hexadecimal digits; both are required, so a font at another address always carries its checksum (REQ-WEB-014). The font is fetched when the channel opens, after its settings and bundle, and the channel's pages are drawn in Bedstead until it arrives (REQ-FNT-009).
+`channel.json` (REQ-WEB-024) may have a member `font`, an object with `address`, a file name in the channel's folder or an address, and `sha256`, 64 hexadecimal digits; both are required, so a font at another address always carries its checksum (REQ-WEB-014). The font is fetched when the channel opens, after its settings and bundle, and the channel's pages are drawn in the font that would apply without it until it arrives.
 *Verification:* Tests of a channel with a font in its folder, one with a font elsewhere, and one whose font fails its checksum.
 
 **REQ-FNT-007 — A page's font.**
-*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS.
 A TTI page may name its font with a line `TF,address,sha256`, applying to the page or sub-page of the most recent `PN` line: the address of a font file, absolute or relative to the page's own address, and its SHA-256. Other TTI readers ignore the line as an unknown command. A page has at most one `TF` line; a second, a malformed line or a checksum that is not 64 hexadecimal digits makes the page's font null, with a diagnostic, and the page is still shown. A page from T42 packets or a broadcast cannot name a font. The TTI writer keeps the line, and the page checker (REQ-CLI-006) reports a malformed one as an error.
 *Verification:* Reader, writer and checker tests; tests that a page's font draws that page only.
 
 **REQ-FNT-008 — Drawing a loaded font.**
-*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS.
 A loaded font's character shall be drawn as its 12 × 10 bitmap with each line repeated in the 12 × 20 cell, and enlarged for double height, double width and double size as a mode 0 DRCS character is (REQ-RND-038). Foreground and background colours, flash, conceal, boxing, underline and the other attributes apply as to any character. The glyphs shall reach a decoder process as a bounded message of the pipe, at most one font per message, checked again on arrival. A font whose every row of every glyph is made of identical pixel pairs, a doubled 5- or 6-dot matrix, shall be drawn with the character rounding of decision E.13 whenever rounding is on, as the bundled glyphs are; any other loaded font shall be drawn without rounding.
 *Amended 13 October 2026* (decision E.72 item 8, issue #209): doubled dot matrices are rounded; before, no loaded font was.
 *Amended 18 October 2026* (decision E.77): a 12 × 20 font's character is drawn line for line in a normal cell, each line twice in double height and double size, and never rounded.
 *Verification:* Golden rasters of a test font at every size; tests that a font message beyond its bounds is refused; a test that Bedstead converted from its 5 × 9 matrices draws every line exactly as the bundled Bedstead, and that a half-dot font is not rounded.
 
-**REQ-FNT-009 — The font cache.**
-*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS.
-Fonts shall be kept in the profile directory (REQ-BRW-006), written only by the interface process, each written whole through a temporary file and renamed:
-- **By content.** Each font is stored once as its original bytes in a file named by its SHA-256 alone, never by anything taken from its address.
-- **Kept apart.** Fonts named by a channel or a page are kept per channel, and used only for that channel; fonts the user chose and the fonts of libraries the user added are shared.
-- **Bounded.** At most 4 megabytes in all and 256 kilobytes per font. When a new font would exceed the total, the least recently used fonts are removed first, except those the user has pinned.
-- **Fresh.** A font named with a SHA-256 is used from the cache with no request. A font the user named by address alone is checked again at most once a day with a conditional request (REQ-WEB-004); the cached copy stays in use when the check fails.
-- **Checked on every load.** Whenever a font is loaded from the cache, the interface recomputes its SHA-256, and a confined process reads it again against REQ-FNT-002; a file that fails is deleted and fetched again.
-- **Visible.** The settings list every cached font with its name, address, licence notice and size, and let the user pin a font, remove one, or clear all.
-
-While a font is being fetched, the page is drawn in the font that would apply without it, then drawn again when it arrives. A font that cannot be fetched leaves that font in place, with a message in the status line. Cached fonts work offline.
-*Verification:* Tests of reuse without a request, of keeping channels apart, of eviction and pinning, of a file changed on disk, and of the daily check.
+**REQ-FNT-009 — The font cache.** Withdrawn on 18 October 2026: it concerned only the browser's profile directory and settings, and the browser was removed from this repository and is maintained in the separate neoteletext-browser repository.
 
 **REQ-FNT-010 — The font converter.**
 `neottx font convert INPUT OUTPUT` shall write a font in the form of REQ-FNT-002 from a BDF of another cell size, offline, only where the conversion is exact and reversible:
@@ -100,7 +82,7 @@ A font *conforms* for a character set S when all of these rules hold (decision E
 
 The *SAA5050 cell profile* is met for S when, in addition, every glyph of S's assigned characters has its top line blank (one line space between rows) and its leftmost dot column, pixels 11 and 10, blank (one dot space between characters), as the SAA5050 draws them (Part C.3). It is reported, never required.
 
-`neottx font sets FONT` shall read a font under the profile of REQ-FNT-002 and print, for each of the 24 sets, whether the font conforms, whether it meets the profile, and the first rule that fails with the positions that fail it; and with `--library-line NAME`, the `c` line of REQ-FNT-004 for the font under that file name. It never reads from the network and runs under the sandbox of REQ-SEC-017. The browser computes the same from a loaded font's glyph table.
+`neottx font sets FONT` shall read a font under the profile of REQ-FNT-002 and print, for each of the 24 sets, whether the font conforms, whether it meets the profile, and the first rule that fails with the positions that fail it; and with `--library-line NAME`, the `c` line of REQ-FNT-004 for the font under that file name. It never reads from the network and runs under the sandbox of REQ-SEC-017.
 *Amended 18 October 2026* (decisions E.78 to E.80): the sets of REQ-CHR-012 are judged by the same rules, under names of the same pattern (for example `G0-Thai`, `G2-Thai`, `G0-Latin-HausaFula`, `G0-Arabic-Urdu`). For a group 1001 set the font must also have every form of every joining letter at the code points of REQ-CHR-015. The SAA5050 cell profile is not reported for 12 × 20 fonts.
 *Verification:* Tests of each rule passing and failing, of a national option sub-set, of a G2 set's unassigned positions and marks, of the profile, that two fonts with the same glyphs and different names conform alike, and of `neottx font sets` and its library line.
 

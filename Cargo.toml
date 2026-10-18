@@ -11,8 +11,6 @@ members = [
     "xtask",
 ]
 default-members = ["crates/neoteletext-cli"]
-# The browser prototype is a workspace of its own (prototypes/browser).
-exclude = ["prototypes"]
 
 [workspace.package]
 version = "0.1.0"

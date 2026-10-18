@@ -219,15 +219,10 @@ pub fn run(
                 }
                 Notice::Offline(_)
                 | Notice::Current(_)
-                | Notice::LinkedSites(_)
                 | Notice::ServiceName(_)
                 | Notice::Bundle(_)
                 | Notice::Aliases(_)
-                | Notice::Refresh(_)
-                // Fonts are the browser's (decision E.72 item 9); `neottx`
-                // draws in Bedstead.
-                | Notice::ChannelFont(..) => {}
-                // Only a browser asks the fetcher to stop at other sites.
+                | Notice::Refresh(_) => {}
                 Notice::RedirectToOtherChannel(address) => messages.push(format!("redirected to {address}")),
             }
         }

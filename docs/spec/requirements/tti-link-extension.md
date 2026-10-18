@@ -25,7 +25,7 @@ LN,key,target,label
 LK,mpp,target
 ```
 
-Links the page number `mpp`, which the page shows, to `target`, in any of the forms above. While the page is shown, typing that number, or choosing the number printed on the page, follows the link (REQ-NAV-013). A page has at most eight `LK` lines; a ninth is ignored with a diagnostic. Two `LK` lines for the same number, or an invalid number or target, are reported by the page checker as errors (REQ-CLI-006).
+Links the page number `mpp`, which the page shows, to `target`, in any of the forms above. While the page is shown, typing that number, or choosing the number printed on the page, follows the link. A page has at most eight `LK` lines; a ninth is ignored with a diagnostic. Two `LK` lines for the same number, or an invalid number or target, are reported by the page checker as errors (REQ-CLI-006).
 
 ### E.1.2 Text links
 
@@ -33,7 +33,7 @@ Links the page number `mpp`, which the page shows, to `target`, in any of the fo
 LT,row,column,length,target
 ```
 
-Links a run of `length` characters starting at `column` on `row` to `target`. `row` is 1 to 23 and the run must lie within the 40 columns; anything else makes the line invalid. A page has at most eight `LT` lines; a ninth is ignored with a diagnostic. The page draws the text itself; the receiver shows it as a link only in page catching or when the viewer asks to see links (REQ-NAV-015).
+Links a run of `length` characters starting at `column` on `row` to `target`. `row` is 1 to 23 and the run must lie within the 40 columns; anything else makes the line invalid. A page has at most eight `LT` lines; a ninth is ignored with a diagnostic. The page draws the text itself; a receiver may show it as a link, for example when the viewer asks to see a page's links.
 
 `LK` and `LT` lines apply to the page or sub-page of the most recent `PN` line, and are kept by the TTI writer.
 

@@ -8,7 +8,7 @@ target/release/neottx show recording.t42 100
 target/release/neottx view zxnet:teefax
 ```
 
-A windowed browser built on the engine, with tabs, channels and a tuning screen, is kept as a prototype in [prototypes/browser/](prototypes/browser/README.md), outside the engine's workspace and gates (decision E.76).
+A windowed browser built on the engine, with tabs, channels and a tuning screen, is maintained in the separate neoteletext-browser repository (decision E.76).
 
 Each crate's optional parts are Cargo features, on by default, so a port or a smaller `neottx` compiles in only what it uses. The features are listed in the user guide and the porting guide. The decoder's capabilities from the later teletext levels are features too: the recommended `modern-classic` profile keeps those that preserve teletext's look or make it more usable, and switches off those that would dilute it, such as colour bitmap characters, the 32-colour palette and animation ([docs/spec/design/capabilities.md](docs/spec/design/capabilities.md)).
 

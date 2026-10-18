@@ -1,6 +1,6 @@
 [package]
 name = "neoteletext-app"
-description = "The neoteletext application layer shared by neottx and a windowed viewer: sessions, inputs, live mode's two processes and sandboxing"
+description = "The neoteletext application layer of neottx: sessions, inputs, live mode's two processes and sandboxing"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,8 +9,7 @@ publish.workspace = true
 
 [dependencies]
 # Page extension data carries the forms model and the navigation links.
-# The renderer draws the decoder process's screens and the browser's own
-# rows.
+# The renderer draws rasters (`present`).
 neoteletext-core = { workspace = true, features = ["forms", "viewer", "render"] }
 # Palettes and scaling for rasters (`present`).
 neoteletext-image.workspace = true

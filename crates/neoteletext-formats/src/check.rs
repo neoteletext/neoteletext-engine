@@ -159,7 +159,7 @@ fn check_links(page: &PageFile, options: &CheckOptions<'_>, report: &mut dyn FnM
     }
     // A page that links a number it does not show makes typing that
     // number mean something the viewer cannot see
-    // (`prototypes/browser/docs/web-native-concept.md` section 5).
+    // (the web-native concept section 5).
     for link in page.number_links.as_slice() {
         if !text_has_number(page, link.number.ascii()) {
             report(Severity::Warning, Problem::Warning(Warning::PageNumberNotShown), link.line);

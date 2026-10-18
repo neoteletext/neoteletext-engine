@@ -123,8 +123,7 @@ pub enum FontTableError {
 
 /// A font loaded at run time (REQ-FNT-008): a table of 12 by 10 or 12 by 20
 /// glyphs, all of one height (decision E.77), sorted by code point. The table comes from outside the library, so it is
-/// checked for shape when the font is made; that is the check the browser's
-/// interface and its decoders make on every table they receive
+/// checked for shape when the font is made
 /// (`docs/spec/design/font-security.md` section 3.1).
 #[derive(Clone, Copy, Debug)]
 pub struct LoadedFont<'a> {
@@ -278,10 +277,10 @@ impl<'a> GlyphSet<'a> {
         Self { in_use: None, by_set: [None; FONT_SET_COUNT], ..self }
     }
 
-    /// The set's own G0 and G2 glyphs, sorted by code point: what a font
-    /// sample shows of Bedstead (REQ-BRW-010).
+    /// The set's own G0 and G2 glyphs, sorted by code point.
+    #[cfg(test)]
     #[must_use]
-    pub const fn entries(&self) -> &'static [GlyphEntry] {
+    pub(crate) const fn entries(&self) -> &'static [GlyphEntry] {
         self.entries
     }
 

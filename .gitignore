@@ -29,7 +29,7 @@ __pycache__/
 .vscode/
 .idea/
 
-# Scratch work: probes, browser profile
+# Scratch work: probes
 /tmp/
 
 # The linked test image of REQ-GEN-009 is its own workspace (decision E.61).
@@ -40,7 +40,6 @@ __pycache__/
 
 # Fuzzing output (fuzz/.gitignore covers the fuzz workspace itself)
 /fuzz/target/
-/prototypes/browser/target/
 /fuzz/corpus/
 /fuzz/artifacts/
 /fuzz/coverage/

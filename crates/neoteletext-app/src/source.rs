@@ -15,7 +15,7 @@ pub trait Source {
     fn request(&mut self, _page: PageAddress, _subcode: SubCode) {}
 
     /// Asks for a page the shown page depends on, without making it the
-    /// page kept fresh (`prototypes/browser/docs/web-native-concept.md` section 2 item 6).
+    /// page kept fresh.
     fn prefetch(&mut self, _page: PageAddress) {}
 
     /// Notices for the viewer since the last call.

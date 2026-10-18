@@ -2,14 +2,14 @@
 
 A software receiver for World System Teletext (ETSI EN 300 706), Presentation Levels 1.0 and 1.5. The behaviour baselines are the Philips SAA5050 (rendering) and SAA5246A (receiver).
 
-The library and `neottx` are implemented; work continues feature by feature. Since 16 October 2026 this repository is the core teletext rendering engine only (decision E.76): the windowed browser built on it is a prototype in `prototypes/browser/`, a Cargo workspace of its own outside the engine's workspace and gates. Do not add browser code to the engine's crates.
+The library and `neottx` are implemented; work continues feature by feature. This repository is the core teletext rendering engine only (decision E.76). The windowed browser built on it is maintained in its own repository, `~/devel/neoteletext-browser`; it was removed from this one on 18 October 2026. Do not add browser code to this repository.
 
 ## How work proceeds: rapid iteration, then integration
 
 The owner shapes behaviour by asking for changes and looking at the result. Work therefore runs in two modes (owner's instruction, 13 October 2026).
 
 **Rapid iteration (the default while a feature's behaviour is being shaped).**
-- Make the change, then rebuild `neottx` with the fast `iterate` profile, `cargo build --profile iterate -p neoteletext-cli` (seconds, not the release profile's minute and more), and show the result with `target/iterate/neottx` (for example `show` to an image). The browser prototype has the same profile: `cargo build --profile iterate -p neoteletext-gui` in `prototypes/browser`. Check the output, then tell the owner it is ready to look at.
+- Make the change, then rebuild `neottx` with the fast `iterate` profile, `cargo build --profile iterate -p neoteletext-cli` (seconds, not the release profile's minute and more), and show the result with `target/iterate/neottx` (for example `show` to an image). Check the output, then tell the owner it is ready to look at.
 - Do not write tests, user guide text, requirement prose, implementation log rows or traceability during this mode, and commit as rarely as possible: the pre-commit gate takes over ten minutes. Never bypass the hooks; batch the work instead.
 - Run the existing tests of the code touched when that is quick, to catch breakage early.
 - **Accumulate everything owed in `TECH-DEBT.md`** as you go: tests to write, requirements and decisions to record, documents to update, verification to run (full gate, sizes, fuzzing), shortcuts taken and loose ends noticed. Nothing deferred may exist only in a reply.

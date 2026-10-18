@@ -405,10 +405,9 @@ fn font_or_text_line(cell: &Cell, glyphs: &GlyphSet<'_>, source: usize, options:
 
 /// Line `line` (0 to 19) of a 12 by 10 loaded glyph, whose lines are the
 /// first ten of `rows`, in the 12-by-20 cell: each of its ten lines twice, and with `rounding` the rule of decision E.13 as
-/// the bundled glyphs get it, never across the cell's edge. Public so that
-/// a font's sample is drawn as its pages are (REQ-BRW-010).
+/// the bundled glyphs get it, never across the cell's edge.
 #[must_use]
-pub fn font_line_20(rows: &[u16], line: usize, rounding: bool) -> u16 {
+pub(crate) fn font_line_20(rows: &[u16], line: usize, rounding: bool) -> u16 {
     let cell_line = line / 2;
     let row = |index: Option<usize>| index.and_then(|index| rows.get(index)).copied().unwrap_or(0) & CELL_MASK;
     let a = row(Some(cell_line));

@@ -604,7 +604,7 @@ fn packet_28_function_wins_in_any_line_order() {
     assert_eq!(page(&[pf, x28_0, x28_3]), Some(basic));
 }
 
-/// `prototypes/browser/docs/web-native-concept.md` sections 3 and 5: addresses as link
+/// the web-native concept sections 3 and 5: addresses as link
 /// targets, page-number links and text links.
 #[test]
 fn addresses_number_links_and_text_links() {

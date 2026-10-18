@@ -20,8 +20,8 @@
 //!   (REQ-INP-005), over the formats compiled in.
 //! - `check` (feature `check`): the TTI page checker behind `neottx check`
 //!   (REQ-CLI-006).
-//! - `bdf` (feature `bdf`): the strict reader of the 12 by 10 BDF fonts the
-//!   browser loads (REQ-FNT-002). Fonts are not teletext input, but they
+//! - `bdf` (feature `bdf`): the strict reader of the 12 by 10 and 12 by 20
+//!   BDF fonts `neottx render --font` loads (REQ-FNT-002). Fonts are not teletext input, but they
 //!   are untrusted files read into fixed tables like every format here.
 //! - `write` (feature `std`): the T42 writer (REQ-INP-018) and, with `tti`,
 //!   the TTI writer (REQ-INP-014).

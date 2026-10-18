@@ -292,7 +292,7 @@ enum Command {
         #[arg(long)]
         no_sandbox: bool,
     },
-    /// Work with the fonts the browser loads (area FNT).
+    /// Work with loaded fonts (area FNT).
     Font {
         #[command(subcommand)]
         action: FontCommand,

@@ -95,7 +95,7 @@ Every command that decodes pages shall accept `--level` followed by `1`, `1.5`, 
 The output never includes `x` entries. An author who lists other channels adds those lines by hand after the generated ones. Exit status is 0 on success, the usage status for a wrong argument, and 4 when any file was skipped or the page limit was reached.
 *Verification:* Tests with a folder holding TTI and T42 page files, an `index.t42`, a subfolder, a file with another name, an invalid file, and pages in several magazines; the output shall be exactly the expected file, and shall pass REQ-WEB-025.
 
-**REQ-CLI-009 — Testing a web page's pointer.** Moved to `prototypes/browser/docs/requirements.md` on 16 October 2026: it concerns the browser prototype only.
+**REQ-CLI-009 — Testing a web page's pointer.** Moved out of the engine on 16 October 2026 (decision E.76), and withdrawn on 18 October 2026: it concerned only the browser, which was removed from this repository and is maintained in the separate neoteletext-browser repository.
 
 **REQ-CLI-010 — Writing a page from text.**
 *Phase:* Phase 2 (whole requirement).

@@ -555,7 +555,7 @@ impl Default for DisplayOptions {
     }
 }
 
-/// Where a page's designation group came from (REQ-BRW-011): the
+/// Where a page's designation group came from (REQ-CHR-003): the
 /// highest-priority packet present, in the order of Annex C.4 rule 1, or
 /// the receiver's setting when the page sends none.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -584,7 +584,7 @@ pub enum NationalSource {
 }
 
 /// How a page's character sets were chosen, as the decoder resolved them
-/// (REQ-BRW-011, decision E.75 item 5).
+/// (REQ-CHR-003).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct DesignationReport {
     /// C12 to C14 of the page header, as the national option index.
@@ -610,8 +610,8 @@ pub struct DesignationReport {
     pub esc_rows: u8,
 }
 
-/// How the page's character sets are chosen (decision E.4, REQ-CHR-003,
-/// REQ-BRW-011): the group from the highest-priority designation, or the
+/// How the page's character sets are chosen (decision E.4, REQ-CHR-003):
+/// the group from the highest-priority designation, or the
 /// configured default.
 ///
 /// The designations are taken in the order of Annex C.4 rule 1: X/28/0
@@ -1442,7 +1442,7 @@ mod tests {
         assert_eq!(header_only, latin(charset::NationalOption::German), "no designation: C12 to C14");
     }
 
-    /// REQ-BRW-011: the designation report names every step and its
+    /// REQ-CHR-003: the designation report names every step and its
     /// source: the receiver's region for a Level 1 page, the page's X/28/0,
     /// the magazine's M/29/0, a reserved entry's fallback, the second G0 set
     /// and the rows with ESC.

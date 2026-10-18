@@ -496,7 +496,7 @@ pub struct EnhancementReport {
     /// Triplets read, over every run of the walk.
     pub steps: u32,
     /// Modified G0 and G2 Character Set Designation triplets applied
-    /// (Table 34, REQ-L25-012, REQ-BRW-011).
+    /// (Table 34, REQ-L25-012).
     pub designations: u32,
 }
 

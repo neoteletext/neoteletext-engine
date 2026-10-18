@@ -24,7 +24,7 @@ pub const SERVICE_NAME_BYTES: usize = 32;
 /// Link Extension links per page: four coloured keys and Index
 /// (Appendix E.1).
 pub const LINK_LINES: usize = 5;
-/// The longest address a link may name (`prototypes/browser/docs/web-native-concept.md`
+/// The longest address a link may name (the web-native concept
 /// section 3): longer addresses make the link invalid.
 pub const LINK_ADDRESS_BYTES: usize = 256;
 /// `LK` lines per page: page numbers linked elsewhere (concept section 5
@@ -197,7 +197,7 @@ pub struct LinkLine {
     /// The sub-page, `None` for any sub-page.
     pub subcode: Option<SubCode>,
     /// The address of another site's page file, when the target is an
-    /// address (`prototypes/browser/docs/web-native-concept.md` section 3); empty otherwise.
+    /// address (the web-native concept section 3); empty otherwise.
     pub url: Text<LINK_ADDRESS_BYTES>,
     /// The prompt text, as written.
     pub label: Text<LINK_LABEL_BYTES>,
@@ -222,8 +222,8 @@ impl LinkLine {
 pub struct LinkDestination {
     /// The other service named, empty for this service or an address.
     pub service: Text<SERVICE_NAME_BYTES>,
-    /// The page; for an address, the page its file holds is the browser's
-    /// to find out.
+    /// The page; for an address, the page its file holds is found when it
+    /// is fetched.
     pub address: PageAddress,
     /// The sub-page, `None` for any sub-page.
     pub subcode: Option<SubCode>,

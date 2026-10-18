@@ -61,6 +61,6 @@
 | Alias | An entry of `channel.json` that leads one page number to another channel on every page of the channel (REQ-WEB-020). |
 | Discovery | Finding the channel an ordinary web address announces, from a pointer in its answer (REQ-WEB-028, decision E.73). |
 | Pointer | A link of type `alternate` to a channel or a page file, with a teletext media type, given in a `Link` header or a `<link>` element (REQ-WEB-029). |
-| Tuning screen | The receiver-drawn screen shown before anything from another channel, which the viewer confirms (REQ-NAV-014, decision E.65). |
+| Tuning screen | The browser's receiver-drawn screen shown before anything from another channel, which the viewer confirms (REQ-NAV-014, decision E.65). Withdrawn with the browser on 18 October 2026. |
 | Page catching | Moving a cursor between the links on a page and following one, as some Philips televisions did with page numbers (REQ-NAV-015). |
-| Helper process | A process the browser starts for a tab: a fetcher, which holds only the network, or a decoder, which holds nothing (REQ-SEC-026). |
+| Helper process | A process `neottx` starts in web and live mode: a fetcher, which holds only the network, or a decoder, which holds nothing (REQ-SEC-018). |

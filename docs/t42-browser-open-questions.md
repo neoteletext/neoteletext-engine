@@ -2,6 +2,8 @@
 
 Written on 15 October 2026.
 
+*Note of 18 October 2026:* neoteletext's own browser was removed from this repository and is maintained in the separate neoteletext-browser repository (decision E.76). The questions below that compare T42 Browser with neoteletext's browser or its prototype documents are closed here; the questions about what the engine offers a browser, such as the web module's interfaces, remain open. The `prototypes/browser/` paths below name documents now in the neoteletext-browser repository.
+
 T42 Browser (`~/devel/t42-browser`) is a teletext browser that uses neoteletext as its engine and replaces the egui shell with a Tauri shell. Its design is in three documents in that repository:
 
 - `docs/architecture.md`, with its decision register (decisions 1 to 25);

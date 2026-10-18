@@ -217,18 +217,9 @@ On pages where row 24 is not displayed, the coloured keys shall do nothing. That
 *Amended 12 October 2026* (decision E.64): page-number and text links.
 *Verification:* Test with hostile pages that try each of these.
 
-**REQ-SEC-025 — The browser draws row 0 on every page.** Moved to `prototypes/browser/docs/requirements.md` on 16 October 2026: it concerns the browser prototype only.
+**REQ-SEC-025 — The browser draws row 0 on every page.** Moved out of the engine on 16 October 2026 (decision E.76), and withdrawn on 18 October 2026: it concerned only the browser, which was removed from this repository and is maintained in the separate neoteletext-browser repository.
 
-**REQ-SEC-026 — The browser's helper processes.**
-*Phase:* Phase 1 on macOS and Linux; Phase 2 on Windows, Android and iOS (section F.0.1).
-The browser shall run each tab's network access and decoding in separate helper processes, as REQ-SEC-018 describes for `neottx`: a fetcher, which holds only the network, and a decoder, which holds nothing (decision E.69). The interface process shall route every message between them, read every message as untrusted, and check each against the strict, bounded framing of the pipe. It shall drop any confirmation request a decoder sends: only the interface asks the viewer to confirm, outside the page (decision E.65 item 6).
-
-The helpers shall be confined before they read any input:
-- **on macOS,** by Seatbelt profiles applied with `/usr/bin/sandbox-exec` when the helper starts. The decoder's profile allows no files, no network and no other programs; the fetcher's allows outgoing connections and name resolution only;
-- **on Linux,** by the Landlock and seccomp sandbox of REQ-SEC-017, applied by each helper.
-
-If a helper cannot be confined, it shall not run, unless the browser was started with `--no-sandbox`, which exists for debugging only.
-*Verification:* A test on every run that, under each helper's confinement, tries to read a file, open a network connection and start a program, and expects exactly the failures above, and that the same attempts succeed unconfined, so the test measures something.
+**REQ-SEC-026 — The browser's helper processes.** Withdrawn on 18 October 2026: it concerned only the browser, which was removed from this repository and is maintained in the separate neoteletext-browser repository. The helper processes of `neottx` remain REQ-SEC-018.
 
 ---
 

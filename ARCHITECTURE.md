@@ -198,7 +198,6 @@ The Web user agent (L7) sits beside the lower layers rather than above them in t
   - the service descriptor;
   - channels: which addresses name a channel's folder and files, and the checks a channel's file must pass (`channel`, decision E.70);
   - the contents file's reader (`contents`, REQ-WEB-025);
-  - discovery: the discovery request, the readers of `Link` headers and `<link>` elements in the first 8,192 bytes of an HTML answer, and the checks of a pointer's target (`discovery`, REQ-WEB-028 to REQ-WEB-030, decision E.73). It is the only code that reads HTML, and it reads nothing but those pointers;
   - push subscriptions;
   - form encoding and submission;
   - the zxnet live feed.
@@ -231,7 +230,6 @@ The Web user agent (L7) sits beside the lower layers rather than above them in t
 - **The split between `neoteletext-app` and `neoteletext-cli`:**
   - `neoteletext-app` holds what any program needs. That is the session, reading inputs, both processes of live mode, sandboxing, conversion and slicing, and the `Source` trait a viewer reads pages through.
   - `neoteletext-cli` holds argument parsing, terminal output and the terminal viewer.
-  - The browser prototype in `prototypes/browser/` (decision E.76) uses `neoteletext-app` from outside this workspace: its window starts `neoteletext_app::fetch::run` as a tab's fetcher and the font helpers `font-fetch` (`neoteletext_app::fetch::run_font`) and `font-read` (`neoteletext_app::font::read_run`), confined on macOS by `neoteletext_app::sandbox::helper_command`. Its decoder process and its own layer, `neoteletext-browser`, live in the prototype.
   - `neoteletext-app` also holds what viewers share: the form pieces (`interact`), and text and raster output (`present`).
   - `neoteletext-app::write_text` (feature `write-text`) turns Unicode text into a page in any set: it encodes with the core's `charset` tables, reorders right-to-left text with the `unicode-bidi` crate, lays out Thai and Lao rows, and writes tones and rarer marks as X/26 triplets (decision E.82, REQ-CLI-010). `neottx write-text` is its command.
 - **Requirements:** CLI, SEC-017 to SEC-019, GEN-018.
@@ -414,7 +412,7 @@ Each boundary is one narrow type. Nothing reaches past its neighbour.
 | Untrusted bytes into L7 | HTTP, WebSocket, SSE, descriptors, cookies | The user agent profile, the strict address parser, policy checks, fuzzing (REQ-WEB-014 to REQ-WEB-016, SEC-006 to SEC-011) |
 | L7 to L0 across processes | TTI or T42 bytes and framed control messages | Both sides validate; the decoder process has no rights (REQ-SEC-018) |
 | L5 to the terminal | Text and escape sequences | Allow-list sanitising (REQ-SEC-010) |
-| Fonts from the network or a file into a confined helper | BDF files and library indexes | Read only in confined helpers by strict, bounded, fuzzed readers; the interface checks the SHA-256 and the table's shape; the decoder checks the table again (REQ-FNT-002, REQ-FNT-003, REQ-FNT-008, REQ-FNT-009) |
+| Fonts from a file | BDF files and library indexes | Read by strict, bounded, fuzzed readers; the decoder checks the glyph table's shape before drawing with it (REQ-FNT-002, REQ-FNT-003, REQ-FNT-008) |
 | L8, the port contract | Everything the platform supplies | Narrow traits; the library holds no ambient authority (REQ-SEC-016) |
 
 ---
@@ -428,7 +426,7 @@ Each boundary is one narrow type. Nothing reaches past its neighbour.
 | `neoteletext-slicer` | L0: raw samples to packets | `no_std` |
 | `neoteletext-web` | L7 and L8 (web traits) | `no_std`, sans-IO |
 | `neoteletext-image` | L5 | Helpers `no_std`; writers `std` |
-| `neoteletext-app` | L9: the application layer shared by `neottx` and a windowed viewer: sessions, inputs, live mode's two processes, sandboxing | `std` |
+| `neoteletext-app` | L9: the application layer of `neottx` and any other viewer program: sessions, inputs, live mode's two processes, sandboxing | `std` |
 | `neoteletext-cli` | L9 (and text output of L5) | `std` |
 | `neoteletext-ffi` | L9: the C interface (Phase 2) | The only crate with `unsafe` |
 | `xtask` | Tooling, not shipped | `std` |

@@ -1,5 +1,5 @@
-//! The application layer of neoteletext (layer L9), shared by the `neottx`
-//! command-line program and a future windowed viewer: decoding sessions,
+//! The application layer of neoteletext (layer L9), used by the `neottx`
+//! command-line program: decoding sessions,
 //! reading inputs, the two processes of live mode (REQ-SEC-018) and the
 //! operating-system sandbox (REQ-SEC-017).
 //!
@@ -15,7 +15,6 @@ pub mod convert;
 pub mod extras;
 #[cfg(feature = "live")]
 pub mod fetch;
-pub mod font;
 pub mod input;
 pub mod interact;
 #[cfg(feature = "live")]

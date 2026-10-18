@@ -4,10 +4,8 @@
 //! standard output (decision 26 of IMPLEMENTATION-LOG.md).
 
 use crate::pipe::{self, Frame, Notice};
-use neoteletext_core::glyphs::conformance::font_set_index;
 use neoteletext_core::policy::{ipv4_blocked, ipv6_blocked};
 use neoteletext_core::types::{Instant, PageAddress, SubCode};
-use neoteletext_web::fonts::Entry;
 use neoteletext_web::port::{ConnectionId, LinkState, Pump, RandomSource, Received, Security, Transport};
 use neoteletext_web::url::IpAddress;
 use std::io::{Read, Write};
@@ -196,17 +194,13 @@ fn send(frame: &Frame) -> std::io::Result<()> {
 }
 
 /// Reads the requests sent to the fetcher: page requests, submissions,
-/// confirmations, links to other services, and the browser's request for a
-/// channel's contents. Anything else is dropped.
+/// confirmations and links to other services. Anything else is dropped.
 fn requests() -> Receiver<Frame> {
     let (sender, receiver) = mpsc::channel();
     std::thread::spawn(move || {
         let mut input = std::io::stdin().lock();
         while let Ok(Some(frame)) = pipe::read(&mut input) {
-            let wanted = matches!(
-                frame,
-                Frame::Request(..) | Frame::Submit(_) | Frame::Confirm(_) | Frame::Follow(..) | Frame::FetchContents
-            );
+            let wanted = matches!(frame, Frame::Request(..) | Frame::Submit(_) | Frame::Confirm(_) | Frame::Follow(..));
             if wanted && sender.send(frame).is_err() {
                 break;
             }
@@ -220,36 +214,22 @@ fn page_request(mpp: u16, sub: u16) -> Option<(PageAddress, Option<SubCode>)> {
 }
 
 /// The prefix of a fetcher address that names a channel's folder rather
-/// than a descriptor: the browser's form (REQ-WEB-018).
+/// than a descriptor (REQ-WEB-018).
 pub const CHANNEL_PREFIX: &str = "channel:";
 
-// The pipe carries a contents file whole, up to REQ-WEB-025's limit.
-const _: () = assert!(pipe::MAX_CONTENTS == neoteletext_web::contents::MAX_BYTES);
-
 /// Runs the fetcher for `address` until the decoder process goes away.
-/// `sandboxed_by_parent` says the process that started this one has
-/// already confined it (the browser on macOS, `prototypes/browser/docs/desktop-browser.md`
-/// section 12.3), so no sandbox of its own is applied.
-pub fn run(
-    address: &str,
-    no_sandbox: bool,
-    sandboxed_by_parent: bool,
-    allow_local: &[IpAddr],
-) -> Result<(), (u8, String)> {
+pub fn run(address: &str, no_sandbox: bool, allow_local: &[IpAddr]) -> Result<(), (u8, String)> {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let requests = requests();
-    if !sandboxed_by_parent {
-        // Name resolution reads the resolver configuration and loads the C
-        // library's name-service modules (decision 28 of
-        // IMPLEMENTATION-LOG.md).
-        let readable: Vec<&std::path::Path> =
-            RESOLVER_PATHS.iter().map(std::path::Path::new).filter(|path| path.exists()).collect();
-        crate::sandbox::apply(
-            crate::sandbox::Policy { writable_directory: None, network: true, readable: &readable },
-            no_sandbox,
-        )
-        .map_err(|message| (crate::exit::INPUT, message))?;
-    }
+    // Name resolution reads the resolver configuration and loads the C
+    // library's name-service modules (decision 28 of IMPLEMENTATION-LOG.md).
+    let readable: Vec<&std::path::Path> =
+        RESOLVER_PATHS.iter().map(std::path::Path::new).filter(|path| path.exists()).collect();
+    crate::sandbox::apply(
+        crate::sandbox::Policy { writable_directory: None, network: true, readable: &readable },
+        no_sandbox,
+    )
+    .map_err(|message| (crate::exit::INPUT, message))?;
     if let Some(name) = address.strip_prefix("zxnet:") {
         let channel = neoteletext_web::zxnet::Channel::from_short_name(name)
             .map_err(|error| (crate::exit::USAGE, format!("unknown live feed: {error:?}")))?;
@@ -345,7 +325,8 @@ fn run_web(address: &str, requests: &Receiver<Frame>, allow_local: &[IpAddr]) {
     let mut storage = Box::new(Storage::default());
     let mut config = neoteletext_web::agent::Config::default();
     let channel = address.strip_prefix(CHANNEL_PREFIX);
-    // A browser confirms every other channel before showing it.
+    // An address naming a channel's folder keeps redirects inside it
+    // (REQ-WEB-021).
     config.redirects_within_channel = channel.is_some();
     for (slot, &address) in config.allowed_local.iter_mut().zip(allow_local) {
         *slot = Some(web_address(address));
@@ -393,11 +374,6 @@ fn run_web(address: &str, requests: &Receiver<Frame>, allow_local: &[IpAddr]) {
             Output::Event(Event::RedirectToOtherChannel { location }) => {
                 send(&Frame::Notice(Notice::RedirectToOtherChannel(location.to_string())))
             }
-            Output::Event(Event::Contents(bytes)) => send(&Frame::Contents(pipe::ContentsReply::File(bytes.to_vec()))),
-            Output::Event(Event::ContentsMissing) => send(&Frame::Contents(pipe::ContentsReply::Missing)),
-            Output::Event(Event::ContentsFailed(failure)) => {
-                send(&Frame::Contents(pipe::ContentsReply::Failed(format!("{failure:?}"))))
-            }
             Output::Event(Event::BundleFailed(failure)) => {
                 send(&Frame::Notice(Notice::Message(format!("index.t42 was not used: {failure:?}"))))
             }
@@ -442,17 +418,12 @@ fn run_web(address: &str, requests: &Receiver<Frame>, allow_local: &[IpAddr]) {
         if service_ready.replace(false) {
             // Tell the decoder about the (new) service's linked services
             // before any of its pages (Appendix E).
-            let sites: Vec<(String, String)> = agent
+            let names: Vec<String> = agent
                 .descriptor()
                 .map(|descriptor| {
                     descriptor
                         .services()
-                        .map(|service| {
-                            (
-                                String::from_utf8_lossy(service.short_name.as_bytes()).into_owned(),
-                                descriptor.service_address(service).to_string(),
-                            )
-                        })
+                        .map(|service| String::from_utf8_lossy(service.short_name.as_bytes()).into_owned())
                         .collect()
                 })
                 .unwrap_or_default();
@@ -475,19 +446,7 @@ fn run_web(address: &str, requests: &Receiver<Frame>, allow_local: &[IpAddr]) {
             {
                 break;
             }
-            // REQ-FNT-006: the channel's font; the interface decides whether
-            // to fetch it, through a font helper.
-            let font = agent
-                .descriptor()
-                .and_then(|descriptor| descriptor.font().map(|(url, digest)| (url.as_str().to_string(), *digest)));
-            if let Some((address, digest)) = font
-                && send(&Frame::Notice(Notice::ChannelFont(address, digest))).is_err()
-            {
-                break;
-            }
-            let names = sites.iter().map(|(name, _)| name.clone()).collect();
             if send(&Frame::Notice(Notice::Service(names))).is_err()
-                || send(&Frame::Notice(Notice::LinkedSites(sites))).is_err()
                 || send(&Frame::Notice(Notice::Aliases(aliases))).is_err()
             {
                 break;
@@ -517,7 +476,6 @@ fn run_web(address: &str, requests: &Receiver<Frame>, allow_local: &[IpAddr]) {
                     agent.handle(now, Input::Submit(form), &mut out);
                 }
                 Frame::Confirm(yes) => agent.handle(now, Input::ConfirmSubmission(yes), &mut out),
-                Frame::FetchContents => agent.handle(now, Input::FetchContents, &mut out),
                 Frame::Follow(service, mpp, sub) => {
                     if let Some((page, subcode)) = page_request(mpp, sub) {
                         agent.handle(now, Input::FollowLink { service: &service, page, subcode }, &mut out);
@@ -533,192 +491,5 @@ fn run_web(address: &str, requests: &Receiver<Frame>, allow_local: &[IpAddr]) {
         if !busy {
             std::thread::sleep(IDLE);
         }
-    }
-}
-
-/// `neoteletext font-fetch`: fetches one font, or one library's `fonts.txt`
-/// when `index` is set, under the fetcher's confinement (REQ-FNT-003,
-/// REQ-FNT-004), reads it there, and writes one [`Frame::Font`] or
-/// [`Frame::FontLibrary`]. Whether the address may be fetched was decided by
-/// the interface before it started this helper; the request carries no
-/// cookies, and the local-network and downgrade rules apply.
-#[allow(clippy::too_many_arguments)] // The address, its validators and how to run.
-pub fn run_font(
-    address: &str,
-    index: bool,
-    validators: [Option<&str>; 2],
-    no_sandbox: bool,
-    sandboxed_by_parent: bool,
-    allow_local: &[IpAddr],
-) -> Result<(), (u8, String)> {
-    use neoteletext_web::agent::{Event, Input, Output, Storage, UserAgent};
-    /// The jar is never used: font requests carry no cookies.
-    const COOKIE_SLOTS: usize = 1;
-    const COOKIE_BYTES: usize = 64;
-    let _ = rustls::crypto::ring::default_provider().install_default();
-    if !sandboxed_by_parent {
-        let readable: Vec<&std::path::Path> =
-            RESOLVER_PATHS.iter().map(std::path::Path::new).filter(|path| path.exists()).collect();
-        crate::sandbox::apply(
-            crate::sandbox::Policy { writable_directory: None, network: true, readable: &readable },
-            no_sandbox,
-        )
-        .map_err(|message| (crate::exit::INPUT, message))?;
-    }
-    let mut storage = Box::new(Storage::default());
-    let mut config = neoteletext_web::agent::Config::default();
-    for (slot, &address) in config.allowed_local.iter_mut().zip(allow_local) {
-        *slot = Some(web_address(address));
-    }
-    let mut agent: Box<UserAgent<'_, SystemRandom, COOKIE_SLOTS, COOKIE_BYTES>> =
-        Box::new(UserAgent::new(config, storage.buffers(), SystemRandom));
-    let mut pump = Pump::new(StdTransport::new(allow_local));
-    let start = StdInstant::now();
-    let mut buffer = vec![0u8; READ_CHUNK];
-    let mut reply: Option<Frame> = None;
-    let mut next_tick: Option<Instant> = Some(Instant(0));
-    let sink = |output: Output<'_>,
-                pump: &mut Pump<StdTransport>,
-                next_tick: &mut Option<Instant>,
-                reply: &mut Option<Frame>| {
-        if let Some(net) = output.net() {
-            pump.execute(net);
-            return;
-        }
-        match output {
-            Output::Timer { at } => *next_tick = Some(next_tick.map_or(at, |current| current.min(at))),
-            Output::Event(Event::Font { index: false, body, etag, last_modified, .. }) => {
-                let mut answer = crate::font::read_font(body.to_vec());
-                if let pipe::FontReply::Loaded(font) = &mut answer {
-                    font.validators = [etag.map(str::to_string), last_modified.map(str::to_string)];
-                }
-                *reply = Some(Frame::Font(answer));
-            }
-            Output::Event(Event::FontCurrent { .. }) => *reply = Some(Frame::Font(pipe::FontReply::Current)),
-            Output::Event(Event::Font { index: true, url, body, .. }) => {
-                *reply = Some(Frame::FontLibrary(library(url, body)));
-            }
-            Output::Event(Event::FontFailed { index, failure }) => {
-                let why = format!("{failure:?}");
-                *reply = Some(if index {
-                    Frame::FontLibrary(pipe::LibraryReply::Failed(why))
-                } else {
-                    Frame::Font(pipe::FontReply::Failed(why))
-                });
-            }
-            _ => {}
-        }
-    };
-    let [etag, last_modified] = validators;
-    agent.handle(clock(start), Input::FetchFont { address, index, etag, last_modified }, &mut |output| {
-        sink(output, &mut pump, &mut next_tick, &mut reply);
-    });
-    while reply.is_none() {
-        let mut busy = false;
-        if let Some(input) = pump.poll(ConnectionId::Fetch, &mut buffer) {
-            busy = true;
-            agent.handle(clock(start), Input::Net(input), &mut |output| {
-                sink(output, &mut pump, &mut next_tick, &mut reply);
-            });
-        }
-        if next_tick.is_some_and(|at| clock(start) >= at) {
-            next_tick = None;
-            agent.handle(clock(start), Input::Tick, &mut |output| sink(output, &mut pump, &mut next_tick, &mut reply));
-        }
-        if !busy && reply.is_none() {
-            std::thread::sleep(IDLE);
-        }
-    }
-    let frame = reply.unwrap_or(Frame::Font(pipe::FontReply::Failed("no answer".into())));
-    send(&frame).map_err(|error| (crate::exit::INPUT, error.to_string()))
-}
-
-/// The masks of a `c` line's sets, a bit per set of `FONT_SETS`; none when
-/// a name is not a set of REQ-FNT-011.
-fn conformance_masks(line: &neoteletext_web::fonts::Conformance<'_>) -> Option<(u64, u64)> {
-    line.sets().try_fold((0u64, 0u64), |(sets, cell), (name, profile)| {
-        let bit = 1u64.checked_shl(u32::try_from(font_set_index(name)?).ok()?)?;
-        Some((sets | bit, if profile { cell | bit } else { cell }))
-    })
-}
-
-/// A library's index, read here in the helper (REQ-FNT-004): each font's
-/// address resolved against the index's folder, its `c` line's conformance
-/// attached (decision E.75 item 3), and the malformed lines counted: a `c`
-/// line naming an unknown set, a font no `f` line lists, or a font a `c`
-/// line already named.
-fn library(url: &str, body: &[u8]) -> pipe::LibraryReply {
-    let Ok(folder) = neoteletext_web::url::Url::parse(url).and_then(|url| url.join(".")) else {
-        return pipe::LibraryReply::Failed("the index's address has no folder".into());
-    };
-    let entries = match neoteletext_web::fonts::read(body) {
-        Ok(entries) => entries,
-        Err(error) => return pipe::LibraryReply::Failed(format!("{error:?}")),
-    };
-    let mut fonts = Vec::new();
-    let mut locations = Vec::new();
-    let mut conformance = Vec::new();
-    let mut ignored = 0u32;
-    for entry in entries {
-        match entry {
-            Ok(Entry::Font(font)) => {
-                let listed =
-                    neoteletext_web::fonts::font_url(&folder, font.location).ok().map(|address| pipe::LibraryFont {
-                        address: address.as_str().to_string(),
-                        title: font.title.to_string(),
-                        sha256: font.sha256,
-                        conformance: None,
-                    });
-                match listed {
-                    Some(listed) if fonts.len() < pipe::MAX_LIBRARY_FONTS => {
-                        fonts.push(listed);
-                        locations.push(font.location);
-                    }
-                    _ => ignored = ignored.saturating_add(1),
-                }
-            }
-            Ok(Entry::Conformance(line)) => conformance.push(line),
-            Err(_) => ignored = ignored.saturating_add(1),
-        }
-    }
-    // A `c` line may come before or after its font's `f` line.
-    for line in conformance {
-        let place = locations.iter().position(|location| *location == line.location);
-        match (place.and_then(|at| fonts.get_mut(at)), conformance_masks(&line)) {
-            (Some(font), Some(masks)) if font.conformance.is_none() => font.conformance = Some(masks),
-            _ => ignored = ignored.saturating_add(1),
-        }
-    }
-    pipe::LibraryReply::Listed(fonts, ignored)
-}
-
-#[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::panic)]
-mod tests {
-    use super::*;
-
-    const SHA: &str = "5ee6246b7f9bd197f47ce0741ea799a55ac08af775869a08c085803e02a3f14d";
-
-    /// REQ-FNT-004, decision E.75 item 3: a `c` line attaches its sets to
-    /// its font, before or after the `f` line; one for no listed font, a
-    /// second one, or an unknown set's name is ignored and counted.
-    #[test]
-    fn conformance_lines_attach_to_their_fonts() {
-        let english = 1u64 << font_set_index("G0-Latin-English").unwrap();
-        let greek = 1u64 << font_set_index("G0-Greek").unwrap();
-        let index = format!(
-            "c\tb.bdf\tG0-Greek\nf\ta.bdf\tA\t{SHA}\nf\tb.bdf\tB\t{SHA}\nf\tc.bdf\tC\t{SHA}\n\
-             c\ta.bdf\tG0-Latin-English* G0-Greek\nc\ta.bdf\tG0-Greek\nc\tnone.bdf\tG0-Greek\n\
-             c\tc.bdf\tG0-Klingon\n"
-        );
-        let pipe::LibraryReply::Listed(fonts, ignored) = library("https://lib.example/x/fonts.txt", index.as_bytes())
-        else {
-            panic!("not listed")
-        };
-        assert_eq!(fonts[0].conformance, Some((english | greek, english)));
-        assert_eq!(fonts[1].conformance, Some((greek, 0)), "a c line before its f line");
-        assert_eq!(fonts[2].conformance, None, "an unknown set's name");
-        assert_eq!(fonts[0].address, "https://lib.example/x/a.bdf");
-        assert_eq!(ignored, 3, "the second c line for a.bdf, the one for none.bdf, and G0-Klingon");
     }
 }

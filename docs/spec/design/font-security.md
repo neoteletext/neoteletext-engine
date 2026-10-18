@@ -4,6 +4,8 @@ The security analysis of decision E.72 and area FNT of REQUIREMENTS.md: Bedstead
 
 Written on 12 October 2026, before the fonts are built. It changed two requirements as it was written (sections 3.1 and 3.4).
 
+*Note of 18 October 2026:* the analysis was written for the browser, which was removed from this repository on that date and is maintained in the separate neoteletext-browser repository (decision E.76). In this repository its threats concern `neottx` and the web module: a font is read only in the confined fetcher or decoder of REQ-SEC-018, and the process that draws never parses one (REQ-FNT-003). What it says of the interface process, the profile directory and the font cache (REQ-FNT-009, withdrawn), the tuning screen, the status line and `neoteletext_browser` applies to that repository.
+
 ## 1. What is being protected
 
 | Asset | Why it matters |
@@ -50,7 +52,7 @@ A screen reader reads the page's codes (REQ-BRW-008), and copying copies the cod
 
 ### 3.4 Fonts from other sites track the viewer
 
-A channel or page naming a font at another address makes the browser contact that address. Its host learns the viewer's network address and when they read the channel. A request on a page's behalf to a third party is what REQ-WEB-014 permanently excludes ("content from a third party loaded into a page"), and what the web-native concept refused (`prototypes/browser/docs/web-native-concept.md` section 12: "The browser makes no requests to other sites on a page's behalf").
+A channel or page naming a font at another address makes the browser contact that address. Its host learns the viewer's network address and when they read the channel. A request on a page's behalf to a third party is what REQ-WEB-014 permanently excludes ("content from a third party loaded into a page"), and what the web-native concept refused (`docs/web-native-concept.md` of the neoteletext-browser repository section 12: "The browser makes no requests to other sites on a page's behalf").
 
 - **The conflict:** the owner requires fonts from any address, named by the channel or the page. **Changed by this analysis:** REQ-WEB-014 is amended to allow exactly this one kind of third-party request, under these limits, in place of a silent exception:
   - a channel's or page's font from another address must be named with its SHA-256 (REQ-FNT-006, REQ-FNT-007), so the request fetches one known file and can carry nothing back to the page;
@@ -122,6 +124,8 @@ The one font the project ships must be exactly what it claims to be.
 - **Legal advice** on section 55 and Debian's position, if the project becomes widely distributed.
 
 ## 6. As built (12 October 2026)
+
+This section describes the browser's code as it was; only the readers in `neoteletext_formats::bdf` and the conformance rules remain in this repository.
 
 - **Readers.** `neoteletext_formats::bdf::read` is the loaded-font reader of REQ-FNT-002 and `bdf::source::read_source` the converter's; both are `no_std`, allocate nothing, refuse a file at its first fault and are fuzz targets (`bdf`, `bdf_convert`). Library indexes are read by `neoteletext_web::fonts`.
 - **Where fonts are read (section 3.1).** Only in the one-shot helpers `font-fetch` (the fetcher's confinement) and `font-read` (a decoder's). The interface computes the SHA-256 of the bytes it receives, refuses a font whose SHA-256 differs from the one it was named with, and checks the table's shape with `LoadedFont::new`; `xtask check-io` fails the gate if the interface's crates name a font reader. The pipe's reader checks every table's shape, so a decoder refuses a malformed one too.

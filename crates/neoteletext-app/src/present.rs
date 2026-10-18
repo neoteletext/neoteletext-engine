@@ -1,6 +1,6 @@
 //! Presenting a grid for any front end: plain text (REQ-RND-008) and a
-//! palette-index raster (REQ-RND-007), shared by `neottx` and the browser's
-//! decoder process.
+//! palette-index raster (REQ-RND-007), for `neottx` and any other front
+//! end.
 //!
 //! Text: rows are composed with their side panels, G3 characters convert
 //! as REQ-CHR-011 says and DRCS characters to the fallback of REQ-CHR-010.

@@ -1,5 +1,5 @@
 //! SHA-256 (FIPS 180-4), which names fonts: a font is fetched, checked and
-//! cached by its digest (REQ-FNT-003, REQ-FNT-009). Written in the project,
+//! cached by its digest (REQ-FNT-006). Written in the project,
 //! as SHA-1 is (decision E.38).
 
 use crate::bytes::copy_prefix;

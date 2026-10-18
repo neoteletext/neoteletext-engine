@@ -205,7 +205,7 @@ The SAA5050-style rendering, including rounding and separated mosaic geometry (d
 *Verification:* Test and inspection.
 
 **REQ-TST-040 — Fuzz testing.**
-Every reader, the packet decoder, the slicer, and the HTTP, WebSocket, server-sent event, descriptor, form, address (REQ-WEB-016) and pointer (REQ-WEB-029) parsers of the web module shall have a fuzzing target for `cargo fuzz` (libFuzzer). The targets shall run in continuous integration for a fixed time on each change, and for longer periods on a schedule. Every input that has ever found a fault shall be kept in the repository as a regression test.
+Every reader, the packet decoder, the slicer, and the HTTP, WebSocket, server-sent event, descriptor, form and address (REQ-WEB-016) parsers of the web module shall have a fuzzing target for `cargo fuzz` (libFuzzer). The targets shall run in continuous integration for a fixed time on each change, and for longer periods on a schedule. Every input that has ever found a fault shall be kept in the repository as a regression test.
 *Verification:* Inspection; continuous integration logs.
 
 **REQ-TST-041 — Coverage.**
@@ -275,4 +275,4 @@ Continuous integration shall run on every change:
 - the fuzzing runs (REQ-TST-040).
 *Verification:* Inspection.
 
-**REQ-TST-081 — End-to-end tests of the browser against local channels.** Moved to `prototypes/browser/docs/requirements.md` on 16 October 2026: it concerns the browser prototype only.
+**REQ-TST-081 — End-to-end tests of the browser against local channels.** Moved out of the engine on 16 October 2026 (decision E.76), and withdrawn on 18 October 2026: it concerned only the browser, which was removed from this repository and is maintained in the separate neoteletext-browser repository.

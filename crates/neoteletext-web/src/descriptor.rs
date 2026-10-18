@@ -45,13 +45,13 @@ use crate::url::{Origin, Url, UrlError};
 
 /// Room for the addresses of all linked services' descriptors together.
 const SERVICE_ADDRESS_BYTES: usize = 4096;
-/// Aliases a descriptor may declare (`prototypes/browser/docs/web-native-concept.md`
+/// Aliases a descriptor may declare (the web-native concept
 /// section 5 item 4).
 pub const MAX_ALIASES: usize = 16;
 /// Room for every alias's target together.
 const ALIAS_TARGET_BYTES: usize = 4096;
 /// The shortest refresh interval a descriptor may ask for, in seconds:
-/// more often would be a load the browser need not place on a server.
+/// more often would be a load a receiver need not place on a server.
 pub const MIN_REFRESH_SECONDS: u32 = 5;
 /// The longest refresh interval, a day.
 pub const MAX_REFRESH_SECONDS: u32 = 24 * 60 * 60;
@@ -966,7 +966,7 @@ mod tests {
         );
     }
 
-    /// `prototypes/browser/docs/web-native-concept.md` section 5 item 4: aliases lead a page
+    /// the web-native concept section 5 item 4: aliases lead a page
     /// number to a named service's page or to an address.
     #[test]
     fn aliases() {

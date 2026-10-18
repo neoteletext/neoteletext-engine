@@ -37,7 +37,7 @@ const PAGE_COMMANDS: [[u8; TTI_COMMAND_BYTES]; 17] = [
     *b"FT", *b"FH", *b"TF",
 ];
 /// What starts an address as a link target, rather than a page or a named
-/// service (`prototypes/browser/docs/web-native-concept.md` section 3: "a target containing
+/// service (the web-native concept section 3: "a target containing
 /// `://` is an address").
 const ADDRESS_MARK: &[u8] = b"://";
 /// The schemes an address in a page may use.
