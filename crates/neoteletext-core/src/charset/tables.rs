@@ -109,13 +109,60 @@ const TABLE_32: [Table32Entry; 36] = {
     ]
 };
 
-fn table_32_entry(value: u8) -> Option<(G0, G2Set)> {
+/// neoteletext's own sets at values Table 32 reserves (REQ-CHR-012,
+/// decision E.78). Tables 33 and 34 read the same entries.
+#[cfg(feature = "extended-sets")]
+const EXTENDED_TABLE_32: [Table32Entry; 18] = {
+    use G0Set as S;
+    use G2Set::{Armenian, Cyrillic, Latin, Vietnamese};
+    use NationalOption as N;
+    [
+        // Group 0101: African Latin and Vietnamese.
+        (0b0101, 0b000, latin(N::HausaFula), Latin),
+        (0b0101, 0b001, latin(N::WestAfrican), Latin),
+        (0b0101, 0b010, latin(N::Ewe), Latin),
+        (0b0101, 0b011, latin(N::KabyleTamazight), Latin),
+        (0b0101, 0b100, latin(N::Azerbaijani), Latin),
+        (0b0101, 0b101, latin(N::KanuriMossi), Latin),
+        // Whole sets, so that X/26 marks find their bases (REQ-CHR-002).
+        (0b0101, 0b110, whole(S::YorubaIgbo), Latin),
+        (0b0101, 0b111, whole(S::Vietnamese), Vietnamese),
+        // Group 0111: Cyrillic languages.
+        (0b0111, 0b000, whole(S::Ukrainian), Cyrillic),
+        (0b0111, 0b001, whole(S::Belarusian), Cyrillic),
+        (0b0111, 0b010, whole(S::Macedonian), Cyrillic),
+        (0b0111, 0b011, whole(S::Serbian), Cyrillic),
+        (0b0111, 0b101, whole(S::KyrgyzMongolian), Cyrillic),
+        (0b0111, 0b110, whole(S::Tatar), Cyrillic),
+        (0b0111, 0b111, whole(S::Tajik), Cyrillic),
+        // Group 1011: other alphabets.
+        (0b1011, 0b000, whole(S::Georgian), Latin),
+        (0b1011, 0b001, whole(S::Armenian), Armenian),
+        (0b1011, 0b010, whole(S::Tifinagh), Latin),
+    ]
+};
+
+#[cfg(not(feature = "extended-sets"))]
+const EXTENDED_TABLE_32: [Table32Entry; 0] = [];
+
+fn find_entry(table: &[Table32Entry], value: u8) -> Option<(G0, G2Set)> {
     let group = value.wrapping_shr(GROUP_SHIFT);
     let index = value & NATIONAL_BITS_MASK;
-    TABLE_32
+    table
         .iter()
         .find(|&&(entry_group, entry_index, _, _)| (entry_group, entry_index) == (group, index))
         .map(|&(_, _, g0, g2)| (g0, g2))
+}
+
+fn table_32_entry(value: u8) -> Option<(G0, G2Set)> {
+    find_entry(&TABLE_32, value).or_else(|| find_entry(&EXTENDED_TABLE_32, value))
+}
+
+/// The second G0 set of one of neoteletext's own designations when no
+/// Table 33 designation is received: Latin with the English option, so
+/// that ESC reaches English text (REQ-CHR-012, decision E.78 item 4).
+pub(super) fn default_second_g0(value: u8) -> Option<G0> {
+    find_entry(&EXTENDED_TABLE_32, value).map(|_| ENGLISH_DESIGNATION.g0)
 }
 
 pub(super) fn designation(value: u8) -> Option<Designation> {
@@ -159,6 +206,9 @@ pub(super) fn modified_designation(value: u8) -> Option<(G0Set, G2Set)> {
         .iter()
         .find(|&&(entry_group, entry_index, _, _)| entry_group == group && entry_index.is_none_or(|low| low == index))
         .map(|&(_, _, g0, g2)| (g0, g2))
+        // Table 34 accepts neoteletext's own values as Table 32 does
+        // (REQ-CHR-012); a triplet's G0 set takes no national option.
+        .or_else(|| find_entry(&EXTENDED_TABLE_32, value).map(|(g0, g2)| (g0.set, g2)))
 }
 
 pub(super) fn second_g0(value: u8) -> Option<G0> {
@@ -229,6 +279,29 @@ const SWEDISH_FINNISH_HUNGARIAN: NationalSubset =
 const TURKISH: NationalSubset =
     ['₺', 'ğ', 'İ', 'Ş', 'Ö', 'Ç', 'Ü', 'Ğ', 'ı', 'ş', 'ö', 'ç', 'ü'];
 
+// neoteletext's own options (decision E.78, docs/spec/design/languages.md
+// section 8.1): capitals at 4/0 and 5/B to 5/F, small letters at 6/0, 7/B
+// to 7/E and 2/3, so a capital and its small letter differ only in bit 6
+// wherever the positions allow; 2/4 holds a further letter or keeps ¤.
+const HAUSA_FULA: NationalSubset =
+    ['ɲ', 'ʼ', 'Ɓ', 'Ɗ', 'Ƙ', 'Ƴ', 'Ŋ', 'Ɲ', 'ɓ', 'ɗ', 'ƙ', 'ƴ', 'ŋ'];
+
+const WEST_AFRICAN: NationalSubset =
+    ['ɖ', '¤', 'Ɛ', 'Ɔ', 'Ŋ', 'Ɲ', 'Ɣ', 'Ɖ', 'ɛ', 'ɔ', 'ŋ', 'ɲ', 'ɣ'];
+
+const EWE: NationalSubset =
+    ['ʋ', '¤', 'Ɖ', 'Ɛ', 'Ƒ', 'Ɣ', 'Ɔ', 'Ʋ', 'ɖ', 'ɛ', 'ƒ', 'ɣ', 'ɔ'];
+
+const KANURI_MOSSI: NationalSubset =
+    ['ŋ', '¤', 'Ǝ', 'Ɍ', 'Ɛ', 'Ɩ', 'Ʋ', 'Ŋ', 'ǝ', 'ɍ', 'ɛ', 'ɩ', 'ʋ'];
+
+const KABYLE_TAMAZIGHT: NationalSubset =
+    ['ṣ', 'ṭ', 'Ɛ', 'Ɣ', 'Č', 'Ǧ', 'ḍ', 'ḥ', 'ɛ', 'ɣ', 'č', 'ǧ', 'ṛ'];
+
+const AZERBAIJANI: NationalSubset =
+    ['ı', 'ü', 'Ə', 'Ğ', 'İ', 'Ç', 'Ö', 'Ş', 'ə', 'ğ', 'ç', 'ö', 'ş'];
+
+
 const fn national_subset(option: NationalOption) -> &'static NationalSubset {
     match option {
         NationalOption::CzechSlovak => &CZECH_SLOVAK,
@@ -244,6 +317,12 @@ const fn national_subset(option: NationalOption) -> &'static NationalSubset {
         NationalOption::SerbianCroatianSlovenian => &SERBIAN_CROATIAN_SLOVENIAN,
         NationalOption::SwedishFinnishHungarian => &SWEDISH_FINNISH_HUNGARIAN,
         NationalOption::Turkish => &TURKISH,
+        NationalOption::HausaFula => &HAUSA_FULA,
+        NationalOption::WestAfrican => &WEST_AFRICAN,
+        NationalOption::Ewe => &EWE,
+        NationalOption::KabyleTamazight => &KABYLE_TAMAZIGHT,
+        NationalOption::Azerbaijani => &AZERBAIJANI,
+        NationalOption::KanuriMossi => &KANURI_MOSSI,
     }
 }
 
@@ -364,6 +443,127 @@ const HEBREW_G0: CodeTable = [
     '\u{05E7}', '\u{05E8}', '\u{05E9}', '\u{05EA}', '\u{20AA}', '‖', '¾', '÷', '■', //
 ];
 
+// ---------------------------------------------------------------------------
+// neoteletext's own G0 sets (decisions E.78 and E.81, REQ-CHR-013;
+// docs/spec/design/languages.md section 8)
+// ---------------------------------------------------------------------------
+
+// Vietnamese and Yoruba-Igbo are Latin G0 with the 13 national positions
+// holding their letters, as whole sets: an X/26 diacritical mark refers to a
+// G0 set's own characters, never a national option's (REQ-CHR-002), so the
+// letters a tone is added to must belong to the set itself. The Cyrillic
+// sets are Tables 38, 39 and 40 with the changes the design lists, so that
+// letters keep the codes they have there. Georgian and Tifinagh take the
+// left half of Table 46 (punctuation, digits and Latin capitals) and put
+// their letters from 6/0, the last ones at 5/B and 5/C.
+const VIETNAMESE_G0: CodeTable = [
+    ' ', '!', '"', 'ư', 'đ', '%', '&', '\'', '(', ')', '*', '+', ',', '-', '.', '/', //
+    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', //
+    'Ă', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', //
+    'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'Â', 'Ê', 'Ô', 'Ơ', 'Ư', //
+    'ă', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', //
+    'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', 'â', 'ê', 'ô', 'ơ', '■', //
+];
+
+const YORUBA_IGBO_G0: CodeTable = [
+    ' ', '!', '"', 'ṅ', '¤', '%', '&', '\'', '(', ')', '*', '+', ',', '-', '.', '/', //
+    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', //
+    'Ẹ', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', //
+    'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'Ọ', 'Ṣ', 'Ị', 'Ụ', 'Ṅ', //
+    'ẹ', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', //
+    'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', 'ọ', 'ṣ', 'ị', 'ụ', '■', //
+];
+
+const UKRAINIAN_G0: CodeTable = [
+    ' ', '!', '"', 'Ґ', 'ґ', '%', 'ї', '\'', '(', ')', '*', '+', ',', '-', '.', '/', //
+    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', //
+    'Ю', 'А', 'Б', 'Ц', 'Д', 'Е', 'Ф', 'Г', 'Х', 'И', 'Й', 'К', 'Л', 'М', 'Н', 'О', //
+    'П', 'Я', 'Р', 'С', 'Т', 'У', 'Ж', 'В', 'Ь', 'І', 'З', 'Ш', 'Є', 'Щ', 'Ч', 'Ї', //
+    'ю', 'а', 'б', 'ц', 'д', 'е', 'ф', 'г', 'х', 'и', 'й', 'к', 'л', 'м', 'н', 'о', //
+    'п', 'я', 'р', 'с', 'т', 'у', 'ж', 'в', 'ь', 'і', 'з', 'ш', 'є', 'щ', 'ч', '■', //
+];
+
+const BELARUSIAN_G0: CodeTable = [
+    ' ', '!', '"', '#', '$', '%', 'ы', '\'', '(', ')', '*', '+', ',', '-', '.', '/', //
+    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', //
+    'Ю', 'А', 'Б', 'Ц', 'Д', 'Е', 'Ф', 'Г', 'Х', 'І', 'Й', 'К', 'Л', 'М', 'Н', 'О', //
+    'П', 'Я', 'Р', 'С', 'Т', 'У', 'Ж', 'В', 'Ь', 'Ё', 'З', 'Ш', 'Э', 'Ў', 'Ч', 'Ы', //
+    'ю', 'а', 'б', 'ц', 'д', 'е', 'ф', 'г', 'х', 'і', 'й', 'к', 'л', 'м', 'н', 'о', //
+    'п', 'я', 'р', 'с', 'т', 'у', 'ж', 'в', 'ь', 'ё', 'з', 'ш', 'э', 'ў', 'ч', '■', //
+];
+
+const MACEDONIAN_G0: CodeTable = [
+    ' ', '!', '"', '#', '$', '%', '&', '\'', '(', ')', '*', '+', ',', '-', '.', '/', //
+    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', //
+    'Ч', 'А', 'Б', 'Ц', 'Д', 'Е', 'Ф', 'Г', 'Х', 'И', 'Ј', 'К', 'Л', 'М', 'Н', 'О', //
+    'П', 'Ќ', 'Р', 'С', 'Т', 'У', 'В', 'Ѓ', 'Љ', 'Њ', 'З', 'Ћ', 'Ж', 'Ѕ', 'Ш', 'Џ', //
+    'ч', 'а', 'б', 'ц', 'д', 'е', 'ф', 'г', 'х', 'и', 'ј', 'к', 'л', 'м', 'н', 'о', //
+    'п', 'ќ', 'р', 'с', 'т', 'у', 'в', 'ѓ', 'љ', 'њ', 'з', 'џ', 'ж', 'ѕ', 'ш', '■', //
+];
+
+const SERBIAN_G0: CodeTable = [
+    ' ', '!', '"', '#', '$', '%', '&', '\'', '(', ')', '*', '+', ',', '-', '.', '/', //
+    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', //
+    'Ч', 'А', 'Б', 'Ц', 'Д', 'Е', 'Ф', 'Г', 'Х', 'И', 'Ј', 'К', 'Л', 'М', 'Н', 'О', //
+    'П', 'Ќ', 'Р', 'С', 'Т', 'У', 'В', 'Ѓ', 'Љ', 'Њ', 'З', 'Ћ', 'Ж', 'Ђ', 'Ш', 'Џ', //
+    'ч', 'а', 'б', 'ц', 'д', 'е', 'ф', 'г', 'х', 'и', 'ј', 'к', 'л', 'м', 'н', 'о', //
+    'п', 'џ', 'р', 'с', 'т', 'у', 'в', 'ѓ', 'љ', 'њ', 'з', 'ћ', 'ж', 'ђ', 'ш', '■', //
+];
+
+const KYRGYZ_MONGOLIAN_G0: CodeTable = [
+    ' ', '!', '"', 'ң', 'ө', 'ү', 'ы', '\'', '(', ')', '*', '+', ',', '-', '.', '/', //
+    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', //
+    'Ю', 'А', 'Б', 'Ц', 'Д', 'Е', 'Ф', 'Г', 'Х', 'И', 'Й', 'К', 'Л', 'М', 'Н', 'О', //
+    'П', 'Я', 'Р', 'С', 'Т', 'У', 'Ж', 'В', 'Ө', 'Ң', 'З', 'Ш', 'Э', 'Щ', 'Ч', 'Ү', //
+    'ю', 'а', 'б', 'ц', 'д', 'е', 'ф', 'г', 'х', 'и', 'й', 'к', 'л', 'м', 'н', 'о', //
+    'п', 'я', 'р', 'с', 'т', 'у', 'ж', 'в', 'ь', 'ъ', 'з', 'ш', 'э', 'щ', 'ч', '■', //
+];
+
+const TATAR_G0: CodeTable = [
+    ' ', '!', '"', 'Ң', 'Һ', 'ә', 'ы', '\'', '(', ')', 'ө', 'ү', ',', '-', '.', '/', //
+    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', 'ң', 'һ', '>', '?', //
+    'Ю', 'А', 'Б', 'Ц', 'Д', 'Е', 'Ф', 'Г', 'Х', 'И', 'Й', 'К', 'Л', 'М', 'Н', 'О', //
+    'П', 'Я', 'Р', 'С', 'Т', 'У', 'Ж', 'В', 'Ә', 'Ө', 'З', 'Ш', 'Э', 'Җ', 'Ч', 'Ү', //
+    'ю', 'а', 'б', 'ц', 'д', 'е', 'ф', 'г', 'х', 'и', 'й', 'к', 'л', 'м', 'н', 'о', //
+    'п', 'я', 'р', 'с', 'т', 'у', 'ж', 'в', 'ь', 'ъ', 'з', 'ш', 'э', 'җ', 'ч', '■', //
+];
+
+const TAJIK_G0: CodeTable = [
+    ' ', '!', '"', 'Ҳ', 'ҳ', 'Ҷ', 'қ', '\'', '(', ')', 'ҷ', 'Ё', ',', '-', '.', '/', //
+    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', 'ё', '=', '>', '?', //
+    'Ю', 'А', 'Б', 'Ғ', 'Д', 'Е', 'Ф', 'Г', 'Х', 'И', 'Й', 'К', 'Л', 'М', 'Н', 'О', //
+    'П', 'Я', 'Р', 'С', 'Т', 'У', 'Ж', 'В', 'Ӯ', 'Ъ', 'З', 'Ш', 'Э', 'Ӣ', 'Ч', 'Қ', //
+    'ю', 'а', 'б', 'ғ', 'д', 'е', 'ф', 'г', 'х', 'и', 'й', 'к', 'л', 'м', 'н', 'о', //
+    'п', 'я', 'р', 'с', 'т', 'у', 'ж', 'в', 'ӯ', 'ъ', 'з', 'ш', 'э', 'ӣ', 'ч', '■', //
+];
+
+const GEORGIAN_G0: CodeTable = [
+    ' ', '!', '"', '#', '$', '%', '&', '\'', '(', ')', '*', '+', ',', '-', '.', '/', //
+    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', //
+    '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', //
+    'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'ჯ', 'ჰ', '→', '↑', '#', //
+    'ა', 'ბ', 'გ', 'დ', 'ე', 'ვ', 'ზ', 'თ', 'ი', 'კ', 'ლ', 'მ', 'ნ', 'ო', 'პ', 'ჟ', //
+    'რ', 'ს', 'ტ', 'უ', 'ფ', 'ქ', 'ღ', 'ყ', 'შ', 'ჩ', 'ც', 'ძ', 'წ', 'ჭ', 'ხ', '■', //
+];  // DUPLICATES {'#'}
+
+const ARMENIAN_G0: CodeTable = [
+    ' ', '։', '՝', ',', '-', '(', ')', '«', '»', 'Ա', 'Բ', 'Գ', 'Դ', 'Ե', 'Զ', 'Է', //
+    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'Ը', 'Թ', 'Ժ', 'Ի', 'Լ', 'Խ', //
+    'Ծ', 'Կ', 'Հ', 'Ձ', 'Ղ', 'Ճ', 'Մ', 'Յ', 'Ն', 'Շ', 'Ո', 'Չ', 'Պ', 'Ջ', 'Ռ', 'Ս', //
+    'Վ', 'Տ', 'Ր', 'Ց', 'Ւ', 'Փ', 'Ք', 'Օ', 'Ֆ', 'ա', 'բ', 'գ', 'դ', 'ե', 'զ', 'է', //
+    'ը', 'թ', 'ժ', 'ի', 'լ', 'խ', 'ծ', 'կ', 'հ', 'ձ', 'ղ', 'ճ', 'մ', 'յ', 'ն', 'շ', //
+    'ո', 'չ', 'պ', 'ջ', 'ռ', 'ս', 'վ', 'տ', 'ր', 'ց', 'ւ', 'փ', 'ք', 'օ', 'ֆ', '■', //
+];
+
+const TIFINAGH_G0: CodeTable = [
+    ' ', '!', '"', '#', '$', '%', '&', '\'', '(', ')', '*', '+', ',', '-', '.', '/', //
+    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', //
+    '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', //
+    'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'ⵯ', '½', '→', '↑', '#', //
+    'ⴰ', 'ⴱ', 'ⴳ', 'ⴷ', 'ⴹ', 'ⴻ', 'ⴼ', 'ⴽ', 'ⵀ', 'ⵃ', 'ⵄ', 'ⵅ', 'ⵇ', 'ⵉ', 'ⵊ', 'ⵍ', //
+    'ⵎ', 'ⵏ', 'ⵓ', 'ⵔ', 'ⵕ', 'ⵖ', 'ⵙ', 'ⵚ', 'ⵛ', 'ⵜ', 'ⵟ', 'ⵡ', 'ⵢ', 'ⵣ', 'ⵥ', '■', //
+];  // DUPLICATES {'#'}
+
 fn g0_unicode(g0: G0, code: u8) -> char {
     let table = match g0.set {
         G0Set::Latin => {
@@ -378,6 +578,18 @@ fn g0_unicode(g0: G0, code: u8) -> char {
         G0Set::Greek => &GREEK_G0,
         G0Set::Arabic => &ARABIC_G0,
         G0Set::Hebrew => &HEBREW_G0,
+        G0Set::Vietnamese => &VIETNAMESE_G0,
+        G0Set::YorubaIgbo => &YORUBA_IGBO_G0,
+        G0Set::Ukrainian => &UKRAINIAN_G0,
+        G0Set::Belarusian => &BELARUSIAN_G0,
+        G0Set::Macedonian => &MACEDONIAN_G0,
+        G0Set::Serbian => &SERBIAN_G0,
+        G0Set::KyrgyzMongolian => &KYRGYZ_MONGOLIAN_G0,
+        G0Set::Tatar => &TATAR_G0,
+        G0Set::Tajik => &TAJIK_G0,
+        G0Set::Georgian => &GEORGIAN_G0,
+        G0Set::Armenian => &ARMENIAN_G0,
+        G0Set::Tifinagh => &TIFINAGH_G0,
     };
     lookup(table, code)
 }
@@ -458,12 +670,36 @@ const ARABIC_G2: CodeTable = [
     'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', 'â', 'ô', 'û', 'ç', ' ', //
 ];
 
+/// Position of 4/C in a code table: the low line in Latin G2.
+const HOOK_POSITION: usize = 0x4C - 0x20;
+/// The Vietnamese G2 set (decision E.81): Latin G2 with the hook above at
+/// 4/C in place of the low line. Shown on its own it is U+02C0, the spacing
+/// character nearest the hook; as a mark it is U+0309 (REQ-CHR-014).
+const VIETNAMESE_G2: CodeTable = {
+    let mut table = LATIN_G2;
+    table[HOOK_POSITION] = '\u{02C0}';
+    table
+};
+/// The Armenian G2 set (decision E.78): Latin G2 with the ligature և and
+/// the rarer Armenian punctuation at the four positions Latin G2 leaves
+/// untransmitted (5/9, 5/A, 5/B and 6/5, note 5).
+const ARMENIAN_G2: CodeTable = {
+    let mut table = LATIN_G2;
+    table[0x59 - 0x20] = '\u{0587}';
+    table[0x5A - 0x20] = '\u{055B}';
+    table[0x5B - 0x20] = '\u{055E}';
+    table[0x65 - 0x20] = '\u{055C}';
+    table
+};
+
 const fn g2_table(set: G2Set) -> &'static CodeTable {
     match set {
         G2Set::Latin => &LATIN_G2,
         G2Set::Cyrillic => &CYRILLIC_G2,
         G2Set::Greek => &GREEK_G2,
         G2Set::Arabic => &ARABIC_G2,
+        G2Set::Vietnamese => &VIETNAMESE_G2,
+        G2Set::Armenian => &ARMENIAN_G2,
     }
 }
 
@@ -524,8 +760,9 @@ pub(super) fn base_unicode(set: CharSet, code: u8) -> char {
 // ---------------------------------------------------------------------------
 
 /// The combining character of each column 4 mark, indexed by mark number.
-/// 4/0 is "no mark".
-const COMBINING_MARKS: [Option<char>; 16] = [
+/// 4/0 is "no mark". The last is the Vietnamese hook above, numbered
+/// [`DIACRITIC_HOOK_ABOVE`](crate::consts::DIACRITIC_HOOK_ABOVE).
+const COMBINING_MARKS: [Option<char>; 17] = [
     None,
     Some('\u{0300}'), // 4/1 grave
     Some('\u{0301}'), // 4/2 acute
@@ -542,6 +779,7 @@ const COMBINING_MARKS: [Option<char>; 16] = [
     Some('\u{030B}'), // 4/D double acute
     Some('\u{0328}'), // 4/E ogonek
     Some('\u{030C}'), // 4/F caron
+    Some('\u{0309}'), // Vietnamese 4/C hook above
 ];
 
 pub(super) fn diacritic_combining(mark: u8) -> Option<char> {
@@ -896,14 +1134,99 @@ const COMPOSITIONS: [(char, char, char); 289] = [
     ('z', '\u{0323}', '\u{1E93}'), // ẓ
 ];
 
-pub(super) fn compose(base: char, combining: char) -> Option<char> {
-    COMPOSITIONS
-        .binary_search_by(|&(entry_base, entry_mark, _)| {
-            (entry_base, entry_mark).cmp(&(base, combining))
-        })
+/// The precompositions neoteletext's own sets add (REQ-CHR-014): the hook
+/// above on the Latin vowels, and the marks on the letters of the
+/// Vietnamese and Yoruba and Igbo sets. Generated and sorted as
+/// [`COMPOSITIONS`] is.
+const EXTENDED_COMPOSITIONS: [(char, char, char); 76] = [
+    ('\u{0041}', '\u{0309}', '\u{1EA2}'), // Ả
+    ('\u{0045}', '\u{0309}', '\u{1EBA}'), // Ẻ
+    ('\u{0049}', '\u{0309}', '\u{1EC8}'), // Ỉ
+    ('\u{004F}', '\u{0309}', '\u{1ECE}'), // Ỏ
+    ('\u{0055}', '\u{0309}', '\u{1EE6}'), // Ủ
+    ('\u{0059}', '\u{0309}', '\u{1EF6}'), // Ỷ
+    ('\u{0061}', '\u{0309}', '\u{1EA3}'), // ả
+    ('\u{0065}', '\u{0309}', '\u{1EBB}'), // ẻ
+    ('\u{0069}', '\u{0309}', '\u{1EC9}'), // ỉ
+    ('\u{006F}', '\u{0309}', '\u{1ECF}'), // ỏ
+    ('\u{0075}', '\u{0309}', '\u{1EE7}'), // ủ
+    ('\u{0079}', '\u{0309}', '\u{1EF7}'), // ỷ
+    ('\u{00C2}', '\u{0300}', '\u{1EA6}'), // Ầ
+    ('\u{00C2}', '\u{0301}', '\u{1EA4}'), // Ấ
+    ('\u{00C2}', '\u{0303}', '\u{1EAA}'), // Ẫ
+    ('\u{00C2}', '\u{0309}', '\u{1EA8}'), // Ẩ
+    ('\u{00C2}', '\u{0323}', '\u{1EAC}'), // Ậ
+    ('\u{00CA}', '\u{0300}', '\u{1EC0}'), // Ề
+    ('\u{00CA}', '\u{0301}', '\u{1EBE}'), // Ế
+    ('\u{00CA}', '\u{0303}', '\u{1EC4}'), // Ễ
+    ('\u{00CA}', '\u{0309}', '\u{1EC2}'), // Ể
+    ('\u{00CA}', '\u{0323}', '\u{1EC6}'), // Ệ
+    ('\u{00D4}', '\u{0300}', '\u{1ED2}'), // Ồ
+    ('\u{00D4}', '\u{0301}', '\u{1ED0}'), // Ố
+    ('\u{00D4}', '\u{0303}', '\u{1ED6}'), // Ỗ
+    ('\u{00D4}', '\u{0309}', '\u{1ED4}'), // Ổ
+    ('\u{00D4}', '\u{0323}', '\u{1ED8}'), // Ộ
+    ('\u{00E2}', '\u{0300}', '\u{1EA7}'), // ầ
+    ('\u{00E2}', '\u{0301}', '\u{1EA5}'), // ấ
+    ('\u{00E2}', '\u{0303}', '\u{1EAB}'), // ẫ
+    ('\u{00E2}', '\u{0309}', '\u{1EA9}'), // ẩ
+    ('\u{00E2}', '\u{0323}', '\u{1EAD}'), // ậ
+    ('\u{00EA}', '\u{0300}', '\u{1EC1}'), // ề
+    ('\u{00EA}', '\u{0301}', '\u{1EBF}'), // ế
+    ('\u{00EA}', '\u{0303}', '\u{1EC5}'), // ễ
+    ('\u{00EA}', '\u{0309}', '\u{1EC3}'), // ể
+    ('\u{00EA}', '\u{0323}', '\u{1EC7}'), // ệ
+    ('\u{00F4}', '\u{0300}', '\u{1ED3}'), // ồ
+    ('\u{00F4}', '\u{0301}', '\u{1ED1}'), // ố
+    ('\u{00F4}', '\u{0303}', '\u{1ED7}'), // ỗ
+    ('\u{00F4}', '\u{0309}', '\u{1ED5}'), // ổ
+    ('\u{00F4}', '\u{0323}', '\u{1ED9}'), // ộ
+    ('\u{0102}', '\u{0300}', '\u{1EB0}'), // Ằ
+    ('\u{0102}', '\u{0301}', '\u{1EAE}'), // Ắ
+    ('\u{0102}', '\u{0303}', '\u{1EB4}'), // Ẵ
+    ('\u{0102}', '\u{0309}', '\u{1EB2}'), // Ẳ
+    ('\u{0102}', '\u{0323}', '\u{1EB6}'), // Ặ
+    ('\u{0103}', '\u{0300}', '\u{1EB1}'), // ằ
+    ('\u{0103}', '\u{0301}', '\u{1EAF}'), // ắ
+    ('\u{0103}', '\u{0303}', '\u{1EB5}'), // ẵ
+    ('\u{0103}', '\u{0309}', '\u{1EB3}'), // ẳ
+    ('\u{0103}', '\u{0323}', '\u{1EB7}'), // ặ
+    ('\u{01A0}', '\u{0300}', '\u{1EDC}'), // Ờ
+    ('\u{01A0}', '\u{0301}', '\u{1EDA}'), // Ớ
+    ('\u{01A0}', '\u{0303}', '\u{1EE0}'), // Ỡ
+    ('\u{01A0}', '\u{0309}', '\u{1EDE}'), // Ở
+    ('\u{01A0}', '\u{0323}', '\u{1EE2}'), // Ợ
+    ('\u{01A1}', '\u{0300}', '\u{1EDD}'), // ờ
+    ('\u{01A1}', '\u{0301}', '\u{1EDB}'), // ớ
+    ('\u{01A1}', '\u{0303}', '\u{1EE1}'), // ỡ
+    ('\u{01A1}', '\u{0309}', '\u{1EDF}'), // ở
+    ('\u{01A1}', '\u{0323}', '\u{1EE3}'), // ợ
+    ('\u{01AF}', '\u{0300}', '\u{1EEA}'), // Ừ
+    ('\u{01AF}', '\u{0301}', '\u{1EE8}'), // Ứ
+    ('\u{01AF}', '\u{0303}', '\u{1EEE}'), // Ữ
+    ('\u{01AF}', '\u{0309}', '\u{1EEC}'), // Ử
+    ('\u{01AF}', '\u{0323}', '\u{1EF0}'), // Ự
+    ('\u{01B0}', '\u{0300}', '\u{1EEB}'), // ừ
+    ('\u{01B0}', '\u{0301}', '\u{1EE9}'), // ứ
+    ('\u{01B0}', '\u{0303}', '\u{1EEF}'), // ữ
+    ('\u{01B0}', '\u{0309}', '\u{1EED}'), // ử
+    ('\u{01B0}', '\u{0323}', '\u{1EF1}'), // ự
+    ('\u{1EB8}', '\u{0302}', '\u{1EC6}'), // Ệ
+    ('\u{1EB9}', '\u{0302}', '\u{1EC7}'), // ệ
+    ('\u{1ECC}', '\u{0302}', '\u{1ED8}'), // Ộ
+    ('\u{1ECD}', '\u{0302}', '\u{1ED9}'), // ộ
+];
+
+fn search(table: &[(char, char, char)], base: char, combining: char) -> Option<char> {
+    table
+        .binary_search_by(|&(entry_base, entry_mark, _)| (entry_base, entry_mark).cmp(&(base, combining)))
         .ok()
-        .and_then(|index| COMPOSITIONS.get(index))
+        .and_then(|index| table.get(index))
         .map(|&(_, _, composed)| composed)
+}
+
+pub(super) fn compose(base: char, combining: char) -> Option<char> {
+    search(&COMPOSITIONS, base, combining).or_else(|| search(&EXTENDED_COMPOSITIONS, base, combining))
 }
 
 #[cfg(test)]
@@ -1053,9 +1376,54 @@ mod tests {
         ]
     }
 
+    /// REQ-CHR-012's table, written out again from the requirement.
+    fn extended_defined() -> Vec<(u8, u8, G0, G2Set)> {
+        use NationalOption as N;
+        if !cfg!(feature = "extended-sets") {
+            return Vec::new();
+        }
+        let l = |index, national| (0b0101, index, latin_g0(national), G2Set::Latin);
+        std::vec![
+            l(0, N::HausaFula),
+            l(1, N::WestAfrican),
+            l(2, N::Ewe),
+            l(3, N::KabyleTamazight),
+            l(4, N::Azerbaijani),
+            l(5, N::KanuriMossi),
+            (0b0101, 6, whole_g0(G0Set::YorubaIgbo), G2Set::Latin),
+            (0b0101, 7, whole_g0(G0Set::Vietnamese), G2Set::Vietnamese),
+            (0b0111, 0, whole_g0(G0Set::Ukrainian), G2Set::Cyrillic),
+            (0b0111, 1, whole_g0(G0Set::Belarusian), G2Set::Cyrillic),
+            (0b0111, 2, whole_g0(G0Set::Macedonian), G2Set::Cyrillic),
+            (0b0111, 3, whole_g0(G0Set::Serbian), G2Set::Cyrillic),
+            (0b0111, 5, whole_g0(G0Set::KyrgyzMongolian), G2Set::Cyrillic),
+            (0b0111, 6, whole_g0(G0Set::Tatar), G2Set::Cyrillic),
+            (0b0111, 7, whole_g0(G0Set::Tajik), G2Set::Cyrillic),
+            (0b1011, 0, whole_g0(G0Set::Georgian), G2Set::Latin),
+            (0b1011, 1, whole_g0(G0Set::Armenian), G2Set::Armenian),
+            (0b1011, 2, whole_g0(G0Set::Tifinagh), G2Set::Latin),
+        ]
+    }
+
+    /// REQ-CHR-012: Table 34 gives neoteletext's own values' sets, and each
+    /// implies Latin English as the second set; the standard's none.
+    #[test]
+    fn extended_values_in_tables_33_and_34() {
+        for (group, index, g0, g2) in extended_defined() {
+            assert_eq!(modified_designation(value(group, index)), Some((g0.set, g2)));
+            assert_eq!(default_second_g0(value(group, index)), Some(ENGLISH_DESIGNATION.g0));
+        }
+        for (group, index, _, _) in table_32_defined() {
+            assert_eq!(default_second_g0(value(group, index)), None);
+        }
+        let reserved = value(0b0111, 0b100);
+        assert_eq!((designation(reserved), modified_designation(reserved), default_second_g0(reserved)), (None, None, None));
+    }
+
     #[test]
     fn table_32_every_entry() {
-        let defined = table_32_defined();
+        let mut defined = table_32_defined();
+        defined.extend(extended_defined());
         let mut seen = 0;
         for candidate in 0..=0x7F_u8 {
             let expected = defined
@@ -1079,7 +1447,7 @@ mod tests {
         assert_eq!(designation(0).unwrap(), ENGLISH_DESIGNATION);
         assert_eq!(designation(1).unwrap().g0, latin_g0(NationalOption::German));
         assert_eq!(designation(value(0b0000, 0b111)), None);
-        assert_eq!(designation(value(0b0101, 0b000)), None);
+        assert_eq!(designation(value(0b1101, 0b000)), None);
         assert_eq!(designation(0x7F), None);
     }
 
@@ -1093,9 +1461,9 @@ mod tests {
         assert_eq!(second_g0(value(0b1010, 0b101)), Some(whole_g0(G0Set::Hebrew)));
         assert_eq!(second_g0(value(0b0001, 0b000)), Some(latin_g0(NationalOption::Polish)));
         assert_eq!(second_g0(value(0b0010, 0b110)), Some(latin_g0(NationalOption::Turkish)));
-        assert_eq!(second_g0(value(0b0101, 0b011)), None);
+        assert_eq!(second_g0(value(0b1101, 0b011)), None);
         assert_eq!(second_g0(value(0b0011, 0b000)), None);
-        for (group, index, g0, _) in table_32_defined() {
+        for (group, index, g0, _) in table_32_defined().into_iter().chain(extended_defined()) {
             assert_eq!(second_g0(value(group, index)), Some(g0));
         }
     }
@@ -1306,13 +1674,13 @@ mod tests {
     fn diacritic_combining_marks() {
         let expected = [
             0x0300, 0x0301, 0x0302, 0x0303, 0x0304, 0x0306, 0x0307, 0x0308, 0x0323, 0x030A,
-            0x0327, 0x0332, 0x030B, 0x0328, 0x030C,
+            0x0327, 0x0332, 0x030B, 0x0328, 0x030C, 0x0309,
         ];
         assert_eq!(diacritic_combining(0), None);
-        for (mark, scalar) in (1..=15).zip(expected) {
+        for (mark, scalar) in (1..=16).zip(expected) {
             assert_eq!(diacritic_combining(mark), char::from_u32(scalar), "mark {mark}");
         }
-        for mark in 16..=0xFF {
+        for mark in 17..=0xFF {
             assert_eq!(diacritic_combining(mark), None);
         }
     }
@@ -1344,6 +1712,15 @@ mod tests {
             assert!(marks.contains(&mark));
             assert_eq!(compose(base, mark), Some(composed));
             // Composition keeps the case of the base letter.
+            assert_eq!(composed.is_uppercase(), base.is_uppercase(), "{composed}");
+        }
+        for pair in EXTENDED_COMPOSITIONS.windows(2) {
+            assert!((pair[0].0, pair[0].1) < (pair[1].0, pair[1].1), "{pair:?}");
+        }
+        for (base, mark, composed) in EXTENDED_COMPOSITIONS {
+            assert!(marks.contains(&mark));
+            assert_eq!(search(&COMPOSITIONS, base, mark), None, "{composed} is in one table only");
+            assert_eq!(compose(base, mark), Some(composed));
             assert_eq!(composed.is_uppercase(), base.is_uppercase(), "{composed}");
         }
     }

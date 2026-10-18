@@ -20,7 +20,7 @@ use std::io::{Read, Write};
 use std::path::Path;
 
 /// Reads a whole file of at most `limit` bytes.
-fn read_bounded(path: &Path, limit: usize) -> Result<Vec<u8>, Failure> {
+pub(crate) fn read_bounded(path: &Path, limit: usize) -> Result<Vec<u8>, Failure> {
     let file = File::open(path).map_err(|error| (exit::INPUT, format!("{}: {error}", path.display())))?;
     let mut bytes = Vec::new();
     let cap = u64::try_from(limit).unwrap_or(u64::MAX).saturating_add(1);

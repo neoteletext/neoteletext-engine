@@ -56,8 +56,36 @@ baseline = 14
 rtl = yes
 join = yes
 
+[script georgian]
+# Mkhedruli is a script of one case with ascenders and descenders: the
+# ascender letters stand as tall as Latin capitals.
+sources = georgian
+weight = 600
+hinting = auto
+reference = ბ
+reference_height = 14
+baseline = 16
+
+[script armenian]
+sources = armenian
+weight = 600
+hinting = auto
+reference = Ա
+reference_height = 14
+reference_width = 10
+baseline = 16
+
+[script tifinagh]
+sources = tifinagh
+weight = 600
+hinting = auto
+reference = ⵏ
+reference_height = 14
+baseline = 16
+
 [font noto-teletext]
 family = Noto Teletext
 copyright = Copyright 2022 The Noto Project Authors
-characters = required
-scripts = latin hebrew arabic
+# Required, and Vietnamese precomposed letters (REQ-CHR-014).
+characters = required range:1EA0-1EF9
+scripts = latin hebrew arabic georgian armenian tifinagh

@@ -188,7 +188,7 @@ pub struct LibraryFont {
     /// sets it also meets the SAA5050 cell profile for, a bit per set of
     /// `neoteletext_core::glyphs::conformance::FONT_SETS`; none without a
     /// `c` line (REQ-FNT-004, REQ-FNT-011).
-    pub conformance: Option<(u32, u32)>,
+    pub conformance: Option<(u64, u64)>,
 }
 
 /// A library helper's answer.
@@ -624,6 +624,13 @@ impl Cursor<'_> {
     fn u32(&mut self) -> io::Result<usize> {
         let bytes = self.bytes(4)?;
         Ok(u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize)
+    }
+
+    fn u64(&mut self) -> io::Result<u64> {
+        let bytes = self.bytes(8)?;
+        let mut word = [0u8; 8];
+        word.copy_from_slice(bytes);
+        Ok(u64::from_be_bytes(word))
     }
 
     fn string(&mut self) -> io::Result<String> {
@@ -1265,10 +1272,7 @@ fn font_frame(kind: u8, payload: &[u8]) -> io::Result<Frame> {
                             sha256: cursor.sha256()?,
                             conformance: match cursor.byte()? {
                                 0 => None,
-                                1 => Some((
-                                    u32::try_from(cursor.u32()?).map_err(|_| invalid())?,
-                                    u32::try_from(cursor.u32()?).map_err(|_| invalid())?,
-                                )),
+                                1 => Some((cursor.u64()?, cursor.u64()?)),
                                 _ => return Err(invalid()),
                             },
                         })
@@ -1401,7 +1405,7 @@ mod tests {
                         address: "https://l.example/g.bdf".into(),
                         title: "G".into(),
                         sha256: [2; 32],
-                        conformance: Some((0x00FF_FFFF, 0x0000_0002)),
+                        conformance: Some((0x0FFF_FFFF_FFFF, 0x0000_0002)),
                     },
                 ],
                 2,

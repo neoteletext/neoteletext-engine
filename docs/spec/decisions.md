@@ -1145,7 +1145,7 @@ Decided on 18 October 2026 by the designer, on the owner's instruction to follow
 **E.81 — Diacritical marks from the page's own G2 set.**
 Decided on 18 October 2026 by the designer, on the owner's instruction that conformance comes first. The design is `design/languages.md` section 8.1, and the rule REQ-CHR-014.
 1. **A mark comes from column 4 of the page's current G2 set** when that set's column 4 holds marks, as Table 29 says, and from Latin G2 otherwise. Pages with the standard's existing sets are unaffected.
-2. **Vietnamese is a Latin national option** with a Vietnamese G2 set holding the hook above, its tones added by X/26. Yoruba and Igbo get their tones the same way.
+2. **Vietnamese is a whole Latin-script G0 set** with a Vietnamese G2 set holding the hook above, its tones added by X/26. Yoruba and Igbo get their tones the same way, from their own whole set. Both were first designed as national options; they are whole sets because an X/26 mark is placed on the G0 set's base form, never on a national option's character (REQ-CHR-002), so a tone on a national position would land on the wrong letter. Amended on 18 October 2026.
 
 *Reason:* This is the standard's own Level 1.5 mechanism, used as Table 29 and Annex E.10 describe. Spain's 1986 teletext order met its regional languages the same way.
 

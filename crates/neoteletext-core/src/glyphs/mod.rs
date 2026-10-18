@@ -389,7 +389,7 @@ impl<'a> GlyphSet<'a> {
 /// Each combining mark of the diacritical marks (REQ-CHR-008) and the
 /// spacing character whose glyph is overlaid for it (decision E.26). Every
 /// glyph set needs a glyph for each spacing character.
-pub const SPACING_MARKS: [(char, char); 15] = [
+pub const SPACING_MARKS: [(char, char); 16] = [
     ('\u{0300}', '`'),
     ('\u{0301}', '\u{00B4}'),
     ('\u{0302}', '\u{02C6}'),
@@ -405,6 +405,8 @@ pub const SPACING_MARKS: [(char, char); 15] = [
     ('\u{0327}', '\u{00B8}'),
     ('\u{0328}', '\u{02DB}'),
     ('\u{0332}', '_'),
+    // The Vietnamese G2 set's 4/C draws the hook above as U+02C0.
+    ('\u{0309}', '\u{02C0}'),
 ];
 
 /// The spacing form of a combining mark, whose glyph is overlaid.

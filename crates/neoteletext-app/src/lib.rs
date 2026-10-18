@@ -7,8 +7,8 @@
 //! belong to each program.
 //!
 //! Features (decision E.61), all on by default: `live` for live feeds and
-//! web services, which brings in the web module and TLS, and `slice` for
-//! raw sampled video. The types stay whatever the features; a part left
+//! web services, which brings in the web module and TLS, `slice` for raw
+//! sampled video, and `write-text` for writing pages from text. The types stay whatever the features; a part left
 //! out is refused with [`not_in_build`].
 
 pub mod convert;
@@ -27,6 +27,8 @@ pub mod session;
 #[cfg(feature = "slice")]
 pub mod slice;
 pub mod source;
+#[cfg(feature = "write-text")]
+pub mod write_text;
 
 /// Exit statuses of REQ-CLI-005 and REQ-CLI-006.
 pub mod exit {

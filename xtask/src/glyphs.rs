@@ -151,13 +151,34 @@ struct Set {
 fn sets() -> Vec<Set> {
     let mut g0: Vec<(String, CharSet)> =
         vec![("G0 Latin".to_string(), CharSet::G0(G0 { set: G0Set::Latin, national: None }))];
-    for national in NationalOption::ALL {
+    for national in NationalOption::ALL.into_iter().chain(NationalOption::EXTENDED) {
         g0.push((format!("G0 Latin {national:?}"), CharSet::G0(G0 { set: G0Set::Latin, national: Some(national) })));
     }
-    for set in [G0Set::Cyrillic1, G0Set::Cyrillic2, G0Set::Cyrillic3, G0Set::Greek, G0Set::Arabic, G0Set::Hebrew] {
+    // The standard's sets, then neoteletext's own (REQ-CHR-012).
+    let whole = [
+        G0Set::Cyrillic1,
+        G0Set::Cyrillic2,
+        G0Set::Cyrillic3,
+        G0Set::Greek,
+        G0Set::Arabic,
+        G0Set::Hebrew,
+        G0Set::Vietnamese,
+        G0Set::YorubaIgbo,
+        G0Set::Ukrainian,
+        G0Set::Belarusian,
+        G0Set::Macedonian,
+        G0Set::Serbian,
+        G0Set::KyrgyzMongolian,
+        G0Set::Tatar,
+        G0Set::Tajik,
+        G0Set::Georgian,
+        G0Set::Armenian,
+        G0Set::Tifinagh,
+    ];
+    for set in whole {
         g0.push((format!("G0 {set:?}"), CharSet::G0(G0 { set, national: None })));
     }
-    for set in [G2Set::Latin, G2Set::Cyrillic, G2Set::Greek, G2Set::Arabic] {
+    for set in [G2Set::Latin, G2Set::Cyrillic, G2Set::Greek, G2Set::Arabic, G2Set::Vietnamese, G2Set::Armenian] {
         g0.push((format!("G2 {set:?}"), CharSet::G2(set)));
     }
     g0.into_iter()

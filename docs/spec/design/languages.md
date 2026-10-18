@@ -32,7 +32,7 @@ Conformance comes first, as far as it can go. Every language uses the standard's
 | Part | How it stands against the standard |
 |---|---|
 | New G0 and G2 sets, and their designation codes | Unavoidable: a language the standard has no set for needs new codes. They use only values the standard reserves (Tables 32 to 34), in the same structure as every existing set: a group, an option, a G0 set and its paired G2 set. Arabic and Hebrew entered Table 32 the same way, from the earlier register of the 1990 and 1992 specifications. The allocation is neoteletext's own, so other decoders show these pages wrongly. |
-| National option sub-sets for African Latin and Vietnamese | The standard's own model (Table 36). |
+| National option sub-sets for African Latin | The standard's own model (Table 36). Vietnamese, Yoruba and Igbo use the same layout as whole sets (section 8.1). |
 | Whole G0 sets for Cyrillic, Georgian, Armenian, Tifinagh and Inuktitut | The standard's own model, as Cyrillic, Greek and Hebrew are. |
 | Vietnamese tone marks, and Yoruba and Igbo tones | The standard's Level 1.5 method: a G0 letter with a diacritical mark placed by X/26 (clause 15.1). A Level 1 decoder shows the letters without their tones, as it shows Level 1.5 Czech without its accents. |
 | 12 × 20 glyphs and Noto fonts | Within the standard: "the precise appearance of the characters ... is a decoder option" (clause 15.6). |
@@ -75,7 +75,7 @@ The research of 18 October 2026 (`research/notes-languages.md`) found that telet
 What this design takes from them:
 - **Arabic-script joining by the receiver** (section 6) is EBU Tech 3232's own proposal of 1982, and T.101 Data Syntax II's "contextual shape determination".
 - **Arabic-script digits** are the codes 3/0 to 3/9, drawn in the language's own shapes (section 8.3), as EBU Tech 3232 describes.
-- **Vietnamese** is a Latin national option, so its tones stay within Annex E.10 (section 8.1).
+- **Vietnamese** is a Latin-script set whose tones are X/26 marks on Latin letters, as Annex E.10 gives them (section 8.1).
 - **Lao** keeps the code table of WST90 Figure 33 (section 7.7).
 - **Thai** keeps the SAA5246AP/S scheme. WST90's Thai set and Format B are recorded as the standard-era alternative, and why the chip's scheme is preferred (section 7.2).
 - **Indic and Burmese** stay out of scope by choice, not for want of a coding (section 1, "What it leaves out").
@@ -117,7 +117,7 @@ Table 32 itself dates from ETS 300 706 (1997), which replaced the earlier regist
 
 | Group | Name | Kind of set | Paired G2 set |
 |---|---|---|---|
-| 0101 | Latin extensions | National option sub-sets of Latin G0 (13 positions replaced) | Latin; for Vietnamese, a new Vietnamese G2 set |
+| 0101 | Latin extensions | National option sub-sets of Latin G0 (13 positions replaced); Yoruba and Igbo, and Vietnamese, as whole sets of the same layout | Latin; for Vietnamese, a new Vietnamese G2 set |
 | 0111 | Cyrillic extensions | Whole G0 sets | Cyrillic |
 | 1001 | Arabic script | Whole G0 sets of plain letters, joined by the receiver | Arabic |
 | 1011 | Other alphabets | Whole G0 sets | Latin, or an Armenian G2 set |
@@ -420,7 +420,7 @@ Each set below is provisional. Its 96-position table is written as reviewed data
 
 ### 8.1 Group 0101, Latin extensions
 
-These are national option sub-sets: the 13 positions of Table 36 replaced, the rest of Latin G0 kept. Letters that don't fit come through X/26, either from Latin G2 (which has Ŋ ŋ) or as a Latin letter with one of the 15 G2 diacritics, which covers the dot-below letters ẹ ọ ṣ ḍ ṭ.
+Options 000 to 101 are national option sub-sets: the 13 positions of Table 36 replaced, the rest of Latin G0 kept. Options 110 and 111 have the same layout but are whole G0 sets, as Cyrillic and Greek are, because their letters must carry X/26 marks: an X/26 diacritical mark is placed on the G0 set's base form at a code, never on a national option's character there (REQ-CHR-002), so a tone on ê at a national position would be drawn on the base form `|`. Letters that don't fit come through X/26, either from Latin G2 (which has Ŋ ŋ) or as a Latin letter with one of the 15 G2 diacritics, which covers the dot-below letters ẹ ọ ṣ ḍ ṭ.
 
 | Option | Languages | Letters in the 13 positions |
 |---|---|---|
@@ -434,13 +434,13 @@ These are national option sub-sets: the 13 positions of Table 36 replaced, the r
 | 111 | Vietnamese | Ă ă Â â Ê ê Ô ô Ơ ơ Ư ư đ (Đ from Latin G2 6/2 through X/26); paired with the Vietnamese G2 set |
 
 **Vietnamese** uses the standard's Level 1.5 method for its tones:
-- **It is a Latin national option,** so its tones stay within EN 300 706 Annex E.10, which restricts diacritical marks to the Latin sets. Its 13 positions hold the vowels with a circumflex, breve or horn and đ, so a cell never needs more than one mark. A decoder that does not know the option still shows the rest of Latin G0.
+- **It is a Latin-script G0 set:** Latin G0 with the 13 national option positions holding the vowels with a circumflex, breve or horn and đ, so a cell never needs more than one mark. It is a whole set rather than a national option so that X/26 finds those vowels as bases (REQ-CHR-002). Its tones stay within the spirit of EN 300 706 Annex E.10, which gives diacritical marks to the Latin sets: every base is a Latin letter. A decoder that does not know the designation falls back to Latin G0 (REQ-CHR-003).
 - **The five tone marks are added by X/26,** as "G0 character with diacritical mark" triplets (Table 29, modes 10000 to 11111), from column 4 of the paired G2 set.
-- **The Vietnamese G2 set** is Latin G2 (Table 37) with one change: 4/C, the low line, becomes the hook above. Grave, acute, tilde and dot below are already at 4/1, 4/2, 4/4 and 4/9. The standard takes the mark "from column 4 of the G2 supplementary character set" currently designated (Table 29, modes 10000 to 11111), so a page paired with the Vietnamese G2 set gets the hook above. The engine today maps marks only to Latin G2's column 4 (`COMBINING_MARKS`) and must take them from the page's G2 set.
+- **The Vietnamese G2 set** is Latin G2 (Table 37) with one change: 4/C, the low line, becomes the hook above. Grave, acute, tilde and dot below are already at 4/1, 4/2, 4/4 and 4/9. The standard takes the mark "from column 4 of the G2 supplementary character set" currently designated (Table 29, modes 10000 to 11111), so a page paired with the Vietnamese G2 set gets the hook above. The engine takes the mark from the page's G2 set (`charset::page_mark`).
 - **The budget fits.** Measured on the Universal Declaration of Human Rights, 15% of characters carry a tone, about 131 on a full page, and Đ adds a few more. With a row address triplet for each of up to 23 rows, that is about 160, within the 208 of 16 X/26 packets.
 - **Older receivers degrade gracefully.** A decoder without Level 1.5 shows the letters without tones, readable as Vietnamese typed without tones often is.
 
-Yoruba and Igbo work today without tone marks, with ẹ ọ ṣ ị ụ from X/26. Option 110 puts those letters in the row, so a tone mark can be added to them by X/26 with the Latin G2 grave and acute: one mark per cell, as the standard allows. Yoruba marks most vowels; whether a dense page stays within X/26's 208 triplets has not been measured.
+Yoruba and Igbo work today without tone marks, with ẹ ọ ṣ ị ụ from X/26. Option 110, a whole set for the same reason as Vietnamese, puts those letters in the row, so a tone mark can be added to them by X/26 with the Latin G2 grave and acute: one mark per cell, as the standard allows. Yoruba marks most vowels; whether a dense page stays within X/26's 208 triplets has not been measured.
 
 ### 8.2 Group 0111, Cyrillic extensions
 

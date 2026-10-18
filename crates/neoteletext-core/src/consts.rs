@@ -375,6 +375,12 @@ pub const TRIPLET_AT_SIGN_CODE: u8 = 0x2A;
 pub const LATIN_AT_SIGN: u8 = 0x40;
 /// No diacritical mark.
 pub const DIACRITIC_NONE: u8 = 0;
+/// The hook above, the Vietnamese G2 set's 4/C (REQ-CHR-014, decision
+/// E.81). Table 29's modes number only 15 marks, so the hook is kept as a
+/// sixteenth past them.
+pub const DIACRITIC_HOOK_ABOVE: u8 = 16;
+/// The mark number of 4/C, the low line in Latin G2 (Table 37).
+pub const DIACRITIC_LOW_LINE: u8 = 0x0C;
 
 // ---------------------------------------------------------------------------
 // Page-related and magazine-related enhancement packets (clauses 9.4.2 to

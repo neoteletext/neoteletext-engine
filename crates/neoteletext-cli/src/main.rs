@@ -11,6 +11,7 @@ mod output;
 mod terminal;
 #[cfg(feature = "view")]
 mod view;
+mod write_text;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use neoteletext_app::{exit, sandbox};
@@ -271,6 +272,26 @@ enum Command {
         #[arg(long)]
         descriptor: Option<PathBuf>,
     },
+    /// Write a TTI page from a UTF-8 text file in one of neoteletext's own
+    /// character sets (REQ-CLI-010, REQ-CHR-012).
+    WriteText {
+        /// The set: hausa-fula, west-african, ewe, kabyle-tamazight,
+        /// azerbaijani, kanuri-mossi, yoruba-igbo, vietnamese, ukrainian,
+        /// belarusian, macedonian, serbian, kyrgyz-mongolian, tatar, tajik,
+        /// georgian, armenian or tifinagh.
+        #[arg(long)]
+        set: String,
+        /// The page number, 100 to 8FF.
+        #[arg(long)]
+        page: String,
+        /// The UTF-8 text.
+        input: PathBuf,
+        /// The TTI file to write.
+        output: PathBuf,
+        /// Run without the operating-system sandbox (REQ-SEC-017).
+        #[arg(long)]
+        no_sandbox: bool,
+    },
     /// Work with the fonts the browser loads (area FNT).
     Font {
         #[command(subcommand)]
@@ -314,6 +335,9 @@ fn main() -> ExitCode {
             font::font_sets(&font, library_line.as_deref(), no_sandbox)
         }
         Command::Contents { common } => contents::contents(&common.options()),
+        Command::WriteText { set, page, input, output, no_sandbox } => {
+            write_text::write_text(&set, &page, &input, &output, no_sandbox)
+        }
         Command::SandboxTest => sandbox::self_test(),
         Command::Fetch { address, no_sandbox, allow_local } => commands::fetch(&address, no_sandbox, &allow_local),
     };
@@ -346,11 +370,11 @@ enum FontCommand {
         #[arg(long)]
         no_sandbox: bool,
     },
-    /// Report the character sets a 12 x 10 font conforms for (REQ-FNT-011):
-    /// for each of the 24 sets, whether it conforms, the positions it
+    /// Report the character sets a loaded font conforms for (REQ-FNT-011):
+    /// for each set, whether it conforms, the positions it
     /// draws, the SAA5050 cell profile, and the first rule that fails.
     Sets {
-        /// The 12 x 10 font.
+        /// The loaded font, 12 x 10 or 12 x 20.
         font: PathBuf,
         /// Print only the font library's `c` line (REQ-FNT-004) for the
         /// font under this file name.

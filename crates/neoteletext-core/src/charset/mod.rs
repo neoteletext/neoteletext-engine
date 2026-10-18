@@ -8,7 +8,7 @@
 #[rustfmt::skip]
 mod tables;
 
-use crate::consts::{CODE_MASK_7BIT, DIACRITIC_NONE};
+use crate::consts::{CODE_MASK_7BIT, DIACRITIC_HOOK_ABOVE, DIACRITIC_LOW_LINE, DIACRITIC_NONE};
 use crate::types::{DrcsCharacter, DrcsTable};
 
 /// A G0 primary character set (EN 300 706 clause 15.6).
@@ -28,6 +28,32 @@ pub enum G0Set {
     Arabic,
     /// Hebrew G0 (Table 46).
     Hebrew,
+    /// Vietnamese: Latin G0 with the 13 national positions holding the
+    /// vowels with a circumflex, breve or horn, and đ (decision E.81).
+    Vietnamese,
+    /// Yoruba and Igbo: Latin G0 with the 13 national positions holding
+    /// the letters with a dot below and ṅ (decision E.81).
+    YorubaIgbo,
+    /// Ukrainian: Table 40 with Ґ ґ (decision E.78).
+    Ukrainian,
+    /// Belarusian, built from Table 39.
+    Belarusian,
+    /// Macedonian, built from Table 38.
+    Macedonian,
+    /// Serbian: Table 38 with lowercase џ.
+    Serbian,
+    /// Kyrgyz and Mongolian, built from Table 39.
+    KyrgyzMongolian,
+    /// Tatar, built from Table 39.
+    Tatar,
+    /// Tajik, built from Table 39.
+    Tajik,
+    /// Georgian (Mkhedruli), laid out as Table 46.
+    Georgian,
+    /// Armenian.
+    Armenian,
+    /// Tifinagh (the Moroccan alphabet), laid out as Table 46.
+    Tifinagh,
 }
 
 /// A G2 supplementary character set (EN 300 706 clause 15.6).
@@ -41,6 +67,11 @@ pub enum G2Set {
     Greek,
     /// Arabic G2 (Table 45).
     Arabic,
+    /// Vietnamese G2: Latin G2 with the hook above at 4/C (decision E.81).
+    Vietnamese,
+    /// Armenian G2: Latin G2 with և and the rarer Armenian punctuation in
+    /// its unused positions (decision E.78).
+    Armenian,
 }
 
 /// A Latin national option sub-set (EN 300 706 Table 36).
@@ -72,10 +103,27 @@ pub enum NationalOption {
     SwedishFinnishHungarian,
     /// Turkish.
     Turkish,
+    /// Hausa and Fula (decision E.78).
+    HausaFula,
+    /// Akan, Lingala, Bambara and the other West African languages.
+    WestAfrican,
+    /// Ewe.
+    Ewe,
+    /// Kabyle and Tamazight in Latin script.
+    KabyleTamazight,
+    /// Azerbaijani.
+    Azerbaijani,
+    /// Kanuri and Mossi.
+    KanuriMossi,
 }
 
 impl NationalOption {
-    /// Every national option, in the order of Table 36.
+    /// neoteletext's own options (decision E.78), in the order of their
+    /// designations in group 0101.
+    pub const EXTENDED: [Self; 6] =
+        [Self::HausaFula, Self::WestAfrican, Self::Ewe, Self::KabyleTamazight, Self::Azerbaijani, Self::KanuriMossi];
+
+    /// Every national option of the standard, in the order of Table 36.
     pub const ALL: [Self; 13] = [
         Self::CzechSlovak,
         Self::English,
@@ -192,6 +240,22 @@ pub fn second_g0(value: u8) -> Option<G0> {
     tables::second_g0(value & CODE_MASK_7BIT)
 }
 
+/// The mark a "G0 character with diacritical mark" triplet names, taken
+/// from column 4 of the page's G2 set (REQ-CHR-014): the Vietnamese set's
+/// 4/C is the hook above; every other mark is Latin G2's.
+#[must_use]
+pub fn page_mark(g2: G2Set, diacritic: u8) -> u8 {
+    if g2 == G2Set::Vietnamese && diacritic == DIACRITIC_LOW_LINE { DIACRITIC_HOOK_ABOVE } else { diacritic }
+}
+
+/// The second G0 set a designation value implies when no Table 33
+/// designation is received: Latin English for neoteletext's own values
+/// (REQ-CHR-012), none for the standard's.
+#[must_use]
+pub fn default_second_g0(value: u8) -> Option<G0> {
+    tables::default_second_g0(value & CODE_MASK_7BIT)
+}
+
 /// Looks up Table 34 for the data of a Modified G0 and G2 Character Set
 /// Designation triplet (Table 29 mode 01000, clause 15.4): the G0 and G2
 /// sets, or `None` when the value is reserved. A G0 set chosen this way is
@@ -267,10 +331,76 @@ pub fn latin_text<const N: usize>(codes: &[u8; N]) -> [char; N] {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::*;
     use crate::consts::{DESIGNATION_GROUP_SHIFT, SPACE};
+
+    /// REQ-CHR-014: every tone on every Vietnamese vowel, placed by X/26 on
+    /// the Vietnamese G0 set with marks from the Vietnamese G2 set,
+    /// composes to its precomposed letter. Tones: grave 4/1, acute 4/2,
+    /// tilde 4/4, dot below 4/9, hook above 4/C.
+    #[test]
+    fn every_vietnamese_tone_composes() {
+        const TONES: [u8; 5] = [0x1, 0x2, 0x4, 0x9, 0xC];
+        let expected = [
+            ('a', "àáãạả"),
+            ('ă', "ằắẵặẳ"),
+            ('â', "ầấẫậẩ"),
+            ('e', "èéẽẹẻ"),
+            ('ê', "ềếễệể"),
+            ('i', "ìíĩịỉ"),
+            ('o', "òóõọỏ"),
+            ('ô', "ồốỗộổ"),
+            ('ơ', "ờớỡợở"),
+            ('u', "ùúũụủ"),
+            ('ư', "ừứữựử"),
+            ('y', "ỳýỹỵỷ"),
+            ('A', "ÀÁÃẠẢ"),
+            ('Ă', "ẰẮẴẶẲ"),
+            ('Â', "ẦẤẪẬẨ"),
+            ('E', "ÈÉẼẸẺ"),
+            ('Ê', "ỀẾỄỆỂ"),
+            ('I', "ÌÍĨỊỈ"),
+            ('O', "ÒÓÕỌỎ"),
+            ('Ô', "ỒỐỖỘỔ"),
+            ('Ơ', "ỜỚỠỢỞ"),
+            ('U', "ÙÚŨỤỦ"),
+            ('Ư', "ỪỨỮỰỬ"),
+            ('Y', "ỲÝỸỴỶ"),
+        ];
+        let set = CharSet::G0(G0 { set: G0Set::Vietnamese, national: None });
+        for (vowel, toned) in expected {
+            let code = (SPACE..0x7F)
+                .find(|&code| to_unicode(CharRef::new(set, code)).base == vowel)
+                .unwrap_or_else(|| panic!("{vowel} is in the Vietnamese set"));
+            for (tone, want) in TONES.into_iter().zip(toned.chars()) {
+                let mut character = CharRef::new(set, code);
+                character.diacritic = page_mark(G2Set::Vietnamese, tone);
+                let unicode = to_unicode(character);
+                assert_eq!(compose(unicode.base, unicode.combining.unwrap()), Some(want), "{vowel} tone {tone:X}");
+            }
+        }
+    }
+
+    /// REQ-CHR-014: 4/C is the hook above only in the Vietnamese G2 set;
+    /// pages with the standard's sets keep the low line.
+    #[test]
+    fn the_hook_above_is_vietnamese_only() {
+        let hook = to_unicode(CharRef {
+            diacritic: page_mark(G2Set::Vietnamese, 0xC),
+            ..CharRef::new(CharSet::G0(G0 { set: G0Set::Latin, national: None }), b'a')
+        });
+        assert_eq!(hook.combining, Some('\u{0309}'));
+        for g2 in [G2Set::Latin, G2Set::Cyrillic, G2Set::Greek, G2Set::Arabic, G2Set::Armenian] {
+            for mark in 0..=0xF {
+                assert_eq!(page_mark(g2, mark), mark);
+            }
+        }
+        for mark in (0..=0xF).filter(|&mark| mark != 0xC) {
+            assert_eq!(page_mark(G2Set::Vietnamese, mark), mark);
+        }
+    }
 
     fn value(group: u8, national: u8) -> u8 {
         (group << DESIGNATION_GROUP_SHIFT) | national
@@ -307,6 +437,27 @@ mod tests {
             (value(0b1010, 5), (S::Hebrew, Arabic)),
             (value(0b1010, 7), (S::Arabic, Arabic)),
         ]);
+        #[cfg(feature = "extended-sets")]
+        {
+            use G2Set::{Armenian, Vietnamese};
+            for low in 0..=5 {
+                expected.push((value(0b0101, low), (S::Latin, Latin)));
+            }
+            expected.extend([
+                (value(0b0101, 6), (S::YorubaIgbo, Latin)),
+                (value(0b0101, 7), (S::Vietnamese, Vietnamese)),
+                (value(0b0111, 0), (S::Ukrainian, Cyrillic)),
+                (value(0b0111, 1), (S::Belarusian, Cyrillic)),
+                (value(0b0111, 2), (S::Macedonian, Cyrillic)),
+                (value(0b0111, 3), (S::Serbian, Cyrillic)),
+                (value(0b0111, 5), (S::KyrgyzMongolian, Cyrillic)),
+                (value(0b0111, 6), (S::Tatar, Cyrillic)),
+                (value(0b0111, 7), (S::Tajik, Cyrillic)),
+                (value(0b1011, 0), (S::Georgian, Latin)),
+                (value(0b1011, 1), (S::Armenian, Armenian)),
+                (value(0b1011, 2), (S::Tifinagh, Latin)),
+            ]);
+        }
         for data in 0..=0x7F {
             let want = expected.iter().find(|(entry, _)| *entry == data).map(|(_, sets)| *sets);
             assert_eq!(modified_designation(data), want, "value {data:#04x}");
@@ -330,8 +481,8 @@ mod tests {
         let (found, fallback) = designation_with_fallback(value(0b0011, 0b110));
         assert_eq!(found, Designation { g0: latin(NationalOption::CzechSlovak), g2: G2Set::Latin });
         assert!(fallback);
-        // Group 0101 is wholly reserved.
-        let (found, fallback) = designation_with_fallback(value(0b0101, 0b001));
+        // Group 1101 is wholly reserved.
+        let (found, fallback) = designation_with_fallback(value(0b1101, 0b001));
         assert_eq!(found.g0, latin(NationalOption::German));
         assert!(fallback);
     }
@@ -340,7 +491,7 @@ mod tests {
     #[test]
     fn doubly_reserved_designation_is_english() {
         let english = Designation { g0: latin(NationalOption::English), g2: G2Set::Latin };
-        for reserved in [value(0b0101, 0b111), value(0b1111, 0b111), value(0b0000, 0b111)] {
+        for reserved in [value(0b1101, 0b111), value(0b1111, 0b111), value(0b0000, 0b111)] {
             assert_eq!(designation(reserved), None);
             assert_eq!(designation_with_fallback(reserved), (english, true), "value {reserved:#09b}");
         }

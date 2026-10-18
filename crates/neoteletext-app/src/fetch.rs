@@ -635,9 +635,9 @@ pub fn run_font(
 
 /// The masks of a `c` line's sets, a bit per set of `FONT_SETS`; none when
 /// a name is not a set of REQ-FNT-011.
-fn conformance_masks(line: &neoteletext_web::fonts::Conformance<'_>) -> Option<(u32, u32)> {
-    line.sets().try_fold((0u32, 0u32), |(sets, cell), (name, profile)| {
-        let bit = 1u32.checked_shl(u32::try_from(font_set_index(name)?).ok()?)?;
+fn conformance_masks(line: &neoteletext_web::fonts::Conformance<'_>) -> Option<(u64, u64)> {
+    line.sets().try_fold((0u64, 0u64), |(sets, cell), (name, profile)| {
+        let bit = 1u64.checked_shl(u32::try_from(font_set_index(name)?).ok()?)?;
         Some((sets | bit, if profile { cell | bit } else { cell }))
     })
 }
@@ -704,8 +704,8 @@ mod tests {
     /// second one, or an unknown set's name is ignored and counted.
     #[test]
     fn conformance_lines_attach_to_their_fonts() {
-        let english = 1u32 << font_set_index("G0-Latin-English").unwrap();
-        let greek = 1u32 << font_set_index("G0-Greek").unwrap();
+        let english = 1u64 << font_set_index("G0-Latin-English").unwrap();
+        let greek = 1u64 << font_set_index("G0-Greek").unwrap();
         let index = format!(
             "c\tb.bdf\tG0-Greek\nf\ta.bdf\tA\t{SHA}\nf\tb.bdf\tB\t{SHA}\nf\tc.bdf\tC\t{SHA}\n\
              c\ta.bdf\tG0-Latin-English* G0-Greek\nc\ta.bdf\tG0-Greek\nc\tnone.bdf\tG0-Greek\n\

@@ -32,12 +32,15 @@ libc = "0.2.177"
 [features]
 # Decision E.61: coarse, additive areas, all on by default. A program that
 # leaves one out gets a clear refusal, never a panic.
-default = ["live", "slice"]
+default = ["live", "slice", "write-text"]
 # Live feeds and web services (area WEB, REQ-INP-022): the web module, TLS
 # and the fetcher process of REQ-SEC-018. Without it no TLS code is built.
 live = ["dep:neoteletext-web", "dep:embedded-io", "dep:rustls", "dep:webpki-roots"]
 # Raw sampled video through the software data slicer (area SLC).
 slice = ["dep:neoteletext-slicer"]
+# Writing pages from text in neoteletext's own sets (REQ-CLI-010,
+# decision E.82).
+write-text = ["neoteletext-core/extended-sets"]
 
 [dev-dependencies]
 # The conversion tests compose the authored Level 2.5 and 3.5 stream.

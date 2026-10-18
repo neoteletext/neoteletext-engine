@@ -45,6 +45,24 @@ Phase 1 owes:
 - `cargo xtask size` with the larger glyph table;
 - regenerating traceability and adding an implementation log row.
 
+**Phase 2 done (18 October 2026), uncommitted until the gate passes:**
+- the 18 sets of groups 0101, 0111 and 1011 and the Vietnamese and Armenian G2 sets (`charset/tables.rs`), designated in Tables 32, 33 and 34 behind the core feature `extended-sets` (on by default; off in `classic` and `modern-classic`);
+- Latin English as the second set of those designations when no Table 33 value is received;
+- Vietnamese, and Yoruba and Igbo, are whole G0 sets, not national options: an X/26 mark is placed on the base form, never on a national option's character (REQ-CHR-002). The design, E.81 and REQ-CHR-012 to 014 are amended;
+- marks from the page's G2 set (`charset::page_mark`): Vietnamese 4/C is the hook above, kept as mark 16, with 76 more compositions (`EXTENDED_COMPOSITIONS`);
+- 44 font sets with 64-bit conformance masks, in the core, the pipe (the mask fields are now 8 bytes) and the fetcher;
+- `required.txt` lists the new sets (766 characters); `noto-teletext.bdf` draws them, with Georgian, Armenian and Tifinagh sections and the Vietnamese precomposed letters (848 glyphs, all 44 sets conform);
+- `neoteletext_app::write_text` and `neottx write-text` for the Phase 2 sets, behind the app's and the program's `write-text` features;
+- tests: every Table 32/33/34 value, the default second set, every tone on every Vietnamese vowel, the hook only in the Vietnamese G2 set, the composition tables, the writer's encoding, refusals, line breaking and X/26 budget, and an end-to-end write and read back.
+
+Phase 2 owes:
+- **REQ-CHR-013 says each table is written from a reviewed data file checked against CLDR.** The tables are hand-written Rust constants; there are no data files and no CLDR check. Either write the data files and an `xtask` generator, or amend the requirement.
+- **Inuktitut syllabics (1011 011) is not implemented:** the syllabary's long vowels do not fit 96 codes as designed. Needs a design decision.
+- **Row 0's receiver columns** ("P100") are drawn in the page's set, so a Cyrillic, Georgian or Armenian page shows them in that script. True of the standard's Cyrillic and Greek sets too; REQ-SEC rule "row 0 columns 0 to 7 belong to the receiver" suggests drawing them in Latin. Needs an issue.
+- **A TTI `RE` line writes "no second set"** in X/28/0, so a page in one of the new sets designated that way loses the default English second set; `write-text` writes English explicitly. Decide whether the TTI writer should do the same.
+- **The writer's stand-ins** for G2 letters at Level 1 (Đ as D, Ŋ as N, and eight more) are the writer's own choice; record it in the design section 9.
+- `neottx font sets --help` and the user guide still describe 12 × 10 fonts and 24 sets in places; the clap text is fixed.
+- The design's REQ-FNT-012 default library, the user guide's language list, traceability, the implementation log row and issue #219.
 
 The design is `docs/spec/design/languages.md`. Its decisions are recorded as E.77 to E.82, with:
 - requirements REQ-CHR-012 to REQ-CHR-016, REQ-FNT-012 and REQ-CLI-010, the last two groups' new numbers in the Phase 2 table;
@@ -58,11 +76,10 @@ None of it is committed or implemented. Owed:
 - **Implementation, in the phases of the design's section 13:**
   - 12 × 20 loaded glyphs;
   - `third_party/noto/` with the converter and `xtask check-noto`;
-  - the tables and designations;
+  - the tables and designations (Phase 2 done; Arabic script and Thai and Lao remain);
   - the `joining` module, which goes into the `xtask` layer table when it is created;
-  - marks from the page's G2 set;
   - the Thai and Lao tables;
-  - `neoteletext-app::write_text` and `neottx write-text`, with `unicode-bidi` added to the dependency records.
+  - for `neoteletext-app::write_text`: Arabic-script reordering with `unicode-bidi` (added to the dependency records) and the Thai and Lao layout.
 - **Tests** for each new requirement, each failing on the old code.
 - **Records:** regenerate `docs/traceability.md`; add the user guide's language list and an implementation log row; bring issue #219 in line with the decisions.
 - **Research:** `research/notes-languages.md` records the sources. Still owed:

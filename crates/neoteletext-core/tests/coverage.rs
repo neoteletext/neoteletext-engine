@@ -55,8 +55,10 @@ fn every_required_character_bedstead_lacks_is_listed() {
     let arabic: BTreeSet<char> = missing.iter().copied().filter(is_arabic).collect();
     let others: String = missing.iter().filter(|c| !arabic.contains(c)).collect();
     // Decision E.72 item 1: no Arabic letter, six Latin national
-    // characters (Ă ă Ğ ğ Ƶ ₺) and two G2 characters (― ™).
-    assert_eq!(others, "\u{0102}\u{0103}\u{011E}\u{011F}\u{01B5}\u{2015}\u{20BA}\u{2122}", "{others:?}");
+    // characters (Ă ă Ğ ğ Ƶ ₺) and two G2 characters (― ™). The
+    // Vietnamese hook above's spacing form ˀ (REQ-CHR-014) comes from a
+    // loaded font, as the rest of neoteletext's own sets do (REQ-FNT-012).
+    assert_eq!(others, "\u{0102}\u{0103}\u{011E}\u{011F}\u{01B5}\u{02C0}\u{2015}\u{20BA}\u{2122}", "{others:?}");
     assert_eq!(arabic.len(), 99, "every Arabic character of Tables 43 and 48");
     println!("Bedstead lacks {} required characters: {others} and {} Arabic", missing.len(), arabic.len());
 }

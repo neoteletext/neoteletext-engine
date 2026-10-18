@@ -24,11 +24,13 @@ const fn g0(set: G0Set) -> CharSet {
     CharSet::G0(G0 { set, national: None })
 }
 
-/// The number of character sets fonts draw (REQ-FNT-011).
-pub const FONT_SET_COUNT: usize = 24;
+/// The number of character sets fonts draw (REQ-FNT-011): the standard's
+/// 24 and neoteletext's own 20 (REQ-CHR-012).
+pub const FONT_SET_COUNT: usize = 44;
 
-/// The 24 character sets fonts draw, with the names libraries and reports
-/// give them, in the order of REQ-FNT-011. A set's place is its bit in the
+/// The character sets fonts draw, with the names libraries and reports give
+/// them: the standard's 24 in the order of REQ-FNT-011, then neoteletext's
+/// own (decision E.78). A set's place is its bit in the
 /// masks of [`conformance_masks`] and its slot in a glyph set's fonts.
 pub const FONT_SETS: [(&str, CharSet); FONT_SET_COUNT] = [
     ("G0-Latin", latin(None)),
@@ -55,6 +57,26 @@ pub const FONT_SETS: [(&str, CharSet); FONT_SET_COUNT] = [
     ("G2-Cyrillic", CharSet::G2(G2Set::Cyrillic)),
     ("G2-Greek", CharSet::G2(G2Set::Greek)),
     ("G2-Arabic", CharSet::G2(G2Set::Arabic)),
+    ("G0-Latin-HausaFula", latin(Some(NationalOption::HausaFula))),
+    ("G0-Latin-WestAfrican", latin(Some(NationalOption::WestAfrican))),
+    ("G0-Latin-Ewe", latin(Some(NationalOption::Ewe))),
+    ("G0-Latin-KabyleTamazight", latin(Some(NationalOption::KabyleTamazight))),
+    ("G0-Latin-Azerbaijani", latin(Some(NationalOption::Azerbaijani))),
+    ("G0-Latin-KanuriMossi", latin(Some(NationalOption::KanuriMossi))),
+    ("G0-Vietnamese", g0(G0Set::Vietnamese)),
+    ("G0-YorubaIgbo", g0(G0Set::YorubaIgbo)),
+    ("G0-Cyrillic-Ukrainian", g0(G0Set::Ukrainian)),
+    ("G0-Cyrillic-Belarusian", g0(G0Set::Belarusian)),
+    ("G0-Cyrillic-Macedonian", g0(G0Set::Macedonian)),
+    ("G0-Cyrillic-Serbian", g0(G0Set::Serbian)),
+    ("G0-Cyrillic-KyrgyzMongolian", g0(G0Set::KyrgyzMongolian)),
+    ("G0-Cyrillic-Tatar", g0(G0Set::Tatar)),
+    ("G0-Cyrillic-Tajik", g0(G0Set::Tajik)),
+    ("G0-Georgian", g0(G0Set::Georgian)),
+    ("G0-Armenian", g0(G0Set::Armenian)),
+    ("G0-Tifinagh", g0(G0Set::Tifinagh)),
+    ("G2-Vietnamese", CharSet::G2(G2Set::Vietnamese)),
+    ("G2-Armenian", CharSet::G2(G2Set::Armenian)),
 ];
 
 /// The place in [`FONT_SETS`] of a set's name.
@@ -83,6 +105,12 @@ pub const fn font_set_of(set: CharSet) -> Option<usize> {
             NationalOption::Rumanian => 11,
             NationalOption::Estonian => 12,
             NationalOption::LettishLithuanian => 13,
+            NationalOption::HausaFula => 24,
+            NationalOption::WestAfrican => 25,
+            NationalOption::Ewe => 26,
+            NationalOption::KabyleTamazight => 27,
+            NationalOption::Azerbaijani => 28,
+            NationalOption::KanuriMossi => 29,
         },
         CharSet::G0(G0 { set: G0Set::Cyrillic1, .. }) => 14,
         CharSet::G0(G0 { set: G0Set::Cyrillic2, .. }) => 15,
@@ -94,6 +122,20 @@ pub const fn font_set_of(set: CharSet) -> Option<usize> {
         CharSet::G2(G2Set::Cyrillic) => 21,
         CharSet::G2(G2Set::Greek) => 22,
         CharSet::G2(G2Set::Arabic) => 23,
+        CharSet::G0(G0 { set: G0Set::Vietnamese, .. }) => 30,
+        CharSet::G0(G0 { set: G0Set::YorubaIgbo, .. }) => 31,
+        CharSet::G0(G0 { set: G0Set::Ukrainian, .. }) => 32,
+        CharSet::G0(G0 { set: G0Set::Belarusian, .. }) => 33,
+        CharSet::G0(G0 { set: G0Set::Macedonian, .. }) => 34,
+        CharSet::G0(G0 { set: G0Set::Serbian, .. }) => 35,
+        CharSet::G0(G0 { set: G0Set::KyrgyzMongolian, .. }) => 36,
+        CharSet::G0(G0 { set: G0Set::Tatar, .. }) => 37,
+        CharSet::G0(G0 { set: G0Set::Tajik, .. }) => 38,
+        CharSet::G0(G0 { set: G0Set::Georgian, .. }) => 39,
+        CharSet::G0(G0 { set: G0Set::Armenian, .. }) => 40,
+        CharSet::G0(G0 { set: G0Set::Tifinagh, .. }) => 41,
+        CharSet::G2(G2Set::Vietnamese) => 42,
+        CharSet::G2(G2Set::Armenian) => 43,
         _ => return None,
     })
 }
@@ -178,15 +220,15 @@ pub fn conformance(font: &LoadedFont<'_>, set: CharSet) -> SetConformance {
 /// The sets of [`FONT_SETS`] a font conforms for, and of those, the sets for
 /// which it also meets the SAA5050 cell profile, each as a bit per set.
 #[must_use]
-pub fn conformance_masks(font: &LoadedFont<'_>) -> (u32, u32) {
-    let mut conforms = 0u32;
-    let mut cell = 0u32;
+pub fn conformance_masks(font: &LoadedFont<'_>) -> (u64, u64) {
+    let mut conforms = 0u64;
+    let mut cell = 0u64;
     for (bit, (_, set)) in FONT_SETS.iter().enumerate() {
         let result = conformance(font, *set);
         if result.conforms() {
-            conforms |= 1u32.checked_shl(u32::try_from(bit).unwrap_or(u32::MAX)).unwrap_or(0);
+            conforms |= 1u64.checked_shl(u32::try_from(bit).unwrap_or(u32::MAX)).unwrap_or(0);
             if result.saa5050_cell {
-                cell |= 1u32.checked_shl(u32::try_from(bit).unwrap_or(u32::MAX)).unwrap_or(0);
+                cell |= 1u64.checked_shl(u32::try_from(bit).unwrap_or(u32::MAX)).unwrap_or(0);
             }
         }
     }

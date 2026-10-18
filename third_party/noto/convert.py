@@ -19,7 +19,7 @@ google/fonts repository and checked by SHA-256. They are downloaded to a
 cache outside the repository and never committed.
 
 Usage:
-  uv run convert.py [--cache DIR] [--required FILE] [--neottx PATH] [FONT ...]
+  uv run convert.py [--cache DIR] [--required FILE] [--forms FILE] [--neottx PATH] [FONT ...]
 
 FONT names a `[font NAME]` section of settings.txt; without one, every font
 is made. Afterwards the folder's `fonts.txt` index (REQ-FNT-004) is written,
@@ -230,15 +230,37 @@ def place(canvas, baseline, centre=True):
     return cell
 
 
-def draw_glyph(script, character):
-    """The 12 x 20 glyph of a character, or None when no face has it."""
+def read_forms(path):
+    """The joined forms the engine draws (REQ-CHR-015): code point to
+    (letter, form), from the core's `forms.txt`."""
+    found = {}
+    if not path.exists():
+        return found
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.startswith("U+"):
+            point, letter, form = line.split()[:3]
+            found[chr(int(point[2:], 16))] = (chr(int(letter[2:], 16)), form)
+    return found
+
+
+# The shaping context of each joined form: zero-width joiners on the sides
+# that join, in logical order (the next letter follows).
+FORM_TEXT = {"initial": "{}" + ZWJ, "medial": ZWJ + "{}" + ZWJ, "final": ZWJ + "{}"}
+# (joins on the right, joins on the left) of each form, right to left.
+FORM_JOINS = {"initial": (False, True), "medial": (True, True), "final": (True, False)}
+
+
+def draw_glyph(script, character, forms=None):
+    """The 12 x 20 glyph of a character, or None when no face has it. A
+    joined form of `forms` is drawn by shaping its letter between joiners."""
     if ord(character[0]) in SPACES:
         return np.zeros((CELL_HEIGHT, CELL_WIDTH), dtype=bool)
-    face = script.face_for(character[0])
+    form = (forms or {}).get(character)
+    face = script.face_for(form[0] if form else character[0])
     if face is None:
         return None
     position = mark_position(character) if script.mark_row else None
-    text = character
+    text = FORM_TEXT[form[1]].format(form[0]) if form else character
     if position:
         # A mark is drawn over or under a base letter, then moved a row up
         # or down, so that it sits on the letter in the row below or above.
@@ -263,7 +285,7 @@ def draw_glyph(script, character):
     else:
         return None
     if script.join:
-        right, left = joining(character)
+        right, left = FORM_JOINS[form[1]] if form else joining(character)
         if right or left:
             cell = joined(cell, script, face, right, left)
     if position:
@@ -329,26 +351,51 @@ def write_bdf(path, family, copyright_text, glyphs):
     path.write_text("\n".join(lines) + "\n")
 
 
-def characters_of(spec, required):
-    """The characters a font draws: `required` reads the engine's list of
-    every character the standard's sets need; `range:XXXX-YYYY` adds a
-    Unicode range; `list:` adds the characters that follow."""
-    found = []
+def characters_of(spec, required, forms):
+    """The characters a font draws:
+    - `required` reads the engine's list of every character its sets need;
+    - `uses:NAME` adds those of the required characters used by set NAME
+      (`G0_Persian` for the uses `G0 Persian ...`);
+    - `except:NAME` leaves out characters no set but NAME uses;
+    - `forms:NAME` adds the joined forms of NAME's letters;
+    - `range:XXXX-YYYY` adds a Unicode range; `list:` the characters that
+      follow."""
+    lines = [line for line in required.read_text(encoding="utf-8").splitlines() if line.startswith("U+")]
+
+    def character(line):
+        return chr(int(line.split()[0][2:], 16))
+
+    def uses(line):
+        return [use.strip() for use in line.split(" ", 2)[2].split(";")] if line.count(" ") >= 2 else []
+
+    found, excluded = [], set()
     for part in spec.split():
         if part == "required":
-            for line in required.read_text(encoding="utf-8").splitlines():
-                if line.startswith("U+"):
-                    found.append(chr(int(line.split()[0][2:], 16)))
+            found += [character(line) for line in lines]
+        elif part.startswith("uses:"):
+            name = part[5:].replace("_", " ") + " "
+            found += [character(line) for line in lines if any(use.startswith(name) for use in uses(line))]
+        elif part.startswith("except:"):
+            names = [name.replace("_", " ") + " " for name in part[7:].split(",")]
+            excluded |= {character(line) for line in lines
+                         if all(any(use.startswith(name) for name in names) for use in uses(line))}
+        elif part.startswith("forms:"):
+            name = part[6:].replace("_", " ") + " "
+            letters = {character(line) for line in lines if any(use.startswith(name) for use in uses(line))}
+            found += [point for point, (letter, _) in forms.items() if letter in letters]
         elif part.startswith("range:"):
             first, last = (int(value, 16) for value in part[6:].split("-"))
             found += [chr(code) for code in range(first, last + 1) if unicodedata.name(chr(code), "")]
         elif part.startswith("list:"):
             found += list(part[5:])
-    return list(dict.fromkeys(found))
+    return [character for character in dict.fromkeys(found) if character not in excluded]
 
 
-def script_of(character, scripts):
-    """The script section that draws a character, by its Unicode name."""
+def script_of(character, scripts, forms=None):
+    """The script section that draws a character, by its Unicode name; a
+    joined form by its letter's."""
+    if character in (forms or {}):
+        character = forms[character][0]
     name = unicodedata.name(character[0], "")
     for script in scripts:
         if script.name != "latin" and name.startswith(script.name.upper().replace("_", " ")):
@@ -361,12 +408,15 @@ def main():
     parser.add_argument("--cache", type=Path, default=Path.home() / ".cache" / "neoteletext-noto")
     parser.add_argument("--required", type=Path,
                         default=REPOSITORY / "crates" / "neoteletext-core" / "src" / "glyphs" / "required.txt")
+    parser.add_argument("--forms", type=Path,
+                        default=REPOSITORY / "crates" / "neoteletext-core" / "src" / "glyphs" / "forms.txt")
     parser.add_argument("--neottx", type=Path, help="neottx, for the conformance lines of fonts.txt")
     parser.add_argument("fonts", nargs="*")
     args = parser.parse_args()
     settings = configparser.ConfigParser(interpolation=None, inline_comment_prefixes=("#",))
     settings.read(HERE / "settings.txt", encoding="utf-8")
     found = sources(args.cache)
+    forms = read_forms(args.forms)
     scripts = {name.split()[1]: Script(name.split()[1], settings[name], found)
                for name in settings.sections() if name.startswith("script ")}
     wanted = args.fonts or [name.split()[1] for name in settings.sections() if name.startswith("font ")]
@@ -374,8 +424,8 @@ def main():
         section = settings[f"font {font}"]
         uses = [scripts[name] for name in section["scripts"].split()]
         glyphs, missing = {}, []
-        for character in characters_of(section["characters"], args.required):
-            cell = draw_glyph(script_of(character, uses), character)
+        for character in characters_of(section["characters"], args.required, forms):
+            cell = draw_glyph(script_of(character, uses, forms), character, forms)
             if cell is None:
                 missing.append(character)
             else:

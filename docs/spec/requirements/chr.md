@@ -150,8 +150,8 @@ The reserved Table 32 values of this table shall designate the sets of decision 
 | 0101 011 | Latin, option Kabyle and Tamazight | Latin |
 | 0101 100 | Latin, option Azerbaijani | Latin |
 | 0101 101 | Latin, option Kanuri and Mossi | Latin |
-| 0101 110 | Latin, option Yoruba and Igbo | Latin |
-| 0101 111 | Latin, option Vietnamese | Vietnamese |
+| 0101 110 | Yoruba and Igbo (whole set) | Latin |
+| 0101 111 | Vietnamese (whole set) | Vietnamese |
 | 0111 000 | Cyrillic, Ukrainian | Cyrillic |
 | 0111 001 | Cyrillic, Belarusian | Cyrillic |
 | 0111 010 | Cyrillic, Macedonian | Cyrillic |
@@ -181,7 +181,7 @@ At Level 1 the group comes from the receiver's region setting, as for every grou
 **REQ-CHR-013 — The code tables of neoteletext's own sets.**
 *Phase:* Phase 2 (whole requirement).
 Each set of REQ-CHR-012 shall be a 96-position code table with its Unicode mapping (REQ-CHR-010), in the core with the standard's tables. Each table is written from a reviewed data file that lists every position's character and is checked against Unicode CLDR's letters for its language. The layouts are those of `docs/spec/design/languages.md` section 8:
-- the African Latin and Vietnamese options replace the 13 national option positions of Table 35;
+- the African Latin options replace the 13 national option positions of Table 35, and the Yoruba and Igbo and the Vietnamese sets are whole sets with the same layout, so that X/26 marks find their letters as bases (REQ-CHR-002);
 - the Serbian and Macedonian sets start from Table 38, the Ukrainian set from Table 40 and the other Cyrillic sets from Table 39, so that letters keep their codes;
 - the Lao set takes the codes of the 1990 World System Teletext specification's Figure 33;
 - the Arabic-script sets keep the digits at 3/0 to 3/9, drawn in each language's own shapes;
@@ -193,7 +193,7 @@ The Armenian, Vietnamese, Thai and Lao G2 sets are Latin G2 (Table 37) with the 
 
 **REQ-CHR-014 — Diacritical marks from the page's G2 set.**
 *Phase:* Phase 2 (whole requirement).
-A "G0 character with diacritical mark" triplet shall take its mark from column 4 of the page's current G2 set when that set's column 4 holds diacritical marks (the Latin, Armenian and Vietnamese G2 sets), and from Latin G2 otherwise (decision E.81, Table 29 modes 10000 to 11111). The Vietnamese G2 set's 4/C is the combining hook above, U+0309. Composition follows decision E.26 for the Latin bases and for the letters of the African Latin and Vietnamese national options.
+A "G0 character with diacritical mark" triplet shall take its mark from column 4 of the page's current G2 set when that set's column 4 holds diacritical marks (the Latin, Armenian and Vietnamese G2 sets), and from Latin G2 otherwise (decision E.81, Table 29 modes 10000 to 11111). The Vietnamese G2 set's 4/C is the combining hook above, U+0309. Composition follows decision E.26 for the Latin bases and for the letters of the Vietnamese and the Yoruba and Igbo sets.
 *Verification:* Test that every tone on every Vietnamese vowel composes to its precomposed letter, and that pages with the standard's sets compose exactly as before.
 
 **REQ-CHR-015 — Joining Arabic-script letters.**

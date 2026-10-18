@@ -157,7 +157,7 @@ fn character(function: TripletFunction, context: WalkContext) -> Option<CharRef>
         }
         TripletFunction::G0Diacritic { code, diacritic, .. } => {
             let mut character = CharRef::new(g0, code);
-            character.diacritic = diacritic;
+            character.diacritic = crate::charset::page_mark(context.designation.g2, diacritic);
             Some(character)
         }
         _ => None,

@@ -25,7 +25,11 @@ default = [
     "drcs-multicolour",
     "side-panels",
     "colours32",
+    "extended-sets",
 ]
+# neoteletext's own character sets at values Table 32 reserves
+# (REQ-CHR-012, decision E.78). Without it those values are reserved.
+extended-sets = []
 # The Level 1.5 pass (area L15).
 level15 = []
 # The enhancement processor for Levels 2.5 and 3.5 (areas L25, OBJ, DRC):

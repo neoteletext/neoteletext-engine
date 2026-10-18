@@ -36,7 +36,7 @@ fn faulty_page() -> Vec<Packet> {
         // Damaged below: one damaged triplet.
         g0(9, b'Z'),
         // A reserved designation (REQ-L25-012).
-        TripletFunction::ModifiedDesignation { column: 2, designation: 0b010_1000 },
+        TripletFunction::ModifiedDesignation { column: 2, designation: 0b110_1000 },
         // Undefined G3 and G2 positions (decision E.50).
         TripletFunction::G3Character { column: 3, code: 0x6E, level_15_form: false },
         TripletFunction::G2Character { column: 4, code: 0x59 },

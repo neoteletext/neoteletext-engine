@@ -14,7 +14,9 @@
 //! Level 1 decoding leaves all of them at their defaults.
 
 use crate::acq::{MagazineData, StoredPage};
-use crate::charset::{self, CharRef, CharSet, Designation, G0, designation_with_fallback, mosaic_pattern, second_g0};
+use crate::charset::{
+    self, CharRef, CharSet, Designation, G0, default_second_g0, designation_with_fallback, mosaic_pattern, second_g0,
+};
 use crate::colour::{ColourIndex, ColourMap, SidePanels};
 use crate::config::{Config, ParityPolicy, Row24Policy};
 use crate::consts::{
@@ -651,7 +653,13 @@ pub fn designation_report(page: Option<&StoredPage>, magazine: &MagazineData, co
         designations.map_or(config.default_region, |designations| designations.default >> DESIGNATION_GROUP_SHIFT);
     let value = (group << DESIGNATION_GROUP_SHIFT) | national;
     let (designation, fallback) = designation_with_fallback(value);
-    let second = designations.and_then(|designations| second_g0(designations.second));
+    // A received Table 33 value is used as it is; without one, the
+    // designation's own default applies (REQ-CHR-012).
+    let second = match designations {
+        Some(designations) => second_g0(designations.second),
+        None if fallback => None,
+        None => default_second_g0(value),
+    };
     let esc_rows = page.map_or(0, |page| {
         let rows = page.cells.iter().take(ROWS).skip(1);
         let with_esc = rows.filter(|row| row.iter().any(|&byte| byte & CODE_MASK_7BIT == ESC)).count();
@@ -1458,10 +1466,32 @@ mod tests {
         let report = designation_report(Some(&page), &magazine, &config);
         assert_eq!((report.source, report.group), (DesignationSource::MagazineM29Format0, 0b0100));
         // A reserved entry falls back to group 0000 with the same option.
-        let reserved = MagazineData { data: Some(fields(0b0101 << DESIGNATION_GROUP_SHIFT, 0x7F)), ..magazine };
+        let reserved = MagazineData { data: Some(fields(0b1101 << DESIGNATION_GROUP_SHIFT, 0x7F)), ..magazine };
         let report = designation_report(Some(&page), &reserved, &config);
         assert!(report.fallback);
         assert_eq!(report.designation, charset::designation(1).unwrap());
+    }
+
+    /// REQ-CHR-012: neoteletext's own designations name Latin English as
+    /// the second set when no Table 33 value is received, and a received
+    /// "no second set" is kept.
+    #[cfg(feature = "extended-sets")]
+    #[test]
+    fn an_extended_designation_has_english_second() {
+        let ukrainian = 0b0111 << DESIGNATION_GROUP_SHIFT;
+        let config = Config { default_region: 0b0111, ..Config::default() };
+        let report = designation_report(None, &MagazineData::default(), &config);
+        assert_eq!((report.value, report.designation.g0.set), (ukrainian, charset::G0Set::Ukrainian));
+        assert_eq!(report.second, second_g0(0));
+        let fields = crate::types::PresentationFields {
+            designations: Some(crate::types::Designations { default: ukrainian, second: 0x7F }),
+            ..crate::types::PresentationFields::default()
+        };
+        let sent = MagazineData { data: Some(fields), ..MagazineData::default() };
+        assert_eq!(designation_report(None, &sent, &Config::default()).second, None);
+        // The standard's designations have no default second set.
+        let report = designation_report(None, &MagazineData::default(), &Config::default());
+        assert_eq!(report.second, None);
     }
 
     /// REQ-TST-013's double height with its ignored lower row.

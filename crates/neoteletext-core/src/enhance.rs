@@ -285,7 +285,7 @@ fn enhancement_glyph(character: EnhChar, sets: (G0Set, G2Set), separated: bool) 
         EnhChar::G0 { at: true, .. } => Glyph::Char(CharRef::new(g0, LATIN_AT_SIGN)),
         EnhChar::G0 { code, diacritic, .. } => {
             let mut character = CharRef::new(g0, code);
-            character.diacritic = diacritic;
+            character.diacritic = charset::page_mark(sets.1, diacritic);
             Glyph::Char(character)
         }
         EnhChar::G1(code) if (G1_G0_COLUMNS_FIRST..=G1_G0_COLUMNS_LAST).contains(&code) => {
