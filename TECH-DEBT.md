@@ -29,6 +29,23 @@ Work deferred while behaviour is being shaped (the owner's instruction of 13 Oct
 
 ## Single-byte languages (18 October 2026)
 
+**Phase 1 done (18 October 2026):**
+- 12 × 20 loaded glyphs: `FontGlyph` and `LoadedGlyph` carry 20 rows and a height, a font is all one height, and 12 × 20 glyphs are drawn line for line and never rounded;
+- the BDF reader, writer and converter take 12 × 20, and the pipe's glyph table carries the height;
+- tests for each;
+- `third_party/noto/` with the converter, sources, settings, licence, provenance and `noto-teletext.bdf` (all 24 standard sets conform);
+- `cargo xtask check-noto` in the gate;
+- `neottx render --font FILE`.
+
+Phase 1 owes:
+- a requirement for `render --font` (area CLI) and its line in the user guide;
+- REQ-FNT-012's default library: `neottx` and the app do not yet offer `third_party/noto/` as a library;
+- the browser prototype does not build against the new `FontGlyph`;
+- fuzzing of `bdf` and `bdf_convert` with 12 × 20 inputs;
+- `cargo xtask size` with the larger glyph table;
+- regenerating traceability and adding an implementation log row.
+
+
 The design is `docs/spec/design/languages.md`. Its decisions are recorded as E.77 to E.82, with:
 - requirements REQ-CHR-012 to REQ-CHR-016, REQ-FNT-012 and REQ-CLI-010, the last two groups' new numbers in the Phase 2 table;
 - amendments to REQ-FNT-001, 002, 003, 008, 010 and 011, and to decision E.72;

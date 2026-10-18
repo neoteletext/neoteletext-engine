@@ -31,10 +31,8 @@ const PATTERN: [u16; CELL_FIELD_LINES] = {
 /// A second pattern, for the user's font.
 const OTHER: [u16; CELL_FIELD_LINES] = [0xFFF, 0, 0xFFF, 0, 0xFFF, 0, 0xFFF, 0, 0xFFF, 0];
 
-static IN_USE: [FontGlyph; 2] =
-    [FontGlyph { code_point: 'A' as u32, rows: PATTERN }, FontGlyph { code_point: '\u{E9}' as u32, rows: PATTERN }];
-static FALLBACK: [FontGlyph; 2] =
-    [FontGlyph { code_point: 'A' as u32, rows: OTHER }, FontGlyph { code_point: 'B' as u32, rows: OTHER }];
+static IN_USE: [FontGlyph; 2] = [FontGlyph::small('A' as u32, PATTERN), FontGlyph::small('\u{E9}' as u32, PATTERN)];
+static FALLBACK: [FontGlyph; 2] = [FontGlyph::small('A' as u32, OTHER), FontGlyph::small('B' as u32, OTHER)];
 
 fn latin() -> CharSet {
     CharSet::G0(G0 { set: G0Set::Latin, national: Some(NationalOption::English) })
@@ -102,6 +100,50 @@ fn double_height_halves() {
     let small_bottom: Vec<u16> = (0..CELL_FIELD_LINES).map(|line| PATTERN[5 + line / 2]).collect();
     assert_eq!(lines(&top, &fonts(), CellMode::Saa5246a), small_top);
     assert_eq!(lines(&bottom, &fonts(), CellMode::Saa5246a), small_bottom);
+}
+
+/// A 12 by 20 pattern whose twenty lines all differ.
+const TALL_PATTERN: [u16; CELL_HEIGHT] = {
+    let mut rows = [0u16; CELL_HEIGHT];
+    let mut line = 0;
+    while line < CELL_HEIGHT {
+        rows[line] = (line as u16 + 1) << 2;
+        line += 1;
+    }
+    rows
+};
+
+/// REQ-FNT-008 as amended by decision E.77: a 12 by 20 glyph is drawn line
+/// for line in the 12-by-20 cell, never rounded, and its upper line of each
+/// pair in the 12-by-10 cell; double height draws each line twice.
+#[test]
+fn a_tall_glyph_draws_line_for_line() {
+    let table = [FontGlyph::tall(u32::from('A'), TALL_PATTERN)];
+    let tall = GlyphSet::bedstead().with_fonts(Some(LoadedFont::new(&table).unwrap()), NONE);
+    let a = cell(text(b'A'));
+    assert_eq!(lines(&a, &tall, CellMode::Saa5050), TALL_PATTERN.to_vec());
+    let upper: Vec<u16> = (0..CELL_FIELD_LINES).map(|line| TALL_PATTERN[2 * line]).collect();
+    assert_eq!(lines(&a, &tall, CellMode::Saa5246a), upper);
+    let top = Cell { size: Size::DoubleTop, ..cell(text(b'A')) };
+    let bottom = Cell { size: Size::DoubleBottom, ..cell(text(b'A')) };
+    let large_top: Vec<u16> = (0..CELL_HEIGHT).map(|line| TALL_PATTERN[line / 2]).collect();
+    let large_bottom: Vec<u16> = (0..CELL_HEIGHT).map(|line| TALL_PATTERN[10 + line / 2]).collect();
+    assert_eq!(lines(&top, &tall, CellMode::Saa5050), large_top);
+    assert_eq!(lines(&bottom, &tall, CellMode::Saa5050), large_bottom);
+    assert!(!LoadedFont::new(&table).unwrap().is_dot_matrix(), "a 12 by 20 font is never rounded");
+}
+
+/// Decision E.77: a font is all one height, and a 12 by 10 glyph has no
+/// lines beyond its tenth.
+#[test]
+fn a_font_is_all_one_height() {
+    let small = FontGlyph::small(65, [0; CELL_FIELD_LINES]);
+    let tall = FontGlyph::tall(66, [0; CELL_HEIGHT]);
+    assert_eq!(LoadedFont::new(&[small, tall]).unwrap_err(), FontTableError::Height);
+    let mut overlong = FontGlyph::small(65, [0; CELL_FIELD_LINES]);
+    overlong.rows[CELL_FIELD_LINES] = 1;
+    assert_eq!(LoadedFont::new(&[overlong]).unwrap_err(), FontTableError::Height);
+    assert!(LoadedFont::new(&[tall]).unwrap().is_tall());
 }
 
 /// REQ-RND-034: double width draws the left or right six dots of each line,
@@ -199,8 +241,8 @@ fn diacritics() {
         "not in the font: Bedstead"
     );
     // A G2 character is looked up like a G0 one.
-    let g2 = GlyphSet::bedstead()
-        .with_fonts(Some(LoadedFont::new(&[FontGlyph { code_point: '\u{A3}' as u32, rows: OTHER }]).unwrap()), NONE);
+    let pound_font = [FontGlyph::small('\u{A3}' as u32, OTHER)];
+    let g2 = GlyphSet::bedstead().with_fonts(Some(LoadedFont::new(&pound_font).unwrap()), NONE);
     let pound = cell(Glyph::Char(CharRef::new(CharSet::G2(G2Set::Latin), 0x23)));
     assert_eq!(lines(&pound, &g2, CellMode::Saa5246a), OTHER.to_vec());
 }
@@ -208,12 +250,12 @@ fn diacritics() {
 /// REQ-FNT-003, REQ-FNT-008: a table of the wrong shape is refused.
 #[test]
 fn table_shape_is_checked() {
-    let glyph = |code_point: u32| FontGlyph { code_point, rows: [0; CELL_FIELD_LINES] };
+    let glyph = |code_point: u32| FontGlyph::small(code_point, [0; CELL_FIELD_LINES]);
     assert_eq!(LoadedFont::new(&[glyph(66), glyph(65)]).unwrap_err(), FontTableError::Order);
     assert_eq!(LoadedFont::new(&[glyph(65), glyph(65)]).unwrap_err(), FontTableError::Order);
     assert_eq!(LoadedFont::new(&[glyph(0xD800)]).unwrap_err(), FontTableError::Code);
     assert_eq!(LoadedFont::new(&[glyph(0x11_0000)]).unwrap_err(), FontTableError::Code);
-    let wide = FontGlyph { code_point: 65, rows: [0x1000, 0, 0, 0, 0, 0, 0, 0, 0, 0] };
+    let wide = FontGlyph::small(65, [0x1000, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
     assert_eq!(LoadedFont::new(&[wide]).unwrap_err(), FontTableError::Width);
     let too_many: Vec<FontGlyph> = (0..1025).map(|code| glyph(0x100 + code)).collect();
     assert_eq!(LoadedFont::new(&too_many).unwrap_err(), FontTableError::TooMany);
@@ -229,7 +271,7 @@ fn bedstead_as_loaded(entry: &crate::glyphs::GlyphEntry) -> FontGlyph {
     for (row, &dots) in rows.iter_mut().skip(1).zip(&entry.rows) {
         *row = widen(dots);
     }
-    FontGlyph { code_point: entry.code_point, rows }
+    FontGlyph::small(entry.code_point, rows)
 }
 
 /// Issue #209: a doubled dot matrix is rounded as the bundled glyphs are,
@@ -272,7 +314,7 @@ fn only_doubled_dot_fonts_are_rounded() {
     let mut rows = [0u16; CELL_FIELD_LINES];
     rows[1] = 0b11_0000_0000;
     rows[2] = 0b00_1100_0000;
-    let table = [FontGlyph { code_point: u32::from('A'), rows }];
+    let table = [FontGlyph::small(u32::from('A'), rows)];
     let glyphs = GlyphSet::bedstead().with_fonts(Some(LoadedFont::new(&table).unwrap()), NONE);
     let a_cell = cell(text(b'A'));
     let drawn = lines(&a_cell, &glyphs, CellMode::Saa5050);
@@ -287,8 +329,8 @@ fn only_doubled_dot_fonts_are_rounded() {
 /// are drawn from the user's fonts for their own sets.
 #[test]
 fn each_set_draws_from_its_own_font() {
-    static LATIN: [FontGlyph; 1] = [FontGlyph { code_point: 'A' as u32, rows: PATTERN }];
-    static G2: [FontGlyph; 1] = [FontGlyph { code_point: '\u{A1}' as u32, rows: OTHER }];
+    static LATIN: [FontGlyph; 1] = [FontGlyph::small('A' as u32, PATTERN)];
+    static G2: [FontGlyph; 1] = [FontGlyph::small('\u{A1}' as u32, OTHER)];
     let mut by_set = for_set("G0-Latin-English", LoadedFont::new(&LATIN).unwrap());
     by_set[font_set_index("G2-Latin").unwrap()] = Some(LoadedFont::new(&G2).unwrap());
     let glyphs = GlyphSet::bedstead().with_fonts(None, by_set);

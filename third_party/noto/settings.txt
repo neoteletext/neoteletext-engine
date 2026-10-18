@@ -1,0 +1,63 @@
+# How each script is drawn from Noto into the 12 x 20 cell (decision E.77,
+# docs/spec/design/languages.md section 5). The values were measured in the
+# prototypes of October 2026.
+#
+# [script NAME]       a script; NAME matches the start of its characters'
+#                     Unicode names (HEBREW, ARABIC, THAI ...); "latin"
+#                     draws everything no other script claims
+#   sources           source fonts of sources.txt, the first that has a
+#                     character draws it
+#   weight            the variable fonts' wght axis
+#   hinting           "auto" (FreeType's automatic hinter) or "font" (the
+#                     font's own instructions)
+#   reference         letters whose ink sets the size ...
+#   reference_height  ... this many lines tall ...
+#   reference_width   ... and this many pixels wide (optional; without it
+#                     the display's true proportions)
+#   baseline          the cell line the baseline falls on, from 0 at the top
+#   rtl, join         right-to-left shaping; carry joining strokes to the
+#                     cell's edges (Arabic forms)
+#   mark_row          marks are drawn at the bottom or top of their own cell
+#                     (Thai and Lao, decision E.80)
+#
+# [font NAME]         an output font, NAME.bdf
+#   family, copyright the BDF properties
+#   characters        "required" (every character of the standard's sets),
+#                     "range:XXXX-YYYY", "list:..."
+#   scripts           the scripts that draw them
+
+[script latin]
+# Latin, Cyrillic, Greek and symbols: Bedstead's metrics, capitals from
+# line 2 to line 15 as the engine draws Bedstead's.
+sources = mono sans symbols symbols2 math
+weight = 600
+hinting = auto
+reference = H
+reference_height = 14
+reference_width = 10
+baseline = 16
+
+[script hebrew]
+sources = hebrew mono
+weight = 600
+hinting = auto
+reference = ה
+reference_height = 13
+reference_width = 10
+baseline = 16
+
+[script arabic]
+sources = naskh
+weight = 500
+hinting = font
+reference = ا
+reference_height = 12
+baseline = 14
+rtl = yes
+join = yes
+
+[font noto-teletext]
+family = Noto Teletext
+copyright = Copyright 2022 The Noto Project Authors
+characters = required
+scripts = latin hebrew arabic

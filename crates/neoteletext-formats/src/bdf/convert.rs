@@ -1,14 +1,15 @@
-//! The font converter (REQ-FNT-010, decision E.72 item 7): a source font of
-//! another cell size to the 12 by 10 form of REQ-FNT-002, only where the
-//! conversion is exact and reversible.
+//! The font converter (REQ-FNT-010, decision E.72 item 7 as amended by
+//! decision E.77): a source font of another cell size to a form of
+//! REQ-FNT-002, only where the conversion is exact and reversible.
 //!
 //! - 5 by 10 and 6 by 10: every pixel made two pixels wide, a 5-pixel cell
 //!   in the right of the 6, leaving the blank column at the left where the
 //!   renderer leaves Bedstead's;
 //! - 5 by 9 and 6 by 9: the same, below one blank line, where the SAA5050
 //!   leaves it;
-//! - 12 by 20: every second line kept, only when each pair of lines, 1 and
-//!   2, 3 and 4 and so on, is identical.
+//! - 12 by 20: every second line kept, to 12 by 10, when each pair of
+//!   lines of every glyph, 1 and 2, 3 and 4 and so on, is identical;
+//!   otherwise kept whole as a 12 by 20 font.
 //!
 //! Anything else is refused, naming the first character that fails.
 
@@ -24,13 +25,6 @@ use neoteletext_core::types::FontGlyph;
 pub enum ConvertError {
     /// The font's cell has no exact conversion.
     Cell,
-    /// A 12 by 20 glyph whose line pair, counted from 1, differs.
-    LinePairs {
-        /// The character.
-        encoding: u32,
-        /// The first line of the pair.
-        line: usize,
-    },
     /// The font is not in ISO10646 and the map has no line for the
     /// character, or no map was given.
     Unmapped {
@@ -105,6 +99,9 @@ pub fn convert(
     out: &mut [FontGlyph],
 ) -> Result<usize, ConvertError> {
     let glyphs = glyphs.get(..font.characters).ok_or(ConvertError::TooMany)?;
+    // A 12 by 20 font halves only when no glyph would lose a pixel.
+    let keep_tall = (font.width, font.height) == (CELL_WIDTH, CELL_HEIGHT)
+        && !glyphs.iter().all(|glyph| glyph.rows.as_chunks::<2>().0.iter().all(|&[first, second]| first == second));
     let mut count = 0;
     for glyph in glyphs {
         let encoding = glyph.encoding;
@@ -118,7 +115,11 @@ pub fn convert(
         if char::from_u32(code_point).is_none() {
             return Err(ConvertError::NotScalar { encoding });
         }
-        let rows = cell_rows(font.width, font.height, glyph)?;
+        let converted = if keep_tall {
+            FontGlyph::tall(code_point, tall_rows(glyph))
+        } else {
+            FontGlyph::small(code_point, cell_rows(font.width, font.height, glyph)?)
+        };
         if count >= FONT_MAX_CHARACTERS || count >= out.len() {
             return Err(ConvertError::TooMany);
         }
@@ -129,23 +130,29 @@ pub fn convert(
         let window = out.get_mut(position..=count).ok_or(ConvertError::TooMany)?;
         window.rotate_right(1);
         if let Some(slot) = window.first_mut() {
-            *slot = FontGlyph { code_point, rows };
+            *slot = converted;
         }
         count = count.saturating_add(1);
     }
     Ok(count)
 }
 
-/// The 12 by 10 lines of one glyph.
+/// The twenty lines of a 12 by 20 glyph, kept whole.
+fn tall_rows(glyph: &SourceGlyph) -> [u16; CELL_HEIGHT] {
+    let mut rows = [0u16; CELL_HEIGHT];
+    for (row, &source) in rows.iter_mut().zip(&glyph.rows) {
+        *row = source;
+    }
+    rows
+}
+
+/// The 12 by 10 lines of one glyph. A 12 by 20 glyph reaches here only
+/// when every pair of its lines is identical.
 fn cell_rows(width: usize, height: usize, glyph: &SourceGlyph) -> Result<[u16; CELL_FIELD_LINES], ConvertError> {
     let mut rows = [0u16; CELL_FIELD_LINES];
     match (width, height) {
         (CELL_WIDTH, CELL_HEIGHT) => {
-            for (index, (row, &[first, second])) in rows.iter_mut().zip(glyph.rows.as_chunks::<2>().0).enumerate() {
-                if first != second {
-                    let line = index.saturating_mul(2).saturating_add(1);
-                    return Err(ConvertError::LinePairs { encoding: glyph.encoding, line });
-                }
+            for (row, &[first, _]) in rows.iter_mut().zip(glyph.rows.as_chunks::<2>().0) {
                 *row = first;
             }
         }
@@ -276,12 +283,12 @@ mod tests {
         let six = converted(&source((6, 10), "ISO10646", &[(65, [6, 10, 0, 0], &SIX)]), None).unwrap();
         assert_eq!(six.len(), 1);
         assert_eq!(six[0].code_point, 65);
-        let back: Vec<u16> = six[0].rows.iter().map(|&row| halved(row, 6)).collect();
+        let back: Vec<u16> = six[0].lines().iter().map(|&row| halved(row, 6)).collect();
         assert_eq!(back, bits(&SIX), "reversal");
         let five_rows: Vec<&str> = SIX.iter().map(|row| &row[..5]).collect();
         let five = converted(&source((5, 10), "ISO10646", &[(65, [5, 10, 0, 0], &five_rows)]), None).unwrap();
-        assert!(five[0].rows.iter().all(|row| row >> 10 == 0), "the blank column is at the left");
-        let back: Vec<u16> = five[0].rows.iter().map(|&row| halved(row << 2, 5)).collect();
+        assert!(five[0].lines().iter().all(|row| row >> 10 == 0), "the blank column is at the left");
+        let back: Vec<u16> = five[0].lines().iter().map(|&row| halved(row << 2, 5)).collect();
         assert_eq!(back, bits(&five_rows));
         // The same design as 6 pixels with a blank left column is the same glyph.
         let blank_left: Vec<String> = five_rows.iter().map(|row| format!(".{row}")).collect();
@@ -295,7 +302,7 @@ mod tests {
     fn nine_line_cells_gain_the_blank_top_line() {
         let five = converted(&source((5, 9), "ISO10646", &[(65, [5, 9, 0, 0], &FIVE_NINE)]), None).unwrap();
         assert_eq!(five[0].rows[0], 0, "the SAA5050's blank line");
-        let back: Vec<u16> = five[0].rows[1..].iter().map(|&row| halved(row << 2, 5)).collect();
+        let back: Vec<u16> = five[0].lines()[1..].iter().map(|&row| halved(row << 2, 5)).collect();
         assert_eq!(back, bits(&FIVE_NINE));
         let six_rows: Vec<String> = FIVE_NINE.iter().map(|row| format!(".{row}")).collect();
         let six_rows: Vec<&str> = six_rows.iter().map(String::as_str).collect();
@@ -303,19 +310,22 @@ mod tests {
         assert_eq!(six[0].rows, five[0].rows, "6 by 9 with a blank left column is the same glyph");
     }
 
-    /// REQ-FNT-010: a 12 by 20 glyph whose line pairs match keeps every
-    /// second line; one whose pair differs is refused, naming it.
+    /// REQ-FNT-010 as amended by decision E.77: a 12 by 20 font whose line
+    /// pairs all match keeps every second line; one with any pair that
+    /// differs is kept whole as a 12 by 20 font.
     #[test]
     fn twelve_by_twenty() {
         let wide: Vec<String> = SIX.iter().map(|row| row.chars().flat_map(|c| [c, c]).collect()).collect();
         let doubled: Vec<&str> = wide.iter().flat_map(|row| [row.as_str(), row.as_str()]).collect();
         let glyphs = converted(&source((12, 20), "ISO10646", &[(66, [12, 20, 0, 0], &doubled)]), None).unwrap();
-        let back: Vec<u16> = glyphs[0].rows.iter().flat_map(|&row| [row, row]).collect();
+        let back: Vec<u16> = glyphs[0].lines().iter().flat_map(|&row| [row, row]).collect();
         assert_eq!(back, bits(&doubled), "reversal: each line twice");
         let mut rounded = doubled.clone();
         rounded[7] = "############";
-        let error = converted(&source((12, 20), "ISO10646", &[(67, [12, 20, 0, 0], &rounded)]), None).unwrap_err();
-        assert_eq!(error, ConvertError::LinePairs { encoding: 67, line: 7 });
+        let tall = converted(&source((12, 20), "ISO10646", &[(67, [12, 20, 0, 0], &rounded)]), None).unwrap();
+        assert!(tall[0].tall);
+        assert_eq!(tall[0].rows.to_vec(), bits(&rounded), "every line kept");
+        assert!(!glyphs[0].tall);
     }
 
     /// A glyph smaller than its cell is placed by its BBX; one reaching
@@ -327,7 +337,7 @@ mod tests {
         let mut expected = [0u16; CELL_FIELD_LINES];
         expected[5] = 0b0011_1111_0000;
         expected[6] = 0b0011_0011_0000;
-        assert_eq!(small[0].rows, expected);
+        assert_eq!(small[0].lines(), expected);
         assert_eq!(
             source_error(&source((6, 10), "ISO10646", &[(65, [3, 2, 4, 0], &["###", "###"])])),
             FontErrorKind::GlyphTooLarge

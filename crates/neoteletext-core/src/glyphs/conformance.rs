@@ -4,7 +4,7 @@
 
 use super::LoadedFont;
 use crate::charset::{CharRef, CharSet, G0, G0Set, G2Set, NationalOption, to_unicode};
-use crate::consts::{CELL_FIELD_LINES, CELL_WIDTH, CODE_MASK_7BIT, SPACE};
+use crate::consts::{CELL_HEIGHT, CELL_WIDTH, CODE_MASK_7BIT, SPACE};
 
 /// The first code position of a character set (2/0).
 const FIRST_CODE: u8 = SPACE;
@@ -140,9 +140,10 @@ impl SetConformance {
     }
 }
 
-/// Rows of a glyph, by character.
-fn glyph(font: &LoadedFont<'_>, character: char) -> Option<[u16; CELL_FIELD_LINES]> {
-    font.lookup(character)
+/// Rows of a glyph, by character: all twenty, the last ten zero for a 12
+/// by 10 glyph.
+fn glyph(font: &LoadedFont<'_>, character: char) -> Option<[u16; CELL_HEIGHT]> {
+    font.lookup(character).map(|glyph| glyph.rows)
 }
 
 /// A font's conformance for a character set (REQ-FNT-011 rules 2 to 4; rule
@@ -152,7 +153,9 @@ pub fn conformance(font: &LoadedFont<'_>, set: CharSet) -> SetConformance {
     let space_blank = glyph(font, ' ').is_some_and(|rows| rows.iter().all(|&row| row == 0));
     let mut drawn = 0u8;
     let mut failure = None;
-    let mut saa5050_cell = true;
+    // The SAA5050 cell is a 12 by 10 profile, never reported for a 12 by 20
+    // font (REQ-FNT-011, decision E.77).
+    let mut saa5050_cell = !font.is_tall();
     for code in FIRST_CODE..=LAST_CODE {
         let fault = match assigned(set, code) {
             None | Some(' ') => (!space_blank).then_some(Failure::Space),
@@ -194,6 +197,7 @@ pub fn conformance_masks(font: &LoadedFont<'_>) -> (u32, u32) {
 #[allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 mod tests {
     use super::*;
+    use crate::consts::CELL_FIELD_LINES;
     use crate::types::FontGlyph;
     use std::vec::Vec;
 
@@ -205,7 +209,7 @@ mod tests {
     fn complete(set: CharSet) -> Vec<FontGlyph> {
         let mut glyphs: Vec<FontGlyph> = (FIRST_CODE..=LAST_CODE)
             .filter_map(|code| assigned(set, code))
-            .map(|c| FontGlyph { code_point: u32::from(c), rows: if c == ' ' { [0; CELL_FIELD_LINES] } else { INKED } })
+            .map(|c| FontGlyph::small(u32::from(c), if c == ' ' { [0; CELL_FIELD_LINES] } else { INKED }))
             .collect();
         glyphs.sort_by_key(|glyph| glyph.code_point);
         glyphs.dedup_by_key(|glyph| glyph.code_point);
@@ -237,11 +241,11 @@ mod tests {
         assert_eq!(check(&without, set).drawn, SET_POSITIONS - 1);
         // Rule 4: A drawn blank.
         let a = glyphs.iter_mut().find(|g| g.code_point == u32::from('A')).unwrap();
-        a.rows = [0; CELL_FIELD_LINES];
+        a.rows = [0; CELL_HEIGHT];
         assert_eq!(check(&glyphs, set).failure, Some(Failure::Blank(0x41)));
         // Rule 3: an inked space.
         let mut glyphs = complete(set);
-        glyphs[0].rows = INKED;
+        glyphs[0] = FontGlyph::small(glyphs[0].code_point, INKED);
         assert_eq!(check(&glyphs, set).failure, Some(Failure::Space));
     }
 
@@ -270,6 +274,26 @@ mod tests {
         let a = glyphs.iter_mut().find(|g| g.code_point == u32::from('A')).unwrap();
         a.rows[3] = 0x800;
         assert!(!check(&glyphs, set).saa5050_cell, "a pixel in the leftmost dot column");
+    }
+
+    /// REQ-FNT-011 as amended by decision E.77: a complete 12 by 20 font
+    /// conforms, and the SAA5050 cell profile is never reported for it.
+    #[test]
+    fn a_tall_font_conforms_without_the_saa5050_profile() {
+        let set = latin(Some(NationalOption::English));
+        let tall: Vec<FontGlyph> = complete(set)
+            .iter()
+            .map(|glyph| {
+                let mut rows = [0; CELL_HEIGHT];
+                if glyph.code_point != u32::from(' ') {
+                    rows[10] = 0x0C0;
+                }
+                FontGlyph::tall(glyph.code_point, rows)
+            })
+            .collect();
+        let result = check(&tall, set);
+        assert!(result.conforms(), "ink only below the tenth line still counts");
+        assert!(!result.saa5050_cell);
     }
 
     /// The masks have a bit per set, in the order of the names.

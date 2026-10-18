@@ -1,0 +1,3 @@
+# Noto-derived 12 x 20 fonts (REQ-FNT-012), written by convert.py.
+f	noto-teletext.bdf	Noto Teletext	d136ec06aa49290c27669ce62a5718b8aa603fea79d695fff24e55a2c3d869a3
+c	noto-teletext.bdf	G0-Latin G0-Latin-English G0-Latin-German G0-Latin-SwedishFinnishHungarian G0-Latin-Italian G0-Latin-French G0-Latin-PortugueseSpanish G0-Latin-CzechSlovak G0-Latin-Polish G0-Latin-Turkish G0-Latin-SerbianCroatianSlovenian G0-Latin-Rumanian G0-Latin-Estonian G0-Latin-LettishLithuanian G0-Cyrillic-1 G0-Cyrillic-2 G0-Cyrillic-3 G0-Greek G0-Arabic G0-Hebrew G2-Latin G2-Cyrillic G2-Greek G2-Arabic

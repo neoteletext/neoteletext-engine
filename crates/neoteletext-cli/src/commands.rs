@@ -1,6 +1,6 @@
 //! The `neottx` commands (REQ-CLI-001).
 
-use crate::output::image::{Frame, Scale, iterm2_inline, png, ppm, raster};
+use crate::output::image::{Frame, Scale, iterm2_inline, png, ppm, raster, raster_in};
 use crate::output::text::{ColourDepth, MosaicStyle, ansi, plain};
 use crate::terminal::{self, Display, TextArea};
 use crate::{GraphicsChoice, RasterArgs};
@@ -13,6 +13,8 @@ use neoteletext_app::{convert as conversion, exit};
 use neoteletext_core::acq::StoredPage;
 use neoteletext_core::consts::ROWS;
 use neoteletext_core::fsm::PageKey;
+use neoteletext_core::glyphs::conformance::FONT_SET_COUNT;
+use neoteletext_core::glyphs::{GlyphSet, LoadedFont};
 use neoteletext_core::level1::Grid;
 use neoteletext_core::policy::is_safe_file_name_byte;
 use neoteletext_core::render::row_width;
@@ -321,6 +323,10 @@ pub fn render(
     let mut session = input::load_for(options, selection.page())?;
     let frame = Frame::still(session.decoder().config(), raster_args.reveal);
     let scale = scale_for(raster_args, None, (0, 0));
+    let table = raster_args.font.as_deref().map(crate::font::read_table).transpose()?;
+    let loaded =
+        table.as_deref().map(LoadedFont::new).transpose().map_err(|error| (exit::INPUT, format!("{error:?}")))?;
+    let glyphs = GlyphSet::bedstead().with_fonts(loaded, [None; FONT_SET_COUNT]);
     let pages = selected(&session, selection)?;
     let directory: PathBuf = if selection == Selection::All {
         std::fs::create_dir_all(output).map_err(|error| (exit::INPUT, format!("{}: {error}", output.display())))?;
@@ -342,7 +348,7 @@ pub fn render(
             ImageFormat::Png => Rgba::TRANSPARENT,
             ImageFormat::Ppm => Rgba::opaque(0, 0, 0),
         };
-        let image_data = raster(&grid, frame, scale, picture);
+        let image_data = raster_in(&grid, frame, scale, picture, &glyphs);
         let bytes = match image {
             ImageFormat::Png => png(&image_data),
             ImageFormat::Ppm => ppm(&image_data, Rgba::opaque(0, 0, 0)),

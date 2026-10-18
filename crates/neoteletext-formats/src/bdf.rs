@@ -14,20 +14,30 @@
 //! not used (REQ-FNT-002 as amended for issue #200).
 
 use neoteletext_core::consts::{
-    CELL_FIELD_LINES, CELL_WIDTH, FONT_MAX_CHARACTERS, FONT_MAX_FILE_BYTES, FONT_MAX_LINE_BYTES, FONT_MAX_PROPERTIES,
+    CELL_FIELD_LINES, CELL_HEIGHT, CELL_WIDTH, FONT_MAX_CHARACTERS, FONT_MAX_FILE_BYTES, FONT_MAX_LINE_BYTES,
+    FONT_MAX_PROPERTIES,
 };
 use neoteletext_core::types::FontGlyph;
 
 pub mod convert;
 pub mod source;
 
-// The cell's 12 and 10 fit an `i32` with room to spare.
+// The cell's 12, 10 and 20 fit an `i32` with room to spare.
 #[allow(clippy::cast_possible_wrap)]
 const WIDTH: i32 = CELL_WIDTH as i32;
 #[allow(clippy::cast_possible_wrap)]
 const HEIGHT: i32 = CELL_FIELD_LINES as i32;
-/// The font's cell, as `FONTBOUNDINGBOX` and every `BBX` give it.
+#[allow(clippy::cast_possible_wrap)]
+const TALL_HEIGHT: i32 = CELL_HEIGHT as i32;
+/// The 12 by 10 cell, as `FONTBOUNDINGBOX` and every `BBX` give it.
 const CELL_BOX: [i32; 4] = [WIDTH, HEIGHT, 0, 0];
+/// The 12 by 20 cell (decision E.77).
+const TALL_CELL_BOX: [i32; 4] = [WIDTH, TALL_HEIGHT, 0, 0];
+
+/// The cell box and line count of a font of either height.
+const fn cell_box(tall: bool) -> ([i32; 4], usize) {
+    if tall { (TALL_CELL_BOX, CELL_HEIGHT) } else { (CELL_BOX, CELL_FIELD_LINES) }
+}
 /// Every character's advance, as `DWIDTH` gives it.
 const ADVANCE: [i32; 2] = [WIDTH, 0];
 /// Hexadecimal digits of one bitmap row: 12 dots padded to 16 bits.
@@ -55,6 +65,8 @@ pub struct Font<'a> {
     pub notice: Option<&'a [u8]>,
     /// How many glyphs the table holds.
     pub characters: usize,
+    /// The font is 12 by 20 (decision E.77); otherwise 12 by 10.
+    pub tall: bool,
 }
 
 /// Why a file was refused, and the line, counted from 1, where the fault
@@ -88,7 +100,8 @@ pub enum FontErrorKind {
     Misplaced,
     /// A field is missing, extra or not a number.
     Malformed,
-    /// `FONTBOUNDINGBOX` is not `12 10 0 0`, or is missing.
+    /// `FONTBOUNDINGBOX` is neither `12 10 0 0` nor `12 20 0 0`, or is
+    /// missing.
     BoundingBox,
     /// The properties are more than 64, not as many as declared, malformed
     /// or repeated.
@@ -108,13 +121,13 @@ pub enum FontErrorKind {
     RepeatedCode,
     /// `DWIDTH` is not `12 0`.
     Advance,
-    /// `BBX` is not `12 10 0 0`.
+    /// `BBX` is not the font's cell, `12 10 0 0` or `12 20 0 0`.
     CharacterBox,
     /// A bitmap row is not four hexadecimal digits whose last four bits
     /// are zero.
     Row,
-    /// A character ended without `ENCODING`, `DWIDTH`, `BBX` or ten bitmap
-    /// rows.
+    /// A character ended without `ENCODING`, `DWIDTH`, `BBX` or its ten or
+    /// twenty bitmap rows.
     Incomplete,
     /// The file ends before `ENDFONT`.
     NoEnd,
@@ -155,7 +168,7 @@ struct Character {
     cell: bool,
     swidth: bool,
     rows: usize,
-    bitmap: [u16; CELL_FIELD_LINES],
+    bitmap: [u16; CELL_HEIGHT],
 }
 
 /// The global parts seen so far.
@@ -166,6 +179,7 @@ struct Header<'a> {
     font: bool,
     size: bool,
     bounding_box: bool,
+    tall: bool,
     properties_seen: bool,
     properties_declared: usize,
     properties_read: usize,
@@ -268,9 +282,11 @@ impl<'a> Parser<'a> {
             }
             b"FONTBOUNDINGBOX" => {
                 once(&mut header.bounding_box)?;
-                if numbers::<4>(value)? != CELL_BOX {
-                    return Err(FontErrorKind::BoundingBox);
-                }
+                header.tall = match numbers::<4>(value)? {
+                    CELL_BOX => false,
+                    TALL_CELL_BOX => true,
+                    _ => return Err(FontErrorKind::BoundingBox),
+                };
             }
             b"STARTPROPERTIES" => {
                 once(&mut header.properties_seen)?;
@@ -400,7 +416,7 @@ impl<'a> Parser<'a> {
             }
             b"BBX" => {
                 once(&mut character.cell)?;
-                if numbers::<4>(value)? != CELL_BOX {
+                if numbers::<4>(value)? != cell_box(self.header.tall).0 {
                     return Err(FontErrorKind::CharacterBox);
                 }
             }
@@ -425,11 +441,12 @@ impl<'a> Parser<'a> {
             if !value.is_empty() {
                 return Err(FontErrorKind::Malformed);
             }
-            if character.rows != CELL_FIELD_LINES {
+            let tall = self.header.tall;
+            if character.rows != cell_box(tall).1 {
                 return Err(FontErrorKind::Incomplete);
             }
             let code = character.code.ok_or(FontErrorKind::Incomplete)?;
-            insert(glyphs, self.count, FontGlyph { code_point: code, rows: character.bitmap })?;
+            insert(glyphs, self.count, FontGlyph { code_point: code, rows: character.bitmap, tall })?;
             self.count = self.count.saturating_add(1);
             self.section = Section::Characters;
             return Ok(());
@@ -445,7 +462,9 @@ impl<'a> Parser<'a> {
         if row.trailing_zeros() < ROW_PAD_BITS {
             return Err(FontErrorKind::Row);
         }
-        let slot = character.bitmap.get_mut(character.rows).ok_or(FontErrorKind::Row)?;
+        let lines = cell_box(self.header.tall).1;
+        let slot =
+            character.bitmap.get_mut(character.rows).filter(|_| character.rows < lines).ok_or(FontErrorKind::Row)?;
         *slot = row >> ROW_PAD_BITS;
         character.rows = character.rows.saturating_add(1);
         Ok(())
@@ -462,6 +481,7 @@ impl<'a> Parser<'a> {
             copyright: self.header.copyright,
             notice: self.header.notice,
             characters: self.count,
+            tall: self.header.tall,
         })
     }
 }
@@ -655,8 +675,38 @@ mod tests {
         assert_eq!(font.notice, Some(&b"CC0"[..]));
         let codes: Vec<u32> = glyphs[..3].iter().map(|glyph| glyph.code_point).collect();
         assert_eq!(codes, [0x20, 0x41, 0x42], "sorted by code point");
-        assert_eq!(glyphs[1].rows, [0x000, 0x0F0, 0x30C, 0x606, 0x606, 0x7FE, 0x606, 0x606, 0x000, 0x000]);
-        assert_eq!(glyphs[0].rows, [0; 10]);
+        assert_eq!(glyphs[1].lines(), [0x000, 0x0F0, 0x30C, 0x606, 0x606, 0x7FE, 0x606, 0x606, 0x000, 0x000]);
+        assert!(!glyphs[1].tall);
+        assert_eq!(glyphs[0].lines(), [0; 10]);
+    }
+
+    /// REQ-FNT-002 as amended by decision E.77: a 12 by 20 font is read
+    /// with its twenty rows; a 12 by 10 character in it, or a character of
+    /// the wrong number of rows, refuses the file.
+    #[test]
+    fn a_tall_font_is_read() {
+        let mut twenty = String::new();
+        for line in 1..=20 {
+            let _ = writeln!(twenty, "{line:03X}0");
+        }
+        let tall = |rows: &str| character(0x41, rows).replace("BBX 12 10 0 0", "BBX 12 20 0 0");
+        let text =
+            font(&[tall(&twenty)], |text| text.replace("FONTBOUNDINGBOX 12 10 0 0", "FONTBOUNDINGBOX 12 20 0 0"));
+        let mut glyphs = table();
+        let font_read = read(text.as_bytes(), &mut glyphs).unwrap();
+        assert!(font_read.tall);
+        assert!(glyphs[0].tall);
+        let expected: Vec<u16> = (1..=20).collect();
+        assert_eq!(glyphs[0].lines(), expected.as_slice());
+        let small_in_tall = font(&[character(0x41, A_ROWS)], |text| {
+            text.replace("FONTBOUNDINGBOX 12 10 0 0", "FONTBOUNDINGBOX 12 20 0 0")
+        });
+        assert_eq!(read(small_in_tall.as_bytes(), &mut glyphs).unwrap_err().kind, FontErrorKind::CharacterBox);
+        let short =
+            font(&[tall(A_ROWS)], |text| text.replace("FONTBOUNDINGBOX 12 10 0 0", "FONTBOUNDINGBOX 12 20 0 0"));
+        assert_eq!(read(short.as_bytes(), &mut glyphs).unwrap_err().kind, FontErrorKind::Incomplete);
+        let long = font(&[character(0x41, &twenty)], |text| text);
+        assert_eq!(read(long.as_bytes(), &mut glyphs).unwrap_err().kind, FontErrorKind::Row);
     }
 
     /// Line endings may be CRLF, the last line may lack its newline, empty

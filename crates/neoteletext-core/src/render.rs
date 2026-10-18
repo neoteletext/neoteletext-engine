@@ -375,8 +375,9 @@ fn text_line(glyph: &[u8; GLYPH_LINES], source: usize, options: RenderOptions) -
     }
 }
 
-/// A loaded font's character line (REQ-FNT-008): the 12 by 10 glyph drawn
-/// as given, each line twice in the 12-by-20 cell, as a mode 0 DRCS
+/// A loaded font's character line (REQ-FNT-008): a 12 by 10 glyph drawn
+/// as given, each line twice in the 12-by-20 cell, or a 12 by 20 glyph line
+/// for line (decision E.77), as a mode 0 DRCS
 /// character is (REQ-RND-038), and rounded as Bedstead is when the font is
 /// a doubled dot matrix (issue #209); a character no loaded font has is
 /// drawn from the bundled glyphs. Cold and out of line, so that the
@@ -388,18 +389,26 @@ fn font_or_text_line(cell: &Cell, glyphs: &GlyphSet<'_>, source: usize, options:
     let Some(loaded) = glyphs.loaded(character) else {
         return text_line(&glyphs.glyph(character), source, options);
     };
-    match options.mode {
-        CellMode::Saa5050 => font_line_20(&loaded.rows, source, options.rounding && loaded.dot_matrix),
-        CellMode::Saa5246a => loaded.rows.get(source).copied().unwrap_or(0) & CELL_MASK,
+    let line = |index: usize| loaded.rows.get(index).copied().unwrap_or(0) & CELL_MASK;
+    match (options.mode, loaded.tall) {
+        // A 12 by 10 glyph doubles its lines in the 12-by-20 cell, rounded
+        // when it is a doubled dot matrix (issue #209).
+        (CellMode::Saa5050, false) => font_line_20(&loaded.rows, source, options.rounding && loaded.dot_matrix),
+        // A 12 by 20 glyph shows its upper line of each pair in the
+        // 12-by-10 raster.
+        (CellMode::Saa5246a, true) => line(source.saturating_mul(2)),
+        // Otherwise the glyph's own line: a 12 by 20 glyph line for line in
+        // the 12-by-20 cell (decision E.77), a 12 by 10 one in the 12-by-10.
+        (CellMode::Saa5050, true) | (CellMode::Saa5246a, false) => line(source),
     }
 }
 
-/// Line `line` (0 to 19) of a loaded glyph in the 12-by-20 cell: each of
-/// its ten lines twice, and with `rounding` the rule of decision E.13 as
+/// Line `line` (0 to 19) of a 12 by 10 loaded glyph, whose lines are the
+/// first ten of `rows`, in the 12-by-20 cell: each of its ten lines twice, and with `rounding` the rule of decision E.13 as
 /// the bundled glyphs get it, never across the cell's edge. Public so that
 /// a font's sample is drawn as its pages are (REQ-BRW-010).
 #[must_use]
-pub fn font_line_20(rows: &[u16; CELL_FIELD_LINES], line: usize, rounding: bool) -> u16 {
+pub fn font_line_20(rows: &[u16], line: usize, rounding: bool) -> u16 {
     let cell_line = line / 2;
     let row = |index: Option<usize>| index.and_then(|index| rows.get(index)).copied().unwrap_or(0) & CELL_MASK;
     let a = row(Some(cell_line));

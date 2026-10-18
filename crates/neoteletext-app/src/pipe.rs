@@ -6,7 +6,7 @@
 //! unknown kinds.
 
 use neoteletext_core::charset::CharSet;
-use neoteletext_core::consts::{CELL_FIELD_LINES, FONT_MAX_CHARACTERS, FONT_MAX_FILE_BYTES};
+use neoteletext_core::consts::{CELL_FIELD_LINES, CELL_HEIGHT, FONT_MAX_CHARACTERS, FONT_MAX_FILE_BYTES};
 use neoteletext_core::glyphs::LoadedFont;
 use neoteletext_core::glyphs::conformance::{FONT_SET_COUNT, FONT_SETS, font_set_of};
 use neoteletext_core::level1::{DesignationReport, DesignationSource, NationalSource};
@@ -33,10 +33,12 @@ pub const MAX_LINK_TEXT: usize = 512;
 pub const SHA256_BYTES: usize = 32;
 /// The longest font address, or text of a font, carried.
 pub const MAX_FONT_TEXT: usize = 512;
-/// Bytes of one glyph on the pipe: its code point and ten 16-bit lines.
-const GLYPH_WIRE_BYTES: usize = 4 + 2 * CELL_FIELD_LINES;
-/// The largest glyph table: 1,024 glyphs (REQ-FNT-002).
-const MAX_TABLE_BYTES: usize = 2 + FONT_MAX_CHARACTERS * GLYPH_WIRE_BYTES;
+/// Bytes of one glyph on the pipe, at most: its code point and twenty
+/// 16-bit lines (ten for a 12 by 10 font).
+const GLYPH_WIRE_BYTES: usize = 4 + 2 * CELL_HEIGHT;
+/// The largest glyph table: its count and height, then 1,024 glyphs
+/// (REQ-FNT-002).
+const MAX_TABLE_BYTES: usize = 2 + 1 + FONT_MAX_CHARACTERS * GLYPH_WIRE_BYTES;
 /// The largest font reply: the file, its table, three texts and two
 /// validators.
 const MAX_FONT_FRAME: usize = 1 + 4 + FONT_MAX_FILE_BYTES + MAX_TABLE_BYTES + 5 * (5 + MAX_FONT_TEXT);
@@ -641,22 +643,29 @@ impl Cursor<'_> {
     }
 
     /// A glyph table of the shape every receiver checks (REQ-FNT-003,
-    /// REQ-FNT-008): at most 1,024 glyphs, strictly increasing scalar code
-    /// points, twelve dots a line.
+    /// REQ-FNT-008): at most 1,024 glyphs of one height, 12 by 10 or 12 by
+    /// 20 (decision E.77), strictly increasing scalar code points, twelve
+    /// dots a line.
     fn table(&mut self) -> io::Result<Vec<FontGlyph>> {
         let count = usize::from(self.u16()?);
         if count > FONT_MAX_CHARACTERS {
             return Err(io::Error::other("malformed frame"));
         }
+        let tall = match self.byte()? {
+            0 => false,
+            1 => true,
+            _ => return Err(io::Error::other("malformed frame")),
+        };
+        let lines = if tall { CELL_HEIGHT } else { CELL_FIELD_LINES };
         let mut glyphs = Vec::with_capacity(count);
         for _ in 0..count {
             let code = self.bytes(4)?;
             let code_point = u32::from_be_bytes([code[0], code[1], code[2], code[3]]);
-            let mut rows = [0u16; CELL_FIELD_LINES];
-            for row in &mut rows {
+            let mut rows = [0u16; CELL_HEIGHT];
+            for row in rows.iter_mut().take(lines) {
                 *row = self.u16()?;
             }
-            glyphs.push(FontGlyph { code_point, rows });
+            glyphs.push(FontGlyph { code_point, rows, tall });
         }
         LoadedFont::new(&glyphs).map_err(|_| io::Error::other("malformed frame"))?;
         Ok(glyphs)
@@ -893,12 +902,14 @@ fn write_font(out: &mut dyn Write, frame: &Frame) -> io::Result<()> {
     }
 }
 
-/// A glyph table: its length, then each glyph's code point and lines.
+/// A glyph table: its length and height (1 for 12 by 20), then each
+/// glyph's code point and lines.
 fn put_table(buffer: &mut Vec<u8>, glyphs: &[FontGlyph]) {
     buffer.extend_from_slice(&u16::try_from(glyphs.len()).unwrap_or(0).to_be_bytes());
+    buffer.push(u8::from(glyphs.first().is_some_and(|glyph| glyph.tall)));
     for glyph in glyphs {
         buffer.extend_from_slice(&glyph.code_point.to_be_bytes());
-        for row in glyph.rows {
+        for &row in glyph.lines() {
             buffer.extend_from_slice(&row.to_be_bytes());
         }
     }
@@ -1283,7 +1294,7 @@ mod tests {
     use super::*;
 
     fn glyph(code_point: u32, row: u16) -> FontGlyph {
-        FontGlyph { code_point, rows: [row; CELL_FIELD_LINES] }
+        FontGlyph::small(code_point, [row; CELL_FIELD_LINES])
     }
 
     /// The bytes of a frame.

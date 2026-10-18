@@ -72,6 +72,20 @@ pub fn convert_font(input: &Path, output: &Path, map: Option<&Path>, no_sandbox:
     Ok(())
 }
 
+/// Reads a loaded font for drawing pages (`--font`, REQ-FNT-008): its glyph
+/// table, checked by the reader of REQ-FNT-002 and for shape. Called before
+/// the sandbox closes the file system.
+pub fn read_table(path: &Path) -> Result<Vec<FontGlyph>, Failure> {
+    let bytes = read_bounded(path, FONT_MAX_FILE_BYTES)?;
+    let name = path.display();
+    let mut glyphs = vec![FontGlyph::EMPTY; FONT_MAX_CHARACTERS];
+    let font = read(&bytes, &mut glyphs)
+        .map_err(|error| (exit::INPUT, format!("{name}:{}: {:?} (REQ-FNT-002)", error.line, error.kind)))?;
+    glyphs.truncate(font.characters);
+    LoadedFont::new(&glyphs).map_err(|error| (exit::INPUT, format!("{name}: {error:?}")))?;
+    Ok(glyphs)
+}
+
 /// `neottx font sets FONT [--library-line NAME]`.
 pub fn font_sets(path: &Path, library_line: Option<&str>, no_sandbox: bool) -> Result<(), Failure> {
     let bytes = read_bounded(path, FONT_MAX_FILE_BYTES)?;
@@ -109,7 +123,7 @@ pub fn font_sets(path: &Path, library_line: Option<&str>, no_sandbox: bool) -> R
 fn source_fault(kind: FontErrorKind) -> String {
     match kind {
         FontErrorKind::Cell => {
-            "the cell is not 5 x 9, 6 x 9, 5 x 10, 6 x 10 or 12 x 20, so it has no exact 12 x 10 form".into()
+            "the cell is not 5 x 9, 6 x 9, 5 x 10, 6 x 10 or 12 x 20, so it has no exact 12 x 10 or 12 x 20 form".into()
         }
         FontErrorKind::GlyphTooLarge => "the glyph reaches outside its cell".into(),
         FontErrorKind::Greyscale => "more than one bit per pixel".into(),
@@ -120,11 +134,7 @@ fn source_fault(kind: FontErrorKind) -> String {
 
 fn conversion_fault(error: ConvertError) -> String {
     match error {
-        ConvertError::Cell => "the cell has no exact 12 x 10 form".into(),
-        ConvertError::LinePairs { encoding, line } => format!(
-            "character {encoding}: lines {line} and {} differ (rounded?), so halving would lose pixels",
-            line.saturating_add(1)
-        ),
+        ConvertError::Cell => "the cell has no exact 12 x 10 or 12 x 20 form".into(),
         ConvertError::Unmapped { encoding } => {
             format!("character {encoding}: the font is not in ISO10646 and the map (--map) has no line for it")
         }

@@ -32,6 +32,7 @@ cargo xtask check-deps
 
 step "the bundled font: Bedstead's export matches its recorded SHA-256 (REQ-FNT-001)"
 cargo xtask check-bedstead
+cargo xtask check-noto
 
 if [ "$mode" = "full" ]; then
     step "no_std crates on the amd64 bare-metal target (REQ-GEN-002)"

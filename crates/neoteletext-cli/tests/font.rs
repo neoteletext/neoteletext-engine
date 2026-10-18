@@ -56,7 +56,7 @@ fn an_exact_conversion_is_written_and_loads() {
     let font = neoteletext_formats::bdf::read(&written, &mut glyphs).expect("REQ-FNT-002 form");
     assert_eq!((font.characters, font.family), (2, Some(&b"Test"[..])));
     // 0x78 in six pixels is ".####." doubled: "..########..".
-    assert_eq!(glyphs[0].rows, [0, 0, 0x3FC, 0x3FC, 0x3FC, 0x3FC, 0x3FC, 0x3FC, 0, 0]);
+    assert_eq!(glyphs[0].lines(), [0, 0, 0x3FC, 0x3FC, 0x3FC, 0x3FC, 0x3FC, 0x3FC, 0, 0]);
 }
 
 #[test]
@@ -90,9 +90,8 @@ fn english_font(family: &str) -> Vec<u8> {
     let set = CharSet::G0(G0 { set: G0Set::Latin, national: Some(NationalOption::English) });
     let mut glyphs: Vec<FontGlyph> = (0x20u8..=0x7F)
         .filter_map(|code| assigned(set, code))
-        .map(|c| FontGlyph {
-            code_point: u32::from(c),
-            rows: if c == ' ' { [0; 10] } else { [0, 0x0C0, 0x0C0, 0, 0, 0, 0, 0, 0, 0] },
+        .map(|c| {
+            FontGlyph::small(u32::from(c), if c == ' ' { [0; 10] } else { [0, 0x0C0, 0x0C0, 0, 0, 0, 0, 0, 0, 0] })
         })
         .collect();
     glyphs.sort_by_key(|glyph| glyph.code_point);

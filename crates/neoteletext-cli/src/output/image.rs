@@ -51,11 +51,17 @@ impl Frame {
     }
 }
 
-/// Renders a grid to a scaled raster. `picture` is the colour of the
-/// picture, transparent areas (REQ-RND-006).
+/// Renders a grid to a scaled raster in Bedstead. `picture` is the colour
+/// of the picture, transparent areas (REQ-RND-006).
 #[must_use]
 pub fn raster(grid: &Grid, frame: Frame, scale: Scale, picture: Rgba) -> Raster {
-    present::raster(grid, frame.options, frame.flash_visible, &BEDSTEAD, scale, picture)
+    raster_in(grid, frame, scale, picture, &BEDSTEAD)
+}
+
+/// Renders a grid to a scaled raster in the given glyphs (`--font`).
+#[must_use]
+pub fn raster_in(grid: &Grid, frame: Frame, scale: Scale, picture: Rgba, glyphs: &GlyphSet<'_>) -> Raster {
+    present::raster(grid, frame.options, frame.flash_visible, glyphs, scale, picture)
 }
 
 /// Encodes a raster as PNG bytes.

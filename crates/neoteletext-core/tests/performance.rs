@@ -168,7 +168,7 @@ fn row_renderer_cost_with_a_loaded_font() {
     let _ =
         compose_level(&mut grid, page, &magazine, &decoder.enhancement_lookup(), &config, &DisplayOptions::default());
     let table: Vec<FontGlyph> = (0x20u32..0x7F)
-        .map(|code_point| FontGlyph { code_point, rows: [u16::try_from(code_point).unwrap(); CELL_FIELD_LINES] })
+        .map(|code_point| FontGlyph::small(code_point, [u16::try_from(code_point).unwrap(); CELL_FIELD_LINES]))
         .collect();
     // Issue #209: a font of doubled dots, which is rounded, with a
     // different diagonal in every glyph.
@@ -179,7 +179,7 @@ fn row_renderer_cost_with_a_loaded_font() {
                 let dot = (code_point as usize + line) % 6;
                 *row = 0b11 << (dot * 2);
             }
-            FontGlyph { code_point, rows }
+            FontGlyph::small(code_point, rows)
         })
         .collect();
     let fonts = [("half-dot font", &table), ("doubled-dot font", &doubled)];
