@@ -60,6 +60,8 @@ pub mod objects;
 
 #[cfg(feature = "render")]
 pub mod glyphs;
+#[cfg(feature = "extended-sets")]
+pub mod joining;
 #[cfg(feature = "render")]
 pub mod render;
 

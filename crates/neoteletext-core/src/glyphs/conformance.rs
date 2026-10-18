@@ -3,7 +3,7 @@
 //! cell profile, reported and never required.
 
 use super::LoadedFont;
-use crate::charset::{CharRef, CharSet, G0, G0Set, G2Set, NationalOption, to_unicode};
+use crate::charset::{CharRef, CharSet, G0, G0Set, G2Set, NationalOption};
 use crate::consts::{CELL_HEIGHT, CELL_WIDTH, CODE_MASK_7BIT, SPACE};
 
 /// The first code position of a character set (2/0).
@@ -26,7 +26,7 @@ const fn g0(set: G0Set) -> CharSet {
 
 /// The number of character sets fonts draw (REQ-FNT-011): the standard's
 /// 24 and neoteletext's own 20 (REQ-CHR-012).
-pub const FONT_SET_COUNT: usize = 44;
+pub const FONT_SET_COUNT: usize = 56;
 
 /// The character sets fonts draw, with the names libraries and reports give
 /// them: the standard's 24 in the order of REQ-FNT-011, then neoteletext's
@@ -77,6 +77,18 @@ pub const FONT_SETS: [(&str, CharSet); FONT_SET_COUNT] = [
     ("G0-Tifinagh", g0(G0Set::Tifinagh)),
     ("G2-Vietnamese", CharSet::G2(G2Set::Vietnamese)),
     ("G2-Armenian", CharSet::G2(G2Set::Armenian)),
+    ("G0-Arabic-Persian", g0(G0Set::Persian)),
+    ("G0-Arabic-Urdu", g0(G0Set::Urdu)),
+    ("G0-Arabic-Pashto", g0(G0Set::Pashto)),
+    ("G0-Arabic-Sindhi", g0(G0Set::Sindhi)),
+    ("G0-Arabic-Sorani", g0(G0Set::Sorani)),
+    ("G0-Arabic-Uyghur", g0(G0Set::Uyghur)),
+    ("G0-Arabic-Balochi", g0(G0Set::Balochi)),
+    ("G0-Arabic-Plain", g0(G0Set::ArabicPlain)),
+    ("G0-Thai", g0(G0Set::Thai)),
+    ("G0-Lao", g0(G0Set::Lao)),
+    ("G2-Thai", CharSet::G2(G2Set::Thai)),
+    ("G2-Lao", CharSet::G2(G2Set::Lao)),
 ];
 
 /// The place in [`FONT_SETS`] of a set's name.
@@ -136,6 +148,18 @@ pub const fn font_set_of(set: CharSet) -> Option<usize> {
         CharSet::G0(G0 { set: G0Set::Tifinagh, .. }) => 41,
         CharSet::G2(G2Set::Vietnamese) => 42,
         CharSet::G2(G2Set::Armenian) => 43,
+        CharSet::G0(G0 { set: G0Set::Persian, .. }) => 44,
+        CharSet::G0(G0 { set: G0Set::Urdu, .. }) => 45,
+        CharSet::G0(G0 { set: G0Set::Pashto, .. }) => 46,
+        CharSet::G0(G0 { set: G0Set::Sindhi, .. }) => 47,
+        CharSet::G0(G0 { set: G0Set::Sorani, .. }) => 48,
+        CharSet::G0(G0 { set: G0Set::Uyghur, .. }) => 49,
+        CharSet::G0(G0 { set: G0Set::Balochi, .. }) => 50,
+        CharSet::G0(G0 { set: G0Set::ArabicPlain, .. }) => 51,
+        CharSet::G0(G0 { set: G0Set::Thai, .. }) => 52,
+        CharSet::G0(G0 { set: G0Set::Lao, .. }) => 53,
+        CharSet::G2(G2Set::Thai) => 54,
+        CharSet::G2(G2Set::Lao) => 55,
         _ => return None,
     })
 }
@@ -146,7 +170,7 @@ pub const fn font_set_of(set: CharSet) -> Option<usize> {
 /// space.
 #[must_use]
 pub fn assigned(set: CharSet, code: u8) -> Option<char> {
-    let character = to_unicode(CharRef::new(set, code)).base;
+    let character = crate::charset::glyph_key(CharRef::new(set, code));
     (code == FIRST_CODE || character != ' ').then_some(character)
 }
 
@@ -159,6 +183,9 @@ pub enum Failure {
     Space,
     /// Rule 4: the character at this code position has no pixel set.
     Blank(u8),
+    /// A letter of a joined set lacks a glyph for one of its joined
+    /// forms (REQ-CHR-015).
+    MissingForm(u8),
 }
 
 /// A font's conformance for one character set.
@@ -214,6 +241,21 @@ pub fn conformance(font: &LoadedFont<'_>, set: CharSet) -> SetConformance {
             Some(fault) => failure = failure.or(Some(fault)),
         }
     }
+    // A joined set needs every form of every joining letter too.
+    #[cfg(feature = "extended-sets")]
+    if let CharSet::G0(G0 { set: g0_set, .. }) = set
+        && g0_set.is_joined()
+    {
+        for code in FIRST_CODE..=LAST_CODE {
+            let Some(letter) = assigned(set, code) else { continue };
+            let lacks_form = crate::charset::joined_forms()
+                .iter()
+                .any(|&(entry, _, point)| entry == letter && glyph(font, point).is_none());
+            if lacks_form {
+                failure = failure.or(Some(Failure::MissingForm(code)));
+            }
+        }
+    }
     SetConformance { drawn, failure, saa5050_cell }
 }
 
@@ -253,6 +295,16 @@ mod tests {
             .filter_map(|code| assigned(set, code))
             .map(|c| FontGlyph::small(u32::from(c), if c == ' ' { [0; CELL_FIELD_LINES] } else { INKED }))
             .collect();
+        // A joined set's letters in every form (REQ-CHR-015).
+        if matches!(set, CharSet::G0(G0 { set, .. }) if set.is_joined()) {
+            let letters: Vec<char> = (FIRST_CODE..=LAST_CODE).filter_map(|code| assigned(set, code)).collect();
+            glyphs.extend(
+                crate::charset::joined_forms()
+                    .iter()
+                    .filter(|(letter, _, _)| letters.contains(letter))
+                    .map(|&(_, _, point)| FontGlyph::small(u32::from(point), INKED)),
+            );
+        }
         glyphs.sort_by_key(|glyph| glyph.code_point);
         glyphs.dedup_by_key(|glyph| glyph.code_point);
         glyphs
@@ -270,6 +322,16 @@ mod tests {
             assert_eq!((result.drawn, result.failure), (SET_POSITIONS, None), "{name}");
             assert!(result.saa5050_cell);
         }
+    }
+
+    /// REQ-CHR-015: a font for a joined set needs every form of every
+    /// joining letter; sin's initial form missing fails at sin's position.
+    #[test]
+    fn a_missing_joined_form_fails() {
+        let set = FONT_SETS[font_set_index("G0-Arabic-Persian").unwrap()].1;
+        let without: Vec<FontGlyph> = complete(set).into_iter().filter(|g| g.code_point != 0xFEB3).collect();
+        let sin = (FIRST_CODE..=LAST_CODE).find(|&code| assigned(set, code) == Some('\u{0633}')).unwrap();
+        assert_eq!(check(&without, set).failure, Some(Failure::MissingForm(sin)));
     }
 
     /// Rules 2, 3 and 4, each failing.

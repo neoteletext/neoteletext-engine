@@ -114,6 +114,9 @@ pub fn font_sets(path: &Path, library_line: Option<&str>, no_sandbox: bool) -> R
             Some(RuleFailure::Missing(code)) => format!("rule 2: no glyph at {:X}/{:X}", code >> 4, code & 0xF),
             Some(RuleFailure::Space) => "rule 3: the space is missing or not blank".to_string(),
             Some(RuleFailure::Blank(code)) => format!("rule 4: blank glyph at {:X}/{:X}", code >> 4, code & 0xF),
+            Some(RuleFailure::MissingForm(code)) => {
+                format!("no glyph for a joined form of the letter at {:X}/{:X}", code >> 4, code & 0xF)
+            }
         };
         println!("{set_name:34} {:>2}/{SET_POSITIONS}  {verdict}", result.drawn);
     }

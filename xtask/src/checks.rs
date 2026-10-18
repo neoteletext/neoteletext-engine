@@ -24,7 +24,9 @@ const LAYER_TABLE: &[(&str, &[&str])] = &[
     ("drcs", &["packet", "acq", "colour"]),
     ("objects", &["packet", "acq"]),
     ("enhance", &["charset", "level1", "packet", "acq", "colour", "objects", "drcs"]),
-    ("compose", &["acq", "level1", "level15", "enhance"]),
+    // REQ-CHR-015: letters are joined after the level's pass.
+    ("joining", &["charset", "level1"]),
+    ("compose", &["acq", "level1", "level15", "enhance", "joining"]),
     ("glyphs", &["charset"]),
     ("render", &["glyphs", "level1", "colour", "drcs"]),
     ("viewer", &["acq", "level1", "compose", "colour", "render", "service", "nav", "forms", "charset"]),

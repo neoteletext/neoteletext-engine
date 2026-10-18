@@ -24,7 +24,7 @@ pub fn compose_level<const DRCS: usize, const PANEL_ROWS: usize>(
     options: &DisplayOptions,
 ) -> Option<EnhancementReport> {
     let _ = (&grid, page, magazine, lookup, options);
-    match config.level.available() {
+    let report = match config.level.available() {
         PresentationLevel::Level1 => None,
         #[cfg(feature = "level15")]
         PresentationLevel::Level15 => {
@@ -38,7 +38,11 @@ pub fn compose_level<const DRCS: usize, const PANEL_ROWS: usize>(
         // `available` returns only compiled levels.
         #[allow(unreachable_patterns)]
         _ => None,
-    }
+    };
+    // REQ-CHR-015: letters are joined from what the cells finally hold.
+    #[cfg(feature = "extended-sets")]
+    crate::joining::join(grid);
+    report
 }
 
 /// As [`compose_level`], and when `Config::trace` is on, reports the
@@ -55,7 +59,7 @@ pub fn compose_level_traced<const DRCS: usize, const PANEL_ROWS: usize>(
     trace: &mut TraceSink<'_>,
 ) -> Option<EnhancementReport> {
     let _ = (&grid, page, magazine, lookup, options, &trace);
-    match config.level.available() {
+    let report = match config.level.available() {
         PresentationLevel::Level1 => None,
         #[cfg(feature = "level15")]
         PresentationLevel::Level15 => {
@@ -69,5 +73,8 @@ pub fn compose_level_traced<const DRCS: usize, const PANEL_ROWS: usize>(
         // `available` returns only compiled levels.
         #[allow(unreachable_patterns)]
         _ => None,
-    }
+    };
+    #[cfg(feature = "extended-sets")]
+    crate::joining::join(grid);
+    report
 }

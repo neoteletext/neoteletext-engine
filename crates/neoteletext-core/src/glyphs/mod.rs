@@ -305,7 +305,7 @@ impl<'a> GlyphSet<'a> {
         let unicode = to_unicode(character);
         let wanted = match unicode.combining.filter(|_| character.diacritic != DIACRITIC_NONE) {
             Some(mark) => compose(unicode.base, mark)?,
-            None => unicode.base,
+            None => crate::charset::glyph_key(character),
         };
         let for_set = font_set_of(character.set).and_then(|place| self.by_set.get(place).copied().flatten());
         [self.in_use, for_set].into_iter().flatten().find_map(|font| {
@@ -370,7 +370,8 @@ impl<'a> GlyphSet<'a> {
             return [0; GLYPH_LINES];
         }
         let unicode = to_unicode(character);
-        let base = self.lookup(unicode.base).unwrap_or(PLACEHOLDER);
+        let drawn = crate::charset::glyph_key(character);
+        let base = self.lookup(drawn).or_else(|| self.lookup(unicode.base)).unwrap_or(PLACEHOLDER);
         let Some(mark) = unicode.combining.filter(|_| character.diacritic != DIACRITIC_NONE) else {
             return base;
         };

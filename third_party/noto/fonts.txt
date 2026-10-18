@@ -1,3 +1,7 @@
 # Noto-derived 12 x 20 fonts (REQ-FNT-012), written by convert.py.
-f	noto-teletext.bdf	Noto Teletext	3e4abeabcf8cf13fbc584eae8aa1dbfd995d2f3f06ca987c8e99c741bef4c2ab
+f	noto-teletext.bdf	Noto Teletext	82fe9e2bb463bfc301ba4509c21542fecef7f5a8a27d0c87de0f5a529a7a4a4a
 c	noto-teletext.bdf	G0-Latin G0-Latin-English G0-Latin-German G0-Latin-SwedishFinnishHungarian G0-Latin-Italian G0-Latin-French G0-Latin-PortugueseSpanish G0-Latin-CzechSlovak G0-Latin-Polish G0-Latin-Turkish G0-Latin-SerbianCroatianSlovenian G0-Latin-Rumanian G0-Latin-Estonian G0-Latin-LettishLithuanian G0-Cyrillic-1 G0-Cyrillic-2 G0-Cyrillic-3 G0-Greek G0-Arabic G0-Hebrew G2-Latin G2-Cyrillic G2-Greek G2-Arabic G0-Latin-HausaFula G0-Latin-WestAfrican G0-Latin-Ewe G0-Latin-KabyleTamazight G0-Latin-Azerbaijani G0-Latin-KanuriMossi G0-Vietnamese G0-YorubaIgbo G0-Cyrillic-Ukrainian G0-Cyrillic-Belarusian G0-Cyrillic-Macedonian G0-Cyrillic-Serbian G0-Cyrillic-KyrgyzMongolian G0-Cyrillic-Tatar G0-Cyrillic-Tajik G0-Georgian G0-Armenian G0-Tifinagh G2-Vietnamese G2-Armenian
+f	noto-teletext-arabic.bdf	Noto Teletext Arabic	57e8b805cbdfe9308dba9220925de1da383591ba266222de6f2e01bdf91d8de2
+c	noto-teletext-arabic.bdf	G0-Arabic-Persian G0-Arabic-Urdu G0-Arabic-Pashto G0-Arabic-Sindhi G0-Arabic-Sorani G0-Arabic-Uyghur G0-Arabic-Balochi G0-Arabic-Plain
+f	noto-teletext-thai.bdf	Noto Teletext Thai	168f95b7ca735fd3a17bb5625a77ad4bf998838c9c6e6a71e378a925a030d8cb
+c	noto-teletext-thai.bdf	G0-Latin-English G0-Thai G0-Lao G2-Thai G2-Lao

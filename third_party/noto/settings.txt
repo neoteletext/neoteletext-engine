@@ -22,8 +22,9 @@
 #
 # [font NAME]         an output font, NAME.bdf
 #   family, copyright the BDF properties
-#   characters        "required" (every character of the standard's sets),
-#                     "range:XXXX-YYYY", "list:..."
+#   characters        "required" (every character of the engine's sets),
+#                     "uses:SET", "except:SET,...", "forms:SET",
+#                     "range:XXXX-YYYY", "list:..." (see convert.py)
 #   scripts           the scripts that draw them
 
 [script latin]
@@ -83,9 +84,46 @@ reference = ⵏ
 reference_height = 14
 baseline = 16
 
+[script thai]
+# The Philips SAA5246AP/S convention (decision E.80): upper marks at the
+# bottom of their cell, lower vowels at the top, for rows of their own.
+sources = thai
+weight = 800
+hinting = auto
+reference = กคนมบ
+reference_height = 10
+reference_width = 10
+baseline = 15
+mark_row = yes
+
+[script lao]
+sources = lao
+weight = 800
+hinting = auto
+reference = ກຄນມບ
+reference_height = 10
+reference_width = 10
+baseline = 15
+mark_row = yes
+
 [font noto-teletext]
 family = Noto Teletext
 copyright = Copyright 2022 The Noto Project Authors
 # Required, and Vietnamese precomposed letters (REQ-CHR-014).
-characters = required range:1EA0-1EF9
+characters = required range:1EA0-1EF9 except:G0_Thai,G0_Lao,G2_Thai,G2_Lao,G0_Persian,G0_Urdu,G0_Pashto,G0_Sindhi,G0_Sorani,G0_Uyghur,G0_Balochi,G0_ArabicPlain
 scripts = latin hebrew arabic georgian armenian tifinagh
+
+[font noto-teletext-arabic]
+# The Arabic-script sets of group 1001, joined by the receiver: their
+# letters, digits and punctuation, and every joined form (REQ-CHR-015).
+family = Noto Teletext Arabic
+copyright = Copyright 2022 The Noto Project Authors
+characters = uses:G0_Persian uses:G0_Urdu uses:G0_Pashto uses:G0_Sindhi uses:G0_Sorani uses:G0_Uyghur uses:G0_Balochi uses:G0_ArabicPlain forms:G0_Persian forms:G0_Urdu forms:G0_Pashto forms:G0_Sindhi forms:G0_Sorani forms:G0_Uyghur forms:G0_Balochi forms:G0_ArabicPlain
+scripts = latin arabic
+
+[font noto-teletext-thai]
+# Thai and Lao (REQ-CHR-016), with Latin English for the pages' second set.
+family = Noto Teletext Thai
+copyright = Copyright 2022 The Noto Project Authors
+characters = uses:G0_Thai uses:G0_Lao uses:G2_Thai uses:G2_Lao uses:G0_Latin_English
+scripts = latin thai lao

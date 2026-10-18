@@ -54,6 +54,112 @@ pub enum G0Set {
     Armenian,
     /// Tifinagh (the Moroccan alphabet), laid out as Table 46.
     Tifinagh,
+    /// Persian and Dari in plain letters, joined by the receiver
+    /// (decision E.79).
+    Persian,
+    /// Urdu in plain letters, joined by the receiver.
+    Urdu,
+    /// Pashto in plain letters, joined by the receiver.
+    Pashto,
+    /// Sindhi in plain letters, joined by the receiver.
+    Sindhi,
+    /// Sorani Kurdish in plain letters, joined by the receiver.
+    Sorani,
+    /// Uyghur in plain letters, joined by the receiver.
+    Uyghur,
+    /// Balochi in plain letters, joined by the receiver.
+    Balochi,
+    /// Arabic in plain letters, joined by the receiver.
+    ArabicPlain,
+    /// Thai: the Philips SAA5246AP/S Thai page (decision E.80).
+    Thai,
+    /// Lao: the 1990 World System Teletext specification's Figure 33.
+    Lao,
+}
+
+impl G0Set {
+    /// True for the sets of group 1001, whose letters the receiver joins
+    /// (REQ-CHR-015).
+    #[must_use]
+    pub const fn is_joined(self) -> bool {
+        // Thai and Lao marks are ordinary characters in their own cells;
+        // only group 1001 is joined.
+        matches!(
+            self,
+            Self::Persian
+                | Self::Urdu
+                | Self::Pashto
+                | Self::Sindhi
+                | Self::Sorani
+                | Self::Uyghur
+                | Self::Balochi
+                | Self::ArabicPlain
+        )
+    }
+}
+
+/// How a letter joins its neighbours (Unicode `ArabicShaping.txt`).
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub enum JoiningType {
+    /// Joins on both sides.
+    Dual,
+    /// Joins only the letter before it.
+    Right,
+    /// Joins neither.
+    None,
+    /// The tatweel: joins both sides and causes its neighbours to join.
+    Causing,
+}
+
+impl JoiningType {
+    /// Can join the letter before it in reading order.
+    #[must_use]
+    pub const fn joins_previous(self) -> bool {
+        matches!(self, Self::Dual | Self::Right | Self::Causing)
+    }
+
+    /// Can join the letter after it in reading order.
+    #[must_use]
+    pub const fn joins_next(self) -> bool {
+        matches!(self, Self::Dual | Self::Causing)
+    }
+}
+
+/// A joined letter's form (REQ-CHR-015).
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, Default)]
+pub enum JoinForm {
+    /// Joining neither neighbour; every character that is not a joined
+    /// letter has this form.
+    #[default]
+    Isolated,
+    /// Joining only the letter before it.
+    Final,
+    /// Joining only the letter after it.
+    Initial,
+    /// Joining both.
+    Medial,
+}
+
+/// The joining type of a letter of the group 1001 sets; `None` for any
+/// other character.
+#[must_use]
+pub fn joining_type(letter: char) -> Option<JoiningType> {
+    tables::joining_type(letter)
+}
+
+/// The code point drawn for a letter in a form (REQ-CHR-015): its Arabic
+/// Presentation Form, a private-use code point where Unicode has none, or
+/// the letter itself when isolated or not a joining letter.
+#[must_use]
+pub fn joined_form(letter: char, form: JoinForm) -> char {
+    tables::joined_form(letter, form).unwrap_or(letter)
+}
+
+/// Every joined form the core draws: (letter, form, code point), sorted by
+/// letter and form.
+#[must_use]
+pub fn joined_forms() -> &'static [(char, JoinForm, char)] {
+    tables::JOINED_FORMS.as_slice()
 }
 
 /// A G2 supplementary character set (EN 300 706 clause 15.6).
@@ -72,6 +178,13 @@ pub enum G2Set {
     /// Armenian G2: Latin G2 with և and the rarer Armenian punctuation in
     /// its unused positions (decision E.78).
     Armenian,
+    /// Thai G2: Latin G2 with columns 5 and 6 holding the SAA5246AP/S's
+    /// columns 8 and 9, the rarer marks and the vowel-and-tone pairs
+    /// (decision E.80).
+    Thai,
+    /// Lao G2: Latin G2 with columns 5 and 6 holding the vowel-and-tone
+    /// pairs and the rarer marks.
+    Lao,
 }
 
 /// A Latin national option sub-set (EN 300 706 Table 36).
@@ -182,13 +295,16 @@ pub struct CharRef {
     pub code: u8,
     /// The diacritical mark number (REQ-CHR-008), 0 for none.
     pub diacritic: u8,
+    /// The joined form of a letter of a group 1001 set, given after the
+    /// page is composed (REQ-CHR-015); isolated for every other character.
+    pub form: JoinForm,
 }
 
 impl CharRef {
     /// A plain character with no mark.
     #[must_use]
     pub const fn new(set: CharSet, code: u8) -> Self {
-        Self { set, code: code & CODE_MASK_7BIT, diacritic: DIACRITIC_NONE }
+        Self { set, code: code & CODE_MASK_7BIT, diacritic: DIACRITIC_NONE, form: JoinForm::Isolated }
     }
 }
 
@@ -288,9 +404,29 @@ impl CharRef {
 #[must_use]
 pub fn to_unicode(character: CharRef) -> Unicode {
     let base = tables::base_unicode(character.set, character.code);
+    // REQ-CHR-016: a Thai or Lao G2 glyph of two marks gives both.
+    if let Some((first, second)) = tables::mark_sequence(base) {
+        return Unicode { base: first, combining: Some(second) };
+    }
     let combining =
         if character.diacritic == DIACRITIC_NONE { None } else { tables::diacritic_combining(character.diacritic) };
     Unicode { base, combining }
+}
+
+/// The code point a font draws a character by: the table's character, in
+/// its joined form for a joined letter (REQ-CHR-015), or the private-use
+/// key of a two-mark glyph (REQ-CHR-016). Without a diacritical mark it is
+/// what glyph lookup uses; [`to_unicode`] is for text.
+#[must_use]
+pub fn glyph_key(character: CharRef) -> char {
+    joined_form(tables::base_unicode(character.set, character.code), character.form)
+}
+
+/// Every two-mark glyph of the Thai and Lao G2 sets: private-use key, first
+/// mark, second mark.
+#[must_use]
+pub fn mark_sequences() -> &'static [(char, char, char)] {
+    tables::mark_sequences()
 }
 
 /// Converts a block mosaic pattern to Unicode (REQ-CHR-005). `pattern` is
@@ -453,6 +589,17 @@ mod tests {
                 (value(0b0111, 5), (S::KyrgyzMongolian, Cyrillic)),
                 (value(0b0111, 6), (S::Tatar, Cyrillic)),
                 (value(0b0111, 7), (S::Tajik, Cyrillic)),
+                (value(0b1001, 0), (S::Persian, Arabic)),
+                (value(0b1001, 1), (S::Urdu, Arabic)),
+                (value(0b1001, 2), (S::Pashto, Arabic)),
+                (value(0b1001, 3), (S::Sindhi, Arabic)),
+                (value(0b1001, 4), (S::Sorani, Arabic)),
+                (value(0b1001, 5), (S::Uyghur, Arabic)),
+                (value(0b1001, 6), (S::Balochi, Arabic)),
+                (value(0b1001, 7), (S::ArabicPlain, Arabic)),
+                (value(0b1100, 0), (S::Latin, G2Set::Thai)),
+                (value(0b1100, 2), (S::Thai, G2Set::Thai)),
+                (value(0b1100, 4), (S::Lao, G2Set::Lao)),
                 (value(0b1011, 0), (S::Georgian, Latin)),
                 (value(0b1011, 1), (S::Armenian, Armenian)),
                 (value(0b1011, 2), (S::Tifinagh, Latin)),

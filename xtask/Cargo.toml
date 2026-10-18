@@ -8,7 +8,7 @@ publish.workspace = true
 
 [dependencies]
 # The list of required characters reads the character set tables.
-neoteletext-core = { workspace = true, features = ["render"] }
+neoteletext-core = { workspace = true, features = ["render", "extended-sets"] }
 # The Bedstead export is checked by SHA-256 (REQ-FNT-001).
 neoteletext-web = { workspace = true }
 # The authored test stream of REQ-TST-024 is built by the formats crate.

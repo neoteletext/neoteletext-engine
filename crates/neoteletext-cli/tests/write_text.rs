@@ -75,3 +75,12 @@ fn a_missing_character_is_named() {
         neottx(&["write-text", "--set", "klingon", "--page", "100", input.to_str().unwrap(), output.to_str().unwrap()]);
     assert!(String::from_utf8_lossy(&run.stderr).contains("unknown set"));
 }
+
+/// Arabic script reads back in visual order, as Table 44's rows do, right
+/// aligned, with the plain letters (REQ-CHR-015: text output gives the
+/// letter, not its form).
+#[test]
+fn persian_reads_back_in_visual_order() {
+    let rows = round_trip("persian", "persian", "سلام دنیا", "1");
+    assert_eq!(rows[0].trim_start(), "ایند م\u{FEFB}س");
+}

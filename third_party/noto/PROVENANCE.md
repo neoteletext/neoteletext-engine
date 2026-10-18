@@ -29,5 +29,7 @@ The converter writes every font of `settings.txt`, then `fonts.txt`, then the ch
 ## Checksums
 
 <!-- checksums: written by convert.py -->
-- `noto-teletext.bdf`: `3e4abeabcf8cf13fbc584eae8aa1dbfd995d2f3f06ca987c8e99c741bef4c2ab`
+- `noto-teletext.bdf`: `82fe9e2bb463bfc301ba4509c21542fecef7f5a8a27d0c87de0f5a529a7a4a4a`
+- `noto-teletext-arabic.bdf`: `57e8b805cbdfe9308dba9220925de1da383591ba266222de6f2e01bdf91d8de2`
+- `noto-teletext-thai.bdf`: `168f95b7ca735fd3a17bb5625a77ad4bf998838c9c6e6a71e378a925a030d8cb`
 <!-- end checksums -->

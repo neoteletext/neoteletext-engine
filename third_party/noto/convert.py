@@ -203,11 +203,11 @@ def joining(character):
 def mark_position(character):
     """'above', 'below' or None: where a non-spacing mark sits (Thai and
     Lao), by its Unicode category and name."""
-    if unicodedata.category(character) != "Mn" and not all(unicodedata.category(c) == "Mn" for c in character):
+    if not all(unicodedata.category(c) == "Mn" for c in character):
         return None
     names = " ".join(unicodedata.name(c, "") for c in character)
     if "SARA U" in names or "SARA UU" in names or "PHINTHU" in names or "VOWEL SIGN U" in names \
-            or "VOWEL SIGN UU" in names or "SIGN PALI VIRAMA" in names:
+            or "VOWEL SIGN UU" in names or "SIGN PALI VIRAMA" in names or "SEMIVOWEL SIGN LO" in names:
         return "below"
     return "above"
 
@@ -238,14 +238,15 @@ def read_forms(path):
         return found
     for line in path.read_text(encoding="utf-8").splitlines():
         if line.startswith("U+"):
-            point, letter, form = line.split()[:3]
-            found[chr(int(point[2:], 16))] = (chr(int(letter[2:], 16)), form)
+            point, letters, form = line.split()[:3]
+            text = "".join(chr(int(part.strip("+"), 16)) for part in letters.split("U+") if part.strip("+"))
+            found[chr(int(point[2:], 16))] = (text, form)
     return found
 
 
 # The shaping context of each joined form: zero-width joiners on the sides
 # that join, in logical order (the next letter follows).
-FORM_TEXT = {"initial": "{}" + ZWJ, "medial": ZWJ + "{}" + ZWJ, "final": ZWJ + "{}"}
+FORM_TEXT = {"initial": "{}" + ZWJ, "medial": ZWJ + "{}" + ZWJ, "final": ZWJ + "{}", "sequence": "{}"}
 # (joins on the right, joins on the left) of each form, right to left.
 FORM_JOINS = {"initial": (False, True), "medial": (True, True), "final": (True, False)}
 
@@ -256,23 +257,16 @@ def draw_glyph(script, character, forms=None):
     if ord(character[0]) in SPACES:
         return np.zeros((CELL_HEIGHT, CELL_WIDTH), dtype=bool)
     form = (forms or {}).get(character)
-    face = script.face_for(form[0] if form else character[0])
+    face = script.face_for(form[0][0] if form else character[0])
     if face is None:
         return None
-    position = mark_position(character) if script.mark_row else None
     text = FORM_TEXT[form[1]].format(form[0]) if form else character
+    position = mark_position(text) if script.mark_row else None
     if position:
-        # A mark is drawn over or under a base letter, then moved a row up
-        # or down, so that it sits on the letter in the row below or above.
-        text = "ก" + character if script.name == "thai" else "ກ" + character
+        return mark_glyph(script, face, text, position)
     lines, across = script.lines, script.across
     for _ in range(80):
         canvas = face.draw(text, across, lines, script.rtl)
-        if position:
-            base = face.draw(text[0], across, lines, script.rtl)
-            canvas &= ~base
-            shift = CELL_HEIGHT if position == "above" else -CELL_HEIGHT
-            canvas = np.roll(canvas, shift, axis=0)
         cell = place(canvas, script.baseline)
         if cell is not None:
             break
@@ -285,22 +279,47 @@ def draw_glyph(script, character, forms=None):
     else:
         return None
     if script.join:
-        right, left = FORM_JOINS[form[1]] if form else joining(character)
+        right, left = FORM_JOINS.get(form[1], (False, False)) if form else joining(character)
         if right or left:
             cell = joined(cell, script, face, right, left)
-    if position:
-        cell = edge_aligned(cell, position)
     return cell
 
 
-def edge_aligned(cell, position):
-    """A mark moved to the bottom (above a letter) or top (below a letter)
-    of its cell, as the Philips SAA5246AP/S draws them (decision E.80)."""
-    rows = np.nonzero(cell.any(axis=1))[0]
-    if rows.size == 0:
-        return cell
-    shift = CELL_HEIGHT - 1 - rows.max() if position == "above" else -rows.min()
-    return np.roll(cell, shift, axis=0)
+def mark_glyph(script, face, marks, position):
+    """A Thai or Lao mark, or two marks, as the Philips SAA5246AP/S draws
+    them (decision E.80): shaped on a consonant, the consonant taken away,
+    and the marks moved to the bottom of the cell (above a letter, for the
+    letter in the row below) or the top (below a letter, for the row
+    above), keeping their place across the consonant, which sits in the
+    middle of its own cell."""
+    consonant = "ก" if script.name == "thai" else "ກ"
+    lines, across = script.lines, script.across
+    for _ in range(80):
+        canvas = face.draw(consonant + marks, across, lines, script.rtl)
+        drawn = face.draw(consonant, across, lines, script.rtl)
+        # The consonant alone may have a different advance: compare the
+        # canvases over their common part.
+        base = np.zeros_like(canvas)
+        rows, columns = min(canvas.shape[0], drawn.shape[0]), min(canvas.shape[1], drawn.shape[1])
+        base[:rows, :columns] = drawn[:rows, :columns]
+        ink, letter = extent(canvas & ~base), extent(base)
+        if ink is None or letter is None:
+            return np.zeros((CELL_HEIGHT, CELL_WIDTH), dtype=bool)
+        top, bottom, left, right = ink
+        height, width = bottom - top, right - left
+        if height <= CELL_HEIGHT and width <= CELL_WIDTH:
+            break
+        across *= 0.94
+        lines *= 0.96
+    else:
+        return None
+    letter_width = letter[3] - letter[2]
+    x = (CELL_WIDTH - letter_width) // 2 + (left - letter[2])
+    x = min(max(x, 0), CELL_WIDTH - width)
+    y = CELL_HEIGHT - height if position == "above" else 0
+    cell = np.zeros((CELL_HEIGHT, CELL_WIDTH), dtype=bool)
+    cell[y:y + height, x:x + width] = (canvas & ~base)[top:bottom, left:right]
+    return cell
 
 
 def joined(cell, script, face, right, left):
@@ -398,7 +417,8 @@ def script_of(character, scripts, forms=None):
         character = forms[character][0]
     name = unicodedata.name(character[0], "")
     for script in scripts:
-        if script.name != "latin" and name.startswith(script.name.upper().replace("_", " ")):
+        script_name = script.name.upper().replace("_", " ")
+        if script.name != "latin" and (name.startswith(script_name) or name.startswith("EXTENDED " + script_name)):
             return script
     return next(script for script in scripts if script.name == "latin")
 
