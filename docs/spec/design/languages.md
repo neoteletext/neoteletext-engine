@@ -33,7 +33,7 @@ Conformance comes first, as far as it can go. Every language uses the standard's
 |---|---|
 | New G0 and G2 sets, and their designation codes | Unavoidable: a language the standard has no set for needs new codes. They use only values the standard reserves (Tables 32 to 34), in the same structure as every existing set: a group, an option, a G0 set and its paired G2 set. Arabic and Hebrew entered Table 32 the same way, from the earlier register of the 1990 and 1992 specifications. The allocation is neoteletext's own, so other decoders show these pages wrongly. |
 | National option sub-sets for African Latin | The standard's own model (Table 36). Vietnamese, Yoruba and Igbo use the same layout as whole sets (section 8.1). |
-| Whole G0 sets for Cyrillic, Georgian, Armenian, Tifinagh and Inuktitut | The standard's own model, as Cyrillic, Greek and Hebrew are. |
+| Whole G0 sets for Cyrillic, Georgian, Armenian and Tifinagh | The standard's own model, as Cyrillic, Greek and Hebrew are. |
 | Vietnamese tone marks, and Yoruba and Igbo tones | The standard's Level 1.5 method: a G0 letter with a diacritical mark placed by X/26 (clause 15.1). A Level 1 decoder shows the letters without their tones, as it shows Level 1.5 Czech without its accents. |
 | 12 × 20 glyphs and Noto fonts | Within the standard: "the precise appearance of the characters ... is a decoder option" (clause 15.6). |
 | Arabic script joined by the receiver | One code is one letter in one cell, and rows are in visual order, as in Table 44. Drawing a letter in its joined form is its appearance, which clause 15.6 leaves to the decoder. It differs from Table 44, where each form has its own code. |
@@ -100,7 +100,7 @@ What this design takes from them:
 | Latin extensions | Hausa, Fula, Akan (Twi, Fanti), Ewe, Fon, Bambara, Dyula, Mandinka, Lingala, Krio, Mende, Dinka, Nuer, Kanuri, Mossi, Kabyle, Tamazight (Latin), Azerbaijani, Yoruba and Igbo with tones, Vietnamese | 8 national options, 1 G2 set | None; tones by X/26 |
 | Cyrillic extensions | Ukrainian, Belarusian, Macedonian, Serbian, Kyrgyz, Mongolian, Tatar, Tajik | 7 | None |
 | Arabic script | Persian, Dari, Urdu, Pashto, Sindhi, Sorani Kurdish, Uyghur, Balochi | 7 | Joining |
-| Other alphabets | Georgian, Armenian, Tifinagh (Berber), Inuktitut | 4 G0 sets, 1 G2 set | None |
+| Other alphabets | Georgian, Armenian, Tifinagh (Berber) | 3 G0 sets, 1 G2 set | None |
 | Thai and Lao | Thai, Lao | 2 G0 sets, 2 G2 sets | None; marks on rows of their own, rarer marks by X/26 |
 
 The languages already supported need only better glyphs, which section 4 gives them.
@@ -221,7 +221,7 @@ The settings below are what looked best in the prototype's comparisons. All glyp
 | Thai, Lao | Noto Sans Thai (loopless), Noto Sans Lao | 800 | automatic | Reference consonants (กคนมบ) 10 lines tall and 10 pixels wide, baseline on line 15 |
 | Arabic script | Noto Naskh Arabic | 500 | the font's own | Fitted to the cell; joining strokes extended to the cell edges |
 | Hebrew | Noto Sans Hebrew | 600 | automatic | As Latin |
-| Georgian, Armenian, Tifinagh, Inuktitut | the Noto Sans font for each script | 600 | to be compared | As Latin; not yet tried |
+| Georgian, Armenian, Tifinagh | the Noto Sans font for each script | 600 | to be compared | As Latin; not yet tried |
 
 ### What was learnt
 
@@ -496,7 +496,7 @@ Urdu is drawn in Naskh style. Nastaliq, the style Urdu readers expect, slopes ac
 | 000 | Georgian | As Hebrew G0 (Table 46): ASCII punctuation, digits and Latin capitals in columns 2 to 5; the 33 Mkhedruli letters in columns 6 and 7 and two of column 5's national positions. Georgian has no case in everyday use. |
 | 001 | Armenian | 38 capitals and 38 small letters, digits, and the punctuation ։ ՝; the ligature և and the rarer punctuation ՛ ՞ ՜ in an Armenian G2 set through X/26; Latin through the second G0 set. Tight. |
 | 010 | Tifinagh | The 33 letters of the Moroccan (IRCAM) alphabet and ⵯ, laid out as Georgian. |
-| 011 | Inuktitut | The syllabics in use (about 60 with finals), with digits and punctuation. |
+| 011 | Reserved | Inuktitut syllabics was taken out of scope (decision E.78 item 7, `requirements/out-of-scope.md` item 16): the syllabary does not fit 96 codes. |
 
 ### 8.5 Group 1100, Thai and Lao
 
@@ -583,7 +583,7 @@ All on 18 October 2026.
 | Phase | Work | Languages gained |
 |---|---|---|
 | 1 | 12 × 20 loaded glyphs; Noto fonts for the sets that exist today | Better glyphs for the 430 already supported, Arabic and Hebrew above all |
-| 2 | Groups 0101, 0111 and 1011: tables, the Vietnamese and Armenian G2 sets and fonts | African Latin, Yoruba and Igbo with tones, Vietnamese, Cyrillic extensions, Georgian, Armenian, Tifinagh, Inuktitut |
+| 2 | Groups 0101, 0111 and 1011: tables, the Vietnamese and Armenian G2 sets and fonts | African Latin, Yoruba and Igbo with tones, Vietnamese, Cyrillic extensions, Georgian, Armenian, Tifinagh |
 | 3 | Group 1001 and the joining rule; the page writer's reordering | Persian, Dari, Urdu, Pashto, Sindhi, Sorani, Uyghur, Balochi |
 | 4 | Group 1100: the Thai and Lao tables, and the page writer's two-row layout | Thai, Lao |
 
@@ -594,7 +594,7 @@ Each phase is one feature, worked as the project works: rapid iteration until th
 ## 14. Not yet checked
 
 - **No table has been laid out position by position.** The capacity figures in section 8 are counts of letters and punctuation. Armenian is the tightest.
-- **Georgian, Armenian, Tifinagh, Inuktitut and Lao** have not been rendered.
+- **Georgian, Armenian, Tifinagh and Lao** have not been rendered.
 - **The Thai items of section 7.8:** seven glyphs to confirm, what ARMTEXT transmitted, and whether lower vowels shared rows.
 - **The WST90 tables** (Thai, Lao, Burmese, Devanagari and the other Indic sets) have been located but not transcribed; Lao's is needed for phase 4.
 - **The exact positions of Ґ ґ** in the Ukrainian set, and the punctuation each Cyrillic set gives up.

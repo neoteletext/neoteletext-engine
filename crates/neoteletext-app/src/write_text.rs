@@ -35,9 +35,27 @@ use neoteletext_core::types::Designations;
 use neoteletext_core::types::SubCode;
 use neoteletext_formats::author::{self, AuthorError, DisplayPage, Stream, neutral_fields};
 
-/// The sets of REQ-CHR-012 the writer names, with their Table 32 groups
-/// and options.
-pub const SETS: [(&str, u8, u8); 28] = [
+/// The sets the writer names, with their Table 32 groups and options: the
+/// standard's, then neoteletext's own (REQ-CHR-012).
+pub const SETS: [(&str, u8, u8); 46] = [
+    ("english", 0b0000, 0b000),
+    ("german", 0b0000, 0b001),
+    ("swedish-finnish-hungarian", 0b0000, 0b010),
+    ("italian", 0b0000, 0b011),
+    ("french", 0b0000, 0b100),
+    ("portuguese-spanish", 0b0000, 0b101),
+    ("czech-slovak", 0b0000, 0b110),
+    ("polish", 0b0001, 0b000),
+    ("turkish", 0b0010, 0b110),
+    ("serbian-croatian-slovenian", 0b0011, 0b101),
+    ("romanian", 0b0011, 0b111),
+    ("estonian", 0b0100, 0b010),
+    ("lettish-lithuanian", 0b0100, 0b011),
+    ("cyrillic-serbian-croatian", 0b0100, 0b000),
+    ("russian-bulgarian", 0b0100, 0b100),
+    ("cyrillic-ukrainian", 0b0100, 0b101),
+    ("greek", 0b0110, 0b111),
+    ("hebrew", 0b1010, 0b101),
     ("hausa-fula", 0b0101, 0b000),
     ("west-african", 0b0101, 0b001),
     ("ewe", 0b0101, 0b010),
@@ -211,6 +229,14 @@ impl Sets {
         })
     }
 
+    /// The mark number of a combining mark in the page's G2 set.
+    fn mark_number(&self, combining: char) -> Option<u8> {
+        (1..=LAST_MARK).find(|&mark| {
+            let placed = CharRef { diacritic: page_mark(self.g2, mark), ..CharRef::new(self.base, SPACE) };
+            to_unicode(placed).combining == Some(combining)
+        })
+    }
+
     fn g2(&self, character: char) -> Option<Cell> {
         let code = Self::code_in(CharSet::G2(self.g2), character)?;
         let stand_in = stand_in(character).and_then(|letter| Self::code_in(self.default, letter)).unwrap_or(SPACE);
@@ -249,6 +275,16 @@ fn switch(cells: &mut Vec<Cell>) {
 fn encode(sets: &Sets, characters: &[char], mut in_second: bool, line: usize) -> Result<(Vec<Cell>, bool), WriteError> {
     let mut cells = Vec::with_capacity(characters.len());
     for &character in characters {
+        // A combining mark after a letter of the default set: the letter in
+        // the row and the mark by X/26, one mark a cell (REQ-CHR-014).
+        if let (false, Some(Cell::Code(code)), Some(mark)) =
+            (in_second, cells.last().copied(), sets.mark_number(character))
+            && to_unicode(CharRef::new(sets.base, code)).base == to_unicode(CharRef::new(sets.default, code)).base
+            && let Some(last) = cells.last_mut()
+        {
+            *last = Cell::Marked { code, mark };
+            continue;
+        }
         let current = if in_second { sets.second.unwrap_or(sets.default) } else { sets.default };
         if let Some(code) = Sets::code_in(current, character) {
             cells.push(Cell::Code(code));
@@ -537,7 +573,7 @@ fn page_sets(name: &str) -> Result<(u8, Sets), WriteError> {
 pub fn write_text(name: &str, mpp: u16, text: &str) -> Result<Written, WriteError> {
     let (value, sets) = page_sets(name)?;
     let mut rows = Vec::new();
-    let right_to_left = matches!(sets.default, CharSet::G0(G0 { set, .. }) if set.is_joined());
+    let right_to_left = matches!(sets.default, CharSet::G0(G0 { set, .. }) if set.is_joined() || set == G0Set::Hebrew);
     let marked = matches!(sets.default, CharSet::G0(G0 { set: G0Set::Thai | G0Set::Lao, .. }));
     if marked {
         let mut lines = Vec::new();
@@ -573,7 +609,11 @@ pub fn write_text(name: &str, mpp: u16, text: &str) -> Result<Written, WriteErro
     // English as the second set that ESC reaches (REQ-CHR-012).
     page.national(value & NATIONAL_INDEX_MASK);
     let mut fields = neutral_fields(value);
-    let second = if sets.second.is_some() { 0 } else { neoteletext_core::consts::NO_SECOND_G0 };
+    let second = if sets.second.is_some() {
+        neoteletext_core::consts::DESIGNATION_LATIN_ENGLISH
+    } else {
+        neoteletext_core::consts::NO_SECOND_G0
+    };
     fields.designations = Some(Designations { default: value, second });
     page.page_data(fields);
     let mut triplets = 0usize;
@@ -652,7 +692,8 @@ mod tests {
         for (name, group, option) in SETS {
             let (value, sets) = page_sets(name).unwrap();
             assert_eq!(value, (group << DESIGNATION_GROUP_SHIFT) | option);
-            assert!(sets.second.is_some(), "{name} has English second");
+            let own = default_second_g0(value).is_some();
+            assert_eq!(sets.second.is_some(), own, "{name}: only neoteletext's own sets imply English second");
         }
         assert_eq!(page_sets("klingon").err(), Some(WriteError::UnknownSet("klingon".into())));
     }
@@ -702,12 +743,17 @@ mod tests {
         assert_eq!(cells("ukrainian", "BBC").len(), "BBC".len() + 1, "without a space the ESC takes a cell");
     }
 
-    /// A letter with two marks, such as Yoruba ọ̀, needs two marks in one
-    /// cell, which X/26 cannot place: the second is refused.
+    /// A combining mark after a letter is written as that letter with the
+    /// mark by X/26: Yoruba ọ̀ is ọ in the row and a grave. A letter with
+    /// two marks needs two in one cell, which X/26 cannot place: the
+    /// second is refused.
     #[test]
-    fn a_second_mark_is_refused() {
-        let error = write_text("yoruba-igbo", 0x100, "ọ\u{0300}").unwrap_err();
-        assert_eq!(error, WriteError::Missing { character: '\u{0300}', line: 1 });
+    fn a_combining_mark_marks_the_letter_before_it() {
+        let written = cells("yoruba-igbo", "ọ\u{0300}");
+        let [Cell::Marked { code, mark: 1 }] = written[..] else { panic!("{written:?}") };
+        assert_eq!(to_unicode(CharRef::new(page_sets("yoruba-igbo").unwrap().1.base, code)).base, 'ọ');
+        let error = write_text("yoruba-igbo", 0x100, "ọ\u{0300}\u{0301}").unwrap_err();
+        assert_eq!(error, WriteError::Missing { character: '\u{0301}', line: 1 });
     }
 
     #[test]

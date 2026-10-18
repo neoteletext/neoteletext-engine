@@ -1115,7 +1115,7 @@ Decided on 18 October 2026: the scope, the allocation of reserved values and Kaz
 4. **Every new set has Latin English as its second G0 set,** switched by ESC.
 5. **Characters beyond a set's 96 come from its G2 set through X/26,** never from a wider code.
 6. **Where hardware or a standard chose the codes, they are kept:** Thai from the Philips SAA5246AP/S, Lao from the 1990 World System Teletext specification, the Serbian and Macedonian sets from Table 38, and Ukrainian from Table 40.
-7. **Out of scope** (`requirements/out-of-scope.md` items 14 and 15): Chinese, Japanese, Korean, Ge'ez script, the Indic scripts, Burmese, Khmer and Sinhala. The codes China's CCST uses are kept free so that it can be added later.
+7. **Out of scope** (`requirements/out-of-scope.md` items 14 to 16): Chinese, Japanese, Korean, Ge'ez script, the Indic scripts, Burmese, Khmer and Sinhala. The codes China's CCST uses are kept free so that it can be added later. Inuktitut syllabics was taken out of scope by the owner on 18 October 2026 (item 16), and its value, group 1011 option 011, is reserved again.
 8. **Phase 2** (section F.0.1).
 
 *Reason:* These sets extend the receiver to about 55 languages without changing how a page is sent, and without leaving the standard's mechanisms.

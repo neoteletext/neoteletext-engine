@@ -201,12 +201,16 @@ U+F0027 U+06CD final
 U+F0028 U+06CE final
 U+F0029 U+06CE initial
 U+F002A U+06CE medial
+U+F002B U+06CF final
 U+FBE5 U+06D0 final
 U+FBE6 U+06D0 initial
 U+FBE7 U+06D0 medial
 U+FBAF U+06D2 final
 U+FBB1 U+06D3 final
-U+F002B U+06D5 final
+U+F002C U+06D5 final
+U+F002D U+08A9 final
+U+F002E U+08A9 initial
+U+F002F U+08A9 medial
 U+FEFC U+FEFB final
 U+F0100 U+0E31+U+0E48 sequence
 U+F0101 U+0E31+U+0E49 sequence

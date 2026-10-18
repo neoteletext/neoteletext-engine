@@ -33,8 +33,8 @@ use crate::consts::{
 };
 use crate::page::{FASTEXT_LINKS, LinkKey, PageFile, RawBody, RawPacket};
 
-use neoteletext_core::consts::NO_SECOND_G0;
 pub use neoteletext_core::consts::{DESIGNATION_GROUP_SHIFT, G2_RIGHT_GUILLEMET};
+use neoteletext_core::consts::{DESIGNATION_LATIN_ENGLISH, NO_SECOND_G0};
 /// The Level 1 character written where the guillemet goes, for receivers
 /// without X/26: ">" is the same in every Latin national option.
 pub const GUILLEMET_FALLBACK: u8 = b'>';
@@ -540,7 +540,9 @@ pub fn default_clut_2_and_3() -> ColourWords {
 ///   to 18, and reserved triplets 2 to 13 as 0;
 /// - a basic page with `RE`, or with a page coding other than 000, is sent
 ///   as Table 4 gives it: the default designation is the region above the
-///   page's national option index, with no second G0 set, and every other
+///   page's national option index; the second G0 set is Latin English for
+///   neoteletext's own designations, whose second set that is
+///   (REQ-CHR-012), and none for the standard's; every other
 ///   field at its default (no side panels, the CLUT 2 and 3 colours of
 ///   Table 30, screen and row colour 0, no substitution or re-mapping), so
 ///   that the packet changes nothing but the designation;
@@ -569,12 +571,23 @@ fn page_enhancement_packet(page: &PageFile) -> Option<Packet> {
     let region = page.region.unwrap_or(0) & NIBBLE_MASK;
     let default = (region << DESIGNATION_GROUP_SHIFT) | page.control().national_index();
     let fields = PresentationFields {
-        designations: Some(Designations { default, second: NO_SECOND_G0 }),
+        designations: Some(Designations { default, second: second_g0_value(default) }),
         side_panels: Some(SidePanelFields { left: false, right: false, status_flag: false, left_columns: 0 }),
         colour_words: Some(default_clut_2_and_3()),
         colours: Some(DefaultColourFields { screen: 0, row: 0, black_background_substitution: false, remapping: 0 }),
     };
     Some(encode::page_enhancement(magazine, DESIGNATION_PAGE_DATA, format, &fields))
+}
+
+/// The Table 33 value to send with a default designation: Latin English
+/// where the designation implies it (REQ-CHR-012), so that writing it
+/// explicitly keeps the page as it reads without the value.
+fn second_g0_value(default: u8) -> u8 {
+    if neoteletext_core::charset::default_second_g0(default).is_some() {
+        DESIGNATION_LATIN_ENGLISH
+    } else {
+        NO_SECOND_G0
+    }
 }
 
 /// The order in which a set of pages is sent (Annex B.7, REQ-INP-024):

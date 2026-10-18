@@ -170,7 +170,6 @@ The reserved Table 32 values of this table shall designate the sets of decision 
 | 1011 000 | Georgian | Latin |
 | 1011 001 | Armenian | Armenian |
 | 1011 010 | Tifinagh | Latin |
-| 1011 011 | Inuktitut syllabics | Latin |
 | 1100 000 | Latin, option English, with Thai as the second G0 set | Thai |
 | 1100 010 | Thai | Thai |
 | 1100 100 | Lao | Lao |

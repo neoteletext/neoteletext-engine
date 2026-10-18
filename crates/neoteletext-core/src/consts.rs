@@ -612,6 +612,9 @@ pub const MOT_DEFAULT_SECOND_SHIFT: u32 = 2;
 pub const DESIGNATION_GROUP_SHIFT: u32 = 3;
 /// Table 33 value meaning "no second G0 set required".
 pub const NO_SECOND_G0: u8 = 0x7F;
+/// Table 33 value of Latin G0 with the English option: group 0000,
+/// option 000, the second set of neoteletext's own sets (REQ-CHR-012).
+pub const DESIGNATION_LATIN_ENGLISH: u8 = 0x00;
 /// Shift of the page coding within triplet 1 of X/28/0 format 1: bits 5 to
 /// 7 (Table 3).
 pub const PAGE_CODING_SHIFT: u32 = 4;

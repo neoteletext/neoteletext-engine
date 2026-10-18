@@ -24,9 +24,9 @@ use crate::consts::{
     C10_INHIBIT_DISPLAY, CODE_MASK_7BIT, COLOUR_ATTRIBUTE_MASK, COLOUR_BLACK, COLOUR_GREEN, COLOUR_WHITE, COLUMNS,
     CONCEAL, CONTIGUOUS_MOSAICS, DESIGNATION_GROUP_SHIFT, DOUBLE_HEIGHT, END_BOX, ESC, FLASH, HEADER_DISPLAY_BYTES,
     HEADER_DISPLAY_COLUMN, HOLD_MOSAICS, MOSAIC_BIT5, MOSAIC_BLACK, MOSAIC_WHITE, NATIONAL_INDEX_MASK, NEW_BACKGROUND,
-    NORMAL_SIZE, PAGE_FUNCTION_BASIC, RELEASE_MOSAICS, ROWS, SEPARATED_MOSAICS, SIDE_PANEL_AREA_COLUMNS,
-    SIDE_PANEL_FIRST_COLUMN, SIDE_PANEL_FIRST_ROW, SIDE_PANEL_ROWS, SPACE, START_BOX, STATUS_ATTRIBUTE_COLUMN,
-    STATUS_COLUMNS, STEADY,
+    NORMAL_SIZE, PAGE_FUNCTION_BASIC, RECEIVER_COLUMNS, RELEASE_MOSAICS, ROWS, SEPARATED_MOSAICS,
+    SIDE_PANEL_AREA_COLUMNS, SIDE_PANEL_FIRST_COLUMN, SIDE_PANEL_FIRST_ROW, SIDE_PANEL_ROWS, SPACE, START_BOX,
+    STATUS_ATTRIBUTE_COLUMN, STATUS_COLUMNS, STEADY,
 };
 use crate::drcs::{DEFAULT_DRCS_PATTERNS, DrcsColourTables, DrcsPattern, DrcsPatterns};
 use crate::types::DrcsCharacter;
@@ -929,7 +929,10 @@ pub fn build_grid<const DRCS: usize, const PANEL_ROWS: usize>(
             // Decision E.15: rows 0, 23 and 24 are always normal height.
             double_allowed: (1..=22).contains(&row),
         };
-        let (cells, has_double) = decode_row(&codes, failed, &context);
+        let (mut cells, has_double) = decode_row(&codes, failed, &context);
+        if row == 0 {
+            draw_receiver_columns_in_receiver_set(&mut cells);
+        }
         let visible = if row == 0 { true } else { !inhibit };
         if let Some(target) = out.cells.get_mut(row) {
             *target = if visible { cells } else { [Cell::BLANK; COLUMNS] };
@@ -944,6 +947,23 @@ pub fn build_grid<const DRCS: usize, const PANEL_ROWS: usize>(
             row = row.saturating_add(2);
         } else {
             row = row.saturating_add(1);
+        }
+    }
+}
+
+/// The set the receiver writes its own text in: Latin with the English
+/// option, whose letters and digits are ASCII's.
+const RECEIVER_SET: CharSet =
+    CharSet::G0(G0 { set: charset::G0Set::Latin, national: Some(charset::NationalOption::English) });
+
+/// Row 0 columns 0 to 7 are the receiver's (REQ-SEC-005, decision E.10):
+/// its status text is drawn in its own set, never in the set the page
+/// designates, so that a Cyrillic, Arabic-script or Thai page cannot turn
+/// "P100" into other letters, join it or draw it from a font without it.
+fn draw_receiver_columns_in_receiver_set(cells: &mut [Cell; COLUMNS]) {
+    for cell in cells.iter_mut().take(RECEIVER_COLUMNS) {
+        if let Glyph::Char(character) = &mut cell.glyph {
+            *character = CharRef::new(RECEIVER_SET, character.code);
         }
     }
 }
