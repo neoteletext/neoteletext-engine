@@ -27,6 +27,32 @@ Work deferred while behaviour is being shaped (the owner's instruction of 13 Oct
 - `docs/t42-browser-open-questions.md` concerns the browser and belongs in `prototypes/browser/docs/`;
 - `docs/teletext-specification-audit.md` (untracked, not mine) is unplaced.
 
+## Decisions made on the owner's instruction (18 October 2026)
+
+The owner asked the designer to decide the open questions, except that the image converter gets no `--drcs` option. Each is to be recorded in `docs/spec/decisions.md` at integration.
+
+1. **The new character sets go to integration** as they now behave.
+2. **Tatar keeps Щ at 2/7 and щ at 3/E.**
+3. **REQ-CHR-013 stays as written:** one data file per set, a generator for the Rust tables, and a gate check that each language's CLDR letters are in its set, with the CLDR data pinned by checksum. Work owed.
+4. **The TTI writer sends Latin English as the second set** for neoteletext's own designations from an `RE` line (done: `second_g0_value` in `neoteletext-formats/src/encode.rs`, `DESIGNATION_LATIN_ENGLISH` in the core's constants, also used by `write-text`). Test owed: a page written with `RE` in a new set, read back, keeps ESC to English.
+5. **The writer's Level 1 stand-ins** (Đ as D, Ŋ as N and eight more) stay; record them in the design section 9.
+6. **A loaded font draws its own mark over its own letter** where no precomposed glyph exists (amends decision E.26), so Yoruba ẹ́ matches its neighbours. Work owed.
+7. **Text read back from Thai and Lao pages** gets a pass that joins each mark row to the letter row below it. Work owed.
+8. **Persian's zero-width non-joiner stays a space:** a private "no join" code would leave the standard's mechanisms (decision E.78 item 2).
+9. **`write-text` does not offer English with Thai as the second set;** the receiver decodes such pages.
+10. **The non-spacing attributes stay off by default;** `neottx` gets no separate classic build; `forms` stays out of the classic profile.
+11. **`neottx --aspect` stays off by default:** image output keeps the square pixels of the cell raster.
+12. **The browser is removed from this repository** (owner): its requirements withdrawn and its code and prototype deleted; it is maintained in `~/devel/neoteletext-browser`.
+13. **The private-use forms are allocated append-only** from now on, so that adding a letter never renumbers a form; `scripts/arabic-sets.py` to keep a list of allocated forms.
+14. **Font collection** (`~/devel/teletext-reference/teletext-fonts/`, outside this repository):
+    - the ST92195 10 × 10 font (Figure 79) and the TI Instant Text 8 × 10 GEN0 font become fonts by padding each glyph, centred, to 12 × 10: every hardware pixel kept, none invented or scaled; the letters sit wider apart than on the real chips, and each font's notes say so;
+    - NationalChip: the ROM's low line is blank; the base fonts keep it blank as the hardware held it, and `nationalchip-gx3113c-completed` keeps the constructed full-width low line;
+    - the hand-drawn characters in `catalog/patches/`, Bedstead complete's ™ among them, are accepted as drawn; they have not had the owner's review.
+15. **The image converter at Level 3.5 keeps CLUT 0 entries 0 and 7 black and white**, so row 0's header stays white on black; 29 colours are fitted (example 04: error 800 against 795).
+16. **Not decided: issues #187, #188, #189 and #201.** The GitHub account active on this machine (`starqueue`) cannot see crowdwave/neoteletext, so they could not be read. Log in with an account that has access (`gh auth login`).
+
+**Found:** the authored Level 2.5 goldens (`golden_level25`) depend on the core's `nonspacing-attributes` feature: `cargo test -p neoteletext-formats --all-features` alone leaves it off and fails 320 of 494 rasters, while the workspace run with all features passes. Make the test say which features it needs, or skip itself without them.
+
 ## Single-byte languages (18 October 2026)
 
 **Phase 1 done (18 October 2026):**
@@ -57,8 +83,8 @@ Phase 1 owes:
 
 Phase 2 owes:
 - **REQ-CHR-013 says each table is written from a reviewed data file checked against CLDR.** The tables are hand-written Rust constants; there are no data files and no CLDR check. Either write the data files and an `xtask` generator, or amend the requirement.
-- **Inuktitut syllabics (1011 011) is not implemented:** the syllabary's long vowels do not fit 96 codes as designed. Needs a design decision.
-- **Row 0's receiver columns** ("P100") are drawn in the page's set, so a Cyrillic, Georgian or Armenian page shows them in that script. True of the standard's Cyrillic and Greek sets too; REQ-SEC rule "row 0 columns 0 to 7 belong to the receiver" suggests drawing them in Latin. Needs an issue.
+- **Inuktitut syllabics is out of scope** (owner, 18 October 2026): recorded in decision E.78 item 7, out-of-scope item 16, the design section 8.4 and REQ-CHR-012's table. Owed: comment on issue #219.
+- **Row 0's receiver columns, fixed in rapid iteration (18 October 2026):** `build_grid` draws columns 0 to 7 of row 0 in Latin with the English option whatever the page designates (`draw_receiver_columns_in_receiver_set`, `level1.rs`), so "P100" reads the same on Cyrillic, Greek, Georgian, Arabic-script and Thai pages and is never joined. Owed: an amendment to REQ-SEC-005 or decision E.10 saying the status area is drawn in the receiver's set, a test that fails on the old code (a Cyrillic page's row 0 columns 0 to 3 are Latin), and an issue.
 - **A TTI `RE` line writes "no second set"** in X/28/0, so a page in one of the new sets designated that way loses the default English second set; `write-text` writes English explicitly. Decide whether the TTI writer should do the same.
 - **The writer's stand-ins** for G2 letters at Level 1 (Đ as D, Ŋ as N, and eight more) are the writer's own choice; record it in the design section 9.
 - `neottx font sets --help` and the user guide still describe 12 × 10 fonts and 24 sets in places; the clap text is fixed.
@@ -74,8 +100,20 @@ Phase 2 owes:
 Phases 3 and 4 owe:
 - **Decisions to record:** the group 1001 layout (above); the Lao G0 readings and the Lao G2 set; the private-use allocations (U+F0000 forms, U+F0100 Thai, U+F0140 Lao) as a table in the design; that `to_unicode` of a joined letter is the plain letter and of a two-mark glyph both marks; `charset::glyph_key` versus `to_unicode`; rows of right-to-left pages right-aligned by the writer.
 - **Design text:** sections 7.7, 8.3, 8.5 and 14 still describe the tables as not laid out; ARCHITECTURE.md's `joining` row and the `xtask` layer table; the user guide for `write-text`.
-- **Checks still to do:** a reader of each Arabic-script language to check its letter list and order (Balochi and Sorani above all); Lao by a reader of Lao; whether Noto Sans Thai's loopless glyphs suit the SAA5246AP/S look; the header's receiver columns are drawn in the page's set, so Arabic-script, Thai and Lao fonts show them as boxes (see row 0 above).
+- **Checks still to do:** a reader of each Arabic-script language to check its letter list and order (Balochi and Sorani above all); Lao by a reader of Lao; whether Noto Sans Thai's loopless glyphs suit the SAA5246AP/S look; the header's receiver columns were drawn as boxes in Arabic-script, Thai and Lao fonts (fixed, see row 0 above).
 - **Not done:** `english-thai` (1100 000) is not offered by `write-text`; text read back from a Thai or Lao page gives the visual rows, marks on rows of their own, not the logical text; no test of the Thai and Lao tables position by position against a data file (REQ-CHR-013's data files are owed for every new set).
+
+**Language measurement and samples (18 October 2026, after 5fff9cf):** against Google Fonts' language data (gflanguages 0.7.11), 581 languages are fully writable and 224 more lack at most four letters; the list and one sample page per language (804, from gflanguages' sample texts) are in `tmp/language-samples/` (not committed; the scripts are in the session scratchpad and should move to `scripts/` or `xtask` if kept). The writer, uncommitted, now also names the standard's 18 sets, writes Hebrew right to left, and writes a combining mark after a letter as that letter with an X/26 mark. Found:
+- **Gaps in the new sets, fixed in rapid iteration (18 October 2026):**
+  - ё and Ё are compositions of е and Е with the diaeresis (`EXTENDED_COMPOSITIONS`), so every Cyrillic set without them, the standard's Russian included, reaches them by an X/26 mark at Level 1.5 and above; Level 1 shows е, as Russian teletext did. `write-text` writes them that way;
+  - Tatar has Щ at 2/7 (was the apostrophe) and щ at 3/E (was >, whose partner < is ң); the design section 8.2 table and a decision are owed;
+  - Balochi gains ۏ after و and ࢩ after ی; `noto-teletext-arabic.bdf` redrawn (361 glyphs, all eight sets conform);
+  - the group 1001 tables are now written by `scripts/arabic-sets.py` between marker lines in `tables.rs`, with ArabicShaping.txt 16.0 downloaded and checked by SHA-256. Its private-use allocation is by sorted letter, so adding a letter renumbered U+F002B onwards; make the allocation stable (append only) before the private-use table is recorded as a decision;
+  - owed: tests (ё by X/26 in a Kyrgyz and a Russian page, Tatar 2/7 and 3/E, Balochi ۏ and ࢩ joined), and re-running the language measurement.
+- Kazakh in Cyrillic is not covered (Kazakh is in Latin by the owner's decision).
+- **Gaps in the standard's sets, for the record:** Russian ё (Russian teletext wrote е), Greek Ό, German ẞ, Ukrainian ʼ, Romanian ș ț with comma below (the option has ş ţ with cedilla), obsolete Thai ฃ ฅ ฦ.
+- **A letter with a tone and no precomposed form** (Yoruba ẹ́, ọ̀) is drawn by Bedstead's overlay even when a loaded font is in use, so it differs in style from its neighbours. Decision E.26 finds loaded glyphs by precomposed form only; overlaying the loaded font's own spacing mark would fix it.
+- Persian's zero-width non-joiner is written as a space.
 
 The design is `docs/spec/design/languages.md`. Its decisions are recorded as E.77 to E.82, with:
 - requirements REQ-CHR-012 to REQ-CHR-016, REQ-FNT-012 and REQ-CLI-010, the last two groups' new numbers in the Phase 2 table;
@@ -112,16 +150,27 @@ The owner's instruction: the Level 2.5 and 3.5 attributes that take no character
 - **Sizes:** `cargo xtask size` with the new default.
 - **The `classic` profile** (core feature, 17 October 2026): Level 1.5, the renderer, Bedstead and the viewer, with nothing of Levels 2.5 and 3.5; added to `cargo xtask features`. Owed: a decision in Part E and REQ-GEN-020 (what "the vast majority of teletext" means, with evidence), `docs/spec/design/capabilities.md` and `docs/spec/design/porting.md`, a `cargo xtask size` row, and whether `neottx` should offer a classic build. `forms` is left out because broadcast teletext had no forms; confirm with the owner.
 
-## The move of the browser to `prototypes/browser/` (16 October 2026, decision E.76)
+## Picture-to-page converter `scripts/image-to-teletext.py` (18 October 2026)
 
-- **Not committed.** The moves, decision E.76 and the edits below are in the working tree with the earlier uncommitted work. Owed: an issue for the refocus, and commits that keep the move separate from that work.
-- **Requirements that stay but still describe the browser in part:** REQ-FNT-003 to REQ-FNT-009 and REQ-FNT-011 (the browser's font loading, cache, libraries and settings), REQ-WEB-014 (fonts from other sites), REQ-SEC-026 (the browser's helper processes), decision E.70 item 8 (the contents view), decisions E.72 and E.75 where they name the browser, and the rows of the phase table in section F.0.1 for the moved requirements. Reword each for the engine, or move it, with the owner.
-- **Engine code that cites moved requirements:** `neoteletext-core` (`level1.rs` and `acq.rs` cite REQ-BRW-011 for the designation report; `glyphs/mod.rs` and `render.rs` cite REQ-BRW-010 for drawing a font's sample) and `neoteletext-app/src/pipe.rs` (REQ-BRW-009, REQ-BRW-011). Give the engine features their own requirements and cite those.
-- **Browser-only code still in `neoteletext-app`:** `font.rs` and `fetch::run_font` (the browser's font helpers), `sandbox::helper_command` and `Helper` (Seatbelt profiles for the browser's helpers), and the pipe frames only the browser's decoder and interface exchange. They stayed because `fetch.rs` and `pipe.rs` are shared with `neottx`; move them into the prototype or keep them, with the owner.
-- **`cargo deny` not rerun** after the egui licence exceptions (`clipboard-win`, `error-code`) were removed from `deny.toml`; it is not installed on this machine.
-- **Documents still describing the browser:** `docs/user-guide.md` (the browser's sections), `docs/spec/design/font-security.md`, `docs/spec/design/hmi.md`, `docs/spec/open-questions.md` and `docs/t42-browser-open-questions.md` (its paths now point into the prototype). `docs/traceability.md` is to be regenerated (`cargo xtask traceability`). IMPLEMENTATION-LOG.md and `scripts/github-plan/` keep the old paths as history; add a log row for the move.
-- **GitHub issues** for the browser (#215, #216, and the browser parts of epics #177 and #210) are to be labelled or closed for the prototype.
-- **The full gate** has not run on the engine without the browser.
+A standalone Python utility outside `neottx` (owner's instruction: not Rust, not part of `neottx`), run with `uv run` like `third_party/noto/convert.py`. It turns a picture into a Level 3.5 page of 80 x 72 sixels in up to 31 redefined colours. Page 100 carries the Level 1 mosaics, X/28/0 and X/28/4 colours, X/27/4 linking a POP at 1A0, and X/26 holding only Active object invocations. The objects carry Full Row Colour, the non-spacing colour changes and the mosaics of column 0. The palette is fitted to the two-colours-per-cell rule. Checked on one picture (example 04): neottx's render matches the encoder's expected sixels exactly.
+
+- **Issue:** none opened; `gh` could not resolve crowdwave/neoteletext on 18 October 2026. Open one.
+- **Records:** the decision (a utility in `scripts/`, Python, its Pillow and NumPy pins) and where it is mentioned (README or user guide); CREDITS.md is not needed (no outside source).
+- **Depends on the core feature `nonspacing-attributes`** (off by default, section above). A default `neottx` ignores the colour changes; say so wherever the utility is documented.
+- **Row 24 needs X/27/0:** under the default Annex H policy a page's row 24 shows only when X/27/0 asks; the script writes Fastext links to page 100 itself for that. An `FL` line of null links (8FF) emits no X/27/0, so it does not work; check whether the TTI writer should still send the display flag.
+- **Options (18 October 2026):** `--level 1|1.5|2.5|3.5` (Levels 1 and 1.5: the eight colours and spacing attributes; 2.5: CLUTs 2 and 3 fitted, CLUTs 0 and 1 fixed; 3.5: 31 fitted), `--hold-mosaics` (Levels 1 and 1.5), `--no-objects` (2.5 and 3.5: the page's own X/26, at most 208 triplets). All six combinations render exactly as the script predicts (example 04).
+- **At Level 3.5 the header takes the redefined CLUT 0:** its white text shows in whatever colour CLUT 0 entry 7 became. Consider keeping entry 7 white, or note it.
+- **Hold Mosaics in the spacing encoder** costs a second blank column at each row start and came out slightly worse on example 04 (error 17,750 against 17,515); try placing Hold Mosaics where it pays rather than at column 0.
+- **Not done:** Hold Mosaics as free colour changes at Levels 2.5 and 3.5; multicolour DRCS for cells of three or more colours; perceptual (OKLab) error; dithering; row 0 columns 8 to 39.
+- **Tests:** none; a round trip (picture, page, `neottx render`, sixels equal the expected PNG) would make one.
+
+## The browser removed from the repository (18 October 2026, commit 94346b0)
+
+The browser lives only in `~/devel/neoteletext-browser`. Left over:
+- **Engine pieces with no caller now:** the descriptor's `font` member and `Descriptor::font()` with `MediaType::FontBdf` (REQ-FNT-006), the web agent's `Input::FetchContents` and `Contents*` events (REQ-WEB-025), `CHANNEL_PREFIX` (REQ-WEB-018), and `EnhancementReport::designations`, which is counted but read by nothing. Keep them as engine API for ports, or remove them with their requirements.
+- **`docs/t42-browser-open-questions.md`** mixes engine and browser questions; split it, sending the browser's to the other repository.
+- **The user guide (about line 245)** says the font converter refuses 12 × 20 fonts whose line pairs differ, against REQ-FNT-010 as amended by decision E.77.
+- **GitHub issues** for the browser (#215, #216, and the browser parts of epics #177 and #210) are to be closed or moved to the other repository, once an account with access to crowdwave/neoteletext is logged in.
 
 ## Documentation
 
