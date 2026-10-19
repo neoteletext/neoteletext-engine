@@ -60,6 +60,8 @@ pub struct Channel {
     pub waiting: Option<Play>,
     /// The page whose sound the channel is playing, if it plays one.
     pub playing_page: Option<u16>,
+    /// The play the channel last started, while it may still sound.
+    pub playing: Option<Play>,
 }
 
 impl Channel {

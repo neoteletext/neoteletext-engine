@@ -56,8 +56,13 @@ A play shall start once its whole sound has arrived, or, with the *progressive* 
 *Verification:* A receiver test of a progressive start and of later blocks reaching the sink.
 
 **REQ-AUD-014 — Live sounds.**
-A sound with a sample count of 0 is live: its blocks arrive without end, the receiver tracks the sender's clock by resampling (at least ±1 per cent), and the sound fades out after two seconds with no new block, as EN 300 708 clause 6.7.1.1 asks. *Not yet built:* a receiver counts a live sound as unsupported and does not store it.
-*Verification:* A store test that a live sound is not stored; the rest when it is built.
+A sound with a sample count of 0 is live: its blocks arrive without end, each whole, their index counting modulo 2¹⁶ (RFC 1982). A receiver shall:
+- **Hold** the newest 32 blocks in a ring, dropping a block older than the ring;
+- **Join** at the newest block when a play can start, and give the sink each later block in index order; a block still missing once three newer ones have arrived is given as silence and counted as `concealed`;
+- **Follow** the sender's clock: the sink buffers the stream and trims its playing rate to hold the buffer level, absorbing at least ±1 per cent of clock error (the mixer: 400 ms buffered, ±5 per cent);
+- **Fade out** over 100 ms when no new block has come for two seconds, as EN 300 708 clause 6.7.1.1 asks, forget the sound at the sink, and start the play again, at the newest block, when blocks return.
+The port tells the receiver the time (`Receiver::tick`).
+*Verification:* Store tests of the ring and of the index wrapping; receiver tests of joining, ordered delivery, a late block, a lost block, the stall and the resumption, and of a stopped live sound staying stopped; mixer tests of priming, a sender 1 per cent fast and 1 per cent slow, playing out after the sound is forgotten, and skipping ahead when a ring behind; a `neottx sound --live` test played back at the browser's pace.
 
 **REQ-AUD-015 — Gain, fades and ducking.**
 Gain shall be a whole percentage. No level shall change faster than over 5 milliseconds: every start, stop, gain change and replacement ramps over the command's fade or 5 milliseconds, whichever is longer. A play's duck code shall lower every other channel, while it plays, to the attenuation of EN 300 708 Table 19 (0, 4, 8, 12, 18, 24 or 30 dB), applied as the nearest whole percentage (100, 63, 40, 25, 13, 6 or 3).

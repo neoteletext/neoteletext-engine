@@ -324,7 +324,9 @@ An object with sample count 0 is live: blocks arrive indefinitely and their inde
 
 The sender's sample clock and the receiver's are independent, so a receiver MUST track the drift by resampling slightly to stay level with the stream. On tellyboy that is `tb_audio_stream_frame` with its drift-tracking ring. A desktop sink does the same with its own rate control.
 
-A receiver MUST absorb at least ±1 % of sender clock error. That figure is a design target, not yet measured against a real broadcast clock.
+A receiver MUST absorb at least ±1 % of sender clock error. That figure is a design target, not yet measured against a real broadcast clock. The engine's mixer buffers 400 ms of a live sound before it plays (a port may hand over packets every 200 ms) and trims its rate by up to ±5 %, in proportion to how far the buffer is from that level; its tests hold the buffer level with a sender 1 % fast and 1 % slow.
+
+The receiver keeps the newest 32 blocks of a live sound and joins at the newest when a play can start. It gives the sink the blocks in order; a block still missing once three newer ones are held is silence. Over a T42 file or the network, live IMA ADPCM fits where a broadcast line does not (§6.3): T42 Browser reads 320 packets a second, and 8 kHz IMA ADPCM in 256-byte blocks needs about 127.
 
 A live sound fades out after its **stall time** without new blocks. That is EN 300 708 §6.7.1.1's mute, with the time this profile defines: 2 seconds.
 

@@ -27,8 +27,8 @@ pub struct Statistics {
     pub conflicts: u32,
     /// Objects that did not fit the store.
     pub resource_limits: u32,
-    /// Live sounds, which this receiver does not play yet.
-    pub unsupported: u32,
+    /// Live blocks given up as silence because they never arrived.
+    pub concealed: u32,
     /// Commands ignored as repeats or late arrivals.
     pub stale_commands: u32,
     /// Blocks that could not be decoded.
@@ -45,6 +45,8 @@ pub struct Receiver<'a, const OBJECTS: usize, const SLOTS: usize> {
     opened: Option<u16>,
     page_sounds: bool,
     statistics: Statistics,
+    /// The port's time, in milliseconds (REQ-AUD-014).
+    now_ms: u64,
 }
 
 impl<'a, const OBJECTS: usize, const SLOTS: usize> Receiver<'a, OBJECTS, SLOTS> {
@@ -60,6 +62,35 @@ impl<'a, const OBJECTS: usize, const SLOTS: usize> Receiver<'a, OBJECTS, SLOTS> 
             opened: None,
             page_sounds: true,
             statistics: Statistics::default(),
+            now_ms: 0,
+        }
+    }
+
+    /// The port's time, in milliseconds from any start: a live sound with no
+    /// new block for [`crate::LIVE_STALL_MS`] fades out, and its play waits
+    /// for it to resume (REQ-AUD-014).
+    pub fn tick(&mut self, now_ms: u64, sink: &mut dyn VoiceSink) {
+        self.now_ms = now_ms;
+        let stalled: [Option<Entry>; OBJECTS] = core::array::from_fn(|index| {
+            self.store
+                .entries()
+                .nth(index)
+                .filter(|entry| {
+                    entry.live && entry.at_sink && now_ms.saturating_sub(entry.arrived_ms) >= crate::LIVE_STALL_MS
+                })
+                .copied()
+        });
+        for entry in stalled.iter().flatten() {
+            for index in 0..CHANNELS {
+                let Some(channel) = self.channels.get_mut(usize::from(index)) else { continue };
+                if let Some(play) = channel.playing.filter(|play| play.sound == entry.sound) {
+                    sink.stop(index, crate::LIVE_STALL_FADE_MS);
+                    channel.playing = None;
+                    channel.waiting = Some(play);
+                }
+            }
+            sink.forget(entry.sound);
+            self.store.set_at_sink(entry.sound, false);
         }
     }
 
@@ -106,6 +137,7 @@ impl<'a, const OBJECTS: usize, const SLOTS: usize> Receiver<'a, OBJECTS, SLOTS> 
         self.store.sink_lost();
         for channel in &mut self.channels {
             channel.playing_page = None;
+            channel.playing = None;
         }
     }
 
@@ -147,18 +179,22 @@ impl<'a, const OBJECTS: usize, const SLOTS: usize> Receiver<'a, OBJECTS, SLOTS> 
                     Defined::New { .. } | Defined::Repeat | Defined::Ignored => {}
                     Defined::Conflict => bump(&mut self.statistics.conflicts),
                     Defined::ResourceLimit => bump(&mut self.statistics.resource_limits),
-                    Defined::Unsupported => bump(&mut self.statistics.unsupported),
                 }
                 // An announced sound may be what a waiting play needs.
                 self.start_waiting(sink);
             }
             Record::Data(data) => match self.store.put(&data) {
                 Stored::Blocks { first, count } => {
-                    if let Some(entry) = self.store.entry(data.handle).copied()
-                        && entry.at_sink
-                    {
-                        for index in first..first.saturating_add(count) {
-                            self.send_block(&entry, index, sink);
+                    if let Some(entry) = self.store.entry(data.handle).copied() {
+                        if entry.live {
+                            self.store.set_live_cursor(entry.sound, entry.next, self.now_ms);
+                            if entry.at_sink {
+                                self.send_live(entry.sound, sink);
+                            }
+                        } else if entry.at_sink {
+                            for index in first..first.saturating_add(count) {
+                                self.send_block(&entry, index, sink);
+                            }
                         }
                     }
                     self.start_waiting(sink);
@@ -242,6 +278,7 @@ impl<'a, const OBJECTS: usize, const SLOTS: usize> Receiver<'a, OBJECTS, SLOTS> 
                 channel.armed = None;
                 channel.waiting = None;
                 channel.playing_page = None;
+                channel.playing = None;
                 sink.stop(index, fade(control.fade_ms));
             }
             Operation::Gain => sink.gain(index, control.gain, fade(control.fade_ms)),
@@ -256,6 +293,11 @@ impl<'a, const OBJECTS: usize, const SLOTS: usize> Receiver<'a, OBJECTS, SLOTS> 
             .copied()
             .filter(|entry| entry.sound == play.sound && !entry.conflict)
             .filter(|entry| {
+                if entry.live {
+                    // A live sound plays while its blocks keep coming.
+                    return entry.newest.is_some()
+                        && self.now_ms.saturating_sub(entry.arrived_ms) < crate::LIVE_STALL_MS;
+                }
                 entry.complete()
                     || (play.progressive && self.buffered_ms(entry) >= PROGRESSIVE_BUFFER_MS.min(duration_ms(entry)))
             });
@@ -266,7 +308,16 @@ impl<'a, const OBJECTS: usize, const SLOTS: usize> Receiver<'a, OBJECTS, SLOTS> 
         };
         channel.waiting = None;
         channel.playing_page = play.page;
-        if !entry.at_sink {
+        channel.playing = Some(play);
+        if entry.live {
+            if !entry.at_sink {
+                // Join at the newest block: a live sound is heard as it is now.
+                sink.stream(entry.sound, entry.rate_hz);
+                self.store.set_at_sink(entry.sound, true);
+                self.store.set_live_cursor(entry.sound, entry.newest.unwrap_or(0), entry.arrived_ms);
+                self.send_live(entry.sound, sink);
+            }
+        } else if !entry.at_sink {
             self.send_sound(&entry, sink);
         }
         sink.start(
@@ -317,24 +368,40 @@ impl<'a, const OBJECTS: usize, const SLOTS: usize> Receiver<'a, OBJECTS, SLOTS> 
         }
     }
 
+    /// Sends a live sound's blocks in index order from its cursor. A block
+    /// still missing [`crate::LIVE_LOOKAHEAD_BLOCKS`] behind the newest is
+    /// sent as silence, so a lost block never stops the sound.
+    fn send_live(&mut self, sound: SoundId, sink: &mut dyn VoiceSink) {
+        let Some(entry) = self.store.entries().find(|entry| entry.sound == sound).copied() else { return };
+        let Some(newest) = entry.newest else { return };
+        let mut next = entry.next;
+        let silence = [0_i16; MAX_BLOCK_SAMPLES];
+        // At most a ring's worth a call: the cursor never laps the ring.
+        for _ in 0..entry.blocks {
+            if crate::serial_newer(next, newest) {
+                break;
+            }
+            let mut pcm = [0_i16; MAX_BLOCK_SAMPLES];
+            let decoded = self.store.live_block(sound, next).and_then(|block| decode(entry.codec, block, &mut pcm));
+            if let Some(count) = decoded {
+                sink.stream_samples(sound, pcm.get(..count).unwrap_or(&[]));
+            } else if newest.wrapping_sub(next) >= crate::LIVE_LOOKAHEAD_BLOCKS {
+                let count = usize::try_from(entry.samples_per_block()).unwrap_or(0);
+                sink.stream_samples(sound, silence.get(..count).unwrap_or(&[]));
+                bump(&mut self.statistics.concealed);
+            } else {
+                break;
+            }
+            next = next.wrapping_add(1);
+        }
+        self.store.set_live_cursor(sound, next, entry.arrived_ms);
+    }
+
     /// Decodes block `index` and sends its samples, if it has arrived.
     fn send_block(&mut self, entry: &Entry, index: u16, sink: &mut dyn VoiceSink) {
         let Some(block) = self.store.block(entry.sound, index) else { return };
         let mut pcm = [0_i16; MAX_BLOCK_SAMPLES];
-        let decoded = match entry.codec {
-            Codec::Pcm16 => {
-                let mut count: usize = 0;
-                for (sample, bytes) in pcm.iter_mut().zip(block.as_chunks::<2>().0) {
-                    *sample = i16::from_le_bytes(*bytes);
-                    count = count.saturating_add(1);
-                }
-                Some(count)
-            }
-            #[cfg(feature = "ima")]
-            Codec::ImaAdpcm => crate::ima::decode_block(block, &mut pcm).ok(),
-            #[cfg(not(feature = "ima"))]
-            Codec::ImaAdpcm => None,
-        };
+        let decoded = decode(entry.codec, block, &mut pcm);
         let Some(count) = decoded else {
             bump(&mut self.statistics.decode_failures);
             return;
@@ -346,6 +413,25 @@ impl<'a, const OBJECTS: usize, const SLOTS: usize> Receiver<'a, OBJECTS, SLOTS> 
     }
 }
 
+/// Decodes one block into `pcm`; the samples it held, or `None` if it
+/// could not be decoded.
+fn decode(codec: Codec, block: &[u8], pcm: &mut [i16; MAX_BLOCK_SAMPLES]) -> Option<usize> {
+    match codec {
+        Codec::Pcm16 => {
+            let mut count: usize = 0;
+            for (sample, bytes) in pcm.iter_mut().zip(block.as_chunks::<2>().0) {
+                *sample = i16::from_le_bytes(*bytes);
+                count = count.saturating_add(1);
+            }
+            Some(count)
+        }
+        #[cfg(feature = "ima")]
+        Codec::ImaAdpcm => crate::ima::decode_block(block, pcm).ok(),
+        #[cfg(not(feature = "ima"))]
+        Codec::ImaAdpcm => None,
+    }
+}
+
 /// Counts one more.
 fn bump(counter: &mut u32) {
     *counter = counter.saturating_add(1);
@@ -353,7 +439,7 @@ fn bump(counter: &mut u32) {
 
 /// Whether a channel still needs a sound: playing, armed or waiting for it.
 fn needs(channel: &Channel, sound: SoundId) -> bool {
-    channel.armed.is_some_and(|play| play.sound == sound) || channel.waiting.is_some_and(|play| play.sound == sound)
+    [channel.armed, channel.waiting, channel.playing].iter().flatten().any(|play| play.sound == sound)
 }
 
 /// A sound's whole length in milliseconds.

@@ -19,6 +19,8 @@ impl VoiceSink for Quiet {
     fn define(&mut self, _: SoundId, _: SoundFormat) {}
     fn samples(&mut self, _: SoundId, _: u32, _: &[i16]) {}
     fn forget(&mut self, _: SoundId) {}
+    fn stream(&mut self, _: SoundId, _: u32) {}
+    fn stream_samples(&mut self, _: SoundId, _: &[i16]) {}
     fn start(&mut self, _: u8, _: Start) {}
     fn stop(&mut self, _: u8, _: u16) {}
     fn gain(&mut self, _: u8, _: u8, _: u16) {}

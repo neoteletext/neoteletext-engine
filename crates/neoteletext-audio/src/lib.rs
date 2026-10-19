@@ -67,6 +67,19 @@ pub const MAX_FADE_MS: u16 = 10_000;
 pub const MAX_GAIN: u8 = 100;
 /// The page field's value for a command that belongs to the whole service.
 pub const SERVICE_SCOPE: u16 = 0xFFFF;
+/// Blocks a live sound keeps (REQ-AUD-014): a ring, the newest replacing the
+/// oldest. 32 blocks of 512 bytes are 16 KB, about 2 seconds of 8 kHz IMA
+/// ADPCM.
+pub const LIVE_RING_BLOCKS: u16 = 32;
+/// A live sound fades out after this long with no new block (REQ-AUD-014),
+/// the mute of EN 300 708 clause 6.7.1.1 at the time this profile sets.
+pub const LIVE_STALL_MS: u64 = 2_000;
+/// How a stalled live sound fades out.
+pub const LIVE_STALL_FADE_MS: u16 = 100;
+/// A live block this many blocks behind the newest that has still not
+/// arrived is given up as silence, so a lost block delays nothing
+/// (REQ-AUD-014).
+pub const LIVE_LOOKAHEAD_BLOCKS: u16 = 3;
 /// A progressive start waits for this many milliseconds of contiguous
 /// sound (REQ-AUD-013).
 pub const PROGRESSIVE_BUFFER_MS: u32 = 40;

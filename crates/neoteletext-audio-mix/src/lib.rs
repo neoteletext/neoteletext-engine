@@ -45,6 +45,20 @@ pub type SoundKey = (u8, u16);
 const FRACTION_BITS: u32 = 32;
 /// Shift from a position's fraction to a filter phase.
 const PHASE_SHIFT: u32 = FRACTION_BITS - PHASES.trailing_zeros();
+/// How much of a live sound a voice keeps buffered ahead of it, in
+/// milliseconds: enough to ride out blocks arriving in bursts. A port may
+/// hand over packets in pieces (the browser, every 200 ms), and a 256-byte
+/// IMA ADPCM block at 8 kHz holds 63 ms, so samples can come 263 ms apart.
+pub const STREAM_TARGET_MS: u32 = 400;
+/// A live sound's ring of samples, in milliseconds: four times the target,
+/// so a burst never overwrites what the voice has yet to play.
+pub const STREAM_RING_MS: u32 = 4 * STREAM_TARGET_MS;
+/// The furthest a live sound's playback rate moves from its nominal rate
+/// to follow the sender's clock, in parts per million: ±5 per cent, where
+/// REQ-AUD-014 asks for at least ±1.
+pub const STREAM_TRIM_PPM: i64 = 50_000;
+/// Parts in a million.
+const PPM: i64 = 1_000_000;
 
 /// A ramp from the current level to a target, in steps of one output
 /// sample.
@@ -89,6 +103,37 @@ struct Sound {
     samples: Vec<i16>,
     /// The receiver forgot it: it goes once no voice plays it.
     forgotten: bool,
+    /// A live sound: `samples` is a ring, and `written` counts every
+    /// sample ever given it.
+    stream: bool,
+    written: i64,
+}
+
+impl Sound {
+    /// Sample `index` of the sound; silence outside it, or outside the part
+    /// of a live sound its ring still holds.
+    fn at(&self, index: i64) -> i16 {
+        let length = i64::try_from(self.samples.len()).unwrap_or(i64::MAX);
+        let index = if self.stream {
+            if index >= self.written || index < self.written.saturating_sub(length) {
+                return 0;
+            }
+            index.checked_rem(length).unwrap_or(0)
+        } else {
+            index
+        };
+        usize::try_from(index).ok().and_then(|index| self.samples.get(index)).copied().unwrap_or(0)
+    }
+
+    /// Samples of a live sound a voice at `whole` has yet to play.
+    fn ahead(&self, whole: i64) -> i64 {
+        self.written.saturating_sub(whole)
+    }
+
+    /// A live sound's target and ring, in samples.
+    fn target(&self) -> i64 {
+        i64::from(self.rate_hz.saturating_mul(STREAM_TARGET_MS) / 1000)
+    }
 }
 
 /// A sound on a voice.
@@ -101,6 +146,11 @@ struct Playing {
     /// The source step per output sample, in the same form.
     step_whole: i64,
     step_fraction: u32,
+    /// The nominal step, whole and fraction in one: a live sound's step is
+    /// trimmed from it to follow the sender's clock.
+    nominal: u64,
+    /// A live sound's voice waits, silent, until the target is buffered.
+    primed: bool,
     looped: bool,
     gain: Ramp,
     /// Other voices' level while this plays, in per cent.
@@ -170,8 +220,58 @@ impl Mixer {
     /// Makes room for a sound's samples, silent until they arrive. A sound
     /// of the same key is replaced.
     pub fn define(&mut self, key: SoundKey, rate_hz: u32, samples: usize) {
+        self.collect();
         self.sounds.retain(|sound| sound.key != key);
-        self.sounds.push(Sound { key, rate_hz: rate_hz.max(1), samples: alloc::vec![0; samples], forgotten: false });
+        self.sounds.push(Sound {
+            key,
+            rate_hz: rate_hz.max(1),
+            samples: alloc::vec![0; samples],
+            forgotten: false,
+            stream: false,
+            written: 0,
+        });
+    }
+
+    /// Makes room for a live sound (REQ-AUD-014): its samples arrive in
+    /// order through [`Mixer::stream_samples`], without end. A voice playing
+    /// it waits until [`STREAM_TARGET_MS`] are buffered, then trims its rate
+    /// to keep that much buffered, following the sender's clock.
+    pub fn stream(&mut self, key: SoundKey, rate_hz: u32) {
+        self.collect();
+        let rate_hz = rate_hz.max(1);
+        let ring = usize::try_from(rate_hz.saturating_mul(STREAM_RING_MS) / 1000).unwrap_or(0).max(1);
+        self.sounds.retain(|sound| sound.key != key);
+        self.sounds.push(Sound {
+            key,
+            rate_hz,
+            samples: alloc::vec![0; ring],
+            forgotten: false,
+            stream: true,
+            written: 0,
+        });
+    }
+
+    /// The next samples of a live sound. If a voice has fallen so far behind
+    /// that the ring would overwrite what it has yet to play, it skips ahead
+    /// to the target.
+    pub fn stream_samples(&mut self, key: SoundKey, pcm: &[i16]) {
+        let Some(sound) = self.sounds.iter_mut().find(|sound| sound.key == key && sound.stream) else { return };
+        let length = i64::try_from(sound.samples.len()).unwrap_or(i64::MAX);
+        for &value in pcm {
+            let slot = usize::try_from(sound.written.checked_rem(length).unwrap_or(0)).unwrap_or(0);
+            if let Some(place) = sound.samples.get_mut(slot) {
+                *place = value;
+            }
+            sound.written = sound.written.saturating_add(1);
+        }
+        let (written, target) = (sound.written, sound.target());
+        for voice in &mut self.voices {
+            for playing in [&mut voice.playing, &mut voice.outgoing].into_iter().flatten() {
+                if playing.key == key && written.saturating_sub(playing.whole) > length.saturating_sub(target) {
+                    playing.whole = written.saturating_sub(target);
+                }
+            }
+        }
     }
 
     /// Copies samples into a sound from sample `first`; samples beyond its
@@ -203,9 +303,8 @@ impl Mixer {
     /// `after_current`, queues it for when the current sound ends.
     pub fn start(&mut self, voice: usize, start: Start) {
         let rate = self.rate_hz;
-        let Some(source) = self.sounds.iter().find(|sound| sound.key == start.key).map(|sound| sound.rate_hz) else {
-            return;
-        };
+        let Some(sound) = self.sounds.iter().find(|sound| sound.key == start.key) else { return };
+        let source = (sound.rate_hz, sound.stream.then_some(sound.written));
         let Some(slot) = self.voices.get_mut(voice) else { return };
         if start.after_current && slot.playing.is_some_and(|playing| !playing.stopping) {
             slot.pending = Some(start);
@@ -257,6 +356,7 @@ impl Mixer {
 
     /// Renders mono samples at the output rate. It never allocates or frees.
     pub fn render(&mut self, out: &mut [i16]) {
+        self.trim_streams();
         for sample in out.iter_mut() {
             self.update_ducks();
             let mut sum: i32 = 0;
@@ -284,7 +384,32 @@ impl Mixer {
                 *slot = None;
                 continue;
             };
-            let value = interpolate(&sound.samples, playing.whole, playing.fraction);
+            if sound.stream {
+                if !playing.primed {
+                    playing.primed = sound.ahead(playing.whole) >= sound.target();
+                    if sound.forgotten {
+                        // It will get no more samples: what it has plays out.
+                        playing.primed = true;
+                    }
+                }
+                if playing.primed {
+                    let value = interpolate(sound, playing.whole, playing.fraction);
+                    total = total.saturating_add(scale(scale(value, gain), duck));
+                    advance(&mut playing);
+                    if sound.ahead(playing.whole) <= 0 {
+                        if sound.forgotten {
+                            playing.stopping = true;
+                            playing.gain = Ramp::at(0);
+                        } else {
+                            // Starved: wait, silent, for the target again.
+                            playing.primed = false;
+                        }
+                    }
+                }
+                *slot = if playing.stopping && playing.gain.settled_at_zero() { None } else { Some(playing) };
+                continue;
+            }
+            let value = interpolate(sound, playing.whole, playing.fraction);
             total = total.saturating_add(scale(scale(value, gain), duck));
             let length = i64::try_from(sound.samples.len()).unwrap_or(i64::MAX);
             advance(&mut playing);
@@ -300,7 +425,11 @@ impl Mixer {
         }
         if voice.playing.is_none()
             && let Some(next) = voice.pending.take()
-            && let Some(source) = self.sounds.iter().find(|sound| sound.key == next.key).map(|sound| sound.rate_hz)
+            && let Some(source) = self
+                .sounds
+                .iter()
+                .find(|sound| sound.key == next.key)
+                .map(|sound| (sound.rate_hz, sound.stream.then_some(sound.written)))
         {
             voice.playing = Some(begin(&next, source, rate));
         }
@@ -339,6 +468,32 @@ impl Mixer {
         }
     }
 
+    /// Trims each live sound's step from its nominal one in proportion to
+    /// how far its buffer is from the target: the full [`STREAM_TRIM_PPM`]
+    /// when it is empty or twice full. A sender whose clock runs fast fills
+    /// the buffer and is played faster, and the reverse.
+    fn trim_streams(&mut self) {
+        let sounds = &self.sounds;
+        for voice in &mut self.voices {
+            for playing in [&mut voice.playing, &mut voice.outgoing].into_iter().flatten() {
+                let Some(sound) = sounds.iter().find(|sound| sound.key == playing.key && sound.stream) else {
+                    continue;
+                };
+                let target = sound.target().max(1);
+                let error = sound.ahead(playing.whole).saturating_sub(target);
+                let ppm = error
+                    .saturating_mul(STREAM_TRIM_PPM)
+                    .checked_div(target)
+                    .unwrap_or(0)
+                    .clamp(-STREAM_TRIM_PPM, STREAM_TRIM_PPM);
+                let nominal = i128::from(playing.nominal);
+                let trimmed = nominal
+                    .saturating_add(nominal.saturating_mul(i128::from(ppm)).checked_div(i128::from(PPM)).unwrap_or(0));
+                set_step(playing, u64::try_from(trimmed).unwrap_or(playing.nominal));
+            }
+        }
+    }
+
     /// Drops forgotten sounds no voice plays.
     fn collect(&mut self) {
         let voices = self.voices;
@@ -352,27 +507,38 @@ impl Mixer {
     }
 }
 
-/// A sound starting on a voice, its gain ramping in.
-fn begin(start: &Start, source_rate: u32, output_rate: u32) -> Playing {
-    // The step is source rate / output rate, as whole and fraction.
-    let whole = source_rate.checked_div(output_rate).unwrap_or(0);
-    let remainder = u64::from(source_rate.checked_rem(output_rate).unwrap_or(0));
-    let fraction =
-        u32::try_from((remainder << FRACTION_BITS).checked_div(u64::from(output_rate)).unwrap_or(0)).unwrap_or(0);
+/// A sound starting on a voice, its gain ramping in. `source` is the
+/// sound's rate and, for a live sound, the samples written so far: its
+/// voice joins [`STREAM_TARGET_MS`] behind the newest.
+fn begin(start: &Start, source: (u32, Option<i64>), output_rate: u32) -> Playing {
+    let (source_rate, written) = source;
+    // The step is source rate / output rate, in 32.32 fixed point.
+    let nominal = (u64::from(source_rate) << FRACTION_BITS).checked_div(u64::from(output_rate)).unwrap_or(0);
     let mut gain = Ramp::at(0);
     gain.to(level(start.gain), u32::from(start.fade_ms), output_rate);
-    Playing {
+    let target = i64::from(source_rate.saturating_mul(STREAM_TARGET_MS) / 1000);
+    let mut playing = Playing {
         key: start.key,
-        whole: 0,
+        whole: written.map_or(0, |written| written.saturating_sub(target).max(0)),
         fraction: 0,
-        step_whole: i64::from(whole),
-        step_fraction: fraction,
-        looped: start.looped,
+        step_whole: 0,
+        step_fraction: 0,
+        nominal,
+        primed: written.is_none(),
+        looped: start.looped && written.is_none(),
         gain,
         duck_percent: start.duck_percent,
         fade_ms: start.fade_ms,
         stopping: false,
-    }
+    };
+    set_step(&mut playing, nominal);
+    playing
+}
+
+/// Sets a voice's step from 32.32 fixed point.
+fn set_step(playing: &mut Playing, step: u64) {
+    playing.step_whole = i64::try_from(step >> FRACTION_BITS).unwrap_or(0);
+    playing.step_fraction = u32::try_from(step & u64::from(u32::MAX)).unwrap_or(0);
 }
 
 fn advance(playing: &mut Playing) {
@@ -383,14 +549,14 @@ fn advance(playing: &mut Playing) {
 
 /// The sound's value between samples `whole` and `whole + 1`, filtered by
 /// the windowed sinc; samples outside the sound are silence.
-fn interpolate(samples: &[i16], whole: i64, fraction: u32) -> i32 {
+fn interpolate(sound: &Sound, whole: i64, fraction: u32) -> i32 {
     let phase = usize::try_from(fraction >> PHASE_SHIFT).unwrap_or(0);
     let Some(taps) = FILTER.get(phase) else { return 0 };
     let first = whole.saturating_sub(TAPS_BEFORE);
     let mut sum: i32 = 0;
     for (offset, &tap) in (0_i64..).zip(taps.iter()) {
         let at = first.saturating_add(offset);
-        let value = usize::try_from(at).ok().and_then(|at| samples.get(at)).copied().unwrap_or(0);
+        let value = sound.at(at);
         sum = sum.saturating_add(i32::from(value).saturating_mul(i32::from(tap)));
     }
     sum / ONE
@@ -409,7 +575,7 @@ fn scale(value: i32, level: i32) -> i32 {
 #[cfg(test)]
 #[allow(clippy::indexing_slicing, clippy::unwrap_used, clippy::arithmetic_side_effects, clippy::panic)]
 mod tests {
-    // Tests of REQ-AUD-011, REQ-AUD-015 and REQ-AUD-019.
+    // Tests of REQ-AUD-011, REQ-AUD-014, REQ-AUD-015 and REQ-AUD-019.
     use super::*;
     use std::vec;
     use std::vec::Vec;
@@ -518,5 +684,74 @@ mod tests {
         assert!(render(&mut mixer, 100)[99] > 9_000, "still playing after being forgotten");
         mixer.set_master(100, true);
         assert_eq!(render(&mut mixer, 100)[99], 0);
+    }
+
+    /// Samples voice 0's live sound has buffered ahead of it.
+    fn buffered(mixer: &Mixer) -> i64 {
+        let playing = mixer.voices[0].playing.unwrap();
+        let sound = mixer.sounds.iter().find(|sound| sound.key == playing.key).unwrap();
+        sound.ahead(playing.whole)
+    }
+
+    #[test]
+    fn a_live_sound_waits_for_its_target_then_plays() {
+        let mut mixer = Mixer::new(RATE);
+        mixer.stream((1, 1), RATE);
+        mixer.start(0, start((1, 1), 100));
+        // 400 ms at 8 kHz is 3 200 samples: 3 100 are not enough.
+        mixer.stream_samples((1, 1), &vec![10_000; 3_100]);
+        assert!(render(&mut mixer, 200).iter().all(|&value| value == 0), "silent until the target is buffered");
+        mixer.stream_samples((1, 1), &vec![10_000; 200]);
+        let out = render(&mut mixer, 200);
+        assert!((9_800..=10_200).contains(&out[150]), "{}", out[150]);
+    }
+
+    #[test]
+    fn a_live_sound_follows_a_sender_whose_clock_runs_one_per_cent_fast() {
+        let mut mixer = Mixer::new(RATE);
+        mixer.stream((1, 1), RATE);
+        mixer.start(0, start((1, 1), 100));
+        // 101 samples arrive for every 100 played; 200 000 samples (25 s)
+        // would put 2 000 extra in the buffer were the rate not trimmed.
+        for _ in 0..2_000 {
+            mixer.stream_samples((1, 1), &[5_000; 101]);
+            render(&mut mixer, 100);
+        }
+        let ahead = buffered(&mixer);
+        // Steady state: 1 % of trim is a fifth of the target, 640 samples, over.
+        assert!((3_200..=4_000).contains(&ahead), "buffer held near the target: {ahead}");
+        // And one running slow drains less than the target's worth.
+        for _ in 0..4_000 {
+            mixer.stream_samples((1, 1), &[5_000; 99]);
+            render(&mut mixer, 100);
+        }
+        let ahead = buffered(&mixer);
+        assert!((2_400..=3_200).contains(&ahead), "buffer held near the target: {ahead}");
+    }
+
+    #[test]
+    fn a_forgotten_live_sound_plays_what_it_holds_then_ends() {
+        let mut mixer = Mixer::new(RATE);
+        mixer.stream((1, 1), RATE);
+        mixer.start(0, start((1, 1), 100));
+        mixer.stream_samples((1, 1), &vec![10_000; 3_600]);
+        render(&mut mixer, 1_000);
+        mixer.forget((1, 1));
+        let out = render(&mut mixer, 3_000);
+        assert!(out[2_000] > 9_000, "still playing what it holds");
+        assert!(!mixer.active() && out[2_999] == 0, "then ended");
+        // Rendering never frees: the next call that may allocate collects it.
+        mixer.stream((2, 1), RATE);
+        assert_eq!(mixer.sounds.iter().map(|sound| sound.key).collect::<Vec<_>>(), [(2, 1)], "and gone");
+    }
+
+    #[test]
+    fn a_voice_that_falls_a_ring_behind_skips_to_the_target() {
+        let mut mixer = Mixer::new(RATE);
+        mixer.stream((1, 1), RATE);
+        mixer.start(0, start((1, 1), 100));
+        // Two seconds of samples at once: more than the ring keeps ahead.
+        mixer.stream_samples((1, 1), &vec![10_000; 16_000]);
+        assert_eq!(buffered(&mixer), 3_200);
     }
 }

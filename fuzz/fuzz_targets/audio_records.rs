@@ -21,6 +21,12 @@ impl VoiceSink for Checker {
         assert!(pcm.len() <= neoteletext_audio::MAX_BLOCK_SAMPLES);
     }
     fn forget(&mut self, _: SoundId) {}
+    fn stream(&mut self, _: SoundId, rate_hz: u32) {
+        assert!(neoteletext_audio::SAMPLE_RATES.contains(&rate_hz));
+    }
+    fn stream_samples(&mut self, _: SoundId, pcm: &[i16]) {
+        assert!(pcm.len() <= neoteletext_audio::MAX_BLOCK_SAMPLES);
+    }
     fn start(&mut self, channel: u8, start: Start) {
         assert!(channel < neoteletext_audio::CHANNELS && start.gain <= 100 && start.fade_ms >= neoteletext_audio::MIN_FADE_MS);
     }
@@ -37,7 +43,11 @@ fuzz_target!(|data: &[u8]| {
     let mut receiver = Receiver::<4, 2>::new(&mut arena);
     let mut sink = Checker;
     let mut rest = data;
+    // The port's clock, moved on by each record so live sounds can stall.
+    let mut now_ms: u64 = 0;
     while let [high, low, tail @ ..] = rest {
+        now_ms += u64::from(*high) * 16;
+        receiver.tick(now_ms, &mut sink);
         let length = usize::from(u16::from_be_bytes([*high, *low])) % 1100;
         let (record, after) = tail.split_at(length.min(tail.len()));
         // Half the records get a correct header and CRC-32, so the fuzzer

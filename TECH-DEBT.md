@@ -16,7 +16,7 @@ Work deferred while behaviour is being shaped (the owner's instruction of 13 Oct
 ## Unfinished features
 
 - **Audio, area AUD (issue #220):** built and tested on branch `audio`; owed:
-  - live sounds (REQ-AUD-014): store them, track the sender's clock, and fade out after two seconds without a block;
+  - live sounds (REQ-AUD-014) are not measured against a real sender's clock, only against a simulated 1 per cent; a live sound has no 5 ms fades at a concealed block either (below);
   - the `.ttau` file and WebSocket record readers (REQ-AUD-008);
   - 5 ms fades at each edge of a missing block, and the `concealed` report (REQ-AUD-013);
   - passing IMA ADPCM blocks undecoded to a sink that decodes them itself, for tellyboy (REQ-AUD-018);

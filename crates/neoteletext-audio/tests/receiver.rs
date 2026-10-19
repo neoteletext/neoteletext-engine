@@ -1,7 +1,8 @@
 //! The receiver end to end: sounds written by the publishing encoder, cut
 //! into broadcast packets, read back and played through a recording sink
 //! (REQ-AUD-001, REQ-AUD-007, REQ-AUD-009, REQ-AUD-010, REQ-AUD-011,
-//! REQ-AUD-012, REQ-AUD-013, REQ-AUD-016, REQ-AUD-018 and REQ-AUD-020).
+//! REQ-AUD-012, REQ-AUD-013, REQ-AUD-014, REQ-AUD-016, REQ-AUD-018 and
+//! REQ-AUD-020).
 #![cfg(feature = "encode")]
 
 use neoteletext_audio::encode::{Command, Sound, packets};
@@ -18,6 +19,8 @@ enum Call {
     Define(SoundId, SoundFormat),
     Samples(SoundId, u32, usize),
     Forget(SoundId),
+    Stream(SoundId, u32),
+    StreamSamples(SoundId, usize),
     Start(u8, Start),
     Stop(u8, u16),
     Gain(u8, u8, u16),
@@ -66,6 +69,16 @@ impl VoiceSink for Recorder {
     }
     fn forget(&mut self, sound: SoundId) {
         self.calls.push(Call::Forget(sound));
+    }
+    fn stream(&mut self, sound: SoundId, rate_hz: u32) {
+        self.calls.push(Call::Stream(sound, rate_hz));
+        self.pcm.push((sound, Vec::new()));
+    }
+    fn stream_samples(&mut self, sound: SoundId, pcm: &[i16]) {
+        self.calls.push(Call::StreamSamples(sound, pcm.len()));
+        if let Some((_, buffer)) = self.pcm.iter_mut().rev().find(|(id, _)| *id == sound) {
+            buffer.extend_from_slice(pcm);
+        }
     }
     fn start(&mut self, channel: u8, start: Start) {
         self.calls.push(Call::Start(channel, start));
@@ -325,4 +338,122 @@ fn a_label_longer_than_the_bound_is_not_written() {
     let mut sound = Sound::new(1, 1, Codec::Pcm16, 8_000, 1000, &tone(10)).unwrap();
     sound.label = Some(vec![b'x'; MAX_LABEL + 1]);
     assert!(sound.object_record().is_err());
+}
+
+/// A live PCM sound at 8 kHz, 100-byte blocks of 50 samples.
+fn live_sound() -> Sound {
+    Sound::live(4, 1, Codec::Pcm16, 8_000, 100).unwrap()
+}
+
+/// The packets of live blocks `first..first + count`, block `n` holding the
+/// value `n` in every sample, one block a record.
+fn live_blocks(sound: &Sound, first: u16, count: u16) -> Vec<Packet> {
+    let records: Vec<Vec<u8>> = (0..count)
+        .flat_map(|offset| {
+            let index = first.wrapping_add(offset);
+            sound.live_records(index, &[i16::try_from(index % 1000).unwrap(); 50])
+        })
+        .collect();
+    packets(0, 0, &records).0
+}
+
+fn push(receiver: &mut Receiver<'_, 8, 2>, packets: &[Packet], sink: &mut Recorder) {
+    for packet in packets {
+        assert!(receiver.push_packet(packet, sink));
+    }
+}
+
+/// The value of each block of 50 samples the sink received, in order.
+fn live_values(sink: &Recorder, sound: &Sound) -> Vec<i16> {
+    let id = SoundId { handle: sound.handle, generation: sound.generation };
+    let (_, pcm) = sink.pcm.iter().rev().find(|(sound, _)| *sound == id).unwrap();
+    pcm.chunks(50).map(|block| block[0]).collect()
+}
+
+#[test]
+fn a_live_sound_joins_at_its_newest_block_and_follows_in_order() {
+    let sound = live_sound();
+    let id = SoundId { handle: 4, generation: 1 };
+    let mut arena = vec![0; ARENA];
+    let mut receiver = Receiver::<8, 2>::new(&mut arena);
+    let mut sink = Recorder::new();
+    let mut announce = vec![sound.object_record().unwrap()];
+    announce.push(play(0, 1, &sound, None).record());
+    receiver.tick(1_000, &mut sink);
+    push(&mut receiver, &packets(0, 0, &announce).0, &mut sink);
+    assert_eq!(sink.take(), NO_CALLS, "no block yet: the play waits");
+    push(&mut receiver, &live_blocks(&sound, 100, 3), &mut sink);
+    let calls = sink.take();
+    assert_eq!(calls[0], Call::Stream(id, 8_000));
+    assert!(matches!(calls[2], Call::Start(0, Start { sound, looped: false, .. }) if sound == id), "{calls:?}");
+    // Joined at block 100, the newest when the play could start, then 101 and 102.
+    push(&mut receiver, &live_blocks(&sound, 103, 2), &mut sink);
+    assert_eq!(live_values(&sink, &sound), [100, 101, 102, 103, 104]);
+    assert_eq!(receiver.statistics().concealed, 0);
+}
+
+#[test]
+fn a_lost_live_block_is_heard_as_silence_once_three_newer_have_come() {
+    let sound = live_sound();
+    let mut arena = vec![0; ARENA];
+    let mut receiver = Receiver::<8, 2>::new(&mut arena);
+    let mut sink = Recorder::new();
+    let announce = [sound.object_record().unwrap(), play(0, 1, &sound, None).record()];
+    push(&mut receiver, &packets(0, 0, &announce).0, &mut sink);
+    push(&mut receiver, &live_blocks(&sound, 10, 1), &mut sink);
+    // Block 11 is lost; 12 and 13 wait for it.
+    push(&mut receiver, &live_blocks(&sound, 12, 2), &mut sink);
+    assert_eq!(live_values(&sink, &sound), [10]);
+    // A late 11 is played in its place.
+    push(&mut receiver, &live_blocks(&sound, 11, 1), &mut sink);
+    assert_eq!(live_values(&sink, &sound), [10, 11, 12, 13]);
+    // 15 is lost for good: once 18 is here, three ahead, it is silence.
+    push(&mut receiver, &live_blocks(&sound, 14, 1), &mut sink);
+    push(&mut receiver, &live_blocks(&sound, 16, 2), &mut sink);
+    assert_eq!(live_values(&sink, &sound), [10, 11, 12, 13, 14]);
+    push(&mut receiver, &live_blocks(&sound, 18, 1), &mut sink);
+    assert_eq!(live_values(&sink, &sound), [10, 11, 12, 13, 14, 0, 16, 17, 18]);
+    assert_eq!(receiver.statistics().concealed, 1);
+}
+
+#[test]
+fn a_stalled_live_sound_fades_out_and_resumes_when_its_blocks_return() {
+    let sound = live_sound();
+    let id = SoundId { handle: 4, generation: 1 };
+    let mut arena = vec![0; ARENA];
+    let mut receiver = Receiver::<8, 2>::new(&mut arena);
+    let mut sink = Recorder::new();
+    let announce = [sound.object_record().unwrap(), play(0, 1, &sound, None).record()];
+    receiver.tick(5_000, &mut sink);
+    push(&mut receiver, &packets(0, 0, &announce).0, &mut sink);
+    push(&mut receiver, &live_blocks(&sound, 0, 4), &mut sink);
+    sink.take();
+    // Just short of two seconds without a block: still playing.
+    receiver.tick(6_999, &mut sink);
+    assert_eq!(sink.take(), NO_CALLS);
+    // Two seconds (EN 300 708 clause 6.7.1.1): it fades out and is forgotten.
+    receiver.tick(7_000, &mut sink);
+    assert_eq!(sink.take(), [Call::Stop(0, neoteletext_audio::LIVE_STALL_FADE_MS), Call::Forget(id)]);
+    receiver.tick(9_000, &mut sink);
+    assert_eq!(sink.take(), NO_CALLS, "once only");
+    // The sender comes back: the play starts again at the newest block.
+    push(&mut receiver, &live_blocks(&sound, 500, 1), &mut sink);
+    let calls = sink.take();
+    assert_eq!(calls[0], Call::Stream(id, 8_000), "{calls:?}");
+    assert!(calls.iter().any(|call| matches!(call, Call::Start(0, _))));
+    assert_eq!(live_values(&sink, &sound), [500]);
+}
+
+#[test]
+fn a_stopped_live_sound_is_not_restarted_by_its_blocks() {
+    let sound = live_sound();
+    let mut arena = vec![0; ARENA];
+    let mut receiver = Receiver::<8, 2>::new(&mut arena);
+    let mut sink = Recorder::new();
+    let announce = [sound.object_record().unwrap(), play(0, 1, &sound, None).record(), stop(0, 2).record()];
+    push(&mut receiver, &live_blocks(&sound, 0, 1), &mut sink);
+    push(&mut receiver, &packets(0, 0, &announce).0, &mut sink);
+    sink.take();
+    push(&mut receiver, &live_blocks(&sound, 1, 3), &mut sink);
+    assert_eq!(sink.starts(), NO_STARTS);
 }

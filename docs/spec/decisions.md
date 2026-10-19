@@ -1213,3 +1213,12 @@ Decided on 19 October 2026.
 3. **No change of level is faster than 5 ms,** tellyboy's measured limit for a click.
 
 *Reason:* Teletext attaches things to pages; and a microcontroller cannot keep state that grows with the history of a carousel.
+
+**E.87 — Audio: live sounds join at the newest block, and the sink follows the sender's clock.**
+Decided on 19 October 2026.
+1. **The receiver holds a live sound's newest 32 blocks** in a ring in the store, with a table of the index in each slot, and gives the sink the blocks in order through two further `VoiceSink` operations, `stream` and `stream_samples`. A play joins at the newest block, as a radio is heard as it is now. A missing block is waited for until three newer ones are held, then sent as silence.
+2. **The sink, not the receiver, follows the sender's clock,** as tellyboy's stream voice does: the mixer buffers 400 ms and trims its rate by up to ±5 % in proportion to the buffer's distance from that level. The receiver stays free of sample timing.
+3. **The port gives the receiver the time** (`Receiver::tick`), which it needs only for the two-second stall of EN 300 708 clause 6.7.1.1. A stalled sound fades over 100 ms, is forgotten at the sink, and its play waits for blocks again.
+4. **`neottx sound --live` paces a file for a player,** filling the gaps with repeats of the announcement and the latest block, as a carousel repeats records, so a file channel carries a live sound.
+
+*Reason:* A live sound's end is unknown, so it cannot be held whole, and a receiver that waits to resynchronise loses more than it would by joining late. Rate trimming in the sink keeps the receiver the same on every port.

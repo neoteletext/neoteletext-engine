@@ -58,8 +58,17 @@ pub trait VoiceSink {
     /// Samples of a sound, starting at sample `first`.
     fn samples(&mut self, sound: SoundId, first: u32, pcm: &[i16]);
 
-    /// The sound is gone. A voice already playing it plays to its end.
+    /// The sound is gone. A voice already playing it plays to its end; a
+    /// live sound's voice plays what it holds, then ends.
     fn forget(&mut self, sound: SoundId);
+
+    /// A live sound exists (REQ-AUD-014): its samples come without end, in
+    /// order, through [`VoiceSink::stream_samples`]. The sink buffers them,
+    /// starts a voice once enough are held, and follows the sender's clock.
+    fn stream(&mut self, sound: SoundId, rate_hz: u32);
+
+    /// The next samples of a live sound, in order.
+    fn stream_samples(&mut self, sound: SoundId, pcm: &[i16]);
 
     /// Starts a sound on a channel, ramping out what the channel played.
     fn start(&mut self, channel: u8, start: Start);

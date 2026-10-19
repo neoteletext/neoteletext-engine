@@ -31,6 +31,16 @@ pub struct Entry {
     pub conflict: bool,
     /// The sink holds the sound's samples.
     pub at_sink: bool,
+    /// A live sound (REQ-AUD-014): `blocks` slots of a ring, filled by block
+    /// index modulo their count.
+    pub live: bool,
+    /// The newest block index of a live sound.
+    pub newest: Option<u16>,
+    /// The next block index of a live sound to give the sink.
+    pub next: u16,
+    /// When the last new block of a live sound arrived, in the receiver's
+    /// milliseconds.
+    pub arrived_ms: u64,
     offset: usize,
     stamp: u32,
 }
@@ -52,6 +62,9 @@ impl Entry {
     #[must_use]
     pub fn block_samples(&self, index: u16) -> u32 {
         let per_block = self.samples_per_block();
+        if self.live {
+            return per_block;
+        }
         let before = u32::from(index).saturating_mul(per_block);
         self.samples.saturating_sub(before).min(per_block)
     }
@@ -70,8 +83,13 @@ impl Entry {
         usize::from(self.blocks).div_ceil(8)
     }
 
+    /// A live sound's table of the block index in each slot.
+    fn index_table_bytes(&self) -> usize {
+        if self.live { usize::from(self.blocks).saturating_mul(2) } else { 0 }
+    }
+
     fn size(&self) -> usize {
-        self.data_bytes().saturating_add(self.bitmap_bytes())
+        self.data_bytes().saturating_add(self.bitmap_bytes()).saturating_add(self.index_table_bytes())
     }
 }
 
@@ -92,8 +110,6 @@ pub enum Defined {
     /// An older generation, or a different definition of the same
     /// generation: refused.
     Conflict,
-    /// A live sound, which this receiver does not play yet.
-    Unsupported,
     /// It would not fit even with every evictable sound gone.
     ResourceLimit,
 }
@@ -194,9 +210,7 @@ impl<'a, const OBJECTS: usize> Store<'a, OBJECTS> {
     /// receiver still needs a sound, which protects it from eviction.
     pub fn define(&mut self, object: &Object<'_>, busy: &dyn Fn(SoundId) -> bool) -> Defined {
         let Some(codec) = object.codec else { return Defined::Ignored };
-        if object.samples == 0 {
-            return Defined::Unsupported;
-        }
+        let live = object.samples == 0;
         let sound = SoundId { handle: object.handle, generation: object.generation };
         let fresh = Entry {
             sound,
@@ -205,10 +219,14 @@ impl<'a, const OBJECTS: usize> Store<'a, OBJECTS> {
             rate_hz: object.rate_hz,
             block_bytes: object.block_bytes,
             samples: object.samples,
-            blocks: object.blocks,
+            blocks: if live { crate::LIVE_RING_BLOCKS } else { object.blocks },
             received: 0,
             conflict: false,
             at_sink: false,
+            live,
+            newest: None,
+            next: 0,
+            arrived_ms: 0,
             offset: 0,
             stamp: 0,
         };
@@ -298,6 +316,96 @@ impl<'a, const OBJECTS: usize> Store<'a, OBJECTS> {
         (self.arena.len().saturating_sub(start) >= size).then_some(start)
     }
 
+    /// Records which live block the sink gets next, and when one last
+    /// arrived.
+    pub fn set_live_cursor(&mut self, sound: SoundId, next: u16, arrived_ms: u64) {
+        if let Some(entry) = self.entries.iter_mut().flatten().find(|entry| entry.sound == sound) {
+            entry.next = next;
+            entry.arrived_ms = arrived_ms;
+        }
+    }
+
+    /// Block `index` of a live sound, if its slot holds that block.
+    #[must_use]
+    pub fn live_block(&self, sound: SoundId, index: u16) -> Option<&[u8]> {
+        let entry = self.entries.iter().flatten().find(|entry| entry.sound == sound && entry.live)?;
+        let slot = index.checked_rem(entry.blocks)?;
+        if !self.received(entry, slot) || self.slot_index(entry, slot) != Some(index) {
+            return None;
+        }
+        let start = entry.offset.saturating_add(usize::from(slot).saturating_mul(usize::from(entry.block_bytes)));
+        self.arena.get(start..start.saturating_add(usize::from(entry.block_bytes)))
+    }
+
+    /// The block index a live sound's slot holds.
+    fn slot_index(&self, entry: &Entry, slot: u16) -> Option<u16> {
+        let at = entry
+            .offset
+            .saturating_add(entry.data_bytes())
+            .saturating_add(entry.bitmap_bytes())
+            .saturating_add(usize::from(slot).saturating_mul(2));
+        let bytes = self.arena.get(at..at.saturating_add(2))?;
+        Some(u16::from_be_bytes([bytes.first().copied()?, bytes.get(1).copied()?]))
+    }
+
+    /// Stores a live sound's blocks, each whole, in the slot of its index
+    /// modulo the ring. A block older than the ring is dropped.
+    fn put_live(&mut self, position: usize, mut entry: Entry, data: &Data<'_>) -> Stored {
+        let length = usize::from(entry.block_bytes);
+        if length == 0 || !data.blocks.len().is_multiple_of(length) {
+            return Stored::Malformed;
+        }
+        let mut fresh = false;
+        let mut count: u16 = 0;
+        for (offset, bytes) in (0_u16..).zip(data.blocks.chunks_exact(length)) {
+            let index = data.first_block.wrapping_add(offset);
+            count = count.saturating_add(1);
+            if entry
+                .newest
+                .is_some_and(|newest| newest.wrapping_sub(index) >= entry.blocks && !crate::serial_newer(index, newest))
+            {
+                continue;
+            }
+            let Some(slot) = index.checked_rem(entry.blocks) else { return Stored::Malformed };
+            if self.received(&entry, slot) && self.slot_index(&entry, slot) == Some(index) {
+                let start = entry.offset.saturating_add(usize::from(slot).saturating_mul(length));
+                if self.arena.get(start..start.saturating_add(length)) != Some(bytes) {
+                    entry.conflict = true;
+                    if let Some(place) = self.entries.get_mut(position) {
+                        *place = Some(entry);
+                    }
+                    return Stored::Conflict;
+                }
+                continue;
+            }
+            let start = entry.offset.saturating_add(usize::from(slot).saturating_mul(length));
+            if let Some(target) = self.arena.get_mut(start..start.saturating_add(length)) {
+                target.copy_from_slice(bytes);
+            }
+            let table = entry
+                .offset
+                .saturating_add(entry.data_bytes())
+                .saturating_add(entry.bitmap_bytes())
+                .saturating_add(usize::from(slot).saturating_mul(2));
+            if let Some(target) = self.arena.get_mut(table..table.saturating_add(2)) {
+                target.copy_from_slice(&index.to_be_bytes());
+            }
+            let bit = entry.offset.saturating_add(entry.data_bytes()).saturating_add(usize::from(slot / 8));
+            if let Some(byte) = self.arena.get_mut(bit) {
+                *byte |= 1 << (slot % 8);
+            }
+            if entry.newest.is_none_or(|newest| crate::serial_newer(index, newest)) {
+                entry.newest = Some(index);
+            }
+            entry.received = entry.received.saturating_add(1);
+            fresh = true;
+        }
+        if let Some(place) = self.entries.get_mut(position) {
+            *place = Some(entry);
+        }
+        if fresh { Stored::Blocks { first: data.first_block, count } } else { Stored::Repeat }
+    }
+
     /// Stores a DATA record's blocks.
     pub fn put(&mut self, data: &Data<'_>) -> Stored {
         let Some(index) =
@@ -308,6 +416,9 @@ impl<'a, const OBJECTS: usize> Store<'a, OBJECTS> {
         let Some(mut entry) = self.entries.get(index).copied().flatten() else { return Stored::Unknown };
         if entry.sound.generation != data.generation {
             return Stored::Unknown;
+        }
+        if entry.live {
+            return self.put_live(index, entry, data);
         }
         // The record's blocks: whole ones, then possibly the final, shorter one.
         let mut position = 0;
@@ -450,10 +561,58 @@ mod tests {
     }
 
     #[test]
-    fn reserved_codecs_and_live_sounds_are_not_stored() {
+    fn a_reserved_codec_is_not_stored() {
         let mut arena = [0_u8; 100];
         let mut store = Store::<2>::new(&mut arena);
         assert_eq!(store.define(&Object { codec: None, ..object(1, 1, 10) }, IDLE), Defined::Ignored);
-        assert_eq!(store.define(&Object { samples: 0, blocks: 0, ..object(1, 1, 10) }, IDLE), Defined::Unsupported);
+    }
+
+    /// A DATA record of a live block at `index`.
+    fn live(index: u16, block: &[u8]) -> Data<'_> {
+        Data { handle: 1, generation: 1, first_block: index, blocks: block }
+    }
+
+    #[test]
+    fn a_live_sound_keeps_its_newest_blocks_in_a_ring() {
+        // A ring of 32 blocks of 100 bytes, its bitmap and its index table.
+        let mut arena = [0_u8; 3_300];
+        let mut store = Store::<2>::new(&mut arena);
+        let sound = SoundId { handle: 1, generation: 1 };
+        assert!(matches!(
+            store.define(&Object { samples: 0, blocks: 0, ..object(1, 1, 0) }, IDLE),
+            Defined::New { .. }
+        ));
+        let entry = *store.entry(1).unwrap();
+        assert!(entry.live && entry.blocks == crate::LIVE_RING_BLOCKS && entry.newest.is_none());
+        let block = |value: u8| [value; 100];
+        assert_eq!(store.put(&live(5, &block(5))), Stored::Blocks { first: 5, count: 1 });
+        assert_eq!(store.live_block(sound, 5), Some(&block(5)[..]));
+        // Block 37 takes block 5's slot: 5 is gone and 37 is the newest.
+        assert_eq!(store.put(&live(37, &block(37))), Stored::Blocks { first: 37, count: 1 });
+        assert_eq!((store.live_block(sound, 5), store.live_block(sound, 37)), (None, Some(&block(37)[..])));
+        assert_eq!(store.entry(1).unwrap().newest, Some(37));
+        // A block older than the ring is dropped; an older one inside it is kept.
+        assert_eq!(store.put(&live(5, &block(5))), Stored::Repeat);
+        assert_eq!(store.live_block(sound, 37), Some(&block(37)[..]));
+        assert_eq!(store.put(&live(30, &block(30))), Stored::Blocks { first: 30, count: 1 });
+        assert_eq!(store.entry(1).unwrap().newest, Some(37), "an older block is not the newest");
+        // The index wraps: 65 535 then 0.
+        assert_eq!(store.put(&live(u16::MAX, &block(1))), Stored::Repeat, "far older by serial arithmetic");
+        // A part block is malformed: live blocks are always whole.
+        assert_eq!(store.put(&live(38, &[0; 40])), Stored::Malformed);
+        // The same block with other bytes is a conflict.
+        assert_eq!(store.put(&live(37, &block(9))), Stored::Conflict);
+    }
+
+    #[test]
+    fn a_live_index_wraps_from_the_largest_to_zero() {
+        let mut arena = [0_u8; 3_300];
+        let mut store = Store::<2>::new(&mut arena);
+        let sound = SoundId { handle: 1, generation: 1 };
+        store.define(&Object { samples: 0, blocks: 0, ..object(1, 1, 0) }, IDLE);
+        store.put(&live(u16::MAX, &[1; 100]));
+        assert_eq!(store.put(&live(0, &[2; 100])), Stored::Blocks { first: 0, count: 1 });
+        assert_eq!(store.entry(1).unwrap().newest, Some(0));
+        assert_eq!(store.live_block(sound, u16::MAX), Some(&[1; 100][..]));
     }
 }

@@ -83,6 +83,56 @@ impl Sound {
         Ok(Self { handle, generation, id: u32::from(handle), codec, rate_hz, block_bytes, samples, data, label: None })
     }
 
+    /// A live sound (REQ-AUD-014): announced with no samples, its blocks
+    /// written as they come by [`Sound::live_records`].
+    ///
+    /// # Errors
+    /// A rate or block size the profile does not allow.
+    pub fn live(
+        handle: u8,
+        generation: u16,
+        codec: Codec,
+        rate_hz: u32,
+        block_bytes: u16,
+    ) -> Result<Self, EncodeError> {
+        rate_code(rate_hz).ok_or(EncodeError::Rate(rate_hz))?;
+        if !codec.allows_block(block_bytes) {
+            return Err(EncodeError::BlockSize(block_bytes));
+        }
+        Ok(Self {
+            handle,
+            generation,
+            id: u32::from(handle),
+            codec,
+            rate_hz,
+            block_bytes,
+            samples: 0,
+            data: Vec::new(),
+            label: None,
+        })
+    }
+
+    /// Samples in each whole block.
+    #[must_use]
+    pub fn samples_per_block(&self) -> u32 {
+        self.codec.samples_per_block(self.block_bytes)
+    }
+
+    /// The DATA records of a live sound's next whole blocks, numbered from
+    /// block `first` (counting modulo 2¹⁶), one block a record so each is
+    /// sent as soon as it exists. A final part block is padded with silence.
+    #[must_use]
+    pub fn live_records(&self, first: u16, pcm: &[i16]) -> Vec<Vec<u8>> {
+        let per_block = usize::try_from(self.samples_per_block()).unwrap_or(1).max(1);
+        let mut padded = pcm.to_vec();
+        padded.resize(pcm.len().div_ceil(per_block).saturating_mul(per_block), 0);
+        let data = match self.codec {
+            Codec::Pcm16 => padded.iter().flat_map(|sample| sample.to_le_bytes()).collect(),
+            Codec::ImaAdpcm => ima_blocks(&padded, per_block),
+        };
+        self.records_of(&data, first, 1)
+    }
+
     /// Blocks in the whole sound.
     #[must_use]
     pub fn blocks(&self) -> u16 {
@@ -120,17 +170,22 @@ impl Sound {
     pub fn data_records(&self) -> Vec<Vec<u8>> {
         let per_record =
             MAX_BODY.saturating_sub(DATA_FIXED).checked_div(usize::from(self.block_bytes)).unwrap_or(1).max(1);
+        self.records_of(&self.data, 0, per_record)
+    }
+
+    /// DATA records of encoded blocks, `per_record` to a record, numbered
+    /// from block `first`.
+    fn records_of(&self, data: &[u8], mut first: u16, per_record: usize) -> Vec<Vec<u8>> {
         let block = usize::from(self.block_bytes);
         let mut records = Vec::new();
-        let mut first: u16 = 0;
-        for chunk in self.data.chunks(block.saturating_mul(per_record)) {
+        for chunk in data.chunks(block.saturating_mul(per_record)) {
             let mut body = Vec::with_capacity(DATA_FIXED.saturating_add(chunk.len()));
             body.push(self.handle);
             body.extend_from_slice(&self.generation.to_be_bytes());
             body.extend_from_slice(&first.to_be_bytes());
             body.extend_from_slice(chunk);
             records.push(frame(TYPE_DATA, &body));
-            first = first.saturating_add(u16::try_from(per_record).unwrap_or(u16::MAX));
+            first = first.wrapping_add(u16::try_from(per_record).unwrap_or(u16::MAX));
         }
         records
     }
