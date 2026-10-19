@@ -96,7 +96,7 @@ Done and verified by `NEOTELETEXT_REMOTE=oldvga scripts/check.sh full`: formatti
 | Release items of REQ-SEC-014: bill of materials, signing, reproducible builds | No release has been made. |
 | Phase 2 items not started: request-mode page store (REQ-ACQ-006), pre-fetching (REQ-NAV-004), the glyph line cache (REQ-RND-026), other formats (REQ-INP-021), device-bound sessions (REQ-WEB-017) | Phase 2. |
 
-**For the owner to decide or confirm:** row 21 (the framing tolerance's false-packet rate, E.24), row 32 (two licences outside REQ-GEN-017's list), row 36 (the amended E.18 default).
+**Confirmed by the owner on 20 October 2026,** each as implemented: row 21 (the framing tolerance's false-packet rate, E.24), row 32 (two licences outside REQ-GEN-017's list; LICENSING.md records them), row 36 (the amended E.18 default).
 
 ## Status at the end of the Level 2.5 and 3.5 round (11 October 2026)
 
