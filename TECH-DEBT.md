@@ -4,6 +4,8 @@ Work deferred while behaviour is being shaped (the owner's instruction of 13 Oct
 
 ## Verification
 
+- **`cargo xtask features` fails on builds that were already failing before the audio work** (checked on ad51bbc, 19 October 2026): `neoteletext-core [modern-classic]`, `[classic]`, `[render]` and `[bedstead]`, `neoteletext-formats [std,tti]`, and every `neoteletext-cli` build without `write-text`, whose `tests/write_text.rs` is not gated on the feature. Issue 221.
+
 - **The full gate has not run** since 67153ff: c884152, c6b3d40, 30dc865, a5651d6, 9c989ba, b9f8ef6, f43fde7, f9fe7ea and f341e94 passed only the fast gate. Run `NEOTELETEXT_REMOTE=foundintelquiet4060 scripts/check.sh full` (the remote half needs the host set up in this session; Xtensa builds may need `~/export-esp.sh`).
 - **Cortex-M0 sizes not remeasured** (REQ-GEN-009, `docs/spec/design/porting.md`): `GlyphSet` now holds 25 font slots, and loaded fonts can be rounded. `cargo xtask size` on the remote host.
 - **Fuzzing not rerun** on the changed readers: `bdf`, `bdf_convert`, and the `fonts.txt` reader with `c` lines, which has no fuzz target of its own.
@@ -12,6 +14,14 @@ Work deferred while behaviour is being shaped (the owner's instruction of 13 Oct
 - **No end-to-end test of two character sets on one real page** drawn from two user fonts; the core test covers it.
 
 ## Unfinished features
+
+- **Audio, area AUD (issue #220):** built and tested on branch `audio`; owed:
+  - live sounds (REQ-AUD-014) are not measured against a real sender's clock, only against a simulated 1 per cent; a live sound has no 5 ms fades at a concealed block either (below);
+  - the `.ttau` file and WebSocket record readers (REQ-AUD-008);
+  - 5 ms fades at each edge of a missing block, and the `concealed` report (REQ-AUD-013);
+  - passing IMA ADPCM blocks undecoded to a sink that decodes them itself, for tellyboy (REQ-AUD-018);
+  - `cargo xtask size` and the Cortex-M0 flash of a receiver with audio;
+  - merging `audio` into `implementation` once the other session's work there is committed, and the full gate.
 
 - **Epics #177 (fonts) and #210 (character sets)** stay open until their work and the full gate are done.
 

@@ -18,6 +18,7 @@ neoteletext-core = { path = "../crates/neoteletext-core" }
 neoteletext-formats = { path = "../crates/neoteletext-formats", features = ["default", "std"] }
 neoteletext-slicer = { path = "../crates/neoteletext-slicer" }
 neoteletext-web = { path = "../crates/neoteletext-web", features = ["default"] }
+neoteletext-audio = { path = "../crates/neoteletext-audio" }
 
 [workspace]
 members = ["."]
@@ -118,6 +119,20 @@ bench = false
 [[bin]]
 name = "bdf_convert"
 path = "fuzz_targets/bdf_convert.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "audio_records"
+path = "fuzz_targets/audio_records.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "audio_packets"
+path = "fuzz_targets/audio_packets.rs"
 test = false
 doc = false
 bench = false

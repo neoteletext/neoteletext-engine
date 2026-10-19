@@ -114,3 +114,15 @@ The output never includes `x` entries. An author who lists other channels adds t
 
 It never reads from the network and runs under the sandbox of REQ-SEC-017.
 *Verification:* Tests for each set that a sample text written and read back gives the same Unicode, apart from documented substitutions; tests of each refusal, of the Thai layout with and without a shared row, of Arabic-script reordering with digits and Latin, and of the X/26 budget.
+
+**REQ-CLI-011 — Writing a sound.**
+*Phase:* Phase 2 (whole requirement).
+`neottx sound --page MPP [--channel N] [--gain PERCENT] [--codec ima|pcm] [--handle N] [--loop] [--repeat N] [--live [--pace PACKETS]] INPUT.wav OUTPUT.t42` shall write a sound as the audio profile's broadcast packets (REQ-AUD-007): its OBJECT record, its DATA records and a CONTROL record that plays it on the page, on audio service 0. It shall:
+- **Read** a RIFF WAVE file of 16-bit linear PCM, mono or stereo, at one of the rates of REQ-AUD-002, of at most 32 MB; stereo is mixed down to mono as (left + right) / 2. It refuses any other file, naming why.
+- **Encode** in IMA ADPCM with 512-byte blocks by default, or in PCM with 1 000-byte blocks.
+- **Write** the packets as a T42 stream, the whole sequence `--repeat` times, as a carousel would repeat it, to be added to a channel's T42 stream.
+- **Send live** with `--live` (REQ-AUD-014): the OBJECT record of a live sound and the play, then each block, IMA ADPCM in 256-byte blocks, one a record, at the packet where a player reading `--pace` packets a second (by default 320, T42 Browser's pace) reaches the moment the block's last sample was captured. The packets between repeat the announcement and the latest block. The sound is sent `--repeat` times in a row; a rate the pace cannot carry is refused.
+- **Report** the samples, the rate, the bytes of sound and the packets written.
+
+It never reads from the network and runs under the sandbox of REQ-SEC-017. A build without the feature `sound` refuses the command (decision E.61).
+*Verification:* Tests that PCM written and read back through the receiver is exact and plays on the page and channel asked for, that IMA ADPCM reads back with a signal-to-noise ratio above 25 dB, that a rate outside the profile is refused, that a live sound plays back as the player reaches it and fades two seconds after the last block, that a live sound too fast for the pace is refused, and that a build without `sound` refuses the command.

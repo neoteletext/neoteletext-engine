@@ -45,6 +45,10 @@ const BUILDS: &[Build] = &[
     Build { package: "neoteletext-web", features: "push" },
     Build { package: "neoteletext-web", features: "forms" },
     Build { package: "neoteletext-web", features: "cookies" },
+    Build { package: "neoteletext-audio", features: "" },
+    Build { package: "neoteletext-audio", features: "idl" },
+    Build { package: "neoteletext-audio", features: "ima" },
+    Build { package: "neoteletext-audio", features: "encode" },
     Build { package: "neoteletext-app", features: "" },
     Build { package: "neoteletext-app", features: "live" },
     Build { package: "neoteletext-app", features: "slice" },
@@ -52,6 +56,7 @@ const BUILDS: &[Build] = &[
     Build { package: "neoteletext-cli", features: "view" },
     Build { package: "neoteletext-cli", features: "live" },
     Build { package: "neoteletext-cli", features: "slice" },
+    Build { package: "neoteletext-cli", features: "sound" },
 ];
 
 /// `cargo xtask features`: lints and tests each build of [`BUILDS`].

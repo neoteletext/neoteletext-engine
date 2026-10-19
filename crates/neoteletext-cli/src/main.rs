@@ -8,6 +8,7 @@ mod contents;
 mod font;
 mod options;
 mod output;
+mod sound;
 mod terminal;
 #[cfg(feature = "view")]
 mod view;
@@ -292,6 +293,46 @@ enum Command {
         #[arg(long)]
         no_sandbox: bool,
     },
+    /// Write a sound as the audio profile's broadcast packets, with the
+    /// command that plays it on a page (REQ-CLI-011, area AUD).
+    Sound {
+        /// The page the sound belongs to, 100 to 8FF.
+        #[arg(long)]
+        page: String,
+        /// The channel, 0 to 3.
+        #[arg(long, default_value_t = 0)]
+        channel: u8,
+        /// The gain, 0 to 100 per cent.
+        #[arg(long, default_value_t = 80)]
+        gain: u8,
+        /// `ima` (IMA ADPCM, a quarter of the size) or `pcm`.
+        #[arg(long, default_value = "ima")]
+        codec: String,
+        /// The sound's handle, 0 to 255.
+        #[arg(long, default_value_t = 1)]
+        handle: u8,
+        /// Repeat the sound until a later command stops it.
+        #[arg(long = "loop")]
+        looped: bool,
+        /// Times the whole sequence is written, as a carousel repeats it.
+        /// With `--live`, times the sound is sent, one run after another.
+        #[arg(long, default_value_t = 1)]
+        repeat: u8,
+        /// Send the sound live (REQ-AUD-014): block by block, at the pace a
+        /// player reads the file, between repeats of the latest record.
+        #[arg(long)]
+        live: bool,
+        /// With `--live`, the packets a second the file is played at.
+        #[arg(long, default_value_t = sound::PLAYER_PACKETS_PER_SECOND)]
+        pace: u32,
+        /// A WAVE file of 16-bit PCM at one of the profile's rates.
+        input: PathBuf,
+        /// The T42 file to write.
+        output: PathBuf,
+        /// Run without the operating-system sandbox (REQ-SEC-017).
+        #[arg(long)]
+        no_sandbox: bool,
+    },
     /// Work with loaded fonts (area FNT).
     Font {
         #[command(subcommand)]
@@ -337,6 +378,23 @@ fn main() -> ExitCode {
         Command::Contents { common } => contents::contents(&common.options()),
         Command::WriteText { set, page, input, output, no_sandbox } => {
             write_text::write_text(&set, &page, &input, &output, no_sandbox)
+        }
+        Command::Sound {
+            page,
+            channel,
+            gain,
+            codec,
+            handle,
+            looped,
+            repeat,
+            live,
+            pace,
+            input,
+            output,
+            no_sandbox,
+        } => {
+            let options = sound::SoundOptions { page, channel, gain, codec, handle, looped, repeat, live, pace };
+            sound::sound(&options, &input, &output, no_sandbox)
         }
         Command::SandboxTest => sandbox::self_test(),
         Command::Fetch { address, no_sandbox, allow_local } => commands::fetch(&address, no_sandbox, &allow_local),

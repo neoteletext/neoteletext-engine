@@ -37,7 +37,8 @@ cargo xtask check-noto
 if [ "$mode" = "full" ]; then
     step "no_std crates on the amd64 bare-metal target (REQ-GEN-002)"
     cargo build --quiet --target x86_64-unknown-none \
-        -p neoteletext-core -p neoteletext-formats -p neoteletext-slicer -p neoteletext-web -p neoteletext-image
+        -p neoteletext-core -p neoteletext-formats -p neoteletext-slicer -p neoteletext-web -p neoteletext-image \
+        -p neoteletext-audio -p neoteletext-audio-mix
 
     step "each crate with no optional area and with each area alone (decision E.61)"
     cargo xtask features

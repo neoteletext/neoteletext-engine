@@ -6,17 +6,17 @@
 use std::process::Command;
 
 /// REQ-CLI-005: invalid usage.
-#[cfg(any(not(feature = "live"), not(feature = "view"), not(feature = "slice")))]
+#[cfg(any(not(feature = "live"), not(feature = "view"), not(feature = "slice"), not(feature = "sound")))]
 const USAGE: i32 = 2;
 
 /// Runs neottx; the exit status and standard error.
-#[cfg(any(not(feature = "live"), not(feature = "view"), not(feature = "slice")))]
+#[cfg(any(not(feature = "live"), not(feature = "view"), not(feature = "slice"), not(feature = "sound")))]
 fn neottx(arguments: &[&str]) -> (Option<i32>, String) {
     let output = Command::new(env!("CARGO_BIN_EXE_neottx")).args(arguments).output().expect("run neottx");
     (output.status.code(), String::from_utf8_lossy(&output.stderr).into_owned())
 }
 
-#[cfg(any(not(feature = "live"), not(feature = "view"), not(feature = "slice")))]
+#[cfg(any(not(feature = "live"), not(feature = "view"), not(feature = "slice"), not(feature = "sound")))]
 fn assert_refused(arguments: &[&str], feature: &str) {
     let (status, errors) = neottx(arguments);
     assert_eq!(status, Some(USAGE), "{arguments:?}: {errors}");
@@ -67,4 +67,10 @@ fn every_command_is_in_the_help() {
     for command in ["list", "show", "view", "render", "text", "convert", "slice", "services", "service-info", "check"] {
         assert!(help.lines().any(|line| line.trim_start().starts_with(command)), "{command}: {help}");
     }
+}
+
+#[cfg(not(feature = "sound"))]
+#[test]
+fn writing_sounds_is_refused_without_sound() {
+    assert_refused(&["sound", "--page", "100", "in.wav", "out.t42"], "sound");
 }

@@ -383,12 +383,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "neoteletext-audio"
+version = "0.1.0"
+dependencies = [
+ "neoteletext-core",
+]
+
+[[package]]
+name = "neoteletext-audio-mix"
+version = "0.1.0"
+dependencies = [
+ "neoteletext-audio",
+]
+
+[[package]]
 name = "neoteletext-cli"
 version = "0.1.0"
 dependencies = [
  "clap",
  "crossterm",
  "neoteletext-app",
+ "neoteletext-audio",
  "neoteletext-core",
  "neoteletext-formats",
  "neoteletext-image",

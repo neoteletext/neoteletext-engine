@@ -37,7 +37,7 @@ const RECORD_FILES: [&str; 7] = [
 const TABLE: &str = "docs/traceability.md";
 /// The requirement files, in the order of the specification's areas
 /// (`docs/spec/requirements/README.md`), so the table keeps that order.
-const REQUIREMENT_FILES: [&str; 26] = [
+const REQUIREMENT_FILES: [&str; 27] = [
     "sec",
     "gen",
     "arch",
@@ -63,6 +63,7 @@ const REQUIREMENT_FILES: [&str; 26] = [
     "web",
     "brw",
     "fnt",
+    "aud",
     "out-of-scope",
 ];
 /// The design documents, which record checks by inspection as the other
