@@ -74,20 +74,20 @@ The process model (`neoteletext-browser/docs/architecture.md` §6) decides the p
 
 A compromised decoder can make sounds of its choosing in its own channel's four voices, while the trusted core lets that channel be heard. That is the same exposure as a decoder drawing pictures of its choosing in its pages. It can't make a background tab audible, override mute, or exceed the master volume, because those are applied by the trusted core and then by the interface's mixer.
 
-### 2.2 New messages
+### 2.2 The messages, as built
 
-These go in the `protocol` crate. Each is bounded before anything is allocated, and each side accepts only its own kinds (architecture §6.4).
+They are in T42 Browser's `protocol` crate (`protocol::audio`). Each is bounded before anything is allocated, and each side accepts only its own kinds.
 
 | Direction | Message | Content and bounds |
 |---|---|---|
-| Decoder → core → interface | **Sound** | Channel-local sound id, a sample offset, and a run of 16-bit PCM at the object's rate: at most 64 KB a message. The total held for a channel is bounded by the receiver level's store. |
-| Decoder → core → interface | **Voice** | One audio.md §10.1 operation: channel 0–3, sound id, gain 0–100, fade 5–10 000 ms, duck code 0–6, loop and after-current flags |
-| Interface → core → decoder | **Played** | Per channel: the position and whether the voice ended, so the decoder can start a pending sound and report events |
-| Core → interface | **Audio** | The user's settings: mute, master volume, the audible channel |
+| Decoder → core → interface | **Audio** | One voice operation: define a sound (a profile rate, at most two minutes), its 16-bit samples (at most 32 768 a message, within the sound), forget it; or start, stop or ramp a channel (0 to 3, gain 0 to 100, fade 5 to 10 000 ms, a Table 19 duck step, loop and after-current flags) |
+| Core → interface | **Audio**, reset | Forget every sound at once: another channel is now the one heard. Only the trusted core may send it. |
+| Interface → core → decoder | **Opened** | The page the user opened, or none |
+| Core → decoder | **Audible** | Whether the channel is the one heard; becoming heard, the decoder sends its sounds again |
 
-The trusted core re-checks every field of Sound and Voice against these bounds, as it re-checks frames. Any violation closes the decoder.
+The trusted core passes on only the active tab's operations, and checks each again: a sound must be defined before it is filled or started, its samples must lie within it, and the channel heard may hold at most 32 MB of samples in the interface. No message reports back from the interface: the mixer queues a waiting sound itself (`Start::after_current`), so the decoder need not know when a sound ends.
 
-A page shown in T42 Browser's page wall isn't "open". **Page binding applies to the page the user has opened** (zoomed or chosen) in the active tab, not to every page visible on the wall. This is open decision D1 (section 5).
+A page shown in T42 Browser's page wall isn't "open". **Page binding follows the page the user has opened** in the active tab: the zoomed page, or else the page chosen by number or in the list, as a television goes to the page whose number is typed (D1).
 
 ### 2.3 The mixer: a new crate, `neoteletext-audio-mix`
 
@@ -106,7 +106,7 @@ It is portable Rust, with no operating-system code. It lives in the engine besid
 
 ### 2.4 Audio output on each operating system
 
-T42 Browser's crates forbid `unsafe` code (`native/Cargo.toml`). Every operating system's audio interface is a C interface, so output needs a library that wraps it. **Library choice is open decision D2**:
+T42 Browser's crates forbid `unsafe` code (`native/Cargo.toml`). Every operating system's audio interface is a C interface, so output needs a library that wraps it. **Library choice was decision D2 (section 5): `cpal`.** The options were:
 
 | Option | What it is | Pros | Cons |
 |---|---|---|---|
@@ -175,8 +175,8 @@ iOS and Android are later targets (architecture §13). With option A of §2.4, t
 ## 5. Decisions
 
 Taken on 19 October 2026, while the owner was away, as the owner had instructed (decision E.85 and T42 Browser's decision 37):
-- **D1.** A page-bound sound follows the page the user has opened, the zoomed page of the active tab, not every page visible on the wall.
-- **D2.** Desktop audio output uses `cpal`, version 0.18.2 (Apache-2.0).
+- **D1.** A page-bound sound follows the page the user has opened in the active tab: the zoomed page, or else the page chosen by number or in the list, not every page visible on the wall.
+- **D2.** Desktop audio output uses `cpal`, version 0.18.2 (Apache-2.0), on macOS only until D3 is decided.
 - **D4.** `neoteletext-audio` and `neoteletext-audio-mix` live in the engine.
 
 Still open:
