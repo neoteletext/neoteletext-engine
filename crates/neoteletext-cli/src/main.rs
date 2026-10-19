@@ -315,8 +315,16 @@ enum Command {
         #[arg(long = "loop")]
         looped: bool,
         /// Times the whole sequence is written, as a carousel repeats it.
+        /// With `--live`, times the sound is sent, one run after another.
         #[arg(long, default_value_t = 1)]
         repeat: u8,
+        /// Send the sound live (REQ-AUD-014): block by block, at the pace a
+        /// player reads the file, between repeats of the latest record.
+        #[arg(long)]
+        live: bool,
+        /// With `--live`, the packets a second the file is played at.
+        #[arg(long, default_value_t = sound::PLAYER_PACKETS_PER_SECOND)]
+        pace: u32,
         /// A WAVE file of 16-bit PCM at one of the profile's rates.
         input: PathBuf,
         /// The T42 file to write.
@@ -371,8 +379,21 @@ fn main() -> ExitCode {
         Command::WriteText { set, page, input, output, no_sandbox } => {
             write_text::write_text(&set, &page, &input, &output, no_sandbox)
         }
-        Command::Sound { page, channel, gain, codec, handle, looped, repeat, input, output, no_sandbox } => {
-            let options = sound::SoundOptions { page, channel, gain, codec, handle, looped, repeat };
+        Command::Sound {
+            page,
+            channel,
+            gain,
+            codec,
+            handle,
+            looped,
+            repeat,
+            live,
+            pace,
+            input,
+            output,
+            no_sandbox,
+        } => {
+            let options = sound::SoundOptions { page, channel, gain, codec, handle, looped, repeat, live, pace };
             sound::sound(&options, &input, &output, no_sandbox)
         }
         Command::SandboxTest => sandbox::self_test(),

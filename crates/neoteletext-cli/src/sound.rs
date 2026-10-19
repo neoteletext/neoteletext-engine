@@ -1,6 +1,8 @@
 //! `neottx sound --page MPP INPUT.wav OUTPUT.t42` (REQ-CLI-011,
 //! REQ-AUD-020): a sound as the audio profile's broadcast packets, with the
-//! command that plays it, ready to add to a T42 stream.
+//! command that plays it, ready to add to a T42 stream. With `--live`, the
+//! sound is sent as a live one (REQ-AUD-014), each block at the moment a
+//! player of the file reaches it.
 
 #[cfg(feature = "sound")]
 use crate::font::read_bounded;
@@ -31,6 +33,9 @@ const PLAY: u8 = 1;
 /// The command's flag for a looping sound.
 #[cfg(feature = "sound")]
 const LOOP: u8 = neoteletext_audio::record::FLAG_LOOP;
+/// The pace at which the browser plays a T42 file: 64 packets every 0.2
+/// seconds, the engine's `DEFAULT_FETCH_INTERVAL_US`.
+pub const PLAYER_PACKETS_PER_SECOND: u32 = 64 * 5;
 
 /// What `neottx sound` writes. A build without `sound` refuses the command
 /// before reading any of it.
@@ -51,6 +56,10 @@ pub struct SoundOptions {
     pub looped: bool,
     /// Times the whole sequence is written, as a carousel repeats it.
     pub repeat: u8,
+    /// Send the sound live, paced for a player.
+    pub live: bool,
+    /// The packets a second the player reads.
+    pub pace: u32,
 }
 
 /// `neottx sound`.
@@ -81,29 +90,52 @@ pub fn sound(options: &SoundOptions, input: &Path, output: &Path, no_sandbox: bo
         Codec::ImaAdpcm => neoteletext_audio::IMA_BLOCK_LARGE,
         Codec::Pcm16 => neoteletext_audio::MAX_PCM_BLOCK,
     };
-    let sound = Sound::new(options.handle, 1, codec, wave.rate_hz, block, &wave.samples).map_err(|error| {
+    let refused = |error| {
         (
             exit::INPUT,
             format!("{}: {error:?}; the rate must be one of {:?}", input.display(), neoteletext_audio::SAMPLE_RATES),
         )
-    })?;
+    };
+    let command = Command {
+        channel: options.channel,
+        sequence: 1,
+        operation: PLAY,
+        handle: options.handle,
+        generation: 1,
+        gain: options.gain,
+        fade_ms: 0,
+        flags: if options.looped && !options.live { LOOP } else { 0 },
+        duck: 0,
+        page: Some(page),
+    };
+    if options.live {
+        // A live sound's blocks are small, so each goes as soon as it exists.
+        let block = match codec {
+            Codec::ImaAdpcm => neoteletext_audio::IMA_BLOCK_SMALL,
+            Codec::Pcm16 => block,
+        };
+        let sound = Sound::live(options.handle, 1, codec, wave.rate_hz, block).map_err(refused)?;
+        let packets = live_packets(&sound, &command, &wave.samples, options.repeat, options.pace)
+            .map_err(|message| (exit::INPUT, format!("{}: {message}", input.display())))?;
+        for packet in &packets {
+            out.write_all(&packet.bytes).map_err(|error| (exit::INPUT, format!("{}: {error}", output.display())))?;
+        }
+        out.flush().map_err(|error| (exit::INPUT, format!("{}: {error}", output.display())))?;
+        eprintln!(
+            "{}: {} samples at {} Hz sent live {} times, {} packets at {} a second for page {page:03X}",
+            output.display(),
+            wave.samples.len(),
+            wave.rate_hz,
+            options.repeat,
+            packets.len(),
+            options.pace
+        );
+        return Ok(());
+    }
+    let sound = Sound::new(options.handle, 1, codec, wave.rate_hz, block, &wave.samples).map_err(refused)?;
     let mut records = vec![sound.object_record().map_err(|error| (exit::INPUT, format!("{error:?}")))?];
     records.extend(sound.data_records());
-    records.push(
-        Command {
-            channel: options.channel,
-            sequence: 1,
-            operation: PLAY,
-            handle: options.handle,
-            generation: 1,
-            gain: options.gain,
-            fade_ms: 0,
-            flags: if options.looped { LOOP } else { 0 },
-            duck: 0,
-            page: Some(page),
-        }
-        .record(),
-    );
+    records.push(command.record());
     let mut written = 0_usize;
     let mut record_id = 0;
     for _ in 0..options.repeat {
@@ -125,6 +157,54 @@ pub fn sound(options: &SoundOptions, input: &Path, output: &Path, no_sandbox: bo
         options.codec
     );
     Ok(())
+}
+
+/// A live sound's packets as a player reading `pace` packets a second
+/// meets them: the announcement and the play first, then each block when
+/// its last sample has been captured, `repeat` runs of `samples` in a row.
+/// The packets between are repeats of the announcement and of the latest
+/// block, as a carousel repeats records, which also mends a lost packet.
+#[cfg(feature = "sound")]
+fn live_packets(
+    sound: &Sound,
+    command: &Command,
+    samples: &[i16],
+    repeat: u8,
+    pace: u32,
+) -> Result<Vec<neoteletext_core::packet::Packet>, String> {
+    let announce = vec![sound.object_record().map_err(|error| format!("{error:?}"))?, command.record()];
+    let (announcement, mut record_id) = packets(0, 0, &announce);
+    let per_block = usize::try_from(sound.samples_per_block()).map_err(|_| "block size")?;
+    let all: Vec<i16> =
+        samples.iter().copied().cycle().take(samples.len().saturating_mul(usize::from(repeat))).collect();
+    let mut out = announcement.clone();
+    let mut latest: Vec<neoteletext_core::packet::Packet> = Vec::new();
+    let mut filler = 0_usize;
+    for (index, block) in (0_u16..).zip(all.chunks(per_block)) {
+        // The block is whole once its last sample is captured.
+        let captured =
+            u64::try_from((usize::from(index).saturating_add(1)).saturating_mul(per_block)).unwrap_or(u64::MAX);
+        let due = usize::try_from(captured.saturating_mul(u64::from(pace)) / u64::from(sound.rate_hz.max(1)))
+            .unwrap_or(usize::MAX);
+        while out.len() < due {
+            let cycle = announcement.len().saturating_add(latest.len()).max(1);
+            let at = filler % cycle;
+            let packet = announcement.get(at).or_else(|| latest.get(at.saturating_sub(announcement.len())));
+            out.extend(packet.copied());
+            filler = filler.saturating_add(1);
+        }
+        let (block_packets, next) = packets(0, record_id, &sound.live_records(index, block));
+        if out.len().saturating_sub(due) > block_packets.len().saturating_mul(2) {
+            return Err(format!(
+                "{} Hz in {}-byte blocks needs more than {pace} packets a second",
+                sound.rate_hz, sound.block_bytes
+            ));
+        }
+        record_id = next;
+        out.extend_from_slice(&block_packets);
+        latest = block_packets;
+    }
+    Ok(out)
 }
 
 /// `neottx sound` in a build without it.
