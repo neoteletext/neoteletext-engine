@@ -121,7 +121,7 @@ Per system:
 |---|---|---|---|
 | **macOS** | Core Audio, through the HAL output audio unit. The device rate is usually 48 000 Hz, with a buffer of about 10 ms. | System framework, nothing to ship | The interface's `sandbox-exec` profile must allow the Mach lookups Core Audio needs to reach `coreaudiod`. Under the App Sandbox, audio *output* needs no entitlement; only input does. Both statements are to be verified when built. |
 | **Windows** | WASAPI shared mode at the mix format the device reports | System DLLs, nothing to ship | AppContainer processes can play audio through WASAPI. To be verified when built, as Windows is not yet built at all. |
-| **Linux** | ALSA, which on current desktops routes through the PipeWire or PulseAudio plugin | Builds against `libasound` (the `alsa-sys` crate): `libasound2-dev` on the Linux check host. At run time it uses the system's `libasound`, which is **LGPL**. It is linked dynamically and not shipped, but it is outside cargo-deny's view, so the owner must accept it explicitly (decision D3). | Landlock must allow reading ALSA's configuration (`/usr/share/alsa`, `/etc/asound.conf`) and either the PipeWire or PulseAudio socket in `$XDG_RUNTIME_DIR` or `/dev/snd`. The seccomp filter must allow Unix-domain `socket`/`connect` and the shared-memory calls PipeWire uses. Path-named Unix sockets work inside the interface's empty network namespace. This must be exercised on foundintelquiet4060 or oldvga before the filter is fixed. |
+| **Linux** | ALSA, which on current desktops routes through the PipeWire or PulseAudio plugin | Builds against `libasound` (the `alsa-sys` crate): `libasound2-dev` on the Linux check host. At run time it uses the system's `libasound`, which is **LGPL**. It is linked dynamically and not shipped, but it is outside cargo-deny's view, so the owner accepted it explicitly (decision D3). | Landlock must allow reading ALSA's configuration (`/usr/share/alsa`, `/etc/asound.conf`) and either the PipeWire or PulseAudio socket in `$XDG_RUNTIME_DIR` or `/dev/snd`. The seccomp filter must allow Unix-domain `socket`/`connect` and the shared-memory calls PipeWire uses. Path-named Unix sockets work inside the interface's empty network namespace. This must be exercised on foundintelquiet4060 or oldvga before the filter is fixed. |
 
 ### 2.5 What the desktop gate adds
 
@@ -176,8 +176,7 @@ iOS and Android are later targets (architecture §13). With option A of §2.4, t
 
 Taken on 19 October 2026, while the owner was away, as the owner had instructed (decision E.85 and T42 Browser's decision 37):
 - **D1.** A page-bound sound follows the page the user has opened in the active tab: the zoomed page, or else the page chosen by number or in the list, not every page visible on the wall.
-- **D2.** Desktop audio output uses `cpal`, version 0.18.2 (Apache-2.0), on macOS only until D3 is decided.
+- **D2.** Desktop audio output uses `cpal`, version 0.18.2 (Apache-2.0), on macOS only until D3 was decided; on every desktop since.
 - **D4.** `neoteletext-audio` and `neoteletext-audio-mix` live in the engine.
+- **D3.** Decided by the owner on 19 October 2026: the system's LGPL `libasound` is accepted on Linux, linked dynamically and not shipped (LICENSING.md, section 2; T42 Browser's decision 40).
 
-Still open:
-- **D3.** Accepting the system's LGPL `libasound` on Linux, linked dynamically and not shipped. It arises only when Linux is built.

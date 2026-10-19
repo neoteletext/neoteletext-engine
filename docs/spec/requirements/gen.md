@@ -188,7 +188,8 @@ Dependencies are judged by the microcontroller, as decision E.38 describes.
   - have its flash cost measured by the size check of REQ-GEN-009;
   - pass the symbol check of REQ-GEN-019.
 - **Other crates.** The command-line program, the image file writers, `xtask` and the C interface never run on a microcontroller. They may use well-maintained crates where these save real work, for example `png` for image writing, `clap` for the command line, and `ratatui` and `crossterm` for the interactive viewer.
-- **Licences.** Every dependency shall have a licence compatible with the project's own: MIT, Apache 2.0, BSD, zlib, ISC or CC0. GPL-licensed crates are excluded (REQ-GEN-012). The rule shall be enforced with `cargo-deny`, which shall also check for security advisories.
+- **Licences.** Every dependency shall have a licence compatible with the project's own: MIT, Apache 2.0, BSD, zlib, ISC or CC0. GPL-licensed crates are excluded (REQ-GEN-012). The rule shall be enforced with `cargo-deny`, which shall also check for security advisories. LICENSING.md sets out every licence the project accepts, including system libraries outside cargo-deny's view.
+  *Amended 20 October 2026:* LGPL system libraries are accepted when linked dynamically and not shipped (LICENSING.md, section 2).
 - **Enforcing the list.** The permitted dependency list of each microcontroller crate shall be recorded in the repository. An `xtask` check shall compare it with the resolved dependency graph, and shall fail on any difference.
 
 *Verification:* `cargo-deny` and the `xtask` dependency check in continuous integration; the symbol check of REQ-GEN-019.

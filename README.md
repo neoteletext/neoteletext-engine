@@ -45,7 +45,7 @@ Each crate's optional parts are Cargo features, on by default, so a port or a sm
 
 ## Licence
 
-The project is licensed under the MIT licence; see [LICENSE](LICENSE). Bundled third-party material keeps its own licence, recorded beside it.
+The project is licensed under the MIT licence; see [LICENSE](LICENSE). Bundled third-party material keeps its own licence, recorded beside it. [LICENSING.md](LICENSING.md) says which other licences the project may use.
 
 ## Licensing of data
 
