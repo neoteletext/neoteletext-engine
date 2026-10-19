@@ -32,8 +32,10 @@ const PLAY: u8 = 1;
 #[cfg(feature = "sound")]
 const LOOP: u8 = neoteletext_audio::record::FLAG_LOOP;
 
-/// What `neottx sound` writes.
+/// What `neottx sound` writes. A build without `sound` refuses the command
+/// before reading any of it.
 #[derive(Clone, Debug)]
+#[cfg_attr(not(feature = "sound"), allow(dead_code))]
 pub struct SoundOptions {
     /// The page the sound belongs to, 100 to 8FF.
     pub page: String,
