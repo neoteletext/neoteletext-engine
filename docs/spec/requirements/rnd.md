@@ -268,6 +268,7 @@ A cell whose horizontal part is "left half" shall show the left six half-dots of
 
 **REQ-RND-035 — Underline.**
 Underline shall be drawn as one line of foreground colour on the last dot line of the cell, across the whole cell width. In the 12 by 20 cell that is line 19, so it appears on both fields; in the 12 by 10 cell it is line 9 (decision E.47). It shall be drawn for G0 characters, G1 characters of columns 4 and 5, and G2 characters, and never for G3 or DRCS characters. For a double-height character, only its bottom half shall show the underline.
+*Amended 20 October 2026 (decision E.88):* a render option, `underline` in `RenderOptions`, turns the underline off for G0 and G2 characters, for a port that draws its own links over the page; it is on by default, and separated mosaics are unaffected.
 *Verification:* Test against golden cell-raster outputs.
 
 **REQ-RND-036 — Invert, flash and conceal when drawing.**

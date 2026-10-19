@@ -12,7 +12,8 @@ LN,key,target,label
 - **`target`** has one of these forms:
   - `mpp` or `mpp:ssss`: a page, and optionally a sub-page, in the same service, in hexadecimal;
   - `name:mpp` or `name:mpp:ssss`: a page in another service named in the service descriptor (REQ-WEB-002). Names are letters, digits and hyphens;
-  - an address: a channel's folder, or a page file in a channel's folder, such as `https://weather.example/300.t42` (decisions E.64 and E.70).
+  - an address: a channel's folder, or a page file in a channel's folder, such as `https://weather.example/300.t42` (decisions E.64 and E.70);
+  - `web:` followed by an `http` or `https` address, such as `web:https://www.example.com/story`: a page on the web, for a receiver to open outside teletext (decision E.88). The address obeys the rules below. Allowed in `LN` and `LT`, never in `LK`: typing a page number never leaves teletext.
 
   A target containing `://` is an address; any other target is a page or a named service. An address shall use `http` or `https`, shall be printable ASCII with no spaces or commas, and shall be at most 256 bytes. A target that breaks these rules makes the link invalid. An address that is a page file in the page's own channel folder is a page of the current channel; any other address leads to another channel (REQ-WEB-026).
 - **`label`** is the prompt text. It is at most 9 characters for a link in the same service and 8 for a link to another service, using characters the page's G0 set can show. It is ignored for `I`.
@@ -50,7 +51,7 @@ Links a run of `length` characters starting at `column` on `row` to `target`. `r
 5. **Reachable without Fastext.** Televisions made before Fastext (before about 1987) can only follow a link by having the viewer type its page number. Every link to a page in the same service should therefore have its three-digit page number visible somewhere in the page's own rows, for example "Sport 140". The page checker (REQ-CLI-006) shall warn when one is not.
 6. **Honest about what cannot work.** A link to another service, or a destination outside teletext, cannot be followed on a broadcast-only television. Authors should give such destinations in a form a viewer can act on without the link: the channel or service name, a short address, or a QR code drawn in mosaic graphics. The page checker shall warn when a page's only route to another service is its link.
 7. **Linked numbers are shown.** A page-number link changes what typing that number does on that page only, so the number should appear in the page's text, where the viewer can see it. The page checker shall warn when an `LK` line links a number the page does not show.
-8. **No packet form.** Addresses, `LK` lines and `LT` lines cannot be carried in packets. The page encoder writes a coloured link to an address as null, with its prompt in white (rule 4), and leaves `LK` and `LT` lines out.
+8. **No packet form.** Addresses, `web:` targets, `LK` lines and `LT` lines cannot be carried in packets. The page encoder writes a coloured link to an address or to the web as null, with its prompt in white (rule 4), and leaves `LK` and `LT` lines out.
 
 ## E.3 Example
 

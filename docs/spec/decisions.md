@@ -1222,3 +1222,12 @@ Decided on 19 October 2026.
 4. **`neottx sound --live` paces a file for a player,** filling the gaps with repeats of the announcement and the latest block, as a carousel repeats records, so a file channel carries a live sound.
 
 *Reason:* A live sound's end is unknown, so it cannot be held whole, and a receiver that waits to resynchronise loses more than it would by joining late. Rate trimming in the sink keeps the receiver the same on every port.
+
+**E.88 — Links a receiver draws: the `web:` target, and an underline the port can turn off.**
+Decided on 20 October 2026, for T42 Browser's hyperlinks (its `hyperlinks.md`, decision 41 there).
+1. **A `web:` target** in the TTI Link Extension (Appendix E, section E.1): `web:` followed by an `http` or `https` address names a page on the web, which a receiver opens outside teletext, after the user agrees. It is allowed in `LN` and `LT` lines and never in `LK`, because typing a page number must never leave teletext. The page encoder writes it as null, as it writes every address.
+2. **An `underline` render option** in `RenderOptions`, on by default, so every port renders REQ-RND-035 as the standard asks. A port that draws its own link underline over the page turns it off, so that within that port an underline has one meaning. Only G0 and G2 characters are affected; separated mosaics, which share the attribute bit, are not.
+3. **Showing `LT` and `LK` links,** which REQ-NAV-013 and REQ-NAV-015 once required of the engine's browser, is the browser's own concern, in its repository. The engine parses and keeps them, and nothing more.
+
+*Reason:* A channel's folder is an ordinary web address (decision E.70), so no rule can tell a teletext address from a web page: a link to the web has to say so. A receiver that draws its own underline needs the page's underline out of the way, and no other port should change; an option, on by default, costs every other port nothing. Decision E.36's principle holds: the receiver draws every link marker, and the page draws none.
+
