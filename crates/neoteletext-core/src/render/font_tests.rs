@@ -62,7 +62,13 @@ fn fonts() -> GlyphSet<'static> {
 }
 
 fn options(mode: CellMode) -> RenderOptions {
-    RenderOptions { mode, rounding: true, reveal: false, colour: ColourMode::Resolved(FlashPhase::STEADY) }
+    RenderOptions {
+        mode,
+        rounding: true,
+        reveal: false,
+        colour: ColourMode::Resolved(FlashPhase::STEADY),
+        underline: true,
+    }
 }
 
 /// The dots of every line of a cell at text row 1.

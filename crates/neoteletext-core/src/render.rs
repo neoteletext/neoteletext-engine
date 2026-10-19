@@ -186,6 +186,11 @@ pub struct RenderOptions {
     pub reveal: bool,
     /// The colour mode.
     pub colour: ColourMode,
+    /// The underline of G0 and G2 characters is drawn (REQ-RND-035). A port
+    /// that draws its own link underline over the page turns it off, so
+    /// that an underline means one thing there; separated mosaics, which
+    /// share the attribute bit, are unaffected (decision E.88).
+    pub underline: bool,
 }
 
 impl RenderOptions {
@@ -193,14 +198,20 @@ impl RenderOptions {
     /// 1.5.
     #[must_use]
     pub const fn from_config(config: &Config, reveal: bool) -> Self {
-        Self { mode: config.cell_mode, rounding: config.rounding, reveal, colour: ColourMode::Palette }
+        Self { mode: config.cell_mode, rounding: config.rounding, reveal, colour: ColourMode::Palette, underline: true }
     }
 
     /// Options from the configuration, in the resolved mode at a flash
     /// phase (REQ-RND-031).
     #[must_use]
     pub const fn resolved(config: &Config, reveal: bool, flash: FlashPhase) -> Self {
-        Self { mode: config.cell_mode, rounding: config.rounding, reveal, colour: ColourMode::Resolved(flash) }
+        Self {
+            mode: config.cell_mode,
+            rounding: config.rounding,
+            reveal,
+            colour: ColourMode::Resolved(flash),
+            underline: true,
+        }
     }
 
     /// Options in the colour mode of the configured presentation level
@@ -213,6 +224,13 @@ impl RenderOptions {
         } else {
             Self::from_config(config, reveal)
         }
+    }
+
+    /// The same options with the underline of G0 and G2 characters drawn
+    /// or not (decision E.88).
+    #[must_use]
+    pub const fn with_underline(self, underline: bool) -> Self {
+        Self { underline, ..self }
     }
 
     /// Lines per text row in this mode.
@@ -422,7 +440,7 @@ pub(crate) fn font_line_20(rows: &[u16], line: usize, rounding: bool) -> u16 {
 /// G2 character's line, after rounding. Kept out of line: Level 1 cells
 /// never have them, and the Level 1 path is every port's hot path.
 #[inline(never)]
-fn styled_line(mask: u16, cell: &Cell, source: usize, height: usize) -> u16 {
+fn styled_line(mask: u16, cell: &Cell, source: usize, height: usize, underline: bool) -> u16 {
     let mut mask = mask;
     let font = cell.attributes.font();
     // Each style is drawn only when its capability is compiled in
@@ -437,7 +455,7 @@ fn styled_line(mask: u16, cell: &Cell, source: usize, height: usize) -> u16 {
         let below = last.saturating_sub(source);
         mask = mask.checked_shr((below >> ITALIC_SHIFT_LOG2) as u32).unwrap_or(0);
     }
-    if cell.attributes.underline() && source == last {
+    if underline && cell.attributes.underline() && source == last {
         // Underline: the last dot line, across the whole cell (decision
         // E.47).
         mask = CELL_MASK;
@@ -636,7 +654,7 @@ pub fn cell_line<const DRCS: usize, const PANEL_ROWS: usize>(
                 } else {
                     text_line(&glyphs.glyph(character), source, options)
                 };
-                if plain { mask } else { styled_line(mask, cell, source, height) }
+                if plain { mask } else { styled_line(mask, cell, source, height, options.underline) }
             }
             CharClass::G3(code) => g3_line(glyphs, code, source, options.mode),
             CharClass::Drcs(drcs) => return drcs_cell_line(cell, grid, (row, column), drcs, source, options),
@@ -1157,7 +1175,7 @@ fn flash_changes<const DRCS: usize, const PANEL_ROWS: usize>(
     row: usize,
     column: usize,
     (old, new): (FlashPhase, FlashPhase),
-    reveal: bool,
+    (reveal, underline): (bool, bool),
 ) -> bool {
     let rate = cell.attributes.flash_rate();
     if !cell.flash || old.is_on(rate) == new.is_on(rate) {
@@ -1175,7 +1193,7 @@ fn flash_changes<const DRCS: usize, const PANEL_ROWS: usize>(
                 Some(pattern) if pattern.mode != DrcsMode::Mode0 => return !hidden,
                 Some(_) => true,
             },
-            CharClass::Text => !cell.glyph.is_blank() || cell.attributes.underline(),
+            CharClass::Text => !cell.glyph.is_blank() || (underline && cell.attributes.underline()),
             CharClass::G3(_) => true,
         },
     };
@@ -1253,7 +1271,7 @@ impl ChangeTracker {
                     (reveal_changed && cells.clone().any(|(_, cell)| cell.conceal))
                         || (flash != self.flash
                             && cells.clone().any(|(column, cell)| {
-                                flash_changes(cell, grid, row, column, (self.flash, flash), reveal)
+                                flash_changes(cell, grid, row, column, (self.flash, flash), (reveal, options.underline))
                             }))
                 }
             };
@@ -1328,7 +1346,13 @@ mod tests {
     use std::vec::Vec;
 
     fn options() -> RenderOptions {
-        RenderOptions { mode: CellMode::Saa5050, rounding: true, reveal: false, colour: ColourMode::Palette }
+        RenderOptions {
+            mode: CellMode::Saa5050,
+            rounding: true,
+            reveal: false,
+            colour: ColourMode::Palette,
+            underline: true,
+        }
     }
 
     #[test]

@@ -419,7 +419,13 @@ fn demonstrations() -> Vec<(&'static str, Grid)> {
 }
 
 fn options(mode: CellMode, unit: u8, reveal: bool) -> RenderOptions {
-    RenderOptions { mode, rounding: true, reveal, colour: ColourMode::Resolved(FlashPhase::at_unit(unit)) }
+    RenderOptions {
+        mode,
+        rounding: true,
+        reveal,
+        colour: ColourMode::Resolved(FlashPhase::at_unit(unit)),
+        underline: true,
+    }
 }
 
 fn render(grid: &Grid, options: RenderOptions) -> (usize, usize, Vec<u8>) {

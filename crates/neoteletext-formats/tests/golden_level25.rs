@@ -97,6 +97,7 @@ fn checksums() -> String {
                         rounding: config.rounding,
                         reveal,
                         colour: ColourMode::Resolved(FlashPhase::at_unit(unit)),
+                        underline: true,
                     };
                     let width = row_width(&grid);
                     let height = ROWS * options.row_height();

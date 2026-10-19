@@ -52,7 +52,13 @@ fn drcs(table: DrcsTable, character: u8) -> DrcsCharacter {
 }
 
 fn options(mode: CellMode, unit: u8, reveal: bool) -> RenderOptions {
-    RenderOptions { mode, rounding: true, reveal, colour: ColourMode::Resolved(FlashPhase::at_unit(unit)) }
+    RenderOptions {
+        mode,
+        rounding: true,
+        reveal,
+        colour: ColourMode::Resolved(FlashPhase::at_unit(unit)),
+        underline: true,
+    }
 }
 
 fn large(unit: u8) -> RenderOptions {
@@ -181,7 +187,8 @@ fn resolved_mode_matches_palette_mode_on_level1_pages() {
         grid.boxed_mode = boxed_mode;
         for mode in [CellMode::Saa5050, CellMode::Saa5246a] {
             for reveal in [false, true] {
-                let palette_options = RenderOptions { mode, rounding: true, reveal, colour: ColourMode::Palette };
+                let palette_options =
+                    RenderOptions { mode, rounding: true, reveal, colour: ColourMode::Palette, underline: true };
                 let indices = screen(&grid, palette_options);
                 for unit in 0..FLASH_UNITS {
                     let mut palette = [0u8; PALETTE_SIZE];
@@ -200,7 +207,13 @@ fn resolved_mode_matches_palette_mode_on_level1_pages() {
 #[test]
 fn palette_mode_is_refused_where_it_cannot_draw() {
     let glyphs = GlyphSet::bedstead();
-    let palette = RenderOptions { mode: CellMode::Saa5050, rounding: true, reveal: false, colour: ColourMode::Palette };
+    let palette = RenderOptions {
+        mode: CellMode::Saa5050,
+        rounding: true,
+        reveal: false,
+        colour: ColourMode::Palette,
+        underline: true,
+    };
     let refused = |grid: &Grid| {
         let mut out = vec![0u8; row_width(grid) * CELL_HEIGHT];
         let mut buffer = IndexBuffer { format: IndexFormat::Bits8, data: &mut out, stride: row_width(grid) };
@@ -425,7 +438,13 @@ fn labelled_grid(left: u8, right: u8) -> Grid {
 fn columns_shown(grid: &Grid, row: usize) -> Vec<Option<usize>> {
     let width = row_width(grid);
     let mut out = vec![0u8; width * CELL_HEIGHT];
-    let palette = RenderOptions { mode: CellMode::Saa5050, rounding: true, reveal: false, colour: ColourMode::Palette };
+    let palette = RenderOptions {
+        mode: CellMode::Saa5050,
+        rounding: true,
+        reveal: false,
+        colour: ColourMode::Palette,
+        underline: true,
+    };
     let mut buffer = IndexBuffer { format: IndexFormat::Bits8, data: &mut out, stride: width };
     render_row(grid, row, Field::Both, &GlyphSet::bedstead(), palette, &mut buffer).unwrap();
     (0..width / CELL_WIDTH)
@@ -684,6 +703,47 @@ fn underline_on_the_last_line() {
         let separated =
             Cell { glyph: Glyph::Mosaic { pattern: 0x3F, separated: true }, attributes: underlined, ..Cell::BLANK };
         assert_eq!(line_of(&grid, &separated, 1, 1, last, options).mask, 0, "separated mosaics, no underline");
+    }
+}
+
+/// Decision E.88: with the underline option off, no G0 or G2 character is
+/// underlined, in either half of double height, and separated mosaics,
+/// which share the attribute bit, are drawn exactly as before.
+#[test]
+fn the_underline_option_turns_underline_off_and_leaves_separated_mosaics() {
+    let grid = Grid::EMPTY;
+    let underlined = CellAttributes::DEFAULT.with_underline(true);
+    let g2 = CharSet::G2(crate::charset::G2Set::Latin);
+    for mode in [CellMode::Saa5050, CellMode::Saa5246a] {
+        let on = options(mode, 0, false);
+        let off = on.with_underline(false);
+        assert!(on.underline && !off.underline);
+        let last = on.row_height() - 1;
+        for glyph in [text(b'g'), text(b' '), Glyph::Char(CharRef::new(g2, 0x23))] {
+            for size in [Size::Normal, Size::DoubleTop, Size::DoubleBottom] {
+                let cell = Cell { glyph, size, attributes: underlined, ..Cell::BLANK };
+                let plain = Cell { attributes: CellAttributes::DEFAULT, ..cell };
+                let row = if size == Size::DoubleBottom { 2 } else { 1 };
+                for line in 0..=last {
+                    assert_eq!(
+                        line_of(&grid, &cell, row, 1, line, off),
+                        line_of(&grid, &plain, row, 1, line, off),
+                        "{glyph:?} {size:?} {mode:?} line {line}"
+                    );
+                }
+            }
+        }
+        for separated in [false, true] {
+            let mosaic = Glyph::Mosaic { pattern: 0x3F, separated };
+            let cell = Cell { glyph: mosaic, attributes: underlined, ..Cell::BLANK };
+            for line in 0..=last {
+                assert_eq!(
+                    line_of(&grid, &cell, 1, 1, line, off),
+                    line_of(&grid, &cell, 1, 1, line, on),
+                    "mosaic line {line}"
+                );
+            }
+        }
     }
 }
 
