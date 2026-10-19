@@ -6,7 +6,10 @@
 | Blast-through | Display of alphanumeric characters from columns 4 and 5 while in mosaic mode. |
 | Chapter | A page memory in the SAA5243 and SAA5246A. |
 | Clock run-in | The alternating 16-bit pattern at the start of each teletext line used to synchronise the bit clock. |
+| Ducking | Lowering other sounds while one plays, as Audetel's fade byte lowered the programme sound (EN 300 708 Table 19). |
 | Designation code | Byte 6 of packets 26 to 31, which distinguishes up to 16 packets of the same number. |
+| IDL, independent data line | A teletext packet that carries data independently of pages, addressed by a data channel (EN 300 708 clause 6). The audio profile uses data channel 12, packet 4/31. |
+| IMA ADPCM | The Interactive Multimedia Association's adaptive differential PCM: 4 bits a sample, in blocks that each start with their own predictor and step index. |
 | DVB | Digital Video Broadcasting, the family of digital television standards that carries teletext in EN 300 472. |
 | Fastext, FLOF | The editorial linking scheme using packet X/27/0 and coloured keys ("Full Level One Features", EN 300 706 Annex H). |
 | Framing code | The byte 11100100 (transmission order) that identifies a teletext line and aligns bytes. |
@@ -64,3 +67,4 @@
 | Tuning screen | The browser's receiver-drawn screen shown before anything from another channel, which the viewer confirms (REQ-NAV-014, decision E.65). Withdrawn with the browser on 18 October 2026. |
 | Page catching | Moving a cursor between the links on a page and following one, as some Philips televisions did with page numbers (REQ-NAV-015). |
 | Helper process | A process `neottx` starts in web and live mode: a fetcher, which holds only the network, or a decoder, which holds nothing (REQ-SEC-018). |
+| Voice sink | What a port supplies to play the audio profile's sounds: it holds sounds and starts, stops and ramps voices on numbered channels (REQ-AUD-018). |

@@ -8,6 +8,13 @@
 - ETSI EN 300 472 V1.3.1 and DVB BlueBook A041, *Teletext in DVB bitstreams*.
 - ITU-R BT.653-3, *Teletext systems*.
 - ETSI ETS 300 708, *Data transmission within Teletext*.
+- ETSI EN 300 708 V1.2.1 (2003-04), *Data transmission within Teletext* (`en_300_708_2003.pdf`): independent data lines and low bit-rate audio, clauses 6.4 to 6.8, Tables 16 to 22. The source of area AUD's carriage.
+
+**Audio** (in `teletext-audio/`, area AUD, `design/audio.md` section 1):
+- ETSI ETS 300 149 (March 1992), *Videotex Audio syntax* (`standards/ets_300_149_1992.pdf`): consulted, and not followed (decision E.84).
+- The Audetel papers, thesis and reports (`audetel/`): Kondoz, Evans and Suddle 1993; Black, Atkinson, Kondoz and Evans 1995; Suddle 1996, chapter 7; *Television*, December 1994; the ITC annual reports of 1991 and 1992.
+- The Japanese coded teletext music papers (`japanese-teletext-music/`): Sugimori, Kimata and Araki 1982; Isobe, Sugimori and Araki 1986; Araki and Hanafusa 1987; the MUSCOT features article. Consulted; music as notes is out of scope.
+- Not held, and to be obtained: the IMA's 1992 *Recommended Practices for Enhancing Digital Audio Compatibility in Multimedia Systems* (IMA ADPCM), and Microsoft's RIFF WAVE description of format tag 0x0011.
 
 **Unicode documents:**
 - Unicode document L2/19-025, "Proposal to add characters from legacy computers and teletext to the UCS" (2019), and its mapping file `TELTXTG3.TXT`. They give the Unicode characters, and the sextant geometry, of the G3 set (decision E.50 and REQ-CHR-011).

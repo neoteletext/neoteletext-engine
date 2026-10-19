@@ -46,6 +46,8 @@ The design documents are:
 | `design/capabilities.md` | The decoder's optional capabilities, switched at compile time, and the `modern-classic` profile |
 | `design/font-security.md` | The security analysis of the font strategy (decision E.72) |
 | `design/porting.md` | What a port supplies, and nothing else |
+| `design/audio.md` | The teletext audio profile: its sources, its records, carriage and control, and where it departs from the standards (area AUD) |
+| `design/audio-platforms.md` | How the audio profile is built on each platform: the engine crates, T42 Browser on desktops, and microcontrollers through tellyboy |
 | `design/hmi.md` | A proposal, not yet a requirement: how the code takes input from different controls |
 
 **Only the requirements are normative.** A requirement wins over anything in the decisions or the design documents. The decisions are binding choices, recorded before the behaviour they govern is committed (REQ-DOC-004).

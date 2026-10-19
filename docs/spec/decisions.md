@@ -1185,3 +1185,31 @@ Decided by the owner on 18 October 2026, who asked for "a clear and well isolate
 4. **`cargo xtask traceability` reads the requirement files** in the order of the area table in `requirements/README.md`.
 
 *Reason:* One file of 6,800 lines held walkthroughs, decisions, requirements and appendices together, and a design change had to be repeated in several places. A folder with one home per fact keeps the behaviour clear and the documents from drifting apart.
+
+**E.84 — Audio: PCM and IMA ADPCM, carried on EN 300 708's audio data lines.**
+Decided on 19 October 2026. The owner asked for PCM and ADPCM ("i want pcm and adpcm ideally"), authorised "any of the common audio bit rates even if not in the standards", ruled out MIDI and MUSCOT, and asked for the older standards' codecs only if they gave compatibility. The detail is `design/audio.md`; the rules are area AUD.
+1. **Two formats:** 16-bit linear PCM and IMA ADPCM in WAVE blocks. ETS 300 149's G.711 and G.726 are not carried: no teletext service ever carried audio in them, and without that standard's framing they would be compatible with nothing. IMA ADPCM was chosen over G.726 because each block decodes on its own, so a receiver can join a carousel at any block and a lost block costs only its own samples.
+2. **Eight sample rates** from 8 to 48 kHz, the common ones, whether or not a teletext standard names them.
+3. **Broadcast on data channel 12** (packet 4/31), EN 300 708 clause 6.7.3's programme-independent audio, as a user-defined service of Table 21, with the 16-bit check of clause 6.5.8.1. IDL Format B's Reed–Solomon code would correct more, but needs an EBU Application Identifier this profile does not have.
+4. **Records of at most 1 KB** with a CRC-32, the same on every carriage, so a microcontroller reassembles in a small buffer.
+5. **Ducking uses EN 300 708 Table 19's steps,** Audetel's fade byte, applied to the other channels.
+
+*Reason:* The standards give the channel and its framing but no codec that suits both a lossy broadcast and the microcontrollers' tellyboy driver, which plays 16-bit PCM and IMA ADPCM natively.
+
+**E.85 — Audio: two engine crates, and the port supplies a voice sink.**
+Decided on 19 October 2026, while the owner was away, as the owner had instructed.
+1. **`neoteletext-audio`** (`no_std`, no allocation) holds the carriage, records, the store, control and the IMA ADPCM decoder; its `encode` feature, which allocates, writes sounds for publishing tools.
+2. **`neoteletext-audio-mix`** (`no_std` with `alloc`) is a software mixer for ports with an operating system's audio output. It behaves as tellyboy does: four voices, whole-percent gains, every change ramped over at least 5 ms, and a clamp after the sum. It resamples with a windowed-sinc filter, better than tellyboy's linear interpolation, because desktop speakers reproduce what linear interpolation leaves; the filter is a table written by `tools/sinc_table.py`, so the crate has no floating point.
+3. **The port passes packets to the audio receiver** before the teletext decoder, which keeps ignoring packet 31 (REQ-PKT-008). EN 300 708's numbers are constants of `neoteletext-core::consts` (REQ-GEN-014).
+4. **The porting contract gains an optional audio sink** (`neoteletext_audio::port::VoiceSink`), shaped like tellyboy's voice calls, so a microcontroller port maps onto that driver directly.
+5. **Live sounds are not built yet;** a receiver counts them as unsupported.
+
+*Reason:* Every receiver needs the same rules, so they belong in the engine, beside the decoder; the hardware stays the port's, as REQ-ARCH-010 requires.
+
+**E.86 — Audio: the latest command wins, and a page's sound plays while the page is open.**
+Decided on 19 October 2026.
+1. **Each channel keeps one sequence number,** compared by RFC 1982 serial arithmetic, in place of the sessions, command history and cancellation barriers of the profile's first version: repeats never replay, and a stop arriving before the older play it cancels still wins, in constant memory.
+2. **A sound bound to a page starts whenever the page is opened** and fades out when it is left, while the user's page sounds setting is on. A sound for the whole service plays once, when its command is accepted.
+3. **No change of level is faster than 5 ms,** tellyboy's measured limit for a click.
+
+*Reason:* Teletext attaches things to pages; and a microcontroller cannot keep state that grows with the history of a carousel.

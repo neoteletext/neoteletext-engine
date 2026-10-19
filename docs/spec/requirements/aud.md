@@ -1,0 +1,88 @@
+# F.22 Audio (AUD)
+
+This area is the teletext audio profile (decisions E.84 to E.86): sounds carried as records on EN 300 708 independent data lines, over a network or in a file, kept compressed, and played on four channels by a voice sink the port supplies. The design, its sources and its departures from the standards are explained in `docs/spec/design/audio.md`; how each platform builds it is in `docs/spec/design/audio-platforms.md`.
+
+**REQ-AUD-001 — Formats.**
+*Phase:* Phase 2 (the whole area).
+The profile shall carry two formats, and only these: code 0, linear PCM, signed 16-bit little-endian; and code 1, IMA ADPCM in WAVE blocks (format tag 0x0011), whose blocks each begin with their own predictor and step index. Every sound is one channel. Code 2 is reserved for a speech codec for live broadcast. A receiver shall ignore an object of any other code. The IMA ADPCM decoder shall follow the IMA's 1992 recommendation, saturate rather than wrap, and refuse a block whose step index exceeds 88.
+*Verification:* A worked decoding of a known block; tests of saturation and of a bad step index; PCM round-trips exactly through the whole receiver.
+
+**REQ-AUD-002 — Sample rates.**
+A sound's rate shall be one of 8 000, 11 025, 16 000, 22 050, 24 000, 32 000, 44 100 and 48 000 samples a second, named by the codes 0 to 7. Any other code makes the OBJECT record invalid.
+*Verification:* Tests of every code and of a code beyond the table; `neottx sound` refuses a WAVE file at another rate.
+
+**REQ-AUD-003 — Records.**
+Every carriage shall deliver records of at most 1 024 bytes: the profile version (2), a record type, a 16-bit body length of at most 1 016, the body, and a CRC-32/ISO-HDLC over the header and body (check value 0xCBF43926 for ASCII `123456789`). Integers are big-endian. A record shall be refused whole on a wrong length, trailing bytes, an unknown version or type, a failed CRC or any field outside its range, before anything in it is stored.
+*Verification:* Tests of each refusal and of the CRC's check value; the fuzz target `audio_records`.
+
+**REQ-AUD-004 — The OBJECT record.**
+An OBJECT record shall carry the sound's handle (0 to 255), its generation (16 bits, compared by RFC 1982 serial arithmetic), its id, codec, sample-rate code, block size, sample count and block count, then optional extensions as tag, length and value: a label of at most 64 bytes (tag 1) and a BCP 47 language tag of at most 16 bytes (tag 2). Unknown tags are skipped. The block count shall equal the sample count divided by the samples of a whole block, rounded up, or the record is refused. A sample count of 0 marks a live sound (REQ-AUD-014).
+*Verification:* Tests of a labelled object, a wrong block count and a reserved codec.
+
+**REQ-AUD-005 — The DATA record and block geometry.**
+A DATA record shall carry a handle, a generation, the index of its first block, and one or more whole blocks. An IMA ADPCM block is 256 or 512 bytes and holds 1 + 2 × (bytes − 4) samples; a PCM block is an even number of bytes, at most 1 000. Only a sound's final block may be shorter, and then only as long as its samples need. Blocks of the wrong length or beyond the sound's end make the record discarded.
+*Verification:* Store tests of whole, final and malformed blocks.
+
+**REQ-AUD-006 — The CONTROL record.**
+A CONTROL record shall carry, in 14 bytes: the channel (0 to 3), a sequence number, the operation (1 play, 2 stop, 3 set gain), the sound's handle and generation, a gain of 0 to 100 per cent, a fade of at most 10 000 milliseconds, flags (1 progressive, 2 loop, 4 after current; others zero), a duck code of 0 to 6, and a page number of 100 to 899 in EN 300 706 form, or 0xFFFF for the whole service.
+*Verification:* Tests of every field's bounds.
+
+**REQ-AUD-007 — Broadcast carriage.**
+Records shall be carried on independent data lines of EN 300 708 clause 6.7.3, data channel 12 (packet 4/31), as a user-defined service of Table 21: Service Byte message bit 4 set, bits 1 to 3 naming one of eight audio services. The Control Byte, Hamming 8/4 coded, shall carry bit 1 for a record's first fragment and bit 2 for its last; bits 3 and 4 are zero. Bytes 8 to 45 shall hold a record id (counting new records modulo 256, not repeats), the fragment index (0 to 30), 34 bytes of the record, and a 16-bit check over the 36 bytes before it with the polynomial of EN 300 708 clause 6.5.8.1. A receiver shall drop a packet that fails any of these, reassemble a record from its fragments in any order, and hold at most two records in flight (eight on a desktop), replacing the oldest incomplete one. The teletext decoder itself keeps ignoring packet 31 (REQ-PKT-008); the port passes packets to the audio receiver first.
+*Verification:* Tests that data channel 12 decodes as packet 4/31; reassembly out of order, with a lost fragment repaired by a repeat, and with replacement; dropped packets; the fuzz target `audio_packets`.
+
+**REQ-AUD-008 — Network and file carriage.**
+Over a WebSocket, one binary message shall carry one record. A `.ttau` file shall be records back to back; a record whose length breaks a bound ends the file, and a truncated final record is discarded. A record never names its own service: the host associates each connection or file with one.
+*Verification:* *Not yet built:* no port reads `.ttau` files or WebSocket records yet (TECH-DEBT.md).
+
+**REQ-AUD-009 — The object store.**
+A receiver shall keep sounds compressed in a fixed arena, admitting a sound only if it will fit once complete. It shall evict the oldest sound no channel has armed or waiting, and report a resource limit when nothing can be evicted. A repeated OBJECT changes nothing; a newer generation replaces the older and tells the sink to forget it; an older generation, or a different definition of the same generation, is a conflict and is refused. A block that arrives again with different bytes puts the sound in conflict, and a sound in conflict is not played until a newer generation replaces it.
+*Verification:* Store tests of storage, completion, conflicts, generations, eviction and the resource limit.
+
+**REQ-AUD-010 — The latest command wins.**
+For each channel a receiver shall keep only the sequence number of the last command it accepted, and accept a command only if its sequence number is newer by RFC 1982 serial arithmetic over 16 bits. A repeated command, or one that arrives after a newer one, changes nothing. A change of service clears every channel.
+*Verification:* Tests of repeats, late arrivals, a stop arriving before the older play it cancels, the wrap and the half-range case.
+
+**REQ-AUD-011 — Operations.**
+A play shall start its sound on the channel, ramping out what the channel played; with *after current* it waits for that sound to end, a channel holding one such waiting sound. With *loop* it repeats until a later command stops it. A stop ramps the channel to silence and drops its waiting sound. Set gain ramps the channel to the new gain. A play whose sound has not arrived, or is incomplete, waits until it is ready.
+*Verification:* Receiver tests of waiting plays, and mixer tests of replacement, queueing and stopping.
+
+**REQ-AUD-012 — Sounds that belong to a page.**
+A play naming a page shall be armed for that page. It shall start whenever that page is opened, and fade out when the page is left; a repeat of the record arms nothing new. A page sound shall play only while the user's *page sounds* setting is on. A play for the whole service plays once, when it is accepted. Receiving data never starts a sound by itself.
+*Verification:* Receiver tests of opening, leaving and reopening a page, and of the setting.
+
+**REQ-AUD-013 — Starting and loss.**
+A play shall start once its whole sound has arrived, or, with the *progressive* flag, once 40 milliseconds of it have arrived contiguously from the start (or all of it, if shorter); later blocks are passed to the sink as they arrive. Samples of blocks that have not arrived are silence at the sink, and the sound's timing is never shifted or stretched. *Not yet built:* the 5 ms fades at each edge of a missing block, and the `concealed` report.
+*Verification:* A receiver test of a progressive start and of later blocks reaching the sink.
+
+**REQ-AUD-014 — Live sounds.**
+A sound with a sample count of 0 is live: its blocks arrive without end, the receiver tracks the sender's clock by resampling (at least ±1 per cent), and the sound fades out after two seconds with no new block, as EN 300 708 clause 6.7.1.1 asks. *Not yet built:* a receiver counts a live sound as unsupported and does not store it.
+*Verification:* A store test that a live sound is not stored; the rest when it is built.
+
+**REQ-AUD-015 — Gain, fades and ducking.**
+Gain shall be a whole percentage. No level shall change faster than over 5 milliseconds: every start, stop, gain change and replacement ramps over the command's fade or 5 milliseconds, whichever is longer. A play's duck code shall lower every other channel, while it plays, to the attenuation of EN 300 708 Table 19 (0, 4, 8, 12, 18, 24 or 30 dB), applied as the nearest whole percentage (100, 63, 40, 25, 13, 6 or 3).
+*Verification:* Mixer tests of the ramp's length, the stop, and a 12 dB duck.
+
+**REQ-AUD-016 — Fewer voices than channels.**
+A receiver whose sink plays fewer than four channels shall play the lowest-numbered ones and ignore commands for the rest.
+*Verification:* A receiver test with a two-channel sink.
+
+**REQ-AUD-017 — Receiver limits.**
+A port shall size the store, the objects held and the records in flight, and publish them. A microcontroller receiver (Level A) holds at least 16 KB of sounds, 8 objects and 2 records in flight; a desktop receiver (Level B) at least 4 MB, 256 objects and 8 records.
+*Verification:* Inspection of each port's constants.
+
+**REQ-AUD-018 — The voice sink.**
+The receiver shall drive a voice sink the port supplies, through `neoteletext_audio::port::VoiceSink`: define a sound, give it 16-bit samples, forget it, and start, stop or ramp a channel. The receiver decides what plays and when; the sink only plays. *Not yet built:* passing IMA ADPCM blocks undecoded to a sink that decodes them itself, such as tellyboy's.
+*Verification:* The receiver's tests run through a recording sink.
+
+**REQ-AUD-019 — The software mixer.**
+A port with an operating system's audio output shall be able to use `neoteletext-audio-mix`: four voices mixed in integers, every change ramped (REQ-AUD-015), ducking, a clamp after the sum, a master volume and mute, and each voice resampled to the output rate by a windowed-sinc filter. Its rendering shall never allocate or free.
+*Verification:* Mixer tests of ramps, stops, clamping, ducking, queueing, mute, and a resampled tone's pitch and amplitude.
+
+**REQ-AUD-020 — Writing sounds.**
+The `encode` feature shall write sounds for publishing tools: IMA ADPCM blocks whose headers carry the encoder's state, OBJECT, DATA and CONTROL records, and records cut into the packets of REQ-AUD-007. `neottx sound` uses it (REQ-CLI-011).
+*Verification:* The receiver's end-to-end tests read back what the encoder wrote.
+
+**REQ-AUD-021 — Security.**
+Every audio input is untrusted (area SEC). The parsers shall bound every length before using it, contain no panicking constructs, and be fuzzed. A label is shown only after the cleaning of page text. No sound starts without a command, and a page sound needs the user's setting (REQ-AUD-012).
+*Verification:* The crates' no-panic lints; the fuzz targets `audio_records` and `audio_packets`.
