@@ -1231,3 +1231,12 @@ Decided on 20 October 2026, for T42 Browser's hyperlinks (its `hyperlinks.md`, d
 
 *Reason:* A channel's folder is an ordinary web address (decision E.70), so no rule can tell a teletext address from a web page: a link to the web has to say so. A receiver that draws its own underline needs the page's underline out of the way, and no other port should change; an option, on by default, costs every other port nothing. Decision E.36's principle holds: the receiver draws every link marker, and the page draws none.
 
+
+**E.89 — Audio: no speech codec, no simultaneous start, and the codec's sources obtained.**
+Decided by the owner on 20 October 2026.
+1. **There will be no speech codec.** The profile carries 16-bit PCM and IMA ADPCM and nothing else; codec code 2, held for a speech codec for live broadcast, is reserved like codes 3 to 255. Live sound over broadcast is IMA ADPCM at a low rate, or is not broadcast.
+2. **No simultaneous start of several voices** is added to tellyboy. Version 1's cue groups stay dropped; each play is its own CONTROL record and starts within a few milliseconds of another.
+3. **The IMA 1992 recommendation (revision 3.00) and Microsoft's 1994 Multimedia Standards Update** are kept in `teletext-reference/teletext-audio/codecs/`, so the ADPCM decoder is checked against the text that defines it rather than against itself.
+4. **Level A's memory numbers stay proposals** until the microcontroller build exists to measure them against.
+
+*Reason:* A speech codec would be a library needing approval, with an unmeasured cost on the smallest part, for a use (live talk over broadcast) nobody has asked for; IMA ADPCM already carries live sound over the network. A simultaneous start needs state the profile was redesigned to avoid. The codec's sources were the one thing the decoder's tests could not be checked against.

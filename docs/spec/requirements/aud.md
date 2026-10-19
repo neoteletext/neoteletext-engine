@@ -4,7 +4,7 @@ This area is the teletext audio profile (decisions E.84 to E.86): sounds carried
 
 **REQ-AUD-001 — Formats.**
 *Phase:* Phase 2 (the whole area).
-The profile shall carry two formats, and only these: code 0, linear PCM, signed 16-bit little-endian; and code 1, IMA ADPCM in WAVE blocks (format tag 0x0011), whose blocks each begin with their own predictor and step index. Every sound is one channel. Code 2 is reserved for a speech codec for live broadcast. A receiver shall ignore an object of any other code. The IMA ADPCM decoder shall follow the IMA's 1992 recommendation, saturate rather than wrap, and refuse a block whose step index exceeds 88.
+The profile shall carry two formats, and only these: code 0, linear PCM, signed 16-bit little-endian; and code 1, IMA ADPCM in WAVE blocks (format tag 0x0011), whose blocks each begin with their own predictor and step index. Every sound is one channel. A receiver shall ignore an object of any other code; codes 2 to 255 are reserved. *Amended 20 October 2026 (decision E.89):* code 2 was reserved for a speech codec for live broadcast; the owner decided there will be none. The IMA ADPCM decoder shall follow the IMA's 1992 recommendation, saturate rather than wrap, and refuse a block whose step index exceeds 88.
 *Verification:* A worked decoding of a known block; tests of saturation and of a bad step index; PCM round-trips exactly through the whole receiver.
 
 **REQ-AUD-002 — Sample rates.**

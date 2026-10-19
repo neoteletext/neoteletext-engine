@@ -25,7 +25,7 @@ Every source below is in `teletext-reference/` unless stated otherwise.
 | Japanese coded teletext music, MUSCOT: Sugimori et al. 1982; Isobe et al. 1986; Araki and Hanafusa 1987; the MUSCOT features article (`teletext-audio/japanese-teletext-music/`) | Music sent as **notes, not waveforms**: a whole tune in a few kilobytes (Level A at most 200 packets, Level B 400; Araki 1987 table 1). Level A plays 6 melody and 5 rhythm voices; Level B plays 16 and 8. Parts are sent in priority order, so a smaller receiver plays the first parts it can and drops the rest. Araki 1987 lists **eight rules** by which a Level A receiver plays Level B data. A part with corrupted data is stopped, and if several parts are corrupted, all are (Sugimori 1982 §4.3(5)). Used for title music, background music and page-turn cues. **Not adopted** (section 9). Only its idea of playing the highest-priority parts on a smaller receiver is used, for channels (§10.4). |
 | tellyboy audio driver (`~/devel/tellyboy/components/audio-sd`, `<tellyboy/audio.h>`) | The microcontroller playback this profile must fit (section 11). |
 
-Two documents this profile depends on are **not** in `teletext-reference/` and must be obtained before the codecs can be checked bit for bit: the IMA *Recommended Practices for Enhancing Digital Audio Compatibility in Multimedia Systems* (1992), which defines IMA ADPCM, and Microsoft's RIFF/WAVE description of format tag `0x0011`, which defines its block layout.
+The two documents that define the codec are in `teletext-reference/teletext-audio/codecs/` since 20 October 2026: the IMA *Recommended Practices for Enhancing Digital Audio Compatibility in Multimedia Systems*, revision 3.00 (21 October 1992), whose Appendix D section 6 gives the ADPCM reference algorithms, and Microsoft's *Multimedia Standards Update: New Multimedia Data Types and Data Techniques*, revision 3.0 (15 April 1994), whose "IMA ADPCM Wave Type" and "DVI ADPCM Wave Type" sections define format tag `0x0011` and its block layout.
 
 The three speech-coding theses in `teletext-audio/codecs/` and Ong 1994 hold no teletext material. Ong's abstract does make one point used here: losing frames is normal, and frame recovery is part of the design (section 8).
 
@@ -64,14 +64,13 @@ How each platform builds this is in `audio-platforms.md`. In T42 Browser, layers
 
 ### 3.1 Codecs
 
-The profile carries two formats, 16-bit linear PCM and IMA ADPCM, and nothing else except the speech codec reserved by open decision 2. tellyboy plays both natively. The owner decided on 19 October 2026 that the older standards' codecs (G.711, G.726) and 8-bit PCM are not carried: content in them is converted when it is published (§13). Music is recorded sound. Note formats (MIDI, MUSCOT) are out of scope (section 9).
+The profile carries two formats, 16-bit linear PCM and IMA ADPCM, and nothing else: the owner decided on 20 October 2026 that there will be no speech codec (decision E.89). tellyboy plays both natively. The owner decided on 19 October 2026 that the older standards' codecs (G.711, G.726) and 8-bit PCM are not carried: content in them is converted when it is published (§13). Music is recorded sound. Note formats (MIDI, MUSCOT) are out of scope (section 9).
 
 | Code | Codec | Bits/sample | Support | Standard | tellyboy |
 |---:|---|---:|---|---|---|
 | 0 | Linear PCM, signed 16-bit little-endian | 16 | every receiver | WAVE format tag `0x0001`. Not in any teletext or videotex standard (§13). | native, `TB_AUDIO_FMT_S16LE` |
 | 1 | IMA ADPCM in WAVE blocks (format tag `0x0011`) | 4 | every receiver | IMA 1992. ADPCM at 32 kbit/s is ETS 300 149's default and mandatory encoding (§7.3 table 2, §9.1 table 3), but that ADPCM is G.721/G.726, not IMA (§13). | native, `TB_AUDIO_FMT_IMA_ADPCM`, assembly on every ISA |
-| 2 | Speech codec for live broadcast | — | reserved; open decision 2 | Audetel precedent | — |
-| 3–255 | reserved: a receiver ignores the object | | | | |
+| 2–255 | reserved: a receiver ignores the object. Code 2 was held for a speech codec until the owner decided against one (E.89) | | | | |
 
 Every object is one channel. The output of a microcontroller receiver is mono, and so is the broadcast budget (§6.3).
 
@@ -251,7 +250,7 @@ Following §6.7.1.1, a live sound fades out when its service has sent no packet 
 
 So, over broadcast:
 - **Recorded sound is downloaded, then played.** That's the `complete` start of §8.1.
-- **Live sound needs a speech codec**, which is open decision 2.
+- **Live sound over broadcast is IMA ADPCM** at a low rate; there will be no speech codec (E.89), so a live sound costs about a third of a typical teletext allocation at 16 kHz.
 
 Over a network, progressive IMA ADPCM streaming works at any rate in §3.3.
 
@@ -445,11 +444,13 @@ Taken on 19 October 2026, while the owner was away, as the owner had instructed:
 - **Page sounds are on by default** in T42 Browser, which has no settings screen for them yet (`TECH-DEBT.md`).
 - **The crates live in the engine** (decision E.85).
 
+Decided by the owner on 20 October 2026 (decision E.89):
+1. **No speech codec.** Live sound over broadcast is IMA ADPCM or nothing; code 2 is reserved like the rest.
+3. **No simultaneous start** is added to tellyboy; cue groups stay dropped.
+4. **The IMA 1992 recommendation and Microsoft's 1994 RIFF/WAVE update are obtained** (section 2), so the codec can be checked against its source.
+
 Still open:
-1. **Live speech over broadcast:** only a speech codec fits a line (§6.3). Audetel's PRELP coder was never published; Codec 2 and Opus are libraries that need approval, and their cost on tellyboy's smallest part is unmeasured.
-2. **Level A's numbers** against the renderer's smallest target.
-3. **tellyboy addition:** optionally, a simultaneous start of several voices, if cue groups should return.
-4. **Obtain the IMA 1992 ADPCM recommendation and the RIFF/WAVE IMA description** into `teletext-reference/`, so the codec can be checked against its source.
+2. **Level A's numbers** against the renderer's smallest target, once the microcontroller build exists.
 
 ---
 
