@@ -23,7 +23,7 @@ readonly ESP="esp"
 
 # The crates that run on bare metal (REQ-GEN-017), the pair built for
 # WebAssembly, and the std crates for operating systems without a terminal.
-readonly BARE="-p neoteletext-core -p neoteletext-formats -p neoteletext-slicer -p neoteletext-web -p neoteletext-image"
+readonly BARE="-p neoteletext-core -p neoteletext-formats -p neoteletext-slicer -p neoteletext-web -p neoteletext-image -p neoteletext-audio"
 readonly WASM="-p neoteletext-core -p neoteletext-formats"
 readonly LIBRARIES_STD="$BARE --features neoteletext-formats/std,neoteletext-image/std"
 # Everything except the host-only xtask: the libraries and the neottx program.

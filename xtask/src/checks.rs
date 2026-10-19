@@ -122,6 +122,8 @@ const PERMITTED: &[(&str, &[&str])] = &[
     ("neoteletext-slicer", &["neoteletext-core"]),
     ("neoteletext-web", &["neoteletext-core", "embedded-io"]),
     ("neoteletext-image", &["neoteletext-core"]),
+    ("neoteletext-audio", &["neoteletext-core"]),
+    ("neoteletext-audio-mix", &[]),
 ];
 
 /// REQ-GEN-017: compares each microcontroller crate's resolved normal
@@ -190,6 +192,7 @@ const APPLICATION_CRATES: &[(&str, &[&str])] = &[
         "neoteletext-cli",
         &[
             "neoteletext-app",
+            "neoteletext-audio",
             "neoteletext-core",
             "neoteletext-formats",
             "neoteletext-slicer",
@@ -245,8 +248,15 @@ fn contains_literal(code: &str, literal: &str) -> bool {
 }
 
 /// Library crates that must not touch the operating system (REQ-SEC-016).
-const LIBRARY_CRATES: &[&str] =
-    &["neoteletext-core", "neoteletext-formats", "neoteletext-slicer", "neoteletext-web", "neoteletext-image"];
+const LIBRARY_CRATES: &[&str] = &[
+    "neoteletext-core",
+    "neoteletext-formats",
+    "neoteletext-slicer",
+    "neoteletext-web",
+    "neoteletext-image",
+    "neoteletext-audio",
+    "neoteletext-audio-mix",
+];
 const FORBIDDEN: &[&str] =
     &["std::fs", "std::net", "std::process", "std::env", "std::thread", "SystemTime", "Instant::now", "std::time"];
 

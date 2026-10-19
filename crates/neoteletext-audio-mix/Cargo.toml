@@ -1,0 +1,18 @@
+[package]
+name = "neoteletext-audio-mix"
+description = "The audio profile's software mixer for desktops and phones (REQ-AUD-019): integer mixing, ramps, ducking and resampling"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# REQ-GEN-017 and decision E.38: no dependencies; it holds sounds the audio
+# receiver decoded, so it needs only `alloc`.
+[dependencies]
+
+[dev-dependencies]
+neoteletext-audio = { workspace = true }
+
+[lints]
+workspace = true

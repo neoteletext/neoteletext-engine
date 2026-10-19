@@ -6,6 +6,8 @@ members = [
     "crates/neoteletext-slicer",
     "crates/neoteletext-web",
     "crates/neoteletext-image",
+    "crates/neoteletext-audio",
+    "crates/neoteletext-audio-mix",
     "crates/neoteletext-app",
     "crates/neoteletext-cli",
     "xtask",
@@ -29,6 +31,8 @@ neoteletext-formats = { path = "crates/neoteletext-formats", default-features = 
 neoteletext-slicer = { path = "crates/neoteletext-slicer" }
 neoteletext-web = { path = "crates/neoteletext-web", default-features = false }
 neoteletext-image = { path = "crates/neoteletext-image" }
+neoteletext-audio = { path = "crates/neoteletext-audio", default-features = false }
+neoteletext-audio-mix = { path = "crates/neoteletext-audio-mix" }
 neoteletext-app = { path = "crates/neoteletext-app", default-features = false }
 # Decision E.38: the only external crate a microcontroller crate may use.
 embedded-io = { version = "0.7.1", default-features = false }
