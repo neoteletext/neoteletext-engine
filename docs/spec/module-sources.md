@@ -18,3 +18,7 @@ The standards clauses and tables each module is written from (REQ-DOC-005, and t
 | `neoteletext-image::png` | PNG specification (ISO/IEC 15948) sections 5, 9, 11; RFC 1950 (zlib) and RFC 1951 (deflate, fixed Huffman codes section 3.2.6) |
 | `neoteletext-image::palette` | Table 30 (CLUT 0) |
 | `neottx` iTerm2 output | iTerm2 inline images protocol (OSC 1337 `File=`), as documented by iTerm2; RFC 4648 (base64) |
+| `neoteletext-audio::idl`, `neoteletext-core::consts` (independent data lines) | EN 300 708 V1.2.1 clauses 6.4.1 and 6.4.2 (designation and data channel, Table 16), 6.5.5 (continuity, for the record id), 6.5.8.1 (the 16-bit check), 6.7.1.1 and 6.7.3 (low bit-rate audio, Table 21); decision E.84 |
+| `neoteletext-audio::ima` | The IMA's 1992 recommended practices (IMA ADPCM step and index tables, not held locally); Microsoft RIFF WAVE format tag 0x0011 (block layout) |
+| `neoteletext-audio::record`, `store`, `control`, `receiver` | `docs/spec/design/audio.md` sections 4 to 8; RFC 1982 (serial number arithmetic); CRC-32/ISO-HDLC; decisions E.84 to E.86 |
+| `neoteletext-audio-mix` | EN 300 708 Table 19 (ducking steps); the Kaiser-windowed sinc of `tools/sinc_table.py`; decision E.85 |

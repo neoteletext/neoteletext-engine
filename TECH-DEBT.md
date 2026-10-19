@@ -13,6 +13,14 @@ Work deferred while behaviour is being shaped (the owner's instruction of 13 Oct
 
 ## Unfinished features
 
+- **Audio, area AUD (issue #220):** built and tested on branch `audio`; owed:
+  - live sounds (REQ-AUD-014): store them, track the sender's clock, and fade out after two seconds without a block;
+  - the `.ttau` file and WebSocket record readers (REQ-AUD-008);
+  - 5 ms fades at each edge of a missing block, and the `concealed` report (REQ-AUD-013);
+  - passing IMA ADPCM blocks undecoded to a sink that decodes them itself, for tellyboy (REQ-AUD-018);
+  - `cargo xtask size` and the Cortex-M0 flash of a receiver with audio;
+  - merging `audio` into `implementation` once the other session's work there is committed, and the full gate.
+
 - **Epics #177 (fonts) and #210 (character sets)** stay open until their work and the full gate are done.
 
 - **The 4:3 aspect correction stretched the wrong way** (found and fixed in rapid iteration): the browser's "4:3 picture", `neottx --aspect` and the image writers made pixels 1.2 times taller; on a 4:3 PAL set each pixel of the 12-by-20 cell is wider than tall (a half-dot is 1/624 of the width, a line 1/768). The core's `ASPECT_NUMERATOR`/`ASPECT_DENOMINATOR` are now 16/13 and stretch the width; `neoteletext_image::scale` maps columns back through the stretch; the browser uses the core's ratio; the user guide's `--aspect` line is corrected. Owed: REQ-RND-004 still says "pixels about 1.2 times taller than they are wide" and needs amending, with a decision citing the timing; a regression test that fails on the old ratio (the scale tests were changed with the fix; confirm they fail on 6/5 height); check images and goldens made with `--aspect` anywhere in the docs or tests; mention it in the log. "4:3 picture" is now on by default in the browser (owner, 13 October 2026); `neottx --aspect` is still off by default; REQ-RND-004 and the settings test should say which is the default.

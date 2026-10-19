@@ -12,6 +12,7 @@ This is the whole of a port (REQ-ARCH-009, decision E.29). A port supplies the i
 | Key input | Implement `neoteletext_core::port::Keys` returning `neoteletext_core::viewer::Key`. | For interactive ports |
 | Sleep | Implement `neoteletext_core::port::Sleep` if your platform must yield. | Optional |
 | A network transport | Implement the transport trait of `neoteletext-web` (connect, send, non-blocking receive, close; TLS is yours). | Only for web sources |
+| An audio sink | Implement `neoteletext_audio::port::VoiceSink`, and pass each packet to `neoteletext_audio::receiver::Receiver::push_packet` before the decoder; on a desktop, `neoteletext-audio-mix` mixes for you (area AUD, `audio-platforms.md`). | Only for sound |
 | Cookie storage | Implement the cookie storage trait of `neoteletext-web`. Store saved cookies as secrets (REQ-SEC-013). | Optional |
 
 A complete minimal port is `crates/neoteletext-core/examples/minimal_port.rs`, under 100 lines; it needs the core features `level15` and `bedstead`.
