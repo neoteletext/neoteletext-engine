@@ -1,11 +1,16 @@
 //! IMA ADPCM in WAVE blocks (format tag 0x0011), mono (REQ-AUD-001): the
 //! arithmetic of the IMA's 1992 *Recommended Practices for Enhancing Digital
-//! Audio Compatibility in Multimedia Systems*. Each block starts with its
-//! own predictor and step index, so every block decodes on its own.
+//! Audio Compatibility in Multimedia Systems*, revision 3.00, Appendix D
+//! section 6 (compression 6.1, decompression 6.2), and the block layout of
+//! Microsoft's *Multimedia Standards Update* of April 1994, "DVI ADPCM Wave
+//! Type" (both in `teletext-reference/teletext-audio/codecs/`). Each block
+//! starts with its own predictor and step index, so every block decodes on
+//! its own.
 
 use crate::IMA_HEADER;
 
-/// The step-size table: 89 steps, each about 1.1 times the last.
+/// The step-size table: 89 steps, each about 1.1 times the last
+/// (`stepsizeTable`, IMA Appendix D section 6.2).
 pub const STEP_SIZES: [i32; 89] = [
     7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 19, 21, 23, 25, 28, 31, 34, 37, 41, 45, 50, 55, 60, 66, 73, 80, 88, 97, 107,
     118, 130, 143, 157, 173, 190, 209, 230, 253, 279, 307, 337, 371, 408, 449, 494, 544, 598, 658, 724, 796, 876, 963,
@@ -14,7 +19,8 @@ pub const STEP_SIZES: [i32; 89] = [
     32767,
 ];
 
-/// How each code moves the step index.
+/// How each code moves the step index (`indexTable`, IMA Appendix D
+/// section 6.2).
 const INDEX_ADJUST: [i8; 16] = [-1, -1, -1, -1, 2, 4, 6, 8, -1, -1, -1, -1, 2, 4, 6, 8];
 
 /// The highest step index.
@@ -150,6 +156,28 @@ mod tests {
         assert_eq!(decode_block(&[0, 0, 0], &mut [0; 4]), Err(ImaError::Truncated));
         assert_eq!(decode_block(&[0, 0, 89, 0], &mut [0; 4]), Err(ImaError::StepIndex(89)));
         assert_eq!(decode_block(&[0, 0, 0, 0, 0], &mut [0; 2]), Err(ImaError::OutputTooSmall));
+    }
+
+    /// The recommendation's own worked examples, Appendix D sections 6.1
+    /// (page 30) and 6.2 (page 32): previous sample 0x8700 (-30976), step
+    /// index 24 (step 73), code 0x3 gives 0x873F (-30913) and index 23
+    /// (step 66); and sample 0x873F predicted from 0x8700 encodes as 0x3.
+    #[test]
+    fn the_recommendations_worked_example_decodes_and_encodes_as_printed() {
+        const PREVIOUS: i16 = -30976;
+        const PRINTED: i16 = -30913;
+        let before = State { predictor: PREVIOUS, index: 24 };
+        assert_eq!(STEP_SIZES[24], 73);
+        let mut state = before;
+        assert_eq!(state.decode(0x3), PRINTED);
+        assert_eq!(state, State { predictor: PRINTED, index: 23 });
+        assert_eq!(STEP_SIZES[23], 66);
+        #[cfg(feature = "encode")]
+        {
+            let mut state = before;
+            assert_eq!(encode(&mut state, PRINTED), 0x3);
+            assert_eq!(state.index, 23);
+        }
     }
 
     #[test]
