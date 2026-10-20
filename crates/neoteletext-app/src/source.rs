@@ -5,9 +5,19 @@ use crate::extras::PageExtras;
 use crate::pipe::{Notice, Submission};
 use crate::session::Session;
 use neoteletext_core::types::{Instant, PageAddress, SubCode};
+use std::sync::Arc;
+
+/// Wakes a viewer that is waiting: a source calls it when it has something
+/// for [`Source::poll`] (REQ-INT-008).
+pub type Wake = Arc<dyn Fn() + Send + Sync>;
 
 /// Something that feeds packets into the session while the viewer runs.
 pub trait Source {
+    /// Asks the source to call `wake` whenever something arrives for
+    /// [`Source::poll`], so the viewer takes it at once rather than at its
+    /// next look. A source read whole at start never calls it.
+    fn set_wake(&mut self, _wake: Wake) {}
+
     /// Feeds whatever is available now. Returns false at the end of input.
     fn poll(&mut self, session: &mut Session, now: Instant) -> bool;
 

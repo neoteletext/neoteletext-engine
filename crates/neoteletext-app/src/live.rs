@@ -4,7 +4,7 @@
 use crate::extras::{self, PageExtras};
 use crate::pipe::{self, Frame, Notice, Origin, PageData, Submission};
 use crate::session::Session;
-use crate::source::Source;
+use crate::source::{Source, Wake};
 use crate::{Failure, exit};
 use neoteletext_core::consts::{PACKET_HEADER, PACKET_MAGAZINE_ENHANCEMENT};
 use neoteletext_core::packet::{Decoded, Packet, PacketMeta, decode, decode_address};
@@ -18,6 +18,7 @@ use std::io::Write;
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{self, Receiver};
+use std::sync::{Arc, OnceLock};
 
 /// A live source: the fetcher and the frames it sends.
 pub struct Live {
@@ -48,6 +49,9 @@ pub struct Live {
     refresh_us: Option<u64>,
     /// Every page asked for, `0xMPP`: a page's file may fill only these.
     asked: std::collections::HashSet<u16>,
+    /// Called by the pipe reader as each frame arrives, once the viewer
+    /// asks (REQ-INT-008).
+    wake: Arc<OnceLock<Wake>>,
 }
 
 /// Which pages the bytes of one response may fill (REQ-WEB-019).
@@ -103,15 +107,28 @@ pub fn open(address: &str, no_sandbox: bool, allow_local: &[std::net::IpAddr]) -
     let requests = child.stdin.take().ok_or((exit::INPUT, "no pipe to the fetcher".to_string()))?;
     let mut output = child.stdout.take().ok_or((exit::INPUT, "no pipe from the fetcher".to_string()))?;
     let (sender, frames) = mpsc::channel();
-    std::thread::spawn(move || {
-        // Every frame is validated by pipe::read; a bad one ends the link.
-        while let Ok(Some(frame)) = pipe::read(&mut output) {
-            if sender.send(frame).is_err() {
-                break;
-            }
+    let live = Live::new(Some(child), Box::new(requests), frames);
+    let wake = live.wake.clone();
+    std::thread::spawn(move || read_frames(&mut output, &sender, &wake));
+    Ok(Box::new(live))
+}
+
+/// Reads the fetcher's frames until its pipe ends, passing each on and
+/// waking the viewer, if it asked to be woken, as it comes.
+fn read_frames(output: &mut dyn std::io::Read, sender: &mpsc::Sender<Frame>, wake: &OnceLock<Wake>) {
+    // Every frame is validated by pipe::read; a bad one ends the link.
+    while let Ok(Some(frame)) = pipe::read(output) {
+        if sender.send(frame).is_err() {
+            return;
         }
-    });
-    Ok(Box::new(Live::new(Some(child), Box::new(requests), frames)))
+        if let Some(wake) = wake.get() {
+            wake();
+        }
+    }
+    // The end is news too: the viewer sees the fetcher gone.
+    if let Some(wake) = wake.get() {
+        wake();
+    }
 }
 
 /// A live source fed `frames` from a channel, writing its requests to
@@ -139,6 +156,7 @@ impl Live {
             last_poll: Instant(0),
             refresh_us: None,
             asked: std::collections::HashSet::new(),
+            wake: Arc::default(),
         }
     }
 }
@@ -200,6 +218,10 @@ impl Live {
 }
 
 impl Source for Live {
+    fn set_wake(&mut self, wake: Wake) {
+        let _ = self.wake.set(wake);
+    }
+
     fn poll(&mut self, session: &mut Session, now: Instant) -> bool {
         self.last_poll = now;
         let mut disconnected = false;
@@ -376,6 +398,26 @@ pub fn descriptor_service_names(path: &Path) -> Result<Vec<Vec<u8>>, Failure> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_pipe_reader_wakes_the_viewer_for_each_frame_and_at_the_end() {
+        // The viewer took a page only at its next 40 ms look; it is woken
+        // as each frame arrives instead (REQ-INT-008).
+        let mut bytes = Vec::new();
+        for _ in 0..2 {
+            pipe::write(&mut bytes, &Frame::Notice(Notice::Unencrypted)).unwrap();
+        }
+        let woken = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let count = woken.clone();
+        let wake: OnceLock<Wake> = OnceLock::new();
+        let _ = wake.set(Arc::new(move || {
+            count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }));
+        let (sender, frames) = mpsc::channel();
+        read_frames(&mut bytes.as_slice(), &sender, &wake);
+        assert_eq!(frames.try_iter().count(), 2);
+        assert_eq!(woken.load(std::sync::atomic::Ordering::Relaxed), 3, "each frame, then the end");
+    }
     use std::sync::{Arc, Mutex};
 
     /// A pipe end that keeps what is written.

@@ -32,5 +32,6 @@ A TTI page may carry its cursor record as a line `CU,row,column,width,flags[,ack
 *Verification:* Fixtures computed by qrkeyboard's own `crypto.ts`: two configuration hashes, a SPAKE2 run and sealed frames; tests of replay, reordering and forgery; pairing by key and by PIN through a running relay.
 
 **REQ-INT-008 — A key goes at once.**
-A fetcher process shall send a key record the moment it arrives and pass on what the channel answers the moment it arrives, sleeping only until a request, a socket or a timer of its state machine wakes it (decision E.97).
-*Verification:* A test types 20 keys through the fetcher to a local channel that answers each with a page, and holds the round trip's median to 2 ms.
+A fetcher process shall send a key record the moment it arrives and pass on what the channel answers the moment it arrives, sleeping only until a request, a socket or a timer of its state machine wakes it (decision E.97). The viewer shall take what the fetcher passes on the moment it arrives, waiting for the terminal and its source together.
+*Amended 21 October 2026:* the viewer too; it looked at its source only between 40 ms waits for the terminal.
+*Verification:* A test types 20 keys through the fetcher to a local channel that answers each with a page, and holds the round trip's median to 2 ms; tests that the fetcher's pipe reader wakes the viewer for each frame, and that a wake ends the viewer's wait at once.

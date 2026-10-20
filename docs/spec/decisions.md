@@ -1360,6 +1360,8 @@ Decided on 21 October 2026, on the owner's instruction, as T42 Browser's fetcher
 
 *Amended 21 October 2026:* the live feed's loop now follows the feed's own deadlines too. It kept only the deadline a tick reported, so after the handshake the feed's 5-second inactivity and keepalive deadlines were lost behind the handshake's 30 seconds, against REQ-INP-022; and once the feed stopped it woke every 200 ms for ever. It keeps the deadline the feed reports after every input, and sleeps with none once the feed has stopped. The loop takes its transport as a parameter, so its tests play the server in memory.
 
+*Amended 21 October 2026:* `neottx view` waits for the terminal and its source together. It waited 40 ms for a key, then looked at its source, so a page the fetcher passed on in 0.3 ms waited up to 40 ms more; a thread now reads the terminal, and the source's pipe reader wakes the same channel as each frame arrives (`Source::set_wake`). The 40 ms tick remains only as the longest wait, for flash and the form ticker.
+
 **E.98 — A state machine says when it next needs time.**
 Decided on 21 October 2026, on the owner's instruction to stop ticking decoders whose pages are not shown (T42 Browser's decision 47).
 1. **The audio receiver says when it next needs a tick:** `Receiver::next_tick_ms`, the moment the live sound at the sink whose last block came longest ago would stall (REQ-AUD-014), or `None` while no live sound plays. A port sleeps until then instead of ticking on a fixed interval.

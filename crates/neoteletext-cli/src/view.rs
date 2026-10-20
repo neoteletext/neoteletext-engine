@@ -28,9 +28,29 @@ use neoteletext_core::viewer::{
 use neoteletext_image::palette::Rgba;
 use std::collections::HashSet;
 use std::io::Write;
+use std::sync::Arc;
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::time::{Duration, Instant as StdInstant};
 
-/// How often the viewer wakes to poll the source, check flash and keys.
+/// What ends the viewer's wait.
+enum Wakened {
+    /// The terminal reported an event.
+    Terminal(Event),
+    /// The source has something for its next poll.
+    Source,
+}
+
+/// Waits up to `wait` for the terminal or the source, and returns the key
+/// if a key ended the wait; anything else only ends it early.
+fn next_key(wakes: &Receiver<Wakened>, wait: Duration) -> Option<KeyEvent> {
+    match wakes.recv_timeout(wait) {
+        Ok(Wakened::Terminal(Event::Key(key))) => Some(key),
+        Ok(_) | Err(RecvTimeoutError::Timeout | RecvTimeoutError::Disconnected) => None,
+    }
+}
+
+/// The longest the viewer waits before it looks at the source again and
+/// draws flash and the ticker; a key or a page wakes it at once.
 const TICK: Duration = Duration::from_millis(40);
 /// Microseconds per step of the scrolling form origin (REQ-SEC-009).
 const TICKER_STEP_US: u64 = 300_000;
@@ -233,6 +253,24 @@ pub fn run(
     // until the key is handled, so it is recorded at the start of the next
     // pass, when nothing borrows the decoder.
     let mut unrecorded: Option<EnhancementReport> = None;
+    // The viewer waits for the terminal and the source together: a key,
+    // and a page the source has for it, are taken at once; the tick is
+    // only the longest wait, for flash and the ticker (REQ-INT-008).
+    let (woken, wakes) = mpsc::channel();
+    let terminal = woken.clone();
+    // Held for as long as the viewer runs, so the wait never ends early for
+    // want of a sender: a file source drops the wake it is given.
+    let _held = woken.clone();
+    std::thread::spawn(move || {
+        while let Ok(event) = event::read() {
+            if terminal.send(Wakened::Terminal(event)).is_err() {
+                return;
+            }
+        }
+    });
+    source.set_wake(Arc::new(move || {
+        let _ = woken.send(Wakened::Source);
+    }));
     let result = loop {
         if let Some(report) = unrecorded.take() {
             session.decoder_mut().record_enhancement(report.build, &report.faults);
@@ -414,9 +452,7 @@ pub fn run(
             draw(&mut out, &grid, display, scale, depth, mosaics, frame)?;
             last_drawn = Some(state);
         }
-        if event::poll(TICK)?
-            && let Event::Key(key) = event::read()?
-        {
+        if let Some(key) = next_key(&wakes, TICK) {
             let control = key.modifiers.contains(KeyModifiers::CONTROL);
             if typing.open && control && key.code == KeyCode::Char(LEAVE_TYPING) {
                 typing.left = !typing.left;
@@ -536,4 +572,26 @@ fn draw(
         }
     }
     out.flush()
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, reason = "a test")]
+    use super::*;
+
+    #[test]
+    fn a_page_from_the_source_ends_the_wait_at_once() {
+        // The viewer looked at the source only between 40 ms waits for the
+        // terminal, so a page the fetcher had in 0.3 ms waited up to 40 ms
+        // more to be drawn (REQ-INT-008).
+        const LONG: Duration = Duration::from_secs(5);
+        let (woken, wakes) = mpsc::channel();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(5));
+            let _ = woken.send(Wakened::Source);
+        });
+        let started = StdInstant::now();
+        assert!(next_key(&wakes, LONG).is_none());
+        assert!(started.elapsed() < LONG / 10, "waited {:?}", started.elapsed());
+    }
 }
