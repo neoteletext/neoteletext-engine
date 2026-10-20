@@ -13,9 +13,7 @@
 //!   the default objects, as the machine of REQ-FSM-011 describes;
 //! - resolves each row from its Level 1 bytes and the events of the walk
 //!   that fall on it, cell by cell, as REQ-FSM-012 describes, and then the
-//!   cells of each side panel;
-//! - puts into the grid the DRCS patterns and colour tables that `drcs`
-//!   decodes for the characters the cells use (REQ-DRC-007).
+//!   cells of each side panel.
 //!
 //! **How the walk and the rows meet.** The walk is run once for the
 //! page-level data (screen and row colours) and then once for each row,
@@ -40,18 +38,17 @@ use crate::config::{Config, PresentationLevel};
 use crate::consts::{
     ALPHA_BLACK, ALPHA_WHITE, ATTRIBUTE_LAST, BLACK_BACKGROUND, C5_NEWSFLASH, C6_SUBTITLE, C7_SUPPRESS_HEADER,
     C10_INHIBIT_DISPLAY, CLUT_ENTRY_MASK, COLOUR_BLACK, COLOUR_WHITE, COLUMNS, CONCEAL, CONTIGUOUS_MOSAICS,
-    DOUBLE_HEIGHT, DOUBLE_HEIGHT_FIRST_ROW, DOUBLE_HEIGHT_LAST_ROW, DOUBLE_SIZE, DOUBLE_WIDTH, DRCS_LEVEL_MASK,
-    END_BOX, ESC, FLASH, FLASH_MODE_ADJACENT_CLUT, FLASH_MODE_INVERTED, FLASH_MODE_NORMAL, FLASH_RATE_DECREMENTAL,
-    FLASH_RATE_INCREMENTAL, FLASH_RATE_PHASE_1, FLASH_RATE_PHASE_2, FLASH_RATE_PHASE_3, FLASH_RATE_SLOW,
-    G1_G0_COLUMNS_FIRST, G1_G0_COLUMNS_LAST, G3_UNDEFINED, HOLD_MOSAICS, LATIN_AT_SIGN, LATIN_G2_UNDEFINED,
-    LEVEL_BIT_25, LEVEL_BIT_35, LOCAL_TRIPLETS, MOSAIC_BIT5, MOSAIC_BLACK, MOSAIC_WHITE, NEW_BACKGROUND, NORMAL_SIZE,
-    OBJECT_BODY_TRIPLETS, OBJECT_INVOCATIONS_PER_TYPE, OBJECT_TYPES, OBJECTS_OPEN_AT_ONCE,
-    OBJECTS_OPENED_IN_SUCCESSION, PAGE_FUNCTION_DRCS, PAGE_FUNCTION_GDRCS, PAGE_FUNCTION_GPOP, PAGE_FUNCTION_MOT,
-    PAGE_FUNCTION_POP, PAGE_MOT, RECEIVER_COLUMNS, RELEASE_MOSAICS, ROW_ADDRESS_LAST, ROW_COLOUR_DOWN_TO_BOTTOM,
-    ROW_COLOUR_THIS_ROW, ROWS, SCREEN_COLUMNS, SEPARATED_MOSAICS, SIDE_PANEL_FIRST_ROW, SIDE_PANEL_ROWS, SPACE,
-    START_BOX, STEADY, TRIPLET_AT_SIGN_CODE, TRIPLET_FIRST_CHARACTER, TRIPLETS_PER_PACKET, WALK_DEPTH,
+    DOUBLE_HEIGHT, DOUBLE_HEIGHT_FIRST_ROW, DOUBLE_HEIGHT_LAST_ROW, DOUBLE_SIZE, DOUBLE_WIDTH, END_BOX, ESC, FLASH,
+    FLASH_MODE_ADJACENT_CLUT, FLASH_MODE_INVERTED, FLASH_MODE_NORMAL, FLASH_RATE_DECREMENTAL, FLASH_RATE_INCREMENTAL,
+    FLASH_RATE_PHASE_1, FLASH_RATE_PHASE_2, FLASH_RATE_PHASE_3, FLASH_RATE_SLOW, G1_G0_COLUMNS_FIRST,
+    G1_G0_COLUMNS_LAST, G3_UNDEFINED, HOLD_MOSAICS, LATIN_AT_SIGN, LATIN_G2_UNDEFINED, LOCAL_TRIPLETS, MOSAIC_BIT5,
+    MOSAIC_BLACK, MOSAIC_WHITE, NEW_BACKGROUND, NORMAL_SIZE, OBJECT_BODY_TRIPLETS, OBJECT_INVOCATIONS_PER_TYPE,
+    OBJECT_TYPES, OBJECTS_OPEN_AT_ONCE, OBJECTS_OPENED_IN_SUCCESSION, PAGE_FUNCTION_DRCS, PAGE_FUNCTION_GDRCS,
+    PAGE_FUNCTION_GPOP, PAGE_FUNCTION_MOT, PAGE_FUNCTION_POP, PAGE_MOT, RECEIVER_COLUMNS, RELEASE_MOSAICS,
+    ROW_ADDRESS_LAST, ROW_COLOUR_DOWN_TO_BOTTOM, ROW_COLOUR_THIS_ROW, ROWS, SCREEN_COLUMNS, SEPARATED_MOSAICS,
+    SIDE_PANEL_FIRST_ROW, SIDE_PANEL_ROWS, SPACE, START_BOX, STEADY, TRIPLET_AT_SIGN_CODE, TRIPLET_FIRST_CHARACTER,
+    TRIPLETS_PER_PACKET, WALK_DEPTH,
 };
-use crate::drcs::{DrcsColourTables, DrcsFault, decode_character};
 use crate::level1::{
     Cell, CellAttributes, CharSource, DisplayOptions, FlashMode, FlashRate, FontStyle, Glyph, Grid, Size, Width,
     resolve_designation, row_24_shown, row_codes,
@@ -61,7 +58,7 @@ use crate::packet::{
     ColourData, DisplayAttributes, FontStyleData, ObjectKind, ObjectNumber, ObjectSource, TripletFunction,
 };
 use crate::trace::{Machine, TraceSink};
-use crate::types::{DrcsCharacter, DrcsTable, FixedVec};
+use crate::types::FixedVec;
 
 /// The runs of the walk for one grid: the page-level run, then one for each
 /// row.
@@ -271,8 +268,6 @@ enum EnhChar {
     G2(u8),
     /// A G3 character.
     G3(u8),
-    /// A DRCS character.
-    Drcs(DrcsCharacter),
 }
 
 /// What an enhancement character shows (REQ-L25-010, REQ-L25-011): national
@@ -298,7 +293,6 @@ fn enhancement_glyph(character: EnhChar, sets: (G0Set, G2Set), separated: bool) 
         EnhChar::G2(code) => Glyph::Char(CharRef::new(CharSet::G2(sets.1), code)),
         EnhChar::G3(code) if G3_UNDEFINED.contains(&code) => return (Glyph::Space, true),
         EnhChar::G3(code) => Glyph::Char(CharRef::new(CharSet::G3, code)),
-        EnhChar::Drcs(character) => Glyph::Char(CharRef::drcs(character)),
     };
     (glyph, false)
 }
@@ -420,8 +414,6 @@ struct Frame<'s> {
     /// The active position, relative to the origin.
     row: u8,
     column: u8,
-    /// The chosen sub-tables: global, then normal (REQ-DRC-005).
-    drcs: [u8; 2],
     /// The display area of the origin; elements elsewhere are discarded
     /// (REQ-OBJ-014, decision E.49).
     area: Area,
@@ -446,7 +438,6 @@ impl Frame<'_> {
             origin: (0, 0),
             row: 0,
             column: 0,
-            drcs: [0; 2],
             area: Area::Main,
             slot: 0,
             designation: None,
@@ -639,7 +630,7 @@ pub enum WalkAction {
     /// Nothing.
     None,
     /// The source becomes the local enhancement data at row 0, column 0,
-    /// with DRCS sub-tables 0 and no Origin Modifier.
+    /// with no Origin Modifier.
     BeginLocal,
     /// The source becomes the default object found, at row 0, column 0.
     StartDefault,
@@ -647,8 +638,8 @@ pub enum WalkAction {
     Skip,
     /// End the current source.
     EndSource,
-    /// Pop the walk record: the invoker's position, origin and sub-tables
-    /// return, and the Origin Modifier is cancelled (REQ-OBJ-002).
+    /// Pop the walk record: the invoker's position and origin return, and
+    /// the Origin Modifier is cancelled (REQ-OBJ-002).
     Pop,
     /// After a default object, the position is row 0, column 0 again.
     ResetPosition,
@@ -668,15 +659,6 @@ pub enum WalkAction {
         row: u8,
         /// The column, kept when 40 or more.
         column: u8,
-    },
-    /// DRCS Mode (REQ-DRC-005).
-    DrcsMode {
-        /// The normal table, or the global.
-        normal: bool,
-        /// The level bits.
-        levels: u8,
-        /// The sub-table.
-        subtable: u8,
     },
     /// An Object Invocation with the offsets of an Origin Modifier that
     /// immediately preceded it, or none (REQ-OBJ-001, REQ-OBJ-002).
@@ -723,7 +705,6 @@ const fn triplet_transition(function: TripletFunction) -> (WalkState, WalkAction
             }
         }
         F::SetActivePosition { address, column } => (walking, WalkAction::Position { row: row_of(address), column }),
-        F::DrcsMode { normal, levels, subtable } => (walking, WalkAction::DrcsMode { normal, levels, subtable }),
         // REQ-L25-052: Programme Delivery Control and reserved triplets do
         // nothing, and do not move the position.
         F::ProgrammeDeliveryRow { .. }
@@ -738,7 +719,7 @@ const fn triplet_transition(function: TripletFunction) -> (WalkState, WalkAction
         | F::ModifiedDesignation { .. }
         | F::G0Character { .. }
         | F::DisplayAttributes { .. }
-        | F::DrcsCharacter { .. }
+        | F::UnsupportedColumn { .. }
         | F::FontStyle { .. }
         | F::G2Character { .. }
         | F::G0Diacritic { .. } => (walking, WalkAction::Column(function)),
@@ -826,7 +807,6 @@ pub const fn walk_action_name(action: WalkAction) -> &'static str {
         WalkAction::ScreenColour(_) => "screen colour",
         WalkAction::RowColour { .. } => "move to the row; row colour",
         WalkAction::Position { .. } => "set the active position",
-        WalkAction::DrcsMode { .. } => "choose the DRCS sub-table",
         WalkAction::Invoke { .. } => "invoke the object",
         WalkAction::Column(_) => "set the column; place the character or attribute",
     }
@@ -1046,7 +1026,6 @@ impl<'a, 's> Walker<'a, 's> {
             WalkAction::ScreenColour(_)
             | WalkAction::RowColour { .. }
             | WalkAction::Position { .. }
-            | WalkAction::DrcsMode { .. }
             | WalkAction::Column(_) => {
                 if let Some(frame) = stack.as_mut_slice().last_mut() {
                     self.act_on_frame(action, frame, out);
@@ -1079,14 +1058,6 @@ impl<'a, 's> Walker<'a, 's> {
                 // Decision E.46: a column of 40 or more leaves the column.
                 if usize::from(column) < COLUMNS {
                     frame.column = column;
-                }
-            }
-            WalkAction::DrcsMode { normal, levels, subtable } => {
-                // Decision E.54: the reserved level value 00 counts as both.
-                let bit = if self.inputs.level.is_level35() { LEVEL_BIT_35 } else { LEVEL_BIT_25 };
-                let applies = levels & DRCS_LEVEL_MASK == 0 || levels & bit != 0;
-                if applies && let Some(chosen) = frame.drcs.get_mut(usize::from(normal)) {
-                    *chosen = subtable;
                 }
             }
             WalkAction::Column(function) => self.column_triplet(frame, function, out),
@@ -1168,17 +1139,12 @@ impl<'a, 's> Walker<'a, 's> {
             TripletFunction::G0Diacritic { code, diacritic, .. } => {
                 Some(EnhChar::G0 { code, diacritic, at: diacritic == 0 && code == TRIPLET_AT_SIGN_CODE })
             }
-            TripletFunction::DrcsCharacter { normal, character, .. } => {
-                let table = if normal { DrcsTable::Normal } else { DrcsTable::Global };
-                let subtable = frame.drcs.get(usize::from(normal)).copied().unwrap_or(0);
-                Some(EnhChar::Drcs(DrcsCharacter { table, subtable, character }))
-            }
-            // Reserved data: the triplet only sets the column.
+            // Reserved data, and functions not acted on (decision E.95):
+            // the triplet only sets the column.
             _ => return,
         };
         // REQ-L25-004: a character code below 2/0 sets the column and writes
-        // nothing. DRCS characters are numbered from 0, so the rule does not
-        // apply to them.
+        // nothing.
         if let Some(EnhChar::G0 { code, .. } | EnhChar::G1(code) | EnhChar::G2(code) | EnhChar::G3(code)) = character
             && code < TRIPLET_FIRST_CHARACTER
         {
@@ -1355,7 +1321,6 @@ impl<'a, 's> Walker<'a, 's> {
             origin,
             row: 0,
             column: 0,
-            drcs: [0; 2],
             area: area_of(origin.1, self.inputs.panels),
             slot,
             designation: None,
@@ -1948,8 +1913,8 @@ impl Rows<'_, '_> {
 /// 0 keeps the receiver's status area, and rows the Level 1 grid does not
 /// show (a suppressed header, inhibited display, a row 24 that is not
 /// displayed or that the receiver draws) keep their Level 1 cells.
-pub fn apply<const DRCS: usize, const PANEL_ROWS: usize>(
-    grid: &mut Grid<DRCS, PANEL_ROWS>,
+pub fn apply<const PANEL_ROWS: usize>(
+    grid: &mut Grid<PANEL_ROWS>,
     page: &StoredPage,
     magazine: &MagazineData,
     lookup: &EnhancementLookup<'_>,
@@ -1963,8 +1928,8 @@ pub fn apply<const DRCS: usize, const PANEL_ROWS: usize>(
 /// of the page-level run of the walk to `trace` (REQ-FSM-010). A fault the
 /// walk meets (REQ-L25-051) is named as the action of the transition that
 /// met it.
-pub fn apply_traced<const DRCS: usize, const PANEL_ROWS: usize>(
-    grid: &mut Grid<DRCS, PANEL_ROWS>,
+pub fn apply_traced<const PANEL_ROWS: usize>(
+    grid: &mut Grid<PANEL_ROWS>,
     page: &StoredPage,
     magazine: &MagazineData,
     lookup: &EnhancementLookup<'_>,
@@ -1976,8 +1941,8 @@ pub fn apply_traced<const DRCS: usize, const PANEL_ROWS: usize>(
 }
 
 /// [`apply`], with `trace` `None` when tracing is off.
-fn process<const DRCS: usize, const PANEL_ROWS: usize>(
-    grid: &mut Grid<DRCS, PANEL_ROWS>,
+fn process<const PANEL_ROWS: usize>(
+    grid: &mut Grid<PANEL_ROWS>,
     page: &StoredPage,
     magazine: &MagazineData,
     lookup: &EnhancementLookup<'_>,
@@ -2065,16 +2030,13 @@ fn process<const DRCS: usize, const PANEL_ROWS: usize>(
             grid.double_height_rows |= 1u32.checked_shl(row as u32).unwrap_or(0);
         }
     }
-    let drcs_page = page.drcs_colours;
-    grid.drcs_colours = DrcsColourTables::resolve(drcs_page.as_ref(), magazine.drcs_colours.as_ref(), level);
-    fill_drcs(grid, &links, lookup, level, &mut report);
     report
 }
 
 /// Rebuilds the rows the page shows, top to bottom, so that each row knows
 /// the row above it (REQ-L25-025, REQ-L25-026).
-fn rebuild_rows<const DRCS: usize, const PANEL_ROWS: usize>(
-    grid: &mut Grid<DRCS, PANEL_ROWS>,
+fn rebuild_rows<const PANEL_ROWS: usize>(
+    grid: &mut Grid<PANEL_ROWS>,
     rows: &Rows<'_, '_>,
     row_24_shown: bool,
     report: &mut EnhancementReport,
@@ -2131,66 +2093,6 @@ fn rebuild_rows<const DRCS: usize, const PANEL_ROWS: usize>(
                 if column < COLUMNS { grid.cell(row, column).copied() } else { grid.panel_cell(row, column).copied() };
         }
         lower = spacing_double && !lower;
-    }
-}
-
-/// Puts into the grid the pattern of every DRCS character its cells use
-/// (REQ-DRC-006, REQ-DRC-007, REQ-DRC-009). Each character is read from the
-/// displayed page's GDRCS or DRCS link, also for characters inside objects
-/// (Annex E.6). A cell whose data is invalid shows a space; one whose data
-/// is missing keeps its character and has no pattern, which the renderer
-/// draws as a space in the background colour.
-fn fill_drcs<const DRCS: usize, const PANEL_ROWS: usize>(
-    grid: &mut Grid<DRCS, PANEL_ROWS>,
-    links: &EnhancementLinks,
-    lookup: &EnhancementLookup<'_>,
-    level: PresentationLevel,
-    report: &mut EnhancementReport,
-) {
-    let rows = grid.cells.len().saturating_add(grid.panels.len());
-    for index in 0..rows {
-        let width = if index < ROWS { COLUMNS } else { SCREEN_COLUMNS.saturating_sub(COLUMNS) };
-        for column in 0..width {
-            let cell = if index < ROWS {
-                grid.cells.get(index).and_then(|row| row.get(column)).copied()
-            } else {
-                grid.panels.get(index.saturating_sub(ROWS)).and_then(|row| row.get(column)).copied()
-            };
-            let Some(Cell { glyph: Glyph::Char(character), .. }) = cell else { continue };
-            let Some(drcs) = character.drcs_character() else { continue };
-            if grid.drcs_pattern(drcs).is_some() {
-                continue;
-            }
-            let link = match drcs.table {
-                DrcsTable::Normal => links.drcs,
-                DrcsTable::Global => links.gdrcs,
-            };
-            let sub_page = link.and_then(|link| lookup.sub_page(link.magazine, link.page, drcs.subtable));
-            // Without DRCS compiled in, every character is missing
-            // (decision E.71).
-            let decoded =
-                if cfg!(feature = "drcs") { decode_character(sub_page, drcs, level) } else { Err(DrcsFault::Missing) };
-            match decoded {
-                Ok(pattern) => {
-                    if !grid.drcs.push(pattern) {
-                        // REQ-DRC-007: beyond the capacity, treated as missing.
-                        report.faults.drcs_missing = report.faults.drcs_missing.saturating_add(1);
-                    }
-                }
-                Err(DrcsFault::Missing) => report.faults.drcs_missing = report.faults.drcs_missing.saturating_add(1),
-                Err(DrcsFault::Invalid) => {
-                    report.faults.drcs_invalid = report.faults.drcs_invalid.saturating_add(1);
-                    let target = if index < ROWS {
-                        grid.cells.get_mut(index).and_then(|row| row.get_mut(column))
-                    } else {
-                        grid.panels.get_mut(index.saturating_sub(ROWS)).and_then(|row| row.get_mut(column))
-                    };
-                    if let Some(target) = target {
-                        target.glyph = Glyph::Space;
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -2309,7 +2211,7 @@ mod tests {
         let invocation = F::ObjectInvocation { source: ObjectSource::Local, kind: ObjectKind::Passive, number };
         let column = F::G0Character { column: 4, code: b'A' };
         let attribute = F::ForegroundColour { column: 4, colour };
-        let rows: [(S, E, S, A); 24] = [
+        let rows: [(S, E, S, A); 25] = [
             (S::Start, E::Begin { display: true }, S::Walking, A::BeginLocal),
             (S::Start, E::Begin { display: false }, S::PlacingDefaults, A::None),
             (S::Walking, E::Triplet(None), S::Walking, A::Skip),
@@ -2345,11 +2247,19 @@ mod tests {
             ),
             (S::Walking, E::Triplet(Some(F::AddressDisplayRow0 { address: 50, colour })), S::Walking, A::None),
             (S::Walking, E::Triplet(Some(F::FullScreenColour(colour))), S::Walking, A::ScreenColour(colour)),
+            // Decision E.95: DRCS Mode is a reserved row triplet, and DRCS
+            // Character Invocation only sets the column.
             (
                 S::Walking,
-                E::Triplet(Some(F::DrcsMode { normal: true, levels: 3, subtable: 2 })),
+                E::Triplet(Some(F::ReservedRow { mode: 0b11000, address: 41, data: 0x72 })),
                 S::Walking,
-                A::DrcsMode { normal: true, levels: 3, subtable: 2 },
+                A::None,
+            ),
+            (
+                S::Walking,
+                E::Triplet(Some(F::UnsupportedColumn { column: 3, mode: 0b01101, data: 0x40 })),
+                S::Walking,
+                A::Column(F::UnsupportedColumn { column: 3, mode: 0b01101, data: 0x40 }),
             ),
             (S::Walking, E::Triplet(Some(F::OriginModifier { row_offset: 2, column_offset: 56 })), pending, A::None),
             (

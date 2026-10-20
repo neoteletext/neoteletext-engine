@@ -123,7 +123,7 @@ fn t42_round_trips_and_filters() {
     assert_eq!(filtered.len(), written * 42);
 }
 
-/// REQ-INP-023 and REQ-TST-020: object, DRCS and table pages, magazine
+/// REQ-INP-023 and REQ-TST-020: object, pattern and table pages, magazine
 /// packets and the page packets of Levels 2.5 and 3.5 read, write and read
 /// back unchanged.
 #[test]
@@ -132,8 +132,9 @@ fn enhancement_pages_round_trip() {
 }
 
 /// REQ-INP-024 and Annex B.7: a set of pages goes out as magazine
-/// packets, tables, DRCS pages, object pages and then display pages, each
-/// class in the order given.
+/// packets, tables, object pages, other data pages (a DRCS page among
+/// them, decision E.95) and then display pages, each class in the order
+/// given.
 #[test]
 fn page_sets_are_written_in_the_order_of_annex_b7() {
     use crate::encode::{TransmissionClass, transmission_class};
@@ -150,8 +151,8 @@ fn page_sets_are_written_in_the_order_of_annex_b7() {
         [
             TransmissionClass::MagazinePackets,
             TransmissionClass::OrganizationTable,
-            TransmissionClass::Drcs,
             TransmissionClass::Objects,
+            TransmissionClass::OtherData,
             TransmissionClass::Display,
             TransmissionClass::Display,
         ]

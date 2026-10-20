@@ -193,7 +193,7 @@ None of the machines shall depend on the ordering rules that EN 300 706 places o
 - the gap after a header may be shorter than 20 milliseconds;
 - triplets may address positions out of screen order (REQ-L15-009 and REQ-L25-005);
 - magazines may be interleaved in any pattern that parallel mode allows;
-- the Magazine Organization Table, object pages and DRCS pages may arrive before or after the pages that use them, and in any order among themselves (Annex B.7 asks for an order the receiver does not rely on).
+- the Magazine Organization Table and object pages may arrive before or after the pages that use them, and in any order among themselves (Annex B.7 asks for an order the receiver does not rely on).
 
 A page received in any such order shall give the same stored page and the same cell grid as the same packets in standard order, once all of them have arrived (REQ-ACQ-022). The only exceptions are cases where the standard itself makes order significant: which header starts and ends a page, which of two overwrites of the same cell comes later (decision E.5 (h)), and which of two contending attributes comes later in transmission (Annex C.2 rule 3).
 *Verification:* The reordering tests of REQ-FSM-009.
@@ -224,14 +224,13 @@ The machine's state record holds the current source, which is the local enhancem
 - the active position, relative to the source's origin;
 - the origin;
 - any pending Origin Modifier;
-- the chosen DRCS sub-tables;
 - the source's attribute plane and display priority.
 
 The stack is at most three records deep, because of the nesting rules of REQ-OBJ-008, so no recursion is needed (REQ-GEN-016). The machine shall follow this table:
 
 | State | Event | Action | Next state |
 |---|---|---|---|
-| Start | Walk begins and the page has a packet X/26 with a display triplet | The source is the local enhancement data. Active position row 0, column 0; DRCS sub-tables 0; no Origin Modifier (REQ-L25-003 and REQ-DRC-005). | Walking |
+| Start | Walk begins and the page has a packet X/26 with a display triplet | The source is the local enhancement data. Active position row 0, column 0; no Origin Modifier (REQ-L25-003). | Walking |
 | Start | Walk begins and the page has no packet X/26 with a display triplet | None | Placing default objects |
 | Walking | Next triplet of the source: for the local enhancement data, from the next stored X/26 in designation-code order, skipping missing codes; for an object, the next triplet of its body (REQ-OBJ-006) | Take it | Walking |
 | Walking | Triplet that failed its Hamming 24/18 check | Skip it (decision E.46) | Walking |
@@ -239,21 +238,23 @@ The stack is at most three records deep, because of the nesting rules of REQ-OBJ
 | Walking | Object Definition triplet | End the source (decision E.46) | Returning |
 | Walking | Full Row Colour, Set Active Position, or Address Display Row 0 with address 63 | Move the active position (REQ-L25-003). For Full Row Colour and Address Display Row 0, emit a row colour event (REQ-L25-033), unless the source is an Adaptive or Passive object or lies in a side panel (REQ-OBJ-013) | Walking |
 | Walking | Full Screen Colour | Emit a screen colour event (REQ-L25-032), unless REQ-OBJ-013 forbids it | Walking |
-| Walking | DRCS Mode | Choose the sub-table if the level bits allow (REQ-DRC-005) | Walking |
 | Walking | Origin Modifier | Record the offsets (REQ-OBJ-002) | Modifier pending |
 | Modifier pending | Object Invocation | Handle it as an invocation from Walking, with the recorded offsets | As for an invocation from Walking |
 | Modifier pending | Any other triplet | Discard the offsets (decision E.46), then handle the triplet as in Walking | As for that triplet in Walking |
-| Walking | Object Invocation that REQ-OBJ-008 permits, within the limits of REQ-OBJ-020, whose definition is found and accepted (REQ-OBJ-003 to REQ-OBJ-006) | Push the walk record. The new source is the object: origin as REQ-OBJ-002 gives; active position row 0, column 0; DRCS sub-tables 0; the attribute plane of its type (REQ-OBJ-009 to REQ-OBJ-011) | Walking |
+| Walking | Object Invocation that REQ-OBJ-008 permits, within the limits of REQ-OBJ-020, whose definition is found and accepted (REQ-OBJ-003 to REQ-OBJ-006) | Push the walk record. The new source is the object: origin as REQ-OBJ-002 gives; active position row 0, column 0; the attribute plane of its type (REQ-OBJ-009 to REQ-OBJ-011) | Walking |
 | Walking | Any other Object Invocation | Skip it and count it | Walking |
-| Walking | Any other row triplet: a reserved mode, or a Programme Delivery Control mode | None (REQ-L25-052) | Walking |
+| Walking | Any other row triplet: a reserved mode, DRCS Mode (decision E.95), or a Programme Delivery Control mode | None (REQ-L25-052) | Walking |
 | Walking | Column triplet of a reserved mode, or of mode 00110 | None; the active position is unchanged (REQ-L25-004) | Walking |
+| Walking | Column triplet of mode 01101, DRCS Character Invocation | Column becomes the address; nothing is emitted (decision E.95) | Walking |
 | Walking | Column triplet of a character mode (REQ-L25-010) | Column becomes the address. If the data is 2/0 or above, emit a character event at the origin plus the active position, with the source's priority, unless REQ-OBJ-014 or REQ-L25-050 discards it | Walking |
 | Walking | Column triplet of an attribute mode: 00000, 00011, 00111, 01000, 01100 or 01110 | Column becomes the address. Emit an attribute event at the origin plus the active position, unless REQ-OBJ-014 or REQ-L25-050 discards it, or the level ignores the mode (REQ-L25-001) | Walking |
-| Returning | The ended source is an object | Pop the walk record: restore the invoker's active position, origin and DRCS sub-tables; cancel the Origin Modifier (REQ-OBJ-002) | Walking |
+| Returning | The ended source is an object | Pop the walk record: restore the invoker's active position and origin; cancel the Origin Modifier (REQ-OBJ-002) | Walking |
 | Returning | The ended source is the local enhancement data | None | Finished |
 | Placing default objects | Next default object of REQ-OBJ-040, in order, that is found and accepted | The source is the default object, with origin and active position row 0, column 0 | Walking |
 | Returning | The ended source is a default object | Active position row 0, column 0 | Placing default objects |
 | Placing default objects | No more default objects | None | Finished |
+
+*Amended 20 October 2026 (decision E.95):* DRCS is not decoded, and the parts of this requirement that concerned it are removed.
 
 *Verification:* The transition tests of REQ-FSM-009, and the tests of REQ-TST-015 and REQ-TST-017.
 

@@ -2,8 +2,8 @@
 //! palette-index raster (REQ-RND-007), for `neottx` and any other front
 //! end.
 //!
-//! Text: rows are composed with their side panels, G3 characters convert
-//! as REQ-CHR-011 says and DRCS characters to the fallback of REQ-CHR-010.
+//! Text: rows are composed with their side panels, and G3 characters
+//! convert as REQ-CHR-011 says.
 //! Every character written passes the allow-list of REQ-SEC-010.
 
 use neoteletext_core::charset::{compose, mosaic_to_unicode, to_unicode};

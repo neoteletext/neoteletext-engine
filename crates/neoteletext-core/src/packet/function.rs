@@ -10,10 +10,9 @@
 use super::Triplet;
 use crate::consts::{
     ATTRIBUTE_BOXING, ATTRIBUTE_CONCEAL, ATTRIBUTE_DOUBLE_HEIGHT, ATTRIBUTE_DOUBLE_WIDTH, ATTRIBUTE_INVERT,
-    ATTRIBUTE_UNDERLINE, DRCS_CHARACTER_MASK, DRCS_LEVEL_MASK, DRCS_LEVEL_SHIFT, DRCS_NORMAL_BIT, DRCS_SUBTABLE_MASK,
-    FLASH_MODE_MASK, FLASH_RATE_MASK, FLASH_RATE_SHIFT, FONT_BOLD, FONT_ITALIC, FONT_PROPORTIONAL, FONT_ROWS_MASK,
-    FONT_ROWS_SHIFT, LEVEL_BIT_25, LEVEL_BIT_35, MODE_ADDITIONAL_FLASH, MODE_ADDRESS_ROW_0, MODE_BACKGROUND_COLOUR,
-    MODE_COLUMN_PDC, MODE_DIACRITIC_MASK, MODE_DISPLAY_ATTRIBUTES, MODE_DRCS_CHARACTER, MODE_DRCS_MODE,
+    ATTRIBUTE_UNDERLINE, FLASH_MODE_MASK, FLASH_RATE_MASK, FLASH_RATE_SHIFT, FONT_BOLD, FONT_ITALIC, FONT_PROPORTIONAL,
+    FONT_ROWS_MASK, FONT_ROWS_SHIFT, LEVEL_BIT_25, LEVEL_BIT_35, MODE_ADDITIONAL_FLASH, MODE_ADDRESS_ROW_0,
+    MODE_BACKGROUND_COLOUR, MODE_COLUMN_PDC, MODE_DIACRITIC_MASK, MODE_DISPLAY_ATTRIBUTES, MODE_DRCS_CHARACTER,
     MODE_FONT_STYLE, MODE_FOREGROUND_COLOUR, MODE_FULL_ROW_COLOUR, MODE_FULL_SCREEN_COLOUR, MODE_G0_LEVEL_25,
     MODE_G0_NO_DIACRITIC, MODE_G1, MODE_G2, MODE_G3_LEVEL_15, MODE_G3_LEVEL_25, MODE_MODIFIED_DESIGNATION,
     MODE_OBJECT_DEFINITION_FIRST, MODE_OBJECT_DEFINITION_LAST, MODE_OBJECT_INVOCATION_FIRST,
@@ -360,21 +359,13 @@ pub enum TripletFunction {
         /// N8 to N0, equal to those of the invoking triplet.
         number: ObjectNumber,
     },
-    /// Row mode 11000, DRCS Mode. The address is reserved.
-    DrcsMode {
-        /// D6: normal DRCS when true, global DRCS when false.
-        normal: bool,
-        /// D5 D4, L1 L0: 01 Level 2.5, 10 Level 3.5, 11 both, 00 reserved.
-        levels: u8,
-        /// D3 to D0, T3 to T0: the sub-table, the S1 of the DRCS sub-page.
-        subtable: u8,
-    },
     /// Row mode 11111 with address 63, the Termination Marker.
     Termination {
         /// Data bits D2 to D0: the type of data ended (Table 28).
         kind: u8,
     },
     /// Any other row mode, or mode 11111 with an address other than 63.
+    /// Row mode 11000, DRCS Mode, is one of them (decision E.95).
     ReservedRow {
         /// The mode.
         mode: u8,
@@ -455,15 +446,6 @@ pub enum TripletFunction {
         /// The six functions.
         attributes: DisplayAttributes,
     },
-    /// Column mode 01101, DRCS Character Invocation.
-    DrcsCharacter {
-        /// The column.
-        column: u8,
-        /// D6: the normal table when true, the global table when false.
-        normal: bool,
-        /// D5 to D0: the character, 0 to 47; 48 to 63 are invalid.
-        character: u8,
-    },
     /// Column mode 01110, Font Style (Level 3.5).
     FontStyle {
         /// The column.
@@ -487,6 +469,16 @@ pub enum TripletFunction {
         code: u8,
         /// The mark, 0 to 15.
         diacritic: u8,
+    },
+    /// Column mode 01101, DRCS Character Invocation, which is not acted on
+    /// (decision E.95): it moves the active position and does nothing else.
+    UnsupportedColumn {
+        /// The column.
+        column: u8,
+        /// The mode.
+        mode: u8,
+        /// The data.
+        data: u8,
     },
     /// Column modes 00100, 00101 and 01010, reserved; they do not move the
     /// active position.
@@ -537,11 +529,6 @@ const fn row_function(triplet: Triplet) -> TripletFunction {
             },
             None => F::ReservedRow { mode, address, data },
         },
-        MODE_DRCS_MODE => F::DrcsMode {
-            normal: data & DRCS_NORMAL_BIT != 0,
-            levels: (data >> DRCS_LEVEL_SHIFT) & DRCS_LEVEL_MASK,
-            subtable: data & DRCS_SUBTABLE_MASK,
-        },
         MODE_TERMINATION if address == ROW_ADDRESS_LAST => F::Termination { kind: data & TERMINATION_TYPE_MASK },
         _ => F::ReservedRow { mode, address, data },
     }
@@ -567,9 +554,7 @@ const fn column_function(triplet: Triplet) -> TripletFunction {
         MODE_G0_LEVEL_25 => F::G0Character { column, code: data },
         MODE_G3_LEVEL_25 => F::G3Character { column, code: data, level_15_form: false },
         MODE_DISPLAY_ATTRIBUTES => F::DisplayAttributes { column, attributes: DisplayAttributes::from_data(data) },
-        MODE_DRCS_CHARACTER => {
-            F::DrcsCharacter { column, normal: data & DRCS_NORMAL_BIT != 0, character: data & DRCS_CHARACTER_MASK }
-        }
+        MODE_DRCS_CHARACTER => F::UnsupportedColumn { column, mode, data },
         MODE_FONT_STYLE => F::FontStyle { column, style: FontStyleData::from_data(data) },
         MODE_G2 => F::G2Character { column, code: data },
         MODE_G0_NO_DIACRITIC..=MODE_TERMINATION => {
@@ -592,6 +577,7 @@ impl TripletFunction {
             Self::AddressDisplayRow0 { address, colour } => (address, MODE_ADDRESS_ROW_0, colour.data()),
             Self::ProgrammeDeliveryRow { mode, address, data }
             | Self::ReservedRow { mode, address, data }
+            | Self::UnsupportedColumn { column: address, mode, data }
             | Self::ReservedColumn { column: address, mode, data } => (address, mode, data),
             Self::OriginModifier { row_offset, column_offset } => {
                 (ROW_ADDRESS_BASE.wrapping_add(row_offset), MODE_ORIGIN_MODIFIER, column_offset)
@@ -605,13 +591,6 @@ impl TripletFunction {
                 object_address(usage.0, number),
                 (MODE_OBJECT_DEFINITION_FIRST & !MODE_OBJECT_TYPE_MASK) | kind.bits(),
                 number.data(),
-            ),
-            Self::DrcsMode { normal, levels, subtable } => (
-                ROW_ADDRESS_RESERVED_DEFAULT,
-                MODE_DRCS_MODE,
-                flag(normal, DRCS_NORMAL_BIT)
-                    | (levels & DRCS_LEVEL_MASK) << DRCS_LEVEL_SHIFT
-                    | (subtable & DRCS_SUBTABLE_MASK),
             ),
             Self::Termination { kind } => (ROW_ADDRESS_LAST, MODE_TERMINATION, kind & TERMINATION_TYPE_MASK),
             Self::ForegroundColour { column, colour } => (column, MODE_FOREGROUND_COLOUR, colour.data()),
@@ -631,9 +610,6 @@ impl TripletFunction {
             Self::ModifiedDesignation { column, designation } => (column, MODE_MODIFIED_DESIGNATION, designation),
             Self::G0Character { column, code } => (column, MODE_G0_LEVEL_25, code),
             Self::DisplayAttributes { column, attributes } => (column, MODE_DISPLAY_ATTRIBUTES, attributes.data()),
-            Self::DrcsCharacter { column, normal, character } => {
-                (column, MODE_DRCS_CHARACTER, flag(normal, DRCS_NORMAL_BIT) | (character & DRCS_CHARACTER_MASK))
-            }
             Self::FontStyle { column, style } => (column, MODE_FONT_STYLE, style.data()),
             Self::G2Character { column, code } => (column, MODE_G2, code),
             Self::G0Diacritic { column, code, diacritic } => {
@@ -658,7 +634,6 @@ impl TripletFunction {
             Self::OriginModifier { .. } => "Origin Modifier",
             Self::ObjectInvocation { .. } => "Object Invocation",
             Self::ObjectDefinition { .. } => "Object Definition",
-            Self::DrcsMode { .. } => "DRCS Mode",
             Self::Termination { .. } => "Termination Marker",
             Self::ReservedRow { .. } => "reserved row triplet",
             Self::ForegroundColour { .. } => "Foreground Colour",
@@ -670,7 +645,7 @@ impl TripletFunction {
             Self::ModifiedDesignation { .. } => "Modified G0 and G2 Character Set Designation",
             Self::G0Character { .. } => "G0 character",
             Self::DisplayAttributes { .. } => "Display Attributes",
-            Self::DrcsCharacter { .. } => "DRCS Character Invocation",
+            Self::UnsupportedColumn { .. } => "column triplet not acted on",
             Self::FontStyle { .. } => "Font Style",
             Self::G2Character { .. } => "G2 character",
             Self::G0Diacritic { .. } => "G0 character with diacritical mark",
@@ -692,7 +667,7 @@ impl TripletFunction {
             | Self::ModifiedDesignation { column, .. }
             | Self::G0Character { column, .. }
             | Self::DisplayAttributes { column, .. }
-            | Self::DrcsCharacter { column, .. }
+            | Self::UnsupportedColumn { column, .. }
             | Self::FontStyle { column, .. }
             | Self::G2Character { column, .. }
             | Self::G0Diacritic { column, .. } => Some(column),
@@ -706,7 +681,6 @@ impl TripletFunction {
             | Self::OriginModifier { .. }
             | Self::ObjectInvocation { .. }
             | Self::ObjectDefinition { .. }
-            | Self::DrcsMode { .. }
             | Self::Termination { .. }
             | Self::ReservedRow { .. } => None,
         }

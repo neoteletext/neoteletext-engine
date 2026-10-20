@@ -20,7 +20,7 @@ The core crate (REQ-GEN-010) shall declare `#![no_std]`. It shall not use the `a
 - acquisition and the page store;
 - service data;
 - Level 1.0 and Level 1.5 decoding;
-- Level 2.5 and 3.5 decoding: the Colour Map, the enhancement processor, objects and DRCS (areas L25, OBJ and DRC);
+- Level 2.5 and 3.5 decoding: the Colour Map, the enhancement processor and objects (areas L25 and OBJ);
 - navigation;
 - the cell grid, the cell raster and the row renderer.
 
@@ -75,7 +75,7 @@ This covers every packet, file, stream, sample buffer and network message, howev
 The documentation shall state:
 - the memory required by a decoder instance in its minimum configuration, which is one requested page with Level 1.5 enabled;
 - the memory required in the default configuration of the command-line program;
-- the memory required for presentation at Level 3.5, including the store for enhancement pages (REQ-ACQ-019), the side-panel area and the DRCS patterns that travel with the grid (REQ-L25-006);
+- the memory required for presentation at Level 3.5, including the store for enhancement pages (REQ-ACQ-019) and the side-panel area (REQ-L25-006);
 - the memory required per stored page;
 - the flash (code and constant data) size of the core on `thumbv6m-none-eabi`, built with `opt-level = "z"` and link-time optimisation.
 
@@ -207,7 +207,8 @@ The size check of REQ-GEN-009 shall measure the same image.
 *Verification:* Continuous integration, including a test that a deliberately added floating-point operation makes the check fail.
 
 **REQ-GEN-020 — Capability features and the modern-classic profile.**
-`neoteletext-core` shall offer the eight capability features of decision E.71, `objects`, `drcs`, `drcs-multicolour`, `bold`, `italic`, `side-panels`, `colours32` and `animation`, each on by default and each needing `level25`. A build without one of them shall contain neither the decoding nor the drawing of that capability, and shall treat its page data as decision E.71 item 1 says, never as an error. The feature `modern-classic` shall turn on `level15`, `level25`, `render`, `original`, `viewer`, `forms`, `objects`, `drcs` and `bold`, and nothing else.
+`neoteletext-core` shall offer the six capability features of decision E.71, `objects`, `bold`, `italic`, `side-panels`, `colours32` and `animation`, each needing `level25`. A build without one of them shall contain neither the decoding nor the drawing of that capability, and shall treat its page data as decision E.71 item 1 says, never as an error. The feature `modern-classic` shall turn on `level15`, `level25`, `render`, `original`, `viewer`, `forms`, `objects` and `bold`, and nothing else.
+*Amended 20 October 2026 (decision E.95):* DRCS is not decoded, and the parts of this requirement that concerned it are removed.
 *Verification:* `cargo xtask features` builds, lints and tests the core with `level25` alone and with `modern-classic`; a test checks each capability compiled out; `cargo xtask size` reports the image of the profile beside the full one.
 
 **REQ-GEN-018 — Optional C interface.**

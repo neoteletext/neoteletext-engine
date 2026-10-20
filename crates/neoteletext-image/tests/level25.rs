@@ -15,13 +15,11 @@ use neoteletext_core::charset::{CharRef, CharSet, G0, G0Set, NationalOption};
 use neoteletext_core::colour::{SidePanels, colour_index};
 use neoteletext_core::config::CellMode;
 use neoteletext_core::consts::{CELL_HEIGHT, CELL_WIDTH, COLUMNS, ROWS};
-use neoteletext_core::drcs::{DrcsMode, DrcsPattern};
 use neoteletext_core::glyphs::GlyphSet;
 use neoteletext_core::level1::{Cell, CellAttributes, FlashMode, FlashRate, FontStyle, Glyph, Grid, Size, Width};
 use neoteletext_core::render::{
     ALL_ROWS, ColourMode, FlashPhase, IndexBuffer, IndexFormat, RenderOptions, render_screen, row_width,
 };
-use neoteletext_core::types::{DrcsCharacter, DrcsTable};
 use neoteletext_image::Sink;
 use neoteletext_image::palette::{Rgba, colour_map_palette};
 use neoteletext_image::scale::{scale_indices, scaled_size};
@@ -29,7 +27,7 @@ use std::fmt::Write as _;
 use std::path::PathBuf;
 
 /// Raise when Level 2.5 and 3.5 rendering changes on purpose (REQ-TST-030).
-const FORMAT_VERSION: u32 = 3;
+const FORMAT_VERSION: u32 = 4;
 
 const BLACK: u8 = 0;
 const RED: u8 = 1;
@@ -147,107 +145,6 @@ fn colour_map() -> Grid {
             put(&mut grid, row, column + offset, block);
         }
     }
-    grid
-}
-
-fn drcs(table: DrcsTable, character: u8) -> DrcsCharacter {
-    DrcsCharacter { table, subtable: 0, character }
-}
-
-/// A DRCS pattern from a function of row and dot (0 to 9, 0 to 11) giving
-/// the pixel value.
-fn pattern(character: DrcsCharacter, mode: DrcsMode, value: impl Fn(usize, usize) -> u8) -> DrcsPattern {
-    let mut out = DrcsPattern { character, mode, ..DrcsPattern::EMPTY };
-    for row in 0..10 {
-        for dot in 0..12 {
-            let pixel = value(row, dot);
-            for plane in 0..4 {
-                if (pixel >> plane) & 1 == 1 {
-                    out.planes[plane][row] |= 1 << (11 - dot);
-                }
-            }
-        }
-    }
-    out
-}
-
-/// DRCS characters of every mode (REQ-RND-038): a mode 0 face, a mode 1
-/// four-colour diamond, a mode 2 sixteen-colour gradient and a mode 3 6 by
-/// 5 checker, at normal, double-height and double-size.
-fn drcs_page() -> Grid {
-    let mut grid = Grid::EMPTY;
-    grid.drcs_colours.normal_4 = [BLACK, RED, YELLOW, WHITE];
-    grid.drcs_colours.normal_16 = core::array::from_fn(|index| (16 + index) as u8);
-    grid.drcs_colours.global_16 = core::array::from_fn(|index| index as u8);
-    let face = |row: usize, dot: usize| -> u8 {
-        let edge = matches!((row, dot), (0 | 9, 3..=8) | (1..=8, 1 | 10));
-        let eyes = row == 3 && matches!(dot, 3 | 4 | 7 | 8);
-        let mouth = (row == 6 && matches!(dot, 3 | 8)) || (row == 7 && (4..=7).contains(&dot));
-        u8::from(edge || eyes || mouth)
-    };
-    let diamond = |row: usize, dot: usize| (row.abs_diff(5) + dot.abs_diff(6)).min(3) as u8;
-    let gradient = |row: usize, dot: usize| ((row + dot) % 16) as u8;
-    let checker =
-        |row: usize, dot: usize| if (row / 2 + dot / 2).is_multiple_of(2) { 9 } else { ((row / 2) * 3) as u8 };
-    let patterns = [
-        pattern(drcs(DrcsTable::Normal, 0), DrcsMode::Mode0, face),
-        pattern(drcs(DrcsTable::Normal, 1), DrcsMode::Mode1, diamond),
-        pattern(drcs(DrcsTable::Normal, 2), DrcsMode::Mode2, gradient),
-        pattern(drcs(DrcsTable::Global, 3), DrcsMode::Mode3, checker),
-    ];
-    for item in patterns {
-        grid.drcs.push(item);
-    }
-    write(&mut grid, 1, 2, "DRCS: modes 0, 1, 2 and 3", WHITE, BLACK, CellAttributes::DEFAULT);
-    for (index, item) in patterns.iter().enumerate() {
-        let glyph = Glyph::Char(CharRef::drcs(item.character));
-        let column = 2 + index * 8;
-        put(&mut grid, 4, column, Cell { glyph, foreground: GREEN, background: BLUE, ..Cell::BLANK });
-        put(
-            &mut grid,
-            6,
-            column,
-            Cell { glyph, foreground: GREEN, background: BLUE, size: Size::DoubleTop, ..Cell::BLANK },
-        );
-        put(
-            &mut grid,
-            7,
-            column,
-            Cell { glyph, foreground: GREEN, background: BLUE, size: Size::DoubleBottom, ..Cell::BLANK },
-        );
-        let wide = |part| CellAttributes::DEFAULT.with_width(part);
-        for (row, size) in [(10, Size::DoubleTop), (11, Size::DoubleBottom)] {
-            put(
-                &mut grid,
-                row,
-                column,
-                Cell {
-                    glyph,
-                    foreground: GREEN,
-                    background: BLUE,
-                    size,
-                    attributes: wide(Width::LeftHalf),
-                    ..Cell::BLANK
-                },
-            );
-            put(
-                &mut grid,
-                row,
-                column + 1,
-                Cell {
-                    glyph,
-                    foreground: GREEN,
-                    background: BLUE,
-                    size,
-                    attributes: wide(Width::RightHalf),
-                    ..Cell::BLANK
-                },
-            );
-        }
-    }
-    let missing = Glyph::Char(CharRef::drcs(drcs(DrcsTable::Normal, 40)));
-    write(&mut grid, 14, 2, "Missing data shows a space:", WHITE, BLACK, CellAttributes::DEFAULT);
-    put(&mut grid, 14, 30, Cell { glyph: missing, foreground: GREEN, background: RED, ..Cell::BLANK });
     grid
 }
 
@@ -411,7 +308,6 @@ fn demonstrations() -> Vec<(&'static str, Grid)> {
     vec![
         ("side-panels", side_panels()),
         ("colour-map", colour_map()),
-        ("drcs", drcs_page()),
         ("g3", g3_page()),
         ("attributes", attributes_page()),
         ("flash", flash_page()),

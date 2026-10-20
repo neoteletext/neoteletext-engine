@@ -14,7 +14,7 @@ The implementation shall be divided into these core modules, with dependencies f
 10. navigation;
 11. the cell grid, the cell raster and the row renderer (REQ-RND-016 and REQ-RND-017).
 
-Levels 2.5 and 3.5 add four core modules beside Level 1.5 decoding: the Colour Map, the decoding of DRCS characters, the resolution of objects, and the enhancement processor (areas L25, OBJ and DRC). `ARCHITECTURE.md` section 9 places them in the presentation layer, and gives the modules each may use.
+Levels 2.5 and 3.5 add three core modules beside Level 1.5 decoding: the Colour Map, the resolution of objects, and the enhancement processor (areas L25 and OBJ). The fourth, the decoding of DRCS characters, was removed on 20 October 2026 (decision E.95). `ARCHITECTURE.md` section 9 places them in the presentation layer, and gives the modules each may use.
 
 The optional modules are:
 - input format readers and writers, including the page encoder;
@@ -69,7 +69,7 @@ Each event shall identify the page (magazine, page number and sub-code) where ap
 Producing the displayable cell grid shall be a function with no side effects. It shall take these inputs and produce the same result every time for the same inputs:
 - the stored page;
 - the stored magazine data;
-- at Levels 2.5 and 3.5, the stored object pages, DRCS pages and Magazine Organization Tables, reached through the read-only lookup of REQ-ACQ-020;
+- at Levels 2.5 and 3.5, the stored object pages, other enhancement pages and Magazine Organization Tables, reached through the read-only lookup of REQ-ACQ-020;
 - the decoder configuration;
 - the viewer state, which covers reveal, mix mode, zoom, flash phase and the status area text.
 *Verification:* Test.

@@ -1,7 +1,7 @@
 //! Plain text (REQ-RND-008) and ANSI terminal output (REQ-RND-009), at
 //! every level (REQ-RND-041): rows are composed with their side panels,
-//! G3 characters convert as REQ-CHR-011 says and DRCS characters to the
-//! fallback of REQ-CHR-010, and colours come from the page's Colour Map.
+//! G3 characters convert as REQ-CHR-011 says, and colours come from the
+//! page's Colour Map.
 //!
 //! Every character written passes the allow-list of REQ-SEC-010, and the
 //! only escape sequences are the fixed ones built here.
@@ -148,7 +148,7 @@ mod tests {
     use neoteletext_core::colour::{SidePanels, colour_index};
     use neoteletext_core::consts::COLOUR_TRANSPARENT;
     use neoteletext_core::level1::{CellAttributes, FontStyle, Width};
-    use neoteletext_core::types::{DrcsCharacter, DrcsTable, Rgb12};
+    use neoteletext_core::types::Rgb12;
 
     fn grid_with(text: &str) -> Grid {
         let mut grid = Grid::EMPTY;
@@ -208,17 +208,14 @@ mod tests {
         assert_eq!(text.lines().next(), Some("   0"));
     }
 
-    /// REQ-RND-041, REQ-CHR-011: G3 characters as L2/19-025 maps them, DRCS
-    /// characters as the fallback U+FFFD, and the right half of a
-    /// double-width character as a space.
+    /// REQ-RND-041, REQ-CHR-011: G3 characters as L2/19-025 maps them, and
+    /// the right half of a double-width character as a space.
     #[test]
-    fn g3_drcs_and_double_width_in_text() {
+    fn g3_and_double_width_in_text() {
         let mut grid = Grid::EMPTY;
         grid.cells[2][0].glyph = Glyph::Char(CharRef::new(CharSet::G3, 0x20));
         grid.cells[2][1].glyph = Glyph::Char(CharRef::new(CharSet::G3, 0x5B));
         grid.cells[2][2].glyph = Glyph::Char(CharRef::new(CharSet::G3, 0x2F));
-        let drcs = DrcsCharacter { table: DrcsTable::Normal, subtable: 0, character: 5 };
-        grid.cells[2][3].glyph = Glyph::Char(CharRef::drcs(drcs));
         let g0 = CharSet::G0(G0 { set: G0Set::Latin, national: Some(NationalOption::English) });
         let wide = |width| Cell {
             glyph: Glyph::Char(CharRef::new(g0, b'W')),
@@ -229,7 +226,7 @@ mod tests {
         grid.cells[2][5] = wide(Width::RightHalf);
         grid.cells[2][6].glyph = Glyph::Char(CharRef::new(g0, b'!'));
         let text = plain(&grid, false, MosaicStyle::Unicode16);
-        assert_eq!(text.lines().nth(2), Some("\u{1FB3C}\u{2B62}\u{2592}\u{FFFD}W !"));
+        assert_eq!(text.lines().nth(2), Some("\u{1FB3C}\u{2B62}\u{2592} W !"));
     }
 
     /// REQ-RND-041: 24-bit colours come from the page's Colour Map, the

@@ -1,12 +1,13 @@
 //! The part of the page store that keeps enhancement pages: object pages,
-//! DRCS pages and the Magazine Organization Table (decision E.56,
+//! the Magazine Organization Table, and any other page whose function is
+//! not a basic Level 1 page (decision E.56,
 //! REQ-ACQ-016 to REQ-ACQ-021), and the read-only lookup through which the
 //! presentation layer reaches them (REQ-ACQ-020).
 //!
 //! The memory is two caller-provided slices (REQ-GEN-003): a directory of
 //! sub-pages, and a pool of packets whose length is the capacity in packets
 //! that REQ-ACQ-019 asks for. A sub-page holds an index into the pool for
-//! each packet it has received, so a DRCS page uses 24 slots and a small
+//! each packet it has received, so a full page uses 24 slots and a small
 //! object page only a few. Packets are stored as received, with no merge by
 //! parity, because their bytes are Hamming coded or 6-bit data
 //! (decision E.56).
@@ -16,7 +17,7 @@ use crate::consts::{
     C4_ERASE, DATA_BYTES, DESIGNATION_CODES, ENHANCEMENT_SUBPAGE_PACKETS, MAGAZINES, NIBBLE_MASK, PACKET_ROW_25,
     PAGE_MOT,
 };
-use crate::packet::{DrcsModes, PageFormat};
+use crate::packet::PageFormat;
 use crate::types::{ControlBits, Instant, Magazine, PageAddress, PageNumber, SubCode};
 
 /// A pool slot that belongs to no sub-page.
@@ -72,7 +73,6 @@ pub struct EnhancementSubPage {
     subcode: SubCode,
     control: ControlBits,
     format: Option<PageFormat>,
-    drcs_modes: Option<DrcsModes>,
     received: u64,
     generation: u32,
     last_received: Instant,
@@ -87,7 +87,6 @@ impl EnhancementSubPage {
         subcode: SubCode::new(0),
         control: ControlBits(0),
         format: None,
-        drcs_modes: None,
         received: 0,
         generation: 0,
         last_received: Instant(0),
@@ -152,12 +151,6 @@ impl<'s> EnhancementPage<'s> {
     #[must_use]
     pub const fn format(&self) -> Option<PageFormat> {
         self.entry.format
-    }
-
-    /// The DRCS mode identification of the page's X/28/3, if received.
-    #[must_use]
-    pub const fn drcs_modes(&self) -> Option<&'s DrcsModes> {
-        self.entry.drcs_modes.as_ref()
     }
 
     /// A number that changes whenever the stored content or the update
@@ -346,7 +339,6 @@ impl<'a> EnhancementStore<'a> {
             self.release_packets(index);
             if let Some(entry) = self.sub_pages.get_mut(index) {
                 entry.format = None;
-                entry.drcs_modes = None;
                 entry.generation = entry.generation.wrapping_add(1);
             }
         }
@@ -423,16 +415,6 @@ impl<'a> EnhancementStore<'a> {
         }
     }
 
-    /// Records the mode identification of the page's X/28/3.
-    pub(super) fn set_drcs_modes(&mut self, index: usize, modes: DrcsModes) {
-        if let Some(entry) = self.sub_pages.get_mut(index)
-            && entry.drcs_modes != Some(modes)
-        {
-            entry.drcs_modes = Some(modes);
-            entry.generation = entry.generation.wrapping_add(1);
-        }
-    }
-
     /// The read-only lookup over this store and the magazine data.
     pub(super) fn lookup<'s>(&'s self, magazines: &'s [MagazineData; MAGAZINES]) -> EnhancementLookup<'s> {
         EnhancementLookup { sub_pages: self.sub_pages, packets: self.packets, magazines }
@@ -459,7 +441,7 @@ pub struct EnhancementLookup<'s> {
 }
 
 impl<'s> EnhancementLookup<'s> {
-    /// The stored packets of an object or DRCS sub-page, named by its
+    /// The stored packets of an enhancement sub-page, named by its
     /// magazine, page number and S1 (decision E.52: invocations name the
     /// sub-page by S1 directly).
     #[must_use]

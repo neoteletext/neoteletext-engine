@@ -1,4 +1,4 @@
-//! Builders for the Level 2.5 and 3.5 tests: pages, object pages, DRCS
+//! Builders for the Level 2.5 and 3.5 tests: pages, object pages, pattern
 //! pages and Magazine Organization Tables made with `packet::encode`, fed
 //! through the decoder, and built into grids by the Level 1 pass and the
 //! enhancement processor, as a receiver would.
@@ -11,15 +11,15 @@ use neoteletext_core::charset::{CharSet, to_unicode};
 use neoteletext_core::compose::compose_level;
 use neoteletext_core::config::{Config, PresentationLevel};
 use neoteletext_core::consts::{
-    COMPOSITIONAL_LINKS, DATA_BYTES, DESIGNATION_CODES, DRCS_PTU_BYTES, DRCS_PTUS, MAGAZINES, OBJECT_POINTER_UNUSED,
-    PACKET_ENHANCEMENT, PAGE_FUNCTION_DRCS, PAGE_TIME_FILLING, ROW_ADDRESS_LAST, TRIPLETS_PER_PACKET,
+    COMPOSITIONAL_LINKS, DATA_BYTES, DESIGNATION_CODES, MAGAZINES, OBJECT_POINTER_UNUSED, PACKET_ENHANCEMENT,
+    PAGE_FUNCTION_DRCS, PAGE_TIME_FILLING, ROW_ADDRESS_LAST, TRIPLETS_PER_PACKET,
 };
 use neoteletext_core::ecc::with_odd_parity;
 use neoteletext_core::enhance;
 use neoteletext_core::level1::{Cell, DisplayOptions, Glyph, Grid, build_grid};
 use neoteletext_core::packet::{
-    CompositionalLink, DefaultObject, DrcsModes, MotDrcsLink, MotObjectLink, MotPageEntry, ObjectKind, ObjectNumber,
-    ObjectSource, ObjectUsage, Packet, PacketMeta, PageFormat, Triplet, TripletFunction, encode, mot_position,
+    CompositionalLink, DefaultObject, MotObjectLink, MotPageEntry, ObjectKind, ObjectNumber, ObjectSource, ObjectUsage,
+    Packet, PacketMeta, PageFormat, Triplet, TripletFunction, encode, mot_position,
 };
 use neoteletext_core::types::{
     ControlBits, FallbackFields, Instant, Magazine, PageAddress, PageNumber, PresentationFields, SubCode,
@@ -273,8 +273,6 @@ pub struct Mot {
     pub entries: Vec<(u8, MotPageEntry)>,
     pub gpop: Option<MotObjectLink>,
     pub pops: [Option<MotObjectLink>; 7],
-    pub gdrcs: Option<MotDrcsLink>,
-    pub drcs: [Option<MotDrcsLink>; 7],
     /// Send the links in X/19 to X/21 (Level 2.5).
     pub level_25: bool,
     /// Send them in X/22 to X/24 (Level 3.5), with these packets left out.
@@ -292,11 +290,6 @@ pub fn object_link(mpp: u16, fallback: FallbackFields, defaults: [Option<Default
         fallback,
         default_objects: defaults,
     }
-}
-
-pub fn drcs_link(mpp: u16) -> MotDrcsLink {
-    let address = PageAddress::from_mpp(mpp).unwrap();
-    MotDrcsLink { magazine: address.magazine, x27_flag: false, page: address.page, subpage_count: 15 }
 }
 
 fn unused_object_link() -> MotObjectLink {
@@ -327,10 +320,11 @@ pub fn mot_packets(mot: &Mot) -> Vec<Packet> {
     };
     let first = object_links(mot.gpop, &mot.pops[..3]);
     let second = object_links(mot.pops[3], &mot.pops[4..]);
-    let mut drcs = [0u8; DATA_BYTES];
-    for (index, link) in core::iter::once(mot.gdrcs).chain(mot.drcs.iter().copied()).enumerate() {
-        let link = link.unwrap_or(MotDrcsLink { page: PageNumber(0xFF), ..drcs_link(0x1FF) });
-        drcs[index * 4..index * 4 + 4].copy_from_slice(&encode::mot_drcs_link(&link));
+    // X/21 and X/24: eight unused links to pattern pages (Tables 22 and
+    // 23: magazine 1, page FF, 15 sub-pages), which are not read.
+    let mut pattern_links = [0u8; DATA_BYTES];
+    for link in pattern_links.as_chunks_mut::<4>().0.iter_mut().take(8) {
+        *link = [1, 0xF, 0xF, 0xF];
     }
     let mut add = |number: u8, values: &[u8; DATA_BYTES]| {
         if !mot.omit.contains(&number) {
@@ -340,51 +334,28 @@ pub fn mot_packets(mot: &Mot) -> Vec<Packet> {
     if mot.level_25 {
         add(19, &first);
         add(20, &second);
-        add(21, &drcs);
+        add(21, &pattern_links);
     }
     if mot.level_35 {
         add(22, &first);
         add(23, &second);
-        add(24, &drcs);
+        add(24, &pattern_links);
     }
     packets
 }
 
-/// One PTU of 12 by 10 dots from ten rows of 12-bit lines, bit 11 the
-/// leftmost dot (clause 14.2.1).
-pub fn ptu(lines: [u16; 10]) -> [u8; DRCS_PTU_BYTES] {
-    let mut bytes = [0u8; DRCS_PTU_BYTES];
-    for (row, line) in lines.iter().enumerate() {
-        bytes[2 * row] = with_odd_parity(0x40 | ((line >> 6) & 0x3F) as u8);
-        bytes[2 * row + 1] = with_odd_parity(0x40 | (line & 0x3F) as u8);
-    }
-    bytes
-}
-
-/// A DRCS page sub-page: PTUs by number, and the mode codes of X/28/3 when
-/// given. PTUs not given are blank (D-bytes 4/0).
-pub fn drcs_page(
-    mpp: u16,
-    s1: u8,
-    ptus: &[(usize, [u8; DRCS_PTU_BYTES])],
-    modes: Option<[u8; DRCS_PTUS]>,
-) -> Vec<Packet> {
+/// A DRCS page's sub-page as a service sends it: rows 1 to 24 of D-bytes,
+/// whose codes would read as text, and with `x28_3` its page function in
+/// X/28/3 alone (decision E.95: no pattern is read, but the page is never
+/// shown as text).
+pub fn pattern_page(mpp: u16, s1: u8, x28_3: bool) -> Vec<Packet> {
     let address = PageAddress::from_mpp(mpp).unwrap();
     let mut packets = vec![header(mpp, u16::from(s1), 0)];
-    if let Some(modes) = modes {
-        let format = PageFormat { function: PAGE_FUNCTION_DRCS, coding: 0 };
-        packets.push(encode::drcs_modes(address.magazine, format, &DrcsModes::from_codes(Some(format), &modes)));
+    if x28_3 {
+        packets.push(encode::page_function(address.magazine, PageFormat { function: PAGE_FUNCTION_DRCS, coding: 0 }));
     }
-    let highest = ptus.iter().map(|(number, _)| *number).max().unwrap_or(0);
-    for packet in 0..=highest / 2 {
-        let mut bytes = [with_odd_parity(0x40); DATA_BYTES];
-        for (number, data) in ptus {
-            if number / 2 == packet {
-                let start = (number % 2) * DRCS_PTU_BYTES;
-                bytes[start..start + DRCS_PTU_BYTES].copy_from_slice(data);
-            }
-        }
-        packets.push(encode::row(address.magazine, 1 + packet as u8, &bytes));
+    for packet in 1..=24u8 {
+        packets.push(encode::row(address.magazine, packet, &[with_odd_parity(b'D'); DATA_BYTES]));
     }
     packets
 }
@@ -472,8 +443,8 @@ pub fn build_35(packets: &[Packet]) -> Box<Grid> {
     build(packets, PresentationLevel::Level35).0
 }
 
-/// The character a cell shows, as Unicode: a space for no glyph, `#` for a
-/// mosaic, and the fallback for DRCS.
+/// The character a cell shows, as Unicode: a space for no glyph and `#`
+/// for a mosaic.
 pub fn char_of(cell: &Cell) -> char {
     match cell.glyph {
         Glyph::Char(character) => to_unicode(character).base,

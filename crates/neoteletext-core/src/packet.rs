@@ -15,12 +15,12 @@
 
 use crate::consts::{
     ADDRESS_BYTE_0, ADDRESS_BYTE_1, COMPOSITIONAL_LINKS, DATA_BYTES, DATA_START, DESIGNATION_CODES,
-    DESIGNATION_DRCS_COLOURS, DESIGNATION_DRCS_MODES, DESIGNATION_LEVEL_35_DATA, DESIGNATION_LINKS_LEVEL_25,
-    DESIGNATION_LINKS_LEVEL_35, DESIGNATION_PAGE_DATA, HEADER_DISPLAY_BYTES, HEADER_DISPLAY_START, LINK_NULL_PAGE,
-    LINK_NULL_SUBCODE, MAGAZINE_MASK, PACKET_BYTES, PACKET_ENHANCEMENT, PACKET_FIRST_ROW, PACKET_FUNCTION_MASK,
-    PACKET_HEADER, PACKET_LINKS, PACKET_MAGAZINE_ENHANCEMENT, PACKET_NUMBER_LOW_BIT, PACKET_PAGE_ENHANCEMENT,
-    PACKET_ROW_25, PACKET_SERVICE, SERVICE_MAGAZINE, STATUS_MESSAGE_BYTES, TRIPLET_ADDRESS_BITS, TRIPLET_ADDRESS_MASK,
-    TRIPLET_BYTES, TRIPLET_DATA_FIELD_MASK, TRIPLET_MODE_BITS, TRIPLET_MODE_MASK, TRIPLETS_PER_PACKET,
+    DESIGNATION_DOWNLOAD_FUNCTION, DESIGNATION_LEVEL_35_DATA, DESIGNATION_LINKS_LEVEL_25, DESIGNATION_LINKS_LEVEL_35,
+    DESIGNATION_PAGE_DATA, HEADER_DISPLAY_BYTES, HEADER_DISPLAY_START, LINK_NULL_PAGE, LINK_NULL_SUBCODE,
+    MAGAZINE_MASK, PACKET_BYTES, PACKET_ENHANCEMENT, PACKET_FIRST_ROW, PACKET_FUNCTION_MASK, PACKET_HEADER,
+    PACKET_LINKS, PACKET_MAGAZINE_ENHANCEMENT, PACKET_NUMBER_LOW_BIT, PACKET_PAGE_ENHANCEMENT, PACKET_ROW_25,
+    PACKET_SERVICE, SERVICE_MAGAZINE, STATUS_MESSAGE_BYTES, TRIPLET_ADDRESS_BITS, TRIPLET_ADDRESS_MASK, TRIPLET_BYTES,
+    TRIPLET_DATA_FIELD_MASK, TRIPLET_MODE_BITS, TRIPLET_MODE_MASK, TRIPLETS_PER_PACKET,
 };
 use crate::ecc::{hamming84, hamming2418, reverse_bits};
 use crate::types::{ControlBits, Magazine, PageNumber, PresentationFields, SubCode};
@@ -35,12 +35,11 @@ pub use function::{
 };
 pub use links::CompositionalLink;
 pub use objects::{
-    DefaultObject, MotDrcsLink, MotObjectLink, MotPageEntry, MotPosition, MotTotals, ObjectPacket, TripletLocation,
-    mot_drcs_link, mot_fallback, mot_object_link, mot_page_entry, mot_position, mot_totals, triplet_location,
+    DefaultObject, MotObjectLink, MotPageEntry, MotPosition, MotTotals, ObjectPacket, TripletLocation, mot_fallback,
+    mot_object_link, mot_page_entry, mot_position, mot_totals, triplet_location,
 };
 pub use page_data::{
-    DrcsColourData, DrcsModes, PageEnhancement, PageFormat, TripletValues, drcs_colour_data, drcs_modes,
-    page_enhancement, presentation_fields, stream_bits,
+    PageEnhancement, PageFormat, TripletValues, page_enhancement, page_function, presentation_fields, stream_bits,
 };
 
 /// One packet in the internal form (REQ-ARCH-002).
@@ -248,10 +247,9 @@ pub struct Links {
 pub enum PagePacket {
     /// X/28/0, read as format 1 (Table 4; decision E.44).
     Format1(PageEnhancement),
-    /// X/28/1, the DRCS colour lookup tables (Table 8).
-    DrcsColours(DrcsColourData),
-    /// X/28/3, DRCS mode identification (Table 9).
-    DrcsModes(DrcsModes),
+    /// X/28/3, of which only the page function and coding are read (Table
+    /// 9, decision E.95).
+    PageFunction(Option<PageFormat>),
     /// X/28/4, Level 3.5 page data (Table 10).
     Level35(PageEnhancement),
 }
@@ -262,8 +260,6 @@ pub enum PagePacket {
 pub enum MagazinePacket {
     /// M/29/0 (Table 11).
     Data(PresentationFields),
-    /// M/29/1, the DRCS colour lookup tables (Table 12).
-    DrcsColours(DrcsColourData),
     /// M/29/4, Level 3.5 magazine data (Table 13).
     Level35(PresentationFields),
 }
@@ -367,8 +363,7 @@ pub fn decode(packet: &Packet) -> Result<Decoded, PacketError> {
             let values = triplet_values(packet);
             let packet = match designation {
                 DESIGNATION_PAGE_DATA => PagePacket::Format1(page_enhancement(&values)),
-                DESIGNATION_DRCS_COLOURS => PagePacket::DrcsColours(drcs_colour_data(&values)),
-                DESIGNATION_DRCS_MODES => PagePacket::DrcsModes(drcs_modes(&values)),
+                DESIGNATION_DOWNLOAD_FUNCTION => PagePacket::PageFunction(page_function(&values)),
                 DESIGNATION_LEVEL_35_DATA => PagePacket::Level35(page_enhancement(&values)),
                 _ => return Ok(Decoded::Ignored(address)),
             };
@@ -385,7 +380,6 @@ pub fn decode(packet: &Packet) -> Result<Decoded, PacketError> {
                 values.first().copied().flatten().is_some_and(|first| first & PACKET_FUNCTION_MASK == 0);
             let packet = match designation {
                 DESIGNATION_PAGE_DATA if function_zero => MagazinePacket::Data(presentation_fields(&values)),
-                DESIGNATION_DRCS_COLOURS => MagazinePacket::DrcsColours(drcs_colour_data(&values)),
                 DESIGNATION_LEVEL_35_DATA if function_zero => MagazinePacket::Level35(presentation_fields(&values)),
                 _ => return Ok(Decoded::Ignored(address)),
             };
@@ -595,22 +589,22 @@ fn decode_service(packet: &Packet, designation: u8) -> ServicePacket {
 /// Builders used by the page encoder and by tests: the inverse of
 /// [`decode`].
 pub mod encode {
-    use super::page_data::encode::{drcs_colour_values, drcs_mode_values, presentation_values};
+    use super::page_data::encode::presentation_values;
     use super::{
-        CompositionalLink, DrcsColourData, DrcsModes, HEADER_C7_C10, HEADER_C11_C14, HEADER_S1, HEADER_S2_C4,
-        HEADER_S3, HEADER_S4_C5_C6, HEADER_TENS, HEADER_UNITS, LINK_BYTES, LINK_CHECKSUM, LINK_CONTROL,
-        LINK_CONTROL_ROW_24, LINK_START, Packet, PageFormat, Triplet,
+        CompositionalLink, HEADER_C7_C10, HEADER_C11_C14, HEADER_S1, HEADER_S2_C4, HEADER_S3, HEADER_S4_C5_C6,
+        HEADER_TENS, HEADER_UNITS, LINK_BYTES, LINK_CHECKSUM, LINK_CONTROL, LINK_CONTROL_ROW_24, LINK_START, Packet,
+        PageFormat, Triplet,
     };
     use crate::consts::{
-        ADDRESS_BYTE_0, ADDRESS_BYTE_1, COMPOSITIONAL_LINKS, DATA_BYTES, DATA_START, DESIGNATION_DRCS_COLOURS,
-        DESIGNATION_DRCS_MODES, HEADER_DISPLAY_BYTES, HEADER_DISPLAY_START, MAGAZINE_MASK, NIBBLE_MASK,
-        OBJECT_POINTER_BITS, OBJECT_POINTER_UNUSED, PACKET_BYTES, PACKET_MAGAZINE_ENHANCEMENT, PACKET_PAGE_ENHANCEMENT,
-        TRIPLET_BYTES, TRIPLETS_PER_PACKET,
+        ADDRESS_BYTE_0, ADDRESS_BYTE_1, COMPOSITIONAL_LINKS, DATA_BYTES, DATA_START, DESIGNATION_DOWNLOAD_FUNCTION,
+        HEADER_DISPLAY_BYTES, HEADER_DISPLAY_START, MAGAZINE_MASK, NIBBLE_MASK, OBJECT_POINTER_BITS,
+        OBJECT_POINTER_UNUSED, PACKET_BYTES, PACKET_MAGAZINE_ENHANCEMENT, PACKET_PAGE_ENHANCEMENT, TRIPLET_BYTES,
+        TRIPLETS_PER_PACKET,
     };
     use crate::ecc::{hamming84_encode, hamming2418_encode};
     use crate::types::{ControlBits, Magazine, PageNumber, PresentationFields, SubCode};
 
-    pub use super::objects::encode::{mot_drcs_link, mot_object_link, mot_page_entry, mot_totals};
+    pub use super::objects::encode::{mot_object_link, mot_page_entry, mot_totals};
 
     fn set(packet: &mut Packet, index: usize, value: u8) {
         if let Some(byte) = packet.bytes.get_mut(index) {
@@ -792,18 +786,15 @@ pub mod encode {
         value_packet(magazine, PACKET_MAGAZINE_ENHANCEMENT, designation, &presentation_values(0, fields))
     }
 
-    /// Packet X/28/1 (`number` 28) or M/29/1 (`number` 29) (Tables 8 and
-    /// 12). Absent tables are written as 0.
+    /// Packet X/28/3 with the page function and coding only (Table 9), as
+    /// a pattern download page sends it.
     #[must_use]
-    pub fn drcs_colours(magazine: Magazine, number: u8, data: &DrcsColourData) -> Packet {
-        value_packet(magazine, number, DESIGNATION_DRCS_COLOURS, &drcs_colour_values(data))
-    }
-
-    /// Packet X/28/3 (Table 9). Uncorrectable or absent mode codes are
-    /// written as 0000.
-    #[must_use]
-    pub fn drcs_modes(magazine: Magazine, format: PageFormat, modes: &DrcsModes) -> Packet {
-        value_packet(magazine, PACKET_PAGE_ENHANCEMENT, DESIGNATION_DRCS_MODES, &drcs_mode_values(format, modes))
+    pub fn page_function(magazine: Magazine, format: PageFormat) -> Packet {
+        let mut values = [0; TRIPLETS_PER_PACKET];
+        if let Some(first) = values.first_mut() {
+            *first = format.bits();
+        }
+        value_packet(magazine, PACKET_PAGE_ENHANCEMENT, DESIGNATION_DOWNLOAD_FUNCTION, &values)
     }
 
     /// A pointer triplet of an object page: `even` in bits 1 to 9 and `odd`
@@ -1023,17 +1014,19 @@ mod tests {
     }
 
     /// REQ-PKT-010: the worked encodings of research/notes-level25-drcs.md
-    /// section 11.
+    /// section 11. DRCS Mode reads as a reserved row triplet and DRCS
+    /// Character Invocation as a column triplet not acted on, each keeping
+    /// its fields as sent (decision E.95).
     #[test]
     fn worked_drcs_and_character_triplets() {
-        worked(TripletFunction::DrcsMode { normal: true, levels: 0b11, subtable: 0 }, 0x38629, [0x4C, 0x62, 0x70]);
-        worked(TripletFunction::DrcsMode { normal: false, levels: 0b01, subtable: 3 }, 0x09E29, [0x4E, 0x62, 0x93]);
-        worked(TripletFunction::DrcsCharacter { column: 2, normal: true, character: 0 }, 0x20342, [0x19, 0x34, 0x40]);
-        worked(
-            TripletFunction::DrcsCharacter { column: 10, normal: false, character: 47 },
-            0x17B4A,
-            [0x5B, 0x34, 0x2F],
-        );
+        let drcs_mode = |data| TripletFunction::ReservedRow { mode: 0b11000, address: 41, data };
+        worked(drcs_mode(0x70), 0x38629, [0x4C, 0x62, 0x70]);
+        worked(drcs_mode(0x13), 0x09E29, [0x4E, 0x62, 0x93]);
+        let drcs_character = |column, data| TripletFunction::UnsupportedColumn { column, mode: 0b01101, data };
+        worked(drcs_character(2, 0x40), 0x20342, [0x19, 0x34, 0x40]);
+        worked(drcs_character(10, 47), 0x17B4A, [0x5B, 0x34, 0x2F]);
+        assert_eq!(drcs_character(10, 47).active_column(), Some(10), "it moves the active position");
+        assert_eq!(drcs_mode(0x70).active_column(), None);
         worked(
             TripletFunction::G3Character { column: 0, code: 0x20, level_15_form: false },
             0x102C0,
@@ -1221,12 +1214,9 @@ mod tests {
             decode(&packet),
             Ok(Decoded::Magazine { magazine: mag(4), packet: MagazinePacket::Level35(fields) })
         );
-        let data = DrcsColourData { global_4: Some([1, 2, 3, 4]), ..DrcsColourData::default() };
-        let packet = encode::drcs_colours(mag(4), 29, &data);
-        let Ok(Decoded::Magazine { packet: MagazinePacket::DrcsColours(decoded), .. }) = decode(&packet) else {
-            panic!()
-        };
-        assert_eq!(decoded.global_4, data.global_4);
+        // M/29/1, the DRCS colour tables, is not decoded (decision E.95).
+        let tables = encode::triplet_packet(mag(4), 29, 1, &[Triplet::default(); 13]);
+        assert!(matches!(decode(&tables), Ok(Decoded::Ignored(_))));
         // A reserved packet function, and an uncorrectable triplet 1.
         let mut values = [0u32; 13];
         values[0] = 1;
@@ -1239,85 +1229,21 @@ mod tests {
         assert!(matches!(decode(&other), Ok(Decoded::Ignored(_))));
     }
 
-    /// REQ-PKT-013: the default tables of research/notes-level25-drcs.md
-    /// section 6.2, the Figure 28 example values, and a damaged table.
+    /// REQ-PKT-014, decision E.95: of X/28/3 only the page function and
+    /// coding are read, so a pattern download page is still known not to be
+    /// text; and X/28/1 is not decoded.
     #[test]
-    fn drcs_colour_tables() {
-        let defaults = DrcsColourData {
-            triplet_1: Some(0),
-            global_4: Some([0, 1, 2, 3]),
-            normal_4: Some([0, 1, 2, 3]),
-            global_16: Some(core::array::from_fn(|index| index as u8)),
-            normal_16: Some(core::array::from_fn(|index| index as u8)),
-        };
-        let worked = [
-            0, 0x18820, 0x22080, 0x08201, 0x22906, 0x12839, 0x2B16A, 0x207B9, 0x10620, 0x0398A, 0x16A4A, 0x3B9AC,
-            0x00001,
-        ];
-        let packet = encode::drcs_colours(mag(1), 28, &defaults);
-        assert_eq!(triplet_values(&packet), worked.map(Some));
-        assert_eq!(
-            decode(&packet),
-            Ok(Decoded::PageData { magazine: mag(1), packet: PagePacket::DrcsColours(defaults) })
-        );
-        // Figure 28, each value written most significant bit first.
-        let figure = DrcsColourData {
-            triplet_1: Some(0),
-            global_4: Some([0b10101, 0b00011, 0b01110, 0b11111]),
-            normal_4: Some([0b10011, 0b10000, 0b10001, 0b00001]),
-            global_16: Some([
-                0b01100, 0b11010, 0b11001, 0b10101, 0b11100, 0b10011, 0b00011, 0b01111, 0b00001, 0b00000, 0b11111,
-                0b01010, 0b10111, 0b00010, 0b01110, 0b10001,
-            ]),
-            normal_16: Some([
-                0b01111, 0b00101, 0b11001, 0b01010, 0b10101, 0b01000, 0b11010, 0b01011, 0b01100, 0b00100, 0b11010,
-                0b11100, 0b11110, 0b00011, 0b00111, 0b11000,
-            ]),
-        };
-        let mut packet = encode::drcs_colours(mag(1), 28, &figure);
-        assert_eq!(
-            decode(&packet),
-            Ok(Decoded::PageData { magazine: mag(1), packet: PagePacket::DrcsColours(figure) })
-        );
-        // Triplet 3 holds the end of the global 4-entry table and the start
-        // of the normal one; the 16-entry tables are unaffected.
-        break_triplet(&mut packet, 2);
-        let Ok(Decoded::PageData { packet: PagePacket::DrcsColours(data), .. }) = decode(&packet) else { panic!() };
-        assert_eq!((data.global_4, data.normal_4), (None, None));
-        assert_eq!((data.global_16, data.normal_16), (figure.global_16, figure.normal_16));
-    }
-
-    /// REQ-PKT-014: the worked encoding of research/notes-level25-drcs.md
-    /// section 4, read least significant bit first (decision E.54).
-    #[test]
-    fn drcs_mode_identification() {
-        let mut codes = [0b1111u8; 48];
-        codes[0] = 0b0000;
-        codes[1] = 0b0001;
-        codes[2] = 0b1110;
+    fn x28_3_gives_only_the_page_function() {
         let format = PageFormat { function: 0b0101, coding: 0 };
-        let modes = DrcsModes::from_codes(Some(format), &codes);
-        let mut packet = encode::drcs_modes(mag(1), format, &modes);
-        let mut expected = [Some(0x3FFFF); 13];
-        expected[0] = Some(0x00005);
-        expected[1] = Some(0x3FE10);
-        expected[11] = Some(0x00FFF);
-        expected[12] = Some(0);
-        assert_eq!(triplet_values(&packet), expected);
-        let Ok(Decoded::PageData { packet: PagePacket::DrcsModes(decoded), .. }) = decode(&packet) else { panic!() };
-        assert_eq!(decoded, modes);
+        let mut packet = encode::page_function(mag(1), format);
         assert_eq!(
-            (decoded.mode(0), decoded.mode(1), decoded.mode(2), decoded.mode(47)),
-            (Some(0), Some(1), Some(14), Some(15))
+            decode(&packet),
+            Ok(Decoded::PageData { magazine: mag(1), packet: PagePacket::PageFunction(Some(format)) })
         );
-        assert_eq!(decoded.mode(48), None);
-        // PTU 4 lies in triplet 2 bits 17 and 18 and triplet 3 bits 1 and 2.
-        break_triplet(&mut packet, 2);
-        let Ok(Decoded::PageData { packet: PagePacket::DrcsModes(decoded), .. }) = decode(&packet) else { panic!() };
-        assert_eq!(
-            (decoded.mode(3), decoded.mode(4), decoded.mode(8), decoded.mode(9)),
-            (Some(15), None, None, Some(15))
-        );
+        break_triplet(&mut packet, 0);
+        assert_eq!(decode(&packet), Ok(Decoded::PageData { magazine: mag(1), packet: PagePacket::PageFunction(None) }));
+        let tables = encode::triplet_packet(mag(1), 28, 1, &[Triplet::default(); 13]);
+        assert!(matches!(decode(&tables), Ok(Decoded::Ignored(_))));
     }
 
     /// REQ-PKT-017: object page packets, pointer tables, an uncorrectable
@@ -1379,12 +1305,11 @@ mod tests {
         // substitution, defaults 0x9 then objects 0x32 and 0x00.
         let link = [0x8, 0xE, 0x3, 0x2, 0b1100, 0x9, 0x2, 0x3, 0x0, 0x0];
         row[10..20].copy_from_slice(&link);
-        row[0..2].copy_from_slice(&encode::mot_page_entry(MotPageEntry {
-            global_objects: true,
-            pop_link: 5,
-            global_drcs: false,
-            drcs_link: 7,
-        }));
+        row[0..2].copy_from_slice(&encode::mot_page_entry(MotPageEntry { global_objects: true, pop_link: 5 }));
+        // The second byte names a DRCS page, which is not read (decision
+        // E.95); the encoder writes it as 0.
+        assert_eq!(row[1], 0);
+        row[1] = 0x7;
         let packet = encode::nibble_packet(mag(2), 19, &row);
         let data = packet.data();
         let decoded = mot_object_link(&data, 1).unwrap();
@@ -1399,10 +1324,7 @@ mod tests {
         assert_eq!(decoded.default_objects[0], Some(DefaultObject { kind: ObjectKind::Active, number: 0x32 }));
         assert_eq!(decoded.default_objects[1], Some(DefaultObject { kind: ObjectKind::Adaptive, number: 0 }));
         assert_eq!(encode::mot_object_link(&decoded), link);
-        assert_eq!(
-            mot_page_entry(&data, 0),
-            Some(MotPageEntry { global_objects: true, pop_link: 5, global_drcs: false, drcs_link: 7 })
-        );
+        assert_eq!(mot_page_entry(&data, 0), Some(MotPageEntry { global_objects: true, pop_link: 5 }));
         assert_eq!(
             mot_fallback(0b1111).side_panels,
             SidePanelFields { status_flag: true, ..SidePanelFields::default() }
@@ -1413,15 +1335,21 @@ mod tests {
         broken.bytes[DATA_START + 12] ^= 0b11;
         assert!(mot_object_link(&broken.data(), 1).is_none());
         assert!(mot_object_link(&broken.data(), 0).is_some());
-        let drcs = MotDrcsLink { magazine: mag(3), x27_flag: false, page: PageNumber(0x7C), subpage_count: 15 };
-        let totals = MotTotals { magazines: 0b1000_0011, object_pages: 0x2A, drcs_pages: 0x10 };
+        // Only the first byte of a pair is read: a damaged second byte
+        // leaves the entry, a damaged first byte does not.
+        let mut broken = packet;
+        broken.bytes[DATA_START + 1] ^= 0b11;
+        assert_eq!(mot_page_entry(&broken.data(), 0), Some(MotPageEntry { global_objects: true, pop_link: 5 }));
+        broken.bytes[DATA_START] ^= 0b11;
+        assert_eq!(mot_page_entry(&broken.data(), 0), None);
+        let totals = MotTotals { magazines: 0b1000_0011, object_pages: 0x2A };
         let mut row = [0u8; DATA_BYTES];
-        row[4..8].copy_from_slice(&encode::mot_drcs_link(&drcs));
         row[34..40].copy_from_slice(&encode::mot_totals(&totals));
+        assert_eq!(row[38..40], [0, 0], "no DRCS pages counted");
+        // A DRCS total from a service is not read.
+        row[38] = 0x1;
         let data = encode::nibble_packet(mag(2), 21, &row).data();
-        assert_eq!(mot_drcs_link(&data, 1), Some(drcs));
         assert_eq!(mot_totals(&data), Some(totals));
-        assert!(mot_drcs_link(&data, 8).is_none());
     }
 
     #[test]

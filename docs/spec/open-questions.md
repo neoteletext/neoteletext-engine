@@ -22,7 +22,7 @@ Everything still open on 12 October 2026, grouped by what each item needs before
 | 7 | Withdrawn: the review of the original glyphs. Decision E.72 removed the original set; Bedstead is the bundled font. | E.72 |
 | 8 | Withdrawn: the audit of Arabic glyph independence, for the same reason. Arabic text needs a loaded font (area FNT). | E.72 |
 | 9 | **German Level 2.5 broadcast data**: a recording of ZDF or other German services from Astra 19.2°E or DVB-T2. | REQUIREMENTS.md Appendix D.2 |
-| 10 | **A real broadcast with objects, DRCS pages or side panels.** None found; these are tested on the authored stream only. | REQ-TST-025; Level 2.5 and 3.5 round status |
+| 10 | **A real broadcast with objects or side panels.** None found; these are tested on the authored stream only. | REQ-TST-025; Level 2.5 and 3.5 round status |
 | 11 | **TTI files written by vbit2**, to test the reader against. | REQ-INP-023 |
 | 12 | **ARIB STD-B5** (Japanese teletext, System D), only if Japanese support is wanted. Japanese only, withdrawn 2023, sold by the ARIB Web Store. It is a different system, so support would be a separate decoder. | — |
 

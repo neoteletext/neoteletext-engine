@@ -43,7 +43,7 @@
 | User agent | The web term for a browser or other client acting for the user. neoteletext is a deliberately minimal one (REQ-WEB-014). |
 | Colour Map, CLUT | The 32 colours of Levels 2.5 and 3.5, in four colour lookup tables (CLUTs) of eight entries each (Table 30). A colour is named by its index, 8 × CLUT + entry. |
 | DCLUT | A DRCS colour lookup table: four or sixteen Colour Map indices used by multi-colour DRCS characters (Table 8). |
-| DRCS, GDRCS | Dynamically Redefinable Characters: characters downloaded as dot patterns on DRCS pages. A Global DRCS page serves the whole magazine. |
+| DRCS, GDRCS | Dynamically Redefinable Characters: characters downloaded as dot patterns on DRCS pages, which this receiver does not decode (decision E.95). A Global DRCS page serves the whole magazine. |
 | PTU | Pattern Transfer Unit: 20 bytes of a DRCS page, holding one bit plane of a 12 by 10 character, or a whole 6 by 5 by 4 character (clause 14.1). |
 | Object | A reusable sequence of enhancement triplets, Active, Adaptive or Passive, defined locally in packets X/26 or on an object page, and invoked by a page (clause 13). |
 | POP, GPOP | Public Object Page and Global Public Object Page: pages that define objects for a set of pages, or for every page of a magazine. |

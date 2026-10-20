@@ -84,8 +84,8 @@ impl<W: Write> T42Writer<W> {
     }
 
     /// Encodes a set of pages in the order of Annex B.7 (REQ-INP-024):
-    /// magazine packets, the Magazine Organization Tables, the DRCS pages,
-    /// the object pages and then the Level 1 pages, each class in the order
+    /// magazine packets, the Magazine Organization Tables, the object pages,
+    /// other data pages and then the Level 1 pages, each class in the order
     /// given. The filter does not apply.
     #[cfg(feature = "pages")]
     pub fn write_pages(&mut self, pages: &[&PageFile]) -> io::Result<()> {

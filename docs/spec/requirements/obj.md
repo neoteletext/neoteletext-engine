@@ -84,21 +84,23 @@ Invocations beyond a limit shall be ignored and counted. The work done to build 
 *Verification:* Test with pages that reach and exceed each limit; the bounded-work test of REQ-TST-019.
 
 **REQ-OBJ-030 — The enhancement pages a page uses.**
-The GPOP, POP, Global DRCS (GDRCS) and DRCS pages that a page uses, with their sub-pages, shall be taken from the page's own X/27/4, and at Level 3.5 also X/27/5, when those are present, and from the Magazine Organization Table otherwise (Annex D.1.4). The links of X/27/4 and X/27/5 shall take precedence whatever the table's X/27/4,5 flag says, and shall be read as decision E.52 describes:
-- X/27/4 links 0 to 3 are, by position, the GPOP, POP, GDRCS and DRCS links. A link whose function bits do not match its position shall be ignored.
+The GPOP and POP pages that a page uses, with their sub-pages, shall be taken from the page's own X/27/4, and at Level 3.5 also X/27/5, when those are present, and from the Magazine Organization Table otherwise (Annex D.1.4). The links of X/27/4 and X/27/5 shall take precedence whatever the table's X/27/4,5 flag says, and shall be read as decision E.52 describes:
+- X/27/4 links 0 to 3 are, by position, the GPOP, POP, GDRCS and DRCS links. A link whose function bits do not match its position shall be ignored, and the GDRCS and DRCS links shall not be used.
 - At Level 3.5, X/27/4 links 4 and 5 and X/27/5 links 0 and 1 take their role from their function bits.
 - A link shall be used only when its Format 1 marker bits are as Table 15 requires, and its page validity includes the presentation level.
 - Page validity 00, all sixteen sub-page flags at 0, or page number FF shall mean no link.
 - A link that duplicates one already accepted shall be ignored.
 - The sub-page flags shall be used only as hints for acquisition.
+*Amended 20 October 2026 (decision E.95):* DRCS is not decoded, and the parts of this requirement that concerned it are removed.
 *Verification:* Test with the worked link of `research/notes-level25-objects.md` section 13.2, and with each case that makes a link unusable.
 
 **REQ-OBJ-031 — The Magazine Organization Table.**
-For a page P of magazine m, the decoder shall use the stored Magazine Organization Table of m, page mFE, sub-page S1 = 0. A table on another sub-page shall be ignored (decision E.52). From P's byte pair (REQ-PKT-018) it shall take the global object flag, the POP link number, the global DRCS flag and the DRCS link number. The links shall be read:
-- at Level 2.5, from X/19 to X/21;
+For a page P of magazine m, the decoder shall use the stored Magazine Organization Table of m, page mFE, sub-page S1 = 0. A table on another sub-page shall be ignored (decision E.52). From P's byte pair (REQ-PKT-018) it shall take the global object flag and the POP link number. The object links shall be read:
+- at Level 2.5, from X/19 and X/20;
 - at Level 3.5, from X/22 to X/24. When X/22 or X/24 is missing, the Level 2.5 links shall be used, and the page shall be processed at Level 2.5 (clause 10.6.1). When only X/23 is missing, POP links 4 to 7 shall be taken from X/20.
 
-The magazine of a link is absolute, with 0 meaning magazine 8. A link to page FF means "not used". The byte pair for page xFF shall be ignored. The global flags shall be used only as hints for acquisition, and a GPOP or GDRCS reference shall be resolved through the magazine's link whatever the flag says. The fallback bits of P's POP link shall supply side panels and Black Background Colour Substitution when REQ-L25-031 reaches them; with no POP link, they shall be clear (decision E.53).
+The magazine of a link is absolute, with 0 meaning magazine 8. A link to page FF means "not used". The byte pair for page xFF shall be ignored. The global object flag shall be used only as a hint for acquisition, and a GPOP reference shall be resolved through the magazine's link whatever the flag says. The fallback bits of P's POP link shall supply side panels and Black Background Colour Substitution when REQ-L25-031 reaches them; with no POP link, they shall be clear (decision E.53).
+*Amended 20 October 2026 (decision E.95):* DRCS is not decoded, and the parts of this requirement that concerned it are removed.
 *Verification:* Test with the table positions of `research/notes-level25-objects.md` sections 7.2 and 13.3, at both levels and with each Level 3.5 packet missing.
 
 **REQ-OBJ-032 — Sub-pages of enhancement pages.**
@@ -115,4 +117,5 @@ They shall be placed in the order GPOP 1, GPOP 2, POP 1, POP 2, each with its or
 
 **REQ-OBJ-041 — Enhancement pages are never shown as text.**
 Object pages, DRCS pages and the Magazine Organization Table shall never receive Level 1 national option or display semantics, and shall not be rendered as text pages (REQ-ACQ-014). On these pages, bit C12 means a continued fragment and bit C13 a partial page (Annex B.6, Table B.1).
+*Amended 20 October 2026 (decision E.95):* a DRCS page's patterns are not read, but it is still known by the page function of its X/28/0 or X/28/3, and still never shown as text.
 *Verification:* Test.

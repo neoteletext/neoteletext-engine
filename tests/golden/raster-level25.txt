@@ -1,4 +1,4 @@
-format 3
+format 4
 side-panels 12x20 unit=0 reveal=false 672x500 844ca74d94a950ab
 side-panels 12x20 unit=0 reveal=true 672x500 844ca74d94a950ab
 side-panels 12x10 unit=0 reveal=false 672x250 47fdac7454c8dcd7
@@ -7,10 +7,6 @@ colour-map 12x20 unit=0 reveal=false 480x500 0f967fce8bc2ed31
 colour-map 12x20 unit=0 reveal=true 480x500 0f967fce8bc2ed31
 colour-map 12x10 unit=0 reveal=false 480x250 b3aeadac2c8396d7
 colour-map 12x10 unit=0 reveal=true 480x250 b3aeadac2c8396d7
-drcs 12x20 unit=0 reveal=false 480x500 fdf22fb379648e15
-drcs 12x20 unit=0 reveal=true 480x500 fdf22fb379648e15
-drcs 12x10 unit=0 reveal=false 480x250 75f2cd68c5d3e2a4
-drcs 12x10 unit=0 reveal=true 480x250 75f2cd68c5d3e2a4
 g3 12x20 unit=0 reveal=false 480x500 59ea46b8d1e25169
 g3 12x20 unit=0 reveal=true 480x500 59ea46b8d1e25169
 g3 12x10 unit=0 reveal=false 480x250 55291e65346cc3c9

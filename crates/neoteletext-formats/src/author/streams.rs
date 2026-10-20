@@ -4,17 +4,18 @@
 //! every size, underline, invert, conceal, boxing, flash at each rate and
 //! phase, font styles, the G1, G2 and G3 sets, Local, Public and Global
 //! objects of each type and priority reached through the Magazine
-//! Organization Table and through X/27/4 and X/27/5, default objects,
-//! DRCS characters of every mode with their colour tables, every variant
-//! of X/28 and M/29, and the worked examples of clause 13.9, Annex C.2 and
-//! Figures 27 and 28.
+//! Organization Table and through X/27/4 and X/27/5, default objects, the
+//! variants of X/28 and M/29 that are read, and the worked examples of
+//! clause 13.9 and Annex C.2. Pages 114 to 116 and 119 held DRCS
+//! characters, which are no longer decoded (decision E.95); their numbers
+//! are left unused.
 //!
 //! The stream is generated, never stored: `cargo xtask level25-stream`
 //! writes it as T42 and TTI, and the tests build it.
 //!
 //! | Magazine | Pages | What they test |
 //! |---|---|---|
-//! | 1 | 100 to 123, 1A0, 1B0 to 1B3, 1C0, 1E0, 1FE | the features one by one |
+//! | 1 | 100 to 113, 117, 118, 120 to 124, 1A0, 1E0, 1FE | the features one by one |
 //! | 2, 3 | 200 to 202, 2A9, 2F0, 2FE, 3A0 | X/27/4 links over the table, across magazines |
 //! | 4 | 400 to 402, 4A0, 4F0, 4FE | default objects and the fallback of a POP link |
 //! | 5 | 500, 501, 5A0 to 5A2, 5FE | the Level 3.5 links of X/27/5 and X/22 to X/24 |
@@ -24,33 +25,36 @@ use std::vec::Vec;
 
 use neoteletext_core::consts::{
     ALPHA_BLACK, ALPHA_RED, ALPHA_WHITE, ALPHA_YELLOW, BLACK_BACKGROUND, COLOUR_BLUE_BIT, COLOUR_GREEN_BIT, CONCEAL,
-    DOUBLE_HEIGHT, END_BOX, FLASH, MODE_TERMINATION, MOSAIC_WHITE, NEW_BACKGROUND, ROW_ADDRESS_LAST, START_BOX,
+    DOUBLE_HEIGHT, END_BOX, FLASH, MODE_DRCS_CHARACTER, MODE_TERMINATION, MOSAIC_WHITE, NEW_BACKGROUND,
+    ROW_ADDRESS_LAST, ROW_ADDRESS_RESERVED_DEFAULT, START_BOX,
 };
-use neoteletext_core::drcs::DrcsMode;
 use neoteletext_core::packet::{
-    ColourData, DefaultObject, DisplayAttributes, DrcsColourData, FontStyleData, MotPageEntry, MotTotals, ObjectKind,
-    ObjectSource, ObjectUsage, Triplet, TripletFunction,
+    ColourData, DefaultObject, DisplayAttributes, FontStyleData, MotPageEntry, MotTotals, ObjectKind, ObjectSource,
+    ObjectUsage, Triplet, TripletFunction,
 };
 use neoteletext_core::types::{
-    ColourWords, DrcsTable, FallbackFields, Magazine, PageAddress, PageNumber, Rgb12, SidePanelFields, SubCode,
+    ColourWords, FallbackFields, Magazine, PageAddress, PageNumber, Rgb12, SidePanelFields, SubCode,
 };
 
 use super::{
-    AuthorError, DisplayPage, DrcsPage, FlashMode, FlashRate, LinkFunction, MagazinePackets, Mot, MotLevel, ObjectPage,
-    ObjectRef, Result, RowScope, Stream, Triplets, VALID_BOTH, VALID_LEVEL_25, VALID_LEVEL_35, address, colour,
-    drcs_link, link, neutral_fields, neutral_fields_level_35, object_link, public_number, row_address,
+    AuthorError, DisplayPage, FlashMode, FlashRate, LinkFunction, MagazinePackets, Mot, MotLevel, ObjectPage,
+    ObjectRef, Result, RowScope, Stream, Triplets, VALID_BOTH, VALID_LEVEL_25, VALID_LEVEL_35, address, colour, link,
+    neutral_fields, neutral_fields_level_35, object_link, public_number, row_address,
 };
 
 /// Objects required at both levels.
 const BOTH: ObjectUsage = ObjectUsage(0b11);
 /// Objects required at Level 3.5 only.
 const LEVEL_35: ObjectUsage = ObjectUsage(0b10);
-/// DRCS Mode level bits: both levels.
-const DRCS_BOTH: u8 = 0b11;
-/// DRCS Mode level bits: Level 3.5 only.
-const DRCS_LEVEL_35: u8 = 0b10;
-/// DRCS Mode level bits 00, reserved, which decision E.54 reads as both.
-const DRCS_RESERVED: u8 = 0b00;
+/// Row mode 11000, DRCS Mode (Table 28), with data choosing the normal
+/// table's sub-table 0 at both levels, as page 113 sends it to show that
+/// it is not acted on (decision E.95).
+const DRCS_MODE: u8 = 0b11000;
+const DRCS_MODE_DATA: u8 = 0x70;
+/// Data bit D6 of DRCS Character Invocation: the normal table (Table 29).
+const DRCS_NORMAL: u8 = 0x40;
+/// A DRCS character number above 47, which Table 29 makes invalid.
+const DRCS_INVALID_CHARACTER: u8 = 50;
 /// Level 1 colours as Colour Map indices (decision E.43).
 const RED: u8 = colour(0, 1);
 const GREEN: u8 = colour(0, 2);
@@ -165,29 +169,15 @@ struct Objects {
     pop_active: ObjectRef,
     pop_adaptive: ObjectRef,
     pop_passive: ObjectRef,
-    pop_drcs: ObjectRef,
     pop_level_35: ObjectRef,
     gpop_active: ObjectRef,
     gpop_adaptive: ObjectRef,
 }
 
-/// The DRCS pages of magazine 1.
-struct Drcs {
-    normal: DrcsPage,
-    global: DrcsPage,
-    multicolour: DrcsPage,
-    figure_27: DrcsPage,
-    clean: DrcsPage,
-}
-
 fn magazine_1(stream: &mut Stream) -> Result<()> {
     let objects = magazine_1_objects()?;
-    let drcs = magazine_1_drcs()?;
     stream.extend(objects.pop.build()?).extend(objects.gpop.build()?);
-    for page in [&drcs.normal, &drcs.global, &drcs.multicolour, &drcs.figure_27, &drcs.clean] {
-        stream.extend(page.build()?);
-    }
-    stream.push(magazine_1_table(&objects, &drcs)?.build()?);
+    stream.push(magazine_1_table(&objects)?.build()?);
     stream.push(index()?.build()?);
     stream.push(colour_map()?.build()?);
     stream.push(colour_map_level_35()?.build()?);
@@ -208,10 +198,6 @@ fn magazine_1(stream: &mut Stream) -> Result<()> {
     stream.push(g3_and_g1()?.build()?);
     stream.push(g2_and_diacritics()?.build()?);
     stream.push(every_mode()?.build()?);
-    stream.push(drcs_level_25()?.build()?);
-    stream.push(drcs_level_35(&drcs)?.build()?);
-    stream.push(drcs_figure_27(&drcs)?.build()?);
-    stream.push(drcs_without_faults()?.build()?);
     stream.push(sizes_written_by_enhancement_data()?.build()?);
     stream.push(clause_13_9()?.build()?);
     stream.push(annex_c2()?.build()?);
@@ -235,11 +221,7 @@ fn magazine_1_objects() -> Result<Objects> {
     passive.background(0, colour(2, 4)).text(0, b"PASSIVE");
     passive.position(1, 0)?.g3(0, 0x2C).g3(1, 0x2D);
     let pop_passive = pop.define(0, ObjectKind::Passive, BOTH, passive)?;
-    // Sub-page 1: an object that draws DRCS characters names its own
-    // sub-table (Annex C.4 rule 3); and an object for Level 3.5 only.
-    let mut drcs = Triplets::new();
-    drcs.drcs_mode(DrcsTable::Normal, DRCS_BOTH, 0).drcs(0, DrcsTable::Normal, 0).drcs(1, DrcsTable::Normal, 1);
-    let pop_drcs = pop.define(1, ObjectKind::Passive, BOTH, drcs)?;
+    // Sub-page 1: an object for Level 3.5 only.
     let mut level_35 = Triplets::new();
     level_35.font(0, FontStyleData { proportional: false, bold: true, italic: false, rows: 0 }).text(0, b"L3.5 ONLY");
     let pop_level_35 = pop.define(1, ObjectKind::Active, LEVEL_35, level_35)?;
@@ -254,158 +236,17 @@ fn magazine_1_objects() -> Result<Objects> {
     outer.foreground(0, GREEN).text(0, b"OUTER ADAPTIVE");
     outer.position(1, 0)?.invoke(inner);
     let gpop_adaptive = gpop.define(0, ObjectKind::Adaptive, BOTH, outer)?;
-    Ok(Objects { pop, gpop, pop_active, pop_adaptive, pop_passive, pop_drcs, pop_level_35, gpop_active, gpop_adaptive })
-}
-
-const SMILEY: [&str; 10] = [
-    "....####....",
-    "..##....##..",
-    ".#........#.",
-    "#..##..##..#",
-    "#..........#",
-    "#.#......#.#",
-    "#..######..#",
-    ".#........#.",
-    "..##....##..",
-    "....####....",
-];
-const ARROW: [&str; 10] = [
-    "............",
-    ".......#....",
-    ".......##...",
-    "##########..",
-    "###########.",
-    "##########..",
-    ".......##...",
-    ".......#....",
-    "............",
-    "............",
-];
-const CHECKER: [&str; 10] = [
-    "#.#.#.#.#.#.",
-    ".#.#.#.#.#.#",
-    "#.#.#.#.#.#.",
-    ".#.#.#.#.#.#",
-    "#.#.#.#.#.#.",
-    ".#.#.#.#.#.#",
-    "#.#.#.#.#.#.",
-    ".#.#.#.#.#.#",
-    "#.#.#.#.#.#.",
-    ".#.#.#.#.#.#",
-];
-const FRAME: [&str; 10] = [
-    "############",
-    "#..........#",
-    "#..........#",
-    "#..........#",
-    "#..........#",
-    "#..........#",
-    "#..........#",
-    "#..........#",
-    "#..........#",
-    "############",
-];
-const DIAGONAL: [&str; 10] = [
-    "##..........",
-    ".##.........",
-    "..##........",
-    "...##.......",
-    "....##......",
-    "......##....",
-    ".......##...",
-    "........##..",
-    ".........##.",
-    "..........##",
-];
-const FULL: [&str; 10] = ["############"; 10];
-/// Mode 1 (two bits): four bands of the four values.
-const BANDS_2: [&str; 10] = [
-    "000111222333",
-    "000111222333",
-    "000111222333",
-    "111222333000",
-    "111222333000",
-    "222333000111",
-    "222333000111",
-    "333000111222",
-    "333000111222",
-    "333000111222",
-];
-/// Mode 2 (four bits): every value 0 to F.
-const RAMP_4: [&str; 10] = [
-    "0123456789AB",
-    "123456789ABC",
-    "23456789ABCD",
-    "3456789ABCDE",
-    "456789ABCDEF",
-    "56789ABCDEF0",
-    "6789ABCDEF01",
-    "789ABCDEF012",
-    "89ABCDEF0123",
-    "9ABCDEF01234",
-];
-/// Mode 3 (six by five, four bits).
-const DOTS_6X5: [&str; 5] = ["F0F0F0", "0F0F0F", "123456", "789ABC", "DEF012"];
-
-/// DRCS 1B0 (normal, two sub-pages), GDRCS 1C0 (no X/28/3), DRCS 1B1
-/// (modes 1 to 3 and invalid data) and DRCS 1B2 (Figure 27's layout).
-fn magazine_1_drcs() -> Result<Drcs> {
-    let mut normal = DrcsPage::new(address(0x1B0)?, false);
-    for (character, pattern) in (0u8..).zip([SMILEY, ARROW, CHECKER, FRAME]) {
-        normal.character(0, character, DrcsMode::Mode0, &pattern)?;
-    }
-    normal.character(1, 0, DrcsMode::Mode0, &FULL)?;
-    normal.character(1, 5, DrcsMode::Mode0, &DIAGONAL)?;
-
-    let mut global = DrcsPage::new(address(0x1C0)?, true);
-    global.without_mode_packet();
-    global.character(0, 0, DrcsMode::Mode0, &FRAME)?;
-    global.character(0, 47, DrcsMode::Mode0, &SMILEY)?;
-
-    let mut multicolour = DrcsPage::new(address(0x1B1)?, false);
-    multicolour.character(0, 0, DrcsMode::Mode1, &BANDS_2)?;
-    multicolour.character(0, 2, DrcsMode::Mode2, &RAMP_4)?;
-    multicolour.character(0, 6, DrcsMode::Mode3, &DOTS_6X5)?;
-    multicolour.character(0, 7, DrcsMode::Mode0, &ARROW)?;
-    // Decision E.54: invalid data. PTU 8 holds D-bytes outside 4/0 to
-    // 7/F; PTU 9's first PTU is marked "subsequent"; PTU 47 claims mode 1,
-    // which would run past PTU 47.
-    let mut low = [0x40u8; 20];
-    if let Some(byte) = low.get_mut(3) {
-        *byte = 0x21;
-    }
-    multicolour.raw_ptu(0, 8, low, 0b0000)?;
-    multicolour.raw_ptu(0, 9, [0x7F; 20], crate::consts::DRCS_MODE_SUBSEQUENT)?;
-    multicolour.raw_ptu(0, 47, [0x6A; 20], 0b0001)?;
-
-    let mut figure_27 = DrcsPage::new(address(0x1B2)?, false);
-    figure_27.character(0, 0, DrcsMode::Mode0, &SMILEY)?;
-    figure_27.character(0, 1, DrcsMode::Mode0, &CHECKER)?;
-    figure_27.character(0, 2, DrcsMode::Mode1, &BANDS_2)?;
-    figure_27.character(0, 4, DrcsMode::Mode2, &RAMP_4)?;
-    // Every mode and nothing invalid, for page 119.
-    let mut clean = DrcsPage::new(address(0x1B3)?, false);
-    clean.character(0, 0, DrcsMode::Mode1, &BANDS_2)?;
-    clean.character(0, 2, DrcsMode::Mode2, &RAMP_4)?;
-    clean.character(0, 6, DrcsMode::Mode0, &ARROW)?;
-    clean.character(0, 7, DrcsMode::Mode3, &DOTS_6X5)?;
-    Ok(Drcs { normal, global, multicolour, figure_27, clean })
+    Ok(Objects { pop, gpop, pop_active, pop_adaptive, pop_passive, pop_level_35, gpop_active, gpop_adaptive })
 }
 
 /// MOT 1FE, with the same links at both levels.
-fn magazine_1_table(objects: &Objects, drcs: &Drcs) -> Result<Mot> {
+fn magazine_1_table(objects: &Objects) -> Result<Mot> {
     let mut mot = Mot::new(magazine(1)?);
     mot.object_link(MotLevel::Both, 0, object_link(objects.gpop.address(), 0))?;
     mot.object_link(MotLevel::Both, 1, object_link(objects.pop.address(), 1))?;
-    mot.drcs_link(MotLevel::Both, 0, drcs_link(drcs.global.address(), 0))?;
-    mot.drcs_link(MotLevel::Both, 1, drcs_link(drcs.normal.address(), 1))?;
-    mot.drcs_link(MotLevel::Both, 2, drcs_link(drcs.clean.address(), 0))?;
-    let none = MotPageEntry { global_objects: false, pop_link: 0, global_drcs: false, drcs_link: 0 };
-    mot.page(PageNumber(0x14), MotPageEntry { global_drcs: true, drcs_link: 1, ..none });
-    mot.page(PageNumber(0x19), MotPageEntry { global_drcs: true, drcs_link: 2, ..none });
-    mot.page(PageNumber(0x22), MotPageEntry { pop_link: 1, drcs_link: 1, ..none });
-    mot.page(PageNumber(0x23), MotPageEntry { global_objects: true, ..none });
-    let totals = MotTotals { magazines: 1 << magazine(1)?.index(), object_pages: 3, drcs_pages: 6 };
+    mot.page(PageNumber(0x22), MotPageEntry { global_objects: false, pop_link: 1 });
+    mot.page(PageNumber(0x23), MotPageEntry { global_objects: true, pop_link: 0 });
+    let totals = MotTotals { magazines: 1 << magazine(1)?.index(), object_pages: 3 };
     mot.totals(MotLevel::Both, totals);
     Ok(mot)
 }
@@ -413,17 +254,16 @@ fn magazine_1_table(objects: &Objects, drcs: &Drcs) -> Result<Mot> {
 /// 100: the index.
 fn index() -> Result<DisplayPage> {
     let mut page = page(0x100, b"LEVEL 2.5 AND 3.5 AUTHORED PAGES")?;
-    let lines: [&[u8]; 20] = [
+    let lines: [&[u8]; 19] = [
         b"101 COLOUR MAP     102 CLUTS 0 AND 1",
         b"103 SCREEN, ROWS   104-108 SIDE PANELS",
         b"109 SIZES, ATTRS   110 FLASH",
         b"111 FONT STYLES    112 G3 AND G1 SETS",
-        b"113 EVERY MODE     114 DRCS LEVEL 2.5",
-        b"115 DRCS LEVEL 3.5 116 FIGURE 27",
-        b"117 CLAUSE 13.9    118 G2, DIACRITICS",
-        b"119 DRCS, NO FAULTS 120 ANNEX C.2",
+        b"113 EVERY MODE     117 CLAUSE 13.9",
+        b"118 G2, DIACRITICS 120 ANNEX C.2",
         b"121 LOCAL OBJECTS  122 POP OBJECTS",
         b"123 GPOP OBJECTS   124 SIZES BY X/26",
+        b"",
         b"200-202 X/27/4 LINKS OVER THE MOT",
         b"400-402 DEFAULT OBJECTS",
         b"500-501 LEVEL 3.5 LINKS",
@@ -720,7 +560,10 @@ fn every_mode() -> Result<DisplayPage> {
     local.flash(7, FlashMode::Normal, FlashRate::Slow).designation(8, GERMAN).g0(9, b'@');
     local.raw(Triplet { address: 10, mode: 0b01010, data: 0 });
     local.g3(11, 0x41).attributes(12, DisplayAttributes { underline: true, ..DisplayAttributes::default() });
-    local.drcs_mode(DrcsTable::Normal, DRCS_BOTH, 0).drcs(13, DrcsTable::Normal, 0);
+    // DRCS Mode and DRCS Character Invocation, sent as a service would
+    // and not acted on (decision E.95): the second moves the column only.
+    local.raw(Triplet { address: ROW_ADDRESS_RESERVED_DEFAULT, mode: DRCS_MODE, data: DRCS_MODE_DATA });
+    local.raw(Triplet { address: 13, mode: MODE_DRCS_CHARACTER, data: DRCS_NORMAL });
     local.font(14, FontStyleData { bold: true, ..FontStyleData::default() }).g2(15, 0x41);
     // Column modes 10000 to 11111: G0 with each diacritical mark.
     for (column, mark) in (16u8..).zip(0u8..16) {
@@ -730,7 +573,7 @@ fn every_mode() -> Result<DisplayPage> {
     local.position(3, 0)?;
     local.function(TripletFunction::ForegroundColour { column: 1, colour: ColourData { index: GREEN, high: 0b01 } });
     local.function(TripletFunction::AdditionalFlash { column: 2, mode: 1, rate: 0b111, reserved: 0b11 });
-    local.drcs(3, DrcsTable::Normal, 50);
+    local.raw(Triplet { address: 3, mode: MODE_DRCS_CHARACTER, data: DRCS_NORMAL | DRCS_INVALID_CHARACTER });
     local.position_address(row_address(4)?, 45);
     // Reserved row modes and Programme Delivery Control, which do not move
     // the Active Position (decision E.46).
@@ -752,76 +595,6 @@ fn every_mode() -> Result<DisplayPage> {
     // comes last, so that a decoder that ends the data on it loses nothing.
     local.raw(Triplet { address: ROW_ADDRESS_LAST - 1, mode: MODE_TERMINATION, data: 0 });
     page.text(9, 0, b"ROW 0 COLUMN 30: ADDRESS DISPLAY ROW 0")?;
-    Ok(page)
-}
-
-/// 114: mode 0 DRCS at Level 2.5 through the table's DRCS and GDRCS links,
-/// with sub-table changes, colours, size, flash and invalid references.
-fn drcs_level_25() -> Result<DisplayPage> {
-    let mut page = page(0x114, b"DRCS MODE 0 VIA THE MOT")?;
-    let rows: [(u8, &[u8]); 9] = [
-        (3, b"NORMAL 0"),
-        (5, b"NORMAL 1"),
-        (7, b"GLOBAL 0"),
-        (9, b"COLOURED"),
-        (11, b"DOUBLE"),
-        (14, b"FLASH"),
-        (16, b"INVALID"),
-        (18, b"LEVEL 00"),
-        (20, b"L3.5 ONLY"),
-    ];
-    for (row, label) in rows {
-        page.text(row, 0, label)?;
-    }
-    let local = page.local();
-    local.position(3, 0)?.drcs_mode(DrcsTable::Normal, DRCS_BOTH, 0);
-    for (column, character) in (12u8..).step_by(2).zip(0u8..4) {
-        local.drcs(column, DrcsTable::Normal, character);
-    }
-    local.position(5, 0)?.drcs_mode(DrcsTable::Normal, DRCS_BOTH, 1);
-    local.drcs(12, DrcsTable::Normal, 0).drcs(14, DrcsTable::Normal, 5);
-    local.position(7, 0)?.drcs_mode(DrcsTable::Global, DRCS_BOTH, 0);
-    local.drcs(12, DrcsTable::Global, 0).drcs(14, DrcsTable::Global, 47);
-    local.position(9, 0)?.drcs_mode(DrcsTable::Normal, DRCS_BOTH, 0);
-    local.foreground(12, RED).background(12, colour(2, 5)).drcs(12, DrcsTable::Normal, 0);
-    local.position(11, 0)?;
-    local.attributes(12, DisplayAttributes { double_height: true, double_width: true, ..DisplayAttributes::default() });
-    local.drcs(12, DrcsTable::Normal, 1);
-    local.position(14, 0)?.flash(12, FlashMode::Normal, FlashRate::Fast(1)).drcs(12, DrcsTable::Normal, 2);
-    // Characters 48 to 63 do not exist (Table 29); character 20 has no
-    // data.
-    local.position(16, 0)?.drcs(12, DrcsTable::Normal, 48).drcs(14, DrcsTable::Normal, 20);
-    // Decision E.54: level bits 00 count as both; 10 is ignored at Level
-    // 2.5, so the sub-table stays 0.
-    local.position(18, 0)?.drcs_mode(DrcsTable::Normal, DRCS_RESERVED, 1).drcs(12, DrcsTable::Normal, 5);
-    local.position(20, 0)?.drcs_mode(DrcsTable::Normal, DRCS_LEVEL_35, 0).drcs(12, DrcsTable::Normal, 0);
-    Ok(page)
-}
-
-/// 119: DRCS of every mode, normal and global, found through the table
-/// alone and with no faults anywhere on the page, so that a decoder which
-/// drops a page's enhancement at its first fault (zvbi) still shows it all
-/// (REQ-TST-023). Character numbers are those of DRCS 1B3 and GDRCS 1C0.
-fn drcs_without_faults() -> Result<DisplayPage> {
-    let mut page = page(0x119, b"DRCS THROUGH THE TABLE, NO FAULTS")?;
-    let rows: [(u8, &[u8]); 5] = [(3, b"MODES 0-3"), (6, b"GLOBAL"), (9, b"COLOURED"), (12, b"FLASH"), (15, b"DOUBLE")];
-    for (row, label) in rows {
-        page.text(row, 0, label)?;
-    }
-    let local = page.local();
-    local.position(3, 0)?.drcs_mode(DrcsTable::Normal, DRCS_BOTH, 0);
-    for (column, character) in [(12u8, 6u8), (14, 0), (16, 2), (18, 7)] {
-        local.drcs(column, DrcsTable::Normal, character);
-    }
-    local.position(6, 0)?.drcs_mode(DrcsTable::Global, DRCS_BOTH, 0);
-    local.drcs(12, DrcsTable::Global, 0).drcs(14, DrcsTable::Global, 47);
-    local.position(9, 0)?.foreground(12, RED).background(12, colour(2, 5)).drcs(12, DrcsTable::Normal, 6);
-    local.position(12, 0)?.flash(12, FlashMode::Normal, FlashRate::Slow).drcs(12, DrcsTable::Normal, 6);
-    local.position(15, 0)?;
-    local.attributes(12, DisplayAttributes { double_height: true, double_width: true, ..DisplayAttributes::default() });
-    // The size ends after the character: zvbi sizes only the characters
-    // enhancement data writes, not the spaces a size runs on over.
-    local.drcs(12, DrcsTable::Normal, 6).attributes(14, DisplayAttributes::default());
     Ok(page)
 }
 
@@ -847,81 +620,6 @@ fn sizes_written_by_enhancement_data() -> Result<DisplayPage> {
         }
         let end = 4u8.saturating_add(u8::try_from(text.len().saturating_mul(pitch)).unwrap_or(u8::MAX));
         page.local().attributes(end, none);
-    }
-    Ok(page)
-}
-
-/// The DRCS colour tables of Figure 28, read with the most significant bit
-/// on the left.
-#[must_use]
-pub fn figure_28_colours() -> DrcsColourData {
-    DrcsColourData {
-        triplet_1: Some(0),
-        global_4: Some([0b10101, 0b00011, 0b01110, 0b11111]),
-        normal_4: Some([0b10011, 0b10000, 0b10001, 0b00001]),
-        global_16: Some([
-            0b01100, 0b11010, 0b11001, 0b10101, 0b11100, 0b10011, 0b00011, 0b01111, //
-            0b00001, 0b00000, 0b11111, 0b01010, 0b10111, 0b00010, 0b01110, 0b10001,
-        ]),
-        normal_16: Some([
-            0b01111, 0b00101, 0b11001, 0b01010, 0b10101, 0b01000, 0b11010, 0b01011, //
-            0b01100, 0b00100, 0b11010, 0b11100, 0b11110, 0b00011, 0b00111, 0b11000,
-        ]),
-    }
-}
-
-/// 115: DRCS modes 1 to 3 at Level 3.5 through an X/27/4 link, with the
-/// colour tables of Figure 28 in X/28/1, attributes on multi-colour
-/// characters, and invalid data (decision E.54).
-fn drcs_level_35(drcs: &Drcs) -> Result<DisplayPage> {
-    let mut page = page(0x115, b"DRCS MODES 1 TO 3, FIGURE 28")?;
-    page.link_level_25(LinkFunction::Drcs, drcs.multicolour.address(), SUBPAGE_0)?;
-    page.drcs_colours(figure_28_colours());
-    let rows: [(u8, &[u8]); 6] =
-        [(3, b"MODES"), (6, b"INVALID"), (9, b"FLASH"), (12, b"INV CONC"), (15, b"DOUBLE"), (18, b"LEVEL 2.5")];
-    for (row, label) in rows {
-        page.text(row, 0, label)?;
-    }
-    let local = page.local();
-    local.position(3, 0)?.drcs_mode(DrcsTable::Normal, DRCS_LEVEL_35, 0);
-    for (column, character) in [(12u8, 0u8), (14, 2), (16, 6), (18, 7)] {
-        local.drcs(column, DrcsTable::Normal, character);
-    }
-    // PTU 8 has bad bytes, PTU 9 starts with "subsequent", PTU 47 runs
-    // past the table, PTU 20 has no data.
-    local.position(6, 0)?;
-    for (column, character) in [(12u8, 8u8), (14, 9), (16, 47), (18, 20)] {
-        local.drcs(column, DrcsTable::Normal, character);
-    }
-    local.position(9, 0)?;
-    for (column, mode) in [(12u8, FlashMode::Normal), (14, FlashMode::Inverted), (16, FlashMode::AdjacentClut)] {
-        local.flash(column, mode, FlashRate::Slow).drcs(column, DrcsTable::Normal, 2);
-    }
-    let attributes = DisplayAttributes::default();
-    local.position(12, 0)?.attributes(12, DisplayAttributes { invert: true, ..attributes }).drcs(
-        12,
-        DrcsTable::Normal,
-        0,
-    );
-    local.attributes(14, DisplayAttributes { conceal: true, ..attributes }).drcs(14, DrcsTable::Normal, 0);
-    local.position(15, 0)?.attributes(12, DisplayAttributes { double_height: true, double_width: true, ..attributes });
-    local.drcs(12, DrcsTable::Normal, 6);
-    // Mode 0 character 7 is usable at Level 2.5 too.
-    local.position(18, 0)?.drcs_mode(DrcsTable::Normal, DRCS_BOTH, 0).drcs(12, DrcsTable::Normal, 7);
-    Ok(page)
-}
-
-/// 116: the PTU layout of Figure 27: characters 0 and 1 in mode 0,
-/// character 2 in mode 1 (PTUs 2 and 3), character 4 in mode 2 (PTUs 4 to
-/// 7, packets X/3 and X/4); character 3 starts on a "subsequent" PTU.
-fn drcs_figure_27(drcs: &Drcs) -> Result<DisplayPage> {
-    let mut page = page(0x116, b"DRCS PTU LAYOUT OF FIGURE 27")?;
-    page.link_level_25(LinkFunction::Drcs, drcs.figure_27.address(), SUBPAGE_0)?;
-    page.text(3, 0, b"0 1 2 4 3")?;
-    let local = page.local();
-    local.position(4, 0)?.drcs_mode(DrcsTable::Normal, DRCS_BOTH, 0);
-    for (column, character) in [(0u8, 0u8), (2, 1), (4, 2), (6, 4), (8, 3)] {
-        local.drcs(column, DrcsTable::Normal, character);
     }
     Ok(page)
 }
@@ -1023,15 +721,9 @@ fn local_objects() -> Result<DisplayPage> {
 /// pointer and an object that runs off the page.
 fn public_objects(objects: &Objects) -> Result<DisplayPage> {
     let mut page = page(0x122, b"POP OBJECTS VIA THE MOT")?;
-    for (row, label) in [
-        (3u8, &b"ACTIVE"[..]),
-        (5, b"ADAPTIVE"),
-        (7, b"PASSIVE"),
-        (10, b"DRCS"),
-        (12, b"L3.5"),
-        (14, b"UNUSED"),
-        (23, b"EDGE"),
-    ] {
+    for (row, label) in
+        [(3u8, &b"ACTIVE"[..]), (5, b"ADAPTIVE"), (7, b"PASSIVE"), (12, b"L3.5"), (14, b"UNUSED"), (23, b"EDGE")]
+    {
         page.text(row, 0, label)?;
     }
     let unused = ObjectRef { source: ObjectSource::Public, kind: ObjectKind::Active, number: public_number(0, 5) };
@@ -1039,7 +731,6 @@ fn public_objects(objects: &Objects) -> Result<DisplayPage> {
     local.position(3, 0)?.origin(0, 10).invoke(objects.pop_active);
     local.position(5, 0)?.origin(0, 10).invoke(objects.pop_adaptive);
     local.position(7, 0)?.origin(0, 10).invoke(objects.pop_passive);
-    local.position(10, 0)?.origin(0, 10).invoke(objects.pop_drcs);
     local.position(12, 0)?.origin(0, 10).invoke(objects.pop_level_35);
     local.position(14, 0)?.origin(0, 10).invoke(unused);
     local.position(23, 0)?.origin(0, 35).invoke(objects.pop_active);
@@ -1076,10 +767,7 @@ fn links_over_the_table(stream: &mut Stream) -> Result<()> {
     let mut mot = Mot::new(magazine(2)?);
     mot.object_link(MotLevel::Both, 1, object_link(wrong.address(), 0))?;
     for page in [0x00u8, 0x01, 0x02] {
-        mot.page(
-            PageNumber(page),
-            MotPageEntry { global_objects: false, pop_link: 1, global_drcs: false, drcs_link: 0 },
-        );
+        mot.page(PageNumber(page), MotPageEntry { global_objects: false, pop_link: 1 });
     }
     stream.extend(wrong.build()?).extend(right.build()?).extend(gpop.build()?).push(mot.build()?);
 
@@ -1147,10 +835,7 @@ fn default_objects(stream: &mut Stream) -> Result<()> {
     mot.object_link(MotLevel::Both, 0, global_link)?;
     mot.object_link(MotLevel::Both, 1, pop_link)?;
     for page in [0x00u8, 0x01, 0x02] {
-        mot.page(
-            PageNumber(page),
-            MotPageEntry { global_objects: true, pop_link: 1, global_drcs: false, drcs_link: 0 },
-        );
+        mot.page(PageNumber(page), MotPageEntry { global_objects: true, pop_link: 1 });
     }
     stream.extend(gpop.build()?).extend(pop.build()?).push(mot.build()?);
 
@@ -1180,7 +865,7 @@ fn level_35_links(stream: &mut Stream) -> Result<()> {
     let mut mot = Mot::new(magazine(5)?);
     mot.object_link(MotLevel::Level25, 1, object_link(level_25.address(), 0))?;
     mot.object_link(MotLevel::Level35, 1, object_link(level_35.address(), 0))?;
-    let entry = MotPageEntry { global_objects: false, pop_link: 1, global_drcs: false, drcs_link: 0 };
+    let entry = MotPageEntry { global_objects: false, pop_link: 1 };
     mot.page(PageNumber(0x00), entry);
     stream.extend(level_25.build()?).extend(level_35.build()?).extend(x27_5.build()?).push(mot.build()?);
 
@@ -1220,10 +905,10 @@ fn magazine_packets(stream: &mut Stream) -> Result<()> {
         0x000, 0x500, 0x050, 0x550, 0x005, 0x505, 0x055, 0x555,
     ]));
     let mut packets = MagazinePackets::new(magazine(7)?);
-    packets.data(data).drcs_colours(figure_28_colours()).level_35(level_35);
+    packets.data(data).level_35(level_35);
     stream.push(packets.build()?);
 
-    let mut plain = page(0x700, b"M/29/0, M/29/1 AND M/29/4 APPLY")?;
+    let mut plain = page(0x700, b"M/29/0 AND M/29/4 APPLY")?;
     swatches(&mut plain, 4)?;
     stream.push(plain.build()?);
     let mut page_data = page(0x701, b"X/28/0 BEATS M/29/0")?;

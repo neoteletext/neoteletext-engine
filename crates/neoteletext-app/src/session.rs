@@ -23,7 +23,7 @@ pub const DEFAULT_PAGES: usize = 4096;
 const ENHANCEMENT_PACKETS: usize = ENHANCEMENT_PACKETS_LEVEL_35 + MAGAZINES * MOT_PACKETS;
 
 /// Enhancement sub-pages: one for every eight packets, plus the eight
-/// tables. Most object and DRCS sub-pages hold more than eight packets.
+/// tables. Most object sub-pages hold more than eight packets.
 const ENHANCEMENT_SUB_PAGES: usize = ENHANCEMENT_PACKETS_LEVEL_35 / 8 + MAGAZINES;
 
 /// A session over one input.

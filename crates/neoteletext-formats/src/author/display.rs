@@ -1,18 +1,18 @@
 //! Display pages: the Level 1 page, its local enhancement data and Local
 //! Objects, its compositional links X/27/4 and X/27/5, and its page-level
-//! presentation data X/28/0, X/28/1 and X/28/4 (REQ-INP-025).
+//! presentation data X/28/0 and X/28/4 (REQ-INP-025).
 
 use std::boxed::Box;
 use std::vec::Vec;
 
 use neoteletext_core::consts::{
-    COLUMNS, COMPOSITIONAL_LINKS, DESIGNATION_CODES, DESIGNATION_DRCS_COLOURS, DESIGNATION_LEVEL_35_DATA,
-    DESIGNATION_LINKS_LEVEL_25, DESIGNATION_LINKS_LEVEL_35, DESIGNATION_PAGE_DATA, HEADER_DISPLAY_COLUMN,
-    LINK_NULL_PAGE, PACKET_LINKS, PACKET_PAGE_ENHANCEMENT, ROWS, SPACE, TRIPLETS_PER_PACKET,
+    COLUMNS, COMPOSITIONAL_LINKS, DESIGNATION_CODES, DESIGNATION_LEVEL_35_DATA, DESIGNATION_LINKS_LEVEL_25,
+    DESIGNATION_LINKS_LEVEL_35, DESIGNATION_PAGE_DATA, HEADER_DISPLAY_COLUMN, LINK_NULL_PAGE, LINKS_FIXED_ROLES,
+    PACKET_LINKS, PACKET_PAGE_ENHANCEMENT, ROWS, SPACE, TRIPLETS_PER_PACKET,
 };
 use neoteletext_core::packet::{
-    CompositionalLink, DrcsColourData, ObjectKind, ObjectNumber, ObjectSource, ObjectUsage, PageFormat, Triplet,
-    TripletFunction, encode,
+    CompositionalLink, ObjectKind, ObjectNumber, ObjectSource, ObjectUsage, PageFormat, Triplet, TripletFunction,
+    encode,
 };
 use neoteletext_core::types::{ControlBits, Magazine, PageAddress, PageNumber, PresentationFields, SubCode};
 
@@ -31,17 +31,14 @@ pub const PAGE_TRIPLETS: usize = DESIGNATION_CODES * TRIPLETS_PER_PACKET;
 /// (Table 28).
 const LOCAL_DESIGNATION_SHIFT: u32 = 4;
 
-/// The function of a compositional link (Table 15, bits 2 and 1).
+/// The function of a compositional link to an object page (Table 15,
+/// bits 2 and 1). Links to DRCS pages are not written (decision E.95).
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum LinkFunction {
     /// 00: the Global Public Object Page.
     Gpop,
     /// 01: the Public Object Page.
     Pop,
-    /// 10: the Global DRCS page.
-    Gdrcs,
-    /// 11: the normal DRCS page.
-    Drcs,
 }
 
 impl LinkFunction {
@@ -51,8 +48,6 @@ impl LinkFunction {
         match self {
             Self::Gpop => 0b00,
             Self::Pop => 0b01,
-            Self::Gdrcs => 0b10,
-            Self::Drcs => 0b11,
         }
     }
 
@@ -62,8 +57,6 @@ impl LinkFunction {
         match self {
             Self::Gpop => 0,
             Self::Pop => 1,
-            Self::Gdrcs => 2,
-            Self::Drcs => 3,
         }
     }
 }
@@ -95,7 +88,20 @@ pub const fn link(function: LinkFunction, validity: u8, target: PageAddress, sub
 /// (clause 9.6.2).
 #[must_use]
 pub const fn no_link(function: LinkFunction, magazine: Magazine) -> CompositionalLink {
-    link(function, VALID_BOTH, PageAddress { magazine, page: PageNumber(LINK_NULL_PAGE) }, u16::MAX)
+    null_link(function.bits(), magazine)
+}
+
+/// The "no particular page" link with the function bits `function`.
+const fn null_link(function: u8, magazine: Magazine) -> CompositionalLink {
+    CompositionalLink {
+        function,
+        validity: VALID_BOTH,
+        magazine,
+        page: PageNumber(LINK_NULL_PAGE),
+        subpages: u16::MAX,
+        marker_first: true,
+        marker_second: false,
+    }
 }
 
 /// A Local Object waiting to be laid out.
@@ -115,7 +121,6 @@ pub struct DisplayPage {
     objects: Vec<LocalDefinition>,
     links: [Option<[CompositionalLink; COMPOSITIONAL_LINKS]>; 2],
     page_data: Option<(PageFormat, PresentationFields)>,
-    drcs_colours: Option<DrcsColourData>,
     level_35: Option<PresentationFields>,
     raw_enhancements: Vec<EnhancementPacket>,
     terminate: bool,
@@ -132,7 +137,6 @@ impl DisplayPage {
             objects: Vec::new(),
             links: [None; 2],
             page_data: None,
-            drcs_colours: None,
             level_35: None,
             raw_enhancements: Vec::new(),
             terminate: true,
@@ -220,14 +224,13 @@ impl DisplayPage {
             _ => return Err(AuthorError::BadPosition),
         };
         let magazine = self.page.address.magazine;
-        let functions = [LinkFunction::Gpop, LinkFunction::Pop, LinkFunction::Gdrcs, LinkFunction::Drcs];
         let slot = self.links.get_mut(index).ok_or(AuthorError::BadPosition)?;
+        // Each unset link carries the function Table 16 gives its position,
+        // the four functions in turn.
         let links = slot.get_or_insert_with(|| {
-            let mut empty = [no_link(LinkFunction::Gpop, magazine); COMPOSITIONAL_LINKS];
-            for (link, function) in empty.iter_mut().zip(functions.iter().cycle()) {
-                *link = no_link(*function, magazine);
-            }
-            empty
+            core::array::from_fn(|position| {
+                null_link(u8::try_from(position % LINKS_FIXED_ROLES).unwrap_or(0), magazine)
+            })
         });
         *links.get_mut(position).ok_or(AuthorError::BadPosition)? = link;
         Ok(self)
@@ -252,12 +255,6 @@ impl DisplayPage {
     /// Packet X/28/0 format 1 with any page function and coding.
     pub fn page_data_with_format(&mut self, format: PageFormat, fields: PresentationFields) -> &mut Self {
         self.page_data = Some((format, fields));
-        self
-    }
-
-    /// Packet X/28/1, the DRCS colour lookup tables (Table 8).
-    pub fn drcs_colours(&mut self, data: DrcsColourData) -> &mut Self {
-        self.drcs_colours = Some(data);
         self
     }
 
@@ -366,10 +363,6 @@ impl DisplayPage {
             let packet = encode::page_enhancement(magazine, DESIGNATION_PAGE_DATA, format, &fields);
             super::push_raw(&mut page, raw_line(&packet, PACKET_PAGE_ENHANCEMENT, DESIGNATION_PAGE_DATA))?;
             page.function = Some(PageFunction { function: format.function, coding: format.coding });
-        }
-        if let Some(data) = self.drcs_colours {
-            let packet = encode::drcs_colours(magazine, PACKET_PAGE_ENHANCEMENT, &data);
-            super::push_raw(&mut page, raw_line(&packet, PACKET_PAGE_ENHANCEMENT, DESIGNATION_DRCS_COLOURS))?;
         }
         if let Some(fields) = self.level_35 {
             let format = self.page_data.map_or(PageFormat { function: 0, coding: 0 }, |(format, _)| format);

@@ -1,6 +1,8 @@
 //! Page-related packets X/28 and magazine-related packets M/29 (clauses
-//! 9.4.2 to 9.5.3; Tables 3, 4 and 8 to 13; REQ-PKT-006, REQ-PKT-007 and
-//! REQ-PKT-012 to REQ-PKT-016).
+//! 9.4.2 to 9.5.3; Tables 3, 4, 9, 10, 11 and 13; REQ-PKT-006,
+//! REQ-PKT-007, REQ-PKT-012, REQ-PKT-015 and REQ-PKT-016). The DRCS
+//! packets X/28/1 and M/29/1 are not decoded, and of X/28/3 only the page
+//! function is (decision E.95).
 //!
 //! Several fields span triplets. They are read from a bit stream formed by
 //! the thirteen 18-bit triplet values in order, least significant bit
@@ -11,9 +13,8 @@
 use crate::consts::{
     BLACK_SUBSTITUTION_SHIFT, COLOUR_PRIMARY_BITS, COLOUR_WORD_BITS, COLOUR_WORDS, COLOUR_WORDS_START,
     DEFAULT_ROW_COLOUR_SHIFT, DEFAULT_SCREEN_COLOUR_SHIFT, DESIGNATION_DEFAULT_SHIFT, DESIGNATION_MASK,
-    DESIGNATION_SECOND_HIGH_MASK, DESIGNATION_SECOND_LOW_BITS, DESIGNATION_SECOND_LOW_SHIFT, DRCS_CLUT_4, DRCS_CLUT_16,
-    DRCS_CLUT_ENTRY_BITS, DRCS_CLUTS_START, DRCS_MODE_BITS, DRCS_MODES_START, DRCS_PTUS, NIBBLE_MASK, PAGE_CODING_MASK,
-    PAGE_CODING_SHIFT, PAGE_FUNCTION_MASK, REMAPPING_MASK, REMAPPING_SHIFT, SIDE_PANEL_COLUMNS_SHIFT,
+    DESIGNATION_SECOND_HIGH_MASK, DESIGNATION_SECOND_LOW_BITS, DESIGNATION_SECOND_LOW_SHIFT, NIBBLE_MASK,
+    PAGE_CODING_MASK, PAGE_CODING_SHIFT, PAGE_FUNCTION_MASK, REMAPPING_MASK, REMAPPING_SHIFT, SIDE_PANEL_COLUMNS_SHIFT,
     SIDE_PANEL_LEFT_SHIFT, SIDE_PANEL_RIGHT_SHIFT, SIDE_PANEL_STATUS_SHIFT, TRIPLET_COLOUR_INDEX_MASK,
     TRIPLET_DATA_BITS, TRIPLETS_PER_PACKET,
 };
@@ -84,71 +85,6 @@ pub struct PageEnhancement {
     pub fields: PresentationFields,
 }
 
-/// The four DRCS colour lookup tables of X/28/1 or M/29/1 (Table 8;
-/// REQ-PKT-013), each `None` when a triplet it lies in was uncorrectable.
-/// Each entry is a Colour Map index (Figure 28).
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, Default)]
-pub struct DrcsColourData {
-    /// Triplet 1: the G0 and G1 character set codes of earlier
-    /// specifications, kept for diagnostics only (decision E.4).
-    pub triplet_1: Option<u32>,
-    /// For global 12 by 10 by 2 characters.
-    pub global_4: Option<[u8; DRCS_CLUT_4]>,
-    /// For normal 12 by 10 by 2 characters.
-    pub normal_4: Option<[u8; DRCS_CLUT_4]>,
-    /// For global 12 by 10 by 4 and 6 by 5 by 4 characters.
-    pub global_16: Option<[u8; DRCS_CLUT_16]>,
-    /// For normal 12 by 10 by 4 and 6 by 5 by 4 characters (decision E.54:
-    /// the row heading of Table 8 is followed).
-    pub normal_16: Option<[u8; DRCS_CLUT_16]>,
-}
-
-/// The DRCS mode identification of X/28/3 (Table 9; REQ-PKT-014).
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, Default)]
-pub struct DrcsModes {
-    /// The page function and coding of triplet 1.
-    pub format: Option<PageFormat>,
-    /// Two 4-bit mode codes per byte, PTU 2k in the low nibble.
-    codes: [u8; DRCS_PTUS / 2],
-    /// Bit n set when the code of PTU n was read without error.
-    valid: u64,
-}
-
-impl DrcsModes {
-    /// The mode code of PTU `ptu` (0 to 47): 0000 to 0011 modes 0 to 3,
-    /// 1110 a further PTU of a mode 1 or 2 character, 1111 no data, others
-    /// reserved. `None` when it was uncorrectable or out of range.
-    #[must_use]
-    pub fn mode(&self, ptu: usize) -> Option<u8> {
-        if ptu >= DRCS_PTUS || self.valid.wrapping_shr(ptu as u32) & 1 == 0 {
-            return None;
-        }
-        let byte = self.codes.get(ptu / 2).copied()?;
-        Some(if ptu.is_multiple_of(2) { byte & NIBBLE_MASK } else { byte >> DRCS_MODE_BITS })
-    }
-
-    /// Mode codes from a list, all valid, for the encoder and tests.
-    #[must_use]
-    pub fn from_codes(format: Option<PageFormat>, modes: &[u8; DRCS_PTUS]) -> Self {
-        let mut out = Self { format, codes: [0; DRCS_PTUS / 2], valid: 0 };
-        for (ptu, &code) in modes.iter().enumerate() {
-            out.set(ptu, code & NIBBLE_MASK);
-        }
-        out
-    }
-
-    fn set(&mut self, ptu: usize, code: u8) {
-        if let Some(byte) = self.codes.get_mut(ptu / 2) {
-            *byte = if ptu.is_multiple_of(2) {
-                (*byte & !NIBBLE_MASK) | code
-            } else {
-                (*byte & NIBBLE_MASK) | code << DRCS_MODE_BITS
-            };
-            self.valid |= 1u64.wrapping_shl(ptu as u32);
-        }
-    }
-}
-
 fn bit(value: u32, shift: u32) -> bool {
     value.wrapping_shr(shift) & 1 == 1
 }
@@ -205,64 +141,24 @@ pub fn page_enhancement(values: &TripletValues) -> PageEnhancement {
     }
 }
 
-/// `N` colour table entries of five bits from stream position `start`.
-fn clut<const N: usize>(values: &TripletValues, start: usize) -> Option<[u8; N]> {
-    let mut entries = [0u8; N];
-    for (index, entry) in entries.iter_mut().enumerate() {
-        let position = start.saturating_add(index.saturating_mul(DRCS_CLUT_ENTRY_BITS));
-        *entry = stream_bits(values, position, DRCS_CLUT_ENTRY_BITS)? as u8;
-    }
-    Some(entries)
-}
-
-/// Stream positions of the four DRCS colour tables, in Table 8 order.
-const CLUT_GLOBAL_4: usize = DRCS_CLUTS_START;
-const CLUT_NORMAL_4: usize = CLUT_GLOBAL_4 + DRCS_CLUT_4 * DRCS_CLUT_ENTRY_BITS;
-const CLUT_GLOBAL_16: usize = CLUT_NORMAL_4 + DRCS_CLUT_4 * DRCS_CLUT_ENTRY_BITS;
-const CLUT_NORMAL_16: usize = CLUT_GLOBAL_16 + DRCS_CLUT_16 * DRCS_CLUT_ENTRY_BITS;
-
-/// X/28/1 or M/29/1 (Table 8): the four tables in order, from triplet 2
-/// bit 1.
+/// The page function and coding of X/28/3, the only part of it decoded
+/// (Table 9, REQ-PKT-014, decision E.95): a page that declares itself a pattern
+/// download page this way is still never shown as text.
 #[must_use]
-pub fn drcs_colour_data(values: &TripletValues) -> DrcsColourData {
-    DrcsColourData {
-        triplet_1: values.get(T1).copied().flatten(),
-        global_4: clut(values, CLUT_GLOBAL_4),
-        normal_4: clut(values, CLUT_NORMAL_4),
-        global_16: clut(values, CLUT_GLOBAL_16),
-        normal_16: clut(values, CLUT_NORMAL_16),
-    }
-}
-
-/// X/28/3 (Table 9): the mode of PTU n is at stream positions 4n to 4n + 3
-/// from triplet 2 bit 1, least significant bit first (decision E.54).
-#[must_use]
-pub fn drcs_modes(values: &TripletValues) -> DrcsModes {
-    let mut modes =
-        DrcsModes { format: values.get(T1).copied().flatten().map(PageFormat::from_triplet), ..DrcsModes::default() };
-    for ptu in 0..DRCS_PTUS {
-        let start = DRCS_MODES_START.saturating_add(ptu.saturating_mul(DRCS_MODE_BITS));
-        if let Some(code) = stream_bits(values, start, DRCS_MODE_BITS) {
-            modes.set(ptu, code as u8);
-        }
-    }
-    modes
+pub fn page_function(values: &TripletValues) -> Option<PageFormat> {
+    values.get(T1).copied().flatten().map(PageFormat::from_triplet)
 }
 
 /// Encoders for the packets above: the inverse of each decoder, as 18-bit
 /// triplet values.
 pub(super) mod encode {
-    use super::{
-        CLUT_GLOBAL_4, CLUT_GLOBAL_16, CLUT_NORMAL_4, CLUT_NORMAL_16, DrcsColourData, DrcsModes, PageFormat, T1, T2,
-        T13, set_stream_bits,
-    };
+    use super::{T1, T2, T13, set_stream_bits};
     use crate::consts::{
         BLACK_SUBSTITUTION_SHIFT, COLOUR_PRIMARY_BITS, COLOUR_WORD_BITS, COLOUR_WORDS_START, DEFAULT_ROW_COLOUR_SHIFT,
         DEFAULT_SCREEN_COLOUR_SHIFT, DESIGNATION_DEFAULT_SHIFT, DESIGNATION_MASK, DESIGNATION_SECOND_HIGH_MASK,
-        DESIGNATION_SECOND_LOW_BITS, DESIGNATION_SECOND_LOW_SHIFT, DRCS_CLUT_ENTRY_BITS, DRCS_MODE_BITS,
-        DRCS_MODES_START, DRCS_PTUS, NIBBLE_MASK, REMAPPING_MASK, REMAPPING_SHIFT, SIDE_PANEL_COLUMNS_SHIFT,
-        SIDE_PANEL_LEFT_SHIFT, SIDE_PANEL_RIGHT_SHIFT, SIDE_PANEL_STATUS_SHIFT, TRIPLET_COLOUR_INDEX_MASK,
-        TRIPLETS_PER_PACKET,
+        DESIGNATION_SECOND_LOW_BITS, DESIGNATION_SECOND_LOW_SHIFT, NIBBLE_MASK, REMAPPING_MASK, REMAPPING_SHIFT,
+        SIDE_PANEL_COLUMNS_SHIFT, SIDE_PANEL_LEFT_SHIFT, SIDE_PANEL_RIGHT_SHIFT, SIDE_PANEL_STATUS_SHIFT,
+        TRIPLET_COLOUR_INDEX_MASK, TRIPLETS_PER_PACKET,
     };
     use crate::types::PresentationFields;
 
@@ -306,42 +202,6 @@ pub(super) mod encode {
                 | u32::from(colours.row & TRIPLET_COLOUR_INDEX_MASK) << DEFAULT_ROW_COLOUR_SHIFT
                 | u32::from(colours.black_background_substitution) << BLACK_SUBSTITUTION_SHIFT
                 | (u32::from(colours.remapping) & REMAPPING_MASK) << REMAPPING_SHIFT;
-        }
-        values
-    }
-
-    /// Triplet values of X/28/1 or M/29/1; absent tables are 0.
-    #[must_use]
-    pub fn drcs_colour_values(data: &DrcsColourData) -> [u32; TRIPLETS_PER_PACKET] {
-        let mut values = [0u32; TRIPLETS_PER_PACKET];
-        if let Some(slot) = values.get_mut(T1) {
-            *slot = data.triplet_1.unwrap_or(0);
-        }
-        let tables: [(Option<&[u8]>, usize); 4] = [
-            (data.global_4.as_ref().map(<[u8; 4]>::as_slice), CLUT_GLOBAL_4),
-            (data.normal_4.as_ref().map(<[u8; 4]>::as_slice), CLUT_NORMAL_4),
-            (data.global_16.as_ref().map(<[u8; 16]>::as_slice), CLUT_GLOBAL_16),
-            (data.normal_16.as_ref().map(<[u8; 16]>::as_slice), CLUT_NORMAL_16),
-        ];
-        for (table, start) in tables {
-            for (index, &entry) in table.unwrap_or(&[]).iter().enumerate() {
-                let position = start.saturating_add(index.saturating_mul(DRCS_CLUT_ENTRY_BITS));
-                set_stream_bits(&mut values, position, DRCS_CLUT_ENTRY_BITS, u32::from(entry));
-            }
-        }
-        values
-    }
-
-    /// Triplet values of X/28/3.
-    #[must_use]
-    pub fn drcs_mode_values(format: PageFormat, modes: &DrcsModes) -> [u32; TRIPLETS_PER_PACKET] {
-        let mut values = [0u32; TRIPLETS_PER_PACKET];
-        if let Some(slot) = values.get_mut(T1) {
-            *slot = format.bits();
-        }
-        for ptu in 0..DRCS_PTUS {
-            let start = DRCS_MODES_START.saturating_add(ptu.saturating_mul(DRCS_MODE_BITS));
-            set_stream_bits(&mut values, start, DRCS_MODE_BITS, u32::from(modes.mode(ptu).unwrap_or(0)));
         }
         values
     }

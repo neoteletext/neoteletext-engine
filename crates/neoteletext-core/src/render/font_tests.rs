@@ -1,6 +1,6 @@
 //! Tests of drawing loaded fonts (REQ-FNT-005, REQ-FNT-008): a 12 by 10
 //! glyph drawn as given, each line twice in the 12-by-20 cell, never
-//! rounded, enlarged as a mode 0 DRCS character is, with every attribute,
+//! rounded, enlarged by double width and height, with every attribute,
 //! and the fallback from the font in use to the user's font to the bundled
 //! glyphs. The test fonts are patterns made here, not typefaces.
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
@@ -13,7 +13,7 @@ use crate::charset::{CharRef, CharSet, G0, G0Set, G2Set, NationalOption};
 use crate::glyphs::conformance::{FONT_SET_COUNT, font_set_index};
 use crate::glyphs::{FontTableError, LoadedFont};
 use crate::level1::CellAttributes;
-use crate::types::{DrcsCharacter, FontGlyph};
+use crate::types::FontGlyph;
 use std::vec::Vec;
 
 /// A pattern whose ten lines all differ, so a test sees which line is
@@ -214,15 +214,14 @@ fn attributes_apply() {
     assert_eq!(drawn[..CELL_FIELD_LINES - 1], PATTERN[..CELL_FIELD_LINES - 1]);
 }
 
-/// Decision E.72 item 8: mosaics, G3 and DRCS characters are never drawn
-/// from a font.
+/// Decision E.72 item 8: mosaics and G3 characters are never drawn from a
+/// font.
 #[test]
-fn mosaics_g3_and_drcs_are_unchanged() {
+fn mosaics_and_g3_are_unchanged() {
     for glyph in [
         Glyph::Mosaic { pattern: 0x2A, separated: false },
         Glyph::Mosaic { pattern: 0x15, separated: true },
         Glyph::Char(CharRef::new(CharSet::G3, 0x2F)),
-        Glyph::Char(CharRef::drcs(DrcsCharacter { table: DrcsTable::Normal, subtable: 0, character: 3 })),
         Glyph::Space,
     ] {
         let c = cell(glyph);

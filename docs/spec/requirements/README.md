@@ -15,7 +15,7 @@
 | L15 | Level 1.5 presentation | `l15.md` |
 | L25 | Level 2.5 and 3.5 enhancement: attributes, colours, side panels and characters (section F.9a) | `l25.md` |
 | OBJ | Objects, object pages and the links to enhancement pages (section F.9b) | `obj.md` |
-| DRC | Dynamically redefinable characters (section F.9c) | `drc.md` |
+| DRC | Dynamically redefinable characters (section F.9c), withdrawn on 20 October 2026: DRCS is not decoded (decision E.95) | `drc.md` |
 | NAV | Navigation and viewer functions | `nav.md` |
 | RND | Rendering and output | `rnd.md` |
 | INP | Input formats | `inp.md` |

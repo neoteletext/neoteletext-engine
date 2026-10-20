@@ -92,12 +92,13 @@ Pages with C5 or C6 set shall be stored and displayed like other pages. Their di
 *Verification:* Test with a subtitle stream.
 
 **REQ-ACQ-016 — Enhancement pages are stored as received.**
-At Levels 2.5 and 3.5, the store shall keep object pages, DRCS pages and the Magazine Organization Table (decision E.56). The rows of these pages shall be stored as received, so that each reception replaces the stored bytes of the packets it carries, with no merge by parity (REQ-ACQ-008 and decision E.8 do not apply):
-- a page whose X/28/0 page function is not "basic Level 1 page";
+At Levels 2.5 and 3.5, the store shall keep object pages, the Magazine Organization Table, and every other page whose function is not "basic Level 1 page", DRCS pages among them (decision E.56). The rows of these pages shall be stored as received, so that each reception replaces the stored bytes of the packets it carries, with no merge by parity (REQ-ACQ-008 and decision E.8 do not apply):
+- a page whose X/28/0 or X/28/3 page function is not "basic Level 1 page";
 - page xFE of each magazine;
-- a page that a stored link of a Magazine Organization Table, or of a packet X/27/4 or X/27/5, names as an object or DRCS page.
+- a page that a stored link of a Magazine Organization Table, or of a packet X/27/4 or X/27/5, names as an object page.
 
 A page that becomes an enhancement page only after it was first stored shall be stored as received from its next reception on. Each packet's presence shall be recorded.
+*Amended 20 October 2026 (decision E.95):* DRCS is not decoded, and the parts of this requirement that concerned it are removed.
 *Verification:* Test with repeated receptions containing Hamming-coded bytes, and with a page that is named by a link after it was first stored.
 
 **REQ-ACQ-017 — Hexadecimal pages at Levels 2.5 and 3.5.**
@@ -113,7 +114,7 @@ Enhancement pages shall be kept in a part of the store whose capacity, in packet
 *Verification:* Test that fills the enhancement store beyond its capacity.
 
 **REQ-ACQ-020 — The read-only enhancement lookup.**
-The page store shall offer a read-only lookup that the presentation layer uses to reach enhancement data (decision E.42). Given a magazine, a page number and an S1 sub-page number, it shall return the stored packets of that object or DRCS sub-page, with the record of which packets were received. Given a magazine, it shall return that magazine's Magazine Organization Table and its stored M/29 packets. The lookup shall have no side effects. Its cost shall not grow with the number of stored pages faster than a bounded search (REQ-SEC-012).
+The page store shall offer a read-only lookup that the presentation layer uses to reach enhancement data (decision E.42). Given a magazine, a page number and an S1 sub-page number, it shall return the stored packets of that enhancement sub-page, with the record of which packets were received. Given a magazine, it shall return that magazine's Magazine Organization Table and its stored M/29 packets. The lookup shall have no side effects. Its cost shall not grow with the number of stored pages faster than a bounded search (REQ-SEC-012).
 *Verification:* Inspection; test.
 
 **REQ-ACQ-021 — Updates of enhancement pages.**
@@ -122,7 +123,8 @@ For each stored enhancement sub-page, the store shall apply the page status of A
 - a partial transmission (C13 set) and a continued fragment (C12 set) shall replace only the packets they carry;
 - a change of the update indicator S2 shall be reported, so that decoded data taken from the sub-page is not reused.
 
-The sub-code's last-packet number (S4 and S3) shall be recorded, so that completeness can be judged (REQ-DRC-009).
+The sub-code's last-packet number (S4 and S3) shall be recorded, so that completeness can be judged.
+*Amended 20 October 2026 (decision E.95):* DRCS is not decoded, and the parts of this requirement that concerned it are removed.
 *Verification:* Test for every row of Table B.1.
 
 **REQ-ACQ-022 — Redrawing when enhancement data arrives.**

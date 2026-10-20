@@ -149,8 +149,8 @@ pub struct ComposeContext<'a> {
     pub store: &'a PageStore<'a>,
     /// A receiver-drawn row 24 (REQ-NAV-011).
     pub row24: Option<[u8; crate::consts::COLUMNS]>,
-    /// The stored object pages, DRCS pages and Magazine Organization
-    /// Tables, for Levels 2.5 and 3.5 (REQ-ACQ-020).
+    /// The stored object pages, other enhancement pages and Magazine
+    /// Organization Tables, for Levels 2.5 and 3.5 (REQ-ACQ-020).
     pub lookup: EnhancementLookup<'a>,
 }
 
@@ -480,9 +480,9 @@ impl Viewer {
     /// once `context` no longer borrows the decoder (REQ-L25-051); the
     /// decoder counts each build once however often the page is redrawn.
     #[must_use]
-    pub fn compose<const DRCS: usize, const PANEL_ROWS: usize>(
+    pub fn compose<const PANEL_ROWS: usize>(
         &self,
-        grid: &mut Grid<DRCS, PANEL_ROWS>,
+        grid: &mut Grid<PANEL_ROWS>,
         page: Option<&StoredPage>,
         context: &ComposeContext<'_>,
     ) -> Composed {

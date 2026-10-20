@@ -1,14 +1,13 @@
 //! Each capability of decision E.71 compiled out (REQ-GEN-020): its page
 //! data is ignored as the decision says, never an error. Each test runs
 //! only in the builds that leave its capability out; the builds with it
-//! test what it does in `level25.rs`, `objects.rs` and `drcs.rs`.
+//! test what it does in `level25.rs` and `objects.rs`.
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects, missing_docs)]
 // The helpers serve only the tests of capabilities compiled out, so in a
 // build with every capability they are unused.
 #![cfg_attr(
     all(
         feature = "objects",
-        feature = "drcs-multicolour",
         feature = "bold",
         feature = "italic",
         feature = "side-panels",
@@ -21,56 +20,11 @@
 mod common;
 
 use common::{display_page, local_data, set_position};
-#[cfg(not(feature = "drcs-multicolour"))]
-use common::{drcs_page, link, null_link, ptu, x27};
-#[cfg(not(feature = "drcs-multicolour"))]
-use neoteletext_core::config::PresentationLevel;
-#[cfg(not(feature = "drcs-multicolour"))]
-use neoteletext_core::consts::{
-    DRCS_PTU_BYTES, DRCS_PTUS, LINK_FUNCTION_DRCS, LINK_FUNCTION_GDRCS, LINK_FUNCTION_GPOP, LINK_FUNCTION_POP,
-};
 use neoteletext_core::packet::{Packet, TripletFunction};
-#[cfg(not(feature = "drcs-multicolour"))]
-use neoteletext_core::types::{DrcsCharacter, DrcsTable};
-
-// Only the DRCS tests below use these, so only builds without
-// multicolour DRCS have them.
-#[cfg(not(feature = "drcs-multicolour"))]
-const L35: PresentationLevel = PresentationLevel::Level35;
-#[cfg(not(feature = "drcs-multicolour"))]
-/// The DRCS page of these tests.
-const DRCS: u16 = 0x1B0;
 
 /// Page 100 with Level 1 rows and local enhancement data.
 fn page(rows: &[(u8, &[u8])], local: &[TripletFunction]) -> Vec<Packet> {
     display_page(0, rows, local_data(local))
-}
-
-#[cfg(not(feature = "drcs-multicolour"))]
-/// Page 100 with a DRCS link and one DRCS character at row 1, column 0,
-/// then the DRCS page, with mode codes when given.
-fn drcs_stream(modes: Option<[u8; DRCS_PTUS]>) -> Vec<Packet> {
-    let links = x27(
-        4,
-        [
-            null_link(LINK_FUNCTION_GPOP),
-            null_link(LINK_FUNCTION_POP),
-            null_link(LINK_FUNCTION_GDRCS),
-            link(LINK_FUNCTION_DRCS, 0b11, DRCS),
-            null_link(0),
-            null_link(0),
-        ],
-    );
-    let local = [set_position(1, 0), TripletFunction::DrcsCharacter { column: 0, normal: true, character: 0 }];
-    let mut packets = display_page(0, &[], [vec![links], local_data(&local)].concat());
-    let solid: [u8; DRCS_PTU_BYTES] = ptu([0xFFF; 10]);
-    packets.extend(drcs_page(DRCS, 0, &[(0, solid), (1, solid)], modes));
-    packets
-}
-
-#[cfg(not(feature = "drcs-multicolour"))]
-fn first_drcs() -> DrcsCharacter {
-    DrcsCharacter { table: DrcsTable::Normal, subtable: 0, character: 0 }
 }
 
 /// Without objects, an invocation places nothing (decision E.71).
@@ -87,36 +41,8 @@ fn objects_compiled_out_are_ignored() {
     let mut data = vec![set_position(3, 4), invoke(ObjectSource::Local, ObjectKind::Passive, local_number(1, 0))];
     data.push(end());
     let packets = display_page(0, &[], vec![x26(0, &data), x26(1, &object)]);
-    let (grid, _) = build(&packets, L35);
+    let (grid, _) = build(&packets, neoteletext_core::config::PresentationLevel::Level35);
     assert_ne!(char_of(&grid.cells[3][4]), 'P');
-}
-
-/// Without DRCS, every DRCS character is missing: it has no pattern
-/// (decision E.71, REQ-DRC-007).
-#[cfg(not(feature = "drcs"))]
-#[test]
-fn drcs_compiled_out_is_missing() {
-    use common::build;
-    let (grid, report) = build(&drcs_stream(None), L35);
-    assert!(grid.drcs_pattern(first_drcs()).is_none());
-    assert!(report.unwrap().faults.drcs_missing > 0, "counted as missing");
-}
-
-/// Without multicolour DRCS, a mode 1 character is missing at Level 3.5,
-/// as it is below Level 3.5 (decision E.71).
-#[cfg(all(feature = "drcs", not(feature = "drcs-multicolour")))]
-#[test]
-fn multicolour_drcs_compiled_out_is_missing() {
-    use common::build;
-    use neoteletext_core::consts::{DRCS_MODE_12X10X2, DRCS_MODE_NO_DATA, DRCS_MODE_SUBSEQUENT};
-    let mut codes = [DRCS_MODE_NO_DATA; DRCS_PTUS];
-    codes[0] = DRCS_MODE_12X10X2;
-    codes[1] = DRCS_MODE_SUBSEQUENT;
-    let (grid, _) = build(&drcs_stream(Some(codes)), L35);
-    assert!(grid.drcs_pattern(first_drcs()).is_none());
-    // A mode 0 character is still drawn.
-    let (grid, _) = build(&drcs_stream(None), L35);
-    assert!(grid.drcs_pattern(first_drcs()).is_some());
 }
 
 /// Without bold or italic, the style is not applied (decision E.71).

@@ -91,19 +91,19 @@ fn national_options_apply_to_level_1_only() {
 }
 
 /// REQ-CHR-011: G3 characters written by X/26 convert to their Unicode
-/// characters, position 5/F to a space, and a DRCS character to the
-/// fallback U+FFFD.
+/// characters and position 5/F to a space. Decision E.95: a DRCS Character
+/// Invocation is not acted on, so the Level 1 character beneath it shows.
 #[test]
-fn g3_and_drcs_cells_convert_to_unicode() {
+fn g3_cells_convert_to_unicode_and_drcs_is_not_drawn() {
     let local = [
         set_position(1, 0),
         TripletFunction::G3Character { column: 0, code: 0x51, level_15_form: false },
         TripletFunction::G3Character { column: 1, code: 0x5F, level_15_form: false },
-        TripletFunction::DrcsCharacter { column: 2, normal: true, character: 3 },
+        TripletFunction::UnsupportedColumn { column: 2, mode: 0b01101, data: 0x43 },
     ];
-    let grid = build_25(&page(&[], &local));
+    let grid = build_25(&page(&[(1, b"ABC")], &local));
     let converted: Vec<char> = grid.cells[1][..3].iter().map(char_of).collect();
-    assert_eq!(converted, ['\u{2500}', ' ', '\u{FFFD}']);
+    assert_eq!(converted, ['\u{2500}', ' ', 'C']);
 }
 
 /// REQ-L25-011: a G1 character written by a triplet is separated by the

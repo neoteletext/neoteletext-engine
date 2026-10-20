@@ -11,9 +11,7 @@
 //! - `U+XXXX`, a G0 or G2 character, precomposed with its mark where
 //!   Unicode allows, as `neottx text` writes it;
 //! - `M` and the two hex digits of the block pattern, then `c` or `s`;
-//! - `G3:XX`, a G3 character by its code;
-//! - `Dn` (normal) or `Dg` (global), the sub-table in hex, `:`, and the
-//!   character number in decimal.
+//! - `G3:XX`, a G3 character by its code.
 //!
 //! A cell is `CHARACTER/FOREGROUND/BACKGROUND/SIZE/FLAGS`. SIZE is the
 //! vertical role (`N` normal, `T` top half, `B` bottom half) followed by
@@ -23,7 +21,6 @@
 
 use neoteletext_core::charset::{CharSet, compose, to_unicode};
 use neoteletext_core::level1::{Cell, Glyph, Grid, Size, Width};
-use neoteletext_core::types::DrcsTable;
 use std::fmt::Write as _;
 
 fn character(cell: &Cell, out: &mut String) {
@@ -35,10 +32,6 @@ fn character(cell: &Cell, out: &mut String) {
         Glyph::Char(reference) => match reference.set {
             CharSet::G3 => {
                 let _ = write!(out, "G3:{:02X}", reference.code);
-            }
-            CharSet::Drcs { table, subtable } => {
-                let table = if table == DrcsTable::Normal { 'n' } else { 'g' };
-                let _ = write!(out, "D{table}{subtable:X}:{}", reference.code);
             }
             CharSet::G0(_) | CharSet::G2(_) => {
                 let unicode = to_unicode(reference);
@@ -115,12 +108,10 @@ mod tests {
         let mut grid: Box<Grid> = Box::new(Grid::empty());
         grid.cells[1][0].glyph = Glyph::Char(CharRef::new(CharSet::G3, 0x2F));
         grid.cells[1][1].glyph = Glyph::Mosaic { pattern: 0x3F, separated: true };
-        grid.cells[1][2].glyph =
-            Glyph::Char(CharRef::new(CharSet::Drcs { table: DrcsTable::Normal, subtable: 0xA }, 47));
-        grid.cells[1][3].size = Size::DoubleTop;
-        grid.cells[1][3].flash = true;
+        grid.cells[1][2].size = Size::DoubleTop;
+        grid.cells[1][2].flash = true;
         let dump = cells(&grid);
         let row = dump.lines().nth(2).unwrap_or_default();
-        assert!(row.starts_with("01/0 G3:2F/7/0/NN/ M3Fs/7/0/NN/ DnA:47/7/0/NN/ S/7/0/TN/f "), "{row}");
+        assert!(row.starts_with("01/0 G3:2F/7/0/NN/ M3Fs/7/0/NN/ S/7/0/TN/f "), "{row}");
     }
 }

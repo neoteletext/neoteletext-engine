@@ -1,6 +1,6 @@
 //! The enhancement lines of TTI files and the pages of Levels 2.5 and 3.5
 //! (REQ-TST-042, REQ-INP-023): packed `OL,26` to `OL,29` lines, `PF`
-//! lines and the rows of object, DRCS and table pages, under each page
+//! lines and the rows of object, pattern and table pages, under each page
 //! coding. Every page read is encoded and its packets decoded, and writing
 //! the pages and reading them back must be stable.
 //!
@@ -17,8 +17,9 @@ use neoteletext_formats::page::PageFile;
 use neoteletext_formats::tti::TtiReader;
 use neoteletext_formats::write::write_tti;
 
-/// Pages that select each row coding: an object page (010), a DRCS page
-/// (000), a table without `PF` (011), a carrier of magazine packets and a
+/// Pages that select each row coding: an object page (010), a page with
+/// the DRCS page function (000), which is not decoded (decision E.95), a
+/// table without `PF` (011), a carrier of magazine packets and a
 /// display page.
 const HEADS: [&[u8]; 5] = [b"PN,1A000\nPF,3,2\n", b"PN,1B000\nPF,5,0\n", b"PN,1FE00\n", b"PN,1FF00\n", b"PN,10000\n"];
 /// The commands a line may start with.

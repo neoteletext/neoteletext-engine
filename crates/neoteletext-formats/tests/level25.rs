@@ -87,9 +87,6 @@ fn check_stream(stream: &Stream, packets: &[Packet], level: PresentationLevel) -
                             Ok(Decoded::Magazine { packet: MagazinePacket::Data(fields), .. }) => {
                                 assert_eq!(data.data, Some(fields));
                             }
-                            Ok(Decoded::Magazine { packet: MagazinePacket::DrcsColours(colours), .. }) => {
-                                assert_eq!(data.drcs_colours, Some(colours));
-                            }
                             Ok(Decoded::Magazine { packet: MagazinePacket::Level35(fields), .. }) => {
                                 assert_eq!(data.level35, Some(fields));
                             }
@@ -160,9 +157,6 @@ fn check_display(page: &PageFile, stored: &StoredPage) {
                 assert_eq!(stored.compositional_links[usize::from(designation - 4)], Some(links));
             }
             Ok(Decoded::PageData { packet: PagePacket::Format1(data), .. }) => assert_eq!(stored.page_data, Some(data)),
-            Ok(Decoded::PageData { packet: PagePacket::DrcsColours(data), .. }) => {
-                assert_eq!(stored.drcs_colours, Some(data));
-            }
             Ok(Decoded::PageData { packet: PagePacket::Level35(data), .. }) => {
                 assert_eq!(stored.page_data_level35, Some(data));
             }
@@ -217,16 +211,15 @@ fn authored_stream_lands_in_the_stores() {
     for level in [PresentationLevel::Level25, PresentationLevel::Level35] {
         let (display, enhancement) = check_stream(&stream, &packets, level);
         assert_eq!(display, streams::display_pages().unwrap().len());
-        // 1A0 (two sub-pages), 1E0, 1B0 (two), 1C0, 1B1, 1B2, 1B3, 1FE,
-        // 2A9, 3A0, 2F0, 2FE, 4F0, 4A0, 4FE, 5A0, 5A1, 5A2, 5FE.
-        assert_eq!(enhancement, 21);
+        // 1A0 (two sub-pages), 1E0, 1FE, 2A9, 3A0, 2F0, 2FE, 4F0, 4A0,
+        // 4FE, 5A0, 5A1, 5A2, 5FE.
+        assert_eq!(enhancement, 15);
     }
     // Every class of page is present.
     let classes: Vec<TransmissionClass> = stream.pages().iter().map(|page| transmission_class(page)).collect();
     for class in [
         TransmissionClass::MagazinePackets,
         TransmissionClass::OrganizationTable,
-        TransmissionClass::Drcs,
         TransmissionClass::Objects,
         TransmissionClass::Display,
     ] {
@@ -267,8 +260,9 @@ fn authored_stream_keeps_the_transmission_order() {
 }
 
 /// REQ-TST-024: between them the pages use every row mode of Table 28 and
-/// every column mode of Table 29, every object source and type, DRCS
-/// characters of every mode, and every variant of X/28 and M/29.
+/// every column mode of Table 29 (the DRCS modes among them, sent though
+/// not acted on, decision E.95), every object source and type, and every
+/// variant of X/28 and M/29 that is read.
 #[test]
 fn authored_stream_uses_every_mode() {
     use neoteletext_core::packet::{ObjectKind, ObjectSource};
@@ -278,7 +272,6 @@ fn authored_stream_uses_every_mode() {
     let mut column_modes = BTreeSet::new();
     let mut invocations = BTreeSet::new();
     let mut packets_seen = BTreeSet::new();
-    let mut drcs_modes = BTreeSet::new();
     let kind_name = |kind: ObjectKind| kind as u8;
     let pages_and_packets = stream.pages().into_iter().flat_map(|page| {
         let objects = transmission_class(page) == TransmissionClass::Objects;
@@ -296,15 +289,11 @@ fn authored_stream_uses_every_mode() {
             }
             Ok(Decoded::PageData { packet: page_packet, .. }) => {
                 packets_seen.insert((address.number, packet_designation(&page_packet)));
-                if let PagePacket::DrcsModes(modes) = page_packet {
-                    drcs_modes.extend((0..48).filter_map(|ptu| modes.mode(ptu)));
-                }
                 Vec::new()
             }
             Ok(Decoded::Magazine { packet, .. }) => {
                 let designation = match packet {
                     MagazinePacket::Data(_) => 0,
-                    MagazinePacket::DrcsColours(_) => 1,
                     MagazinePacket::Level35(_) => 4,
                 };
                 packets_seen.insert((PACKET_MAGAZINE_ENHANCEMENT, designation));
@@ -336,19 +325,15 @@ fn authored_stream_uses_every_mode() {
             assert!(invocations.contains(&(source as u8, kind_name(kind))), "{source:?} {kind:?}");
         }
     }
-    for expected in [(27, 4), (27, 5), (28, 0), (28, 1), (28, 3), (28, 4), (29, 0), (29, 1), (29, 4)] {
+    for expected in [(27, 4), (27, 5), (28, 0), (28, 4), (29, 0), (29, 4)] {
         assert!(packets_seen.contains(&expected), "{expected:?}");
-    }
-    for mode in [0, 1, 2, 3, 0xE, 0xF] {
-        assert!(drcs_modes.contains(&mode), "DRCS mode code {mode}");
     }
 }
 
 fn packet_designation(packet: &PagePacket) -> u8 {
     match packet {
         PagePacket::Format1(_) => 0,
-        PagePacket::DrcsColours(_) => 1,
-        PagePacket::DrcsModes(_) => 3,
+        PagePacket::PageFunction(_) => 3,
         PagePacket::Level35(_) => 4,
     }
 }

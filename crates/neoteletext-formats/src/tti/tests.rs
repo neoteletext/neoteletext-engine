@@ -370,7 +370,8 @@ fn encoded_pages_decode_to_the_same_fields() {
     assert_eq!(links.links[0].unwrap().page.0, 0xA1);
     assert_eq!(links.links[1].unwrap().magazine.number(), 2);
     assert!(matches!(decoded[3], Decoded::PageData { .. }));
-    assert!(matches!(decoded[4], Decoded::PageData { packet: PagePacket::DrcsColours(_), .. }));
+    // X/28/1 is sent as read, and not decoded (decision E.95).
+    assert!(matches!(decoded[4], Decoded::Ignored(_)));
     let Decoded::Enhancement(enhancement) = decoded[5] else { panic!("{:?}", decoded[5]) };
     assert_eq!(enhancement.triplets.map(Option::unwrap), sample_triplets());
     let rows: Vec<_> = decoded[6..]
@@ -398,8 +399,8 @@ fn encoded_pages_decode_to_the_same_fields() {
 /// X/28/4 lines.
 pub(crate) fn enhancement_pages() -> Vec<u8> {
     use crate::encode::{nibble_row, packed_row};
+    use neoteletext_core::packet::CompositionalLink;
     use neoteletext_core::packet::encode as packet_encode;
-    use neoteletext_core::packet::{CompositionalLink, DrcsColourData, DrcsModes};
     use neoteletext_core::types::{Magazine, PageNumber, PresentationFields};
     let mut text = Vec::new();
     let mut line = |parts: &[&[u8]]| {
@@ -425,9 +426,8 @@ pub(crate) fn enhancement_pages() -> Vec<u8> {
     let mut ptus = [0x40u8; 40];
     ptus[..4].copy_from_slice(&[0x7F, 0x7F, 0x60, 0x7E]);
     line(&[b"OL,1,", &ptus]);
-    let modes = DrcsModes::from_codes(None, &[0; 48]);
     let format = PageFormat { function: 5, coding: 0 };
-    line(&[b"OL,28,", &packet_line(3, &packet_encode::drcs_modes(magazine, format, &modes))]);
+    line(&[b"OL,28,", &packet_line(3, &packet_encode::page_function(magazine, format))]);
     line(&[b"PN,1FE00"]);
     let mut nibbles = [0u8; 40];
     for (index, value) in nibbles.iter_mut().enumerate() {
@@ -437,8 +437,8 @@ pub(crate) fn enhancement_pages() -> Vec<u8> {
     line(&[b"PN,1FF00"]);
     let fields = PresentationFields::default();
     line(&[b"OL,29,", &packet_line(0, &packet_encode::magazine_enhancement(magazine, 0, &fields))]);
-    let colours = DrcsColourData::default();
-    line(&[b"OL,29,", &packet_line(1, &packet_encode::drcs_colours(magazine, 29, &colours))]);
+    let colours = packet_encode::triplet_packet(magazine, 29, 1, &[Triplet::default(); 13]);
+    line(&[b"OL,29,", &packet_line(1, &colours)]);
     line(&[b"OL,29,", &packet_line(4, &packet_encode::magazine_enhancement(magazine, 4, &fields))]);
     line(&[b"PN,10000"]);
     line(&[b"OL,1,Display"]);
@@ -524,7 +524,8 @@ fn enhancement_pages_are_coded_by_their_page_coding() {
 
     let kinds: Vec<_> = packets_of(&pages[3]).iter().map(|packet| decode(packet).unwrap()).collect();
     assert!(matches!(kinds[0], Decoded::Magazine { packet: MagazinePacket::Data(_), .. }));
-    assert!(matches!(kinds[1], Decoded::Magazine { packet: MagazinePacket::DrcsColours(_), .. }));
+    // M/29/1 is sent as read, and not decoded (decision E.95).
+    assert!(matches!(kinds[1], Decoded::Ignored(_)));
     assert!(matches!(kinds[2], Decoded::Magazine { packet: MagazinePacket::Level35(_), .. }));
     assert!(matches!(kinds[3], Decoded::Header(_)));
 
@@ -576,13 +577,11 @@ fn malformed_enhancement_lines_are_reported() {
 /// as function 5 and its written copy as function 4.
 #[test]
 fn packet_28_function_wins_in_any_line_order() {
-    use neoteletext_core::packet::DrcsModes;
     use neoteletext_core::packet::encode as packet_encode;
     use neoteletext_core::types::{Magazine, PresentationFields};
     let magazine = Magazine::new(1).unwrap();
-    let modes = DrcsModes::from_codes(None, &[0; 48]);
     let drcs = PageFormat { function: 4, coding: 0 };
-    let x28_3 = [&b"OL,28,"[..], &packet_line(3, &packet_encode::drcs_modes(magazine, drcs, &modes))].concat();
+    let x28_3 = [&b"OL,28,"[..], &packet_line(3, &packet_encode::page_function(magazine, drcs))].concat();
     let basic = PageFormat { function: 0, coding: 0 };
     let fields = PresentationFields::default();
     let x28_0 =

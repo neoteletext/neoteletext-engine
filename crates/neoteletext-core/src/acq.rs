@@ -5,18 +5,17 @@
 //! every page in a [`PageStore`] whose memory the caller provides
 //! (REQ-GEN-003). It raises [`Event`]s through a callback (REQ-ARCH-005).
 //!
-//! Enhancement pages (object pages, DRCS pages and the Magazine
-//! Organization Table) are kept as received in an [`EnhancementStore`], the
+//! Enhancement pages (object pages, the Magazine Organization Table, and
+//! any other page whose function is not a basic Level 1 page) are kept as received in an [`EnhancementStore`], the
 //! part of the store with its own capacity in packets (decision E.56), and
 //! the presentation layer reads them through the [`EnhancementLookup`].
 
 use crate::config::{Config, ParityPolicy, PresentationLevel};
 use crate::consts::{
     C4_ERASE, C8_UPDATE, C9_INTERRUPTED, CLOCK_COLUMN, COLUMNS, COMPOSITIONAL_LINKS, DATA_BYTES, DESIGNATION_CODES,
-    DESIGNATION_LINKS_LEVEL_25, HEADER_DISPLAY_BYTES, HEADER_DISPLAY_COLUMN, LINK_NULL_PAGE, MAGAZINES, MOT_DRCS_LINKS,
-    MOT_DRCS_LINKS_LEVEL_25, MOT_DRCS_LINKS_LEVEL_35, MOT_OBJECT_LINKS_LEVEL_25, MOT_OBJECT_LINKS_LEVEL_35,
-    MOT_OBJECT_LINKS_PER_PACKET, PAGE_CODING_PARITY, PAGE_FUNCTION_BASIC, PAGE_MOT, SERVICE_FORMAT_2_BIT, SPACE,
-    STORED_ROWS, TRIPLETS_PER_PACKET,
+    DESIGNATION_LINKS_LEVEL_25, HEADER_DISPLAY_BYTES, HEADER_DISPLAY_COLUMN, LINK_FUNCTION_GPOP, LINK_FUNCTION_POP,
+    LINK_NULL_PAGE, MAGAZINES, MOT_OBJECT_LINKS_LEVEL_25, MOT_OBJECT_LINKS_LEVEL_35, MOT_OBJECT_LINKS_PER_PACKET,
+    PAGE_CODING_PARITY, PAGE_FUNCTION_BASIC, PAGE_MOT, SERVICE_FORMAT_2_BIT, SPACE, STORED_ROWS, TRIPLETS_PER_PACKET,
 };
 use crate::ecc::has_odd_parity;
 use crate::fsm::{
@@ -25,8 +24,8 @@ use crate::fsm::{
     page_transition,
 };
 use crate::packet::{
-    CompositionalLink, Decoded, DrcsColourData, Header, Links, MagazinePacket, Packet, PacketError, PacketMeta,
-    PageEnhancement, PageFormat, PagePacket, ServicePacket, Triplet, decode, mot_drcs_link, mot_object_link,
+    CompositionalLink, Decoded, Header, Links, MagazinePacket, Packet, PacketError, PacketMeta, PageEnhancement,
+    PageFormat, PagePacket, ServicePacket, Triplet, decode, mot_object_link,
 };
 use crate::trace::{Machine, TraceEntry};
 
@@ -74,8 +73,6 @@ pub struct StoredPage {
     pub compositional_links: [Option<[Option<CompositionalLink>; COMPOSITIONAL_LINKS]>; 2],
     /// Packet X/28/0, read as format 1 (decision E.44).
     pub page_data: Option<PageEnhancement>,
-    /// Packet X/28/1: the DRCS colour lookup tables (REQ-PKT-013).
-    pub drcs_colours: Option<DrcsColourData>,
     /// Packet X/28/4: the Level 3.5 page data (REQ-PKT-015).
     pub page_data_level35: Option<PageEnhancement>,
     /// Time of the first reception.
@@ -111,7 +108,6 @@ impl StoredPage {
         links_raw_present: 0,
         compositional_links: [None; 2],
         page_data: None,
-        drcs_colours: None,
         page_data_level35: None,
         first_received: Instant(0),
         last_received: Instant(0),
@@ -170,7 +166,6 @@ impl StoredPage {
         self.links_raw_present = 0;
         self.compositional_links = [None; 2];
         self.page_data = None;
-        self.drcs_colours = None;
         self.page_data_level35 = None;
     }
 
@@ -326,8 +321,6 @@ impl<'a> PageStore<'a> {
 pub struct MagazineData {
     /// The latest M/29/0 with packet function 0 (REQ-PKT-016).
     pub data: Option<PresentationFields>,
-    /// The latest M/29/1: the DRCS colour lookup tables.
-    pub drcs_colours: Option<DrcsColourData>,
     /// The latest M/29/4 with packet function 0: the Level 3.5 data.
     pub level35: Option<PresentationFields>,
 }
@@ -442,11 +435,6 @@ pub struct EnhancementFaults {
     /// Cells showing a space for an undefined G2 or G3 position (decision
     /// E.50).
     pub undefined_characters: u32,
-    /// DRCS cells whose data is missing or not yet usable, including those
-    /// beyond the grid's pattern capacity (REQ-DRC-007, REQ-DRC-009).
-    pub drcs_missing: u32,
-    /// DRCS cells whose data is invalid (REQ-DRC-009).
-    pub drcs_invalid: u32,
 }
 
 impl EnhancementFaults {
@@ -459,8 +447,6 @@ impl EnhancementFaults {
         discarded_writes: 0,
         ignored_designations: 0,
         undefined_characters: 0,
-        drcs_missing: 0,
-        drcs_invalid: 0,
     };
 
     /// Adds `other`'s counts to these, saturating.
@@ -472,8 +458,6 @@ impl EnhancementFaults {
         self.discarded_writes = self.discarded_writes.saturating_add(other.discarded_writes);
         self.ignored_designations = self.ignored_designations.saturating_add(other.ignored_designations);
         self.undefined_characters = self.undefined_characters.saturating_add(other.undefined_characters);
-        self.drcs_missing = self.drcs_missing.saturating_add(other.drcs_missing);
-        self.drcs_invalid = self.drcs_invalid.saturating_add(other.drcs_invalid);
     }
 }
 
@@ -565,7 +549,7 @@ pub struct Decoder<'a> {
     receiving_enhancement: [Option<usize>; MAGAZINES],
     start_generation: [Option<u32>; MAGAZINES],
     receiving_control: [ControlBits; MAGAZINES],
-    // Pages that stored links name as object or DRCS pages (decision E.56):
+    // Pages that stored links name as object pages (decision E.56):
     // a bounded hint list, refilled as links arrive.
     named: FixedVec<PageAddress, NAMED_ENHANCEMENT_PAGES>,
     // Where the page of the header being processed is stored.
@@ -577,13 +561,13 @@ pub struct Decoder<'a> {
 /// Bytes of header display data before the clock: columns 8 to 31.
 const ROLLING_BYTES: usize = CLOCK_COLUMN - HEADER_DISPLAY_COLUMN;
 
-/// Addresses kept in the list of pages named by links: every object and
-/// DRCS link of both levels of the eight Magazine Organization Tables
-/// (Tables 20 and 22: 8 object and 8 DRCS links each), so a complete set of
-/// tables always fits. Links of X/27/4 and X/27/5 share the list; when it
-/// is full the oldest address is dropped, and it returns with the next
-/// table or link packet that names it.
-const NAMED_ENHANCEMENT_PAGES: usize = 2 * MAGAZINES * (MOT_OBJECT_LINKS_PER_PACKET * 2 + MOT_DRCS_LINKS);
+/// Addresses kept in the list of pages named by links: every object link
+/// of both levels of the eight Magazine Organization Tables (Table 20: 8
+/// object links each), so a complete set of tables always fits. Links of
+/// X/27/4 and X/27/5 share the list; when it is full the oldest address is
+/// dropped, and it returns with the next table or link packet that names
+/// it.
+const NAMED_ENHANCEMENT_PAGES: usize = 2 * MAGAZINES * MOT_OBJECT_LINKS_PER_PACKET * 2;
 
 /// Where the page of a header is stored.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -596,8 +580,8 @@ struct Route {
 
 impl<'a> Decoder<'a> {
     /// A decoder storing pages in `pages` (REQ-GEN-003), with no store for
-    /// enhancement pages: object pages, DRCS pages and the Magazine
-    /// Organization Table are not kept.
+    /// enhancement pages: object pages and the Magazine Organization Table
+    /// are not kept.
     pub fn new(pages: &'a mut [StoredPage], config: Config) -> Self {
         Self::with_enhancement_store(pages, EnhancementStore::new(&mut [], &mut []), config)
     }
@@ -640,7 +624,8 @@ impl<'a> Decoder<'a> {
     }
 
     /// The read-only lookup through which the presentation layer reaches
-    /// stored object pages, DRCS pages, Magazine Organization Tables and
+    /// stored object pages, Magazine Organization Tables, other enhancement
+    /// pages and
     /// M/29 packets (REQ-ACQ-020).
     #[must_use]
     pub fn enhancement_lookup(&self) -> EnhancementLookup<'_> {
@@ -850,7 +835,12 @@ impl<'a> Decoder<'a> {
         match decoded {
             Decoded::CompositionalLinks { magazine, designation, links } => {
                 self.count(magazine, crate::consts::PACKET_LINKS);
-                for link in links.iter().flatten().filter(|link| link.is_format_1() && !link.is_null()) {
+                // Only object page links are followed (decision E.95).
+                let object_link =
+                    |link: &&CompositionalLink| matches!(link.function, LINK_FUNCTION_GPOP | LINK_FUNCTION_POP);
+                for link in
+                    links.iter().flatten().filter(object_link).filter(|link| link.is_format_1() && !link.is_null())
+                {
                     self.name(PageAddress { magazine: link.magazine, page: link.page });
                 }
                 self.row_like(magazine, now, events, None, |page, _| {
@@ -866,21 +856,20 @@ impl<'a> Decoder<'a> {
                 let stored = self.row_like(magazine, now, events, None, |page, _| {
                     match packet {
                         PagePacket::Format1(data) => page.page_data = Some(data),
-                        PagePacket::DrcsColours(data) => page.drcs_colours = Some(data),
                         PagePacket::Level35(data) => page.page_data_level35 = Some(data),
-                        // X/28/3 belongs to DRCS pages, which are not text
-                        // pages (REQ-OBJ-041).
-                        PagePacket::DrcsModes(_) => {}
+                        // X/28/3 belongs to pattern download pages, which
+                        // are not text pages (REQ-OBJ-041).
+                        PagePacket::PageFunction(_) => {}
                     }
                     (crate::consts::PACKET_PAGE_ENHANCEMENT, 0)
                 });
                 let format = match packet {
                     PagePacket::Format1(data) => data.format,
-                    PagePacket::DrcsModes(modes) => modes.format,
-                    PagePacket::DrcsColours(_) | PagePacket::Level35(_) => None,
+                    PagePacket::PageFunction(format) => format,
+                    PagePacket::Level35(_) => None,
                 };
                 if let (Some(index), Some(format)) = (stored, format) {
-                    self.page_format(index, format, packet, now, events);
+                    self.page_format(index, format, now, events);
                 }
             }
             Decoded::Magazine { magazine, packet } => {
@@ -888,7 +877,6 @@ impl<'a> Decoder<'a> {
                 if let Some(slot) = self.magazine_data.get_mut(magazine.index()) {
                     match packet {
                         MagazinePacket::Data(fields) => slot.data = Some(fields),
-                        MagazinePacket::DrcsColours(data) => slot.drcs_colours = Some(data),
                         MagazinePacket::Level35(fields) => slot.level35 = Some(fields),
                     }
                 }
@@ -902,14 +890,7 @@ impl<'a> Decoder<'a> {
     /// X/28/0 or X/28/3 function is not "basic Level 1 page" is an
     /// enhancement page, stored as received from this packet on
     /// (REQ-ACQ-016, decision E.56).
-    fn page_format(
-        &mut self,
-        index: usize,
-        format: PageFormat,
-        packet: PagePacket,
-        now: Instant,
-        events: &mut dyn FnMut(Event),
-    ) {
+    fn page_format(&mut self, index: usize, format: PageFormat, now: Instant, events: &mut dyn FnMut(Event)) {
         if format.function == PAGE_FUNCTION_BASIC {
             return;
         }
@@ -920,9 +901,6 @@ impl<'a> Decoder<'a> {
         };
         if let Some(entry) = entry {
             self.enhancement.set_format(entry, format);
-            if let PagePacket::DrcsModes(modes) = packet {
-                self.enhancement.set_drcs_modes(entry, modes);
-            }
         }
     }
 
@@ -970,23 +948,17 @@ impl<'a> Decoder<'a> {
         self.named.push(address);
     }
 
-    /// Adds the pages that a stored packet X/19 to X/24 of a Magazine
-    /// Organization Table links to (Tables 20 and 22; decision E.52: the
+    /// Adds the pages that a stored packet X/19, X/20, X/22 or X/23 of a
+    /// Magazine Organization Table links to (Table 20; decision E.52: the
     /// magazine of a table link is absolute).
     fn name_from_table(&mut self, packet: u8, bytes: &[u8; DATA_BYTES]) {
-        let mut found = [None; MOT_DRCS_LINKS];
-        if MOT_OBJECT_LINKS_LEVEL_25.contains(&packet) || MOT_OBJECT_LINKS_LEVEL_35.contains(&packet) {
-            for (link, slot) in found.iter_mut().enumerate().take(MOT_OBJECT_LINKS_PER_PACKET) {
-                *slot =
-                    mot_object_link(bytes, link).map(|link| PageAddress { magazine: link.magazine, page: link.page });
-            }
-        } else if packet == MOT_DRCS_LINKS_LEVEL_25 || packet == MOT_DRCS_LINKS_LEVEL_35 {
-            for (link, slot) in found.iter_mut().enumerate() {
-                *slot = mot_drcs_link(bytes, link).map(|link| PageAddress { magazine: link.magazine, page: link.page });
-            }
+        if !MOT_OBJECT_LINKS_LEVEL_25.contains(&packet) && !MOT_OBJECT_LINKS_LEVEL_35.contains(&packet) {
+            return;
         }
-        for address in found.into_iter().flatten() {
-            self.name(address);
+        for link in 0..MOT_OBJECT_LINKS_PER_PACKET {
+            if let Some(link) = mot_object_link(bytes, link) {
+                self.name(PageAddress { magazine: link.magazine, page: link.page });
+            }
         }
     }
 
@@ -1770,7 +1742,7 @@ mod tests {
         assert!(decoder.enhancement_lookup().magazine_organization_table(mag(4)).is_none());
     }
 
-    /// REQ-ACQ-018: M/29/0, M/29/1 and M/29/4 are kept per magazine, each
+    /// REQ-ACQ-018: M/29/0 and M/29/4 are kept per magazine, each
     /// replacing the last, and are discarded when the network
     /// identification changes or a new input starts.
     #[test]
@@ -1782,7 +1754,6 @@ mod tests {
             colours: Some(crate::types::DefaultColourFields { screen: 3, ..Default::default() }),
             ..PresentationFields::default()
         };
-        let colours = DrcsColourData { global_4: Some([1, 2, 3, 4]), ..Default::default() };
         let service = |network_id: u16| {
             let mut packet = encode::address(mag(8), 30);
             packet.bytes[2] = crate::ecc::hamming84_encode(0);
@@ -1796,7 +1767,6 @@ mod tests {
             &[
                 service(0x1234),
                 encode::magazine_enhancement(mag(5), 0, &fields),
-                encode::drcs_colours(mag(5), 29, &colours),
                 encode::magazine_enhancement(mag(5), 4, &fields),
                 service(0x1234),
             ],
@@ -1805,7 +1775,6 @@ mod tests {
         let data = decoder.magazine_data(mag(5));
         let colours_of = |fields: Option<PresentationFields>| fields.and_then(|fields| fields.colours);
         assert_eq!((colours_of(data.data), colours_of(data.level35)), (fields.colours, fields.colours));
-        assert_eq!(data.drcs_colours.unwrap().global_4, colours.global_4);
         assert_eq!(decoder.enhancement_lookup().magazine_data(mag(5)), Some(&data));
         events.clear();
         feed(&mut decoder, &[service(0x4321)], &mut events);

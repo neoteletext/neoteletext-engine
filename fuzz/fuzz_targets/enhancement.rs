@@ -1,8 +1,9 @@
 //! The whole grid build at Levels 2.5 and 3.5 (REQ-TST-042): a displayed
-//! page, its object pages, DRCS pages, Magazine Organization Table and
-//! magazine packets, all built from the fuzzer's input, through the
-//! decoder with an enhancement store, the enhancement walk, objects, DRCS
-//! decoding and the renderer in the resolved colour mode.
+//! page, its object pages, pages with the DRCS page functions (which are
+//! not decoded, decision E.95), Magazine Organization Table and magazine
+//! packets, all built from the fuzzer's input, through the decoder with an
+//! enhancement store, the enhancement walk, objects and the renderer in
+//! the resolved colour mode.
 //!
 //! The input is a list of records, each naming one of the pages below and
 //! a packet kind, so that the fuzzer reaches the walk rather than spending

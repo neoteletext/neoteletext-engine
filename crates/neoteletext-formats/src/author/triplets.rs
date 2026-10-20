@@ -7,7 +7,6 @@ use neoteletext_core::consts::{ROW_ADDRESS_BASE, ROW_ADDRESS_LAST, ROW_ADDRESS_R
 use neoteletext_core::packet::{
     ColourData, DisplayAttributes, FontStyleData, ObjectKind, ObjectNumber, ObjectSource, Triplet, TripletFunction,
 };
-use neoteletext_core::types::DrcsTable;
 
 use super::{AuthorError, Result};
 
@@ -281,12 +280,6 @@ impl Triplets {
         self
     }
 
-    /// DRCS Mode (row mode 11000): the table, the level bits L1 L0 (01
-    /// Level 2.5, 10 Level 3.5, 11 both) and the sub-table.
-    pub fn drcs_mode(&mut self, table: DrcsTable, levels: u8, subtable: u8) -> &mut Self {
-        self.function(TripletFunction::DrcsMode { normal: table == DrcsTable::Normal, levels, subtable })
-    }
-
     /// Termination Marker (row mode 11111, address 63) of a type
     /// ([`crate::consts::TERMINATION_LOCAL_DATA_END`] and the others).
     pub fn terminate(&mut self, kind: u8) -> &mut Self {
@@ -370,12 +363,6 @@ impl Triplets {
     /// Font Style (column mode 01110, Level 3.5).
     pub fn font(&mut self, column: u8, style: FontStyleData) -> &mut Self {
         self.function(TripletFunction::FontStyle { column, style })
-    }
-
-    /// DRCS Character Invocation (column mode 01101) of character 0 to 47
-    /// of the sub-table chosen for `table`.
-    pub fn drcs(&mut self, column: u8, table: DrcsTable, character: u8) -> &mut Self {
-        self.function(TripletFunction::DrcsCharacter { column, normal: table == DrcsTable::Normal, character })
     }
 
     /// Modified G0 and G2 Character Set Designation (column mode 01000)

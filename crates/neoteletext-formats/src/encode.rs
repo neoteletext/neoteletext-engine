@@ -3,7 +3,7 @@
 //! so that page files take the same decoding path as broadcasts.
 //!
 //! The rows of a page are coded as its page coding says (Table 3,
-//! REQ-INP-023): display pages and DRCS pages as seven bits with odd parity,
+//! REQ-INP-023): display pages as seven bits with odd parity,
 //! object pages as a Hamming 8/4 byte and thirteen Hamming 24/18 triplets,
 //! and the Magazine Organization Table as Hamming 8/4 nibbles. A page file
 //! holds every row as forty 7-bit codes, which for the last two codings are
@@ -14,9 +14,8 @@ use neoteletext_core::consts::{
     COLOUR_MAP_DEFAULTS, COLOUR_RED_BIT, COLOUR_WHITE, COLOUR_WORDS, COLUMNS, DATA_BYTES, DESIGNATION_CODES,
     DESIGNATION_PAGE_DATA, HEADER_DISPLAY_BYTES, HEADER_DISPLAY_COLUMN, MODE_G2, MODE_SET_ACTIVE_POSITION,
     MODE_TERMINATION, NIBBLE_MASK, PACKET_ENHANCEMENT, PACKET_FIRST_ROW, PACKET_LINKS, PACKET_MAGAZINE_ENHANCEMENT,
-    PACKET_PAGE_ENHANCEMENT, PACKET_ROW_24, PACKET_ROW_25, PAGE_FUNCTION_BASIC, PAGE_FUNCTION_DRCS,
-    PAGE_FUNCTION_GDRCS, PAGE_FUNCTION_GPOP, PAGE_FUNCTION_MOT, PAGE_FUNCTION_POP, PAGE_MOT, PAGE_TIME_FILLING,
-    ROW_ADDRESS_LAST, ROW_ADDRESS_ROW_24, SPACE, TRIPLETS_PER_PACKET,
+    PACKET_PAGE_ENHANCEMENT, PACKET_ROW_24, PACKET_ROW_25, PAGE_FUNCTION_BASIC, PAGE_FUNCTION_GPOP, PAGE_FUNCTION_MOT,
+    PAGE_FUNCTION_POP, PAGE_MOT, PAGE_TIME_FILLING, ROW_ADDRESS_LAST, ROW_ADDRESS_ROW_24, SPACE, TRIPLETS_PER_PACKET,
 };
 use neoteletext_core::ecc::{
     PageChecksum, hamming84, hamming84_encode, hamming2418, hamming2418_encode, with_odd_parity,
@@ -217,8 +216,7 @@ pub fn unpack_triplets(characters: &[u8]) -> [Triplet; TRIPLETS_PER_PACKET] {
 /// How the rows X/1 to X/25 of a page are coded (Table 3, REQ-INP-023).
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum RowCoding {
-    /// Seven data bits and odd parity (coding 000): display pages and DRCS
-    /// pages. Codings this encoder cannot write (8-bit data, and the mixed
+    /// Seven data bits and odd parity (coding 000): display pages. Codings this encoder cannot write (8-bit data, and the mixed
     /// codings 100 and 101) are sent this way too.
     Parity,
     /// Coding 010: byte 6 Hamming 8/4, then thirteen Hamming 24/18
@@ -591,8 +589,8 @@ fn second_g0_value(default: u8) -> u8 {
 }
 
 /// The order in which a set of pages is sent (Annex B.7, REQ-INP-024):
-/// magazine packets, then the Magazine Organization Table, the DRCS
-/// pages, the object pages, and last the Level 1 pages.
+/// magazine packets, then the Magazine Organization Table, the object
+/// pages, other data pages, and last the Level 1 pages.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub enum TransmissionClass {
     /// A page mFF that carries magazine packets M/29.
@@ -600,8 +598,6 @@ pub enum TransmissionClass {
     /// Page mFE, or a page whose function is the Magazine Organization
     /// Table.
     OrganizationTable,
-    /// A DRCS or global DRCS page.
-    Drcs,
     /// A Public or Global Public Object Page.
     Objects,
     /// Any other page for further processing.
@@ -624,7 +620,6 @@ pub fn transmission_class(page: &PageFile) -> TransmissionClass {
     match page.function.map(|function| function.function) {
         None | Some(PAGE_FUNCTION_BASIC) => TransmissionClass::Display,
         Some(PAGE_FUNCTION_MOT) => TransmissionClass::OrganizationTable,
-        Some(PAGE_FUNCTION_GDRCS | PAGE_FUNCTION_DRCS) => TransmissionClass::Drcs,
         Some(PAGE_FUNCTION_GPOP | PAGE_FUNCTION_POP) => TransmissionClass::Objects,
         Some(_) => TransmissionClass::OtherData,
     }

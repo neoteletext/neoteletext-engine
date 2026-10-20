@@ -778,17 +778,11 @@ const G3: CodeTable = [
     ' ', ' ', //
 ];
 
-/// The documented fallback of REQ-CHR-010 for characters with no Unicode
-/// equivalent: U+FFFD REPLACEMENT CHARACTER.
-const NO_EQUIVALENT: char = '\u{FFFD}';
-
 pub(super) fn base_unicode(set: CharSet, code: u8) -> char {
     match set {
         CharSet::G0(g0) => g0_unicode(g0, code),
         CharSet::G2(g2) => lookup(g2_table(g2), code),
         CharSet::G3 => lookup(&G3, code),
-        // REQ-CHR-011: a DRCS character has no Unicode equivalent.
-        CharSet::Drcs { .. } => NO_EQUIVALENT,
     }
 }
 

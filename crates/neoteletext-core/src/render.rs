@@ -31,10 +31,9 @@ use crate::consts::{
     PAGE_WIDTH, PALETTE_CONCEAL_BASE, PALETTE_FLASH_BASE, PALETTE_SIZE, PALETTE_TRANSPARENT, RECEIVER_COLUMNS, ROWS,
     SIDE_PANEL_AREA_COLUMNS, SIDE_PANEL_FIRST_COLUMN, SIDE_PANEL_MAX_COLUMNS,
 };
-use crate::drcs::{DrcsMode, DrcsPattern};
 use crate::glyphs::{CharClass, GlyphSet, class};
 use crate::level1::{Cell, CellAttributes, FlashMode, FlashRate, Glyph, Grid, Size, Width, Zoom};
-use crate::types::{DrcsCharacter, DrcsTable, Instant};
+use crate::types::Instant;
 
 /// One line of one cell (REQ-RND-016).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -45,19 +44,12 @@ pub struct CellLine {
     pub foreground: u8,
     /// Index of the gaps.
     pub background: u8,
-    /// For a multi-colour DRCS character (REQ-RND-038): the index of each
-    /// of the twelve dots, leftmost first. `mask` and `foreground` are then
-    /// unused, and `background` is the cell's background index.
-    pub dots: Option<[u8; CELL_WIDTH]>,
 }
 
 impl CellLine {
     /// The index of dot `dot` (0 the leftmost).
     #[must_use]
     pub fn index(&self, dot: usize) -> u8 {
-        if let Some(dots) = &self.dots {
-            return dots.get(dot).copied().unwrap_or(self.background);
-        }
         let on = self.mask.checked_shr(CELL_LAST_HALF_DOT.wrapping_sub(dot) as u32).is_some_and(|bits| bits & 1 == 1);
         if on { self.foreground } else { self.background }
     }
@@ -257,11 +249,7 @@ const fn displayed_colours(cell: &Cell) -> (u8, u8) {
 /// The palette index of a cell's foreground pixels in the palette mode
 /// (REQ-RND-023).
 #[must_use]
-pub fn foreground_index<const DRCS: usize, const PANEL_ROWS: usize>(
-    cell: &Cell,
-    grid: &Grid<DRCS, PANEL_ROWS>,
-    reveal: bool,
-) -> u8 {
+pub fn foreground_index<const PANEL_ROWS: usize>(cell: &Cell, grid: &Grid<PANEL_ROWS>, reveal: bool) -> u8 {
     if grid.boxed_mode && !cell.boxed {
         return PALETTE_TRANSPARENT;
     }
@@ -278,7 +266,7 @@ pub fn foreground_index<const DRCS: usize, const PANEL_ROWS: usize>(
 
 /// The palette index of a cell's background pixels in the palette mode.
 #[must_use]
-pub fn background_index<const DRCS: usize, const PANEL_ROWS: usize>(cell: &Cell, grid: &Grid<DRCS, PANEL_ROWS>) -> u8 {
+pub fn background_index<const PANEL_ROWS: usize>(cell: &Cell, grid: &Grid<PANEL_ROWS>) -> u8 {
     if grid.mix || (grid.boxed_mode && !cell.boxed) { PALETTE_TRANSPARENT } else { displayed_colours(cell).1 }
 }
 
@@ -373,16 +361,6 @@ fn mosaic_line(pattern: u8, separated: bool, line: usize, height: usize) -> u16 
     mask
 }
 
-/// What one line of a cell shows before its colours are chosen.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Dots {
-    /// Dots in the cell's foreground, gaps in its background.
-    Mask(u16),
-    /// A multi-colour DRCS line: the Colour Map index of each dot from the
-    /// DRCS colour table, before flash and transparency.
-    Multi([u8; CELL_WIDTH]),
-}
-
 /// A G0 or G2 character's line (REQ-RND-016): the glyph line, with
 /// rounding in the 12-by-20 mode.
 fn text_line(glyph: &[u8; GLYPH_LINES], source: usize, options: RenderOptions) -> u16 {
@@ -395,8 +373,7 @@ fn text_line(glyph: &[u8; GLYPH_LINES], source: usize, options: RenderOptions) -
 
 /// A loaded font's character line (REQ-FNT-008): a 12 by 10 glyph drawn
 /// as given, each line twice in the 12-by-20 cell, or a 12 by 20 glyph line
-/// for line (decision E.77), as a mode 0 DRCS
-/// character is (REQ-RND-038), and rounded as Bedstead is when the font is
+/// for line (decision E.77), and rounded as Bedstead is when the font is
 /// a doubled dot matrix (issue #209); a character no loaded font has is
 /// drawn from the bundled glyphs. Cold and out of line, so that the
 /// common case, no loaded font, costs the renderer one test (REQ-TST-050).
@@ -463,45 +440,6 @@ fn styled_line(mask: u16, cell: &Cell, source: usize, height: usize, underline: 
     mask & CELL_MASK
 }
 
-/// A DRCS character's line (REQ-RND-038). A missing pattern shows a space
-/// in the background colour (REQ-DRC-009). Each of the ten pattern rows is
-/// one line of the 12-by-10 cell and two lines of the 12-by-20 cell; mode
-/// 3 is stored doubled, so every mode is drawn alike.
-fn drcs_line<const DRCS: usize, const PANEL_ROWS: usize>(
-    pattern: Option<&DrcsPattern>,
-    grid: &Grid<DRCS, PANEL_ROWS>,
-    source: usize,
-    mode: CellMode,
-) -> Dots {
-    // Without DRCS compiled in, every character is missing (decision E.71).
-    let Some(pattern) = pattern.filter(|_| cfg!(feature = "drcs")) else { return Dots::Mask(0) };
-    if !cfg!(feature = "drcs-multicolour") && pattern.mode != DrcsMode::Mode0 {
-        return Dots::Mask(0);
-    }
-    let row = match mode {
-        CellMode::Saa5050 => source / 2,
-        CellMode::Saa5246a => source,
-    };
-    let tables = &grid.drcs_colours;
-    let global = pattern.character.table == DrcsTable::Global;
-    let table: &[u8] = match (pattern.mode, global) {
-        (DrcsMode::Mode0, _) => {
-            let plane = pattern.planes.first().and_then(|plane| plane.get(row)).copied().unwrap_or(0);
-            return Dots::Mask(plane & CELL_MASK);
-        }
-        (DrcsMode::Mode1, true) => &tables.global_4,
-        (DrcsMode::Mode1, false) => &tables.normal_4,
-        (DrcsMode::Mode2 | DrcsMode::Mode3, true) => &tables.global_16,
-        (DrcsMode::Mode2 | DrcsMode::Mode3, false) => &tables.normal_16,
-    };
-    let mut dots = [0u8; CELL_WIDTH];
-    for (dot, slot) in dots.iter_mut().enumerate() {
-        let value = usize::from(pattern.pixel(row, dot));
-        *slot = table.get(value).copied().unwrap_or(COLOUR_TRANSPARENT) & COLOUR_INDEX_MASK;
-    }
-    Dots::Multi(dots)
-}
-
 /// Doubles six half-dots into twelve (REQ-RND-034).
 fn double_half(six: u16) -> u16 {
     (0..CELL_DOTS).fold(0u16, |acc, dot| if (six >> dot) & 1 == 1 { acc | (0b11 << dot.wrapping_mul(2)) } else { acc })
@@ -517,17 +455,6 @@ fn widen_mask(mask: u16, width: Width) -> u16 {
         Width::LeftHalf => double_half(mask >> CELL_DOTS),
         Width::RightHalf => double_half(mask & HALF_MASK),
     }
-}
-
-/// Double width for a multi-colour DRCS line: exact replication of the
-/// left or right six dots (REQ-RND-034, decision E.54).
-fn widen_dots(line: [u8; CELL_WIDTH], width: Width) -> [u8; CELL_WIDTH] {
-    let first = match width {
-        Width::Normal => return line,
-        Width::LeftHalf => 0,
-        Width::RightHalf => CELL_DOTS,
-    };
-    core::array::from_fn(|dot| line.get(first.saturating_add(dot / 2)).copied().unwrap_or(0))
 }
 
 /// The line of the normal-height character that output line `line` of a
@@ -566,11 +493,11 @@ fn flash_shown(cell: &Cell, flash: FlashPhase) -> bool {
 /// makes backgrounds picture (REQ-L1-020). Row colours never colour row 0,
 /// columns 0 to 7 (decision E.45).
 #[allow(clippy::too_many_arguments)] // The pixel's colour, role, cell and position.
-fn plane<const DRCS: usize, const PANEL_ROWS: usize>(
+fn plane<const PANEL_ROWS: usize>(
     index: u8,
     background: bool,
     cell: &Cell,
-    grid: &Grid<DRCS, PANEL_ROWS>,
+    grid: &Grid<PANEL_ROWS>,
     row: usize,
     column: usize,
 ) -> u8 {
@@ -592,9 +519,9 @@ fn plane<const DRCS: usize, const PANEL_ROWS: usize>(
 /// flash, then conceal, then the display planes. Returns the dots' index
 /// and the gaps' index.
 #[inline(never)]
-fn resolved_colours<const DRCS: usize, const PANEL_ROWS: usize>(
+fn resolved_colours<const PANEL_ROWS: usize>(
     cell: &Cell,
-    grid: &Grid<DRCS, PANEL_ROWS>,
+    grid: &Grid<PANEL_ROWS>,
     row: usize,
     column: usize,
     flash: FlashPhase,
@@ -617,20 +544,17 @@ fn resolved_colours<const DRCS: usize, const PANEL_ROWS: usize>(
 /// The cell raster (REQ-RND-016): line `line` of the cell at text row `row`
 /// and column `column` (0 to 39 on the main page, 40 to 71 in the
 /// side-panel area), where `line` is 0 to 19 in the 12-by-20 mode and 0 to
-/// 9 in the 12-by-10 mode. Size, glyphs, mosaics, G3, DRCS, underline,
-/// the font styles and, in the resolved mode, invert, flash, conceal and
-/// the display planes are all applied here.
-///
-/// In the palette mode a multi-colour DRCS character is drawn steady with
-/// its table's indices; the row renderer refuses such grids in that mode.
+/// 9 in the 12-by-10 mode. Size, glyphs, mosaics, G3, underline, the
+/// font styles and, in the resolved mode, invert, flash, conceal and the
+/// display planes are all applied here.
 #[must_use]
 // The row renderer calls this for every cell of every line; inlined into
 // its loop it measured 2 times faster (REQ-TST-050, `tests/performance.rs`).
 #[allow(clippy::inline_always)]
 #[inline(always)]
-pub fn cell_line<const DRCS: usize, const PANEL_ROWS: usize>(
+pub fn cell_line<const PANEL_ROWS: usize>(
     cell: &Cell,
-    grid: &Grid<DRCS, PANEL_ROWS>,
+    grid: &Grid<PANEL_ROWS>,
     row: usize,
     column: usize,
     line: usize,
@@ -657,7 +581,6 @@ pub fn cell_line<const DRCS: usize, const PANEL_ROWS: usize>(
                 if plain { mask } else { styled_line(mask, cell, source, height, options.underline) }
             }
             CharClass::G3(code) => g3_line(glyphs, code, source, options.mode),
-            CharClass::Drcs(drcs) => return drcs_cell_line(cell, grid, (row, column), drcs, source, options),
         },
     };
     if !plain {
@@ -667,90 +590,21 @@ pub fn cell_line<const DRCS: usize, const PANEL_ROWS: usize>(
         ColourMode::Palette => (foreground_index(cell, grid, options.reveal), background_index(cell, grid)),
         ColourMode::Resolved(flash) => resolved_colours(cell, grid, row, column, flash, options.reveal),
     };
-    CellLine { mask, foreground, background, dots: None }
-}
-
-/// The cell raster of a DRCS character (REQ-RND-038): a mode 0 character
-/// is drawn like any other; a multi-colour one gives an index for each dot.
-#[cold]
-#[inline(never)]
-fn drcs_cell_line<const DRCS: usize, const PANEL_ROWS: usize>(
-    cell: &Cell,
-    grid: &Grid<DRCS, PANEL_ROWS>,
-    (row, column): (usize, usize),
-    drcs: DrcsCharacter,
-    source: usize,
-    options: RenderOptions,
-) -> CellLine {
-    let dots = drcs_line(grid.drcs_pattern(drcs), grid, source, options.mode);
-    let width = cell.attributes.width();
-    match (dots, options.colour) {
-        (Dots::Mask(mask), ColourMode::Palette) => CellLine {
-            mask: widen_mask(mask, width),
-            foreground: foreground_index(cell, grid, options.reveal),
-            background: background_index(cell, grid),
-            dots: None,
-        },
-        (Dots::Mask(mask), ColourMode::Resolved(flash)) => {
-            let (foreground, background) = resolved_colours(cell, grid, row, column, flash, options.reveal);
-            CellLine { mask: widen_mask(mask, width), foreground, background, dots: None }
-        }
-        (Dots::Multi(line), ColourMode::Palette) => {
-            let background = background_index(cell, grid);
-            CellLine { mask: 0, foreground: background, background, dots: Some(widen_dots(line, width)) }
-        }
-        (Dots::Multi(line), ColourMode::Resolved(flash)) => {
-            multi_colour_line(cell, grid, row, column, widen_dots(line, width), flash, options.reveal)
-        }
-    }
-}
-
-/// A multi-colour DRCS line in the resolved mode (decisions E.48 and
-/// E.54): invert has no effect; conceal, and the off phase of normal or
-/// inverted flash, show a space in the background colour; adjacent-CLUT
-/// flash exclusive-ORs every dot's index with 8.
-fn multi_colour_line<const DRCS: usize, const PANEL_ROWS: usize>(
-    cell: &Cell,
-    grid: &Grid<DRCS, PANEL_ROWS>,
-    row: usize,
-    column: usize,
-    line: [u8; CELL_WIDTH],
-    flash: FlashPhase,
-    reveal: bool,
-) -> CellLine {
-    let background = plane(cell.background, true, cell, grid, row, column);
-    let off = cell.flash && !flash_shown(cell, flash);
-    let adjacent = off && cell.attributes.flash_mode() == FlashMode::AdjacentClut;
-    if (cell.conceal && !reveal) || (off && !adjacent) {
-        return CellLine { mask: 0, foreground: background, background, dots: None };
-    }
-    let flip = if adjacent { ADJACENT_CLUT_FLIP } else { 0 };
-    let dots = line.map(|index| plane(index ^ flip, false, cell, grid, row, column));
-    CellLine { mask: 0, foreground: background, background, dots: Some(dots) }
+    CellLine { mask, foreground, background }
 }
 
 /// True when the palette mode can draw the cell (decision E.55): colours
-/// of CLUT 0 only, no Level 2.5 flash mode, and no multi-colour DRCS.
-fn palette_cell_allowed<const DRCS: usize, const PANEL_ROWS: usize>(
-    cell: &Cell,
-    grid: &Grid<DRCS, PANEL_ROWS>,
-) -> bool {
+/// of CLUT 0 only, and no Level 2.5 flash mode.
+fn palette_cell_allowed(cell: &Cell) -> bool {
     let attributes = cell.attributes;
     let colours = cell.foreground <= CLUT0_LAST && cell.background <= CLUT0_LAST;
     let flash =
         !cell.flash || (attributes.flash_mode() == FlashMode::Normal && attributes.flash_rate() == FlashRate::Slow);
-    let multi_colour = match cell.glyph {
-        Glyph::Char(character) => match class(character) {
-            CharClass::Drcs(drcs) => grid.drcs_pattern(drcs).is_some_and(|pattern| pattern.mode != DrcsMode::Mode0),
-            CharClass::Text | CharClass::G3(_) => false,
-        },
-        Glyph::Space | Glyph::Mosaic { .. } => false,
-    };
-    colours && flash && !multi_colour
+    colours && flash
 }
 
 /// The widths of the shown side panels, each at most 16 columns.
-fn panel_widths<const DRCS: usize, const PANEL_ROWS: usize>(grid: &Grid<DRCS, PANEL_ROWS>) -> (usize, usize) {
+fn panel_widths<const PANEL_ROWS: usize>(grid: &Grid<PANEL_ROWS>) -> (usize, usize) {
     // Without side panels compiled in, a page is 40 columns (decision E.71).
     if !cfg!(feature = "side-panels") {
         return (0, 0);
@@ -765,9 +619,9 @@ const PANEL_AREA_END: usize = SIDE_PANEL_FIRST_COLUMN + SIDE_PANEL_AREA_COLUMNS;
 /// The source columns of a row in display order (REQ-RND-033): the left
 /// panel (columns 72 − left width to 71), the main page (0 to 39) and the
 /// right panel (40 to 40 + right width − 1).
-pub fn source_columns<const DRCS: usize, const PANEL_ROWS: usize>(
-    grid: &Grid<DRCS, PANEL_ROWS>,
-) -> impl Iterator<Item = usize> + use<DRCS, PANEL_ROWS> {
+pub fn source_columns<const PANEL_ROWS: usize>(
+    grid: &Grid<PANEL_ROWS>,
+) -> impl Iterator<Item = usize> + use<PANEL_ROWS> {
     let (left, right) = panel_widths(grid);
     (PANEL_AREA_END.saturating_sub(left)..PANEL_AREA_END)
         .chain(0..COLUMNS)
@@ -777,7 +631,7 @@ pub fn source_columns<const DRCS: usize, const PANEL_ROWS: usize>(
 /// The columns of every row of a grid: 40 plus the widths of the shown side
 /// panels (decision E.49, REQ-RND-033).
 #[must_use]
-pub fn row_columns<const DRCS: usize, const PANEL_ROWS: usize>(grid: &Grid<DRCS, PANEL_ROWS>) -> usize {
+pub fn row_columns<const PANEL_ROWS: usize>(grid: &Grid<PANEL_ROWS>) -> usize {
     let (left, right) = panel_widths(grid);
     COLUMNS.saturating_add(left).saturating_add(right)
 }
@@ -785,7 +639,7 @@ pub fn row_columns<const DRCS: usize, const PANEL_ROWS: usize>(grid: &Grid<DRCS,
 /// The width of every row of a grid in pixels (REQ-RND-033): 480 without
 /// side panels, at most 672 with panels of 16 columns in all.
 #[must_use]
-pub fn row_width<const DRCS: usize, const PANEL_ROWS: usize>(grid: &Grid<DRCS, PANEL_ROWS>) -> usize {
+pub fn row_width<const PANEL_ROWS: usize>(grid: &Grid<PANEL_ROWS>) -> usize {
     row_columns(grid).saturating_mul(CELL_WIDTH)
 }
 
@@ -793,23 +647,22 @@ pub fn row_width<const DRCS: usize, const PANEL_ROWS: usize>(grid: &Grid<DRCS, P
 /// side-panel area of row 0 (decision E.45): the picture on a boxed page
 /// and in mix mode.
 #[must_use]
-pub fn border_index<const DRCS: usize, const PANEL_ROWS: usize>(grid: &Grid<DRCS, PANEL_ROWS>) -> u8 {
+pub fn border_index<const PANEL_ROWS: usize>(grid: &Grid<PANEL_ROWS>) -> u8 {
     if grid.boxed_mode || grid.mix { COLOUR_TRANSPARENT } else { grid.screen_colour & COLOUR_INDEX_MASK }
 }
 
 /// True when the palette mode can draw the whole grid (decision E.55,
-/// REQ-RND-031): every cell uses CLUT 0 colours only, no flash mode of
-/// Level 2.5 and no multi-colour DRCS character, and the screen colour is
-/// of CLUT 0 when side panels show it.
+/// REQ-RND-031): every cell uses CLUT 0 colours only and no flash mode of
+/// Level 2.5, and the screen colour is of CLUT 0 when side panels show it.
 #[must_use]
-pub fn palette_mode_allowed<const DRCS: usize, const PANEL_ROWS: usize>(grid: &Grid<DRCS, PANEL_ROWS>) -> bool {
+pub fn palette_mode_allowed<const PANEL_ROWS: usize>(grid: &Grid<PANEL_ROWS>) -> bool {
     (0..ROWS).all(|row| palette_row_allowed(grid, row))
 }
 
-fn palette_row_allowed<const DRCS: usize, const PANEL_ROWS: usize>(grid: &Grid<DRCS, PANEL_ROWS>, row: usize) -> bool {
+fn palette_row_allowed<const PANEL_ROWS: usize>(grid: &Grid<PANEL_ROWS>, row: usize) -> bool {
     let panels = row_columns(grid) > COLUMNS;
     source_columns(grid).all(|column| match source_cell(grid, row, column) {
-        Some(cell) => palette_cell_allowed(cell, grid),
+        Some(cell) => palette_cell_allowed(cell),
         None => !panels || border_index(grid) <= CLUT0_LAST || border_index(grid) == PALETTE_TRANSPARENT,
     })
 }
@@ -818,11 +671,7 @@ fn palette_row_allowed<const DRCS: usize, const PANEL_ROWS: usize>(grid: &Grid<D
 /// where the side-panel area has no content (row 0, or a grid without
 /// panel rows).
 #[must_use]
-pub fn source_cell<const DRCS: usize, const PANEL_ROWS: usize>(
-    grid: &Grid<DRCS, PANEL_ROWS>,
-    row: usize,
-    column: usize,
-) -> Option<&Cell> {
+pub fn source_cell<const PANEL_ROWS: usize>(grid: &Grid<PANEL_ROWS>, row: usize, column: usize) -> Option<&Cell> {
     if column < COLUMNS { grid.cell(row, column) } else { grid.panel_cell(row, column) }
 }
 
@@ -834,8 +683,8 @@ pub enum RenderError {
     /// The row or line number is out of range.
     OutOfRange,
     /// The palette mode was asked to draw a grid that needs the resolved
-    /// mode: a colour outside CLUT 0, a flash mode of Level 2.5 or a
-    /// multi-colour DRCS character (decision E.55, REQ-RND-031).
+    /// mode: a colour outside CLUT 0 or a flash mode of Level 2.5 (decision
+    /// E.55, REQ-RND-031).
     NeedsResolvedMode,
     /// The 4-bit format was asked to hold a Colour Map index above 15.
     IndexTooWide,
@@ -867,19 +716,10 @@ pub struct IndexBuffer<'a> {
 // Called for every cell of every line, as cell_line is.
 #[allow(clippy::inline_always)]
 #[inline(always)]
-fn fill_cell(target: &mut [u8; CELL_WIDTH], raster: &CellLine) {
-    match &raster.dots {
-        Some(dots) => {
-            for (pixel, &index) in target.iter_mut().zip(dots) {
-                *pixel = index;
-            }
-        }
-        None => {
-            for (dot, pixel) in target.iter_mut().enumerate() {
-                let on = (raster.mask >> CELL_LAST_HALF_DOT.wrapping_sub(dot)) & 1 == 1;
-                *pixel = if on { raster.foreground } else { raster.background };
-            }
-        }
+fn fill_cell(target: &mut [u8; CELL_WIDTH], raster: CellLine) {
+    for (dot, pixel) in target.iter_mut().enumerate() {
+        let on = (raster.mask >> CELL_LAST_HALF_DOT.wrapping_sub(dot)) & 1 == 1;
+        *pixel = if on { raster.foreground } else { raster.background };
     }
 }
 
@@ -887,17 +727,12 @@ fn fill_cell(target: &mut [u8; CELL_WIDTH], raster: &CellLine) {
 fn write_cell(
     out: &mut [u8],
     slot: usize,
-    raster: &CellLine,
+    raster: CellLine,
     format: IndexFormat,
     check: bool,
 ) -> Result<(), RenderError> {
-    if check {
-        let widest = raster.dots.map_or(raster.foreground.max(raster.background), |dots| {
-            dots.iter().copied().fold(raster.background, u8::max)
-        });
-        if widest > INDEX_4BIT_MAX {
-            return Err(RenderError::IndexTooWide);
-        }
+    if check && raster.foreground.max(raster.background) > INDEX_4BIT_MAX {
+        return Err(RenderError::IndexTooWide);
     }
     match format {
         IndexFormat::Bits8 => {
@@ -922,8 +757,8 @@ fn write_cell(
 
 /// Writes one pixel row of a text row into `out`: the left panel, the main
 /// page and the right panel (REQ-RND-033).
-fn write_line<const DRCS: usize, const PANEL_ROWS: usize>(
-    grid: &Grid<DRCS, PANEL_ROWS>,
+fn write_line<const PANEL_ROWS: usize>(
+    grid: &Grid<PANEL_ROWS>,
     row: usize,
     line: usize,
     glyphs: &GlyphSet,
@@ -953,12 +788,12 @@ fn write_line<const DRCS: usize, const PANEL_ROWS: usize>(
         let start = left.saturating_mul(CELL_WIDTH);
         let main = out.get_mut(start..start.saturating_add(PAGE_WIDTH)).ok_or(RenderError::BufferTooSmall)?;
         for (column, (cell, target)) in cells.iter().zip(main.as_chunks_mut::<CELL_WIDTH>().0).enumerate() {
-            fill_cell(target, &cell_line(cell, grid, row, column, line, glyphs, options));
+            fill_cell(target, cell_line(cell, grid, row, column, line, glyphs, options));
         }
     } else {
         for (column, cell) in cells.iter().enumerate() {
             let raster = cell_line(cell, grid, row, column, line, glyphs, options);
-            write_cell(out, left.saturating_add(column), &raster, format, check)?;
+            write_cell(out, left.saturating_add(column), raster, format, check)?;
         }
     }
     if right > 0 {
@@ -978,8 +813,8 @@ fn write_line<const DRCS: usize, const PANEL_ROWS: usize>(
 /// from the start of `out`. Row 0, and a grid without panel rows, show the
 /// screen colour there (decision E.45).
 #[allow(clippy::too_many_arguments)] // The arguments of write_line, for a part of the row.
-fn write_panel<const DRCS: usize, const PANEL_ROWS: usize>(
-    grid: &Grid<DRCS, PANEL_ROWS>,
+fn write_panel<const PANEL_ROWS: usize>(
+    grid: &Grid<PANEL_ROWS>,
     row: usize,
     line: usize,
     glyphs: &GlyphSet,
@@ -989,20 +824,20 @@ fn write_panel<const DRCS: usize, const PANEL_ROWS: usize>(
     out: &mut [u8],
 ) -> Result<(), RenderError> {
     let border = border_index(grid);
-    let screen = CellLine { mask: 0, foreground: border, background: border, dots: None };
+    let screen = CellLine { mask: 0, foreground: border, background: border };
     for (slot, column) in columns.enumerate() {
         let raster = match grid.panel_cell(row, column) {
             Some(cell) => cell_line(cell, grid, row, column, line, glyphs, options),
             None => screen,
         };
-        write_cell(out, slot, &raster, format, check)?;
+        write_cell(out, slot, raster, format, check)?;
     }
     Ok(())
 }
 
 /// Refuses the palette mode for a row that needs the resolved mode.
-fn check_mode<const DRCS: usize, const PANEL_ROWS: usize>(
-    grid: &Grid<DRCS, PANEL_ROWS>,
+fn check_mode<const PANEL_ROWS: usize>(
+    grid: &Grid<PANEL_ROWS>,
     row: usize,
     options: RenderOptions,
 ) -> Result<(), RenderError> {
@@ -1016,8 +851,8 @@ fn check_mode<const DRCS: usize, const PANEL_ROWS: usize>(
 /// (REQ-RND-017). In the 12-by-20 mode this draws 20 lines for
 /// [`Field::Both`] and 10 for one field. Each line is [`row_width`] pixels.
 /// On an error the buffer's contents are unspecified.
-pub fn render_row<const DRCS: usize, const PANEL_ROWS: usize>(
-    grid: &Grid<DRCS, PANEL_ROWS>,
+pub fn render_row<const PANEL_ROWS: usize>(
+    grid: &Grid<PANEL_ROWS>,
     row: usize,
     field: Field,
     glyphs: &GlyphSet,
@@ -1049,8 +884,8 @@ pub fn render_row<const DRCS: usize, const PANEL_ROWS: usize>(
 
 /// Renders screen line `y` (0 to 499 in the 12-by-20 mode) into `out`,
 /// applying page zoom (REQ-L1-020).
-pub fn render_line<const DRCS: usize, const PANEL_ROWS: usize>(
-    grid: &Grid<DRCS, PANEL_ROWS>,
+pub fn render_line<const PANEL_ROWS: usize>(
+    grid: &Grid<PANEL_ROWS>,
     y: usize,
     zoom: Zoom,
     glyphs: &GlyphSet,
@@ -1169,9 +1004,9 @@ impl core::hash::Hasher for Fnv {
 /// True when a flashing cell looks different in phases `old` and `new`
 /// (REQ-RND-032): its rate changes phase, it can show dots, and the dots'
 /// colour differs between the two phases.
-fn flash_changes<const DRCS: usize, const PANEL_ROWS: usize>(
+fn flash_changes<const PANEL_ROWS: usize>(
     cell: &Cell,
-    grid: &Grid<DRCS, PANEL_ROWS>,
+    grid: &Grid<PANEL_ROWS>,
     row: usize,
     column: usize,
     (old, new): (FlashPhase, FlashPhase),
@@ -1181,18 +1016,10 @@ fn flash_changes<const DRCS: usize, const PANEL_ROWS: usize>(
     if !cell.flash || old.is_on(rate) == new.is_on(rate) {
         return false;
     }
-    let hidden = (cell.conceal && !reveal) || (grid.boxed_mode && !cell.boxed);
     let shows_dots = match cell.glyph {
         Glyph::Space => false,
         Glyph::Mosaic { pattern, .. } => pattern != 0,
         Glyph::Char(character) => match class(character) {
-            CharClass::Drcs(drcs) => match grid.drcs_pattern(drcs) {
-                None => false,
-                // A multi-colour character flashes to a space, or to the
-                // adjacent CLUT, dot by dot (decision E.48).
-                Some(pattern) if pattern.mode != DrcsMode::Mode0 => return !hidden,
-                Some(_) => true,
-            },
             CharClass::Text => !cell.glyph.is_blank() || (underline && cell.attributes.underline()),
             CharClass::G3(_) => true,
         },
@@ -1200,13 +1027,6 @@ fn flash_changes<const DRCS: usize, const PANEL_ROWS: usize>(
     shows_dots
         && resolved_colours(cell, grid, row, column, old, reveal)
             != resolved_colours(cell, grid, row, column, new, reveal)
-}
-
-fn class_of(cell: &Cell) -> Option<CharClass> {
-    match cell.glyph {
-        Glyph::Char(character) => Some(class(character)),
-        Glyph::Space | Glyph::Mosaic { .. } => None,
-    }
 }
 
 impl ChangeTracker {
@@ -1228,11 +1048,7 @@ impl ChangeTracker {
     ///   rows holding concealed cells, and a change of flash phase marks
     ///   exactly the rows holding a cell that looks different in the two
     ///   phases.
-    pub fn changed_rows<const DRCS: usize, const PANEL_ROWS: usize>(
-        &mut self,
-        grid: &Grid<DRCS, PANEL_ROWS>,
-        options: RenderOptions,
-    ) -> u32 {
+    pub fn changed_rows<const PANEL_ROWS: usize>(&mut self, grid: &Grid<PANEL_ROWS>, options: RenderOptions) -> u32 {
         let reveal = options.reveal;
         let reveal_changed = reveal != self.reveal;
         let mut page = Fnv(FNV_OFFSET);
@@ -1256,13 +1072,6 @@ impl ChangeTracker {
             core::hash::Hash::hash(&grid.row_colours.get(row), &mut hasher);
             if let Some(panel) = panel_row {
                 core::hash::Hash::hash(panel, &mut hasher);
-            }
-            // A DRCS page that arrives or changes redraws only the rows
-            // whose cells use it (REQ-RND-032).
-            for (_, cell) in cells.clone() {
-                if let Some(CharClass::Drcs(drcs)) = class_of(cell) {
-                    core::hash::Hash::hash(&(grid.drcs_pattern(drcs), grid.drcs_colours), &mut hasher);
-                }
             }
             let hash = core::hash::Hasher::finish(&hasher);
             let sensitive = match options.colour {
@@ -1304,8 +1113,8 @@ impl ChangeTracker {
 /// of rows to draw. Each row is [`row_width`] pixels wide from the start of
 /// the framebuffer's lines; filling any border beyond it with
 /// [`border_index`] is for the caller.
-pub fn render_screen<const DRCS: usize, const PANEL_ROWS: usize>(
-    grid: &Grid<DRCS, PANEL_ROWS>,
+pub fn render_screen<const PANEL_ROWS: usize>(
+    grid: &Grid<PANEL_ROWS>,
     rows: u32,
     glyphs: &GlyphSet,
     options: RenderOptions,

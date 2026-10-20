@@ -40,7 +40,7 @@ A crafted BDF file aims at the reader: huge numbers, endless lines, millions of 
 
 A font can draw any character as any shape: "1" as "7", "a" as "o", a blank for a letter, a letter for a blank. A page can then show text that is not what its codes say: a different phone number, a different page number to type, a different price.
 
-- **Answer:** this is the same power DRCS characters already give a page (REQ-DRC-001), and the defence is the same: nothing trusted is ever drawn in a loaded font. Row 0, the tuning screen, the contents view, the receiver's own pages and every confirmation use Bedstead (REQ-FNT-001, REQ-FNT-005). The address a link really leads to is shown in row 0 and the status line in Bedstead (REQ-NAV-015), so a font cannot disguise where a link goes. The status line names the font in use and who chose it, and the user can set "always use my font" (REQ-FNT-005).
+- **Answer:** the standard gives a page the same power through DRCS characters, which this receiver does not decode (decision E.95); the defence is that nothing trusted is ever drawn in a loaded font. Row 0, the tuning screen, the contents view, the receiver's own pages and every confirmation use Bedstead (REQ-FNT-001, REQ-FNT-005). The address a link really leads to is shown in row 0 and the status line in Bedstead (REQ-NAV-015), so a font cannot disguise where a link goes. The status line names the font in use and who chose it, and the user can set "always use my font" (REQ-FNT-005).
 - **Remaining risk:** within the page area, a channel can mislead a viewer who reads only the page. That is true of every page's content anyway: a page can simply write a false number in Bedstead. A font adds the ability to make the same codes look different, which matters for copied text and screen readers (section 3.3).
 
 ### 3.3 What the screen shows differs from the page's text
@@ -48,7 +48,7 @@ A font can draw any character as any shape: "1" as "7", "a" as "o", a blank for 
 A screen reader reads the page's codes (REQ-BRW-008), and copying copies the codes. A font can make the screen show something else, or hide text from sighted viewers that a screen reader still reads.
 
 - **Answer:** the status line names a font chosen by the channel or page, and the user's override removes it.
-- **Remaining risk:** accepted, as for DRCS. A future check could flag a font whose glyph for a letter is blank or matches another letter; noted in section 5.
+- **Remaining risk:** accepted. A future check could flag a font whose glyph for a letter is blank or matches another letter; noted in section 5.
 
 ### 3.4 Fonts from other sites track the viewer
 

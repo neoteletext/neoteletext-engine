@@ -49,15 +49,13 @@ fn list_shows_the_enhancement_faults() {
         "discarded writes",
         "ignored designations",
         "undefined characters",
-        "DRCS missing",
-        "DRCS invalid",
     ];
     for level in ["2.5", "3.5"] {
         let (listing, _) = neottx_on_stream(&["list", "-", "--level", level]);
         let counts = fault_counts(&listing).unwrap_or_else(|| panic!("no fault line at Level {level}:\n{listing}"));
         assert_eq!(counts.iter().map(|(name, _)| name.as_str()).collect::<Vec<_>>(), names);
-        // The stream's DRCS pages carry invalid characters on purpose.
-        assert!(counts.iter().any(|(name, count)| name == "DRCS invalid" && *count > 0), "{listing}");
+        // The stream's G2 and G3 pages use undefined positions on purpose.
+        assert!(counts.iter().any(|(name, count)| name == "undefined characters" && *count > 0), "{listing}");
     }
     let (listing, _) = neottx_on_stream(&["list", "-", "--level", "1"]);
     assert!(fault_counts(&listing).is_none(), "{listing}");

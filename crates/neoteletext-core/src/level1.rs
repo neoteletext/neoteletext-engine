@@ -8,10 +8,9 @@
 //!
 //! The [`Cell`] and [`Grid`] also hold what Levels 2.5 and 3.5 add
 //! (decision E.42, REQ-L25-006): Colour Map colours, size in two parts,
-//! underline, invert, flash modes, font styles, DRCS characters, which
-//! source wrote each character, the side-panel area, the Colour Map, the
-//! screen and row colours, and the DRCS patterns and colour tables. The
-//! Level 1 decoding leaves all of them at their defaults.
+//! underline, invert, flash modes, font styles, which source wrote each
+//! character, the side-panel area, the Colour Map, and the screen and row
+//! colours. The Level 1 decoding leaves all of them at their defaults.
 
 use crate::acq::{MagazineData, StoredPage};
 use crate::charset::{
@@ -28,8 +27,6 @@ use crate::consts::{
     SIDE_PANEL_AREA_COLUMNS, SIDE_PANEL_FIRST_COLUMN, SIDE_PANEL_FIRST_ROW, SIDE_PANEL_ROWS, SPACE, START_BOX,
     STATUS_ATTRIBUTE_COLUMN, STATUS_COLUMNS, STEADY,
 };
-use crate::drcs::{DEFAULT_DRCS_PATTERNS, DrcsColourTables, DrcsPattern, DrcsPatterns};
-use crate::types::DrcsCharacter;
 
 /// What a cell shows.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
@@ -50,15 +47,12 @@ pub enum Glyph {
 impl Glyph {
     /// True when the cell shows nothing in the foreground: no glyph, a
     /// space (2/0 is a space in every G0 set, Tables 35 and 36) without a
-    /// diacritical mark, or a mosaic with no cells set. A DRCS character's
-    /// code is a character number, not a code, so it is never blank here.
+    /// diacritical mark, or a mosaic with no cells set.
     #[must_use]
     pub const fn is_blank(self) -> bool {
         match self {
             Self::Space => true,
-            Self::Char(character) => {
-                character.code == SPACE && character.diacritic == 0 && !matches!(character.set, CharSet::Drcs { .. })
-            }
+            Self::Char(character) => character.code == SPACE && character.diacritic == 0,
             Self::Mosaic { pattern, .. } => pattern == 0,
         }
     }
@@ -325,8 +319,8 @@ impl CellAttributes {
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub struct Cell {
-    /// What the cell shows. G3 and DRCS characters are characters of the
-    /// sets [`CharSet::G3`] and [`CharSet::Drcs`].
+    /// What the cell shows. G3 characters are characters of the set
+    /// [`CharSet::G3`].
     pub glyph: Glyph,
     /// Foreground colour: a Colour Map index 0 to 31; the Level 1 colours
     /// 0 to 7 are CLUT 0 (decision E.43).
@@ -370,15 +364,13 @@ impl Cell {
 /// display state. It is the core's primary output; every renderer works
 /// from it (REQ-RND-001).
 ///
-/// The caller sets two capacities (REQ-GEN-003): `DRCS`, the patterns of
-/// the DRCS characters the page uses (REQ-DRC-007), and `PANEL_ROWS`, the
-/// rows of the side-panel area, which is 24 for side panels and may be 0
-/// for a port that presents at Levels 1 and 1.5 only. [`Grid`] without
-/// parameters holds [`DEFAULT_DRCS_PATTERNS`] patterns and every panel
-/// row. Everything a row needs travels in the grid, so a row is rendered
-/// from the grid alone (decision E.29).
+/// The caller sets one capacity (REQ-GEN-003): `PANEL_ROWS`, the rows of
+/// the side-panel area, which is 24 for side panels and may be 0 for a
+/// port that presents at Levels 1 and 1.5 only. [`Grid`] without a
+/// parameter holds every panel row. Everything a row needs travels in the
+/// grid, so a row is rendered from the grid alone (decision E.29).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct Grid<const DRCS: usize = DEFAULT_DRCS_PATTERNS, const PANEL_ROWS: usize = SIDE_PANEL_ROWS> {
+pub struct Grid<const PANEL_ROWS: usize = SIDE_PANEL_ROWS> {
     /// The cells, row by row.
     pub cells: [[Cell; COLUMNS]; ROWS],
     /// Bit r set when row r contains double height.
@@ -404,10 +396,6 @@ pub struct Grid<const DRCS: usize = DEFAULT_DRCS_PATTERNS, const PANEL_ROWS: usi
     pub screen_colour: ColourIndex,
     /// The full row colour of each row (decision E.45).
     pub row_colours: [ColourIndex; ROWS],
-    /// The patterns of the DRCS characters the cells use.
-    pub drcs: DrcsPatterns<DRCS>,
-    /// The DRCS colour lookup tables (decision E.54).
-    pub drcs_colours: DrcsColourTables,
 }
 
 /// The character sets of an empty grid: Latin with the English national
@@ -418,13 +406,13 @@ const DEFAULT_DESIGNATION: Designation = Designation {
 };
 
 impl Grid {
-    /// An empty grid with the default DRCS capacity.
+    /// An empty grid with every panel row.
     pub const EMPTY: Self = Self::empty();
 }
 
-impl<const DRCS: usize, const PANEL_ROWS: usize> Grid<DRCS, PANEL_ROWS> {
+impl<const PANEL_ROWS: usize> Grid<PANEL_ROWS> {
     /// An empty grid: blank cells, no side panels, the Table 30 Colour
-    /// Map, black screen and rows, no DRCS patterns. To empty an existing
+    /// Map, and black screen and rows. To empty an existing
     /// grid without a temporary copy, use [`Grid::clear`].
     // The grid is the value being built, so its arrays are as large as it
     // is; in a constant such as `Grid::EMPTY` it is built at compile time,
@@ -443,8 +431,6 @@ impl<const DRCS: usize, const PANEL_ROWS: usize> Grid<DRCS, PANEL_ROWS> {
             colour_map: ColourMap::DEFAULT,
             screen_colour: COLOUR_BLACK,
             row_colours: [COLOUR_BLACK; ROWS],
-            drcs: DrcsPatterns::new(DrcsPattern::EMPTY),
-            drcs_colours: DrcsColourTables::DEFAULT,
         }
     }
 
@@ -464,8 +450,6 @@ impl<const DRCS: usize, const PANEL_ROWS: usize> Grid<DRCS, PANEL_ROWS> {
         self.colour_map = ColourMap::DEFAULT;
         self.screen_colour = COLOUR_BLACK;
         self.row_colours = [COLOUR_BLACK; ROWS];
-        self.drcs.clear();
-        self.drcs_colours = DrcsColourTables::DEFAULT;
     }
 
     /// The cell at a position.
@@ -491,13 +475,6 @@ impl<const DRCS: usize, const PANEL_ROWS: usize> Grid<DRCS, PANEL_ROWS> {
     pub fn panel_cell_mut(&mut self, row: usize, column: usize) -> Option<&mut Cell> {
         let row = row.checked_sub(SIDE_PANEL_FIRST_ROW)?;
         self.panels.get_mut(row)?.get_mut(column.checked_sub(SIDE_PANEL_FIRST_COLUMN)?)
-    }
-
-    /// The pattern of a DRCS character the grid carries; `None` means the
-    /// data is missing, and the cell shows a space (REQ-DRC-009).
-    #[must_use]
-    pub fn drcs_pattern(&self, character: DrcsCharacter) -> Option<&DrcsPattern> {
-        self.drcs.as_slice().iter().find(|pattern| pattern.character == character)
     }
 
     /// True when row `row` contains double height.
@@ -899,8 +876,8 @@ fn stored_row(page: &StoredPage, row: usize, policy: ParityPolicy) -> ([u8; COLU
 
 /// Builds the grid for a page (REQ-ARCH-006). With no page, only row 0's
 /// status area and rolling header are shown.
-pub fn build_grid<const DRCS: usize, const PANEL_ROWS: usize>(
-    out: &mut Grid<DRCS, PANEL_ROWS>,
+pub fn build_grid<const PANEL_ROWS: usize>(
+    out: &mut Grid<PANEL_ROWS>,
     page: Option<&StoredPage>,
     magazine: &MagazineData,
     config: &Config,
@@ -1045,7 +1022,7 @@ pub fn row_24_shown(page: &StoredPage, config: &Config) -> bool {
 
 /// Blanks row 0 for a page with C7 set, keeping the status area when asked
 /// (REQ-L1-014).
-fn hide_header<const DRCS: usize, const PANEL_ROWS: usize>(grid: &mut Grid<DRCS, PANEL_ROWS>, keep_status: bool) {
+fn hide_header<const PANEL_ROWS: usize>(grid: &mut Grid<PANEL_ROWS>, keep_status: bool) {
     if let Some(cells) = grid.cells.get_mut(0) {
         for (column, cell) in cells.iter_mut().enumerate() {
             if !(keep_status && column <= STATUS_ATTRIBUTE_COLUMN) {
@@ -1056,7 +1033,7 @@ fn hide_header<const DRCS: usize, const PANEL_ROWS: usize>(grid: &mut Grid<DRCS,
 }
 
 /// Fills the row below a double-height row (decision E.15).
-fn fill_lower_row<const DRCS: usize, const PANEL_ROWS: usize>(grid: &mut Grid<DRCS, PANEL_ROWS>, row: usize) {
+fn fill_lower_row<const PANEL_ROWS: usize>(grid: &mut Grid<PANEL_ROWS>, row: usize) {
     let Some(upper) = grid.cells.get(row).copied() else { return };
     let Some(lower) = grid.cells.get_mut(row.saturating_add(1)) else { return };
     for (below, above) in lower.iter_mut().zip(upper.iter()) {
@@ -1074,7 +1051,6 @@ fn fill_lower_row<const DRCS: usize, const PANEL_ROWS: usize>(grid: &mut Grid<DR
 mod tests {
     use super::*;
     use crate::consts::{ALPHA_RED, ALPHA_YELLOW, DOUBLE_SIZE, DOUBLE_WIDTH, MOSAIC_FULL, MOSAIC_RED};
-    use crate::types::DrcsCharacter;
 
     fn context(config: &Config) -> RowContext<'_> {
         RowContext {
@@ -1326,12 +1302,12 @@ mod tests {
     }
 
     /// REQ-L25-006: the side-panel area is addressed by screen position,
-    /// columns 40 to 71 of rows 1 to 24, and a grid of any DRCS capacity
-    /// is cleared in place to the empty grid.
+    /// columns 40 to 71 of rows 1 to 24, and a grid is cleared in place
+    /// to the empty grid.
     #[test]
     fn side_panel_area_and_clearing() {
-        let mut grid: Grid<2> = Grid::empty();
-        let small: Grid<0, 0> = Grid::empty();
+        let mut grid: Grid = Grid::empty();
+        let small: Grid<0> = Grid::empty();
         assert!(small.panel_cell(1, 40).is_none(), "a grid without panel rows");
         assert!(grid.panel_cell(0, 40).is_none(), "row 0 has no panel content");
         assert!(
@@ -1342,18 +1318,10 @@ mod tests {
         let attributes = CellAttributes::DEFAULT.with_invert(true);
         grid.panel_cell_mut(1, 40).unwrap().attributes = attributes;
         assert!(grid.panels[0][0].attributes.invert());
-        let character = DrcsCharacter { table: crate::types::DrcsTable::Global, subtable: 3, character: 32 };
-        assert!(grid.drcs.push(DrcsPattern { character, ..DrcsPattern::EMPTY }));
-        assert!(grid.drcs.push(DrcsPattern::EMPTY) && !grid.drcs.push(DrcsPattern::EMPTY), "capacity 2");
-        assert_eq!(grid.drcs_pattern(character).map(|pattern| pattern.character), Some(character));
-        let drcs = Glyph::Char(CharRef::drcs(character));
-        assert!(!drcs.is_blank(), "character 32 is not a space");
-        assert_eq!(CharRef::drcs(character).drcs_character(), Some(character));
         grid.cells[3][4].attributes = attributes.with_font(FontStyle { bold: true, ..FontStyle::default() });
         grid.row_colours[5] = 17;
         grid.clear();
-        assert_eq!(grid, Grid::<2>::empty());
-        assert_eq!(Grid::EMPTY.drcs.as_slice().len(), 0);
+        assert_eq!(grid, Grid::empty());
     }
 
     /// REQ-L25-006: every packed attribute reads back as set, without
@@ -1410,11 +1378,8 @@ mod tests {
         let mut page = StoredPage::EMPTY;
         // C14 set: header national index 1.
         page.control = ControlBits(1 << 14);
-        let magazine = MagazineData {
-            data: Some(fields(0)),
-            level35: Some(fields(0b0110 << DESIGNATION_GROUP_SHIFT | 0b111)),
-            ..MagazineData::default()
-        };
+        let magazine =
+            MagazineData { data: Some(fields(0)), level35: Some(fields(0b0110 << DESIGNATION_GROUP_SHIFT | 0b111)) };
         let option = |page: &StoredPage, level| {
             let config = Config { level, ..Config::default() };
             resolve_designation(Some(page), &magazine, &config).0.g0

@@ -565,9 +565,8 @@ impl TtiReader {
         {
             let format = match packet {
                 PagePacket::Format1(PageEnhancement { format, .. })
-                | PagePacket::Level35(PageEnhancement { format, .. }) => format,
-                PagePacket::DrcsModes(modes) => modes.format,
-                PagePacket::DrcsColours(_) => None,
+                | PagePacket::Level35(PageEnhancement { format, .. })
+                | PagePacket::PageFunction(format) => format,
             };
             if let Some(format) = format {
                 self.page.function = Some(PageFunction { function: format.function, coding: format.coding });

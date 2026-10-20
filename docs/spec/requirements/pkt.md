@@ -73,11 +73,11 @@ For every valid triplet of a packet X/26, and of packets X/1 to X/25 of an objec
 - for Object Invocation (row modes 10001 to 10011): the source (local, POP or GPOP, with S1 S0 = 00 marked illegal), the type, and the object number N8 to N0, split as Table 28 defines it for local and for public objects;
 - for Object Definition (row modes 10101 to 10111): the usage level bits, the type and the object number;
 - for the Origin Modifier: the row offset (the address minus 40) and the column offset (the data);
-- for DRCS Mode: normal or global, the level bits and the sub-table;
 - for the Termination Marker: the type in data bits 12 to 14;
 - for every colour field: the 5-bit Colour Map index, with data bits D6 and D5 kept so that reserved values can be recognised.
 
-Reserved modes shall be reported as reserved. The Level 1.5 pass, the enhancement processor and the object resolver shall all use this one decoding.
+Reserved modes shall be reported as reserved, and so shall DRCS Mode (row mode 11000). DRCS Character Invocation (column mode 01101) shall be reported as a column triplet not acted on, with its column, mode and data. The Level 1.5 pass, the enhancement processor and the object resolver shall all use this one decoding.
+*Amended 20 October 2026 (decision E.95):* DRCS is not decoded, and the parts of this requirement that concerned it are removed.
 *Verification:* Test with one triplet of every mode, built by the encoder, including the worked encodings of `research/notes-level25-objects.md` section 13.2 and `research/notes-level25-drcs.md` section 11.
 
 **REQ-PKT-011 — Compositional link packets X/27/4 and X/27/5.**
@@ -102,31 +102,24 @@ For packet X/28/0 format 1 (Table 4), the decoder shall extract, in addition to 
 Each field group of decision E.44 shall carry its own validity flag.
 *Verification:* Test with packets built by the encoder covering every class of field value, and with an error injected into each field group in turn.
 
-**REQ-PKT-013 — Packet X/28/1: DRCS colour lookup tables.**
-For packet X/28/1 (Table 8), the decoder shall extract the four DRCS colour lookup tables, read as 5-bit entries, least significant bit first, from triplet 2 bit 1 to triplet 13 bit 2:
-- four entries for global 12 by 10 by 2 characters;
-- four entries for normal 12 by 10 by 2 characters;
-- sixteen entries for global 12 by 10 by 4 and 6 by 5 by 4 characters;
-- sixteen entries for normal 12 by 10 by 4 and 6 by 5 by 4 characters.
+**REQ-PKT-013 — Withdrawn: Packet X/28/1: DRCS colour lookup tables.** Withdrawn on 20 October 2026: DRCS is not decoded, and X/28/1 is ignored (decision E.95).
 
-Triplet 1 shall be kept for diagnostics only (decision E.4). Each table shall carry its own validity flag.
-*Verification:* Test with the default tables of `research/notes-level25-drcs.md` section 6.2 and with the example values of Figure 28.
-
-**REQ-PKT-014 — Packet X/28/3: DRCS mode identification.**
-For packet X/28/3 (Table 9), the decoder shall extract the page function and page coding of triplet 1 and the 48 four-bit mode identification codes, one for each PTU, read as decision E.54 describes. Triplet 12 bits 13 to 18, and triplet 13, are reserved.
-*Verification:* Test with the worked encoding of `research/notes-level25-drcs.md` section 4.
+**REQ-PKT-014 — Packet X/28/3: the page function.**
+For packet X/28/3 (Table 9), the decoder shall extract the page function and page coding of triplet 1, so that a DRCS page that declares itself only there is never shown as text. The mode identification codes of its other triplets shall not be read.
+*Amended 20 October 2026 (decision E.95):* the 48 mode identification codes are no longer extracted.
+*Verification:* Test with a packet built by the encoder, and with triplet 1 uncorrectable.
 
 **REQ-PKT-015 — Packet X/28/4.**
 For packet X/28/4 (Table 10), the decoder shall extract the same fields as REQ-PKT-012, except that the sixteen colour words are CLUT 0 entries 0 to 7 followed by CLUT 1 entries 0 to 7. The word for CLUT 1 entry 0 shall be ignored.
 *Verification:* Test.
 
-**REQ-PKT-016 — Magazine packets M/29/0, M/29/1 and M/29/4.**
+**REQ-PKT-016 — Magazine packets M/29/0 and M/29/4.**
 For packet number 29, the decoder shall extract:
 - with designation code 0 and packet function 0000000, every field of REQ-PKT-012 except the page function and page coding (Table 11);
-- with designation code 1, the DRCS colour lookup tables, as REQ-PKT-013 describes (Table 12);
 - with designation code 4 and packet function 0000000, the fields of REQ-PKT-015 (Table 13).
 
-A packet with any other packet function shall be ignored.
+A packet with any other packet function, and M/29/1 (the DRCS colour lookup tables of Table 12), shall be ignored.
+*Amended 20 October 2026 (decision E.95):* DRCS is not decoded, and the parts of this requirement that concerned it are removed.
 *Verification:* Test.
 
 **REQ-PKT-017 — Packets of object pages.**
@@ -139,7 +132,8 @@ The decoder shall also convert an absolute triplet number from 0 to 506 into a p
 For packets of page xFE, every byte of which is Hamming 8/4 coded, the decoder shall extract:
 - from packets X/1 to X/14, the byte pair of any page number, at the position Figure 20 gives;
 - from packets X/19 and X/20 (Level 2.5) and X/22 and X/23 (Level 3.5), the GPOP link and POP links 1 to 7 of Tables 20 and 21, including the fallback bits and the two default objects of each link;
-- from packets X/21 (Level 2.5) and X/24 (Level 3.5), the GDRCS link and DRCS links 1 to 7 of Tables 22 and 23, and the totals of enhancement pages (clause 10.6.6).
+- from packets X/21 (Level 2.5) and X/24 (Level 3.5), the totals of object pages (clause 10.6.6). Their DRCS links, the DRCS total, and the second byte of each byte pair, which names a DRCS link, shall not be read.
 
-An uncorrectable byte shall make the link or byte pair it belongs to invalid (decision E.7).
+An uncorrectable byte shall make the link or byte pair it belongs to invalid (decision E.7); for a byte pair, that is its first byte.
+*Amended 20 October 2026 (decision E.95):* DRCS is not decoded, and the parts of this requirement that concerned it are removed.
 *Verification:* Test with the positions of `research/notes-level25-objects.md` sections 7.2 and 13.3, and the default object of section 13.4.

@@ -26,21 +26,20 @@
 use crate::acq::{EnhancementLookup, EnhancementPage, StoredPage};
 use crate::config::PresentationLevel;
 use crate::consts::{
-    COMPOSITIONAL_LINKS, DEFAULT_OBJECTS, DESIGNATION_CODES, LEVEL_BIT_25, LEVEL_BIT_35, LINK_FUNCTION_DRCS,
-    LINK_FUNCTION_GDRCS, LINK_FUNCTION_GPOP, LINK_FUNCTION_POP, LINK_NULL_PAGE, LINKS_FIXED_ROLES, LINKS_X27_5_USED,
-    LOCAL_TRIPLETS, MOT_DRCS_LINKS_LEVEL_25, MOT_DRCS_LINKS_LEVEL_35, MOT_OBJECT_LINKS_LEVEL_25,
-    MOT_OBJECT_LINKS_LEVEL_35, MOT_OBJECT_LINKS_PER_PACKET, OBJECT_BODY_TRIPLETS, OBJECT_POINTER_FIRST_PACKET,
-    OBJECT_POINTER_GROUP_TRIPLETS, OBJECT_POINTER_LAST_PACKET, OBJECT_POINTER_UNUSED, ROW_ADDRESS_BASE,
-    ROW_ADDRESS_LAST, ROW_ADDRESS_ROW_24, ROWS, TRIPLET_BYTES, TRIPLETS_PER_PACKET,
+    COMPOSITIONAL_LINKS, DEFAULT_OBJECTS, DESIGNATION_CODES, LEVEL_BIT_25, LEVEL_BIT_35, LINK_FUNCTION_GPOP,
+    LINK_FUNCTION_POP, LINK_NULL_PAGE, LINKS_FIXED_ROLES, LINKS_X27_5_USED, LOCAL_TRIPLETS, MOT_LEVEL_35_LAST_PACKET,
+    MOT_OBJECT_LINKS_LEVEL_25, MOT_OBJECT_LINKS_LEVEL_35, MOT_OBJECT_LINKS_PER_PACKET, OBJECT_BODY_TRIPLETS,
+    OBJECT_POINTER_FIRST_PACKET, OBJECT_POINTER_GROUP_TRIPLETS, OBJECT_POINTER_LAST_PACKET, OBJECT_POINTER_UNUSED,
+    ROW_ADDRESS_BASE, ROW_ADDRESS_LAST, ROW_ADDRESS_ROW_24, ROWS, TRIPLET_BYTES, TRIPLETS_PER_PACKET,
 };
 use crate::ecc::hamming2418;
 use crate::packet::{
     CompositionalLink, ObjectKind, ObjectNumber, ObjectPacket, ObjectSource, Triplet, TripletFunction, TripletLocation,
-    mot_drcs_link, mot_object_link, mot_page_entry, mot_position, triplet_location,
+    mot_object_link, mot_page_entry, mot_position, triplet_location,
 };
 use crate::types::{FallbackFields, Magazine, PageNumber};
 
-/// A link to an object or DRCS page: its magazine and page number. The
+/// A link to an object page: its magazine and page number. The
 /// sub-page is named by each invocation (decision E.52).
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub struct PageLink {
@@ -71,10 +70,6 @@ pub struct EnhancementLinks {
     pub gpop: Option<PageLink>,
     /// The Public Object Page.
     pub pop: Option<PageLink>,
-    /// The Global DRCS page.
-    pub gdrcs: Option<PageLink>,
-    /// The normal DRCS page.
-    pub drcs: Option<PageLink>,
     /// The fallback bits of the page's POP link in the table, for side
     /// panels and Black Background Colour Substitution; `None` without a POP
     /// link (decision E.53).
@@ -91,15 +86,7 @@ impl EnhancementLinks {
     /// No enhancement pages, at a level.
     #[must_use]
     pub const fn none(level: PresentationLevel) -> Self {
-        Self {
-            gpop: None,
-            pop: None,
-            gdrcs: None,
-            drcs: None,
-            fallback: None,
-            default_objects: [None; DEFAULT_OBJECTS],
-            level,
-        }
+        Self { gpop: None, pop: None, fallback: None, default_objects: [None; DEFAULT_OBJECTS], level }
     }
 
     /// The object page of a public or global source.
@@ -113,8 +100,10 @@ impl EnhancementLinks {
     }
 }
 
-/// Roles of the links, in the order of their function codes (Table 15).
-const ROLES: usize = 4;
+/// Roles of the links used, in the order of their function codes (Table
+/// 15): GPOP and POP. Links with the DRCS functions that follow are not
+/// used (decision E.95).
+const ROLES: usize = 2;
 
 /// True when a link of X/27/4 or X/27/5 may be used at a level: Format 1
 /// markers as Table 15 requires, not null, and a page validity that
@@ -186,17 +175,17 @@ fn table(lookup: &EnhancementLookup<'_>, magazine: Magazine, page: PageNumber, l
     // X/24 missing uses X/19 to X/21 and processes the page at Level 2.5.
     let [first_35, second_35] = MOT_OBJECT_LINKS_LEVEL_35;
     let [first_25, second_25] = MOT_OBJECT_LINKS_LEVEL_25;
-    let level_35 = level.is_level35() && mot.row(first_35).is_some() && mot.row(MOT_DRCS_LINKS_LEVEL_35).is_some();
+    let level_35 = level.is_level35() && mot.row(first_35).is_some() && mot.row(MOT_LEVEL_35_LAST_PACKET).is_some();
     if level.is_level35() && !level_35 {
         out.level = PresentationLevel::Level25;
     }
-    let (first, second, drcs_packet) = if level_35 {
+    let (first, second) = if level_35 {
         // Decision E.52: with only X/23 missing, POP links 4 to 7 come from
         // the Level 2.5 links of X/20.
         let second = if mot.row(second_35).is_some() { second_35 } else { second_25 };
-        (first_35, second, MOT_DRCS_LINKS_LEVEL_35)
+        (first_35, second)
     } else {
-        (first_25, second_25, MOT_DRCS_LINKS_LEVEL_25)
+        (first_25, second_25)
     };
     // The byte pair of page xFF is ignored (decision E.52).
     if page.0 == LINK_NULL_PAGE {
@@ -214,13 +203,10 @@ fn table(lookup: &EnhancementLookup<'_>, magazine: Magazine, page: PageNumber, l
         };
         mot.row(packet).and_then(|row| mot_object_link(row, link))
     };
-    // Decision E.52: the global flags are acquisition hints; the GPOP and
-    // GDRCS are reached through the magazine's links whatever they say.
+    // Decision E.52: the global flag is an acquisition hint; the GPOP is
+    // reached through the magazine's link whatever it says.
     let gpop = object_link(0);
     let pop = (entry.pop_link != 0).then(|| object_link(usize::from(entry.pop_link))).flatten();
-    let drcs_link = |number: u8| mot.row(drcs_packet).and_then(|row| mot_drcs_link(row, usize::from(number)));
-    let gdrcs = drcs_link(0);
-    let drcs = (entry.drcs_link != 0).then(|| drcs_link(entry.drcs_link)).flatten();
 
     let mut defaults = out.defaults.iter_mut();
     for (link, source) in [(gpop, ObjectSource::Global), (pop, ObjectSource::Public)] {
@@ -245,8 +231,6 @@ fn table(lookup: &EnhancementLookup<'_>, magazine: Magazine, page: PageNumber, l
     out.roles = [
         gpop.and_then(|link| table_link(link.magazine, link.page)),
         pop.and_then(|link| table_link(link.magazine, link.page)),
-        gdrcs.and_then(|link| table_link(link.magazine, link.page)),
-        drcs.and_then(|link| table_link(link.magazine, link.page)),
     ];
     out
 }
@@ -268,8 +252,6 @@ pub fn links(page: &StoredPage, lookup: &EnhancementLookup<'_>, level: Presentat
     EnhancementLinks {
         gpop: role(LINK_FUNCTION_GPOP),
         pop: role(LINK_FUNCTION_POP),
-        gdrcs: role(LINK_FUNCTION_GDRCS),
-        drcs: role(LINK_FUNCTION_DRCS),
         fallback: table.fallback,
         default_objects: table.defaults,
         level: table.level,

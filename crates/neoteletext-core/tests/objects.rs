@@ -11,16 +11,14 @@
 mod common;
 
 use common::{
-    DISPLAY, Mot, ObjectDef, Receiver, build, build_25, build_35, char_of, define, display_page, drcs_link, end,
-    foreground, g0, invoke, link, local_data, local_number, mot_packets, null_link, object_link, object_page,
-    object_page_data, object_page_packets, origin, page_grid, public_number, row_0, set_position, text, text_at, x26,
-    x27, x28,
+    DISPLAY, Mot, ObjectDef, Receiver, build, build_25, build_35, char_of, define, display_page, end, foreground, g0,
+    invoke, link, local_data, local_number, mot_packets, null_link, object_link, object_page, object_page_data,
+    object_page_packets, origin, page_grid, public_number, row_0, set_position, text, text_at, x26, x27, x28,
 };
 use neoteletext_core::colour::{SidePanels, colour_index};
 use neoteletext_core::config::{Config, PresentationLevel};
 use neoteletext_core::consts::{
-    LINK_FUNCTION_DRCS, LINK_FUNCTION_GDRCS, LINK_FUNCTION_GPOP, LINK_FUNCTION_POP, OBJECT_INVOCATIONS_PER_TYPE,
-    OBJECTS_OPEN_AT_ONCE,
+    LINK_FUNCTION_GPOP, LINK_FUNCTION_POP, OBJECT_INVOCATIONS_PER_TYPE, OBJECTS_OPEN_AT_ONCE, PAGE_FUNCTION_DRCS,
 };
 use neoteletext_core::enhance::MAX_WALK_STEPS;
 use neoteletext_core::level1::CharSource;
@@ -37,6 +35,10 @@ const L25: PresentationLevel = PresentationLevel::Level25;
 const L35: PresentationLevel = PresentationLevel::Level35;
 const POP: u16 = 0x1A0;
 const GPOP: u16 = 0x1A1;
+/// The link functions of Global DRCS and DRCS pages (Table 15), which a
+/// service may send and are not used (decision E.95).
+const GDRCS_FUNCTION: u8 = 0b10;
+const DRCS_FUNCTION: u8 = 0b11;
 
 /// X/27/4 naming the POP 1A0 and the GPOP 1A1 for both levels.
 fn object_links() -> Packet {
@@ -45,8 +47,8 @@ fn object_links() -> Packet {
         [
             link(LINK_FUNCTION_GPOP, 0b11, GPOP),
             link(LINK_FUNCTION_POP, 0b11, POP),
-            null_link(LINK_FUNCTION_GDRCS),
-            null_link(LINK_FUNCTION_DRCS),
+            null_link(GDRCS_FUNCTION),
+            null_link(DRCS_FUNCTION),
             null_link(0),
             null_link(0),
         ],
@@ -500,15 +502,15 @@ fn compositional_links_by_role() {
         let address = PageAddress::from_mpp(mpp).unwrap();
         Some(PageLink { magazine: address.magazine, page: address.page })
     };
-    let mut wrong_marker = link(LINK_FUNCTION_DRCS, 0b11, 0x1B3);
+    let mut wrong_marker = link(DRCS_FUNCTION, 0b11, 0x1B3);
     wrong_marker.marker_first = false;
     let x27_4 = x27(
         4,
         [
             link(LINK_FUNCTION_GPOP, 0b01, 0x1A1),
             // Link 1 must be a POP link: a GDRCS function there is ignored.
-            link(LINK_FUNCTION_GDRCS, 0b11, 0x2A2),
-            link(LINK_FUNCTION_GDRCS, 0b10, 0x1B1),
+            link(GDRCS_FUNCTION, 0b11, 0x2A2),
+            link(GDRCS_FUNCTION, 0b10, 0x1B1),
             wrong_marker,
             link(LINK_FUNCTION_POP, 0b10, 0x1A5),
             link(LINK_FUNCTION_GPOP, 0b10, 0x1A6),
@@ -516,33 +518,32 @@ fn compositional_links_by_role() {
     );
     let x27_5 = x27(
         5,
-        [link(LINK_FUNCTION_DRCS, 0b11, 0x1B5), null_link(0), null_link(0), null_link(0), null_link(0), null_link(0)],
+        [link(DRCS_FUNCTION, 0b11, 0x1B5), null_link(0), null_link(0), null_link(0), null_link(0), null_link(0)],
     );
     let packets = display_page(0, &[], vec![x27_4, x27_5]);
     let at_25 = decode(&packets, L25);
-    assert_eq!((at_25.gpop, at_25.pop, at_25.gdrcs, at_25.drcs), (to(0x1A1), None, None, None));
+    assert_eq!((at_25.gpop, at_25.pop), (to(0x1A1), None));
     let at_35 = decode(&packets, L35);
     assert_eq!(at_35.gpop, to(0x1A6), "link 0 is for Level 2.5 only; link 5 gives the GPOP");
-    assert_eq!((at_35.pop, at_35.gdrcs, at_35.drcs), (to(0x1A5), to(0x1B1), to(0x1B5)));
+    // The DRCS links are read past (decision E.95).
+    assert_eq!(at_35.pop, to(0x1A5));
 }
 
-/// The table of magazine 1 linking page 100 to POP link 1 and DRCS link 2.
+/// The table of magazine 1 linking page 100 to POP link 1.
 fn table(level_25: bool, level_35: bool, omit: &[u8]) -> Mot {
     let fallback = FallbackFields {
         side_panels: SidePanelFields { left: true, right: false, status_flag: true, left_columns: 0 },
         black_background_substitution: true,
     };
     let mut mot = Mot {
-        entries: vec![(0x00, MotPageEntry { global_objects: false, pop_link: 1, global_drcs: false, drcs_link: 2 })],
+        entries: vec![(0x00, MotPageEntry { global_objects: false, pop_link: 1 })],
         gpop: Some(object_link(0x3A1, FallbackFields::default(), [None; 2])),
-        gdrcs: Some(drcs_link(0x1B1)),
         level_25,
         level_35,
         omit: omit.to_vec(),
         ..Mot::default()
     };
     mot.pops[0] = Some(object_link(POP, fallback, [None; 2]));
-    mot.drcs[1] = Some(drcs_link(0x1B2));
     mot
 }
 
@@ -565,7 +566,7 @@ fn magazine_organization_table_links() {
         Some(PageLink { magazine: address.magazine, page: address.page })
     };
     let links = decode(&table(true, false, &[]), L25);
-    assert_eq!((links.gpop, links.pop, links.gdrcs, links.drcs), (to(0x3A1), to(POP), to(0x1B1), to(0x1B2)));
+    assert_eq!((links.gpop, links.pop), (to(0x3A1), to(POP)));
     assert_eq!(links.gpop.unwrap().magazine.number(), 3, "the table's magazine is absolute");
     assert!(links.fallback.unwrap().black_background_substitution);
     assert_eq!(links.level, L25);
@@ -592,7 +593,7 @@ fn magazine_organization_table_links() {
         let page = *decoder.store().get(PageAddress::from_mpp(DISPLAY).unwrap(), SubCode::ANY).unwrap();
         objects::links(&page, &decoder.enhancement_lookup(), L25)
     });
-    assert_eq!((own.gpop, own.pop, own.gdrcs), (to(GPOP), to(POP), to(0x1B1)), "X/27/4 first, role by role");
+    assert_eq!((own.gpop, own.pop), (to(GPOP), to(POP)), "X/27/4 first, role by role");
 }
 
 /// REQ-OBJ-040, REQ-TST-017: default objects in the order GPOP 1, GPOP 2,
@@ -654,37 +655,26 @@ fn sub_pages_beyond_the_count_are_used() {
     assert_eq!(char_of(&build_25(&packets).cells[2][0]), 's');
 }
 
-/// REQ-OBJ-041: the Magazine Organization Table and object and DRCS pages
-/// are never shown as text.
+/// REQ-OBJ-041: the Magazine Organization Table and the pages whose
+/// function is not text are never shown as text. A DRCS page that says so
+/// only in its X/28/3 is one (decision E.95: its patterns are not read).
 #[test]
 fn enhancement_pages_are_not_shown_as_text() {
     let mut packets = mot_packets(&table(true, false, &[]));
-    // A decimal page that a link names and whose X/28/3 says DRCS.
-    packets.extend(display_page(
-        0,
-        &[],
-        vec![x27(
-            4,
-            [
-                null_link(0),
-                null_link(1),
-                null_link(2),
-                link(LINK_FUNCTION_DRCS, 0b11, 0x150),
-                null_link(0),
-                null_link(0),
-            ],
-        )],
-    ));
-    packets.extend(common::drcs_page(0x150, 0, &[(0, common::ptu([0xFFF; 10]))], Some([0; 48])));
+    // A decimal page, named by no link, whose X/28/3 says DRCS.
+    packets.extend(common::pattern_page(0x150, 0, true));
     let config = Config { store_hexadecimal_pages: true, ..Config::default() };
     Receiver::new().run(&packets, config, |decoder| {
-        for mpp in [0x1FE, 0x150] {
-            if decoder.store().get(PageAddress::from_mpp(mpp).unwrap(), SubCode::ANY).is_none() {
-                continue;
-            }
-            let grid = page_grid(decoder, mpp, &config).0;
-            assert!(grid.cells[1..].iter().flatten().all(|cell| char_of(cell) == ' '), "page {mpp:03X}");
+        let table = PageAddress::from_mpp(0x1FE).unwrap();
+        if decoder.store().get(table, SubCode::ANY).is_some() {
+            let grid = page_grid(decoder, 0x1FE, &config).0;
+            assert!(grid.cells[1..].iter().flatten().all(|cell| char_of(cell) == ' '), "the table");
         }
+        // The DRCS page is held as an enhancement page, not a display page.
+        let pattern = PageAddress::from_mpp(0x150).unwrap();
+        assert!(decoder.store().get(pattern, SubCode::ANY).is_none());
+        let held = decoder.enhancement_lookup().sub_page(pattern.magazine, pattern.page, 0).unwrap();
+        assert_eq!(held.format().map(|format| format.function), Some(PAGE_FUNCTION_DRCS));
     });
 }
 

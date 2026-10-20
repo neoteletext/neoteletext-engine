@@ -134,8 +134,9 @@ When a second G0 set has been designated through Table 33 (decision E.4), the ES
 A function shall convert any internal character to a Unicode scalar value or to a short sequence of scalar values. For characters with no Unicode equivalent, it shall return a documented private-use or fallback value.
 *Verification:* Test (REQ-TST-011).
 
-**REQ-CHR-011 — Unicode for the G3 set and for DRCS characters.**
-Each defined G3 position shall convert to the Unicode character that Unicode document L2/19-025 and its mapping file `TELTXTG3.TXT` assign to it, as `research/notes-level25-drcs.md` section 9.3 lists them. Most are in the block "Symbols for Legacy Computing" from U+1FB3C to U+1FB6F, and the rest are box-drawing, geometric-shape and arrow characters. Position 5/F, which shows the background colour, shall convert to a space. The unassigned positions shall convert to a space. A DRCS character has no Unicode equivalent and shall convert to the documented fallback value of REQ-CHR-010.
+**REQ-CHR-011 — Unicode for the G3 set.**
+Each defined G3 position shall convert to the Unicode character that Unicode document L2/19-025 and its mapping file `TELTXTG3.TXT` assign to it, as `research/notes-level25-drcs.md` section 9.3 lists them. Most are in the block "Symbols for Legacy Computing" from U+1FB3C to U+1FB6F, and the rest are box-drawing, geometric-shape and arrow characters. Position 5/F, which shows the background colour, shall convert to a space. The unassigned positions shall convert to a space.
+*Amended 20 October 2026 (decision E.95):* DRCS is not decoded, and the parts of this requirement that concerned it are removed.
 *Verification:* Test of every G3 position against the mapping file.
 
 **REQ-CHR-012 — Designations of neoteletext's own sets.**

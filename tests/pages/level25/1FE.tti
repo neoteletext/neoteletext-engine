@@ -2,11 +2,10 @@ PN,1FE00
 SC,1800
 PS,C000
 PF,6,3
-OL,1,@@@@@@@@@@@@@@@@@@@@@@@@@@@@@I@@@@@@@@@J
-OL,2,@@@@AAH@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+OL,2,@@@@A@H@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 OL,19,AN@@@@@@@@AJ@A@@@@@@AOO@@@@@@@AOO@@@@@@@
 OL,20,AOO@@@@@@@AOO@@@@@@@AOO@@@@@@@AOO@@@@@@@
-OL,21,AL@@AK@AAKC@AOO@AOO@AOO@AOO@AOO@@@B@C@F@
+OL,21,AOO@AOO@AOO@AOO@AOO@AOO@AOO@AOO@@@B@C@@@
 OL,22,AN@@@@@@@@AJ@A@@@@@@AOO@@@@@@@AOO@@@@@@@
 OL,23,AOO@@@@@@@AOO@@@@@@@AOO@@@@@@@AOO@@@@@@@
-OL,24,AL@@AK@AAKC@AOO@AOO@AOO@AOO@AOO@@@B@C@F@
+OL,24,AOO@AOO@AOO@AOO@AOO@AOO@AOO@AOO@@@B@C@@@

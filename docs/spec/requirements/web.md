@@ -355,7 +355,7 @@ A channel's files shall have these fixed names, in the channel's folder, and no 
 Within a channel, the extension that last answered 200 shall be tried first, and the other second. This changes only the number of requests, never which file is used when both exist: when the first answers 200, the second is not asked for. Conditional requests to keep a page current (REQ-WEB-004) shall go to the file that answered.
 
 **What each file may fill.**
-- **A page's own file** shall fill only pages that have been asked for in this channel, and enhancement pages, whose page numbers are not decimal and which a page may carry for its objects and DRCS characters (decision E.63 item 5). Any other page in it shall be dropped, by its header, with a diagnostic.
+- **A page's own file** shall fill only pages that have been asked for in this channel, and enhancement pages, whose page numbers are not decimal and which a page may carry for its objects (decision E.63 item 5). Any other page in it shall be dropped, by its header, with a diagnostic.
 - **`index.t42`,** a pushed message, a form response and a local file shall fill every page they hold.
 - `index.t42` is bounded by the page response limit of REQ-WEB-008, 256 kilobytes by default. A channel larger than that publishes page files.
 
@@ -375,7 +375,7 @@ The web module shall offer a setting under which a redirect that leaves the chan
 *Verification:* Tests that a redirect to another origin and a redirect to another folder of the same origin are reported and not followed; that a redirect to a file inside the folder and an upgrade to `https` on the same host and folder are followed; and that an upgrade to another port is reported.
 
 **REQ-WEB-022 — Enhancement dependencies.**
-When the viewer shows a page of a channel at Presentation Level 2.5 or 3.5 and its enhancement pages are not in the store, it shall ask once for its magazine's Organization Table (page xFE), then for the object and DRCS pages that the table and the page name (decision E.63 item 5). Pages already stored shall not be asked for again. These requests shall not change which page is kept current. While they load, the page is shown with what has arrived, and is drawn again as they arrive. A dependency that cannot be fetched removes only what depends on it (decision E.41).
+When the viewer shows a page of a channel at Presentation Level 2.5 or 3.5 and its enhancement pages are not in the store, it shall ask once for its magazine's Organization Table (page xFE), then for the object pages that the table and the page name (decision E.63 item 5). Pages already stored shall not be asked for again. These requests shall not change which page is kept current. While they load, the page is shown with what has arrived, and is drawn again as they arrive. A dependency that cannot be fetched removes only what depends on it (decision E.41).
 *Verification:* Test against the local test server that a Level 2.5 page fetches its table and object pages once.
 
 **REQ-WEB-023 — Channel addresses.**

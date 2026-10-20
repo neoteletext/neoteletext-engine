@@ -23,7 +23,8 @@ Normalised before comparing:
 - G2 characters for which the two decoders chose different but equivalent
   Unicode code points (EQUIVALENT below) count as equal;
 - a character zvbi gives as U+0000 (one it could not compose) is not
-  compared.
+  compared, nor is a DRCS character, which neottx does not decode
+  (decision E.95): it shows the Level 1 character there.
 
 KNOWN names a file of pages that differ for a recorded reason: a zvbi
 fault, or a decision of REQUIREMENTS.md Part E that zvbi does not follow.
@@ -42,8 +43,6 @@ ZVBI_MOSAIC_FIRST, ZVBI_MOSAIC_LAST = 0xEE00, 0xEE7F
 ZVBI_CONTIGUOUS_BIT = 0x20
 ZVBI_G3_FIRST, ZVBI_G3_LAST = 0xEF20, 0xEF7F
 ZVBI_DRCS_FIRST, ZVBI_DRCS_LAST = 0xF000, 0xF7FF
-ZVBI_DRCS_CHARACTERS = 64
-DRCS_SUBTABLES = 16
 # zvbi's vbi_size values, by (vertical, horizontal) role in neottx's dump.
 ZVBI_SIZES = {
     "NN": 0, "NL": 1, "TN": 2, "TL": 3, "NR": 4, "TR": 4, "BR": 5, "BN": 6, "BL": 7,
@@ -88,9 +87,7 @@ def zvbi_character(code):
         g3 = f"G3:{code - 0xEF00:02X}"
         return "S" if g3 in G3_SPACES else g3
     if ZVBI_DRCS_FIRST <= code <= ZVBI_DRCS_LAST:
-        table_and_subtable, character = divmod(code - ZVBI_DRCS_FIRST, ZVBI_DRCS_CHARACTERS)
-        table, subtable = divmod(table_and_subtable, DRCS_SUBTABLES)
-        return f"D{'n' if table else 'g'}{subtable:X}:{character}"
+        return ZVBI_UNKNOWN
     unicode = f"U+{code:04X}"
     return EQUIVALENT.get(unicode, unicode)
 

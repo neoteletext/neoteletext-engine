@@ -7,20 +7,17 @@
 //! - [`Triplets`]: local enhancement data and object bodies, every
 //!   function of Tables 28 and 29 by name;
 //! - [`DisplayPage`]: a Level 1 page with its packets X/26 laid out (Local
-//!   Objects included, their numbers computed), X/27/4, X/27/5, X/28/0,
-//!   X/28/1 and X/28/4;
+//!   Objects included, their numbers computed), X/27/4, X/27/5, X/28/0
+//!   and X/28/4;
 //! - [`ObjectPage`]: a POP or GPOP with its pointer tables computed;
-//! - [`DrcsPage`]: DRCS characters of every mode from text patterns, with
-//!   X/28/3 computed;
 //! - [`Mot`]: the Magazine Organization Table;
-//! - [`MagazinePackets`]: M/29/0, M/29/1 and M/29/4 on a page mFF;
+//! - [`MagazinePackets`]: M/29/0 and M/29/4 on a page mFF;
 //! - [`Stream`]: a set of pages, written as T42 in the order of Annex B.7
 //!   or as TTI files.
 //!
 //! The authored test stream of REQ-TST-024 is in [`streams`].
 
 mod display;
-mod drcs;
 mod mot;
 mod objects;
 pub mod streams;
@@ -33,11 +30,11 @@ use std::string::String;
 use std::vec::Vec;
 
 use neoteletext_core::consts::{
-    C4_ERASE, DESIGNATION_DRCS_COLOURS, DESIGNATION_LEVEL_35_DATA, DESIGNATION_PAGE_DATA, HEADER_DISPLAY_BYTES,
-    PACKET_MAGAZINE_ENHANCEMENT, PAGE_TIME_FILLING, SPACE, TRIPLETS_PER_PACKET,
+    C4_ERASE, DESIGNATION_LEVEL_35_DATA, DESIGNATION_PAGE_DATA, HEADER_DISPLAY_BYTES, PACKET_MAGAZINE_ENHANCEMENT,
+    PAGE_TIME_FILLING, SPACE, TRIPLETS_PER_PACKET,
 };
 use neoteletext_core::ecc::with_odd_parity;
-use neoteletext_core::packet::{DrcsColourData, Packet, Triplet, encode};
+use neoteletext_core::packet::{Packet, Triplet, encode};
 use neoteletext_core::types::{
     ColourWords, ControlBits, DefaultColourFields, Designations, Magazine, PageAddress, PageNumber, PresentationFields,
     Rgb12, SidePanelFields, SubCode,
@@ -46,8 +43,7 @@ use neoteletext_core::types::{
 pub use display::{
     DisplayPage, LinkFunction, PAGE_TRIPLETS, VALID_BOTH, VALID_LEVEL_25, VALID_LEVEL_35, link, no_link,
 };
-pub use drcs::{DrcsPage, DrcsRef, character_ptus};
-pub use mot::{Mot, MotLevel, drcs_link, object_link};
+pub use mot::{Mot, MotLevel, object_link};
 pub use objects::{ObjectPage, pointer_place, public_number};
 pub use triplets::{FlashMode, FlashRate, LocalObject, ObjectRef, RowScope, Triplets, row_address};
 
@@ -70,10 +66,6 @@ pub enum AuthorError {
     TooManyObjects,
     /// A sub-page number above 15.
     BadSubPage,
-    /// A DRCS character that runs past PTU 47 or over another.
-    BadPtu,
-    /// A pattern of the wrong size, or with a value the mode cannot hold.
-    BadPattern,
     /// A row, column or link position outside its range.
     BadPosition,
     /// An invocation of a Local Object that the page does not define, or
@@ -167,13 +159,12 @@ fn push_raw(page: &mut PageFile, raw: RawPacket) -> Result<()> {
     if page.raw_packets.push(raw) { Ok(()) } else { Err(AuthorError::PageFull) }
 }
 
-/// The magazine packets M/29/0, M/29/1 and M/29/4 of a magazine, written
+/// The magazine packets M/29/0 and M/29/4 of a magazine, written
 /// on its page mFF (REQ-INP-023).
 #[derive(Clone, Copy, Debug)]
 pub struct MagazinePackets {
     magazine: Magazine,
     data: Option<PresentationFields>,
-    drcs_colours: Option<DrcsColourData>,
     level_35: Option<PresentationFields>,
 }
 
@@ -181,18 +172,12 @@ impl MagazinePackets {
     /// No packets for a magazine.
     #[must_use]
     pub const fn new(magazine: Magazine) -> Self {
-        Self { magazine, data: None, drcs_colours: None, level_35: None }
+        Self { magazine, data: None, level_35: None }
     }
 
     /// M/29/0 (Table 11).
     pub fn data(&mut self, fields: PresentationFields) -> &mut Self {
         self.data = Some(fields);
-        self
-    }
-
-    /// M/29/1, the DRCS colour lookup tables (Table 12).
-    pub fn drcs_colours(&mut self, data: DrcsColourData) -> &mut Self {
-        self.drcs_colours = Some(data);
         self
     }
 
@@ -213,10 +198,6 @@ impl MagazinePackets {
         if let Some(fields) = self.data {
             let packet = encode::magazine_enhancement(magazine, DESIGNATION_PAGE_DATA, &fields);
             push_raw(&mut page, raw_line(&packet, number, DESIGNATION_PAGE_DATA))?;
-        }
-        if let Some(data) = self.drcs_colours {
-            let packet = encode::drcs_colours(magazine, number, &data);
-            push_raw(&mut page, raw_line(&packet, number, DESIGNATION_DRCS_COLOURS))?;
         }
         if let Some(fields) = self.level_35 {
             let packet = encode::magazine_enhancement(magazine, DESIGNATION_LEVEL_35_DATA, &fields);
@@ -260,7 +241,7 @@ impl Stream {
     }
 
     /// The pages in the order of Annex B.7: magazine packets, Magazine
-    /// Organization Tables, DRCS pages, object pages, then Level 1 pages.
+    /// Organization Tables, object pages, then Level 1 pages.
     #[must_use]
     pub fn in_transmission_order(&self) -> Vec<&PageFile> {
         in_transmission_order(&self.pages())

@@ -8,11 +8,10 @@ use super::function::ObjectKind;
 use super::{Triplets, triplets_of};
 use crate::consts::{
     DATA_BYTES, DATA_START, MAGAZINE_MASK, MOT_DECIMAL_DIGITS, MOT_DECIMAL_FIRST_PACKET, MOT_DEFAULT_SECOND_SHIFT,
-    MOT_DRCS_LINK_BYTES, MOT_DRCS_LINK_FIRST_BYTE, MOT_DRCS_LINKS, MOT_FALLBACK_NONE, MOT_FALLBACK_PANELS_MASK,
-    MOT_FALLBACK_PANELS_SHIFT, MOT_FALLBACK_SUBSTITUTION, MOT_GLOBAL_FLAG, MOT_HEX_DIGITS, MOT_HEX_TENS_FIRST_PACKET,
-    MOT_HEX_UNITS_FIRST_PACKET, MOT_LINK_NUMBER_MASK, MOT_LINK_X27_FLAG, MOT_OBJECT_LINK_BYTES,
-    MOT_OBJECT_LINK_FIRST_BYTE, MOT_OBJECT_LINKS_PER_PACKET, MOT_PAIRS_DECIMAL_UNITS, MOT_PAIRS_HEX_UNITS,
-    MOT_TOTALS_BYTE, OBJECT_DEFINITION_FIRST_PACKET, OBJECT_POINTER_BITS, OBJECT_POINTER_DATA_BIT,
+    MOT_FALLBACK_NONE, MOT_FALLBACK_PANELS_MASK, MOT_FALLBACK_PANELS_SHIFT, MOT_FALLBACK_SUBSTITUTION, MOT_GLOBAL_FLAG,
+    MOT_HEX_DIGITS, MOT_HEX_TENS_FIRST_PACKET, MOT_HEX_UNITS_FIRST_PACKET, MOT_LINK_NUMBER_MASK, MOT_LINK_X27_FLAG,
+    MOT_OBJECT_LINK_BYTES, MOT_OBJECT_LINK_FIRST_BYTE, MOT_OBJECT_LINKS_PER_PACKET, MOT_PAIRS_DECIMAL_UNITS,
+    MOT_PAIRS_HEX_UNITS, MOT_TOTALS_BYTE, OBJECT_DEFINITION_FIRST_PACKET, OBJECT_POINTER_BITS, OBJECT_POINTER_DATA_BIT,
     OBJECT_POINTER_UNUSED, OBJECT_TRIPLET_LAST, OBJECT_TRIPLETS_IN_ROWS, PACKET_FIRST_BYTE_NUMBER,
     SIDE_PANEL_HALF_COLUMNS, TRIPLETS_PER_PACKET,
 };
@@ -151,18 +150,15 @@ pub fn mot_position(page: PageNumber) -> MotPosition {
     }
 }
 
-/// A page's byte pair in the Magazine Organization Table (clauses 10.6.2
-/// and 10.6.3).
+/// The object half of a page's byte pair in the Magazine Organization
+/// Table (clauses 10.6.2 and 10.6.3). The second byte names DRCS pages,
+/// which are not read (decision E.95).
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub struct MotPageEntry {
     /// First byte bit 4: the page needs objects from the GPOP.
     pub global_objects: bool,
     /// First byte bits 3 to 1: the POP link 1 to 7, or 0 for none.
     pub pop_link: u8,
-    /// Second byte bit 4: the page needs the GDRCS.
-    pub global_drcs: bool,
-    /// Second byte bits 3 to 1: the DRCS link 1 to 7, or 0 for none.
-    pub drcs_link: u8,
 }
 
 fn nibble_at(row: &[u8; DATA_BYTES], index: usize) -> Option<u8> {
@@ -178,17 +174,12 @@ fn nibbles<const N: usize>(row: &[u8; DATA_BYTES], index: usize) -> Option<[u8; 
     Some(out)
 }
 
-/// The byte pair at `index` of a table packet; `None` when either byte is
-/// uncorrectable (decision E.7).
+/// The byte pair at `index` of a table packet; `None` when its first byte
+/// is uncorrectable (decision E.7).
 #[must_use]
 pub fn mot_page_entry(row: &[u8; DATA_BYTES], index: usize) -> Option<MotPageEntry> {
-    let [objects, drcs] = nibbles::<2>(row, index)?;
-    Some(MotPageEntry {
-        global_objects: objects & MOT_GLOBAL_FLAG != 0,
-        pop_link: objects & MOT_LINK_NUMBER_MASK,
-        global_drcs: drcs & MOT_GLOBAL_FLAG != 0,
-        drcs_link: drcs & MOT_LINK_NUMBER_MASK,
-    })
+    let [objects] = nibbles::<1>(row, index)?;
+    Some(MotPageEntry { global_objects: objects & MOT_GLOBAL_FLAG != 0, pop_link: objects & MOT_LINK_NUMBER_MASK })
 }
 
 /// A default object of an object link (clause 10.6.4.1).
@@ -288,49 +279,15 @@ pub fn mot_object_link(row: &[u8; DATA_BYTES], link: usize) -> Option<MotObjectL
     })
 }
 
-/// A DRCS link of the Magazine Organization Table (Table 23).
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
-pub struct MotDrcsLink {
-    /// Byte N bits 1 to 3: the magazine, absolute, 0 meaning 8.
-    pub magazine: Magazine,
-    /// Byte N bit 4: the link may be superseded by X/27/4 or X/27/5.
-    pub x27_flag: bool,
-    /// Bytes N+1 and N+2: the page; FF means the link is not used.
-    pub page: PageNumber,
-    /// Byte N+3: the highest S1 transmitted.
-    pub subpage_count: u8,
-}
-
-/// DRCS link `link` of a table packet X/21 or X/24: 0 is the GDRCS link,
-/// 1 to 7 DRCS links 1 to 7 (Table 22). `None` when any byte is
-/// uncorrectable.
-#[must_use]
-pub fn mot_drcs_link(row: &[u8; DATA_BYTES], link: usize) -> Option<MotDrcsLink> {
-    if link >= MOT_DRCS_LINKS {
-        return None;
-    }
-    let start = MOT_DRCS_LINK_FIRST_BYTE
-        .saturating_add(link.saturating_mul(MOT_DRCS_LINK_BYTES))
-        .saturating_sub(DATA_FIRST_BYTE_NUMBER);
-    let [first, tens, units, subpages] = nibbles::<MOT_DRCS_LINK_BYTES>(row, start)?;
-    Some(MotDrcsLink {
-        magazine: Magazine::from_bits(first & MAGAZINE_MASK),
-        x27_flag: first & MOT_LINK_X27_FLAG != 0,
-        page: PageNumber(tens << 4 | units),
-        subpage_count: subpages,
-    })
-}
-
-/// The totals of enhancement pages in bytes 40 to 45 of X/21 and X/24
-/// (clause 10.6.6).
+/// The totals of enhancement pages in bytes 40 to 43 of X/21 and X/24
+/// (clause 10.6.6). Bytes 44 and 45 count DRCS pages, which are not read
+/// (decision E.95).
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub struct MotTotals {
     /// Bit `Magazine::index()` set for each magazine included in the totals.
     pub magazines: u8,
     /// The total number of object pages, public and global.
     pub object_pages: u8,
-    /// The total number of DRCS pages.
-    pub drcs_pages: u8,
 }
 
 /// The totals of a table packet X/21 or X/24; `None` when any byte is
@@ -340,12 +297,8 @@ pub fn mot_totals(row: &[u8; DATA_BYTES]) -> Option<MotTotals> {
     let start = MOT_TOTALS_BYTE.saturating_sub(DATA_FIRST_BYTE_NUMBER);
     // Byte 40 holds M3 M2 M1 M8 and byte 41 M7 M6 M5 M4, most significant
     // first, which is the order of `Magazine::index()`.
-    let [low_magazines, high_magazines, low_objects, high_objects, low_drcs, high_drcs] = nibbles::<6>(row, start)?;
-    Some(MotTotals {
-        magazines: low_magazines | high_magazines << 4,
-        object_pages: low_objects | high_objects << 4,
-        drcs_pages: low_drcs | high_drcs << 4,
-    })
+    let [low_magazines, high_magazines, low_objects, high_objects] = nibbles::<4>(row, start)?;
+    Some(MotTotals { magazines: low_magazines | high_magazines << 4, object_pages: low_objects | high_objects << 4 })
 }
 
 /// Encoders for the table's byte groups, as Hamming 8/4 values before
@@ -353,20 +306,18 @@ pub fn mot_totals(row: &[u8; DATA_BYTES]) -> Option<MotTotals> {
 pub(super) mod encode {
     use super::{
         LINK_DEFAULT_FIRST, LINK_DEFAULT_SECOND, LINK_DEFAULT_TYPES, LINK_FALLBACK, LINK_SUBPAGES, LINK_TENS,
-        LINK_UNITS, MotDrcsLink, MotObjectLink, MotPageEntry, MotTotals,
+        LINK_UNITS, MotObjectLink, MotPageEntry, MotTotals,
     };
     use crate::consts::{
-        MAGAZINE_MASK, MOT_DEFAULT_SECOND_SHIFT, MOT_DRCS_LINK_BYTES, MOT_FALLBACK_PANELS_SHIFT,
-        MOT_FALLBACK_SUBSTITUTION, MOT_GLOBAL_FLAG, MOT_LINK_NUMBER_MASK, MOT_LINK_X27_FLAG, MOT_OBJECT_LINK_BYTES,
-        NIBBLE_MASK,
+        MAGAZINE_MASK, MOT_DEFAULT_SECOND_SHIFT, MOT_FALLBACK_PANELS_SHIFT, MOT_FALLBACK_SUBSTITUTION, MOT_GLOBAL_FLAG,
+        MOT_LINK_NUMBER_MASK, MOT_LINK_X27_FLAG, MOT_OBJECT_LINK_BYTES, NIBBLE_MASK,
     };
 
-    /// The two values of a byte pair.
+    /// The two values of a byte pair; the second, for DRCS pages, is 0.
     #[must_use]
     pub const fn mot_page_entry(entry: MotPageEntry) -> [u8; 2] {
         let objects = if entry.global_objects { MOT_GLOBAL_FLAG } else { 0 } | entry.pop_link & MOT_LINK_NUMBER_MASK;
-        let drcs = if entry.global_drcs { MOT_GLOBAL_FLAG } else { 0 } | entry.drcs_link & MOT_LINK_NUMBER_MASK;
-        [objects, drcs]
+        [objects, 0]
     }
 
     /// The ten values of an object link.
@@ -403,18 +354,7 @@ pub(super) mod encode {
         out
     }
 
-    /// The four values of a DRCS link.
-    #[must_use]
-    pub const fn mot_drcs_link(link: &MotDrcsLink) -> [u8; MOT_DRCS_LINK_BYTES] {
-        [
-            link.magazine.bits() & MAGAZINE_MASK | if link.x27_flag { MOT_LINK_X27_FLAG } else { 0 },
-            link.page.tens(),
-            link.page.units(),
-            link.subpage_count & NIBBLE_MASK,
-        ]
-    }
-
-    /// The six values of the totals.
+    /// The six values of the totals; the DRCS total is 0.
     #[must_use]
     pub const fn mot_totals(totals: &MotTotals) -> [u8; 6] {
         [
@@ -422,8 +362,8 @@ pub(super) mod encode {
             totals.magazines >> 4,
             totals.object_pages & NIBBLE_MASK,
             totals.object_pages >> 4,
-            totals.drcs_pages & NIBBLE_MASK,
-            totals.drcs_pages >> 4,
+            0,
+            0,
         ]
     }
 }

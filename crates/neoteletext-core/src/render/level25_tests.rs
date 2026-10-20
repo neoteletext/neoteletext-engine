@@ -1,11 +1,11 @@
 //! Tests of the rendering of Levels 2.5 and 3.5: the resolved colour mode,
 //! side panels, double width and size, underline, invert, flash and
-//! conceal, G3 and DRCS drawing, the font styles and the flash timing
+//! conceal, G3 drawing, the font styles and the flash timing
 //! (REQ-RND-030 to REQ-RND-040). Every grid is built by hand, so these
 //! tests depend on nothing but the grid (REQ-RND-001).
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 #![cfg_attr(
-    not(all(feature = "drcs-multicolour", feature = "side-panels", feature = "bold", feature = "italic")),
+    not(all(feature = "side-panels", feature = "bold", feature = "italic")),
     allow(dead_code, unused_imports, reason = "helpers of the tests whose capability is compiled out (decision E.71)")
 )]
 
@@ -16,10 +16,8 @@ use super::*;
 use crate::charset::{CharRef, CharSet, G0, G0Set, NationalOption};
 use crate::colour::SidePanels;
 use crate::consts::{G3_CODES, G3_FIRST_CODE, PAGE_WIDTH};
-use crate::drcs::DrcsPattern;
 use crate::level1::CellAttributes;
 use crate::level1::FontStyle;
-use crate::types::DrcsCharacter;
 use std::vec;
 use std::vec::Vec;
 
@@ -30,7 +28,7 @@ const WHITE: u8 = 7;
 const T: u8 = COLOUR_TRANSPARENT;
 
 /// A case the palette mode must refuse: its name and how to make it.
-type RefusalCase = (&'static str, fn(&mut Grid, DrcsPattern));
+type RefusalCase = (&'static str, fn(&mut Grid));
 /// Invert, flash mode, conceal, reveal and flash unit, with the dots' and
 /// gaps' indices they give.
 type ColourCase = (bool, Option<FlashMode>, bool, bool, u8, (u8, u8));
@@ -45,10 +43,6 @@ fn text(code: u8) -> Glyph {
 
 fn g3(code: u8) -> Glyph {
     Glyph::Char(CharRef::new(CharSet::G3, code))
-}
-
-fn drcs(table: DrcsTable, character: u8) -> DrcsCharacter {
-    DrcsCharacter { table, subtable: 0, character }
 }
 
 fn options(mode: CellMode, unit: u8, reveal: bool) -> RenderOptions {
@@ -67,11 +61,6 @@ fn large(unit: u8) -> RenderOptions {
 
 fn line_of(grid: &Grid, cell: &Cell, row: usize, column: usize, line: usize, options: RenderOptions) -> CellLine {
     cell_line(cell, grid, row, column, line, &GlyphSet::bedstead(), options)
-}
-
-/// The twelve indices of a cell line.
-fn pixels(raster: &CellLine) -> [u8; CELL_WIDTH] {
-    core::array::from_fn(|dot| raster.index(dot))
 }
 
 /// A whole screen at the grid's row width.
@@ -224,42 +213,32 @@ fn palette_mode_is_refused_where_it_cannot_draw() {
         row == Err(RenderError::NeedsResolvedMode)
     };
     assert!(!refused(&level1_grid()), "a Level 1 page draws in the palette mode");
-    let mut multi = DrcsPattern::EMPTY;
-    multi.character = drcs(DrcsTable::Normal, 4);
-    multi.mode = DrcsMode::Mode2;
-    let cases: [RefusalCase; 7] = [
-        ("foreground outside CLUT 0", |grid, _| grid.cells[2][5].foreground = 9),
-        ("background outside CLUT 0", |grid, _| grid.cells[2][5].background = 31),
-        ("fast flash", |grid, _| {
+    let cases: [RefusalCase; 6] = [
+        ("foreground outside CLUT 0", |grid| grid.cells[2][5].foreground = 9),
+        ("background outside CLUT 0", |grid| grid.cells[2][5].background = 31),
+        ("fast flash", |grid| {
             grid.cells[2][5].flash = true;
             grid.cells[2][5].attributes = CellAttributes::DEFAULT.with_flash_rate(FlashRate::FastPhase2);
         }),
-        ("inverted flash", |grid, _| {
+        ("inverted flash", |grid| {
             grid.cells[2][5].flash = true;
             grid.cells[2][5].attributes = CellAttributes::DEFAULT.with_flash_mode(FlashMode::Inverted);
         }),
-        ("adjacent-CLUT flash", |grid, _| {
+        ("adjacent-CLUT flash", |grid| {
             grid.cells[2][5].flash = true;
             grid.cells[2][5].attributes = CellAttributes::DEFAULT.with_flash_mode(FlashMode::AdjacentClut);
         }),
-        ("multi-colour DRCS", |grid, pattern| {
-            grid.drcs.push(pattern);
-            grid.cells[2][5].glyph = Glyph::Char(CharRef::drcs(pattern.character));
-        }),
-        ("a side-panel cell outside CLUT 0", |grid, _| {
+        ("a side-panel cell outside CLUT 0", |grid| {
             grid.side_panels = SidePanels { left: 4, right: 0 };
             grid.panel_cell_mut(2, 70).unwrap().background = 12;
         }),
     ];
     // A build without a capability cannot draw it, so does not refuse it
     // (decision E.71).
-    let compiled = |name: &&str| {
-        (cfg!(feature = "drcs-multicolour") || *name != "multi-colour DRCS")
-            && (cfg!(feature = "side-panels") || *name != "a side-panel cell outside CLUT 0")
-    };
+    let compiled = |name: &&str| cfg!(feature = "side-panels") || *name != "a side-panel cell outside CLUT 0";
     for (name, case) in cases.into_iter().filter(|(name, _)| compiled(name)) {
         let mut grid = level1_grid();
-        case(&mut grid, multi);
+        case(&mut grid);
         assert!(refused(&grid), "{name}");
     }
     // Flash with the default slow normal attributes is Level 1 flash.
@@ -541,7 +520,7 @@ fn panel_rows_render_identically_in_any_order() {
 #[cfg(feature = "side-panels")]
 #[test]
 fn panels_without_storage_show_the_screen_colour() {
-    let mut grid: Grid<4, 0> = Grid::empty();
+    let mut grid: Grid<0> = Grid::empty();
     grid.side_panels = SidePanels { left: 2, right: 0 };
     grid.screen_colour = CYAN;
     let mut out = vec![0u8; 42 * CELL_WIDTH];
@@ -577,22 +556,11 @@ fn doubled(mask: u16) -> u32 {
 
 /// REQ-RND-034: the left and right halves of a double-width character
 /// show the normal-width line, each half-dot drawn twice, for text with
-/// rounding, mosaics, G3 and DRCS; double size adds the vertical halves.
+/// rounding, mosaics and G3; double size adds the vertical halves.
 #[test]
 fn double_width_and_double_size() {
-    let mut grid = Grid::EMPTY;
-    let mut pattern = DrcsPattern::EMPTY;
-    pattern.character = drcs(DrcsTable::Global, 3);
-    for (row, plane) in pattern.planes[0].iter_mut().enumerate() {
-        *plane = 0b1000_0000_0011 >> (row % 3) | 0x020;
-    }
-    grid.drcs.push(pattern);
-    let glyphs = [
-        text(b'W'),
-        Glyph::Mosaic { pattern: 0x2D, separated: true },
-        g3(0x22),
-        Glyph::Char(CharRef::drcs(pattern.character)),
-    ];
+    let grid = Grid::EMPTY;
+    let glyphs = [text(b'W'), Glyph::Mosaic { pattern: 0x2D, separated: true }, g3(0x22)];
     for mode in [CellMode::Saa5050, CellMode::Saa5246a] {
         let options = options(mode, 0, false);
         let height = options.row_height();
@@ -687,18 +655,11 @@ fn underline_on_the_last_line() {
             assert_eq!(line_of(&grid, &bottom, 2, 1, last, options).mask, CELL_MASK);
             assert_eq!(line_of(&grid, &bottom, 2, 1, last - 1, options).mask, CELL_MASK, "the enlarged underline");
         }
-        // Never on G3, DRCS, a mosaic or an empty cell.
-        let mut drcs_grid = Grid::EMPTY;
-        let mut pattern = DrcsPattern::EMPTY;
-        pattern.character = drcs(DrcsTable::Normal, 1);
-        drcs_grid.drcs.push(pattern);
-        for glyph in [g3(0x20), Glyph::Char(CharRef::drcs(pattern.character)), Glyph::Space] {
+        // Never on G3, a mosaic or an empty cell.
+        for glyph in [g3(0x20), Glyph::Space] {
             let cell = Cell { glyph, attributes: underlined, ..Cell::BLANK };
             let plain = Cell { attributes: CellAttributes::DEFAULT, ..cell };
-            assert_eq!(
-                line_of(&drcs_grid, &cell, 1, 1, last, options),
-                line_of(&drcs_grid, &plain, 1, 1, last, options)
-            );
+            assert_eq!(line_of(&grid, &cell, 1, 1, last, options), line_of(&grid, &plain, 1, 1, last, options));
         }
         let separated =
             Cell { glyph: Glyph::Mosaic { pattern: 0x3F, separated: true }, attributes: underlined, ..Cell::BLANK };
@@ -749,7 +710,7 @@ fn the_underline_option_turns_underline_off_and_leaves_separated_mosaics() {
 
 /// REQ-RND-039, decision E.50: bold ORs the line with itself one half-dot
 /// right; italic shifts it right by the lines below it divided by 4; bold
-/// first; proportional changes nothing; never on G3, mosaics or DRCS.
+/// first; proportional changes nothing; never on G3 or mosaics.
 // Needs its capability compiled in (decision E.71).
 #[cfg(all(feature = "bold", feature = "italic"))]
 #[test]
@@ -836,174 +797,6 @@ fn g3_shapes_match_the_figure() {
     assert!(disc[0] == 0 && disc[5] == CELL_MASK && disc[1].count_ones() < disc[4].count_ones());
 }
 
-/// A DRCS pattern for the tests: plane p of row r holds a pattern that
-/// differs in every plane, row and dot.
-fn drcs_pattern(character: DrcsCharacter, mode: DrcsMode) -> DrcsPattern {
-    let mut pattern = DrcsPattern { character, mode, ..DrcsPattern::EMPTY };
-    let planes = match mode {
-        DrcsMode::Mode0 => 1,
-        DrcsMode::Mode1 => 2,
-        DrcsMode::Mode2 | DrcsMode::Mode3 => 4,
-    };
-    for plane in 0..planes {
-        for row in 0..10 {
-            let seed = (0x0A5Bu16.rotate_left((3 * plane + row) as u32)) & CELL_MASK;
-            pattern.planes[plane][row] = match mode {
-                // 6 by 5 pixels, each stored as 2 by 2 dots.
-                DrcsMode::Mode3 => {
-                    let six = seed >> 6;
-                    let wide =
-                        (0..6).fold(0u16, |acc, dot| if (six >> dot) & 1 == 1 { acc | 0b11 << (2 * dot) } else { acc });
-                    pattern.planes[plane][row & !1] = wide;
-                    wide
-                }
-                _ => seed,
-            };
-        }
-    }
-    pattern
-}
-
-/// REQ-RND-038, REQ-DRC-004, REQ-DRC-008 (REQ-TST-018): every mode,
-/// pixel-exact in both cell sizes, from the normal and global colour
-/// tables; mode 0 in the cell's colours.
-// Needs its capability compiled in (decision E.71).
-#[cfg(feature = "drcs-multicolour")]
-#[test]
-fn drcs_modes_draw_pixel_exactly() {
-    for table in [DrcsTable::Normal, DrcsTable::Global] {
-        for mode in [DrcsMode::Mode0, DrcsMode::Mode1, DrcsMode::Mode2, DrcsMode::Mode3] {
-            let mut grid = Grid::EMPTY;
-            grid.drcs_colours.normal_4 = [16, 17, 18, 19];
-            grid.drcs_colours.global_4 = [24, 25, 26, 27];
-            grid.drcs_colours.normal_16 = core::array::from_fn(|index| (31 - index) as u8);
-            grid.drcs_colours.global_16 = core::array::from_fn(|index| (index + 16) as u8 & 31);
-            let pattern = drcs_pattern(drcs(table, 7), mode);
-            grid.drcs.push(pattern);
-            let cell = Cell {
-                glyph: Glyph::Char(CharRef::drcs(pattern.character)),
-                foreground: RED,
-                background: BLUE,
-                ..Cell::BLANK
-            };
-            let colours = &grid.drcs_colours;
-            let lookup: &[u8] = match (mode, table) {
-                (DrcsMode::Mode0, _) => &[BLUE, RED],
-                (DrcsMode::Mode1, DrcsTable::Normal) => &colours.normal_4,
-                (DrcsMode::Mode1, DrcsTable::Global) => &colours.global_4,
-                (_, DrcsTable::Normal) => &colours.normal_16,
-                (_, DrcsTable::Global) => &colours.global_16,
-            };
-            for cell_mode in [CellMode::Saa5050, CellMode::Saa5246a] {
-                let options = options(cell_mode, 0, false);
-                for line in 0..options.row_height() {
-                    let row = if cell_mode == CellMode::Saa5050 { line / 2 } else { line };
-                    let expected: [u8; CELL_WIDTH] =
-                        core::array::from_fn(|dot| lookup[usize::from(pattern.pixel(row, dot))]);
-                    let raster = line_of(&grid, &cell, 3, 3, line, options);
-                    assert_eq!(pixels(&raster), expected, "{table:?} {mode:?} {cell_mode:?} line {line}");
-                    assert_eq!(raster.dots.is_some(), mode != DrcsMode::Mode0);
-                }
-            }
-            // Mode 3: each pixel is 2 by 2 dots in 12 by 10 and 2 by 4 in 12 by 20.
-            if mode == DrcsMode::Mode3 {
-                let options = large(0);
-                for line in (0..CELL_HEIGHT).step_by(4) {
-                    let first = pixels(&line_of(&grid, &cell, 3, 3, line, options));
-                    for next in line + 1..line + 4 {
-                        assert_eq!(pixels(&line_of(&grid, &cell, 3, 3, next, options)), first);
-                    }
-                    assert!(first.chunks(2).all(|pair| pair[0] == pair[1]));
-                }
-            }
-        }
-    }
-}
-
-/// REQ-RND-038, decision E.54: a transparent DRCS pixel shows the plane
-/// below; missing data is a space in the background colour; enlarged
-/// characters replicate pixels.
-// Needs its capability compiled in (decision E.71).
-#[cfg(feature = "drcs-multicolour")]
-#[test]
-fn drcs_transparency_missing_data_and_enlargement() {
-    let mut grid = Grid::EMPTY;
-    grid.row_colours[3] = CYAN;
-    let pattern = drcs_pattern(drcs(DrcsTable::Normal, 2), DrcsMode::Mode2);
-    grid.drcs.push(pattern);
-    // The default 16-entry table maps value 8 to transparent.
-    let cell = Cell { glyph: Glyph::Char(CharRef::drcs(pattern.character)), background: BLUE, ..Cell::BLANK };
-    let options = large(0);
-    let raster = line_of(&grid, &cell, 3, 3, 0, options);
-    for dot in 0..CELL_WIDTH {
-        let value = pattern.pixel(0, dot);
-        let expected = if value == 8 { CYAN } else { value };
-        assert_eq!(raster.index(dot), expected);
-    }
-    // Missing: a space in the background colour.
-    let missing = Cell { glyph: Glyph::Char(CharRef::drcs(drcs(DrcsTable::Global, 9))), ..cell };
-    let raster = line_of(&grid, &missing, 3, 3, 5, options);
-    assert_eq!((raster.mask, raster.background, raster.dots), (0, BLUE, None));
-    // Double height replicates rows.
-    let top = Cell { size: Size::DoubleTop, ..cell };
-    for line in 0..CELL_HEIGHT {
-        assert_eq!(
-            pixels(&line_of(&grid, &top, 3, 3, line, options)),
-            pixels(&line_of(&grid, &cell, 3, 3, line / 2, options))
-        );
-    }
-}
-
-/// REQ-RND-036, decisions E.48 and E.54 (REQ-TST-018): on a multi-colour
-/// DRCS character invert does nothing, conceal and the off phase of normal
-/// and inverted flash show a space in the background colour, and
-/// adjacent-CLUT flash flips every dot's CLUT.
-// Needs its capability compiled in (decision E.71).
-#[cfg(feature = "drcs-multicolour")]
-#[test]
-fn drcs_attributes() {
-    let mut grid = Grid::EMPTY;
-    grid.drcs_colours.normal_16 = core::array::from_fn(|index| (index + 16) as u8);
-    let pattern = drcs_pattern(drcs(DrcsTable::Normal, 5), DrcsMode::Mode2);
-    grid.drcs.push(pattern);
-    let cell =
-        Cell { glyph: Glyph::Char(CharRef::drcs(pattern.character)), foreground: RED, background: BLUE, ..Cell::BLANK };
-    let steady = pixels(&line_of(&grid, &cell, 3, 3, 6, large(0)));
-    let space = [BLUE; CELL_WIDTH];
-    let draw = |grid: &Grid, attributes: CellAttributes, flash: bool, conceal: bool, unit: u8, reveal: bool| {
-        let cell = Cell { flash, conceal, attributes, ..cell };
-        pixels(&line_of(grid, &cell, 3, 3, 6, options(CellMode::Saa5050, unit, reveal)))
-    };
-    let mode = |mode| CellAttributes::DEFAULT.with_flash_mode(mode);
-    assert_eq!(
-        draw(&grid, CellAttributes::DEFAULT.with_invert(true), false, false, 0, false),
-        steady,
-        "invert has no effect"
-    );
-    assert_eq!(draw(&grid, CellAttributes::DEFAULT, false, true, 0, false), space, "conceal");
-    assert_eq!(draw(&grid, CellAttributes::DEFAULT, false, true, 0, true), steady, "revealed");
-    assert_eq!(draw(&grid, mode(FlashMode::Normal), true, false, 0, false), steady);
-    assert_eq!(draw(&grid, mode(FlashMode::Normal), true, false, 9, false), space);
-    assert_eq!(draw(&grid, mode(FlashMode::Inverted), true, false, 0, false), space);
-    assert_eq!(draw(&grid, mode(FlashMode::Inverted), true, false, 9, false), steady);
-    assert_eq!(draw(&grid, mode(FlashMode::AdjacentClut), true, false, 0, false), steady);
-    let flipped = steady.map(|index| index ^ ADJACENT_CLUT_FLIP);
-    assert_eq!(draw(&grid, mode(FlashMode::AdjacentClut), true, false, 9, false), flipped);
-    // Styles and underline never apply.
-    let styled = CellAttributes::DEFAULT.with_underline(true).with_font(FontStyle {
-        bold: true,
-        italic: true,
-        proportional: true,
-    });
-    for line in 0..CELL_HEIGHT {
-        let plain = pixels(&line_of(&grid, &cell, 3, 3, line, large(0)));
-        assert_eq!(pixels(&line_of(&grid, &Cell { attributes: styled, ..cell }, 3, 3, line, large(0))), plain);
-    }
-    // Boxing follows the cell: outside the boxes of a boxed page, picture.
-    grid.boxed_mode = true;
-    assert_eq!(draw(&grid, CellAttributes::DEFAULT, false, false, 0, false), [T; CELL_WIDTH]);
-}
-
 /// REQ-RND-017: in the resolved mode the 4-bit format holds indices up to
 /// 15 and refuses wider ones.
 #[test]
@@ -1027,8 +820,8 @@ fn four_bit_format_in_the_resolved_mode() {
 
 /// REQ-RND-032 (REQ-TST-018 for the counting): moving from each unit to
 /// the next reports exactly the rows whose flashing cells change; a reveal
-/// change reports the rows with concealed cells; an arriving DRCS page or
-/// a rebuilt row reports only the rows that use it.
+/// change reports the rows with concealed cells; a changed cell or a
+/// rebuilt row reports only its own row.
 #[test]
 fn change_tracking_in_the_resolved_mode() {
     let mut grid = Grid::EMPTY;
@@ -1072,14 +865,9 @@ fn change_tracking_in_the_resolved_mode() {
     // A flashing concealed cell flashes once revealed.
     assert_eq!(tracker.changed_rows(&grid, options(CellMode::Saa5050, 9, true)) & 1 << 14, 1 << 14);
     tracker.changed_rows(&grid, large(0));
-    // A DRCS page arrives: only the row that uses it changes.
-    let character = drcs(DrcsTable::Normal, 3);
-    grid.cells[20][5].glyph = Glyph::Char(CharRef::drcs(character));
+    // A changed cell changes only its row.
+    grid.cells[20][5].glyph = text(b'D');
     assert_eq!(tracker.changed_rows(&grid, large(0)), 1 << 20, "the cell changed");
-    grid.drcs.push(drcs_pattern(character, DrcsMode::Mode1));
-    assert_eq!(tracker.changed_rows(&grid, large(0)), 1 << 20, "its pattern arrived");
-    grid.drcs_colours.normal_4 = [9, 10, 11, 12];
-    assert_eq!(tracker.changed_rows(&grid, large(0)), 1 << 20, "its colour table changed");
     // A side-panel cell and a row colour belong to their rows.
     grid.side_panels = SidePanels { left: 4, right: 0 };
     assert_eq!(tracker.changed_rows(&grid, large(0)), ALL_ROWS, "the page layout changed");

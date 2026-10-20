@@ -13,14 +13,12 @@
 use super::*;
 use crate::item::Reader;
 use crate::page::RawBody;
-use neoteletext_core::consts::{DESIGNATION_DRCS_MODES, PACKET_LINKS, PACKET_PAGE_ENHANCEMENT};
-use neoteletext_core::drcs::DrcsMode;
+use neoteletext_core::consts::PACKET_LINKS;
 use neoteletext_core::ecc::{hamming84_encode, hamming2418_encode};
 use neoteletext_core::packet::{
     Decoded, DefaultObject, FontStyleData, MotPageEntry, ObjectKind, ObjectPacket, ObjectSource, ObjectUsage,
-    PagePacket, TripletFunction, decode, mot_object_link,
+    TripletFunction, decode, mot_object_link,
 };
-use neoteletext_core::types::DrcsTable;
 use neoteletext_core::types::Magazine;
 use std::vec::Vec;
 
@@ -226,7 +224,7 @@ fn compositional_link_matches_the_worked_encoding() {
 fn magazine_organization_table_places_pairs_and_links() {
     let magazine = Magazine::new(1).unwrap();
     let mut mot = Mot::new(magazine);
-    let entry = MotPageEntry { global_objects: true, pop_link: 1, global_drcs: false, drcs_link: 2 };
+    let entry = MotPageEntry { global_objects: true, pop_link: 1 };
     for page in [0x23, 0x4F, 0xB7, 0xFE] {
         mot.page(PageNumber(page), entry);
     }
@@ -248,7 +246,8 @@ fn magazine_organization_table_places_pairs_and_links() {
         let bytes = row(number).unwrap();
         (bytes[byte - 6], bytes[byte - 5])
     };
-    let expected = (hamming84_encode(0x8 | 1), hamming84_encode(2));
+    // The second byte of a pair names no DRCS page (decision E.95).
+    let expected = (hamming84_encode(0x8 | 1), hamming84_encode(0));
     assert_eq!(pair(2, 12), expected, "x23");
     assert_eq!(pair(10, 28), expected, "x4F");
     assert_eq!(pair(6, 40), expected, "xB7");
@@ -264,105 +263,43 @@ fn magazine_organization_table_places_pairs_and_links() {
     assert_eq!(&raw[5..8], &[0x9, 0x2, 0x3]);
     assert_eq!(mot_object_link(&links, 0).unwrap().page.0, 0xFF, "the GPOP link is not used");
     assert!(row(20).is_some() && row(21).is_some() && row(22).is_none(), "only the Level 2.5 packets");
+    // X/21's links to pattern pages are written unused: magazine 1, page
+    // FF, no sub-pages (Table 23, decision E.95).
+    let unused = [1, 0xF, 0xF, 0].map(hamming84_encode);
+    assert!(row(21).unwrap()[..32].as_chunks::<4>().0.iter().all(|link| *link == unused));
     assert_eq!(page.subcode.value(), 21 << 8);
 }
 
-/// REQ-INP-025: the PTU examples of DRCS section 3.5 and the X/28/3 of
-/// section 4.
-#[test]
-fn drcs_patterns_match_the_worked_examples() {
-    let blank = ["............"; 10];
-    let full = ["############"; 10];
-    assert_eq!(character_ptus(DrcsMode::Mode0, &blank).unwrap(), [[0x40; 20]]);
-    assert_eq!(character_ptus(DrcsMode::Mode0, &full).unwrap(), [[0x7F; 20]]);
-    let mut corner = ["............"; 10];
-    corner[0] = "############";
-    corner[1] = "#...........";
-    let ptu = character_ptus(DrcsMode::Mode0, &corner).unwrap()[0];
-    assert_eq!(&ptu[..4], &[0x7F, 0x7F, 0x60, 0x40]);
-    assert!(ptu[4..].iter().all(|&byte| byte == 0x40));
-    let mut dots = ["............"; 10];
-    dots[0] = ".....#.....#";
-    assert_eq!(&character_ptus(DrcsMode::Mode0, &dots).unwrap()[0][..2], &[0x41, 0x41]);
-
-    let mut drcs = DrcsPage::new(address(0x1B0).unwrap(), false);
-    drcs.character(0, 0, DrcsMode::Mode0, &corner).unwrap();
-    let mut two_bit = ["000000000000"; 10];
-    two_bit[0] = "333333111111";
-    let reference = drcs.character(0, 1, DrcsMode::Mode1, &two_bit).unwrap();
-    assert_eq!(reference, DrcsRef { table: DrcsTable::Normal, subtable: 0, character: 1 });
-    let planes = character_ptus(DrcsMode::Mode1, &two_bit).unwrap();
-    assert_eq!(&planes[0][..3], &[0x7F, 0x7F, 0x40]);
-    assert_eq!(&planes[1][..3], &[0x7F, 0x40, 0x40]);
-    let pages = drcs.build().unwrap();
-    let modes = raw_triplets(&pages[0], PACKET_PAGE_ENHANCEMENT, DESIGNATION_DRCS_MODES);
-    let values: Vec<u32> = modes.iter().map(|triplet| triplet.value()).collect();
-    assert_eq!(values[0], 0x00005);
-    assert_eq!(values[1], 0x3FE10);
-    assert!(values[2..11].iter().all(|&value| value == 0x3FFFF));
-    assert_eq!((values[11], values[12]), (0x00FFF, 0));
-    // PTUs 0 and 1 in X/1, PTU 2 in X/2 with SPACE padding after it.
-    assert_eq!(pages[0].row(1).unwrap()[..2], [0x7F, 0x7F]);
-    assert_eq!(pages[0].row(2).unwrap()[20..], [b' '; 20]);
-    assert_eq!(pages[0].subcode.value(), 2 << 8);
-    let Some(Ok(Decoded::PageData { packet: PagePacket::DrcsModes(decoded), .. })) = packets_of(&pages[0])
-        .iter()
-        .map(decode)
-        .find(|item| matches!(item, Ok(Decoded::PageData { packet: PagePacket::DrcsModes(_), .. })))
-    else {
-        panic!()
-    };
-    assert_eq!(
-        (decoded.mode(0), decoded.mode(1), decoded.mode(2), decoded.mode(3)),
-        (Some(0), Some(1), Some(14), Some(15))
-    );
-}
-
-/// REQ-INP-025: mode 3 puts plane k of row r in D-byte 4r + k, the
-/// leftmost pixel in the most significant bit (decision E.54).
-#[test]
-fn mode_3_bytes_interleave_the_planes() {
-    let pattern = ["F00001", "000000", "000000", "000000", "800000"];
-    let ptu = character_ptus(DrcsMode::Mode3, &pattern).unwrap()[0];
-    assert_eq!(&ptu[..4], &[0x61, 0x60, 0x60, 0x60], "planes 0 to 3 of row 0");
-    assert_eq!(&ptu[16..], &[0x40, 0x40, 0x40, 0x60], "only plane 3 of row 4");
-    assert_eq!(character_ptus(DrcsMode::Mode3, &["000000"; 4]), Err(AuthorError::BadPattern));
-    assert_eq!(character_ptus(DrcsMode::Mode1, &["000000000004"; 10]), Err(AuthorError::BadPattern));
-    let mut page = DrcsPage::new(address(0x1B0).unwrap(), true);
-    page.character(0, 46, DrcsMode::Mode0, &["............"; 10]).unwrap();
-    assert_eq!(page.character(0, 46, DrcsMode::Mode0, &["............"; 10]), Err(AuthorError::BadPtu));
-    assert_eq!(page.character(0, 45, DrcsMode::Mode2, &["000000000000"; 10]), Err(AuthorError::BadPtu));
-}
-
-/// REQ-INP-025: the DRCS triplets of DRCS sections 5 and 11, with their
-/// TTI characters.
+/// REQ-INP-025: the DRCS triplets of DRCS sections 5 and 11, sent as
+/// written though not acted on (decision E.95), and other worked
+/// encodings, with their TTI characters.
 #[test]
 fn drcs_and_character_triplets_match_the_worked_encodings() {
     let cases = [
         (
             one(|t| {
-                t.drcs_mode(DrcsTable::Normal, 0b11, 0);
+                t.function(TripletFunction::ReservedRow { mode: 0b11000, address: 41, data: 0x70 });
             }),
             0x38629,
             [0x69, 0x58, 0x78],
         ),
         (
             one(|t| {
-                t.drcs_mode(DrcsTable::Global, 0b01, 3);
+                t.function(TripletFunction::ReservedRow { mode: 0b11000, address: 41, data: 0x13 });
             }),
             0x09E29,
             [0x69, 0x78, 0x49],
         ),
         (
             one(|t| {
-                t.drcs(2, DrcsTable::Normal, 0);
+                t.function(TripletFunction::UnsupportedColumn { column: 2, mode: 0b01101, data: 0x40 });
             }),
             0x20342,
             [0x42, 0x4D, 0x60],
         ),
         (
             one(|t| {
-                t.drcs(10, DrcsTable::Global, 47);
+                t.function(TripletFunction::UnsupportedColumn { column: 10, mode: 0b01101, data: 47 });
             }),
             0x17B4A,
             [0x4A, 0x6D, 0x57],
@@ -404,28 +341,6 @@ fn drcs_and_character_triplets_match_the_worked_encodings() {
     }
 }
 
-/// REQ-INP-025: X/28/1 carrying the default tables (DRCS section 6.2).
-#[test]
-fn default_drcs_colour_tables_match_the_worked_encoding() {
-    let first: [u8; 16] = core::array::from_fn(|index| index as u8);
-    let data = DrcsColourData {
-        triplet_1: Some(0),
-        global_4: Some([0, 1, 2, 3]),
-        normal_4: Some([0, 1, 2, 3]),
-        global_16: Some(first),
-        normal_16: Some(first),
-    };
-    let mut page = DisplayPage::new(address(0x100).unwrap(), SubCode::new(0));
-    page.drcs_colours(data);
-    let built = page.build().unwrap();
-    let values: Vec<u32> =
-        raw_triplets(&built, PACKET_PAGE_ENHANCEMENT, 1).iter().map(|triplet| triplet.value()).collect();
-    assert_eq!(
-        values,
-        [0, 0x18820, 0x22080, 0x08201, 0x22906, 0x12839, 0x2B16A, 0x207B9, 0x10620, 0x0398A, 0x16A4A, 0x3B9AC, 0x00001]
-    );
-}
-
 /// Reads TTI text into page files.
 fn read_tti(text: &[u8]) -> Vec<PageFile> {
     let mut read = Vec::new();
@@ -464,12 +379,9 @@ fn small_stream() -> Stream {
         body
     });
     let object = object.unwrap();
-    let mut drcs = DrcsPage::new(address(0x3B0).unwrap(), false);
-    drcs.character(0, 0, DrcsMode::Mode0, &["#.#.#.#.#.#."; 10]).unwrap();
     let mut mot = Mot::new(magazine);
     mot.object_link(MotLevel::Both, 1, object_link(pop.address(), 0)).unwrap();
-    mot.drcs_link(MotLevel::Level25, 1, drcs_link(drcs.address(), 0)).unwrap();
-    mot.page(PageNumber(0x00), MotPageEntry { global_objects: false, pop_link: 1, global_drcs: false, drcs_link: 1 });
+    mot.page(PageNumber(0x00), MotPageEntry { global_objects: false, pop_link: 1 });
     let mut packets = MagazinePackets::new(magazine);
     packets.data(neutral_fields(0)).level_35(neutral_fields_level_35(0));
     let mut page = DisplayPage::new(address(0x300).unwrap(), SubCode::new(0));
@@ -479,7 +391,7 @@ fn small_stream() -> Stream {
     page.page_data(neutral_fields(1)).level_35_data(neutral_fields_level_35(1));
     page.link_level_25(LinkFunction::Pop, pop.address(), 1).unwrap();
     // Added in the reverse of Annex B.7.
-    stream.push(page.build().unwrap()).extend(pop.build().unwrap()).extend(drcs.build().unwrap());
+    stream.push(page.build().unwrap()).extend(pop.build().unwrap());
     stream.push(mot.build().unwrap()).push(packets.build().unwrap());
     stream
 }
@@ -492,7 +404,7 @@ fn built_pages_round_trip_through_tti() {
     let stream = small_stream();
     let ordered = stream.in_transmission_order();
     let order: Vec<u16> = ordered.iter().map(|page| page.address.mpp()).collect();
-    assert_eq!(order, [0x3FF, 0x3FE, 0x3B0, 0x3A0, 0x300]);
+    assert_eq!(order, [0x3FF, 0x3FE, 0x3A0, 0x300]);
     assert_same_pages(&read_tti(&stream.tti().unwrap()), &ordered);
     for (name, text) in stream.tti_files().unwrap() {
         let pages = read_tti(&text);
@@ -520,10 +432,6 @@ fn authored_stream_round_trips_through_tti() {
 fn authored_page(mpp: u16) -> PageFile {
     let stream = streams::stream().unwrap();
     *stream.pages().into_iter().find(|page| page.address.mpp() == mpp).unwrap()
-}
-
-fn decoded_packets(page: &PageFile) -> Vec<Decoded> {
-    packets_of(page).iter().map(|packet| decode(packet).unwrap()).collect()
 }
 
 /// REQ-TST-016, Annex C.2: in the third example foreground blue is the
@@ -587,36 +495,4 @@ fn clause_13_9_example_is_transmitted_as_the_clause_draws_it() {
         assert!(body.contains(&TripletFunction::ForegroundColour { column: 10, colour: pink }));
         assert!(body.contains(&TripletFunction::ForegroundColour { column: 22, colour: yellow }));
     }
-}
-
-/// REQ-TST-016, Figures 27 and 28: the PTU layout of DRCS page 1B2 and the
-/// colour tables of page 115.
-#[test]
-fn figures_27_and_28_are_transmitted_as_drawn() {
-    let page = authored_page(0x1B2);
-    let modes = decoded_packets(&page)
-        .into_iter()
-        .find_map(|item| match item {
-            Decoded::PageData { packet: PagePacket::DrcsModes(modes), .. } => Some(modes),
-            _ => None,
-        })
-        .unwrap();
-    let codes: Vec<u8> = (0..9).map(|ptu| modes.mode(ptu).unwrap()).collect();
-    assert_eq!(codes, [0, 0, 1, 14, 2, 14, 14, 14, 15]);
-    // Character 4 spans packets X/3 and X/4.
-    assert!(page.has_row(3) && page.has_row(4) && !page.has_row(5));
-    let colours = decoded_packets(&authored_page(0x115))
-        .into_iter()
-        .find_map(|item| match item {
-            Decoded::PageData { packet: PagePacket::DrcsColours(data), .. } => Some(data),
-            _ => None,
-        })
-        .unwrap();
-    let figure = streams::figure_28_colours();
-    assert_eq!(colours.normal_16, Some([15, 5, 25, 10, 21, 8, 26, 11, 12, 4, 26, 28, 30, 3, 7, 24]));
-    assert_eq!(
-        (colours.global_4, colours.normal_4, colours.global_16),
-        (figure.global_4, figure.normal_4, figure.global_16)
-    );
-    assert_eq!(colours.global_4, Some([21, 3, 14, 31]));
 }

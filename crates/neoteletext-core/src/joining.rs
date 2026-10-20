@@ -56,7 +56,7 @@ pub fn join_row(row: &mut [crate::level1::Cell; COLUMNS]) {
 }
 
 /// Joins every row of a grid.
-pub fn join<const DRCS: usize, const PANEL_ROWS: usize>(grid: &mut Grid<DRCS, PANEL_ROWS>) {
+pub fn join<const PANEL_ROWS: usize>(grid: &mut Grid<PANEL_ROWS>) {
     for row in &mut grid.cells {
         join_row(row);
     }

@@ -84,12 +84,12 @@ Each test page shall be built with the authoring builder of REQ-INP-025, so that
 Tests shall reproduce every worked example and truth table of EN 300 706 that concerns Levels 2.5 and 3.5:
 - the three contention examples of Annex C.2, which give red, blue and yellow;
 - the object example of clause 13.9, for each of the Active, Adaptive and Passive types, with the word colours of its notes 1 to 8. The example's "pink" shall be CLUT 2 entry 0 (red 15, green 0, blue 5), because the standard does not give its index;
-- the PTU layout of Figure 27, and the DRCS colour table values of Figure 28;
 - all rows of Table C.1;
 - the precedence lists for screen and row colour of Annex A.5;
 - the three side-panel column layouts of clause 12.5.3;
 - the open area of Figure A.1;
 - the default values of Table 30.
+*Amended 20 October 2026 (decision E.95):* DRCS is not decoded, and the parts of this requirement that concerned it are removed.
 *Verification:* Test.
 
 **REQ-TST-017 — Object tests.**
@@ -102,15 +102,7 @@ Tests shall cover every requirement of area OBJ and every rule of decisions E.51
 - objects placed at every edge of the page and of the side panels.
 *Verification:* Test.
 
-**REQ-TST-018 — DRCS tests.**
-Tests shall cover every requirement of area DRC and every rule of decision E.54, including:
-- every mode, in both cell sizes and every size;
-- the order of the mode identification bits;
-- the DRCS colour tables from each source;
-- each flash mode, invert and conceal on multi-colour characters;
-- missing, partial and invalid data;
-- the level bits and the scope of the DRCS Mode triplet.
-*Verification:* Test.
+**REQ-TST-018 — Withdrawn: DRCS tests.** Withdrawn on 20 October 2026: DRCS is not decoded (decision E.95).
 
 **REQ-TST-019 — Bounded work and memory of enhancement processing.**
 Tests shall build worst-case pages: every object type invoked up to the limits of Annex A.8, nesting to the greatest depth allowed, objects of 507 triplets, all sixteen X/26 packets and full side panels. They shall check that building the grid stays within a stated bound on operation counts (REQ-SEC-012), uses only the memory the caller provided, and never panics. The performance tests (REQ-TST-050) shall report the time to build such a grid at Level 3.5.
@@ -178,16 +170,18 @@ A test shall decode the same streams with this project and with zvbi 0.2.44 at i
 - the underline, flash, conceal, bold, italic and proportional flags;
 - the screen colour index.
 
-The streams shall be the authored streams of REQ-TST-024 and the real data of REQ-TST-025, limited to streams whose triplets keep the order of Annex A.4 (decision E.46). The test shall also check the reading of the magazine of a Magazine Organization Table link (decision E.52), and record the result in that decision. DRCS cells shall be excluded until zvbi can be made to load a DRCS page; why it would not load the synthetic page of `research/notes-level25-drcs.md` section 13.2 shall be investigated, and the finding recorded in Appendix D. Every difference shall be explained in the test source or fixed.
+The streams shall be the authored streams of REQ-TST-024 and the real data of REQ-TST-025, limited to streams whose triplets keep the order of Annex A.4 (decision E.46). The test shall also check the reading of the magazine of a Magazine Organization Table link (decision E.52), and record the result in that decision. DRCS cells shall not be compared, since this receiver does not decode DRCS and shows the Level 1 character there (decision E.95). Every difference shall be explained in the test source or fixed.
+*Amended 20 October 2026 (decision E.95):* DRCS is not decoded, and the parts of this requirement that concerned it are removed.
 *Verification:* Test.
 
 **REQ-TST-024 — Authored Level 2.5 and 3.5 test streams with golden rasters.**
-A set of test streams shall be authored with the builder of REQ-INP-025. Between them they shall use every triplet mode, every object source and type, Public and Global Object Pages, the Magazine Organization Table, DRCS pages of every mode, and every variant of X/28 and M/29. Each stream's pages shall be kept as TTI source in the repository, with golden checksums of their rendered rasters in both cell sizes, under the format version rule of REQ-TST-030.
+A set of test streams shall be authored with the builder of REQ-INP-025. Between them they shall use every triplet mode, every object source and type, Public and Global Object Pages, the Magazine Organization Table, and every variant of X/28 and M/29 that is read; and the DRCS triplets, sent as a service sends them, to show that they are not acted on. Each stream's pages shall be kept as TTI source in the repository, with golden checksums of their rendered rasters in both cell sizes, under the format version rule of REQ-TST-030.
+*Amended 20 October 2026 (decision E.95):* DRCS is not decoded, and the parts of this requirement that concerned it are removed.
 *Verification:* Test.
 
 **REQ-TST-025 — Real Level 2.5 and 3.5 data.**
 The local corpus (REQ-TST-022) shall gain real pages that carry Level 2.5 and 3.5 data:
-- captures from the Teefax and NMS Ceefax feeds of REQ-INP-022, recorded through the feed reader into `$NEOTELETEXT_CORPUS`, of pages that carry packets X/26 or X/28, with any object, DRCS and Magazine Organization Table pages they use;
+- captures from the Teefax and NMS Ceefax feeds of REQ-INP-022, recorded through the feed reader into `$NEOTELETEXT_CORPUS`, of pages that carry packets X/26 or X/28, with any object and Magazine Organization Table pages they use;
 - the Polish TVP pages with packets X/26 in the recording already listed in REQ-TST-022.
 
 These files shall never be committed. The tests shall decode them at Levels 2.5 and 3.5, compare them with zvbi (REQ-TST-023), and skip clearly when a file is absent.
@@ -214,12 +208,11 @@ The core library tests shall reach at least 90 percent line coverage.
 
 **REQ-TST-042 — Fuzz targets for the data of Levels 2.5 and 3.5.**
 Each new parser and processor of Levels 2.5 and 3.5 shall have a fuzzing target under REQ-TST-040:
-- packets X/27/4 and X/27/5, X/28/0 to X/28/4, and M/29/0, M/29/1 and M/29/4;
+- packets X/27/4 and X/27/5, X/28/0, X/28/3 and X/28/4, and M/29/0 and M/29/4;
 - the packets of object pages, including pointer tables;
 - the packets of the Magazine Organization Table;
-- DRCS pages;
 - the enhancement lines of TTI files (REQ-INP-023);
-- the whole grid build at Level 3.5, from a displayed page and a set of linked object pages, DRCS pages and a Magazine Organization Table, all built from the fuzzer's input.
+- the whole grid build at Level 3.5, from a displayed page and a set of linked object pages and a Magazine Organization Table, all built from the fuzzer's input.
 
 The last target shall also check that the work stays within the bound of REQ-TST-019, and that row 0, columns 0 to 7, are never written (REQ-L25-050).
 *Verification:* Inspection; continuous integration logs.

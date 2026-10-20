@@ -40,6 +40,8 @@ The designation found this way also sets:
 
 *Amended 10 October 2026:* At Levels 2.5 and 3.5 the national option is taken from bits 8 to 10 of the highest-priority X/28 or M/29 designation when one is present (Annex E.9), and from C12 to C14 otherwise. The order of priority is that of Annex C.4 rule 1: X/28/0 format 1, X/28/4 (Level 3.5 only), M/29/0, M/29/4 (Level 3.5 only) (decision E.44). The first triplet of X/28/1 and M/29/1 remains for diagnostics only. Their other triplets carry the DRCS colour tables at Level 3.5 (decision E.54). The rule above is unchanged at Level 1.5.
 
+*Note of 20 October 2026:* what this decision says of DRCS characters, pages, links or colour tables no longer applies; they are not decoded (decision E.95).
+
 **E.5 — How a Level 1.5 overwrite interacts with the Level 1 page.**
 The standard is silent on the details (Part B.9). The receiver adopts the following rules:
 
@@ -332,6 +334,8 @@ The decisions taken from this are:
 - **Item 3.** Objects, row colours, side panels and the row extension of the Font Style triplet are further features that cross rows. They are all resolved while the grid is built, so rows stay independent. A row is 40 cells plus the side-panel widths. The patterns and colour tables of the DRCS characters a page uses travel with the grid, so a row still renders from the grid and the viewer state alone.
 - **Item 5.** Flash and reveal are resolved at render time in the resolved colour mode, instead of by palette changes. The change tracker limits the redrawing to rows that flash or conceal. The palette technique remains for Levels 1 and 1.5.
 
+*Note of 20 October 2026:* what this decision says of DRCS characters, pages, links or colour tables no longer applies; they are not decoded (decision E.95).
+
 **E.30 — The web-native design, and what the jellytext project teaches.**
 neoteletext shall read pages from ordinary web servers as well as from broadcast data. It does so over:
 - HTTP;
@@ -577,6 +581,8 @@ On 10 October 2026 the project owner asked for complete Presentation Levels 2.5 
 
 *Reason:* EN 300 706 clause 12 defines the levels as cumulative, so one ordered setting describes a receiver exactly. Tables 1, 25, 28 and 29 say which packets and triplets each level acts on (`research/notes-level25-enhancement.md` sections 1.2 to 1.4). Presenting at the highest level by default shows broadcasts as their authors intended, while the chip profiles keep their period behaviour.
 
+*Note of 20 October 2026:* what this decision says of DRCS characters, pages, links or colour tables no longer applies; they are not decoded (decision E.95).
+
 **E.41 — Principles for reading Levels 2.5 and 3.5.**
 The clauses for Levels 2.5 and 3.5 leave many details open. The research notes list them: `research/notes-level25-enhancement.md` section 12, `research/notes-level25-objects.md` section 14 and `research/notes-level25-drcs.md` section 15. Each is settled by one of decisions E.42 to E.56, and each of those decisions follows these principles:
 
@@ -588,6 +594,8 @@ The clauses for Levels 2.5 and 3.5 leave many details open. The research notes l
 6. **Show at once, redraw when complete.** Rows are drawn as soon as the Level 1 page allows, and redrawn when enhancement data arrives or completes. The receiver never waits for enhancement pages, which may take up to 20 seconds to arrive (Annex B.6).
 
 *Reason:* These are the owner's rulings of 10 October 2026. Principle 3 applies REQ-SEC-005, which overrides every other requirement (decision E.32). Principle 4 extends the approach that decision E.9 takes for Level 1.5. Principle 6 answers a question that the standard leaves open (`research/notes-level25-objects.md` section 14 item 30).
+
+*Note of 20 October 2026:* what this decision says of DRCS characters, pages, links or colour tables no longer applies; they are not decoded (decision E.95).
 
 **E.42 — How Levels 2.5 and 3.5 are layered, and what a cell holds.**
 - **A further pass over the Level 1 grid.** Enhancement processing is a module of the presentation layer that runs after the Level 1 grid has been built. It processes, in this order:
@@ -611,6 +619,8 @@ The clauses for Levels 2.5 and 3.5 leave many details open. The research notes l
 
 *Reason:* Decision E.1 chose a separate pass so that Level 2.5 could be added later without redesign. Clause 13.3 describes local enhancement data as "a one-time usable Active Object", so one walk serves the local data and every object (`research/notes-level25-objects.md` section 2.3). Leaving the stored bytes untouched keeps acquisition and presentation apart (`ARCHITECTURE.md` section 8, rule 5).
 
+*Note of 20 October 2026:* what this decision says of DRCS characters, pages, links or colour tables no longer applies; they are not decoded (decision E.95).
+
 **E.43 — The Colour Map and colour indices.**
 - **One colour number everywhere.** Every colour in the grid is a 5-bit Colour Map index from 0 to 31, equal to 8 × CLUT + entry, where CLUT is the colour lookup table. This is how every colour field of Tables 28 and 29 is coded, and it is the numbering of Figure 28. The Level 1 colours are CLUT 0 entries 0 to 7, so existing values keep their meaning. Index 8, which is CLUT 1 entry 0, is transparent, and that is already the renderer's transparent index (REQ-RND-023).
 - **The map.** The Colour Map has 32 entries of 12-bit colour, four bits for each primary. Its defaults are those of Table 30, verified on the page image of page 89. In particular, CLUT 1 entry 5 is 7, 0, 7 (half magenta) and CLUT 1 entry 6 is 0, 7, 7 (half cyan). zvbi 0.2.44 reports different values for those two entries, and the standard is followed (decision E.41, principle 2).
@@ -624,6 +634,8 @@ The clauses for Levels 2.5 and 3.5 leave many details open. The research notes l
 - **Numbering errors in the standard.** Figure 28 numbers the CLUTs 1 to 4; the numbering 0 to 3 of Table 30 is used. Where the text of a row of Table 8 contradicts the row's heading, the heading is followed.
 
 *Reason:* EN 300 706 Tables 4, 8, 10, 25, 28, 29 and 30, and Figure 28 (`research/notes-level25-enhancement.md` sections 3.2 and 7.1 to 7.4, and ambiguities A-13, A-14 and A-16 to A-20; `research/notes-level25-drcs.md` section 13.2 for the zvbi values). One index space means that the grid, the renderer and the DRCS colour tables (decision E.54) all use the same colour numbers.
+
+*Note of 20 October 2026:* what this decision says of DRCS characters, pages, links or colour tables no longer applies; they are not decoded (decision E.95).
 
 **E.44 — Page-level presentation data: format, precedence and errors.**
 - **Format 1 for display.** Packet X/28/0 is read as format 1 on every page that is displayed. Format 2 (Table 7) is never used for display.
@@ -642,6 +654,8 @@ The clauses for Levels 2.5 and 3.5 leave many details open. The research notes l
 - **Mode identification in X/28/3.** The mode of each PTU is read as decision E.54 describes.
 
 *Reason:* Clauses 9.4.2 to 9.5.3, Tables 4 and 7 to 13, Annex C.4 and Table 1 note 1 (`research/notes-level25-enhancement.md` sections 7.2 and 9.1 to 9.10, and ambiguities A-15 and A-21 to A-23). The standard states that the page overrides the magazine for each pair of packets. Extending that to the pair X/28/4 and M/29/0 is the reading that lets the page's own data win, as it does everywhere else. Treating a damaged field group as absent stops a corrupted packet from overriding good magazine data.
+
+*Note of 20 October 2026:* what this decision says of DRCS characters, pages, links or colour tables no longer applies; they are not decoded (decision E.95).
 
 **E.45 — Screen colour, row colours and borders.**
 - **Screen colour.** Highest first: a Full Screen Colour triplet; the page's default screen colour; the magazine's default screen colour; Colour Map entry 0 (Annex A.5).
@@ -683,6 +697,8 @@ The clauses for Levels 2.5 and 3.5 leave many details open. The research notes l
 
 *Reason:* Annexes A.7.1, C.2 and E.13, clause 13.2, Table 26 notes 11 and 12, and Table 29 mode 01100 (`research/notes-level25-enhancement.md` sections 5.8 and 6.1 to 6.6, and ambiguities A-6 to A-8, A-28 and A-29). Applying invert before flash is the literal reading of Table 29: invert swaps the colours, and flash "affects the foreground colour only".
 
+*Note of 20 October 2026:* what this decision says of DRCS characters, pages, links or colour tables no longer applies; they are not decoded (decision E.95).
+
 **E.48 — Flash at Levels 2.5 and 3.5.**
 - **The cycle.** One flash cycle lasts one second, and is divided into twelve units of one twelfth of a second, numbered 0 to 11.
   - **Slow flash (1 hertz)** is on during units 0 to 8 and off during units 9 to 11. That is the 3 to 1 ratio of decision E.12.
@@ -697,6 +713,8 @@ The clauses for Levels 2.5 and 3.5 leave many details open. The research notes l
 - **Multi-colour DRCS characters.** In the off phase of normal or inverted flash, a multi-colour DRCS character shows a space in the background colour (clause 14.3.2). Adjacent-CLUT flash maps the index of each of its pixels by exclusive-OR with 8.
 
 *Reason:* Table 29 mode 00111 gives the two rates and names the modes, but gives no duty cycle and no meaning for the phases (`research/notes-level25-enhancement.md` section 5.7, and ambiguities A-4 and A-5; `research/notes-level25-drcs.md` section 6.3 and ambiguity A-9). Twelve units divide both rates and the three phases evenly, and the slow rate keeps the ratio that decision E.12 measured on the SAA5050.
+
+*Note of 20 October 2026:* what this decision says of DRCS characters, pages, links or colour tables no longer applies; they are not decoded (decision E.95).
 
 **E.49 — Side panels.**
 - **Storage.** Side panels are held beside the 40-column grid, in a panel area addressed by columns 40 to 71 and rows 1 to 24 (clause 12.5.3). The right panel occupies columns 40 to 40 + right width − 1, and the left panel columns 72 − left width to 71.
@@ -741,6 +759,8 @@ The clauses for Levels 2.5 and 3.5 leave many details open. The research notes l
 
 *Reason:* Clause 15, Tables 25, 29, 34, 47 and 48, and Annexes E.9 and G.2 (`research/notes-level25-drcs.md` sections 9 and 10, and ambiguities A-12 to A-16; `research/notes-level25-enhancement.md` sections 5.3 to 5.11). The geometry agreed with the standard's figure on 95 to 100 percent of pixels for every polygon glyph (`research/notes-level25-drcs.md` section 9.3). Drawing it from the project's own geometry keeps glyph provenance clean (decision E.25).
 
+*Note of 20 October 2026:* what this decision says of DRCS characters, pages, links or colour tables no longer applies; they are not decoded (decision E.95).
+
 **E.51 — Objects: resolution, nesting and limits.**
 - **Pointers.** A pointer in a Public Object Page or Global Public Object Page whose value is not a valid triplet address means that the object is absent. That covers the values 507 to 510, pointers into the pointer packets, and pointers to a triplet that is not an Object Definition. The value 0x1FF means "not used". Definitions in packets 1 and 2 of an object page cannot be reached by any pointer, and are ignored.
 - **Checks.** An invocation whose definition has a different type, or whose usage bits exclude the presentation level, is skipped. The object number bits N8 to N0 of the definition are not compared with those of the invocation.
@@ -775,6 +795,8 @@ The clauses for Levels 2.5 and 3.5 leave many details open. The research notes l
 
 *Reason:* Clauses 9.6.2, 10.5.1.4, 10.5.2.2 and 10.6, Tables 15, 16 and 20 to 23, and Annexes A.1 and B.6 (`research/notes-level25-objects.md` sections 7 and 9, and section 14 items 1 to 5, 8, 22 to 24, 34, 40, 41 and 43).
 
+*Note of 20 October 2026:* what this decision says of DRCS characters, pages, links or colour tables no longer applies; they are not decoded (decision E.95).
+
 **E.53 — Default objects.**
 - **Suppression.** Default objects are suppressed only by packets X/26 that carry display triplets. A page whose X/26 packets hold only Programme Delivery Control triplets keeps its default objects.
 - **Magazine-wide default objects.** The default objects of the GPOP link apply to every page of the magazine that has no local display enhancement, whatever the page's global object flag says.
@@ -784,19 +806,7 @@ The clauses for Levels 2.5 and 3.5 leave many details open. The research notes l
 
 *Reason:* Clause 13.8, Table 21, and Annexes E.11, E.12 and G.5 (`research/notes-level25-objects.md` sections 7.5, 7.6 and 8, and section 14 items 18 to 21 and 33).
 
-**E.54 — DRCS pages, modes and colours.**
-- **Usable when complete.** A DRCS sub-page is usable once every PTU that a referenced character needs has been received (Annex B). Later partial receptions replace the PTUs they carry.
-- **Mode identification.** Packet X/28/3 gives the mode of each PTU. The mode of PTU n is at positions 4n to 4n + 3 of the bit stream formed by triplets 2 to 12, least significant bit first. Without X/28/3, every PTU is mode 0 (Annex D.1.7). A Level 2.5 decoder reads X/28/3, and treats any PTU not marked mode 0 (12 by 10 by 1) as unusable.
-- **Mode 3 (6 by 5 by 4).** The most significant of the six bits of each D-byte is the left pixel, as in mode 0. Each pixel is drawn as 2 by 2 dots in the 12 by 10 cell, and 2 by 4 in the 12 by 20 cell.
-- **Colour tables.** A Level 3.5 decoder takes the DRCS colour lookup tables from M/29/1 when the page has no X/28/1, and from the defaults of Annex D.2.2 when neither is present. The row of Table 8 headed "DCLUT16 for Normal" is for normal DRCS, as its heading says.
-- **Limits not enforced.** The Level 2.5 limits of two sub-tables and 24 characters, and the Level 3.5 limit of 384 PTUs, bind the broadcaster. They are not enforced beyond the store's own bound.
-- **Attributes on multi-colour characters.** Flash follows decision E.48. Invert has no effect. Conceal shows a space in the background colour. Boxing follows the cell. Font styles do not apply (decision E.50).
-- **Enlarged characters** are drawn by exact pixel replication, with no smoothing.
-- **Missing and invalid data.** A cell whose DRCS data is missing shows a space in its background colour. Invalid DRCS data shows a space, and a diagnostic is traced. Invalid data means a character whose first PTU is marked 1110 or 1111, a character that runs past PTU 47, or a D-byte outside 4/0 to 7/F or failing its parity check.
-- **The DRCS Mode triplet.** One whose level bits exclude the presentation level is ignored. The reserved level value 00 is treated as both levels. The sub-table it chooses persists to the end of the local enhancement data or of the object.
-- **Typographical errors.** The "7/E and 7/E" of Table 25 is read as 7/E and 7/F, and Table 10 is followed for the colour tables of X/28/4.
-
-*Reason:* Clause 14, Tables 8, 9, 28, 29 and 31, and Annexes B, D.1.7 and D.2.2 (`research/notes-level25-drcs.md` sections 2 to 8, and ambiguities A-1 to A-11 and A-16 to A-21).
+**E.54 — DRCS pages, modes and colours.** Withdrawn on 20 October 2026: dynamically redefinable characters are no longer decoded (decision E.95).
 
 **E.55 — The resolved colour mode of the renderer.**
 - **Two colour modes.**
@@ -817,6 +827,8 @@ The clauses for Levels 2.5 and 3.5 leave many details open. The research notes l
 - **Magazine data.** Packets M/29/0, M/29/1 and M/29/4 are stored for each magazine. Each new reception replaces the stored packet. All stored M/29 packets are discarded when the service changes, meaning a new network identification in packet 8/30 or a new input. There is no time-out.
 
 *Reason:* Annexes A.1, B.6, E.1 and E.8, and clause 10.6 (`research/notes-level25-objects.md` sections 6 and 11, and section 14 item 39; `research/notes-level25-enhancement.md` ambiguity A-24). Object pages carry Hamming 24/18 triplets, whose bytes do not follow the odd parity rule, so a merge by parity would keep stale bytes or reject good ones.
+
+*Note of 20 October 2026:* what this decision says of DRCS characters, pages, links or colour tables no longer applies; they are not decoded (decision E.95).
 
 **E.57 — Points of the enhancement processor, objects and DRCS that decisions E.40 to E.56 leave open.**
 Recorded on 11 October 2026, when the processor was written (REQ-DOC-004). Each point is commented where the code applies it.
@@ -842,6 +854,8 @@ Recorded on 11 October 2026, when the processor was written (REQ-DOC-004). Each 
 
 *Reason:* Clauses 12.3, 13 and 14, Annexes A and C, and the research notes' ambiguity lists (`research/notes-level25-enhancement.md`, `research/notes-level25-objects.md`, `research/notes-level25-drcs.md`). Each choice keeps the work bounded, keeps faults contained to the cell or object concerned (decision E.41), or takes the reading that never hides displayed text.
 
+*Note of 20 October 2026:* what this decision says of DRCS characters, pages, links or colour tables no longer applies; they are not decoded (decision E.95).
+
 **E.58 — Points of rendering at Levels 2.5 and 3.5 that decisions E.47 to E.55 leave open.**
 Recorded on 11 October 2026 (REQ-DOC-004).
 - **Choosing the colour mode.** `RenderOptions::from_config` keeps the palette mode at every level, so Level 1 output is unchanged; `RenderOptions::for_level` chooses the resolved mode at Levels 2.5 and 3.5, and the command-line program uses it. The palette mode refuses a grid it cannot draw (`RenderError::NeedsResolvedMode`), and the 4-bit format refuses indices above 15 in the resolved mode.
@@ -856,6 +870,8 @@ Recorded on 11 October 2026 (REQ-DOC-004).
 
 *Reason:* Table C.1, clauses 12.3 and 15, and the rendering requirements REQ-RND-030 to REQ-RND-041. Keeping the palette mode as the default of `from_config` keeps the golden rasters of Levels 1 and 1.5 unchanged (REQ-TST-030).
 
+*Note of 20 October 2026:* what this decision says of DRCS characters, pages, links or colour tables no longer applies; they are not decoded (decision E.95).
+
 **E.59 — Points of TTI files and the authoring builder that REQ-INP-023 to REQ-INP-025 leave open.**
 Recorded on 11 October 2026 (REQ-DOC-004).
 - **The page function in TTI files.** A function carried by an `OL,28` line (X/28/0, X/28/3 or X/28/4) wins over a `PF` line, and the lowest designation code wins among them, whatever the order of the lines, so that a page read, written and read again is unchanged.
@@ -867,6 +883,8 @@ Recorded on 11 October 2026 (REQ-DOC-004).
 - **Converting an enhancement page with no X/28** writes rows that all pass parity as parity text; otherwise the page is taken to be a POP with coding 2.
 
 *Reason:* Clauses 9.4, 10 and 13.8, Annexes A.1, B.2 and B.7, and the conventions of existing TTI files (vbit2 read as documentation only, decision E.31).
+
+*Note of 20 October 2026:* what this decision says of DRCS characters, pages, links or colour tables no longer applies; they are not decoded (decision E.95).
 
 **E.60 — zvbi as the oracle at Levels 2.5 and 3.5.**
 zvbi is the oracle of REQ-TST-023, compared cell by cell by `tests/oracles/run_cells.sh`. Tracing every difference on the authored stream with a debug build of zvbi 0.2.44 and 0.2.45 showed these zvbi faults, which `tests/oracles/zvbi-known-differences.txt` names page by page:
@@ -884,6 +902,8 @@ zvbi is the oracle of REQ-TST-023, compared cell by cell by `tests/oracles/run_c
 Where zvbi follows a different reading from decisions E.45 (the full row colour behind substituted black backgrounds) and E.53 (X/26 with no displayed data), the page is listed with that reason. Authored pages 119 and 124 exercise DRCS and sizes without these faults, so zvbi can check them.
 
 *Reason:* REQ-TST-023 requires an independent oracle; recording its faults keeps the comparison strict everywhere else, since a page not in the list must agree in every compared cell.
+
+*Note of 20 October 2026:* what this decision says of DRCS characters, pages, links or colour tables no longer applies; they are not decoded (decision E.95).
 
 **E.61 — Compile-time features: a build contains only the parts it uses.**
 Recorded on 11 October 2026 (REQ-DOC-004), on the owner's instruction that the code be organised so that only the parts a build needs are compiled in.
@@ -973,6 +993,8 @@ Recognition by people fluent in each script, and proofs of real pages, are revie
 *Note of 18 October 2026:* the browser and the documents named below were removed from this repository and are kept in the separate neoteletext-browser repository (decision E.76). Decisions E.63 to E.69 are withdrawn; decision E.70 stays for the web module's channels.
 These record the design of `docs/web-native-concept.md` of the neoteletext-browser repository (its decisions 1 to 14, settled on 11 October 2026: decisions 1 to 5 are the owner's, and 6 to 14 were recommended and accepted by the owner), the owner's decisions on the browser in `docs/desktop-browser.md` of the neoteletext-browser repository section 15, and the decisions taken while building the macOS browser on 12 October 2026, when the owner asked for the build to be completed without questions. The build's decisions are marked *(build)* below. They are listed with their reasons in `docs/macos-build-decisions.md` of the neoteletext-browser repository (D1 to D27) and await the owner's review (issue #162). The behaviour was built before these entries were written, against REQ-DOC-004; they were recorded on 12 October 2026 to restore the rule.
 
+*Note of 20 October 2026:* what this decision says of DRCS characters, pages, links or colour tables no longer applies; they are not decoded (decision E.95).
+
 **E.63 — Web-native sites: what a site is, where its descriptor lives, and what its files may hold.** Moved out of the engine on 16 October 2026 (decision E.76), and withdrawn on 18 October 2026: it concerned only the browser, which was removed from this repository and is maintained in the separate neoteletext-browser repository.
 
 **E.64 — Links may lead to addresses; page numbers and runs of text may be links.** Moved out of the engine on 16 October 2026 (decision E.76), and withdrawn on 18 October 2026: it concerned only the browser, which was removed from this repository and is maintained in the separate neoteletext-browser repository.
@@ -1036,15 +1058,13 @@ Recorded on 12 October 2026, on the owner's instruction to add teletext feature 
    | Feature | Capability | When it is compiled out |
    |---|---|---|
    | `objects` | Active, Adaptive and Passive objects, and default objects (area OBJ) | Object invocations and default objects are ignored; a page's own enhancement data still applies |
-   | `drcs` | Dynamically redefinable characters in mode 0, 12 by 10 by 1 (area DRC) | Every DRCS character is missing: a space in the background colour, counted as missing (REQ-DRC-007) |
-   | `drcs-multicolour` | DRCS modes 1, 2 and 3 (clause 14.2); needs `drcs` | Those characters are missing, as they are below Level 3.5 |
    | `bold` | Bold characters (Table 28, Font Style) | The style is not applied |
    | `italic` | Italic characters (Table 28, Font Style) | The style is not applied |
    | `side-panels` | Side panels (clause 12.5) | There are no side panels; a page is always 40 columns, and anything placed in a panel is outside the page, as for a panel that is not enabled |
    | `colours32` | The Colour Map's CLUTs 2 and 3, and every redefinition of a CLUT by X/28/0, X/28/4, M/29/0 or M/29/4 (clause 12.4) | No CLUT is redefined, and CLUTs 2 and 3 are copies of CLUTs 0 and 1, so a page shows at most the sixteen default colours of CLUTs 0 and 1, and the eight classic colours stay the default |
    | `animation` | Additional Flash Functions: the flash modes, the fast rates and phases, incremental and decremental flash (Table 29) | The triplet is ignored; the Level 1 flash, slow and normal (decision E.48), is unchanged |
 
-2. **The profile is a feature too.** `modern-classic` turns on `level15`, `level25`, `render`, `original`, `viewer`, `forms`, `objects`, `drcs` and `bold`. A port uses it with the default features off.
+2. **The profile is a feature too.** `modern-classic` turns on `level15`, `level25`, `render`, `original`, `viewer`, `forms`, `objects` and `bold`. A port uses it with the default features off.
 3. **What is not a feature.**
    - The 40 by 24 grid, the eight-colour default and the mosaics are Level 1, which every build has.
    - Non-spacing attributes are the enhancement area itself, the `level25` feature.
@@ -1055,6 +1075,9 @@ Recorded on 12 October 2026, on the owner's instruction to add teletext feature 
 5. **Measured on 12 October 2026** with `cargo xtask size`, on the linked Cortex-M0 image (`thumbv6m-none-eabi`, `opt-level = "z"`, link-time optimisation) of a receiver with Level 1.5, the renderer and the viewer: 65,758 bytes with every capability of Levels 2.5 and 3.5, and 62,894 bytes with the modern-classic profile's, 2,864 bytes or about 4 percent less. Most of the enhancement processor is the non-spacing attributes and the walk, which the profile keeps.
 
 *Reason:* Teletext's distinctive look comes from its constraints: a fixed 40 by 24 grid, eight saturated colours, block mosaics, attributes set within the text, and no proportional spacing or pictures. The profile keeps the capabilities that preserve those constraints, and those that make pages more usable without changing them: non-spacing attributes, more languages, monochrome custom characters in the grid, reusable objects and bold for legibility. It switches off, without removing, the capabilities that would dilute the style: a redefinable palette of 4,096 colours, italics, a page wider than 40 columns, per-pixel colour characters that tile into bitmap images, and animation. Each remains implemented and tested, and a port that needs one compiles it in. One feature per named capability keeps each one switchable alone, while the profile names the recommended choice once. `docs/spec/design/capabilities.md` explains the mechanism.
+
+*Note of 20 October 2026:* the `drcs` and `drcs-multicolour` features were removed with the decoding of dynamically redefinable characters (decision E.95); the profile's monochrome downloadable characters went with them.
+
 **E.72 — Fonts: Bedstead as the one bundled font, and every other font a 12 × 10 BDF loaded when it is named.**
 Decided by the owner on 12 October 2026. This supersedes decision E.62 and amends decisions E.25 and E.34 (REQ-WEB-014 now permits one kind of third-party request: a font named with its checksum). `docs/spec/design/font-security.md` is the security analysis of this decision.
 
@@ -1079,6 +1102,8 @@ Decided by the owner on 12 October 2026. This supersedes decision E.62 and amend
 
 *Reason:* Bedstead is the most complete openly licensed teletext font and the only one of the 317 collected text fonts with a licence the project can ship that also fits the receiver. One small, exact font form keeps the reader that faces the network simple, keeps every font in the grid and look of teletext (decision E.71), and lets the 151 collected fonts that fit be used without the project distributing them.
 
+*Note of 20 October 2026:* what this decision says of DRCS characters, pages, links or colour tables no longer applies; they are not decoded (decision E.95).
+
 
 **E.73 — Discovery: an ordinary web address leads to a channel by pointing to it.** Moved out of the engine on 16 October 2026 (decision E.76), and withdrawn on 18 October 2026: it concerned only the browser, which was removed from this repository and is maintained in the separate neoteletext-browser repository.
 
@@ -1098,6 +1123,8 @@ Decided by the owner on 13 October 2026, who set the aim of the font work as mat
 
 *Reason:* A receiver showed complete character sets from its ROMs, in one style per set. Judging fonts per set, by rules that can be checked exactly, and choosing one per set reproduces that; organising the browser by the standard's own tables, and showing the designation the decoder resolved, lets the user see why a page shows what it shows.
 
+*Note of 20 October 2026:* what this decision says of DRCS characters, pages, links or colour tables no longer applies; they are not decoded (decision E.95).
+
 **E.76 — The repository is the core teletext engine; the browser is a prototype.**
 The owner decided on 16 October 2026 that this repository is focused on the core teletext rendering engine. The windowed browser, which was an attempt to put the engine into a web browser for teletext, moved to `prototypes/browser/`:
 1. **Code.** The crates `neoteletext-gui` and `neoteletext-browser`, the browser's decoder process (formerly `neoteletext-app`'s `decoder` module), `scripts/macos-app.sh` and the test sites `sites.py` form a Cargo workspace of their own there, built against the engine's crates by path. They are outside the engine's workspace and its gates.
@@ -1115,6 +1142,8 @@ Decided by the owner on 18 October 2026, for the languages of decision E.78. Thi
 3. **The converter's settings** are those measured in the October 2026 prototypes (`design/languages.md` section 5).
 
 *Reason:* At 12 × 10 the new scripts were not legible in the prototypes, and at 12 × 20 every one was. Clause 15.6 leaves the appearance of characters to the decoder. Keeping the converter and its settings with the fonts makes them reproducible.
+
+*Note of 20 October 2026:* what this decision says of DRCS characters, pages, links or colour tables no longer applies; they are not decoded (decision E.95).
 
 **E.78 — Languages beyond the standard's character sets.**
 Decided on 18 October 2026: the scope, the allocation of reserved values and Kazakh by the owner, the rest by the designer on the owner's instruction. The design is `design/languages.md`, and the evidence `research/notes-languages.md`.
@@ -1285,3 +1314,14 @@ Decided on 20 October 2026, as the browser's decision 44 item 11.
 4. **The command-line program asserts** that the web module's, the app pipe's and the input profile's bounds on a key record agree.
 
 *Reason:* Authors test a channel that takes input without the browser, and a channel author gets a phone keyboard by running one command.
+
+**E.95 — Dynamically redefinable characters are not decoded.**
+Decided on 20 October 2026, on the owner's instruction to remove DRCS completely.
+1. **Nothing of clause 14 is decoded.** No DRCS page is read for its patterns, no DRCS character is drawn, and there are no DRCS colour tables. The `drcs` and `drcs-multicolour` features, the core's `drcs` module, its character set, its fault counts and the renderer's multi-colour lines are gone. Decision E.54 is withdrawn, and what decisions E.4, E.29, E.40 to E.44, E.47, E.48, E.50, E.52, E.56 to E.60, E.62, E.71, E.72, E.75 and E.77 say of DRCS no longer applies.
+2. **A page that uses DRCS shows as a receiver without DRCS shows it.** A DRCS Character Invocation (Table 29 mode 01101) places nothing: the Level 1 character beneath shows. It still moves the active position, as every column triplet does (clause 12.3.4), so the triplets after it are placed as the service meant. A DRCS Mode triplet (Table 28 mode 11000) is read as a reserved row triplet, which does nothing.
+3. **The packets that carry DRCS are read past.** X/28/1 and M/29/1 are ignored. Of X/28/3 only the page function and coding are read, so that a DRCS page that says what it is only there is still never shown as text (REQ-OBJ-041). The Global DRCS and DRCS links of X/27/4, X/27/5 and the Magazine Organization Table (its X/21 and X/24, the second byte of each page's byte pair, and the DRCS page total) are not used. X/24 must still be present for a Level 3.5 decoder to use the Level 3.5 part of the table (clause 10.6.1).
+4. **DRCS pages are still kept as enhancement pages,** as is every page whose function is not "basic Level 1 page" (decision E.56), and never shown as text. When a set of pages is written, a DRCS page goes with the other data pages, after the object pages, rather than before them as Annex B.7 orders DRCS pages.
+5. **The authored stream** keeps its DRCS triplets on page 113, sent as a service sends them, so that its every-mode page shows them ignored. Its DRCS pages and the display pages that showed them (114 to 116 and 119) are removed; their numbers are left unused. The Magazine Organization Tables it writes carry unused DRCS links, page FF.
+6. **Requirement area DRC is withdrawn,** with the requirements of other areas that concerned only DRCS.
+
+*Reason:* The owner's instruction. Decision E.54's readings of the X/28/3 bit order and the mode 3 pixel order had never been confirmed against a real Level 3.5 DRCS page (`open-questions-record.md`).

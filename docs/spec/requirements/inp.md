@@ -284,12 +284,12 @@ The TTI reader (REQ-INP-013) and writer (REQ-INP-014) shall carry every packet o
 - `PF,f,c`: the page function and page coding (Table 3).
 
 The rows of enhancement pages shall be read and written according to their page coding:
-- coding 0, used by DRCS pages: 40 characters with parity added on encoding, as for display rows;
+- coding 0: 40 characters with parity added on encoding, as for display rows;
 - coding 2, used by object pages: the first character's low four bits give byte 6, and the following 39 characters hold thirteen triplets, as for X/26;
 - coding 3, used by the Magazine Organization Table: 40 four-bit values, each in the low four bits of a character from 4/0 to 4/F.
 
 Reading a written file shall reproduce the same packets.
-*Verification:* Round-trip test (REQ-TST-020) with object pages, DRCS pages, a Magazine Organization Table and magazine packets; test with files written by vbit2 where available.
+*Verification:* Round-trip test (REQ-TST-020) with object pages, a page with X/28/3, a Magazine Organization Table and magazine packets; test with files written by vbit2 where available.
 
 **REQ-INP-024 — Encoding the packets of Levels 2.5 and 3.5.**
 The page encoder (REQ-INP-019) shall also produce correctly coded packets for:
@@ -298,20 +298,20 @@ The page encoder (REQ-INP-019) shall also produce correctly coded packets for:
 - packets X/28/0 format 1 with every field, X/28/1, X/28/3 and X/28/4;
 - the magazine packets M/29/0, M/29/1 and M/29/4;
 - object pages, with byte 6 of each packet Hamming 8/4 coded and thirteen Hamming 24/18 triplets;
-- the Magazine Organization Table, with every byte Hamming 8/4 coded;
-- DRCS pages, with each D-byte given odd parity.
+- the Magazine Organization Table, with every byte Hamming 8/4 coded.
 
-When it writes a stream, it shall follow the packet order of Annex B.2, and the order of Annex B.7 for a set of pages: the Magazine Organization Table, then the DRCS pages, then the object pages, then the Level 1 pages.
+When it writes a stream, it shall follow the packet order of Annex B.2, and the order of Annex B.7 for a set of pages: the Magazine Organization Table, then the object pages, then other data pages, a DRCS page among them, then the Level 1 pages.
+*Amended 20 October 2026 (decision E.95):* DRCS is not decoded, and the parts of this requirement that concerned it are removed.
 *Verification:* Test that decodes encoded packets back to the original fields, and that zvbi accepts the encoded streams (REQ-TST-023).
 
 **REQ-INP-025 — Authoring test pages for Levels 2.5 and 3.5.**
 The formats crate shall provide, behind its `std` feature, a builder for authoring Level 2.5 and 3.5 test pages and streams by function rather than by bit pattern. It shall be able to:
 - write every row and column triplet of Tables 28 and 29 by name, with its fields;
 - build local objects, and POP and GPOP pages, with their pointer tables computed from the objects they define;
-- build a Magazine Organization Table, with each byte pair placed at the position of its page number, and with object links, DRCS links and default objects;
-- build DRCS characters of every mode from pixel patterns, with the mode identification of X/28/3 computed;
-- set every field of X/28/0 format 1, X/28/1, X/28/4 and the M/29 packets;
+- build a Magazine Organization Table, with each byte pair placed at the position of its page number, and with object links and default objects, its DRCS links written unused;
+- set every field of X/28/0 format 1, X/28/4, M/29/0 and M/29/4;
 - write the result as TTI files and as T42 streams, through REQ-INP-023 and REQ-INP-024.
 
 The builder is the source of the authored test streams of REQ-TST-024. Because the builder and the decoder are written from the same reading of the standard, the builder's output shall also be checked against zvbi (REQ-TST-023) and against the worked encodings of the research notes.
-*Verification:* Test that the builder reproduces the worked encodings of `research/notes-level25-objects.md` section 13.2 and `research/notes-level25-drcs.md` sections 3.5, 4, 5 and 11.
+*Amended 20 October 2026 (decision E.95):* DRCS is not decoded, and the parts of this requirement that concerned it are removed.
+*Verification:* Test that the builder reproduces the worked encodings of `research/notes-level25-objects.md` section 13.2 and of the triplets in `research/notes-level25-drcs.md` section 11.

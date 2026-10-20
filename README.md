@@ -31,7 +31,7 @@ Each crate's optional parts are Cargo features, on by default, so a port or a sm
 
 | Crate | Role |
 |---|---|
-| `neoteletext-core` | Error protection, packets, acquisition, the page and enhancement stores, character sets, Level 1.0 and 1.5 decoding, the Level 2.5 and 3.5 enhancement processor with objects, DRCS and the Colour Map, the state machines, the row renderer and the viewer model. `no_std`, no allocation, no panics. |
+| `neoteletext-core` | Error protection, packets, acquisition, the page and enhancement stores, character sets, Level 1.0 and 1.5 decoding, the Level 2.5 and 3.5 enhancement processor with objects and the Colour Map, the state machines, the row renderer and the viewer model. `no_std`, no allocation, no panics. |
 | `neoteletext-formats` | Readers and writers: T42, transport streams, PES, sliced VBI, TTI (with enhancement data and enhancement pages), EP1, edit.tf and screen dumps; and a builder for Level 2.5 and 3.5 test pages. |
 | `neoteletext-slicer` | A software data slicer for raw sampled video. |
 | `neoteletext-web` | The sans-IO web agent: service descriptors, HTTP, WebSockets, server-sent events, cookies, forms and the zxnet feed. |

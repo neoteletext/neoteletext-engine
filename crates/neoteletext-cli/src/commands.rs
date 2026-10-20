@@ -165,16 +165,14 @@ pub fn list(options: &Options) -> Result<(), Failure> {
         let faults = &stats.enhancement;
         let _ = writeln!(
             out,
-            "enhancement faults: damaged triplets {}; forbidden invocations {}; absent objects {}; limited invocations {}; discarded writes {}; ignored designations {}; undefined characters {}; DRCS missing {}; DRCS invalid {}",
+            "enhancement faults: damaged triplets {}; forbidden invocations {}; absent objects {}; limited invocations {}; discarded writes {}; ignored designations {}; undefined characters {}",
             faults.damaged_triplets,
             faults.forbidden_invocations,
             faults.absent_objects,
             faults.limited_invocations,
             faults.discarded_writes,
             faults.ignored_designations,
-            faults.undefined_characters,
-            faults.drcs_missing,
-            faults.drcs_invalid
+            faults.undefined_characters
         );
     }
     Ok(())

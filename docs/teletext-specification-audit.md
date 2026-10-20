@@ -1,5 +1,7 @@
 # Teletext specification audit — 11 October 2026
 
+*Note of 20 October 2026:* DRCS is no longer decoded (decision E.95), so this audit's findings about DRCS no longer apply.
+
 ## Assessment
 
 This is a substantial software teletext implementation. Source inspection supports strong coverage of Level 1 and Level 1.5 behavior and broad implementation of Level 2.5/3.5 packet decoding and presentation. However, “implements the project's requirements” and “fully conforms to EN 300 706” are different claims. The project explicitly omits proportional layout, makes choices where the standard is ambiguous, and has weaker independent validation for objects, DRCS and side panels.

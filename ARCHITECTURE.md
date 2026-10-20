@@ -41,7 +41,7 @@ Dependencies point **downward only**. A layer may use the layers below it and th
  ├───────────────────────────────────────────────────────────────────────────┤
  │ L3  Presentation model        charset resolution · Level 1 row machine ·    │  no_std, pure
  │                               double height · Level 1.5 walk · colour map · │
- │                               Level 2.5/3.5 walk · objects · DRCS ·         │
+ │                               Level 2.5/3.5 walk · objects ·                │
  │                               side panels → CELL GRID                       │
  ├───────────────────────────────────────────────────────────────────────────┤
  │ L2  Acquisition               magazine FSMs · page lifecycle · page store · │  no_std, no alloc
@@ -116,12 +116,12 @@ The Web user agent (L7) sits beside the lower layers rather than above them in t
   - service data;
   - statistics;
   - the events raised to the application;
-  - at Levels 2.5 and 3.5, the enhancement pages (object pages, DRCS pages and the Magazine Organization Table), stored as received in a part of the store with its own capacity, and the read-only lookup through which the presentation layer reaches them (decision E.56).
+  - at Levels 2.5 and 3.5, the enhancement pages (object pages, the Magazine Organization Table, and any other page whose function is not a basic Level 1 page), stored as received in a part of the store with its own capacity, and the read-only lookup through which the presentation layer reaches them (decision E.56).
 - **Must not know about:** characters, pixels, the web.
 - **Key types:** `Decoder<const PAGES: usize>`, `PageStore`, `StoredPage`, `MagState`, `PageState`, `Event`, `EnhancementStore`, `EnhancementLookup`.
 - **Requirements:** ACQ, SVC, FSM-003, FSM-004.
 
-### L3 Presentation model — `neoteletext-core::{charset, level1, level15, colour, drcs, objects, enhance, joining}`
+### L3 Presentation model — `neoteletext-core::{charset, level1, level15, colour, objects, enhance, joining}`
 
 - **Owns:** one pure function, from a stored page, the magazine data and the viewer state to a `Grid` of 25 by 40 cells, with a side-panel area of columns 40 to 71 at Levels 2.5 and 3.5. Along the way it performs:
   - character set resolution;
@@ -134,12 +134,11 @@ The Web user agent (L7) sits beside the lower layers rather than above them in t
   Every teletext feature that crosses rows is resolved here, so rows are independent from here upward (decision E.29). At Levels 2.5 and 3.5 that includes objects, row colours, side panels and the row extension of the Font Style triplet.
 - **The modules of Levels 2.5 and 3.5:**
   - `colour`: the Colour Map of 32 entries, the colour index type, and the re-mapping table. Its default values are the Table 30 constants of `consts`.
-  - `drcs`: decodes the stored bytes of DRCS pages into the patterns and colour tables that the grid carries for its DRCS cells (area DRC).
   - `objects`: finds objects. It reads the links of X/27/4, X/27/5 and the Magazine Organization Table, the pointer tables of object pages and the local definitions, and checks each definition (area OBJ).
   - `joining` (feature `extended-sets`): gives each letter of a group 1001 set its joined form from its neighbours in the row, after X/26 has been applied (decision E.79). It reads and writes only the grid's cells.
   - `enhance`: the enhancement processor. It runs after the Level 1 grid is built, walks the local enhancement data, objects and default objects (REQ-FSM-011), resolves each row (REQ-FSM-012), and builds the page's Colour Map, screen and row colours and side panels (area L25).
 - **Must not know about:** where the page came from, pixels, buffering. Stored bytes are decoded only through the decoders of L1, and enhancement pages are reached only through the read-only lookup of L2.
-- **Key types:** `Grid`, `Cell`, `CharRef`, `RowState`, `ColourMap`, `ColourIndex`, `DrcsPatterns`, `ObjectRef`.
+- **Key types:** `Grid`, `Cell`, `CharRef`, `RowState`, `ColourMap`, `ColourIndex`, `ObjectRef`.
 - **Character sets.** `charset` holds the standard's tables and, behind the feature `extended-sets`, neoteletext's own: the designations of the reserved values and the G0 and G2 tables of decisions E.78 to E.81 (section 4.6). Every one is constant data generated from a reviewed file.
 - **Requirements:** CHR, L1, L15, L25, OBJ, DRC, FSM-006, FSM-007, FSM-011, FSM-012.
 
@@ -151,9 +150,9 @@ The Web user agent (L7) sits beside the lower layers rather than above them in t
   - the palette, with flash and reveal as palette changes, for Levels 1 and 1.5;
   - the resolved colour mode of Levels 2.5 and 3.5, which resolves flash and conceal at render time into Colour Map indices (decision E.55);
   - the composition of each row from the left panel, the main page and the right panel (decision E.49);
-  - double width, underline, the Level 3.5 font styles and DRCS drawing, all inside the cell raster;
+  - double width, underline and the Level 3.5 font styles, all inside the cell raster;
   - the glyph data, which is replaceable, including the G3 data generated by `xtask` from the project's own geometry (decision E.50);
-  - fonts loaded at run time (area FNT): `glyphs::LoadedFont` borrows a checked table of `types::FontGlyph`, and a `GlyphSet` carries up to two, the font in use and the user's font, before its own glyphs. The cell raster draws their 12 by 10 glyphs like mode 0 DRCS characters, and their 12 by 20 glyphs line for line (decision E.77), in rows 1 to 24 only (REQ-FNT-005, REQ-FNT-008);
+  - fonts loaded at run time (area FNT): `glyphs::LoadedFont` borrows a checked table of `types::FontGlyph`, and a `GlyphSet` carries up to two, the font in use and the user's font, before its own glyphs. The cell raster draws their 12 by 10 glyphs with each line repeated, and their 12 by 20 glyphs line for line (decision E.77), in rows 1 to 24 only (REQ-FNT-005, REQ-FNT-008);
   - the optional glyph line cache;
   - change tracking, including the rows that flash or conceal.
 - **Must not know about:** pixel formats, screens, buffering strategy, timing of display.
@@ -281,22 +280,20 @@ L3 level1: Level 1 grid from the stored page's rows
           ├─ walk (REQ-FSM-011) over local X/26, decoded by L1 packet
           │     └─ objects: links (X/27/4, X/27/5, MOT) and definitions
           │           └─ L2 EnhancementLookup (read-only) ──► stored POP, GPOP and MOT bytes ──► L1 decoders
-          ├─ drcs:    patterns and colour tables of the DRCS characters used
-          │           └─ L2 EnhancementLookup (read-only) ──► stored DRCS bytes
           └─ row resolution (REQ-FSM-012) ──► Grid: cells, side-panel area, Colour Map,
-                                               screen and row colours, DRCS patterns
+                                               screen and row colours
 L4 render_row(grid, row, mode, field, flash unit, reveal, port_buffer)  ← Colour Map indices
 ```
 
 - **After the Level 1 grid.** The enhancement processor starts from the grid that `level1` built, and changes its characters and attributes (decision E.42).
-- **Read-only lookup.** Object pages, DRCS pages and the Magazine Organization Table are read through the lookup of L2 (REQ-ACQ-020), and decoded only by the decoders of L1. Nothing in L3 changes the store.
-- **Everything travels with the grid.** The Colour Map, the screen and row colours, the side-panel area and the DRCS patterns and colour tables used by the page are all part of the `Grid`. A row is therefore still rendered from the grid and the viewer state alone (decision E.29).
+- **Read-only lookup.** Object pages and the Magazine Organization Table are read through the lookup of L2 (REQ-ACQ-020), and decoded only by the decoders of L1. Nothing in L3 changes the store.
+- **Everything travels with the grid.** The Colour Map, the screen and row colours and the side-panel area used by the page are all part of the `Grid`. A row is therefore still rendered from the grid and the viewer state alone (decision E.29).
 - **Rendering.** At Levels 2.5 and 3.5 the row renderer uses the resolved colour mode (decision E.55), composes the side panels into each row (decision E.49), and draws G3 characters from the generated G3 glyph data.
 - **Redrawing.** When an enhancement page that the displayed page uses arrives or changes, L2 raises an event, the grid is built again, and change tracking reports the rows that changed (REQ-ACQ-022).
 
 #### Interfaces for the enhancement phases
 
-The foundation phase built the types and stores below. Three phases build on them: (a) the enhancement walk and objects, in `enhance` and `objects`; (b) DRCS, the G3 glyphs and the renderer; (c) the TTI formats and the test-page encoder.
+The foundation phase built the types and stores below. Three phases build on them: (a) the enhancement walk and objects, in `enhance` and `objects`; (b) the G3 glyphs and the renderer; (c) the TTI formats and the test-page encoder.
 
 **Packet layer (`packet`).** Every decoder works on a `Packet` or, for stored enhancement pages, on the 40 stored data bytes.
 
@@ -304,43 +301,42 @@ The foundation phase built the types and stores below. Three phases build on the
 |---|---|
 | Triplet functions of Tables 28 and 29 (REQ-PKT-010) | `Triplet::function() -> TripletFunction`; the inverse is `TripletFunction::to_triplet()`. Fields: `ColourData` (index and D6 D5), `ObjectSource`, `ObjectKind`, `ObjectNumber` (`subpage`, `pointer_packet_index`, `pointer_group`, `pointer_odd` for POP and GPOP; `n8`, `designation`, `triplet` for local objects), `ObjectUsage`, `DisplayAttributes`, `FontStyleData`. |
 | X/27/4 and X/27/5 (REQ-PKT-011) | `Decoded::CompositionalLinks`; `CompositionalLink` with `is_format_1()` and `is_null()`. Roles by position (Table 16) are for `objects` to apply. |
-| X/28/0, X/28/1, X/28/3, X/28/4 (REQ-PKT-012 to 015) | `Decoded::PageData { packet: PagePacket::{Format1, DrcsColours, DrcsModes, Level35} }`; `PageEnhancement { format: Option<PageFormat>, fields: PresentationFields }`; `DrcsColourData` (four tables, each `Option`); `DrcsModes::mode(ptu)`. |
-| M/29/0, M/29/1, M/29/4 (REQ-PKT-016) | `Decoded::Magazine { packet: MagazinePacket::{Data, DrcsColours, Level35} }`. |
+| X/28/0, X/28/3, X/28/4 (REQ-PKT-012, 014, 015) | `Decoded::PageData { packet: PagePacket::{Format1, PageFunction, Level35} }`; `PageEnhancement { format: Option<PageFormat>, fields: PresentationFields }`; of X/28/3 only its `PageFormat`. X/28/1 is ignored (decision E.95). |
+| M/29/0, M/29/4 (REQ-PKT-016) | `Decoded::Magazine { packet: MagazinePacket::{Data, Level35} }`; M/29/1 is ignored. |
 | Object pages (REQ-PKT-017) | `ObjectPacket::new(&[u8; 40])` with `byte_6`, `triplets`, `carries_pointers()`, `pointer(triplet, odd)`; `triplet_location(number) -> TripletLocation`. |
-| Magazine Organization Table (REQ-PKT-018) | `mot_position(page)`, `mot_page_entry`, `mot_object_link(row, link)`, `mot_drcs_link(row, link)`, `mot_totals`, `mot_fallback`. |
-| Encoders, for tests and phase (c) | `packet::encode`: `compositional_links`, `page_enhancement`, `magazine_enhancement`, `drcs_colours`, `drcs_modes`, `triplet_packet` (X/26 and object page packets), `pointer_triplet`, `nibble_packet` (table packets), and `mot_page_entry`, `mot_object_link`, `mot_drcs_link`, `mot_totals`, which give the 4-bit values to place before coding. |
+| Magazine Organization Table (REQ-PKT-018) | `mot_position(page)`, `mot_page_entry`, `mot_object_link(row, link)`, `mot_totals`, `mot_fallback`. |
+| Encoders, for tests and phase (c) | `packet::encode`: `compositional_links`, `page_enhancement`, `magazine_enhancement`, `page_function` (X/28/3), `triplet_packet` (X/26 and object page packets), `pointer_triplet`, `nibble_packet` (table packets), and `mot_page_entry`, `mot_object_link`, `mot_totals`, which give the 4-bit values to place before coding. |
 
-Field groups shared with the presentation layer are foundation types in `types`: `Rgb12`, `ColourWords`, `Designations`, `SidePanelFields`, `DefaultColourFields`, `PresentationFields` (each group an `Option`, `None` when damaged: decision E.44), `FallbackFields`, `DrcsTable` and `DrcsCharacter`.
+Field groups shared with the presentation layer are foundation types in `types`: `Rgb12`, `ColourWords`, `Designations`, `SidePanelFields`, `DefaultColourFields`, `PresentationFields` (each group an `Option`, `None` when damaged: decision E.44), and `FallbackFields`.
 
 **Acquisition (`acq`).**
 
 | What | Where |
 |---|---|
-| A page's own enhancement packets | `StoredPage`: `enhancements` (X/26 triplets, as before), `compositional_links[0]` and `[1]` (X/27/4 and X/27/5), `page_data` (X/28/0), `drcs_colours` (X/28/1), `page_data_level35` (X/28/4). |
-| Magazine packets | `MagazineData`: `data` (M/29/0), `drcs_colours` (M/29/1), `level35` (M/29/4); discarded on a new network identification or `Decoder::start_new_input` (REQ-ACQ-018). |
+| A page's own enhancement packets | `StoredPage`: `enhancements` (X/26 triplets, as before), `compositional_links[0]` and `[1]` (X/27/4 and X/27/5), `page_data` (X/28/0), `page_data_level35` (X/28/4). |
+| Magazine packets | `MagazineData`: `data` (M/29/0), `level35` (M/29/4); discarded on a new network identification or `Decoder::start_new_input` (REQ-ACQ-018). |
 | Enhancement pages, stored as received | `Decoder::with_enhancement_store(pages, EnhancementStore::new(&mut sub_pages, &mut packets), config)`. Capacity is the length of the packet pool (Annex E.8: `ENHANCEMENT_PACKETS_LEVEL_25`, `ENHANCEMENT_PACKETS_LEVEL_35`). `Decoder::new` keeps no enhancement pages. |
-| The read-only lookup (REQ-ACQ-020) | `Decoder::enhancement_lookup() -> EnhancementLookup`: `sub_page(magazine, page, s1)`, `magazine_organization_table(magazine)` (page mFE, S1 = 0 only), `magazine_data(magazine)`. An `EnhancementPage` gives `row(packet)`, `enhancement(designation)`, `received()`, `format()`, `drcs_modes()`, `subcode()`, `last_packet()`, `control()` and `generation()`, which changes with the content or S2. |
+| The read-only lookup (REQ-ACQ-020) | `Decoder::enhancement_lookup() -> EnhancementLookup`: `sub_page(magazine, page, s1)`, `magazine_organization_table(magazine)` (page mFE, S1 = 0 only), `magazine_data(magazine)`. An `EnhancementPage` gives `row(packet)`, `enhancement(designation)`, `received()`, `format()`, `subcode()`, `last_packet()`, `control()` and `generation()`, which changes with the content or S2. |
 | Redrawing (REQ-ACQ-022) | `Event::EnhancementPageChanged(EnhancementKey)` at the end of a reception that changed a sub-page, and `Event::MagazineData(magazine)`. |
 | Enhancement faults in the statistics (REQ-L25-051, REQ-ARCH-007) | `Statistics::enhancement: EnhancementFaults`, one count per kind of fault. The caller adds a build's faults with `Decoder::record_enhancement(PageBuild, &EnhancementFaults)` after building, when the lookup's borrow has ended. A `PageBuild` is the page, its reception count and the level asked for; the build recorded last is not counted again, so redraws of a page add nothing. The types live in `acq` because L2 may not use L3. |
 
-**Presentation model (`colour`, `drcs`, `level1`) and configuration.**
+**Presentation model (`colour`, `level1`) and configuration.**
 
 | What | Where |
 |---|---|
 | The presentation level | `config::PresentationLevel` (`is_enhanced`, `is_level35`) in `Config::level`. The flash timing of decision E.48 is `FLASH_CYCLE_US`, `FLASH_UNITS`, `FLASH_SLOW_ON_UNITS`, `FLASH_FAST_HALF_UNITS`, `FLASH_PHASES` and `FLASH_FAST_OFF_UNITS` in `consts`. |
 | Page-level presentation data | `colour::resolve(&PresentationSources, level, &base) -> PagePresentation`: `colour_map`, `default_screen`, `default_row`, `black_background_substitution`, `remapping` (`Remapping::foreground` and `background` give the index of a Level 1 colour), `side_panels` (`SidePanels` widths). The caller fills `PresentationSources` with the page's X/28/0 (only for a displayed page), X/28/4, M/29/0, M/29/4 and the POP link's `FallbackFields`. |
 | Colours | `ColourIndex` (0 to 31), `colour_index(clut, entry)`, `ColourMap` (`DEFAULT` from Table 30, `entry`, `rgb888`, `set_cluts`, `is_transparent`). |
-| DRCS | `drcs::DrcsPattern` (character, mode, four planes of 10 rows of 12 dots; mode 3 stored doubled), `DrcsPatterns<N>`, `DrcsMode`, `DrcsColourTables::resolve(page, magazine, level)`, `DEFAULT_DRCS_PATTERNS`. |
-| A cell | `level1::Cell`: `foreground` and `background` are Colour Map indices; `attributes: CellAttributes` packs `width`, `flash_mode`, `flash_rate`, `underline`, `invert`, `font` and `source`, read with those methods and set with the matching `with_*` methods. G3 and DRCS characters are `Glyph::Char` of `CharSet::G3` and `CharSet::Drcs { table, subtable }` (`CharRef::drcs`, `CharRef::drcs_character`). |
-| The grid | `level1::Grid<DRCS, PANEL_ROWS>` (defaults 48 and 24): `panels`, `panel_cell(row, column)` and `panel_cell_mut` for columns 40 to 71 of rows 1 to 24, `side_panels`, `colour_map`, `screen_colour`, `row_colours`, `drcs`, `drcs_pattern(character)`, `drcs_colours`, and `clear()`, which empties a grid in place. Functions that take a grid are generic over both capacities; `Grid` alone is the default. |
+| A cell | `level1::Cell`: `foreground` and `background` are Colour Map indices; `attributes: CellAttributes` packs `width`, `flash_mode`, `flash_rate`, `underline`, `invert`, `font` and `source`, read with those methods and set with the matching `with_*` methods. G3 characters are `Glyph::Char` of `CharSet::G3`. |
+| The grid | `level1::Grid<PANEL_ROWS>` (default 24): `panels`, `panel_cell(row, column)` and `panel_cell_mut` for columns 40 to 71 of rows 1 to 24, `side_panels`, `colour_map`, `screen_colour`, `row_colours`, and `clear()`, which empties a grid in place. Functions that take a grid are generic over the capacity; `Grid` alone is the default. |
 
 **What each phase built.**
 
 - Phase (a): `compose::compose_level` dispatches on `Config::level` (through `PresentationLevel::available`, decision E.61): nothing at Level 1, `level15::apply` at Level 1.5, and `enhance::apply` at Levels 2.5 and 3.5; `viewer::Viewer::compose` and the command-line program's `Session::grid` both call it, and `ComposeContext` carries the `EnhancementLookup`. `enhance::apply` returns an `acq::EnhancementReport`: the `PageBuild`, the `EnhancementFaults` it met, the objects it ran and the triplets it read. `Viewer::compose` returns it in `Composed::Built`, for the port to record; `Session::grid` records it itself, and `neottx list` builds every page at Levels 2.5 and 3.5 to show the counts.
 - Trace (REQ-FSM-010): `compose::compose_level_traced`, `level15::apply_traced` and `enhance::apply_traced` take a `trace::TraceSink` (the build time and a `&mut dyn FnMut(TraceEntry)`) and, when `Config::trace` is on, report the transitions of `Machine::TripletWalk` or of the page-level run of `Machine::EnhancementWalk`, with state, event and action names from `level15::walk_*_name`, `enhance::walk_*_name` and `TripletFunction::name`. A transition that met a fault names it as its action. The untraced functions are unchanged; `Session::grid` uses the traced one, so that `neottx -vv` prints the walk with the other traces.
-- `enhance::apply` rebuilds each shown row from `level1::row_codes` and the walk's events, keeping row 0 columns 0 to 7 from the Level 1 grid. The walk runs once for the page-level colours and once for each row that has events, keeping only that row's events, so that a grid needs one row of event storage (decision E.41, principle 5); the limits of Annex A.8 are checked before an object is looked for, which bounds the work by `enhance::MAX_WALK_STEPS`. `objects` finds links, definitions and bodies; `drcs::decode_character` fills `Grid::drcs`.
+- `enhance::apply` rebuilds each shown row from `level1::row_codes` and the walk's events, keeping row 0 columns 0 to 7 from the Level 1 grid. The walk runs once for the page-level colours and once for each row that has events, keeping only that row's events, so that a grid needs one row of event storage (decision E.41, principle 5); the limits of Annex A.8 are checked before an object is looked for, which bounds the work by `enhance::MAX_WALK_STEPS`. `objects` finds links, definitions and bodies.
 - `level1::resolve_designation` follows the order of Annex C.4 and decision E.50 at each level, and the Level 1.5 pass reads every triplet through `TripletFunction` (REQ-PKT-010).
-- Phase (b): `render` draws DRCS cells from `Grid::drcs` before any glyph lookup (`GlyphSet::glyph` gives an empty glyph for a DRCS reference), and has the resolved colour mode (`ColourMode::Resolved(FlashPhase)`, chosen by `RenderOptions::for_level`), side-panel composition (`row_width`, `source_columns`, `source_cell`), double width and size, underline, invert, the font styles and the flash timing of decision E.48. The G3 glyphs are generated by `cargo xtask glyphs` from geometry into `glyphs/g3.txt` and `glyphs/g3.rs`. The image writers take the 32-entry palette of `colour_map_palette`.
+- Phase (b): `render` has the resolved colour mode (`ColourMode::Resolved(FlashPhase)`, chosen by `RenderOptions::for_level`), side-panel composition (`row_width`, `source_columns`, `source_cell`), double width and size, underline, invert, the font styles and the flash timing of decision E.48. The G3 glyphs are generated by `cargo xtask glyphs` from geometry into `glyphs/g3.txt` and `glyphs/g3.rs`. The image writers take the 32-entry palette of `colour_map_palette`.
 - Phase (c): `neoteletext-formats` reads and writes enhancement data and enhancement pages in TTI by page coding, sends them in the order of Annexes B.2 and B.7, and has the authoring builder of REQ-INP-025 (`author`, features `std` and `tti`), whose `streams::stream()` is the authored Level 2.5/3.5 stream; `cargo xtask level25-stream` writes it.
 - Checks: `tests/golden/authored-level25.txt` pins the rendered stream (REQ-TST-024); `tests/oracles/run_cells.sh` compares it with zvbi cell by cell through `neottx text --cells` (REQ-TST-023), with `zvbi-known-differences.txt` giving the reason for each page that differs; the `enhancement` fuzz target builds grids from fuzzed page sets (REQ-TST-042).
 
@@ -453,7 +449,7 @@ Decision E.61 makes each crate's optional areas Cargo features, all on by defaul
 
 | Crate | Features |
 |---|---|
-| `neoteletext-core` | `level15`, `level25`, `render`, `bedstead`, `viewer`, `forms`, `extended-sets` (neoteletext's own character sets and the joining pass, decision E.78); the capabilities `objects`, `drcs`, `drcs-multicolour`, `bold`, `italic`, `side-panels`, `colours32`, `animation` (decision E.71); the profile `modern-classic` (not default) |
+| `neoteletext-core` | `level15`, `level25`, `render`, `bedstead`, `viewer`, `forms`, `extended-sets` (neoteletext's own character sets and the joining pass, decision E.78); the capabilities `objects`, `bold`, `italic`, `side-panels`, `colours32`, `animation` (decision E.71); the profile `modern-classic` (not default) |
 | `neoteletext-formats` | `transport`, `sliced`, `pages`, `tti`, `ep1`, `edittf`, `dump`, `check`, `bdf` (the font reader of REQ-FNT-002), and `std` (not default) |
 | `neoteletext-web` | `push`, `forms`, `cookies` |
 | `neoteletext-app` | `live`, `slice`, `write-text` (the text-to-page writer and its `unicode-bidi` dependency) |
@@ -497,18 +493,17 @@ A module may use the modules listed for it, and nothing else. The cross-cutting 
 | `acq` | L2 | Foundation, `packet`, `fsm` |
 | `service` | L2 | Foundation, `packet` |
 | `charset` | L3 | Foundation |
-| `level1` | L3 | Foundation, `charset`, `acq` (read-only stored page types), `colour` (colour index and Colour Map types), `drcs` (the pattern types the grid carries) |
+| `level1` | L3 | Foundation, `charset`, `acq` (read-only stored page types), `colour` (colour index and Colour Map types) |
 | `level15` | L3 | Foundation, `charset`, `level1` (grid types), `packet` (triplet types) |
 | `colour` | L3 | Foundation |
-| `drcs` | L3 | Foundation, `packet` (X/28/1, X/28/3 and M/29/1 field types), `acq` (read-only enhancement lookup), `colour` |
 | `objects` | L3 | Foundation, `packet` (triplet, link and table types), `acq` (read-only stored page types and enhancement lookup) |
 | `joining` | L3 | Foundation, `charset`, `level1` (grid types) |
-| `enhance` | L3 | Foundation, `charset`, `level1` (grid types and the Level 1 row machine), `packet` (triplet and X/28 field types), `acq` (read-only stored page types and enhancement lookup), `colour`, `objects`, `drcs` |
+| `enhance` | L3 | Foundation, `charset`, `level1` (grid types and the Level 1 row machine), `packet` (triplet and X/28 field types), `acq` (read-only stored page types and enhancement lookup), `colour`, `objects` |
 | `glyphs` | L4 | Foundation, `charset` (character references) |
-| `render` | L4 | Foundation, `glyphs`, `level1` (grid types), `colour` (Colour Map), `drcs` (pattern types) |
+| `render` | L4 | Foundation, `glyphs`, `level1` (grid types), `colour` (Colour Map) |
 | `viewer`, `nav`, `forms` | L6 | Foundation, `acq`, `level1`, `level15`, `enhance`, `colour`, `render` (change tracking), `service` |
 | `port` | L8 | Foundation |
 
 `neoteletext-formats` and `neoteletext-slicer` may use Foundation and `packet` only. `neoteletext-web` may use Foundation, `policy` and `config` only; it never uses the decoding layers. `neoteletext-image` may use Foundation, the `render` output types and the `colour` Colour Map type only. `neoteletext-audio` may use Foundation and `packet` only; `neoteletext-audio-mix` uses no other crate.
 
-`level15` remains the Level 1.5 pass, used only at Level 1.5. The modules `colour`, `drcs`, `objects` and `enhance` serve Levels 2.5 and 3.5 (section 4.5). The G3 glyph data generated by `xtask` belongs to `glyphs`, whose dependencies do not change. The `xtask` layer check holds its own copy of this table, which shall be updated in the same change that adds these modules (REQ-ARCH-011). `joining` (decision E.79) is added to it in the change that creates the module.
+`level15` remains the Level 1.5 pass, used only at Level 1.5. The modules `colour`, `objects` and `enhance` serve Levels 2.5 and 3.5 (section 4.5); `drcs` was removed on 20 October 2026 (decision E.95). The G3 glyph data generated by `xtask` belongs to `glyphs`, whose dependencies do not change. The `xtask` layer check holds its own copy of this table, which shall be updated in the same change that adds these modules (REQ-ARCH-011). `joining` (decision E.79) is added to it in the change that creates the module.

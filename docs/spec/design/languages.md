@@ -15,7 +15,7 @@ The design builds on `character-sets-and-fonts.md`, which explains character set
 - A row is 40 bytes, each a 7-bit code with odd parity. A code is either a control code or one character of the current G0 set.
 - A set holds 96 characters, at codes 2/0 to 7/F (clause 15.6).
 - A page chooses its sets by designation (clause 15.2, Tables 32 to 34) and may switch to a second G0 set with ESC (clause 15.3).
-- X/26 enhancement data, DRCS characters and objects work as today.
+- X/26 enhancement data and objects work as today.
 
 ### What it adds
 
@@ -175,7 +175,6 @@ The prototype found every in-scope script legible at 12 × 20.
 - **The font form (REQ-FNT-002)** also accepts `FONTBOUNDINGBOX 12 20 0 0`, with `BBX 12 20 0 0` and 20 bitmap rows in every character. One font has one height.
 - **The glyph table** passed between processes (REQ-FNT-003, `docs/spec/design/font-security.md` section 3.1) carries 10 or 20 rows per entry, and its shape check covers both.
 - **`neottx font convert`** keeps its rule of exact conversions only. It stops halving 12 × 20 fonts whose line pairs differ (decision E.72 item 7) and passes them through instead.
-- **DRCS characters stay 12 × 10:** their size is defined by the standard (clause 14.1).
 
 The owner decided on 18 October 2026 to allow 12 × 20 loaded fonts. This amends decision E.72 items 2 and 7, and REQ-FNT-002, REQ-FNT-003 and REQ-FNT-008.
 

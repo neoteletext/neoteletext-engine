@@ -40,8 +40,8 @@ fn faulty_page() -> Vec<Packet> {
         // Undefined G3 and G2 positions (decision E.50).
         TripletFunction::G3Character { column: 3, code: 0x6E, level_15_form: false },
         TripletFunction::G2Character { column: 4, code: 0x59 },
-        // No DRCS page is linked, so its data is missing.
-        TripletFunction::DrcsCharacter { column: 5, normal: true, character: 1 },
+        // A DRCS character is not acted on, and is no fault (decision E.95).
+        TripletFunction::UnsupportedColumn { column: 5, mode: 0b01101, data: 0x41 },
         // Row 0 columns 0 to 7 are the receiver's (REQ-L25-050).
         row_0(0, 0),
         g0(3, b'Q'),
@@ -61,8 +61,6 @@ const FAULTY_PAGE: EnhancementFaults = EnhancementFaults {
     discarded_writes: 1,
     ignored_designations: 1,
     undefined_characters: 2,
-    drcs_missing: 1,
-    drcs_invalid: 0,
 };
 
 fn address() -> PageAddress {
@@ -121,8 +119,6 @@ fn every_kind_of_fault_reaches_the_statistics() {
         discarded_writes: 5,
         ignored_designations: 6,
         undefined_characters: 7,
-        drcs_missing: 8,
-        drcs_invalid: 9,
     };
     let key = PageKey { address: address(), subcode: SubCode::new(0) };
     let build = PageBuild { key, receptions: 1, level: PresentationLevel::Level25 };
@@ -133,7 +129,7 @@ fn every_kind_of_fault_reaches_the_statistics() {
     let mut twice = faults;
     twice.add(&faults);
     assert_eq!(decoder.statistics().enhancement, twice);
-    assert_eq!(twice.drcs_invalid, 18);
+    assert_eq!(twice.undefined_characters, 14);
     decoder.reset_statistics();
     assert_eq!(decoder.statistics().enhancement, EnhancementFaults::NONE);
 }

@@ -21,8 +21,6 @@ default = [
     "viewer",
     "forms",
     "objects",
-    "drcs",
-    "drcs-multicolour",
     "side-panels",
     "colours32",
     "extended-sets",
@@ -32,21 +30,17 @@ default = [
 extended-sets = []
 # The Level 1.5 pass (area L15).
 level15 = []
-# The enhancement processor for Levels 2.5 and 3.5 (areas L25, OBJ, DRC):
+# The enhancement processor for Levels 2.5 and 3.5 (areas L25 and OBJ):
 # non-spacing attributes and characters. The capabilities below are each a
 # feature of their own (decision E.71, REQ-GEN-020).
 level25 = []
 # The non-spacing attributes (Table 27): colours, flash, display
 # attributes and font style placed by X/26 triplets. Off by default, the
 # owner's choice: without it those triplets only set the column, and
-# characters, objects and DRCS are still placed.
+# characters and objects are still placed.
 nonspacing-attributes = ["level25"]
 # Active, Adaptive and Passive objects, and default objects (area OBJ).
 objects = ["level25"]
-# Dynamically redefinable characters, mode 0 (area DRC).
-drcs = ["level25"]
-# DRCS modes 1, 2 and 3: multicolour characters (clause 14.2).
-drcs-multicolour = ["drcs"]
 # Bold and italic characters (Table 28, Font Style).
 bold = ["nonspacing-attributes"]
 italic = ["nonspacing-attributes"]
@@ -63,9 +57,9 @@ animation = ["nonspacing-attributes"]
 # with the default features off.
 classic = ["level15", "render", "bedstead", "viewer"]
 # The modern-classic profile (decision E.71): Level 1.5, and of Levels 2.5
-# and 3.5 only the non-spacing attributes, objects, monochrome DRCS and
-# bold. Used with the default features off.
-modern-classic = ["level15", "level25", "nonspacing-attributes", "render", "bedstead", "viewer", "forms", "objects", "drcs", "bold"]
+# and 3.5 only the non-spacing attributes, objects and bold. Used with the
+# default features off.
+modern-classic = ["level15", "level25", "nonspacing-attributes", "render", "bedstead", "viewer", "forms", "objects", "bold"]
 # The row renderer and the generated G3 glyphs (area RND).
 render = []
 # Bedstead, the one bundled font (REQ-FNT-001, decision E.72).
@@ -101,18 +95,12 @@ name = "coverage"
 required-features = ["bedstead"]
 
 [[test]]
-name = "drcs"
-required-features = ["level25", "drcs"]
-
-[[test]]
 name = "level25"
 # The whole of Levels 2.5 and 3.5: every capability (decision E.71).
 required-features = [
     "level15",
     "level25",
     "objects",
-    "drcs",
-    "drcs-multicolour",
     "side-panels",
     "colours32",
 ]

@@ -8,8 +8,8 @@ use neoteletext_core::config::ParityPolicy;
 use neoteletext_core::consts::{
     CODE_MASK_7BIT, COLUMNS, COMPOSITIONAL_LINKS, DESIGNATION_CODES, DESIGNATION_LEVEL_35_DATA,
     DESIGNATION_LINKS_LEVEL_25, DESIGNATION_PAGE_DATA, HEADER_DISPLAY_COLUMN, LINK_NULL_PAGE, MAGAZINES,
-    PACKET_FIRST_ROW, PACKET_MAGAZINE_ENHANCEMENT, PACKET_PAGE_ENHANCEMENT, PACKET_ROW_25, PAGE_FUNCTION_POP, PAGE_MOT,
-    PAGE_TIME_FILLING, SPACE, STORED_ROWS, TRIPLETS_PER_PACKET,
+    PACKET_FIRST_ROW, PACKET_ROW_25, PAGE_FUNCTION_POP, PAGE_MOT, PAGE_TIME_FILLING, SPACE, STORED_ROWS,
+    TRIPLETS_PER_PACKET,
 };
 use neoteletext_core::ecc::{hamming2418, has_odd_parity};
 use neoteletext_core::packet::{CompositionalLink, Packet, PageFormat, Triplet, encode};
@@ -108,9 +108,6 @@ fn page_packets(page: &StoredPage, file: &mut PageFile) {
         push_line(file, &encode::page_enhancement(magazine, DESIGNATION_PAGE_DATA, format, &data.fields));
         file.function = Some(PageFunction { function: format.function, coding: format.coding });
     }
-    if let Some(data) = page.drcs_colours {
-        push_line(file, &encode::drcs_colours(magazine, PACKET_PAGE_ENHANCEMENT, &data));
-    }
     if let Some(data) = page.page_data_level35 {
         let format = data.format.unwrap_or(basic);
         push_line(file, &encode::page_enhancement(magazine, DESIGNATION_LEVEL_35_DATA, format, &data.fields));
@@ -120,8 +117,8 @@ fn page_packets(page: &StoredPage, file: &mut PageFile) {
 
 /// The page function of an enhancement page: its X/28/0 or X/28/3 when one
 /// was received, none for page mFE (whose coding is known), otherwise a
-/// guess from the stored bytes: rows that all pass parity are taken as a
-/// DRCS page's D-bytes and need no function, others as an object page's
+/// guess from the stored bytes: rows that all pass parity are taken as
+/// text coding and need no function, others as an object page's
 /// Hamming-coded triplets.
 fn enhancement_function(page: &EnhancementPage<'_>) -> Option<PageFunction> {
     if let Some(format) = page.format() {
@@ -137,7 +134,8 @@ fn enhancement_function(page: &EnhancementPage<'_>) -> Option<PageFunction> {
 }
 
 /// A page file from a stored enhancement sub-page (REQ-INP-023): its rows
-/// in the TTI form of its page coding, its packets X/26 and X/28/3.
+/// in the TTI form of its page coding, and its packets X/26. Its page
+/// function goes in the file's `PF` line.
 #[must_use]
 pub fn enhancement_page_file(page: &EnhancementPage<'_>) -> PageFile {
     let key = page.key();
@@ -162,27 +160,20 @@ pub fn enhancement_page_file(page: &EnhancementPage<'_>) -> PageFile {
         }
         let _ = file.enhancements.push(EnhancementPacket { designation, triplets });
     }
-    if let Some(modes) = page.drcs_modes() {
-        let format = modes.format.or(page.format()).unwrap_or(PageFormat { function: 0, coding: 0 });
-        push_line(&mut file, &encode::drcs_modes(key.address.magazine, format, modes));
-    }
     file
 }
 
-/// The magazine packets M/29/0, M/29/1 and M/29/4 of a magazine on its
+/// The magazine packets M/29/0 and M/29/4 of a magazine on its
 /// page mFF, or `None` when it has none (REQ-INP-023).
 #[must_use]
 pub fn magazine_page_file(magazine: Magazine, data: &MagazineData) -> Option<PageFile> {
-    if data.data.is_none() && data.drcs_colours.is_none() && data.level35.is_none() {
+    if data.data.is_none() && data.level35.is_none() {
         return None;
     }
     let address = PageAddress { magazine, page: PageNumber(PAGE_TIME_FILLING) };
     let mut file = PageFile { address, subcode: SubCode::new(0), ..PageFile::default() };
     if let Some(fields) = data.data {
         push_line(&mut file, &encode::magazine_enhancement(magazine, DESIGNATION_PAGE_DATA, &fields));
-    }
-    if let Some(colours) = data.drcs_colours {
-        push_line(&mut file, &encode::drcs_colours(magazine, PACKET_MAGAZINE_ENHANCEMENT, &colours));
     }
     if let Some(fields) = data.level35 {
         push_line(&mut file, &encode::magazine_enhancement(magazine, DESIGNATION_LEVEL_35_DATA, &fields));
@@ -192,8 +183,8 @@ pub fn magazine_page_file(magazine: Magazine, data: &MagazineData) -> Option<Pag
 
 /// Every page of a session as page files in the order of Annex B.7, so
 /// that reading the written file stores enhancement pages before the pages
-/// that use them: magazine packets, tables, DRCS pages, object pages, then
-/// display pages. With a filter, only that page's sub-pages.
+/// that use them: magazine packets, tables, object pages, then display
+/// pages. With a filter, only that page's sub-pages.
 #[must_use]
 pub fn session_page_files(session: &Session, filter: Option<PageAddress>) -> Vec<PageFile> {
     let wanted = |address: PageAddress| filter.is_none_or(|page| page == address);
@@ -268,6 +259,7 @@ pub fn convert(options: &Options, output: &Path, to: Target, filter: Option<Page
 mod tests {
     use super::*;
     use neoteletext_core::config::Config;
+    use neoteletext_core::consts::PACKET_PAGE_ENHANCEMENT;
     use neoteletext_core::packet::PacketMeta;
     use neoteletext_formats::Item;
     use neoteletext_formats::author::streams;
@@ -316,10 +308,7 @@ mod tests {
             assert_eq!(a.cells, b.cells, "{name:X}");
             assert_eq!((a.enhancements, a.enhancements_present), (b.enhancements, b.enhancements_present), "{name:X}");
             assert_eq!(a.compositional_links, b.compositional_links, "{name:X}");
-            assert_eq!(
-                (a.page_data, a.drcs_colours, a.page_data_level35),
-                (b.page_data, b.drcs_colours, b.page_data_level35)
-            );
+            assert_eq!((a.page_data, a.page_data_level35), (b.page_data, b.page_data_level35));
             assert_eq!(a.control, b.control, "{name:X}");
         }
         let stored = |session: &Session| {
@@ -334,7 +323,6 @@ mod tests {
                         page.key().s1,
                         page.subcode(),
                         page.format(),
-                        page.drcs_modes().copied(),
                         rows,
                         enhancements,
                         page.received(),
@@ -345,7 +333,7 @@ mod tests {
             pages
         };
         let (left, right) = (stored(&first), stored(&second));
-        assert_eq!(left.len(), 21);
+        assert_eq!(left.len(), 15);
         assert_eq!(left, right);
         for bits in 0..8 {
             let magazine = Magazine::from_bits(bits);

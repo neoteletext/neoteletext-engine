@@ -268,31 +268,17 @@ pub const SUBCODE_UPDATE_MASK: u16 = 0x7;
 /// The last packet number of an enhancement page sent up to X/26 with
 /// designation code d is this plus d (Annex A.1).
 pub const LAST_PACKET_ENHANCEMENT_BASE: u8 = 26;
-/// Packets X/1 to X/24 of a DRCS page carry two PTUs each
-/// (clause 14.1, Figure 27).
-pub const DRCS_PTUS_PER_PACKET: usize = 2;
-/// D-bytes of one PTU (clause 14.1).
-pub const DRCS_PTU_BYTES: usize = 20;
-/// Pattern bits in one D-byte; bit 6 of the 7-bit code is always 1
-/// (clause 14.1).
-pub const DRCS_DOTS_PER_BYTE: usize = 6;
-/// Bit 6 of every D-byte: its codes are 4/0 to 7/F (clause 14.1).
-pub const DRCS_BYTE_BASE: u8 = 0x40;
-/// Rows and columns of a mode 3 character (Table 31): 6 by 5 pixels.
-pub const DRCS_MODE3_COLUMNS: usize = 6;
-/// Rows of a mode 3 character.
-pub const DRCS_MODE3_ROWS: usize = 5;
-/// X/28/3 mode identification codes (Table 9): a further PTU of a mode 1
-/// or mode 2 character.
-pub const DRCS_MODE_SUBSEQUENT: u8 = 0xE;
-/// X/28/3 mode identification code: no data for this PTU.
-pub const DRCS_MODE_NO_DATA: u8 = 0xF;
-/// The PTUs of a mode 1 (12 by 10 by 2) character.
-pub const DRCS_MODE1_PTUS: usize = 2;
-/// The PTUs of a mode 2 (12 by 10 by 4) character.
-pub const DRCS_MODE2_PTUS: usize = 4;
-/// Highest packet of a DRCS page; X/25 is not used (Figure 27).
-pub const DRCS_LAST_PACKET: u8 = 24;
+/// The Magazine Organization Table packets that end each level's part,
+/// X/21 for Level 2.5 and X/24 for Level 3.5, which carry the totals
+/// (clause 10.6.6) after eight four-byte links to pattern pages (Tables 22
+/// and 23). Those links are written unused, page FF (decision E.95).
+pub const MOT_TOTALS_PACKETS: [u8; 2] = [21, 24];
+/// Packet byte of the first pattern page link of X/21 and X/24 (Table 22).
+pub const MOT_PATTERN_LINK_FIRST_BYTE: usize = 6;
+/// Bytes of a pattern page link (Table 23).
+pub const MOT_PATTERN_LINK_BYTES: usize = 4;
+/// Pattern page links in X/21 and X/24 (Table 22).
+pub const MOT_PATTERN_LINKS: usize = 8;
 
 // ---------------------------------------------------------------------------
 // EP1 page files (notes-formats.md section 6.1)
@@ -411,16 +397,14 @@ mod tests {
         assert_eq!(1 + 13 * 3, EP1_PACKET_BYTES);
     }
 
-    /// The layouts of object pages and DRCS pages agree with the core's
-    /// constants (clauses 10.5.1.2 and 14.1).
+    /// The layouts of object pages and of the table's last packets agree
+    /// with the core's constants (clauses 10.5.1.2 and 10.6).
     #[test]
     fn enhancement_page_layouts_agree() {
-        use neoteletext_core::consts::{DATA_BYTES, DRCS_PATTERN_DOTS, DRCS_PATTERN_ROWS, DRCS_PTUS};
+        use neoteletext_core::consts::{MOT_LEVEL_35_LAST_PACKET, MOT_TOTALS_BYTE};
         assert_eq!(OBJECTS_PER_POINTER_PACKET * 4, OBJECTS_PER_TYPE);
-        assert_eq!(DRCS_PTU_BYTES * DRCS_PTUS_PER_PACKET, DATA_BYTES);
-        assert_eq!(DRCS_PTUS, DRCS_PTUS_PER_PACKET * usize::from(DRCS_LAST_PACKET));
-        assert_eq!(DRCS_PTU_BYTES * DRCS_DOTS_PER_BYTE, DRCS_PATTERN_ROWS * DRCS_PATTERN_DOTS);
-        assert_eq!(DRCS_MODE3_ROWS * DRCS_MODE3_COLUMNS * 4, DRCS_PTU_BYTES * DRCS_DOTS_PER_BYTE);
+        assert_eq!(MOT_TOTALS_PACKETS[1], MOT_LEVEL_35_LAST_PACKET);
+        assert_eq!(MOT_PATTERN_LINK_FIRST_BYTE + MOT_PATTERN_LINKS * MOT_PATTERN_LINK_BYTES, MOT_TOTALS_BYTE - 2);
         assert_eq!(NOT_TEXT_PAGE_MARKER >> 7, 0b1_1111_1111);
     }
 }

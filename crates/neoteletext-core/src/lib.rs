@@ -14,7 +14,7 @@
 //! - L1 packet decoding: [`packet`];
 //! - L2 acquisition: [`fsm`], [`acq`], [`service`];
 //! - L3 presentation model: [`charset`], [`level1`], [`compose`], [`level15`], and for
-//!   Levels 2.5 and 3.5 [`colour`], [`drcs`], [`objects`] and [`enhance`];
+//!   Levels 2.5 and 3.5 [`colour`], [`objects`] and [`enhance`];
 //! - L4 rendering: [`glyphs`], [`render`];
 //! - L6 interaction: [`viewer`], [`nav`], [`forms`];
 //! - L8 platform interface: [`port`];
@@ -50,7 +50,6 @@ pub mod service;
 pub mod charset;
 pub mod colour;
 pub mod compose;
-pub mod drcs;
 #[cfg(feature = "level25")]
 pub mod enhance;
 pub mod level1;

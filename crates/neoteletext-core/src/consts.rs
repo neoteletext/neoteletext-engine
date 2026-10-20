@@ -287,8 +287,6 @@ pub const MODE_OBJECT_INVOCATION_LAST: u8 = 0x13;
 pub const MODE_OBJECT_DEFINITION_FIRST: u8 = 0x15;
 /// The last Object Definition row mode.
 pub const MODE_OBJECT_DEFINITION_LAST: u8 = 0x17;
-/// Row mode 11000: DRCS Mode (Table 28).
-pub const MODE_DRCS_MODE: u8 = 0x18;
 /// The low two bits of an object mode, M1 M0: 01 Active, 10 Adaptive,
 /// 11 Passive (Table 28).
 pub const MODE_OBJECT_TYPE_MASK: u8 = 0x03;
@@ -307,7 +305,8 @@ pub const MODE_MODIFIED_DESIGNATION: u8 = 0x08;
 pub const MODE_G0_LEVEL_25: u8 = 0x09;
 /// Column mode 01100: Display Attributes (Table 29).
 pub const MODE_DISPLAY_ATTRIBUTES: u8 = 0x0C;
-/// Column mode 01101: DRCS Character Invocation (Table 29).
+/// Column mode 01101: DRCS Character Invocation (Table 29), recognised only
+/// to move the active position (decision E.95).
 pub const MODE_DRCS_CHARACTER: u8 = 0x0D;
 /// Column mode 01110: Font Style, Level 3.5 only (Table 29).
 pub const MODE_FONT_STYLE: u8 = 0x0E;
@@ -322,8 +321,8 @@ pub const ROW_COLOUR_THIS_ROW: u8 = 0b00;
 /// S1 S0 = 11 of Full Row Colour: this row and every row below (Table 28).
 pub const ROW_COLOUR_DOWN_TO_BOTTOM: u8 = 0b11;
 /// The reserved address that the encoder writes in triplets whose address
-/// field is reserved but must still be a row address (Full Screen Colour
-/// and DRCS Mode): 41, which Annex A.5 note 1 recommends for Level 1.5
+/// field is reserved but must still be a row address (Full Screen
+/// Colour): 41, which Annex A.5 note 1 recommends for Level 1.5
 /// compatibility.
 pub const ROW_ADDRESS_RESERVED_DEFAULT: u8 = 41;
 /// Shift of S1 S0 in the address of an Object Invocation or Definition:
@@ -339,31 +338,12 @@ pub const OBJECT_ADDRESS_N8_N7_MASK: u8 = 0x03;
 pub const OBJECT_NUMBER_BITS: u32 = 9;
 /// Shift of N8 N7 within an object number: N6 to N0 are the data field.
 pub const OBJECT_NUMBER_HIGH_SHIFT: u32 = 7;
-/// Data bit D6 of DRCS Mode and DRCS Character Invocation: 1 normal DRCS,
-/// 0 global DRCS (Tables 28 and 29).
-pub const DRCS_NORMAL_BIT: u8 = 0x40;
-/// Shift of L1 L0, the DRCS level bits, in the DRCS Mode data field.
-pub const DRCS_LEVEL_SHIFT: u32 = 4;
-/// Mask of L1 L0 after the shift.
-pub const DRCS_LEVEL_MASK: u8 = 0x03;
-/// Mask of T3 to T0, the DRCS sub-table, in the DRCS Mode data field.
-pub const DRCS_SUBTABLE_MASK: u8 = 0x0F;
 /// The Level 2.5 bit of a two-bit level field: S0 of an Object Definition's
-/// usage, L0 of DRCS Mode, and the low bit of an X/27/4 page validity
+/// usage, and the low bit of an X/27/4 page validity
 /// (Tables 15 and 28: 01 Level 2.5, 10 Level 3.5, 11 both).
 pub const LEVEL_BIT_25: u8 = 0b01;
 /// The Level 3.5 bit of a two-bit level field.
 pub const LEVEL_BIT_35: u8 = 0b10;
-/// Mask of the character number D5 to D0 of a DRCS Character Invocation.
-pub const DRCS_CHARACTER_MASK: u8 = 0x3F;
-/// Rows of a DRCS character: the 12 by 10 matrix (clause 14.2).
-pub const DRCS_PATTERN_ROWS: usize = 10;
-/// Dots across a DRCS character.
-pub const DRCS_PATTERN_DOTS: usize = 12;
-/// Bit planes of a DRCS character: four in modes 2 and 3 (Table 31).
-pub const DRCS_PLANES: usize = 4;
-/// Characters in a DRCS sub-table: numbers 0 to 47 (Table 29, clause 14.1).
-pub const DRCS_CHARACTERS: u8 = 48;
 /// Mask of the Termination Marker type, data bits D2 to D0 (Table 28).
 pub const TERMINATION_TYPE_MASK: u8 = 0x07;
 /// Mask of the flash mode, D1 D0 of Additional Flash Functions (Table 29).
@@ -420,10 +400,9 @@ pub const DIACRITIC_LOW_LINE: u8 = 0x0C;
 
 /// X/28 and M/29 designation code 0: X/28/0 format 1 and M/29/0.
 pub const DESIGNATION_PAGE_DATA: u8 = 0;
-/// X/28 and M/29 designation code 1: the DRCS colour lookup tables.
-pub const DESIGNATION_DRCS_COLOURS: u8 = 1;
-/// X/28 designation code 3: DRCS mode identification (Table 9).
-pub const DESIGNATION_DRCS_MODES: u8 = 3;
+/// X/28 designation code 3: the data of a pattern download page, of which
+/// only the page function is read (Table 9, decision E.95).
+pub const DESIGNATION_DOWNLOAD_FUNCTION: u8 = 3;
 /// X/28 and M/29 designation code 4: Level 3.5 data (Tables 10 and 13).
 pub const DESIGNATION_LEVEL_35_DATA: u8 = 4;
 /// X/27 designation code 4: compositional links, Level 2.5 (clause 9.6.2).
@@ -438,9 +417,10 @@ pub const PAGE_FUNCTION_BASIC: u8 = 0x0;
 pub const PAGE_FUNCTION_GPOP: u8 = 0x2;
 /// Page function 0011: Public Object Page.
 pub const PAGE_FUNCTION_POP: u8 = 0x3;
-/// Page function 0100: Global DRCS page.
+/// Page function 0100: Global DRCS page. Its patterns are not read; the
+/// code is kept so that such a page is never shown as text (decision E.95).
 pub const PAGE_FUNCTION_GDRCS: u8 = 0x4;
-/// Page function 0101: normal DRCS page.
+/// Page function 0101: normal DRCS page, kept for the same reason.
 pub const PAGE_FUNCTION_DRCS: u8 = 0x5;
 /// Page function 0110: Magazine Organization Table.
 pub const PAGE_FUNCTION_MOT: u8 = 0x6;
@@ -490,23 +470,6 @@ pub const COLOUR_PRIMARY_BITS: u32 = 4;
 /// Stream position of the first colour word bit, triplet 2 bit 11, where
 /// stream position 18 × t + b − 1 is bit b of triplet t + 1 (Table 4).
 pub const COLOUR_WORDS_START: usize = 28;
-/// Bits of a DRCS colour lookup table entry: a Colour Map index (Table 8).
-pub const DRCS_CLUT_ENTRY_BITS: usize = 5;
-/// Entries of the DRCS colour lookup tables for 12 by 10 by 2 characters.
-pub const DRCS_CLUT_4: usize = 4;
-/// Entries of the DRCS colour lookup tables for 12 by 10 by 4 and 6 by 5
-/// by 4 characters.
-pub const DRCS_CLUT_16: usize = 16;
-/// Stream position of the first DRCS colour table bit, triplet 2 bit 1
-/// (Table 8).
-pub const DRCS_CLUTS_START: usize = 18;
-/// Pattern Transfer Units in a DRCS sub-page (clause 14.1).
-pub const DRCS_PTUS: usize = 48;
-/// Bits of one DRCS mode identification code (Table 9).
-pub const DRCS_MODE_BITS: usize = 4;
-/// Stream position of the first mode identification bit, triplet 2 bit 1
-/// (Table 9, decision E.54).
-pub const DRCS_MODES_START: usize = 18;
 /// Mask of the link function, X/27/4 triplet 1 bits 1 and 2 (Table 15).
 pub const LINK_FUNCTION_MASK: u32 = 0x03;
 /// Shift of the page validity, triplet 1 bits 3 and 4 (Table 15).
@@ -561,8 +524,8 @@ pub const OBJECT_POINTERS_PER_PACKET: usize = 24;
 /// Packets an enhancement sub-page can hold: X/1 to X/25 and X/26/0 to
 /// X/26/15 (clause 10.5.1.1).
 pub const ENHANCEMENT_SUBPAGE_PACKETS: usize = PACKET_ROW_25 as usize + DESIGNATION_CODES;
-/// The most packets of DRCS and object pages over all magazines at Level
-/// 2.5 (Annex E.8); the documented default capacity of REQ-ACQ-019.
+/// The most packets of enhancement pages over all magazines at Level 2.5,
+/// as Annex E.8 gives it; the documented default capacity of REQ-ACQ-019.
 pub const ENHANCEMENT_PACKETS_LEVEL_25: usize = 500;
 /// The same total at Level 3.5 (Annex E.8).
 pub const ENHANCEMENT_PACKETS_LEVEL_35: usize = 1200;
@@ -590,32 +553,26 @@ pub const MOT_HEX_DIGITS: u8 = 6;
 /// Packets of the Level 2.5 object links: GPOP and POP links 1 to 3, then
 /// POP links 4 to 7 (Table 20).
 pub const MOT_OBJECT_LINKS_LEVEL_25: [u8; 2] = [19, 20];
-/// Packet of the Level 2.5 DRCS links (Table 22).
-pub const MOT_DRCS_LINKS_LEVEL_25: u8 = 21;
 /// Packets of the Level 3.5 object links (Table 20).
 pub const MOT_OBJECT_LINKS_LEVEL_35: [u8; 2] = [22, 23];
-/// Packet of the Level 3.5 DRCS links (Table 22).
-pub const MOT_DRCS_LINKS_LEVEL_35: u8 = 24;
+/// Packet X/24, the last of the Level 3.5 part of the table, which a Level
+/// 3.5 decoder needs present to use that part (clause 10.6.1). It carries
+/// DRCS links (Table 22), which are not read (decision E.95).
+pub const MOT_LEVEL_35_LAST_PACKET: u8 = 24;
 /// Packet byte of the first object link (Table 20).
 pub const MOT_OBJECT_LINK_FIRST_BYTE: usize = 6;
 /// Bytes of an object link (Table 21).
 pub const MOT_OBJECT_LINK_BYTES: usize = 10;
 /// Object links in one packet (Table 20).
 pub const MOT_OBJECT_LINKS_PER_PACKET: usize = 4;
-/// Packet byte of the first DRCS link (Table 22).
-pub const MOT_DRCS_LINK_FIRST_BYTE: usize = 6;
-/// Bytes of a DRCS link (Table 23).
-pub const MOT_DRCS_LINK_BYTES: usize = 4;
-/// DRCS links in one packet: the GDRCS link and DRCS links 1 to 7.
-pub const MOT_DRCS_LINKS: usize = 8;
 /// Packets X/1 to X/24 of a Magazine Organization Table (clause 10.6.1).
 pub const MOT_PACKETS: usize = 24;
 /// Packet byte of the totals of enhancement pages (clause 10.6.6).
 pub const MOT_TOTALS_BYTE: usize = 40;
 /// Data bit 4 of a link's first byte: the X/27/4,5 flag (Table 21).
 pub const MOT_LINK_X27_FLAG: u8 = 0x08;
-/// Data bit 4 of a byte pair's bytes: the global object or DRCS flag
-/// (clause 10.6.2).
+/// Data bit 4 of a byte pair's first byte: the global object flag (clause
+/// 10.6.2).
 pub const MOT_GLOBAL_FLAG: u8 = 0x08;
 /// Data bits 3 to 1 of a byte pair's bytes: the link number 1 to 7, or 0.
 pub const MOT_LINK_NUMBER_MASK: u8 = 0x07;
@@ -950,7 +907,7 @@ pub const ADJACENT_CLUT_FLIP: u8 = 1 << CLUT_SHIFT;
 pub const INDEX_4BIT_MAX: u8 = 0x0F;
 
 // ---------------------------------------------------------------------------
-// Phase I2a: enhancement walk, objects and DRCS decoding
+// Phase I2a: enhancement walk and objects
 // ---------------------------------------------------------------------------
 
 /// The columns of a screen row in scan order: the 40 of the main page,
@@ -987,15 +944,12 @@ pub const WALK_DEPTH: usize = 1 + OBJECT_TYPES;
 /// each type, so that the pointer triplet is 1 + 3 × group + type
 /// (clause 10.5.1.2, Table 28).
 pub const OBJECT_POINTER_GROUP_TRIPLETS: u8 = OBJECT_TYPES as u8;
-/// Link functions of X/27/4 and X/27/5 links (Table 15): GPOP, POP, GDRCS
-/// and DRCS. Links 0 to 3 of X/27/4 carry them in this order (Table 16).
+/// Link functions of X/27/4 and X/27/5 links (Table 15): GPOP, then POP.
+/// Links 0 to 3 of X/27/4 carry the four functions in order (Table 16);
+/// the last two, for DRCS pages, are not used (decision E.95).
 pub const LINK_FUNCTION_GPOP: u8 = 0b00;
 /// The POP link function (Table 15).
 pub const LINK_FUNCTION_POP: u8 = 0b01;
-/// The GDRCS link function (Table 15).
-pub const LINK_FUNCTION_GDRCS: u8 = 0b10;
-/// The DRCS link function (Table 15).
-pub const LINK_FUNCTION_DRCS: u8 = 0b11;
 /// X/27/4 links 0 to 3 have fixed roles; links 4 and 5 of X/27/4 and 0 and
 /// 1 of X/27/5 take their role from their function bits at Level 3.5
 /// (Table 16).
@@ -1038,40 +992,6 @@ pub const G1_G0_COLUMNS_FIRST: u8 = 0x40;
 /// The last code of G1 columns 4 and 5.
 pub const G1_G0_COLUMNS_LAST: u8 = 0x5F;
 
-/// The bytes of one Pattern Transfer Unit (clause 14.1).
-pub const DRCS_PTU_BYTES: usize = 20;
-/// Each packet X/1 to X/24 of a DRCS page carries two PTUs (Figure 27).
-pub const DRCS_PTUS_PER_PACKET: usize = 2;
-/// The lowest D-byte code, 4/0; D-bytes run to 7/F (clause 14.1).
-pub const DRCS_D_BYTE_FIRST: u8 = 0x40;
-/// The pattern bits of a D-byte, its six least significant (clause
-/// 14.2.1).
-pub const DRCS_D_BYTE_DOTS: usize = 6;
-/// Mask of the six pattern bits of a D-byte.
-pub const DRCS_D_BYTE_MASK: u8 = 0x3F;
-/// Mode identification code of X/28/3 (Table 9): mode 0, 12 by 10 by 1.
-pub const DRCS_MODE_12X10X1: u8 = 0b0000;
-/// Mode 1, 12 by 10 by 2.
-pub const DRCS_MODE_12X10X2: u8 = 0b0001;
-/// Mode 2, 12 by 10 by 4.
-pub const DRCS_MODE_12X10X4: u8 = 0b0010;
-/// Mode 3, 6 by 5 by 4.
-pub const DRCS_MODE_6X5X4: u8 = 0b0011;
-/// A further PTU of a mode 1 or mode 2 character.
-pub const DRCS_MODE_SUBSEQUENT: u8 = 0b1110;
-/// No data is transmitted for the character.
-pub const DRCS_MODE_NO_DATA: u8 = 0b1111;
-/// The PTUs of a 12 by 10 by 2 character (Table 31).
-pub const DRCS_PTUS_MODE_1: usize = 2;
-/// The PTUs of a 12 by 10 by 4 character (Table 31).
-pub const DRCS_PTUS_MODE_2: usize = 4;
-/// A 6 by 5 by 4 character has five rows of six pixels, each row four
-/// D-bytes, one per bit plane (clause 14.2.4).
-pub const DRCS_MODE_3_ROWS: usize = 5;
-/// Each 6 by 5 pixel covers 2 by 2 dots of the 12 by 10 matrix (decision
-/// E.54).
-pub const DRCS_MODE_3_SCALE: usize = 2;
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1098,14 +1018,6 @@ mod tests {
         assert_eq!(FLASH_FAST_OFF_UNITS * FLASH_PHASES, FLASH_FAST_HALF_UNITS);
         let slow_off = u64::from(FLASH_UNITS - FLASH_SLOW_ON_UNITS);
         assert_eq!(u64::from(FLASH_SLOW_ON_UNITS) * FLASH_FIELDS_HIDDEN, slow_off * FLASH_FIELDS_SHOWN);
-    }
-
-    /// A DRCS character fills a 12 by 10 cell exactly (clause 14.2,
-    /// REQ-RND-038).
-    #[test]
-    fn drcs_patterns_fill_a_cell() {
-        assert_eq!(DRCS_PATTERN_DOTS, CELL_WIDTH);
-        assert_eq!(DRCS_PATTERN_ROWS, CELL_HEIGHT_SMALL);
     }
 
     /// Decision E.43: the Colour Map's transparent entry is the renderer's
