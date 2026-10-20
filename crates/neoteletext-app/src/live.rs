@@ -269,7 +269,7 @@ impl Source for Live {
                 Frame::Notice(notice) => self.notices.push(notice),
                 // The fetcher never sends these to a decoder; ignore rather
                 // than trust.
-                Frame::Request(..) | Frame::Submit(_) | Frame::Confirm(_) | Frame::Follow(..) | Frame::Key(_) => {}
+                Frame::Request(..) | Frame::Submit(_) | Frame::Confirm(_) | Frame::Follow(..) | Frame::Input(_) => {}
             }
         }
         session.tick(now);
@@ -335,8 +335,8 @@ impl Source for Live {
         self.send(&Frame::Confirm(yes));
     }
 
-    fn send_key(&mut self, record: &[u8]) {
-        self.send(&Frame::Key(record.to_vec()));
+    fn send_input(&mut self, message: &[u8]) {
+        self.send(&Frame::Input(message.to_vec()));
     }
 
     fn follow(&mut self, service: u8, page: PageAddress, subcode: SubCode) {

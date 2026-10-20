@@ -55,6 +55,8 @@ pub enum Problem {
     BadFontLine,
     /// A `CU` line that could not be read (REQ-INT-006).
     BadCursorLine,
+    /// An `IM` line that could not be read (REQ-INT-114).
+    BadModesLine,
     /// A warning.
     Warning(Warning),
 }
@@ -229,6 +231,7 @@ pub fn check_page(page: &PageFile, options: &CheckOptions<'_>, out: &mut dyn FnM
             IssueKind::WithdrawnCommand => Problem::WithdrawnCommand,
             IssueKind::BadFontLine => Problem::BadFontLine,
             IssueKind::BadCursorLine => Problem::BadCursorLine,
+            IssueKind::BadModesLine => Problem::BadModesLine,
             IssueKind::FormNeedsConversion => Problem::FormVersion2,
             IssueKind::FieldOverlap
             | IssueKind::FieldOutsideRow

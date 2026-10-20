@@ -14,8 +14,9 @@ use crate::consts::{TTI_COMMAND_BYTES, TTI_FL_LINKS, TTI_FL_NO_LINK, TTI_FL_NULL
 use crate::item::{Capacity, Diagnostic, DiagnosticKind, Item, Reader, offset_of};
 use crate::page::{
     CursorLine, DEFAULT_ADDRESS, EnhancementPacket, FONT_ADDRESS_BYTES, FONT_CHECKSUM_DIGITS, FastextLink, FieldKind,
-    FormField, FormMethod, FormOption, IssueKind, LINK_ADDRESS_BYTES, LinkDestination, LinkKey, LinkLine, NumberLink,
-    PageFile, PageFont, PageFunction, RawBody, RawPacket, SERVICE_NAME_BYTES, TextLink, WEB_MARK, Warning,
+    FormField, FormMethod, FormOption, INPUT_MODE_BITS, IssueKind, LINK_ADDRESS_BYTES, LinkDestination, LinkKey,
+    LinkLine, ModesLine, NumberLink, PageFile, PageFont, PageFunction, RawBody, RawPacket, SERVICE_NAME_BYTES,
+    TextLink, WEB_MARK, Warning,
 };
 use crate::text::Text;
 
@@ -32,9 +33,9 @@ const CODING_LAST: u32 = 0x7;
 /// The commands that belong to a page (REQ-INP-013, Appendices C and E,
 /// `CK` of REQ-CLI-006 and `TF` of REQ-FNT-007). `OP` is `OPTION`,
 /// recognised by its first two letters.
-const PAGE_COMMANDS: [[u8; TTI_COMMAND_BYTES]; 18] = [
+const PAGE_COMMANDS: [[u8; TTI_COMMAND_BYTES]; 19] = [
     *b"SC", *b"PS", *b"OL", *b"FL", *b"LN", *b"LK", *b"LT", *b"RE", *b"PF", *b"CK", *b"FD", *b"OP", *b"FS", *b"FP",
-    *b"FT", *b"FH", *b"TF", *b"CU",
+    *b"FT", *b"FH", *b"TF", *b"CU", *b"IM",
 ];
 /// What starts an address as a link target, rather than a page or a named
 /// service (the web-native concept section 3: "a target containing
@@ -385,6 +386,10 @@ impl TtiReader {
             b"LK" => self.number_link_line(args, out),
             b"LT" => self.text_link_line(args, out),
             b"CU" => self.cursor_line(args, out),
+            b"IM" => match decimal(args.trim_ascii()).filter(|&modes| modes & !INPUT_MODE_BITS == 0) {
+                Some(modes) => self.page.input_modes = Some(ModesLine { modes, line: self.line_number }),
+                None => self.issue(IssueKind::BadModesLine, out),
+            },
             b"RE" => match hex(args).filter(|&value| value <= REGION_LAST) {
                 Some(value) => self.page.region = u8::try_from(value).ok(),
                 None => self.diagnostic(bad, out),

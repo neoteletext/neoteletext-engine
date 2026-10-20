@@ -1380,3 +1380,14 @@ Decided on 21 October 2026, on the owner's instruction to identify the client as
 5. **The same for every user of a build,** given by the port in `Config`, checked against RFC 9110's product syntax and at most 64 bytes; a port that gives none sends `neoteletext/` and the engine's significant version. It goes on every request and on the push WebSocket's upgrade (REQ-WEB-031); a transport without HTTP carries it in the input session's HELLO (`neoteletext-common/INPUT.md`).
 
 *Reason:* A channel, like a web site, needs to know what it serves, to work around a receiver's version or tell its viewers to update; everything past that, the browsers found, is a fingerprint (REQ-SEC-001) or a lie told for compatibility.
+
+**E.100 — Input protocol version 2: `neoteletext-common/INPUT.md` replaces the key record.**
+Decided by the owner on 21 October 2026, adopting the merge of the built input profile (E.90, E.91) with the Input Event Protocol, one design for the engine and NeoTeletext (its decision 48), with every requirement numbered and implemented.
+1. **One stream of raw UTF-8 text and `0xFF`-framed events** goes in the push WebSocket's binary messages, whole events a message, at most 4 096 bytes; the 14-byte key record, its sequence number and its clock are gone (REQ-INT-001 to REQ-INT-004 withdrawn).
+2. **HELLO and WELCOME, capabilities and a mode stack,** with a page's own modes in its `IM` line or a PAGE_MODES record; the mouse goes only when asked (REQ-INT-115).
+3. **The channel answers in teletext:** the cursor record (type 4), whose acknowledgement is now the input count, and the new control record (type 5) on the same data channel, which the audio receiver steps over.
+4. **`neoteletext-input` holds all of it,** still `no_std` and allocation-free: the wire primitives, the functional codes, the stream's encoder and decoders, the modes, both records and a receiver's session (the count, the round trip and the rate), so every receiver applies the modes and the rate alike.
+5. **The normative text lives in `INPUT.md` section 12;** `int.md` keeps each requirement's number and title, so the traceability table covers them, and `design/input.md` points there.
+6. **Normalization Form C** (REQ-INT-116 rule 3) needs Unicode's composition tables, a library that awaits the owner's approval; until then text is sent as typed.
+
+*Reason:* The built profile could not grow but by a new version, carried no mouse, paste or composition, and sent the typing rhythm for no use; the Input Event Protocol had no teletext and no carriage a broadcast or a file could hold. Keeping one of each would be two formats where one does.

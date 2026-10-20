@@ -262,7 +262,7 @@ impl Transport for StdTransport {
     fn send(&mut self, connection: ConnectionId, bytes: &[u8]) -> Result<(), Self::Error> {
         let open = self.streams[slot(connection)].as_mut().ok_or(embedded_io::ErrorKind::NotConnected)?;
         // Written whole, blocking, within the write limit: a request or a
-        // key record is small, and the socket drains it at once.
+        // input message is small, and the socket drains it at once.
         let mut socket = &open.socket;
         let result = match open.tls.as_deref_mut() {
             None => socket.write_all(bytes).and_then(|()| socket.flush()),
@@ -310,7 +310,7 @@ fn requests(wake: Sender<Wake>) {
         while let Ok(Some(frame)) = pipe::read(&mut input) {
             let wanted = matches!(
                 frame,
-                Frame::Request(..) | Frame::Submit(_) | Frame::Confirm(_) | Frame::Follow(..) | Frame::Key(_)
+                Frame::Request(..) | Frame::Submit(_) | Frame::Confirm(_) | Frame::Follow(..) | Frame::Input(_)
             );
             if wanted && wake.send(Wake::Request(frame)).is_err() {
                 return;
@@ -684,7 +684,7 @@ fn run_web(address: &str, wakes: &mut Wakes, wake: Sender<Wake>, allow_local: &[
                     agent.handle(now, Input::Submit(form), &mut out);
                 }
                 Frame::Confirm(yes) => agent.handle(now, Input::ConfirmSubmission(yes), &mut out),
-                Frame::Key(record) => agent.handle(now, Input::Send(&record), &mut out),
+                Frame::Input(message) => agent.handle(now, Input::Send(&message), &mut out),
                 Frame::Follow(service, mpp, sub) => {
                     if let Some((page, subcode)) = page_request(mpp, sub) {
                         agent.handle(now, Input::FollowLink { service: &service, page, subcode }, &mut out);

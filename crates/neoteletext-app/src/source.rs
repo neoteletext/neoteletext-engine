@@ -43,8 +43,9 @@ pub trait Source {
 
     /// Answers a confirmation request.
     fn confirm(&mut self, _yes: bool) {}
-    /// Sends a key record to the channel being typed into (area INT).
-    fn send_key(&mut self, _record: &[u8]) {}
+    /// Sends an input message to the channel being typed into (area INT,
+    /// REQ-INT-101).
+    fn send_input(&mut self, _message: &[u8]) {}
 
     /// Follows a link to another service.
     fn follow(&mut self, _service: u8, _page: PageAddress, _subcode: SubCode) {}

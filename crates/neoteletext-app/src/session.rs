@@ -13,6 +13,7 @@ use neoteletext_core::packet::{Packet, PacketMeta};
 use neoteletext_core::service::{ServiceInfo, interpret};
 use neoteletext_core::trace::TraceSink;
 use neoteletext_core::types::{Instant, PageAddress, SubCode};
+use std::collections::VecDeque;
 
 /// Default number of stored pages and sub-pages.
 pub const DEFAULT_PAGES: usize = 4096;
@@ -34,7 +35,15 @@ pub struct Session {
     /// Events seen, kept for `--verbose` tracing.
     pub trace: Vec<Event>,
     tracing: bool,
+    /// Which packets to keep for the program as well as decode, and those
+    /// kept, oldest first, at most [`MAX_KEPT`].
+    keep: Option<fn(&Packet) -> bool>,
+    kept: VecDeque<Packet>,
 }
+
+/// The most packets kept between two takes: a channel's records for its
+/// input are a few a key, and a program takes them on every pass.
+pub const MAX_KEPT: usize = 256;
 
 /// Microseconds between packets when the input has no time stamps: one
 /// television line, 64 microseconds, so the page timeout never fires
@@ -57,6 +66,28 @@ impl Session {
             clock: 0,
             trace: Vec::new(),
             tracing,
+            keep: None,
+            kept: VecDeque::new(),
+        }
+    }
+
+    /// Keeps every packet `wanted` is true of for [`Session::take_kept`],
+    /// as well as decoding it: the channel's records for its input.
+    pub fn keep(&mut self, wanted: fn(&Packet) -> bool) {
+        self.keep = Some(wanted);
+    }
+
+    /// The packets kept since the last take, oldest first.
+    pub fn take_kept(&mut self) -> VecDeque<Packet> {
+        std::mem::take(&mut self.kept)
+    }
+
+    fn maybe_keep(&mut self, packet: &Packet) {
+        if self.keep.is_some_and(|wanted| wanted(packet)) {
+            if self.kept.len() == MAX_KEPT {
+                self.kept.pop_front();
+            }
+            self.kept.push_back(*packet);
         }
     }
 
@@ -80,6 +111,7 @@ impl Session {
     /// Feeds one packet. Time advances by the packet's own time stamp when
     /// it has one, otherwise by one line period.
     pub fn push(&mut self, packet: &Packet, meta: &PacketMeta) {
+        self.maybe_keep(packet);
         self.clock = match meta.timestamp_us {
             Some(stamp) if stamp >= self.clock => stamp,
             _ => self.clock.saturating_add(LINE_PERIOD_US),
@@ -96,6 +128,7 @@ impl Session {
     /// Feeds one packet received now, on the session's real clock (live
     /// sources).
     pub fn push_at(&mut self, packet: &Packet, meta: &PacketMeta, now: Instant) {
+        self.maybe_keep(packet);
         self.clock = self.clock.max(now.0);
         let tracing = self.tracing;
         let trace = &mut self.trace;

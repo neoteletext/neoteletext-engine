@@ -754,6 +754,33 @@ fn a_pages_link_lines_are_its_own() {
     assert!(pages[1].text_links.is_empty());
 }
 
+/// REQ-INT-114: `IM,modes` is the input modes the page asks for; the last
+/// line is kept, the writer writes it back, and a line that cannot be read
+/// or names a mode not defined is reported and dropped.
+#[test]
+fn a_modes_line_is_read_kept_and_written_back() {
+    let (pages, _) = read(b"PN,30000\nIM,1\nIM,72\nPN,30100\nOL,1,None\n");
+    assert_eq!(pages[0].input_modes.map(|line| line.modes), Some(72), "the last line");
+    assert_eq!(pages[1].input_modes, None);
+    #[cfg(feature = "std")]
+    {
+        let mut written = Vec::new();
+        crate::write::write_tti(&[&pages[0]], &mut written).unwrap();
+        assert!(
+            written.windows(6).any(|line| line == b"IM,72\n"),
+            "{}",
+            std::string::String::from_utf8_lossy(&written)
+        );
+        let (again, _) = read(&written);
+        assert_eq!(again[0].input_modes.map(|line| line.modes), Some(72));
+    }
+    for line in [b"IM,256\n".as_slice(), b"IM,x\n", b"IM,\n", b"IM,-1\n", b"IM,1,2\n"] {
+        let text = [b"PN,30000\n".as_slice(), line].concat();
+        let (pages, _) = read(&text);
+        assert!(pages[0].input_modes.is_none() && pages[0].has_issue(IssueKind::BadModesLine), "{line:?}");
+    }
+}
+
 /// REQ-INT-006: `CU,row,column,width,flags[,acked]` is the page's cursor
 /// record; the last line is kept, the writer writes it back, and a line
 /// that cannot be read is reported and dropped.

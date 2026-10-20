@@ -5,10 +5,11 @@
 
 use std::io::{self, Read, Write};
 
-/// The longest key record a frame carries: the web module's
-/// `INPUT_MESSAGE_MAX`, which this crate may be built without. The
-/// command-line program asserts that they agree.
-pub const MAX_KEY_RECORD: usize = 46;
+/// The longest input message a frame carries (`neoteletext-common/INPUT.md`
+/// section 5.1): the web module's `INPUT_MESSAGE_MAX` and the input crate's
+/// `MAX_MESSAGE`, which this crate may be built without. The command-line
+/// program asserts that they agree.
+pub const MAX_INPUT_MESSAGE: usize = 4096;
 /// The largest payload: one page response (REQ-WEB-008 default).
 pub const MAX_FRAME: usize = 256 * 1024;
 
@@ -75,9 +76,10 @@ pub enum Frame {
     Confirm(bool),
     /// Decoder to fetcher: follow a link to another service.
     Follow(String, u16, u16),
-    /// Decoder to fetcher: one key record for the channel's push WebSocket
-    /// (area INT, decision E.90), at most [`MAX_KEY_RECORD`] bytes.
-    Key(Vec<u8>),
+    /// Decoder to fetcher: one input message for the channel's push
+    /// WebSocket (area INT, REQ-INT-101), at most [`MAX_INPUT_MESSAGE`]
+    /// bytes.
+    Input(Vec<u8>),
 }
 
 /// Notices the fetcher sends.
@@ -292,9 +294,9 @@ pub fn write(out: &mut dyn Write, frame: &Frame) -> io::Result<()> {
             put(out, SUBMIT, &buffer)
         }
         Frame::Confirm(yes) => put(out, CONFIRM, &[u8::from(*yes)]),
-        Frame::Key(record) => {
-            if record.len() > MAX_KEY_RECORD {
-                return Err(io::Error::other("a key record too long"));
+        Frame::Input(record) => {
+            if record.len() > MAX_INPUT_MESSAGE {
+                return Err(io::Error::other("an input message too long"));
             }
             put(out, KEY, record)
         }
@@ -386,7 +388,7 @@ pub fn read(input: &mut dyn Read) -> io::Result<Option<Frame>> {
             Frame::Submit(Submission { page_url, post, target, token, action, fields })
         }
         CONFIRM if payload.len() == 1 => Frame::Confirm(payload[0] != 0),
-        KEY if payload.len() <= MAX_KEY_RECORD => Frame::Key(payload),
+        KEY if payload.len() <= MAX_INPUT_MESSAGE => Frame::Input(payload),
         INPUT if payload.len() == 1 => Frame::Notice(Notice::Input(payload[0] != 0)),
         FOLLOW => {
             let mpp = cursor.u16()?;
@@ -441,7 +443,7 @@ mod tests {
             Frame::Notice(Notice::InitialPage(0x100)),
             Frame::Notice(Notice::Unencrypted),
             Frame::Notice(Notice::Input(true)),
-            Frame::Key(vec![1, 1, 0, 1, 0, 0, 0, 0, 0, 0x61, 0, 0, 0, 0]),
+            Frame::Input(vec![0x61, 0xFF, 0x01, 0x04, 0x02]),
             Frame::Notice(Notice::Message("hello".into())),
             Frame::Notice(Notice::Service(vec!["other".into(), "weather".into()])),
             Frame::Notice(Notice::Confirm("example.org".into(), true, false)),

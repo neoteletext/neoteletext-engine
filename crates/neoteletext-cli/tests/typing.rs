@@ -1,6 +1,6 @@
-//! Typing back through the fetcher process (REQ-INT-008, decisions E.94 and
-//! E.97): a
-//! key record from the decoder goes to the channel's push WebSocket at
+//! Typing back through the fetcher process (REQ-INT-008, REQ-INT-112,
+//! decisions E.94 and E.97): an
+//! input message from the decoder goes to the channel's push WebSocket at
 //! once, and the channel's answer comes back at once. The fetcher sleeps
 //! until a request or a socket wakes it, never on a fixed timer, so the
 //! round trip on this computer's own network is well under a millisecond
@@ -15,7 +15,8 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use neoteletext_app::pipe::{self, Frame, Notice, Origin};
-use neoteletext_input::key::{Event, MAX_RECORD, Press, Record};
+use neoteletext_input::MAX_MESSAGE;
+use neoteletext_input::event::{Item, write};
 use neoteletext_web::ws::accept_for;
 
 /// Keys typed, a twentieth of a second apart (the browser's design,
@@ -140,7 +141,7 @@ fn write_frame(stream: &mut TcpStream, opcode: u8, payload: &[u8]) -> std::io::R
 }
 
 /// The channel: its descriptor, its page, and a push WebSocket that
-/// answers every key record with the page again.
+/// answers every input message with the page again.
 fn serve(listener: &TcpListener) {
     let port = listener.local_addr().map_or(0, |address| address.port());
     for stream in listener.incoming().flatten() {
@@ -181,10 +182,12 @@ fn serve(listener: &TcpListener) {
     }
 }
 
-fn key_record(sequence: u16, character: char) -> Vec<u8> {
-    let press = Press { key: u16::try_from(u32::from(character)).unwrap_or(0), modifiers: 0, physical: 0 };
-    let mut out = [0u8; MAX_RECORD];
-    let length = Record { sequence, clock_ms: 0, event: Event::Down(press) }.write(&mut out).expect("a key record");
+/// A key typed, as the input stream has it: its text (INPUT.md section
+/// 5.3).
+fn key_message(character: char) -> Vec<u8> {
+    let mut text = [0u8; 4];
+    let mut out = [0u8; MAX_MESSAGE];
+    let length = write(&Item::Text(character.encode_utf8(&mut text)), &mut out).expect("an input message");
     out[..length].to_vec()
 }
 
@@ -230,7 +233,7 @@ fn keys_reach_the_channel_and_its_answer_comes_back_at_once() {
     let mut round_trips = Vec::new();
     for index in 0..KEYS {
         let sent = Instant::now();
-        pipe::write(&mut input, &Frame::Key(key_record(index, 'a'))).expect("send a key");
+        pipe::write(&mut input, &Frame::Input(key_message('a'))).expect("send a key");
         input.flush().expect("send a key");
         let pushed = wait_for(
             &|frame| matches!(frame, Frame::Tti(data) if data.origin == Origin::Push && data.bytes.ends_with(format!("Keys: {}\r\n", index + 1).as_bytes())),

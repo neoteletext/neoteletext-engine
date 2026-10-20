@@ -69,7 +69,7 @@ When the descriptor names a push address, the web module shall hold a push conne
   - A binary message carries T42 packets, as whole 42-byte packets.
   - A text message carries a TTI page.
   - The client sends a text message `subscribe` followed by page numbers, to limit the push to the pages it wants. `subscribe all` asks for the whole service.
-  - For a descriptor with `push.input`, a binary message from the client is one key record of the input profile, at most 46 bytes (REQ-INT-001), sent only while the socket is open; the web module sends nothing else from the client.
+  - For a descriptor with `push.input`, a binary message from the client is a piece of the input stream, at most 4 096 bytes (REQ-INT-101; *amended 21 October 2026, decision E.100*: one key record of at most 46 bytes before), sent only while the socket is open; the web module sends nothing else from the client.
   - The rows of a page being typed into may be pushed alone; a whole page should still be pushed for a carousel.
 - **Server-sent events** (the `text/event-stream` format).
   - An event named `page` carries a TTI page in its data lines.
@@ -80,7 +80,7 @@ Pushed content enters the normal acquisition path. **A heartbeat** keeps the con
 
 The zxnet live feed reader (REQ-INP-022) is a separate, fixed protocol and is not changed by this requirement.
 *Phase:* Phase 1 for WebSocket and server-sent events; Phase 2 for the long-polling fallback.
-*Verification:* Test against the local test server, including dropped connections and resumption; tests of the heartbeat on each method, and of key records sent only on a channel that declares input.
+*Verification:* Test against the local test server, including dropped connections and resumption; tests of the heartbeat on each method, and of input messages sent only on a channel that declares input.
 
 **REQ-WEB-006 — Cookies and sessions.**
 The cookie store shall follow current cookie practice (decision E.35): the latest draft of RFC 6265bis, the replacement for RFC 6265, as implemented by current browsers, made stricter wherever neoteletext's single-origin model allows. The following rules apply.

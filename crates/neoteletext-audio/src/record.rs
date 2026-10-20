@@ -15,11 +15,22 @@ pub const TYPE_OBJECT: u8 = 1;
 pub const TYPE_DATA: u8 = 2;
 /// Record type: a command.
 pub const TYPE_CONTROL: u8 = 3;
-/// Record type: the input profile's cursor record (area INT,
-/// `docs/spec/design/input.md`), carried with this profile's records on
+/// Record type: the input system's cursor record (area INT,
+/// `neoteletext-common/INPUT.md` section 7.1), carried with this profile's records on
 /// the same data channel because EN 300 708 Table 16 gives data channel 13
 /// to Datavideo. It is always one fragment; this receiver leaves it alone.
 pub const TYPE_CURSOR: u8 = 4;
+/// Record type: the input profile's control record (WELCOME and the input
+/// modes, `neoteletext-common/INPUT.md` section 7.2), carried as the cursor
+/// record is, one fragment; this receiver leaves it alone.
+pub const TYPE_INPUT_CONTROL: u8 = 5;
+
+/// Whether a record type belongs to the input profile, which shares this
+/// profile's carriage and is left alone by the audio receiver.
+#[must_use]
+pub const fn is_input_type(kind: u8) -> bool {
+    kind == TYPE_CURSOR || kind == TYPE_INPUT_CONTROL
+}
 
 /// OBJECT's fixed fields: handle, generation, id, codec, rate, block bytes,
 /// sample count, block count.

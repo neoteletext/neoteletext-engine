@@ -20,6 +20,7 @@ use neoteletext_core::forms::{FormAction, FormKey, FormModel};
 use neoteletext_core::fsm::PageState;
 use neoteletext_core::level1::Grid;
 use neoteletext_core::nav::PageLinks;
+use neoteletext_core::packet::Packet;
 use neoteletext_core::service::initial_page;
 use neoteletext_core::types::{Instant, PageAddress, SubCode};
 use neoteletext_core::viewer::{
@@ -107,68 +108,162 @@ fn map_form_key(key: KeyEvent) -> Option<FormKey> {
 /// leaves its host's: Control and the right square bracket.
 const LEAVE_TYPING: char = ']';
 
-/// A terminal key as the input profile names it (area INT, REQ-INT-003):
-/// its key code and modifiers; `None` for keys the profile has no name for.
-fn key_record_of(key: KeyEvent) -> Option<(u16, u16)> {
-    use neoteletext_input::key::{ALT, CONTROL, SHIFT};
-    use neoteletext_input::names::{character_key, named_key};
-    let bit = |set: bool, value: u16| if set { value } else { 0 };
-    let mut modifiers = bit(key.modifiers.contains(KeyModifiers::SHIFT), SHIFT)
-        | bit(key.modifiers.contains(KeyModifiers::CONTROL), CONTROL)
-        | bit(key.modifiers.contains(KeyModifiers::ALT), ALT);
-    let code = match key.code {
-        KeyCode::Char(character) => character_key(character)?,
-        KeyCode::BackTab => {
-            modifiers |= SHIFT;
-            named_key("Tab")?
+/// What `neottx view` offers in HELLO (INPUT.md section 6.2): it shows
+/// pages and can send every key as KEY; a terminal reports no releases and
+/// no physical keys, and the viewer draws no cursor.
+const OFFERED: u32 = neoteletext_input::modes::PAGE_CAP | neoteletext_input::modes::ALL_KEYS;
+
+/// A terminal key as the input stream has it (INPUT.md sections 5.3 and
+/// 5.5): printable text as text, or in `ALL_KEYS` a KEY carrying it; a
+/// Control or Alt combination and every other key as KEY. `None` for keys
+/// a terminal cannot name.
+fn input_of(key: KeyEvent, all_keys: bool, buffer: &mut [u8; 4]) -> Option<neoteletext_input::event::Item<'_>> {
+    use neoteletext_input::event::{ALT, Action, CONTROL, Event, Item, Key, KeyCode as InputKey, SHIFT, printable};
+    let bit = |set: bool, value: u8| if set { value } else { 0 };
+    let mut control = key.modifiers.contains(KeyModifiers::CONTROL);
+    let mut alt = key.modifiers.contains(KeyModifiers::ALT);
+    // AltGr is a level shift, not a modifier (INPUT.md section 5.7 rule 5,
+    // REQ-INT-116): a terminal on Windows reports it as Control and Alt
+    // held, and a character typed so is text.
+    if control && alt && matches!(key.code, KeyCode::Char(character) if printable(character)) {
+        (control, alt) = (false, false);
+    }
+    let mut mods = bit(key.modifiers.contains(KeyModifiers::SHIFT), SHIFT) | bit(control, CONTROL) | bit(alt, ALT);
+    let functional = |name: &str| neoteletext_input::keys::code(name).map(InputKey::Functional);
+    let (code, text) = match key.code {
+        KeyCode::Char(character) if !printable(character) => return None,
+        KeyCode::Char(character) => {
+            let text: &str = character.encode_utf8(buffer);
+            if !control && !alt && !all_keys {
+                return Some(Item::Text(text));
+            }
+            // A terminal gives the character typed; Shift is in `mods`.
+            let unshifted = character.to_lowercase().next().unwrap_or(character);
+            (InputKey::Character(unshifted), (!control && !alt).then_some(text))
         }
-        KeyCode::F(number) => named_key(&format!("F{number}"))?,
-        KeyCode::Enter => named_key("Enter")?,
-        KeyCode::Backspace => named_key("Backspace")?,
-        KeyCode::Tab => named_key("Tab")?,
-        KeyCode::Esc => named_key("Escape")?,
-        KeyCode::Left => named_key("ArrowLeft")?,
-        KeyCode::Right => named_key("ArrowRight")?,
-        KeyCode::Up => named_key("ArrowUp")?,
-        KeyCode::Down => named_key("ArrowDown")?,
-        KeyCode::Home => named_key("Home")?,
-        KeyCode::End => named_key("End")?,
-        KeyCode::PageUp => named_key("PageUp")?,
-        KeyCode::PageDown => named_key("PageDown")?,
-        KeyCode::Delete => named_key("Delete")?,
-        KeyCode::Insert => named_key("Insert")?,
+        KeyCode::BackTab => {
+            mods |= SHIFT;
+            (functional("Tab")?, None)
+        }
+        KeyCode::F(number) => (functional(&format!("F{number}"))?, None),
+        KeyCode::Enter => (functional("Enter")?, None),
+        KeyCode::Backspace => (functional("Backspace")?, None),
+        KeyCode::Tab => (functional("Tab")?, None),
+        KeyCode::Esc => (functional("Escape")?, None),
+        KeyCode::Left => (functional("ArrowLeft")?, None),
+        KeyCode::Right => (functional("ArrowRight")?, None),
+        KeyCode::Up => (functional("ArrowUp")?, None),
+        KeyCode::Down => (functional("ArrowDown")?, None),
+        KeyCode::Home => (functional("Home")?, None),
+        KeyCode::End => (functional("End")?, None),
+        KeyCode::PageUp => (functional("PageUp")?, None),
+        KeyCode::PageDown => (functional("PageDown")?, None),
+        KeyCode::Delete => (functional("Delete")?, None),
+        KeyCode::Insert => (functional("Insert")?, None),
         _ => return None,
     };
-    Some((code, modifiers))
+    Some(Item::Event(Event::Key(Key { action: Action::Press, key: code, mods, text, base: None })))
 }
 
 /// Typing into a channel that takes input (area INT): the viewer's keys
-/// go to it as a terminal's go to its host.
-#[derive(Default)]
+/// go to it as a terminal's go to its host, in one input session.
 struct Typing {
     /// The channel's WebSocket is open and its descriptor declares input.
     open: bool,
     /// The viewer left the keys with Control-].
     left: bool,
-    sequence: u16,
+    /// The input session (INPUT.md section 6).
+    input: neoteletext_input::session::Session,
+    /// The session was welcomed and told the size and focus.
+    started: bool,
     /// The page the channel was last told is open.
     told: Option<u16>,
+    /// A page the channel's cursor record named, to open (REQ-INT-113).
+    go_to: Option<u16>,
+}
+
+/// The page a cursor record for `cursor_page` opens while `open` is open
+/// and keys go to the channel: another page of the channel, as a terminal
+/// shows what its host sends (INPUT.md section 8 rule 8, REQ-INT-113).
+fn host_page(cursor_page: u16, open: u16, keys_go: bool) -> Option<u16> {
+    (keys_go && cursor_page != open).then_some(cursor_page)
+}
+
+impl Default for Typing {
+    fn default() -> Self {
+        Self {
+            open: false,
+            left: false,
+            input: neoteletext_input::session::Session::new(OFFERED),
+            started: false,
+            told: None,
+            go_to: None,
+        }
+    }
 }
 
 impl Typing {
     fn on(&self) -> bool {
-        self.open && !self.left
+        self.open && !self.left && self.input.welcomed()
     }
 
-    fn send(&mut self, source: &mut dyn Source, event: neoteletext_input::key::Event<'_>, clock_ms: u32) {
-        self.sequence = match self.sequence.wrapping_add(1) {
-            0 => 1,
-            next => next,
-        };
-        let mut out = [0_u8; neoteletext_input::key::MAX_RECORD];
-        let record = neoteletext_input::key::Record { sequence: self.sequence, clock_ms, event };
-        if let Some(length) = record.write(&mut out) {
-            source.send_key(&out[..length]);
+    /// The push connection opened or closed: a new session (REQ-INT-106).
+    fn connection(&mut self, source: &mut dyn Source, open: bool, clock_ms: u32) {
+        self.open = open;
+        self.started = false;
+        self.told = None;
+        if open {
+            let hello = self.input.open(clock_ms, None);
+            let mut out = [0_u8; neoteletext_input::MAX_MESSAGE];
+            if let Ok(length) = neoteletext_input::event::write(&neoteletext_input::event::Item::Event(hello), &mut out)
+            {
+                source.send_input(&out[..length]);
+            }
+        } else {
+            self.input.close();
+        }
+    }
+
+    /// Takes the channel's records; once welcomed, says the size and the
+    /// focus (section 6.1). Returns whether the channel refused input.
+    fn records(&mut self, source: &mut dyn Source, packets: impl Iterator<Item = Packet>, clock_ms: u32) -> bool {
+        use neoteletext_input::event::{Event, Item};
+        let waiting = matches!(self.input.state(), neoteletext_input::session::State::Waiting(_));
+        for packet in packets {
+            let mut buffer = [0; neoteletext_input::control::FRAGMENT_DATA];
+            if let Some(Ok(control)) = neoteletext_input::control::from_packet(&packet, &mut buffer) {
+                // A refused WELCOME leaves the session refused, said below.
+                let _ = self.input.control(&control);
+            } else if let Some(Ok(cursor)) = neoteletext_input::cursor::from_packet(&packet) {
+                self.input.acknowledged(cursor.acked, clock_ms);
+                if let Some(open) = self.told {
+                    self.go_to = host_page(cursor.page, open, self.on()).or(self.go_to);
+                }
+            }
+        }
+        self.input.tick(clock_ms);
+        if self.input.welcomed() && !self.started {
+            self.started = true;
+            let columns = u32::try_from(COLUMNS).unwrap_or(0);
+            let rows = neoteletext_input::MAX_ROWS;
+            self.send(source, &Item::Event(Event::Resize { columns, rows, width: 0, height: 0 }), None, clock_ms);
+            let focus = if self.left { Event::FocusOut } else { Event::FocusIn };
+            self.send(source, &Item::Event(focus), None, clock_ms);
+        }
+        waiting && self.input.state() == neoteletext_input::session::State::Refused
+    }
+
+    /// Writes `item` at once, one message an item (REQ-INT-112).
+    fn send(
+        &mut self,
+        source: &mut dyn Source,
+        item: &neoteletext_input::event::Item<'_>,
+        open: Option<u16>,
+        clock_ms: u32,
+    ) {
+        let mut out = [0_u8; neoteletext_input::MAX_MESSAGE];
+        if let Ok(length @ 1..) = self.input.send(item, open, clock_ms, &mut out) {
+            source.send_input(&out[..length]);
         }
     }
 }
@@ -249,6 +344,7 @@ pub fn run(
     let mut prompt: Option<[u8; COLUMNS]> = None;
     let mut confirmed_services: HashSet<u8> = HashSet::new();
     let mut typing = Typing::default();
+    session.keep(neoteletext_input::is_input_packet);
     // The report of the last grid built. The page and store stay borrowed
     // until the key is handled, so it is recorded at the start of the next
     // pass, when nothing borrows the decoder.
@@ -321,11 +417,8 @@ pub fn run(
                 }
                 Notice::Service(_) => confirmed_services.clear(),
                 Notice::Input(open) => {
-                    typing.open = open;
-                    typing.told = None;
-                    if open {
-                        prompt = Some(message_row("Keys go to this channel. Ctrl-] leaves"));
-                    }
+                    let clock_ms = u32::try_from(start.elapsed().as_millis() & u128::from(u32::MAX)).unwrap_or(0);
+                    typing.connection(source, open, clock_ms);
                 }
                 Notice::Message(text) => messages.push(text),
                 // REQ-WEB-009: a page that is not stored cannot be shown
@@ -366,11 +459,27 @@ pub fn run(
         }
         action = Action::None;
         let (requested, subcode) = viewer.requested();
-        // The channel is told which of its pages is open (REQ-INT-002).
         let clock_ms = u32::try_from(start.elapsed().as_millis() & u128::from(u32::MAX)).unwrap_or(0);
+        let was_on = typing.on();
+        if typing.records(source, session.take_kept().into_iter(), clock_ms) {
+            prompt = Some(message_row("This channel did not welcome input"));
+        }
+        if typing.on() && !was_on {
+            prompt = Some(message_row("Keys go to this channel. Ctrl-] leaves"));
+        }
+        if let Some(address) = typing.go_to.take().and_then(PageAddress::from_mpp)
+            && address != requested
+        {
+            viewer = Viewer::new(address);
+            action = Action::Request(address, SubCode::ANY);
+            continue;
+        }
+        // The channel is told which of its pages is open (INPUT.md section
+        // 5.4).
         if typing.on() && typing.told != Some(requested.mpp()) {
             typing.told = Some(requested.mpp());
-            typing.send(source, neoteletext_input::key::Event::Page(Some(requested.mpp())), clock_ms);
+            let page = neoteletext_input::event::Item::Event(neoteletext_input::event::Event::Page(requested.mpp()));
+            typing.send(source, &page, Some(requested.mpp()), clock_ms);
         }
         if viewer.state() == ViewerState::Searching && session.page(requested, subcode).is_some() {
             viewer.event(ViewerEvent::PagePresent);
@@ -391,6 +500,11 @@ pub fn run(
             None => {}
         }
         let page_extras = page.and_then(|page| source.extras(page.key.address, page.key.subcode)).cloned();
+        // The modes the open page's `IM` line asks for, while it is open
+        // (REQ-INT-114); the session adds them to its stack's top.
+        if let Some(modes) = page_extras.as_ref().and_then(|extras| extras.input_modes) {
+            typing.input.modes.set_page_modes(requested.mpp(), modes);
+        }
         // A form on this page becomes active, keeping values when returning.
         match (&page_extras, page) {
             (Some(PageExtras { form: Some(spec), url, .. }), Some(page)) => {
@@ -454,7 +568,16 @@ pub fn run(
         }
         if let Some(key) = next_key(&wakes, TICK) {
             let control = key.modifiers.contains(KeyModifiers::CONTROL);
-            if typing.open && control && key.code == KeyCode::Char(LEAVE_TYPING) {
+            if typing.open && typing.input.welcomed() && control && key.code == KeyCode::Char(LEAVE_TYPING) {
+                // Leaving is losing the focus: the channel lets go of what
+                // is held (REQ-INT-108).
+                let clock_ms = u32::try_from(start.elapsed().as_millis() & u128::from(u32::MAX)).unwrap_or(0);
+                let focus = if typing.left {
+                    neoteletext_input::event::Event::FocusIn
+                } else {
+                    neoteletext_input::event::Event::FocusOut
+                };
+                typing.send(source, &neoteletext_input::event::Item::Event(focus), None, clock_ms);
                 typing.left = !typing.left;
                 typing.told = None;
                 prompt = Some(message_row(if typing.left {
@@ -468,12 +591,12 @@ pub fn run(
             // Every key is the channel's while it takes them, Control-C
             // included, as a terminal's are its host's.
             if typing.on() {
-                if let Some((code, modifiers)) = key_record_of(key) {
+                let open = Some(viewer.requested().0.mpp());
+                let all_keys = typing.input.modes_on(open) & neoteletext_input::modes::ALL_KEYS != 0;
+                let mut buffer = [0_u8; 4];
+                if let Some(item) = input_of(key, all_keys, &mut buffer) {
                     let clock_ms = u32::try_from(start.elapsed().as_millis() & u128::from(u32::MAX)).unwrap_or(0);
-                    let press = neoteletext_input::key::Press { key: code, modifiers, physical: 0 };
-                    // A terminal reports a key once; it goes down and up.
-                    typing.send(source, neoteletext_input::key::Event::Down(press), clock_ms);
-                    typing.send(source, neoteletext_input::key::Event::Up(press), clock_ms);
+                    typing.send(source, &item, open, clock_ms);
                 }
                 continue;
             }
@@ -593,5 +716,61 @@ mod tests {
         let started = StdInstant::now();
         assert!(next_key(&wakes, LONG).is_none());
         assert!(started.elapsed() < LONG / 10, "waited {:?}", started.elapsed());
+    }
+
+    fn sent(code: KeyCode, modifiers: KeyModifiers, all_keys: bool) -> Option<Vec<u8>> {
+        let mut buffer = [0_u8; 4];
+        let item = input_of(KeyEvent::new(code, modifiers), all_keys, &mut buffer)?;
+        let mut out = [0_u8; neoteletext_input::MAX_MESSAGE];
+        let length = neoteletext_input::event::write(&item, &mut out).unwrap();
+        Some(out[..length].to_vec())
+    }
+
+    /// REQ-INT-104: printable text as text, a Control combination and a
+    /// named key as KEY; REQ-INT-116: a non-United-States layout's letters
+    /// as the characters typed, in any script, and AltGr as text.
+    #[test]
+    fn a_terminal_key_is_sent_as_the_input_stream_has_it() {
+        let none = KeyModifiers::NONE;
+        assert_eq!(sent(KeyCode::Char('a'), none, false), Some(b"a".to_vec()));
+        assert_eq!(sent(KeyCode::Char('A'), KeyModifiers::SHIFT, false), Some(b"A".to_vec()));
+        assert_eq!(sent(KeyCode::Char('c'), KeyModifiers::CONTROL, false), Some(vec![0xFF, 0x01, 0x08, b'c', 0x04]));
+        assert_eq!(sent(KeyCode::Enter, none, false), Some(vec![0xFF, 0x01, 0x04, 0x02]));
+        assert_eq!(sent(KeyCode::Up, KeyModifiers::SHIFT, false), Some(vec![0xFF, 0x01, 0x0C, 0x09, 0x01]));
+        assert_eq!(sent(KeyCode::BackTab, none, false), Some(vec![0xFF, 0x01, 0x0C, 0x03, 0x01]), "Shift-Tab");
+        assert_eq!(sent(KeyCode::Char('й'), none, false), Some("й".as_bytes().to_vec()), "Russian");
+        assert_eq!(sent(KeyCode::Char('ש'), none, false), Some("ש".as_bytes().to_vec()), "Hebrew");
+        assert_eq!(
+            sent(KeyCode::Char('é'), none, false),
+            Some("é".as_bytes().to_vec()),
+            "French, composed by the terminal"
+        );
+        let alt_gr = KeyModifiers::CONTROL | KeyModifiers::ALT;
+        assert_eq!(
+            sent(KeyCode::Char('@'), alt_gr, false),
+            Some(b"@".to_vec()),
+            "German AltGr-Q, as Windows reports it"
+        );
+        assert_eq!(sent(KeyCode::Char('\u{1b}'), none, false), None, "a control character is not text");
+    }
+
+    /// In `ALL_KEYS` every key is KEY, a character key's text with it.
+    #[test]
+    fn in_all_keys_a_character_is_a_key_with_its_text() {
+        assert_eq!(sent(KeyCode::Char('a'), KeyModifiers::NONE, true), Some(vec![0xFF, 0x01, 0x10, b'a', 1, b'a']));
+        assert_eq!(
+            sent(KeyCode::Char('A'), KeyModifiers::SHIFT, true),
+            Some(vec![0xFF, 0x01, 0x18, b'a', 0x01, 1, b'A']),
+            "the key unshifted, Shift in mods, the text as typed"
+        );
+    }
+
+    /// REQ-INT-113: a cursor record naming another page opens it, only
+    /// while keys go to the channel.
+    #[test]
+    fn a_host_goes_to_a_page_by_naming_it() {
+        assert_eq!(host_page(0x301, 0x300, true), Some(0x301));
+        assert_eq!(host_page(0x300, 0x300, true), None, "the page already open");
+        assert_eq!(host_page(0x301, 0x300, false), None, "keys do not go to the channel");
     }
 }

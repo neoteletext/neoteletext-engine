@@ -323,11 +323,10 @@ pub const PUSH_PONG_WITHIN_US: u64 = 10 * MICROSECONDS_PER_SECOND;
 /// An event stream silent this long is made again: the client cannot ping
 /// it.
 pub const PUSH_EVENTS_SILENCE_US: u64 = 60 * MICROSECONDS_PER_SECOND;
-/// The longest message of the input profile a receiver sends on the push
-/// WebSocket: `neoteletext_input::key::MAX_RECORD`, the 14-byte key record
-/// and 32 bytes of text (REQ-INT-001). The command-line program asserts
-/// that the two agree.
-pub const INPUT_MESSAGE_MAX: usize = 46;
+/// The longest input message a receiver sends on the push WebSocket:
+/// `neoteletext_input::MAX_MESSAGE` (`neoteletext-common/INPUT.md` section
+/// 5.1, REQ-INT-101). The command-line program asserts that the two agree.
+pub const INPUT_MESSAGE_MAX: usize = 4096;
 
 // ---------------------------------------------------------------------------
 // Cookies (RFC 6265bis draft of 30 September 2026, REQ-WEB-006)

@@ -1,5 +1,6 @@
-//! The cursor record (REQ-INT-005, REQ-INT-006): a channel's answer to the
-//! keys, saying where the cursor is, whether to echo, and which key it has
+//! The cursor record (`neoteletext-common/INPUT.md` section 7.1,
+//! REQ-INT-005, REQ-INT-006, REQ-INT-110): a channel's answer to the input,
+//! saying where the cursor is, whether to echo, and how much input it has
 //! acted on. It is optional, as the cursor is; a receiver that gets none
 //! draws no cursor and echoes nothing.
 //!
@@ -12,7 +13,7 @@
 //!
 //! ```text
 //! bytes 0-1  page: the page it is for
-//! bytes 2-3  acked: the last key record acted on, or 0
+//! bytes 2-3  acked: the input count acted on, modulo 65 536, or 0
 //! byte 4     row, 1 to 23, or 255 for no cursor
 //! byte 5     column, 0 to 39
 //! byte 6     width: how far echo may run from the column, 0 to 40 cells
@@ -59,7 +60,11 @@ pub struct Place {
 pub struct Cursor {
     /// The page it is for; a receiver ignores it for any other.
     pub page: u16,
-    /// The last key record the channel acted on, or 0.
+    /// The input count the channel has acted on, modulo 65 536 and
+    /// compared as a serial number ([`Session::acknowledged`]), or 0 for
+    /// none yet.
+    ///
+    /// [`Session::acknowledged`]: crate::session::Session::acknowledged
     pub acked: u16,
     /// The cursor, or `None` for no cursor: a game sends that for the
     /// acknowledgement alone.
@@ -191,6 +196,7 @@ mod tests {
         Cursor { page: 0x100, acked: 7, place: Some(Place { row: 5, column: 10 }), width: 20, flags: ECHO | BLOCK }
     }
 
+    // REQ-INT-005 and REQ-INT-110.
     #[test]
     fn a_cursor_round_trips_through_a_packet() {
         let packet = cursor().packet(3, 200).unwrap();
