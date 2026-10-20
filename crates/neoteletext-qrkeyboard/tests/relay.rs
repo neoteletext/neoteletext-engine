@@ -1,4 +1,5 @@
-//! The screen and the phone paired through a running qrkeyboard relay:
+//! The screen and the phone paired through a running qrkeyboard relay
+//! (REQ-INT-007):
 //! `QRKEYBOARD_RELAY=http://127.0.0.1:8791` names one, such as the relay's
 //! own `npm run dev -- --port 8791 --ip 127.0.0.1`. Without it these tests
 //! pass without running, and say so.

@@ -1,7 +1,7 @@
-//! A phone as a keyboard, through qrkeyboard's relay (decision E.94, T42
-//! Browser's `interaction.md` section 9). The screen shows a QR; the phone
-//! that scans it pairs with the screen through the relay, end to end
-//! encrypted, and sends its keys.
+//! A phone as a keyboard, through qrkeyboard's relay (REQ-INT-007,
+//! decision E.93, T42 Browser's `interaction.md` section 9). The screen
+//! shows a QR; the phone that scans it pairs with the screen through the
+//! relay, end to end encrypted, and sends its keys.
 //!
 //! This crate is the screen's side, protocol 3 of qrkeyboard (its
 //! `relay/src/protocol.ts`, `crypto.ts` and `pairing.ts`):
