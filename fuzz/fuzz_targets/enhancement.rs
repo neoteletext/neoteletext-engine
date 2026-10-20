@@ -132,6 +132,7 @@ fuzz_target!(|input: &[u8]| {
         rounding: settings & 4 != 0,
         reveal: settings & 8 != 0,
         colour: ColourMode::Resolved(FlashPhase::at_unit(settings >> 4)),
+        underline: settings & 0x80 != 0,
     };
     let width = row_width(&grid);
     let mut pixels = vec![0u8; width * ROWS * options.row_height()];
