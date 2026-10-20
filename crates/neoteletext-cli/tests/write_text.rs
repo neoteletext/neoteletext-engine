@@ -1,6 +1,7 @@
 //! `neottx write-text` (REQ-CLI-010): a page written from text in one of
 //! neoteletext's own sets decodes to the same text, with the designation in
 //! X/28/0 and the tones in X/26, and a refusal names the character.
+#![cfg(feature = "write-text")]
 #![allow(missing_docs)]
 
 use std::path::{Path, PathBuf};
