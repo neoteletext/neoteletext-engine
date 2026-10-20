@@ -1360,4 +1360,11 @@ Decided on 21 October 2026, on the owner's instruction, as T42 Browser's fetcher
 
 *Amended 21 October 2026:* the live feed's loop now follows the feed's own deadlines too. It kept only the deadline a tick reported, so after the handshake the feed's 5-second inactivity and keepalive deadlines were lost behind the handshake's 30 seconds, against REQ-INP-022; and once the feed stopped it woke every 200 ms for ever. It keeps the deadline the feed reports after every input, and sleeps with none once the feed has stopped. The loop takes its transport as a parameter, so its tests play the server in memory.
 
+**E.98 — A state machine says when it next needs time.**
+Decided on 21 October 2026, on the owner's instruction to stop ticking decoders whose pages are not shown (T42 Browser's decision 47).
+1. **The audio receiver says when it next needs a tick:** `Receiver::next_tick_ms`, the moment the live sound at the sink whose last block came longest ago would stall (REQ-AUD-014), or `None` while no live sound plays. A port sleeps until then instead of ticking on a fixed interval.
+2. **The web agent and the live feed already do** (`Output::Timer`, `LiveOutput::Timer`). The core decoder does not yet: its completion timeout and staleness still need a port's periodic tick (`TECH-DEBT.md`).
+
+*Reason:* A port that must tick blindly wakes for nothing; T42 Browser woke every channel's decoder twelve times a second for its sounds' clock, whether or not anything played.
+
 *Reason:* Typing back is only like a terminal if a key goes at once (decision E.90); the sleep was most of the round trip. A readiness library such as `mio` would be one more dependency for three connections.

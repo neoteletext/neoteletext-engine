@@ -185,6 +185,10 @@ The browser lives only in `~/devel/neoteletext-browser`. Left over:
 - **The user guide (about line 245)** says the font converter refuses 12 × 20 fonts whose line pairs differ, against REQ-FNT-010 as amended by decision E.77.
 - **GitHub issues** for the browser (#215, #216, and the browser parts of epics #177 and #210) are to be closed or moved to the other repository, once an account with access to crowdwave/neoteletext-engine is logged in.
 
+## Deadlines (decision E.98)
+
+- **The core decoder's next deadline:** `Decoder` does not say when it next needs `tick` (its completion timeout and staleness), so a port still ticks it on an interval. Give it a `next_tick` as the audio receiver now has.
+
 ## Documentation
 
 - **One development-process document** (the owner asked): written on 21 October 2026, shared with the browser, as `~/devel/neoteletext-common/DEVELOPMENT.md`. Still owed: remove from CLAUDE.md the sections it now holds ("How work proceeds", "Tracking work", the process parts of "Working with the specification") and README's "Checks", leaving pointers, and make the engine's other changes in its appendix B.

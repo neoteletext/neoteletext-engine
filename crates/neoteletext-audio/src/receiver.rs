@@ -96,6 +96,20 @@ impl<'a, const OBJECTS: usize, const SLOTS: usize> Receiver<'a, OBJECTS, SLOTS> 
         }
     }
 
+    /// When the receiver next needs [`Receiver::tick`], in its milliseconds:
+    /// the moment the live sound at the sink whose last block came longest
+    /// ago would stall (REQ-AUD-014), or `None` while no live sound plays,
+    /// when it needs no tick at all. A port sleeps until then, rather than
+    /// ticking on a fixed interval (decision E.98).
+    #[must_use]
+    pub fn next_tick_ms(&self) -> Option<u64> {
+        self.store
+            .entries()
+            .filter(|entry| entry.live && entry.at_sink)
+            .map(|entry| entry.arrived_ms.saturating_add(crate::LIVE_STALL_MS))
+            .min()
+    }
+
     /// What the receiver has met.
     #[must_use]
     pub fn statistics(&self) -> Statistics {

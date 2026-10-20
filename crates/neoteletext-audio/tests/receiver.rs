@@ -425,15 +425,18 @@ fn a_stalled_live_sound_fades_out_and_resumes_when_its_blocks_return() {
     let mut sink = Recorder::new();
     let announce = [sound.object_record().unwrap(), play(0, 1, &sound, None).record()];
     receiver.tick(5_000, &mut sink);
+    assert_eq!(receiver.next_tick_ms(), None, "nothing live: no tick needed");
     push(&mut receiver, &packets(0, 0, &announce).0, &mut sink);
     push(&mut receiver, &live_blocks(&sound, 0, 4), &mut sink);
     sink.take();
+    assert_eq!(receiver.next_tick_ms(), Some(7_000), "the stall, two seconds after the last block");
     // Just short of two seconds without a block: still playing.
     receiver.tick(6_999, &mut sink);
     assert_eq!(sink.take(), NO_CALLS);
     // Two seconds (EN 300 708 clause 6.7.1.1): it fades out and is forgotten.
     receiver.tick(7_000, &mut sink);
     assert_eq!(sink.take(), [Call::Stop(0, neoteletext_audio::LIVE_STALL_FADE_MS), Call::Forget(id)]);
+    assert_eq!(receiver.next_tick_ms(), None, "faded: no tick needed");
     receiver.tick(9_000, &mut sink);
     assert_eq!(sink.take(), NO_CALLS, "once only");
     // The sender comes back: the play starts again at the newest block.
