@@ -29,7 +29,7 @@ A web teletext service shall be identified by the address of a small descriptor 
 - the service name;
 - the initial page;
 - a page address template;
-- optionally, a push address and the push method (WebSocket or server-sent events);
+- optionally, a push address and the push method (WebSocket or server-sent events), and with a WebSocket only, `"input": true` in the `push` object: the channel takes the viewer's keys back on that socket (area INT, decision E.90; *amended 20 October 2026, decision E.92*);
 - optionally, a list of other origins that forms may submit to;
 - optionally, the default character set region (decision E.4);
 - optionally, a list of other services that links may lead to (Appendix E). Each has a short name, a display name and the address of its own descriptor;
@@ -69,16 +69,18 @@ When the descriptor names a push address, the web module shall hold a push conne
   - A binary message carries T42 packets, as whole 42-byte packets.
   - A text message carries a TTI page.
   - The client sends a text message `subscribe` followed by page numbers, to limit the push to the pages it wants. `subscribe all` asks for the whole service.
+  - For a descriptor with `push.input`, a binary message from the client is one key record of the input profile, at most 46 bytes (REQ-INT-001), sent only while the socket is open; the web module sends nothing else from the client.
+  - The rows of a page being typed into may be pushed alone; a whole page should still be pushed for a carousel.
 - **Server-sent events** (the `text/event-stream` format).
   - An event named `page` carries a TTI page in its data lines.
   - An event named `packets` carries T42 packets encoded in base64.
   - Page numbers to subscribe to are given as a query parameter.
 
-Pushed content enters the normal acquisition path. After a lost connection, the module shall reconnect with increasing delays, starting at 1 second and doubling to at most 60 seconds. For server-sent events it shall resume with the `Last-Event-ID` header. A **long-polling fallback** (a repeated conditional GET that the server holds open until a page changes) should be available for servers that support neither push method.
+Pushed content enters the normal acquisition path. **A heartbeat** keeps the connection honest: a WebSocket silent for 25 seconds is pinged, and one that does not answer within 10 seconds is treated as lost; an event stream silent for 60 seconds is made again. After a lost connection, the module shall reconnect with increasing delays, starting at 1 second and doubling to at most 60 seconds. For server-sent events it shall resume with the `Last-Event-ID` header. A **long-polling fallback** (a repeated conditional GET that the server holds open until a page changes) should be available for servers that support neither push method.
 
 The zxnet live feed reader (REQ-INP-022) is a separate, fixed protocol and is not changed by this requirement.
 *Phase:* Phase 1 for WebSocket and server-sent events; Phase 2 for the long-polling fallback.
-*Verification:* Test against the local test server, including dropped connections and resumption.
+*Verification:* Test against the local test server, including dropped connections and resumption; tests of the heartbeat on each method, and of key records sent only on a channel that declares input.
 
 **REQ-WEB-006 — Cookies and sessions.**
 The cookie store shall follow current cookie practice (decision E.35): the latest draft of RFC 6265bis, the replacement for RFC 6265, as implemented by current browsers, made stricter wherever neoteletext's single-origin model allows. The following rules apply.

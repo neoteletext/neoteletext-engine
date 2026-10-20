@@ -314,6 +314,20 @@ pub const SUBSCRIBE_QUERY: &[u8] = b"subscribe=";
 pub const PUSH_RETRY_FIRST_US: u64 = MICROSECONDS_PER_SECOND;
 /// The longest reconnection delay (REQ-WEB-005).
 pub const PUSH_RETRY_MAX_US: u64 = 60 * MICROSECONDS_PER_SECOND;
+/// REQ-WEB-005's heartbeat: a push WebSocket silent this long is pinged.
+/// 25 seconds is below the idle timeout of about 30 seconds common on NATs
+/// and mobile networks, the interval qrkeyboard's relay keeps alive at.
+pub const PUSH_PING_AFTER_US: u64 = 25 * MICROSECONDS_PER_SECOND;
+/// A ping not answered within this long means the connection is dead.
+pub const PUSH_PONG_WITHIN_US: u64 = 10 * MICROSECONDS_PER_SECOND;
+/// An event stream silent this long is made again: the client cannot ping
+/// it.
+pub const PUSH_EVENTS_SILENCE_US: u64 = 60 * MICROSECONDS_PER_SECOND;
+/// The longest message of the input profile a receiver sends on the push
+/// WebSocket: `neoteletext_input::key::MAX_RECORD`, the 14-byte key record
+/// and 32 bytes of text (REQ-INT-001). The command-line program asserts
+/// that the two agree.
+pub const INPUT_MESSAGE_MAX: usize = 46;
 
 // ---------------------------------------------------------------------------
 // Cookies (RFC 6265bis draft of 30 September 2026, REQ-WEB-006)

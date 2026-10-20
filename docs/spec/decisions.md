@@ -1257,3 +1257,13 @@ Decided on 20 October 2026. The browser's design proposed data channel 13, to be
 3. **A TTI page carries it as a `CU` line,** kept by the reader and the writer. The engine's encoder does not turn it into a packet: the formats crate takes nothing from the input profile, and a receiver reads the line from the page it already has.
 
 *Reason:* Taking an allocated data channel would collide with a real service on air; the audio profile's carriage is proven, and one fragment needs nothing new.
+
+**E.92 — Push: a heartbeat, the input flag, and a binary message is packets.**
+Decided on 20 October 2026, for the browser's typing back (its `interaction.md` section 12, decision 44 there).
+1. **`push.input`.** A channel says it takes keys with `"input": true` inside its `push` object, which is refused with server-sent events: keys go back only on the push WebSocket. The design proposed a top-level member; inside `push` the rule that it needs a WebSocket is the object's own.
+2. **`Input::Send`.** The agent writes one message of the input profile, at most `INPUT_MESSAGE_MAX` (46) bytes, as a binary WebSocket message on the open push connection of a channel that declares input; anything else is dropped with `Event::InputDropped`. Nothing it sends changes what is fetched.
+3. **A heartbeat** (REQ-WEB-005): a WebSocket silent for 25 seconds is pinged and lost without a pong within 10 more; an event stream silent for 60 seconds is made again. The backoff and the subscription follow as for any lost connection.
+4. **REQ-AUD-008 amended:** a binary WebSocket message is packets, as REQ-WEB-005 says; sounds travel over a WebSocket as their broadcast packets.
+5. **Cookies go with the upgrade,** as REQ-WEB-006 already had them, so a channel knows a returning viewer the way a web application does; the key records identify no one.
+
+*Reason:* A connection that died silently, behind a NAT that dropped it, would leave a viewer typing into nothing; the 25 seconds is the keepalive qrkeyboard's relay uses for the same reason. Two meanings for a binary message cannot both stand, and packets carry everything records can.

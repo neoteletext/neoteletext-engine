@@ -84,6 +84,8 @@ pub enum Member {
     PushAddress,
     /// `push.method`
     PushMethod,
+    /// `push.input`
+    PushInput,
     /// `form_origins`
     FormOrigins,
     /// `region`
@@ -174,6 +176,9 @@ pub struct Descriptor {
     template: TextBuf<MAX_URL_LENGTH>,
     base: Url,
     push: Option<(Url, PushMethod)>,
+    /// The channel takes the viewer's keys on its push WebSocket (area
+    /// INT, decision E.90).
+    input: bool,
     form_origins: [Option<Origin>; MAX_FORM_ORIGINS],
     /// The default character set region (decision E.4), 0 to 15.
     pub region: Option<u8>,
@@ -357,6 +362,7 @@ impl Descriptor {
             template: TextBuf::new(),
             base: *base,
             push: None,
+            input: false,
             form_origins: [None; MAX_FORM_ORIGINS],
             region: None,
             services: [None; MAX_LINKED_SERVICES],
@@ -427,13 +433,14 @@ impl Descriptor {
                 }
             } else if key.equals(b"push") {
                 first(seen_push, Member::Push)?;
-                let push = Self::parse_push(&mut reader, base)?;
+                let (url, method, input) = Self::parse_push(&mut reader, base)?;
                 // A channel's push is on its own origin, in any folder
                 // (REQ-WEB-024); ws and wss count as http and https.
-                if channel && !push.0.origin().same(&base.origin()) {
+                if channel && !url.origin().same(&base.origin()) {
                     return Err(DescriptorError::Invalid(Member::PushAddress));
                 }
-                descriptor.push = Some(push);
+                descriptor.push = Some((url, method));
+                descriptor.input = input;
             } else if key.equals(b"form_origins") {
                 first(seen_origins, Member::FormOrigins)?;
                 descriptor.parse_origins(&mut reader, base)?;
@@ -528,12 +535,13 @@ impl Descriptor {
         self.font.as_ref().map(|(url, digest)| (url, digest))
     }
 
-    fn parse_push(reader: &mut JsonReader<'_>, base: &Url) -> Result<(Url, PushMethod), DescriptorError> {
+    fn parse_push(reader: &mut JsonReader<'_>, base: &Url) -> Result<(Url, PushMethod, bool), DescriptorError> {
         if reader.next_token()? != Some(Token::BeginObject) {
             return Err(DescriptorError::Invalid(Member::Push));
         }
         let mut url = None;
         let mut method = None;
+        let mut input = None;
         while let Some(token) = reader.next_token()? {
             let key = match token {
                 Token::Key(key) => key,
@@ -559,6 +567,14 @@ impl Descriptor {
                 } else {
                     return Err(DescriptorError::Invalid(Member::PushMethod));
                 });
+            } else if key.equals(b"input") {
+                if input.is_some() {
+                    return Err(DescriptorError::Duplicate(Member::PushInput));
+                }
+                input = match reader.next_token()? {
+                    Some(Token::Bool(value)) => Some(value),
+                    _ => return Err(DescriptorError::Invalid(Member::PushInput)),
+                };
             } else {
                 return Err(DescriptorError::Unknown);
             }
@@ -569,7 +585,12 @@ impl Descriptor {
         if url.scheme().is_websocket() != (method == PushMethod::WebSocket) {
             return Err(DescriptorError::Invalid(Member::PushAddress));
         }
-        Ok((url, method))
+        // Keys go back only on a WebSocket (decision E.90).
+        let input = input.unwrap_or(false);
+        if input && method != PushMethod::WebSocket {
+            return Err(DescriptorError::Invalid(Member::PushInput));
+        }
+        Ok((url, method, input))
     }
 
     fn parse_origins(&mut self, reader: &mut JsonReader<'_>, base: &Url) -> Result<(), DescriptorError> {
@@ -775,6 +796,13 @@ impl Descriptor {
         self.push.as_ref()
     }
 
+    /// Whether the channel takes the viewer's keys back on its push
+    /// WebSocket (`push.input`, area INT): never without a WebSocket.
+    #[must_use]
+    pub const fn input(&self) -> bool {
+        self.input
+    }
+
     /// The other origins forms may submit to (REQ-WEB-008).
     pub fn form_origins(&self) -> impl Iterator<Item = &Origin> {
         self.form_origins.iter().flatten()
@@ -919,6 +947,33 @@ mod tests {
             assert_eq!(Descriptor::parse(json.as_bytes(), &plain).map(|d| d.initial_page), Err(error), "{json}");
         }
         assert!(matches!(Descriptor::parse(b"{\"name\":", &plain), Err(DescriptorError::Json(_))));
+    }
+
+    /// Decision E.90: `push.input` says the channel takes keys back, and
+    /// only a WebSocket can carry them.
+    #[test]
+    fn input_needs_a_websocket() {
+        let plain = Url::parse("http://s.example/service.json").unwrap();
+        let with = |push: &str| {
+            std::format!(r#"{{"name":"S","initial_page":"100","page_template":"/{{mpp}}","push":{push}}}"#)
+        };
+        let parse = |push: &str| Descriptor::parse(with(push).as_bytes(), &plain).map(|descriptor| descriptor.input());
+        assert_eq!(parse(r#"{"address":"ws://s.example/p","method":"websocket","input":true}"#), Ok(true));
+        assert_eq!(parse(r#"{"address":"ws://s.example/p","method":"websocket","input":false}"#), Ok(false));
+        assert_eq!(parse(r#"{"address":"ws://s.example/p","method":"websocket"}"#), Ok(false));
+        assert_eq!(
+            parse(r#"{"address":"http://s.example/p","method":"sse","input":true}"#),
+            Err(DescriptorError::Invalid(Member::PushInput))
+        );
+        assert_eq!(
+            parse(r#"{"address":"ws://s.example/p","method":"websocket","input":"yes"}"#),
+            Err(DescriptorError::Invalid(Member::PushInput))
+        );
+        assert_eq!(
+            parse(r#"{"address":"ws://s.example/p","method":"websocket","input":true,"input":true}"#),
+            Err(DescriptorError::Duplicate(Member::PushInput))
+        );
+        assert!(!Descriptor::parse(VALID.as_bytes(), &base()).unwrap().input());
     }
 
     #[test]

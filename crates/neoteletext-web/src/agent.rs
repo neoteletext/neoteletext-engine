@@ -28,10 +28,11 @@ use crate::consts::{
     ACCEPT_EVENT_STREAM, ACCEPT_PAGES, ALLOWED_LOCAL, CACHE_ENTRIES, CONFIRMED_ORIGINS, CRLF,
     DEFAULT_CONNECT_TIMEOUT_US, DEFAULT_COOKIES_PER_HOST, DEFAULT_COOKIES_TOTAL, DEFAULT_DESCRIPTOR_LIMIT,
     DEFAULT_FETCH_INTERVAL_US, DEFAULT_HEADER_LIMIT, DEFAULT_PAGE_LIMIT, DEFAULT_PUSH_LIMIT,
-    DEFAULT_RESPONSE_TIMEOUT_US, IDENTITY, MAX_HOST_TEXT_LENGTH, MAX_REDIRECTS, MAX_RETRY_AFTER_US,
-    MAX_SUBSCRIBED_PAGES, MAX_URL_LENGTH, MAX_VALIDATOR_LENGTH, MICROSECONDS_PER_SECOND, OPCODE_PONG, OPCODE_TEXT,
-    PAGE_QUEUE, PUSH_RETRY_FIRST_US, PUSH_RETRY_MAX_US, SECURE_HOSTS, STATUS_CLIENT_ERROR_FIRST, STATUS_FOUND,
-    STATUS_GONE, STATUS_MOVED_PERMANENTLY, STATUS_NOT_FOUND, STATUS_NOT_MODIFIED, STATUS_OK, STATUS_PERMANENT_REDIRECT,
+    DEFAULT_RESPONSE_TIMEOUT_US, IDENTITY, INPUT_MESSAGE_MAX, MAX_HOST_TEXT_LENGTH, MAX_REDIRECTS, MAX_RETRY_AFTER_US,
+    MAX_SUBSCRIBED_PAGES, MAX_URL_LENGTH, MAX_VALIDATOR_LENGTH, MICROSECONDS_PER_SECOND, OPCODE_BINARY, OPCODE_PING,
+    OPCODE_PONG, OPCODE_TEXT, PAGE_QUEUE, PUSH_EVENTS_SILENCE_US, PUSH_PING_AFTER_US, PUSH_PONG_WITHIN_US,
+    PUSH_RETRY_FIRST_US, PUSH_RETRY_MAX_US, SECURE_HOSTS, STATUS_CLIENT_ERROR_FIRST, STATUS_FOUND, STATUS_GONE,
+    STATUS_MOVED_PERMANENTLY, STATUS_NOT_FOUND, STATUS_NOT_MODIFIED, STATUS_OK, STATUS_PERMANENT_REDIRECT,
     STATUS_REDIRECT_FIRST, STATUS_SEE_OTHER, STATUS_SUCCESS_FIRST, STATUS_TEMPORARY_REDIRECT, SUBSCRIBE, SUBSCRIBE_ALL,
     SUBSCRIBE_QUERY, header, media,
 };
@@ -241,6 +242,13 @@ pub enum Input<'a> {
     /// Calendar time now, in seconds since 1970, so cookie `Expires` dates
     /// can be compared and cookies saved.
     WallClock(u64),
+    /// One message of the input profile (area INT, decision E.90), sent as
+    /// a binary WebSocket message on the push connection: only while it is
+    /// open and the channel's descriptor declares `push.input`, and only up
+    /// to [`crate::consts::INPUT_MESSAGE_MAX`] bytes. Anything else is
+    /// dropped, with [`Event::InputDropped`]: what it sends never changes
+    /// what is fetched.
+    Send(&'a [u8]),
 }
 
 /// Where page bytes came from.
@@ -398,6 +406,9 @@ pub enum Event<'a> {
     },
     /// The push connection is open.
     PushConnected(PushMethod),
+    /// An [`Input::Send`] was not sent: no push WebSocket is open, the
+    /// channel does not take input, or the message is too long.
+    InputDropped,
     /// The descriptor names a push address, but this build has no push
     /// (the `push` feature, decision E.61): pages are fetched on request
     /// only.
@@ -638,10 +649,21 @@ struct FormState {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum PushPhase {
     Idle,
-    Backoff { until: Instant },
-    Connecting { deadline: Instant },
-    Handshake { deadline: Instant },
-    Open,
+    Backoff {
+        until: Instant,
+    },
+    Connecting {
+        deadline: Instant,
+    },
+    Handshake {
+        deadline: Instant,
+    },
+    /// Open, last heard from at `heard`, and pinged at `pinged` with no
+    /// answer yet (REQ-WEB-005's heartbeat).
+    Open {
+        heard: Instant,
+        pinged: Option<Instant>,
+    },
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -896,7 +918,7 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
                 {
                     let live = matches!(
                         self.push.phase,
-                        PushPhase::Connecting { .. } | PushPhase::Handshake { .. } | PushPhase::Open
+                        PushPhase::Connecting { .. } | PushPhase::Handshake { .. } | PushPhase::Open { .. }
                     );
                     if live {
                         self.push_lost(now, None, false, sink);
@@ -946,6 +968,7 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             }
             Input::WipeCookies => self.jar.wipe(),
             Input::WallClock(unix) => self.wall_clock = Some((now, unix)),
+            Input::Send(message) => self.send_input(message, sink),
         }
         self.dispatch(now, sink);
         if let Some(at) = self.next_deadline() {
@@ -1964,7 +1987,7 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
                 }
             }
         }
-        if cfg!(feature = "push") && self.push.phase == PushPhase::Open {
+        if cfg!(feature = "push") && matches!(self.push.phase, PushPhase::Open { .. }) {
             match self.push.method {
                 PushMethod::WebSocket => self.send_subscribe(sink),
                 PushMethod::ServerSentEvents => {
@@ -2145,7 +2168,9 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
                         }
                     }
                 }
-                PushPhase::Open => {
+                PushPhase::Open { .. } => {
+                    // Anything heard is a sign of life (REQ-WEB-005).
+                    self.push.phase = PushPhase::Open { heard: now, pinged: None };
                     let used = match self.push.method {
                         PushMethod::WebSocket => self.push_frames(now, input, sink),
                         PushMethod::ServerSentEvents => self.push_events(now, input, sink),
@@ -2203,7 +2228,7 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             self.push_lost(now, Some(problem), true, sink);
             return false;
         }
-        self.push.phase = PushPhase::Open;
+        self.push.phase = PushPhase::Open { heard: now, pinged: None };
         event(sink, Event::PushConnected(self.push.method));
         if self.push.method == PushMethod::WebSocket {
             self.send_subscribe(sink);
@@ -2397,7 +2422,66 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             PushPhase::Connecting { deadline } | PushPhase::Handshake { deadline } if now >= deadline => {
                 self.push_lost(now, Some(PushProblem::Failure(Failure::Timeout)), true, sink);
             }
+            PushPhase::Open { .. } if self.heartbeat_due().is_some_and(|due| now >= due) => {
+                self.heartbeat(now, sink);
+            }
             _ => {}
+        }
+    }
+
+    /// When the heartbeat next acts on the open push connection
+    /// (REQ-WEB-005): a ping after a silence on a WebSocket, the end of the
+    /// wait for its pong, or the end of a silent event stream.
+    fn heartbeat_due(&self) -> Option<Instant> {
+        let PushPhase::Open { heard, pinged } = self.push.phase else { return None };
+        let after = |at: Instant, wait: u64| Instant(at.0.saturating_add(wait));
+        Some(match (self.push.method, pinged) {
+            (PushMethod::WebSocket, None) => after(heard, PUSH_PING_AFTER_US),
+            (PushMethod::WebSocket, Some(pinged)) => after(pinged, PUSH_PONG_WITHIN_US),
+            (PushMethod::ServerSentEvents, _) => after(heard, PUSH_EVENTS_SILENCE_US),
+        })
+    }
+
+    /// A silent WebSocket is pinged; one that does not answer, and a silent
+    /// event stream, are reconnected with the backoff, which sends the
+    /// subscription again.
+    fn heartbeat(&mut self, now: Instant, sink: &mut Sink<'_>) {
+        let PushPhase::Open { heard, pinged } = self.push.phase else { return };
+        if self.push.method == PushMethod::WebSocket && pinged.is_none() {
+            let mut frame = Writer::new(self.buffers.push_request);
+            if ws::write_frame(&mut frame, OPCODE_PING, b"", &mut self.random).is_ok() {
+                let len = frame.len();
+                sink(Output::Send {
+                    connection: ConnectionId::Push,
+                    bytes: self.buffers.push_request.get(..len).unwrap_or(&[]),
+                });
+            }
+            self.push.phase = PushPhase::Open { heard, pinged: Some(now) };
+            return;
+        }
+        self.push_lost(now, Some(PushProblem::Failure(Failure::Timeout)), true, sink);
+    }
+
+    /// Sends one message of the input profile on the push WebSocket
+    /// (decision E.90), or drops it.
+    fn send_input(&mut self, message: &[u8], sink: &mut Sink<'_>) {
+        let open = cfg!(feature = "push")
+            && matches!(self.push.phase, PushPhase::Open { .. })
+            && self.push.method == PushMethod::WebSocket
+            && self.descriptor.as_ref().is_some_and(Descriptor::input);
+        if !open || message.len() > INPUT_MESSAGE_MAX {
+            event(sink, Event::InputDropped);
+            return;
+        }
+        let mut frame = Writer::new(self.buffers.push_request);
+        if ws::write_frame(&mut frame, OPCODE_BINARY, message, &mut self.random).is_ok() {
+            let len = frame.len();
+            sink(Output::Send {
+                connection: ConnectionId::Push,
+                bytes: self.buffers.push_request.get(..len).unwrap_or(&[]),
+            });
+        } else {
+            event(sink, Event::InputDropped);
         }
     }
 
@@ -2405,7 +2489,8 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
         let push = match self.push.phase {
             PushPhase::Backoff { until } => Some(until),
             PushPhase::Connecting { deadline } | PushPhase::Handshake { deadline } => Some(deadline),
-            PushPhase::Idle | PushPhase::Open => None,
+            PushPhase::Open { .. } => self.heartbeat_due(),
+            PushPhase::Idle => None,
         };
         let queue =
             (self.fetch.exchange.is_none() && self.queue.iter().any(Option::is_some)).then_some(self.next_fetch_at);

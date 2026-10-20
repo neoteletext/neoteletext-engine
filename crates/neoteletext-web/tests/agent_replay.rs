@@ -1292,3 +1292,79 @@ fn a_channel_cookie_set_for_the_whole_host_stays_in_its_folder() {
     );
     assert_eq!(count, 0, "never sent to another folder");
 }
+
+#[cfg(feature = "push")]
+fn input_service(input: bool) -> Harness {
+    let mut replay = Replay::new(&[("tt.example", PUBLIC)]);
+    let extra = format!(r#","push":{{"address":"ws://tt.example/push","method":"websocket","input":{input}}}"#);
+    replay.reply("tt.example:80", json_response(&descriptor(&extra)));
+    replay.reply("tt.example:80", Reply::WebSocket(Vec::new()));
+    Harness::new(Config::default(), replay)
+}
+
+/// The push connection's frames sent after the handshake.
+#[cfg(feature = "push")]
+fn push_frames(harness: &mut Harness) -> Vec<(u8, Vec<u8>)> {
+    harness
+        .replay()
+        .sent
+        .iter()
+        .filter(|(c, _)| *c == ConnectionId::Push)
+        .skip(1)
+        .map(|(_, f)| client_frame(f))
+        .collect()
+}
+
+/// Decision E.90: a key record goes as one binary message on the push
+/// WebSocket of a channel that takes input, and nowhere else.
+#[test]
+#[cfg(feature = "push")]
+fn input_goes_on_the_push_websocket_only_when_declared() {
+    let record = [1u8, 1, 0, 1, 0, 0, 0, 9, 0, 0x61, 0, 0, 0, 0];
+    let mut harness = input_service(true);
+    assert!(has_event(&harness.open("http://tt.example/service.json"), "PushConnected(WebSocket)"));
+    harness.input(Input::Send(&record));
+    assert_eq!(push_frames(&mut harness).last(), Some(&(0x2, record.to_vec())));
+    assert!(!has_event(&harness.take(), "InputDropped"));
+    // Too long for the input profile.
+    harness.input(Input::Send(&[0; neoteletext_web::consts::INPUT_MESSAGE_MAX + 1]));
+    assert!(has_event(&harness.take(), "InputDropped"));
+    // A channel that does not take input sends nothing.
+    let mut harness = input_service(false);
+    harness.open("http://tt.example/service.json");
+    let before = push_frames(&mut harness).len();
+    harness.input(Input::Send(&record));
+    assert!(has_event(&harness.take(), "InputDropped"));
+    assert_eq!(push_frames(&mut harness).len(), before);
+}
+
+/// REQ-WEB-005's heartbeat: a silent WebSocket is pinged after 25 seconds,
+/// and lost when no pong comes within 10 more.
+#[test]
+#[cfg(feature = "push")]
+fn a_silent_websocket_is_pinged_then_given_up() {
+    let mut harness = input_service(false);
+    harness.open("http://tt.example/service.json");
+    harness.advance(24 * SECOND);
+    assert!(push_frames(&mut harness).iter().all(|(opcode, _)| *opcode != 0x9), "no ping yet");
+    harness.advance(SECOND);
+    assert_eq!(push_frames(&mut harness).last(), Some(&(0x9, Vec::new())), "pinged");
+    harness.advance(9 * SECOND);
+    assert!(!has_event(&harness.take(), "PushLost"));
+    harness.advance(SECOND);
+    assert!(has_event(&harness.take(), "PushLost { retry_in_us: 1000000, problem: Some(Failure(Timeout)) }"));
+}
+
+/// A silent event stream is made again after a minute.
+#[test]
+#[cfg(feature = "push")]
+fn a_silent_event_stream_is_made_again() {
+    let mut harness = push_service("sse", "http://tt.example/events");
+    let head = b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n".to_vec();
+    harness.replay().reply("tt.example:80", Reply::Bytes(head));
+    assert!(has_event(&harness.open("http://tt.example/service.json"), "PushConnected(ServerSentEvents)"));
+    harness.advance(59 * SECOND);
+    assert!(!has_event(&harness.take(), "PushLost"));
+    harness.advance(SECOND);
+    assert!(has_event(&harness.take(), "PushLost { retry_in_us: 1000000, problem: Some(Failure(Timeout)) }"));
+}

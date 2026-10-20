@@ -32,7 +32,7 @@ Records shall be carried on independent data lines of EN 300 708 clause 6.7.3, d
 *Verification:* Tests that data channel 12 decodes as packet 4/31; reassembly out of order, with a lost fragment repaired by a repeat, and with replacement; dropped packets; the fuzz target `audio_packets`.
 
 **REQ-AUD-008 — Network and file carriage.**
-Over a WebSocket, one binary message shall carry one record. A `.ttau` file shall be records back to back; a record whose length breaks a bound ends the file, and a truncated final record is discarded. A record never names its own service: the host associates each connection or file with one.
+Over a WebSocket, records shall travel as the broadcast carriage's packets, whole 42-byte packets in binary messages, as REQ-WEB-005 defines them: a binary message is packets, never a bare record (*amended 20 October 2026, decision E.92*: the first text, one record a binary message, conflicted with REQ-WEB-005). A `.ttau` file shall be records back to back; a record whose length breaks a bound ends the file, and a truncated final record is discarded. A record never names its own service: the host associates each connection or file with one.
 *Verification:* *Not yet built:* no port reads `.ttau` files or WebSocket records yet (TECH-DEBT.md).
 
 **REQ-AUD-009 — The object store.**
