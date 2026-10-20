@@ -1298,6 +1298,7 @@ Decided on 20 October 2026. The browser's design proposed data channel 13, to be
 3. **A TTI page carries it as a `CU` line,** kept by the reader and the writer. The engine's encoder does not turn it into a packet: the formats crate takes nothing from the input profile, and a receiver reads the line from the page it already has.
 
 *Reason:* Taking an allocated data channel would collide with a real service on air; the audio profile's carriage is proven, and one fragment needs nothing new.
+*Confirmed by the owner on 21 October 2026,* with the browser's decision 45: data channel 12, and the `CU` line not encoded as a packet.
 
 **E.92 — Push: a heartbeat, the input flag, and a binary message is packets.**
 Decided on 20 October 2026, for the browser's typing back (its `interaction.md` section 12, decision 44 there).
@@ -1308,6 +1309,7 @@ Decided on 20 October 2026, for the browser's typing back (its `interaction.md` 
 5. **Cookies go with the upgrade,** as REQ-WEB-006 already had them, so a channel knows a returning viewer the way a web application does; the key records identify no one.
 
 *Reason:* A connection that died silently, behind a NAT that dropped it, would leave a viewer typing into nothing; the 25 seconds is the keepalive qrkeyboard's relay uses for the same reason. Two meanings for a binary message cannot both stand, and packets carry everything records can.
+*Confirmed by the owner on 21 October 2026,* with the browser's decision 45: `input` inside the `push` object.
 
 **E.93 — A phone as the keyboard: `neoteletext-qrkeyboard`.**
 Decided on 20 October 2026, for T42 Browser's phone keyboard and `neottx keyboard` (the browser's `interaction.md` section 9, decision 44 there).
@@ -1317,6 +1319,7 @@ Decided on 20 October 2026, for T42 Browser's phone keyboard and `neottx keyboar
 4. **Checked against qrkeyboard's own code,** not against itself: hashes, a SPAKE2 run and sealed frames computed by its `crypto.ts`, and pairing through a running copy of its relay.
 
 *Reason:* Without the screen's side in the engine, every channel author who wants a phone as a keyboard would implement qrkeyboard's pairing and cryptography; and the browser's phone keyboard needs the same code.
+*Confirmed by the owner on 21 October 2026,* with the browser's decision 45: `qrcodegen` is approved.
 
 **E.94 — neottx: `qr`, `keyboard`, and typing back in `view`.**
 Decided on 20 October 2026, as the browser's decision 44 item 11.
@@ -1326,6 +1329,7 @@ Decided on 20 October 2026, as the browser's decision 44 item 11.
 4. **The command-line program asserts** that the web module's, the app pipe's and the input profile's bounds on a key record agree.
 
 *Reason:* Authors test a channel that takes input without the browser, and a channel author gets a phone keyboard by running one command.
+*Confirmed by the owner on 21 October 2026,* with the browser's decision 45: Control-] leaves `neottx view`.
 
 **E.95 — Dynamically redefinable characters are not decoded.**
 Decided on 20 October 2026, on the owner's instruction to remove DRCS completely.
