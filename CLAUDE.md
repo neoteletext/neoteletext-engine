@@ -66,7 +66,7 @@ The rules below about issues and the specification (`docs/spec/`) apply at integ
 
 ## Tracking work: GitHub issues
 
-Work to be done is tracked in GitHub issues on crowdwave/neoteletext (private). What the system must do, and why, stays in `docs/spec/`; an issue links to the requirement or decision it serves rather than restating it.
+Work to be done is tracked in GitHub issues on crowdwave/neoteletext-engine (private). What the system must do, and why, stays in `docs/spec/`; an issue links to the requirement or decision it serves rather than restating it.
 
 - **Work starts from an issue.** If none exists, open one first. During rapid iteration, one issue per feature is enough; small changes go on `TECH-DEBT.md`.
 - **The commit closes it.** End the commit message with `Closes #123`; partial progress gets a comment naming the commit.

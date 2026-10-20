@@ -59,7 +59,7 @@ The owner asked the designer to decide the open questions, except that the image
     - NationalChip: the ROM's low line is blank; the base fonts keep it blank as the hardware held it, and `nationalchip-gx3113c-completed` keeps the constructed full-width low line;
     - the hand-drawn characters in `catalog/patches/`, Bedstead complete's ™ among them, are accepted as drawn; they have not had the owner's review.
 15. **The image converter at Level 3.5 keeps CLUT 0 entries 0 and 7 black and white**, so row 0's header stays white on black; 29 colours are fitted (example 04: error 800 against 795).
-16. **Not decided: issues #187, #188, #189 and #201.** The GitHub account active on this machine (`starqueue`) cannot see crowdwave/neoteletext, so they could not be read. Log in with an account that has access (`gh auth login`).
+16. **Not decided: issues #187, #188, #189 and #201.** The GitHub account active on this machine (`starqueue`) cannot see crowdwave/neoteletext-engine, so they could not be read. Log in with an account that has access (`gh auth login`).
 
 **Found:** the authored Level 2.5 goldens (`golden_level25`) depend on the core's `nonspacing-attributes` feature: `cargo test -p neoteletext-formats --all-features` alone leaves it off and fails 320 of 494 rasters, while the workspace run with all features passes. Make the test say which features it needs, or skip itself without them.
 
@@ -164,7 +164,7 @@ The owner's instruction: the Level 2.5 and 3.5 attributes that take no character
 
 A standalone Python utility outside `neottx` (owner's instruction: not Rust, not part of `neottx`), run with `uv run` like `third_party/noto/convert.py`. It turns a picture into a Level 3.5 page of 80 x 72 sixels in up to 31 redefined colours. Page 100 carries the Level 1 mosaics, X/28/0 and X/28/4 colours, X/27/4 linking a POP at 1A0, and X/26 holding only Active object invocations. The objects carry Full Row Colour, the non-spacing colour changes and the mosaics of column 0. The palette is fitted to the two-colours-per-cell rule. Checked on one picture (example 04): neottx's render matches the encoder's expected sixels exactly.
 
-- **Issue:** none opened yet; `gh` now reaches crowdwave/neoteletext with `gh auth switch -u crowdwave` (18 October 2026). Open one.
+- **Issue:** none opened yet; `gh` now reaches crowdwave/neoteletext-engine with `gh auth switch -u crowdwave` (18 October 2026). Open one.
 - **Palette fitting (19 October 2026):** several starting palettes (median cut, maximum coverage, fast octree), each refined by constrained k-means with repeated split-the-worst and drop-the-least-used swaps, the best kept; then refitted at the change cost that meets the 208-triplet budget. On the ten examples the error fell 6 to 8 per cent in every mode and was never worse, at about four times the time. Literature checked: Wu's method and libimagequant's refinement are the same family; spatial quantization (scolorq) is the one untried idea that could do better.
 - **Screen shape (19 October 2026):** a photo is cropped to the display's shape (`--display neottx`, square; `tv`, 4:3) and averaged over each sixel's footprint at 480 x 480, with the sixel rows weighted 6, 8 and 6 lines as decision E.13 draws them; `--smooth lanczos` is the alternative. Pictures already 80 x 72 to 75 keep the pixel-art path. On 40 photos the on-screen error fell from 5,063 to 2,397 at Level 3.5 and from 28,423 to 23,787 at Level 1, better on all 40.
 - **Evaluation:** 500 pictures (the ten examples, 400 Wikimedia Commons featured pictures, 90 Kenney CC0 game-art crops) in six modes all rendered exactly as predicted (19 October 2026). The scripts and the browsing page live in the session scratchpad only; keep them (in `tmp/` or a script) if the evaluation is to be repeatable.
@@ -183,7 +183,7 @@ The browser lives only in `~/devel/neoteletext-browser`. Left over:
 - **Engine pieces with no caller now:** the descriptor's `font` member and `Descriptor::font()` with `MediaType::FontBdf` (REQ-FNT-006), the web agent's `Input::FetchContents` and `Contents*` events (REQ-WEB-025), `CHANNEL_PREFIX` (REQ-WEB-018), and `EnhancementReport::designations`, which is counted but read by nothing. Keep them as engine API for ports, or remove them with their requirements.
 - **`docs/t42-browser-open-questions.md`** mixes engine and browser questions; split it, sending the browser's to the other repository.
 - **The user guide (about line 245)** says the font converter refuses 12 × 20 fonts whose line pairs differ, against REQ-FNT-010 as amended by decision E.77.
-- **GitHub issues** for the browser (#215, #216, and the browser parts of epics #177 and #210) are to be closed or moved to the other repository, once an account with access to crowdwave/neoteletext is logged in.
+- **GitHub issues** for the browser (#215, #216, and the browser parts of epics #177 and #210) are to be closed or moved to the other repository, once an account with access to crowdwave/neoteletext-engine is logged in.
 
 ## Documentation
 

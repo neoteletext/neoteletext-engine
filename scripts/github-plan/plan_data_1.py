@@ -195,7 +195,7 @@ epic(
           "A predictable cadence with a short freeze before each release, as Servo and NetSurf do.",
           "The cadence and freeze rule are written in the README or a release document.", None, P8),
         t("Push the repository to GitHub",
-          "Push `main` and `implementation` to crowdwave/neoteletext; the pre-push hook runs the full gate first. Waiting for the owner.",
+          "Push `main` and `implementation` to crowdwave/neoteletext-engine; the pre-push hook runs the full gate first. Waiting for the owner.",
           "Both branches are on GitHub and the issue links to docs resolve.", None, P1),
     ],
 )

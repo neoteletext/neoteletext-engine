@@ -4,7 +4,7 @@ Clean-room note: everything below describes behaviour in my own words. No code o
 
 Sources:
 - **MAME** `src/devices/video/saa5050.cpp` and `saa5050.h`. Licence line: `// license:BSD-3-Clause`; copyright holders Curt Coder and Nigel Barnes (cpp line 1–2). The ROM is described as "verified both from datasheet listing and decap" (cpp:45).
-- **Bedstead** `/Users/andrewstuart/devel/neoteletext/third_party/bedstead/bedstead.c`. Released under CC0; the SAA5050 typeface is also discussed under CDPA s.55 (lines 1–26).
+- **Bedstead** `/Users/andrewstuart/devel/neoteletext-engine/third_party/bedstead/bedstead.c`. Released under CC0; the SAA5050 typeface is also discussed under CDPA s.55 (lines 1–26).
 - **jsbeeb** `src/teletext.js` (mattgodbolt/jsbeeb).
 - **beebjit** `teletext.c` (scarybeasts/beebjit). Note: its glyph header comes from b-em and is GPL.
 - **b-em** `src/video.c` (stardot/b-em; the Mode 7 code is in `mode7_render`, around lines 612–770).

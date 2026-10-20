@@ -7,7 +7,7 @@ import plan_data_1  # noqa: E402
 import plan_data_2  # noqa: E402,F401
 import plan_data_3  # noqa: E402
 
-REPO = "crowdwave/neoteletext"
+REPO = "crowdwave/neoteletext-engine"
 DRY = "--dry-run" in sys.argv
 STATE = os.path.join(HERE, "state.json")
 state = json.load(open(STATE)) if os.path.exists(STATE) else {}
