@@ -1362,6 +1362,8 @@ Decided on 21 October 2026, on the owner's instruction, as T42 Browser's fetcher
 
 *Amended 21 October 2026:* `neottx view` waits for the terminal and its source together. It waited 40 ms for a key, then looked at its source, so a page the fetcher passed on in 0.3 ms waited up to 40 ms more; a thread now reads the terminal, and the source's pipe reader wakes the same channel as each frame arrives (`Source::set_wake`). The 40 ms tick remains only as the longest wait, for flash and the form ticker.
 
+*Reason:* Typing back is only like a terminal if a key goes at once (decision E.90); the sleep was most of the round trip. A readiness library such as `mio` would be one more dependency for three connections.
+
 **E.98 — A state machine says when it next needs time.**
 Decided on 21 October 2026, on the owner's instruction to stop ticking decoders whose pages are not shown (T42 Browser's decision 47).
 1. **The audio receiver says when it next needs a tick:** `Receiver::next_tick_ms`, the moment the live sound at the sink whose last block came longest ago would stall (REQ-AUD-014), or `None` while no live sound plays. A port sleeps until then instead of ticking on a fixed interval.
@@ -1369,4 +1371,11 @@ Decided on 21 October 2026, on the owner's instruction to stop ticking decoders 
 
 *Reason:* A port that must tick blindly wakes for nothing; T42 Browser woke every channel's decoder twelve times a second for its sounds' clock, whether or not anything played.
 
-*Reason:* Typing back is only like a terminal if a key goes at once (decision E.90); the sleep was most of the round trip. A readiness library such as `mio` would be one more dependency for three connections.
+**E.99 — The user agent names the program, its version and its platform.**
+Decided on 21 October 2026, on the owner's instruction to identify the client as a web browser's user agent does: its program and version, and the operating system it runs on.
+1. **The `User-Agent` header** is the port's product and version, the platform in brackets, then neoteletext and its version, in RFC 9110's product syntax: for example `T42Browser/0.1.0 (macOS; arm64) neoteletext/0.1.0`, `neottx/0.1.0 (Linux; x86_64) neoteletext/0.1.0`, `Teefax-ESP32/1.2 (ESP-IDF; xtensa) neoteletext/0.1.0` (REQ-WEB-031).
+2. **The platform is the operating system's family and the processor's architecture, not their versions,** and nothing about the person or the computer: no host name, language, screen or account. A port without an operating system names its board or its framework.
+3. **It is fixed for a build,** given by the port in `Config`, checked against the syntax and bounded at 128 bytes; a port that gives none sends the engine's own `neoteletext/<version>`, as before.
+4. **It goes on every request and on the push WebSocket's upgrade,** so a channel that takes input knows its receiver from the upgrade; a transport without HTTP carries it in the input session's HELLO (`neoteletext-common/INPUT.md`).
+
+*Reason:* A channel, like a web site, needs to know what it is serving, to work around a receiver's version or tell its viewers to update; the operating system's version and anything personal would add to a fingerprint (REQ-SEC-001) for no such need.
