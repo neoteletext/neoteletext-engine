@@ -4,6 +4,8 @@ A software receiver for World System Teletext (ETSI EN 300 706), Presentation Le
 
 The library and `neottx` are implemented; work continues feature by feature. This repository is the core teletext rendering engine only (decision E.76). The windowed browser built on it is maintained in its own repository, `~/devel/neoteletext-browser`; it was removed from this one on 18 October 2026. Do not add browser code to this repository.
 
+**The development process is `~/devel/neoteletext-common/DEVELOPMENT.md`**, shared with the browser since 21 October 2026. Where this file and that document differ, that document holds; its appendix B lists what this repository still has to change to follow it.
+
 ## How work proceeds: rapid iteration, then integration
 
 The owner shapes behaviour by asking for changes and looking at the result. Work therefore runs in two modes (owner's instruction, 13 October 2026).
