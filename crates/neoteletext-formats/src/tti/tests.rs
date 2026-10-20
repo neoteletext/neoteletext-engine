@@ -743,3 +743,14 @@ fn a_bad_or_second_font_line_makes_the_font_null() {
         assert_eq!(&pages[0].rows[1][..11], b"STILL SHOWN", "{line}");
     }
 }
+
+/// Each page starts with no link lines of its own: those of the page
+/// before it in the file are not carried over.
+#[test]
+fn a_pages_link_lines_are_its_own() {
+    let (pages, _) = read(b"PN,10000\nLK,300,https://a.example/\nLT,4,0,3,301\nPN,10100\nOL,1,Second\n");
+    assert_eq!(pages.len(), 2);
+    assert_eq!((pages[0].number_links.len(), pages[0].text_links.len()), (1, 1));
+    assert!(pages[1].number_links.is_empty(), "{:?}", pages[1].number_links.as_slice());
+    assert!(pages[1].text_links.is_empty());
+}

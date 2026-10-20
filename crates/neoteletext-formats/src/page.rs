@@ -738,6 +738,8 @@ impl PageFile {
         self.fastext_row_24 = false;
         self.links.clear();
         self.links_valid = true;
+        self.number_links.clear();
+        self.text_links.clear();
         self.form.fields.clear();
         self.form.options.clear();
         self.form.submission = None;
