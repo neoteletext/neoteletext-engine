@@ -1267,3 +1267,12 @@ Decided on 20 October 2026, for the browser's typing back (its `interaction.md` 
 5. **Cookies go with the upgrade,** as REQ-WEB-006 already had them, so a channel knows a returning viewer the way a web application does; the key records identify no one.
 
 *Reason:* A connection that died silently, behind a NAT that dropped it, would leave a viewer typing into nothing; the 25 seconds is the keepalive qrkeyboard's relay uses for the same reason. Two meanings for a binary message cannot both stand, and packets carry everything records can.
+
+**E.93 — A phone as the keyboard: `neoteletext-qrkeyboard`.**
+Decided on 20 October 2026, for T42 Browser's phone keyboard and `neottx keyboard` (the browser's `interaction.md` section 9, decision 44 there).
+1. **A std application crate,** `neoteletext-qrkeyboard`, speaks qrkeyboard's protocol 3 as the screen: the instance, the QR address, pairing with or without a PIN, sealed frames and the application messages. Its own phone side is for tests and for checking a relay. It holds sockets, TLS and cryptography, so it is never a microcontroller crate (decision E.38).
+2. **Libraries,** each a choice made for this: RustCrypto's `aes-gcm`, `hkdf`, `hmac`, `sha2` and `p256` (approved by the owner as the browser's decision 44 item 8); `rustls` and `webpki-roots`, as neottx's fetcher already uses; `getrandom` for the operating system's random numbers; and Project Nayuki's `qrcodegen` (MIT, no dependencies) for the QR code. The relay's own SDK uses a QR library too; drawing one by hand would be a large encoder of no interest.
+3. **HTTP heads, WebSocket frames and JSON** are read by the web module's own bounded code, not by more libraries.
+4. **Checked against qrkeyboard's own code,** not against itself: hashes, a SPAKE2 run and sealed frames computed by its `crypto.ts`, and pairing through a running copy of its relay.
+
+*Reason:* Without the screen's side in the engine, every channel author who wants a phone as a keyboard would implement qrkeyboard's pairing and cryptography; and the browser's phone keyboard needs the same code.

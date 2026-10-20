@@ -1,0 +1,32 @@
+[package]
+name = "neoteletext-qrkeyboard"
+description = "A phone as a keyboard through qrkeyboard's relay (protocol 3): the screen's side, pairing and end-to-end encryption, and the QR code"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# A std crate for desktop programs (decision E.94): it holds sockets, TLS
+# and cryptography, which the microcontroller crates never do (decision
+# E.38).
+[dependencies]
+neoteletext-web.workspace = true
+# Transport Layer Security to the relay, as neottx's fetcher has it.
+rustls = { version = "0.23.32", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+webpki-roots = "1.0.3"
+# RustCrypto (T42 Browser's decision 44 item 8): AES-256-GCM, HKDF and
+# HMAC over SHA-256, and P-256 for SPAKE2 with a PIN, as qrkeyboard's
+# endpoints use them.
+aes-gcm = "0.10.3"
+hkdf = "0.12.4"
+hmac = "0.12.1"
+sha2 = "0.10.9"
+p256 = { version = "0.13.2", default-features = false, features = ["arithmetic"] }
+# The operating system's random numbers: salts, keys and SPAKE2 scalars.
+getrandom = "0.2.16"
+# Project Nayuki's QR Code generator (MIT): the join address as a QR.
+qrcodegen = "1.8.0"
+
+[lints]
+workspace = true

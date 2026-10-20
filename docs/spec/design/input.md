@@ -50,3 +50,15 @@ With `echo` set, a receiver may draw a printable key at the cursor at once, prov
 ## 5. Page selection
 
 A channel that takes input is a videotex host, not a teletext set: the receiver holds no pages of its own to choose from, so every key goes to the channel, digits included. A channel is asked to follow the Prestel convention, `*` page `#` for a page, `#` for the next, `*#` for the one before and `*00` to show the page again, and may also take three plain digits as a page number where it has no other use for them. The receiver interprets neither.
+
+## 6. A phone as the keyboard: qrkeyboard
+
+qrkeyboard (`qrkeyboard.com`, the owner's own relay) makes a phone the keyboard of a screen: the screen shows a QR, the phone that scans it pairs with the screen through the relay, and its keys travel end to end encrypted. `neoteletext-qrkeyboard` is the screen's side of its protocol 3, for desktop programs (decision E.93):
+
+- **The instance.** The screen asks the relay for an instance (`POST /i`) with its configuration: its name, the phone's controls (a preset, or the terminal layout of a text box, the direction pad and the colour keys), whether a PIN is used, and how long a dropped phone keeps the screen. The relay answers with a join code, an owner token and the address of the screen's WebSocket, which must be on the relay's own host.
+- **The QR** holds the relay's phone page with the code, the pairing key in no-PIN mode, and the configuration's hash, all in the fragment, which the phone never sends. The hash is SHA-256 of the configuration in qrkeyboard's canonical JSON, cut to 128 bits, so a relay that altered the configuration is caught by the phone.
+- **Pairing.** Each end sends a fresh 16-byte salt; with a PIN, a SPAKE2 share on P-256 (RFC 9382) and a confirmation, whose transcript binds the join code and the configuration's hash. HKDF-SHA-256 then gives one AES-256-GCM key each way, and frames carry a 64-bit counter nonce that the receiver takes once and only in order. Five wrong PINs lock the screen.
+- **Keys.** Messages are JSON in sealed frames of at most 1 024 bytes; the screen takes a key of its layout down and up, text, and the text box's special keys, acknowledges each, and releases a key held more than 15 seconds. Keepalives go every 25 seconds.
+- **The QR as mosaics.** `qr::Matrix::mosaic_rows` writes a code as teletext mosaic rows, one sixel a module, dark on white with its quiet zone, so a channel can show its own QR on any receiver.
+
+The cryptography was checked against qrkeyboard's own code: the configuration hashes, a SPAKE2 run with fixed scalars and sealed frames were computed by its `crypto.ts` under Node and are the crate's test fixtures. A screen and a phone written here pair through a running relay in the crate's `relay` tests, given `QRKEYBOARD_RELAY`.

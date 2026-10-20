@@ -26,3 +26,7 @@ A cursor record shall be a record of the audio profile's frame (REQ-AUD-003) of 
 **REQ-INT-006 — The cursor in a TTI page.**
 A TTI page may carry its cursor record as a line `CU,row,column,width,flags[,acked]`, decimal, for the page that holds it. The reader shall keep the last such line and the writer shall write it back; a line that cannot be read is reported and dropped.
 *Verification:* Tests of reading, writing back and refusing the line.
+
+**REQ-INT-007 — A phone as the keyboard.**
+`neoteletext-qrkeyboard` shall be the screen's side of qrkeyboard's protocol 3: it shall compute the configuration's hash as qrkeyboard's canonical JSON does, put the code, the pairing key (no-PIN mode) and the hash only in the QR address's fragment, pair by salts and, with a PIN, SPAKE2 on P-256 bound to the code and the hash, seal frames with AES-256-GCM under a counter nonce taken once and in order, lock after five wrong PINs, accept only the keys of its layout, release a key held past 15 seconds, refuse a relay WebSocket on another host, and bound every frame to 1 024 bytes and every response body to 64 KB.
+*Verification:* Fixtures computed by qrkeyboard's own `crypto.ts`: two configuration hashes, a SPAKE2 run and sealed frames; tests of replay, reordering and forgery; pairing by key and by PIN through a running relay.
