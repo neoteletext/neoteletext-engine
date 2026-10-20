@@ -15,7 +15,7 @@ neoteletext-web.workspace = true
 # Transport Layer Security to the relay, as neottx's fetcher has it.
 rustls = { version = "0.23.32", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 webpki-roots = "1.0.3"
-# RustCrypto (T42 Browser's decision 44 item 8): AES-256-GCM, HKDF and
+# RustCrypto (NeoTeletext's decision 44 item 8): AES-256-GCM, HKDF and
 # HMAC over SHA-256, and P-256 for SPAKE2 with a PIN, as qrkeyboard's
 # endpoints use them.
 aes-gcm = "0.10.3"

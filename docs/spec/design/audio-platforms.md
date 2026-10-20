@@ -1,6 +1,6 @@
 # Teletext audio on each platform
 
-How the audio profile (`audio.md`, area AUD) is built on each platform neoteletext and T42 Browser target: macOS, Windows, Linux and microcontrollers. Built on 19 October 2026: the engine crates of section 1 and T42 Browser on macOS (section 2). Windows, Linux and microcontrollers are not built yet.
+How the audio profile (`audio.md`, area AUD) is built on each platform neoteletext and NeoTeletext target: macOS, Windows, Linux and microcontrollers. Built on 19 October 2026: the engine crates of section 1 and NeoTeletext on macOS (section 2). Windows, Linux and microcontrollers are not built yet.
 
 The profile is the source for what a receiver does. This document says where each part of that runs and what each platform supplies. The microcontroller part stays at the level of architecture, so it is compatible with the tellyboy driver without fixing its interface. That interface is specified when it is implemented.
 
@@ -54,7 +54,7 @@ A sink also declares:
 
 ### 1.3 Where the packets come from
 
-The engine already acquires every teletext packet. It must also pass **independent data line packets on data channel 12** (EN 300 708 table 16) to `neoteletext-audio`, instead of discarding them. This is a change to the engine, made in the engine's own repository by its own process, as T42 Browser's architecture §5.1 requires.
+The engine already acquires every teletext packet. It must also pass **independent data line packets on data channel 12** (EN 300 708 table 16) to `neoteletext-audio`, instead of discarding them. This is a change to the engine, made in the engine's own repository by its own process, as NeoTeletext's architecture §5.1 requires.
 
 Records from a network or a file arrive as bytes, the way page bytes do now.
 
@@ -62,7 +62,7 @@ Records from a network or a file arrive as bytes, the way page bytes do now.
 
 ## 2. Desktop: macOS, Windows and Linux
 
-### 2.1 Where each part runs in T42 Browser
+### 2.1 Where each part runs in NeoTeletext
 
 The process model (`neoteletext-browser/docs/architecture.md` §6) decides the placement.
 
@@ -76,7 +76,7 @@ A compromised decoder can make sounds of its choosing in its own channel's four 
 
 ### 2.2 The messages, as built
 
-They are in T42 Browser's `protocol` crate (`protocol::audio`). Each is bounded before anything is allocated, and each side accepts only its own kinds.
+They are in NeoTeletext's `protocol` crate (`protocol::audio`). Each is bounded before anything is allocated, and each side accepts only its own kinds.
 
 | Direction | Message | Content and bounds |
 |---|---|---|
@@ -87,7 +87,7 @@ They are in T42 Browser's `protocol` crate (`protocol::audio`). Each is bounded 
 
 The trusted core passes on only the active tab's operations, and checks each again: a sound must be defined before it is filled or started, its samples must lie within it, and the channel heard may hold at most 32 MB of samples in the interface. No message reports back from the interface: the mixer queues a waiting sound itself (`Start::after_current`), so the decoder need not know when a sound ends.
 
-A page shown in T42 Browser's page wall isn't "open". **Page binding follows the page the user has opened** in the active tab: the zoomed page, or else the page chosen by number or in the list, as a television goes to the page whose number is typed (D1).
+A page shown in NeoTeletext's page wall isn't "open". **Page binding follows the page the user has opened** in the active tab: the zoomed page, or else the page chosen by number or in the list, as a television goes to the page whose number is typed (D1).
 
 ### 2.3 The mixer: a new crate, `neoteletext-audio-mix`
 
@@ -106,7 +106,7 @@ It is portable Rust, with no operating-system code. It lives in the engine besid
 
 ### 2.4 Audio output on each operating system
 
-T42 Browser's crates forbid `unsafe` code (`native/Cargo.toml`). Every operating system's audio interface is a C interface, so output needs a library that wraps it. **Library choice was decision D2 (section 5): `cpal`.** The options were:
+NeoTeletext's crates forbid `unsafe` code (`native/Cargo.toml`). Every operating system's audio interface is a C interface, so output needs a library that wraps it. **Library choice was decision D2 (section 5): `cpal`.** The options were:
 
 | Option | What it is | Pros | Cons |
 |---|---|---|---|
@@ -174,9 +174,9 @@ iOS and Android are later targets (architecture §13). With option A of §2.4, t
 
 ## 5. Decisions
 
-Taken on 19 October 2026, while the owner was away, as the owner had instructed (decision E.85 and T42 Browser's decision 37):
+Taken on 19 October 2026, while the owner was away, as the owner had instructed (decision E.85 and NeoTeletext's decision 37):
 - **D1.** A page-bound sound follows the page the user has opened in the active tab: the zoomed page, or else the page chosen by number or in the list, not every page visible on the wall.
 - **D2.** Desktop audio output uses `cpal`, version 0.18.2 (Apache-2.0), on macOS only until D3 was decided; on every desktop since.
 - **D4.** `neoteletext-audio` and `neoteletext-audio-mix` live in the engine.
-- **D3.** Decided by the owner on 19 October 2026: the system's LGPL `libasound` is accepted on Linux, linked dynamically and not shipped (LICENSING.md, section 2; T42 Browser's decision 40).
+- **D3.** Decided by the owner on 19 October 2026: the system's LGPL `libasound` is accepted on Linux, linked dynamically and not shipped (LICENSING.md, section 2; NeoTeletext's decision 40).
 

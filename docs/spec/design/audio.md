@@ -56,7 +56,7 @@ Layers 1 to 3 form one Rust library: `no_std`, every buffer a fixed size chosen 
 
 The voice sink is the only platform code. On a microcontroller it is the tellyboy driver, which already decodes IMA ADPCM, mixes four voices, fades and tracks clock drift. The desktop sink reproduces the same behaviour in software, so a page sounds the same on both.
 
-How each platform builds this is in `audio-platforms.md`. In T42 Browser, layers 1 to 3 and codec decoding run in the sandboxed decoder process. The trusted core applies the user's settings, and the interface process mixes and plays 16-bit PCM.
+How each platform builds this is in `audio-platforms.md`. In NeoTeletext, layers 1 to 3 and codec decoding run in the sandboxed decoder process. The trusted core applies the user's settings, and the interface process mixes and plays 16-bit PCM.
 
 ---
 
@@ -325,7 +325,7 @@ The sender's sample clock and the receiver's are independent, so a receiver MUST
 
 A receiver MUST absorb at least ±1 % of sender clock error. That figure is a design target, not yet measured against a real broadcast clock. The engine's mixer buffers 400 ms of a live sound before it plays (a port may hand over packets every 200 ms) and trims its rate by up to ±5 %, in proportion to how far the buffer is from that level; its tests hold the buffer level with a sender 1 % fast and 1 % slow.
 
-The receiver keeps the newest 32 blocks of a live sound and joins at the newest when a play can start. It gives the sink the blocks in order; a block still missing once three newer ones are held is silence. Over a T42 file or the network, live IMA ADPCM fits where a broadcast line does not (§6.3): T42 Browser reads 320 packets a second, and 8 kHz IMA ADPCM in 256-byte blocks needs about 127.
+The receiver keeps the newest 32 blocks of a live sound and joins at the newest when a play can start. It gives the sink the blocks in order; a block still missing once three newer ones are held is silence. Over a T42 file or the network, live IMA ADPCM fits where a broadcast line does not (§6.3): NeoTeletext reads 320 packets a second, and 8 kHz IMA ADPCM in 256-byte blocks needs about 127.
 
 A live sound fades out after its **stall time** without new blocks. That is EN 300 708 §6.7.1.1's mute, with the time this profile defines: 2 seconds.
 
@@ -442,7 +442,7 @@ The Level A numbers are proposals. They must be checked against the RAM the tele
 
 Taken on 19 October 2026, while the owner was away, as the owner had instructed:
 - **The broadcast carrier** is EN 300 708 §6.7's user-defined service on data channel 12 (decision E.84). IDL Format B remains the alternative if an EBU Application Identifier is ever allocated.
-- **Page sounds are on by default** in T42 Browser, which has no settings screen for them yet (`TECH-DEBT.md`).
+- **Page sounds are on by default** in NeoTeletext, which has no settings screen for them yet (`TECH-DEBT.md`).
 - **The crates live in the engine** (decision E.85).
 
 Decided by the owner on 20 October 2026 (decision E.89):

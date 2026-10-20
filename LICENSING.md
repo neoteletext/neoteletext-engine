@@ -1,6 +1,6 @@
 # Licensing
 
-neoteletext is licensed under the MIT licence ([LICENSE](LICENSE)). This document says which other licences the project may use, and why each one leaves the MIT licence intact. T42 Browser (the neoteletext-browser repository) follows the same rule; its own details are in that repository's `docs/licensing.md`.
+neoteletext is licensed under the MIT licence ([LICENSE](LICENSE)). This document says which other licences the project may use, and why each one leaves the MIT licence intact. NeoTeletext (the neoteletext-browser repository) follows the same rule; its own details are in that repository's `docs/licensing.md`.
 
 This is the project's reading of the licences, not legal advice.
 
@@ -20,7 +20,7 @@ A licence is acceptable if, used the way we use it, it puts no conditions on our
 | **System libraries loaded at run time and not shipped** | LGPL-2.1-or-later (glibc, ALSA's `libasound`), GPL with the GCC Runtime Library Exception (`libgcc_s`) | Linked dynamically from the user's own system, so the user can always replace them, which is all the LGPL asks. The GCC exception exists to allow any program to link the runtime | Never link them statically and never bundle them (see section 3) |
 | **A choice of licences** | For example `r-efi` (MIT, Apache-2.0 or LGPL-2.1-or-later) or `byteorder` (Unlicense or MIT) | We take it under the permissive choice | None beyond that choice's own |
 
-The owner accepted LGPL system libraries on 19 October 2026: the system's `libasound` for sound on Linux (decision D3 of `docs/spec/design/audio-platforms.md`, and T42 Browser's decision 40).
+The owner accepted LGPL system libraries on 19 October 2026: the system's `libasound` for sound on Linux (decision D3 of `docs/spec/design/audio-platforms.md`, and NeoTeletext's decision 40).
 
 ## 3. What is not acceptable
 

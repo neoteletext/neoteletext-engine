@@ -1,6 +1,6 @@
 # The input profile (area INT)
 
-A receiver connected to a channel's WebSocket may send the viewer's keys back, one small record a key, as a terminal sends each key to its host. The channel decides what a key means and answers by pushing the rows that changed, with an optional cursor record. Nothing executes in the receiver, and every page stays a plain teletext page. The design was made for T42 Browser (its `docs/interaction.md`, decision 44 there) and is the engine's so that every receiver, a microcontroller's included, sends the same bytes.
+A receiver connected to a channel's WebSocket may send the viewer's keys back, one small record a key, as a terminal sends each key to its host. The channel decides what a key means and answers by pushing the rows that changed, with an optional cursor record. Nothing executes in the receiver, and every page stays a plain teletext page. The design was made for NeoTeletext (its `docs/interaction.md`, decision 44 there) and is the engine's so that every receiver, a microcontroller's included, sends the same bytes.
 
 ## 1. Where the keys go
 

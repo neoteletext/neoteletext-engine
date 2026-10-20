@@ -1265,7 +1265,7 @@ Decided on 19 October 2026.
 *Reason:* A live sound's end is unknown, so it cannot be held whole, and a receiver that waits to resynchronise loses more than it would by joining late. Rate trimming in the sink keeps the receiver the same on every port.
 
 **E.88 — Links a receiver draws: the `web:` target, and an underline the port can turn off.**
-Decided on 20 October 2026, for T42 Browser's hyperlinks (its `hyperlinks.md`, decision 41 there).
+Decided on 20 October 2026, for NeoTeletext's hyperlinks (its `hyperlinks.md`, decision 41 there).
 1. **A `web:` target** in the TTI Link Extension (Appendix E, section E.1): `web:` followed by an `http` or `https` address names a page on the web, which a receiver opens outside teletext, after the user agrees. It is allowed in `LN` and `LT` lines and never in `LK`, because typing a page number must never leave teletext. The page encoder writes it as null, as it writes every address.
 2. **An `underline` render option** in `RenderOptions`, on by default, so every port renders REQ-RND-035 as the standard asks. A port that draws its own link underline over the page turns it off, so that within that port an underline has one meaning. Only G0 and G2 characters are affected; separated mosaics, which share the attribute bit, are not.
 3. **Showing `LT` and `LK` links,** which REQ-NAV-013 and REQ-NAV-015 once required of the engine's browser, is the browser's own concern, in its repository. The engine parses and keeps them, and nothing more.
@@ -1283,7 +1283,7 @@ Decided by the owner on 20 October 2026.
 *Reason:* A speech codec would be a library needing approval, with an unmeasured cost on the smallest part, for a use (live talk over broadcast) nobody has asked for; IMA ADPCM already carries live sound over the network. A simultaneous start needs state the profile was redesigned to avoid. The codec's sources were the one thing the decoder's tests could not be checked against.
 
 **E.90 — Input: keys sent back to a channel, as a terminal sends them (area INT).**
-Decided by the owner on 20 October 2026, as T42 Browser's decision 44 (its `docs/interaction.md`). The detail is `design/input.md`.
+Decided by the owner on 20 October 2026, as NeoTeletext's decision 44 (its `docs/interaction.md`). The detail is `design/input.md`.
 1. **A channel that says `"input": true`** in its descriptor, allowed only with push over a WebSocket, takes the viewer's keys back on that socket, one binary message a key. There is no other way in: no request per key, no forms over this path.
 2. **The key record is 14 bytes,** with up to 32 bytes of committed text, carrying a sequence number and the receiver's millisecond clock, and naming keys by the W3C `KeyboardEvent.key` and `KeyboardEvent.code` values in two numbered tables that only grow at the end.
 3. **The cursor record is optional,** as a cursor is: a game sends none and keys go just the same.
@@ -1312,7 +1312,7 @@ Decided on 20 October 2026, for the browser's typing back (its `interaction.md` 
 *Confirmed by the owner on 21 October 2026,* with the browser's decision 45: `input` inside the `push` object.
 
 **E.93 — A phone as the keyboard: `neoteletext-qrkeyboard`.**
-Decided on 20 October 2026, for T42 Browser's phone keyboard and `neottx keyboard` (the browser's `interaction.md` section 9, decision 44 there).
+Decided on 20 October 2026, for NeoTeletext's phone keyboard and `neottx keyboard` (the browser's `interaction.md` section 9, decision 44 there).
 1. **A std application crate,** `neoteletext-qrkeyboard`, speaks qrkeyboard's protocol 3 as the screen: the instance, the QR address, pairing with or without a PIN, sealed frames and the application messages. Its own phone side is for tests and for checking a relay. It holds sockets, TLS and cryptography, so it is never a microcontroller crate (decision E.38).
 2. **Libraries,** each a choice made for this: RustCrypto's `aes-gcm`, `hkdf`, `hmac`, `sha2` and `p256` (approved by the owner as the browser's decision 44 item 8); `rustls` and `webpki-roots`, as neottx's fetcher already uses; `getrandom` for the operating system's random numbers; and Project Nayuki's `qrcodegen` (MIT, no dependencies) for the QR code. The relay's own SDK uses a QR library too; drawing one by hand would be a large encoder of no interest.
 3. **HTTP heads, WebSocket frames and JSON** are read by the web module's own bounded code, not by more libraries.
@@ -1352,7 +1352,7 @@ Decided on 20 October 2026, on the owner's instruction to remove bold, italic an
 *Reason:* The owner's instruction.
 
 **E.97 — The fetcher process waits on its requests and sockets, never on a timer.**
-Decided on 21 October 2026, on the owner's instruction, as T42 Browser's fetcher was changed the same day (its decision 46).
+Decided on 21 October 2026, on the owner's instruction, as NeoTeletext's fetcher was changed the same day (its decision 46).
 1. **Each connection has a reader thread** that reads its socket, blocking, and wakes the fetcher's loop when bytes arrive, at most four 16 KB reads ahead of the loop; TLS records are decrypted on the loop's side. Closing the connection shuts its socket down, which ends the thread.
 2. **The loop sleeps until a request from the decoder, a socket or the state machine's next timer wakes it.** It slept 10 ms whenever it was idle, so a key waited for the sleep before it went and its answer waited again: a key's round trip had a median of 17 to 21 ms; it is 0.2 to 0.5 ms (debug build, this computer's own network), and 0.3 ms on Linux inside the sandbox, whose seccomp filter allows threads.
 3. **The fetcher ends when the decoder closes the pipe,** rather than when it next fails to write to it.
@@ -1365,15 +1365,15 @@ Decided on 21 October 2026, on the owner's instruction, as T42 Browser's fetcher
 *Reason:* Typing back is only like a terminal if a key goes at once (decision E.90); the sleep was most of the round trip. A readiness library such as `mio` would be one more dependency for three connections.
 
 **E.98 — A state machine says when it next needs time.**
-Decided on 21 October 2026, on the owner's instruction to stop ticking decoders whose pages are not shown (T42 Browser's decision 47).
+Decided on 21 October 2026, on the owner's instruction to stop ticking decoders whose pages are not shown (NeoTeletext's decision 47).
 1. **The audio receiver says when it next needs a tick:** `Receiver::next_tick_ms`, the moment the live sound at the sink whose last block came longest ago would stall (REQ-AUD-014), or `None` while no live sound plays. A port sleeps until then instead of ticking on a fixed interval.
 2. **The web agent and the live feed already do** (`Output::Timer`, `LiveOutput::Timer`). The core decoder does not yet: its completion timeout and staleness still need a port's periodic tick (`TECH-DEBT.md`).
 
-*Reason:* A port that must tick blindly wakes for nothing; T42 Browser woke every channel's decoder twelve times a second for its sounds' clock, whether or not anything played.
+*Reason:* A port that must tick blindly wakes for nothing; NeoTeletext woke every channel's decoder twelve times a second for its sounds' clock, whether or not anything played.
 
 **E.99 — The user agent names the program, its version and its platform.**
 Decided on 21 October 2026, on the owner's instruction to identify the client as a web browser's user agent does: its program and version, and the operating system it runs on.
-1. **The `User-Agent` header** is the port's product and version, the platform in brackets, then neoteletext and its version, in RFC 9110's product syntax: for example `T42Browser/0.1.0 (macOS; arm64) neoteletext/0.1.0`, `neottx/0.1.0 (Linux; x86_64) neoteletext/0.1.0`, `Teefax-ESP32/1.2 (ESP-IDF; xtensa) neoteletext/0.1.0` (REQ-WEB-031).
+1. **The `User-Agent` header** is the port's product and version, the platform in brackets, then neoteletext and its version, in RFC 9110's product syntax: for example `NeoTeletext/0.1.0 (macOS; arm64) neoteletext/0.1.0`, `neottx/0.1.0 (Linux; x86_64) neoteletext/0.1.0`, `Teefax-ESP32/1.2 (ESP-IDF; xtensa) neoteletext/0.1.0` (REQ-WEB-031).
 2. **The platform is the operating system's family and the processor's architecture, not their versions,** and nothing about the person or the computer: no host name, language, screen or account. A port without an operating system names its board or its framework.
 3. **It is fixed for a build,** given by the port in `Config`, checked against the syntax and bounded at 128 bytes; a port that gives none sends the engine's own `neoteletext/<version>`, as before.
 4. **It goes on every request and on the push WebSocket's upgrade,** so a channel that takes input knows its receiver from the upgrade; a transport without HTTP carries it in the input session's HELLO (`neoteletext-common/INPUT.md`).

@@ -34,7 +34,7 @@ Work deferred while behaviour is being shaped (the owner's instruction of 13 Oct
 `REQUIREMENTS.md` is now an index, and the specification is in `docs/spec/`. The text moved unchanged; the language decisions E.77 to E.82 and the explainer's language section were cut to pointers to `docs/spec/design/languages.md`. `cargo xtask traceability` reads the new files (424 requirements, regenerated). Owed:
 - commit, on its own;
 - reword the older items of this file, `IMPLEMENTATION-LOG.md` and the code comments that say "REQUIREMENTS.md Part E" or "section F.n" as the new paths, where the index is not enough;
-- `docs/t42-browser-open-questions.md` concerns the browser and belongs in `prototypes/browser/docs/`;
+- `docs/neoteletext-browser-open-questions.md` concerns the browser and belongs in `prototypes/browser/docs/`;
 - `docs/teletext-specification-audit.md` (untracked, not mine) is unplaced.
 
 ## Decisions made on the owner's instruction (18 October 2026)
@@ -181,7 +181,7 @@ A standalone Python utility outside `neottx` (owner's instruction: not Rust, not
 
 The browser lives only in `~/devel/neoteletext-browser`. Left over:
 - **Engine pieces with no caller now:** the descriptor's `font` member and `Descriptor::font()` with `MediaType::FontBdf` (REQ-FNT-006), the web agent's `Input::FetchContents` and `Contents*` events (REQ-WEB-025), `CHANNEL_PREFIX` (REQ-WEB-018), and `EnhancementReport::designations`, which is counted but read by nothing. Keep them as engine API for ports, or remove them with their requirements.
-- **`docs/t42-browser-open-questions.md`** mixes engine and browser questions; split it, sending the browser's to the other repository.
+- **`docs/neoteletext-browser-open-questions.md`** mixes engine and browser questions; split it, sending the browser's to the other repository.
 - **The user guide (about line 245)** says the font converter refuses 12 × 20 fonts whose line pairs differ, against REQ-FNT-010 as amended by decision E.77.
 - **GitHub issues** for the browser (#215, #216, and the browser parts of epics #177 and #210) are to be closed or moved to the other repository, once an account with access to crowdwave/neoteletext-engine is logged in.
 

@@ -121,7 +121,7 @@ It never reads from the network and runs under the sandbox of REQ-SEC-017.
 - **Read** a RIFF WAVE file of 16-bit linear PCM, mono or stereo, at one of the rates of REQ-AUD-002, of at most 32 MB; stereo is mixed down to mono as (left + right) / 2. It refuses any other file, naming why.
 - **Encode** in IMA ADPCM with 512-byte blocks by default, or in PCM with 1 000-byte blocks.
 - **Write** the packets as a T42 stream, the whole sequence `--repeat` times, as a carousel would repeat it, to be added to a channel's T42 stream.
-- **Send live** with `--live` (REQ-AUD-014): the OBJECT record of a live sound and the play, then each block, IMA ADPCM in 256-byte blocks, one a record, at the packet where a player reading `--pace` packets a second (by default 320, T42 Browser's pace) reaches the moment the block's last sample was captured. The packets between repeat the announcement and the latest block. The sound is sent `--repeat` times in a row; a rate the pace cannot carry is refused.
+- **Send live** with `--live` (REQ-AUD-014): the OBJECT record of a live sound and the play, then each block, IMA ADPCM in 256-byte blocks, one a record, at the packet where a player reading `--pace` packets a second (by default 320, NeoTeletext's pace) reaches the moment the block's last sample was captured. The packets between repeat the announcement and the latest block. The sound is sent `--repeat` times in a row; a rate the pace cannot carry is refused.
 - **Report** the samples, the rate, the bytes of sound and the packets written.
 
 It never reads from the network and runs under the sandbox of REQ-SEC-017. A build without the feature `sound` refuses the command (decision E.61).

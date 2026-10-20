@@ -148,18 +148,19 @@ mod tests {
 
     /// The hash qrkeyboard's own `configHash` (`relay/src/crypto.ts`)
     /// computes for these configurations, by running it under Node on 20
-    /// October 2026.
+    /// October 2026 (the teletext one again on 21 October, when its name
+    /// became NeoTeletext).
     #[test]
     fn the_hash_is_the_sdks() {
         let teletext = ScreenConfig {
-            name: "T42 Browser".into(),
+            name: "NeoTeletext".into(),
             layout: Layout::Preset("teletext"),
             pin: false,
             rejoin_seconds: Some(30),
         };
         assert_eq!(
             teletext.value().canonical(),
-            r#"{"caps":["buttons"],"layout":"teletext","mode":"live","name":"T42 Browser","protocol":3,"rejoinSeconds":30,"submitLabel":"Send"}"#
+            r#"{"caps":["buttons"],"layout":"teletext","mode":"live","name":"NeoTeletext","protocol":3,"rejoinSeconds":30,"submitLabel":"Send"}"#
         );
         assert_eq!(teletext.hash(), FIXTURE_TELETEXT);
         let terminal =
@@ -182,7 +183,7 @@ mod tests {
     }
 
     const FIXTURE_TELETEXT: [u8; CONFIG_HASH_BYTES] =
-        [0x36, 0x40, 0x81, 0x8b, 0xd2, 0x45, 0x0b, 0x14, 0x66, 0x3c, 0xad, 0x55, 0xa1, 0x04, 0xf5, 0x2e];
+        [0x99, 0xd8, 0xf7, 0xa6, 0xcc, 0xbe, 0xf2, 0xd0, 0xa8, 0x03, 0x34, 0x73, 0xda, 0x3b, 0x37, 0xe7];
     const FIXTURE_TERMINAL: [u8; CONFIG_HASH_BYTES] =
         [0xa1, 0x7a, 0x24, 0x4d, 0x26, 0xc6, 0x09, 0x36, 0x6c, 0x9b, 0xb4, 0xd8, 0x30, 0x48, 0xab, 0xcf];
 }
