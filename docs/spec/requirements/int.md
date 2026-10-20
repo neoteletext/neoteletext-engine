@@ -30,3 +30,7 @@ A TTI page may carry its cursor record as a line `CU,row,column,width,flags[,ack
 **REQ-INT-007 — A phone as the keyboard.**
 `neoteletext-qrkeyboard` shall be the screen's side of qrkeyboard's protocol 3: it shall compute the configuration's hash as qrkeyboard's canonical JSON does, put the code, the pairing key (no-PIN mode) and the hash only in the QR address's fragment, pair by salts and, with a PIN, SPAKE2 on P-256 bound to the code and the hash, seal frames with AES-256-GCM under a counter nonce taken once and in order, lock after five wrong PINs, accept only the keys of its layout, release a key held past 15 seconds, refuse a relay WebSocket on another host, and bound every frame to 1 024 bytes and every response body to 64 KB.
 *Verification:* Fixtures computed by qrkeyboard's own `crypto.ts`: two configuration hashes, a SPAKE2 run and sealed frames; tests of replay, reordering and forgery; pairing by key and by PIN through a running relay.
+
+**REQ-INT-008 — A key goes at once.**
+A fetcher process shall send a key record the moment it arrives and pass on what the channel answers the moment it arrives, sleeping only until a request, a socket or a timer of its state machine wakes it (decision E.97).
+*Verification:* A test types 20 keys through the fetcher to a local channel that answers each with a page, and holds the round trip's median to 2 ms.

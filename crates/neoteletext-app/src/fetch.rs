@@ -8,43 +8,60 @@ use neoteletext_core::policy::{ipv4_blocked, ipv6_blocked};
 use neoteletext_core::types::{Instant, PageAddress, SubCode};
 use neoteletext_web::port::{ConnectionId, LinkState, Pump, RandomSource, Received, Security, Transport};
 use neoteletext_web::url::IpAddress;
+use std::collections::VecDeque;
 use std::io::{Read, Write};
 use std::net::{IpAddr, SocketAddr, TcpStream, ToSocketAddrs};
 use std::sync::Arc;
-use std::sync::mpsc::{self, Receiver};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender, SyncSender, TryRecvError};
 use std::time::{Duration, Instant as StdInstant};
 
-/// Time allowed to connect and complete the TLS handshake.
+/// Time allowed to connect and complete the TLS handshake; a write is held
+/// to it too.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
-/// How long the loop sleeps when nothing happened.
-const IDLE: Duration = Duration::from_millis(10);
 /// Directories the fetcher may read to resolve names (decision 28).
 const RESOLVER_PATHS: [&str; 6] = ["/etc", "/run/systemd/resolve", "/usr/lib", "/lib", "/usr/lib64", "/lib64"];
-/// Bytes read from a connection at a time.
+/// Bytes read from a connection at a time, by its reader thread and by the
+/// state machines.
 const READ_CHUNK: usize = 16 * 1024;
+/// Reads a connection's reader thread may be ahead of the loop before it
+/// waits: with `READ_CHUNK`, what one connection holds in memory at most,
+/// beyond the operating system's own buffer.
+const READS_AHEAD: usize = 4;
 
-enum Stream {
-    Plain(TcpStream),
-    Tls(Box<rustls::StreamOwned<rustls::ClientConnection, TcpStream>>),
+/// What ends the fetcher loop's wait. It sleeps until one of these comes,
+/// or until the state machine's next timer, never on a fixed interval, so a
+/// key goes and a pushed page comes back at once (REQ-INT-008, decision
+/// E.97).
+pub enum Wake {
+    /// A request from the decoder process.
+    Request(Frame),
+    /// A connection has bytes, or has ended.
+    Network,
+    /// The decoder process closed the pipe.
+    Ended,
 }
 
-impl Stream {
-    fn socket(&self) -> &TcpStream {
-        match self {
-            Self::Plain(socket) => socket,
-            Self::Tls(stream) => &stream.sock,
-        }
-    }
+/// One open connection. A thread of its own reads the socket, blocking,
+/// and wakes the loop when bytes arrive.
+struct Connection {
+    /// For writing and for shutting down; the reader thread reads a clone.
+    socket: TcpStream,
+    tls: Option<Box<rustls::ClientConnection>>,
+    /// What the reader thread read; the channel ends when the socket does.
+    incoming: Receiver<Vec<u8>>,
+    /// Bytes taken from `incoming` and not yet passed on.
+    pending: VecDeque<u8>,
 }
 
-/// A blocking-connect, non-blocking-read transport over std sockets and
-/// rustls, checking every resolved address against the policy before
-/// connecting (decision 27).
+/// A blocking-connect transport over std sockets and rustls, checking every
+/// resolved address against the policy before connecting (decision 27),
+/// whose connections each wake the loop when bytes arrive.
 pub struct StdTransport {
-    streams: [Option<Stream>; 3],
+    streams: [Option<Connection>; 3],
     states: [LinkState; 3],
     tls: Arc<rustls::ClientConfig>,
     allowed_local: Vec<IpAddr>,
+    wake: Sender<Wake>,
 }
 
 fn slot(connection: ConnectionId) -> usize {
@@ -70,9 +87,10 @@ fn blocked(address: IpAddr) -> bool {
 }
 
 impl StdTransport {
-    /// A transport trusting the Mozilla root certificates.
+    /// A transport trusting the Mozilla root certificates, waking the loop
+    /// through `wake`.
     #[must_use]
-    pub fn new(allowed_local: &[IpAddr]) -> Self {
+    pub fn new(allowed_local: &[IpAddr], wake: Sender<Wake>) -> Self {
         let roots = rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
         let tls = rustls::ClientConfig::builder().with_root_certificates(roots).with_no_client_auth();
         Self {
@@ -80,36 +98,134 @@ impl StdTransport {
             states: [LinkState::Closed; 3],
             tls: Arc::new(tls),
             allowed_local: allowed_local.to_vec(),
+            wake,
         }
     }
 
-    fn open(&self, host: &str, port: u16, security: Security) -> Result<(Stream, IpAddr), String> {
+    fn open(&self, host: &str, port: u16, security: Security) -> Result<(Connection, IpAddr), String> {
         let candidates: Vec<SocketAddr> =
             (host, port).to_socket_addrs().map_err(|error| format!("{host}: {error}"))?.collect();
         let allowed = candidates
             .iter()
             .find(|address| !blocked(address.ip()) || self.allowed_local.contains(&address.ip()))
             .ok_or_else(|| format!("{host}: every address is on a blocked local network (REQ-SEC-006)"))?;
-        let socket =
+        let mut socket =
             TcpStream::connect_timeout(allowed, CONNECT_TIMEOUT).map_err(|error| format!("{host}: {error}"))?;
         socket.set_nodelay(true).map_err(|error| error.to_string())?;
         socket.set_read_timeout(Some(CONNECT_TIMEOUT)).map_err(|error| error.to_string())?;
-        let stream = match security {
-            Security::Plain => Stream::Plain(socket),
+        socket.set_write_timeout(Some(CONNECT_TIMEOUT)).map_err(|error| error.to_string())?;
+        let tls = match security {
+            Security::Plain => None,
             Security::Tls => {
                 let name = rustls::pki_types::ServerName::try_from(host.to_string())
                     .map_err(|error| format!("{host}: {error}"))?;
-                let connection =
+                let mut connection =
                     rustls::ClientConnection::new(self.tls.clone(), name).map_err(|error| error.to_string())?;
-                let mut stream = rustls::StreamOwned::new(connection, socket);
-                while stream.conn.is_handshaking() {
-                    stream.conn.complete_io(&mut stream.sock).map_err(|error| format!("{host}: TLS: {error}"))?;
+                while connection.is_handshaking() {
+                    connection.complete_io(&mut socket).map_err(|error| format!("{host}: TLS: {error}"))?;
                 }
-                Stream::Tls(Box::new(stream))
+                Some(Box::new(connection))
             }
         };
-        stream.socket().set_nonblocking(true).map_err(|error| error.to_string())?;
-        Ok((stream, allowed.ip()))
+        // From here the reader thread waits on the socket for as long as it
+        // is open; the state machines' own timers decide when it has been
+        // silent too long, and closing it ends the wait.
+        socket.set_read_timeout(None).map_err(|error| error.to_string())?;
+        let reader = socket.try_clone().map_err(|error| error.to_string())?;
+        let (chunks, incoming) = mpsc::sync_channel(READS_AHEAD);
+        let wake = self.wake.clone();
+        std::thread::spawn(move || read_socket(reader, &chunks, &wake));
+        Ok((Connection { socket, tls, incoming, pending: VecDeque::new() }, allowed.ip()))
+    }
+}
+
+/// A connection's reader thread: passes on what the socket gives until it
+/// ends, or until the connection is closed and nothing takes the bytes.
+fn read_socket(mut socket: TcpStream, chunks: &SyncSender<Vec<u8>>, wake: &Sender<Wake>) {
+    let mut buffer = vec![0u8; READ_CHUNK];
+    loop {
+        let count = match socket.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(count) => count,
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(_) => break,
+        };
+        let Some(bytes) = buffer.get(..count) else { break };
+        if chunks.send(bytes.to_vec()).is_err() {
+            return;
+        }
+        let _ = wake.send(Wake::Network);
+    }
+    // The loop sees the end as the channel's: this thread's sender is the
+    // only one.
+    let _ = wake.send(Wake::Network);
+}
+
+/// Whether bytes from the reader thread are pending.
+enum Refill {
+    Ready,
+    Waiting,
+    Ended,
+}
+
+/// Takes the reader thread's next bytes when none are pending.
+fn refill(pending: &mut VecDeque<u8>, incoming: &Receiver<Vec<u8>>) -> Refill {
+    if !pending.is_empty() {
+        return Refill::Ready;
+    }
+    match incoming.try_recv() {
+        Ok(bytes) => {
+            pending.extend(bytes);
+            Refill::Ready
+        }
+        Err(TryRecvError::Empty) => Refill::Waiting,
+        Err(TryRecvError::Disconnected) => Refill::Ended,
+    }
+}
+
+/// Writes whatever records rustls has ready, blocking, within the write
+/// limit.
+fn write_records(tls: &mut rustls::ClientConnection, mut socket: &TcpStream) -> std::io::Result<()> {
+    while tls.wants_write() {
+        tls.write_tls(&mut socket)?;
+    }
+    socket.flush()
+}
+
+impl Connection {
+    fn receive(&mut self, buffer: &mut [u8]) -> Received {
+        let Self { socket, tls, incoming, pending } = self;
+        let Some(tls) = tls.as_deref_mut() else {
+            return match refill(pending, incoming) {
+                Refill::Waiting => Received::Nothing,
+                Refill::Ended => Received::Closed,
+                Refill::Ready => pending.read(buffer).map_or(Received::Closed, Received::Data),
+            };
+        };
+        loop {
+            match tls.reader().read(buffer) {
+                // The server's close_notify.
+                Ok(0) => return Received::Closed,
+                Ok(count) => return Received::Data(count),
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
+                Err(_) => return Received::Closed,
+            }
+            // Nothing decrypted waits: more records, if the socket has any.
+            match refill(pending, incoming) {
+                Refill::Ready => {}
+                Refill::Waiting => return Received::Nothing,
+                Refill::Ended => return Received::Closed,
+            }
+            // `pending` is not empty, which to rustls would be the end; a
+            // read that takes nothing from it would never finish.
+            if !matches!(tls.read_tls(pending), Ok(taken) if taken > 0) || tls.process_new_packets().is_err() {
+                return Received::Closed;
+            }
+            // An alert or a key update may need an answer.
+            if write_records(tls, socket).is_err() {
+                return Received::Closed;
+            }
+        }
     }
 }
 
@@ -144,35 +260,27 @@ impl Transport for StdTransport {
     }
 
     fn send(&mut self, connection: ConnectionId, bytes: &[u8]) -> Result<(), Self::Error> {
-        let stream = self.streams[slot(connection)].as_mut().ok_or(embedded_io::ErrorKind::NotConnected)?;
-        let blocking = |stream: &Stream, on: bool| stream.socket().set_nonblocking(!on);
-        blocking(stream, true).map_err(|_| embedded_io::ErrorKind::Other)?;
-        let result = match stream {
-            Stream::Plain(socket) => socket.write_all(bytes).and_then(|()| socket.flush()),
-            Stream::Tls(tls) => tls.write_all(bytes).and_then(|()| tls.flush()),
+        let open = self.streams[slot(connection)].as_mut().ok_or(embedded_io::ErrorKind::NotConnected)?;
+        // Written whole, blocking, within the write limit: a request or a
+        // key record is small, and the socket drains it at once.
+        let mut socket = &open.socket;
+        let result = match open.tls.as_deref_mut() {
+            None => socket.write_all(bytes).and_then(|()| socket.flush()),
+            Some(tls) => tls.writer().write_all(bytes).and_then(|()| write_records(tls, socket)),
         };
-        blocking(stream, false).map_err(|_| embedded_io::ErrorKind::Other)?;
         result.map_err(|_| embedded_io::ErrorKind::Other)
     }
 
     fn receive(&mut self, connection: ConnectionId, buffer: &mut [u8]) -> Result<Received, Self::Error> {
-        let Some(stream) = self.streams[slot(connection)].as_mut() else { return Ok(Received::Closed) };
-        let result = match stream {
-            Stream::Plain(socket) => socket.read(buffer),
-            Stream::Tls(tls) => tls.read(buffer),
-        };
-        match result {
-            Ok(0) => Ok(Received::Closed),
-            Ok(count) => Ok(Received::Data(count)),
-            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => Ok(Received::Nothing),
-            Err(_) => Ok(Received::Closed),
-        }
+        Ok(self.streams[slot(connection)].as_mut().map_or(Received::Closed, |open| open.receive(buffer)))
     }
 
     fn close(&mut self, connection: ConnectionId) {
         let index = slot(connection);
-        if let Some(stream) = self.streams[index].take() {
-            let _ = stream.socket().shutdown(std::net::Shutdown::Both);
+        // Ends the reader thread's wait; the bytes it still holds are
+        // dropped with the channel.
+        if let Some(open) = self.streams[index].take() {
+            let _ = open.socket.shutdown(std::net::Shutdown::Both);
         }
         self.states[index] = LinkState::Closed;
     }
@@ -194,9 +302,9 @@ fn send(frame: &Frame) -> std::io::Result<()> {
 }
 
 /// Reads the requests sent to the fetcher: page requests, submissions,
-/// confirmations and links to other services. Anything else is dropped.
-fn requests() -> Receiver<Frame> {
-    let (sender, receiver) = mpsc::channel();
+/// confirmations, links to other services and keys. Anything else is
+/// dropped. The loop is woken by each, and by the pipe's end.
+fn requests(wake: Sender<Wake>) {
     std::thread::spawn(move || {
         let mut input = std::io::stdin().lock();
         while let Ok(Some(frame)) = pipe::read(&mut input) {
@@ -204,12 +312,55 @@ fn requests() -> Receiver<Frame> {
                 frame,
                 Frame::Request(..) | Frame::Submit(_) | Frame::Confirm(_) | Frame::Follow(..) | Frame::Key(_)
             );
-            if wanted && sender.send(frame).is_err() {
-                break;
+            if wanted && wake.send(Wake::Request(frame)).is_err() {
+                return;
             }
         }
+        let _ = wake.send(Wake::Ended);
     });
-    receiver
+}
+
+/// The loop's wakes: the requests not yet acted on, and whether the
+/// decoder process has gone.
+struct Wakes {
+    receiver: Receiver<Wake>,
+    requests: VecDeque<Frame>,
+    ended: bool,
+}
+
+impl Wakes {
+    fn take(&mut self, wake: Wake) {
+        match wake {
+            Wake::Request(frame) => self.requests.push_back(frame),
+            // The sockets are looked at on the loop's next turn.
+            Wake::Network => {}
+            Wake::Ended => self.ended = true,
+        }
+    }
+
+    /// The next request that has arrived, without waiting.
+    fn next_request(&mut self) -> Option<Frame> {
+        while let Ok(wake) = self.receiver.try_recv() {
+            self.take(wake);
+        }
+        self.requests.pop_front()
+    }
+
+    /// Sleeps until a request, a socket or the pipe's end wakes the loop,
+    /// or until `deadline`, the state machine's next timer.
+    fn wait(&mut self, now: Instant, deadline: Option<Instant>) {
+        let woken = match deadline {
+            Some(at) => match self.receiver.recv_timeout(Duration::from_micros(at.0.saturating_sub(now.0))) {
+                Ok(wake) => Some(wake),
+                Err(RecvTimeoutError::Timeout) => None,
+                Err(RecvTimeoutError::Disconnected) => Some(Wake::Ended),
+            },
+            None => Some(self.receiver.recv().unwrap_or(Wake::Ended)),
+        };
+        if let Some(wake) = woken {
+            self.take(wake);
+        }
+    }
 }
 
 fn page_request(mpp: u16, sub: u16) -> Option<(PageAddress, Option<SubCode>)> {
@@ -223,7 +374,9 @@ pub const CHANNEL_PREFIX: &str = "channel:";
 /// Runs the fetcher for `address` until the decoder process goes away.
 pub fn run(address: &str, no_sandbox: bool, allow_local: &[IpAddr]) -> Result<(), (u8, String)> {
     let _ = rustls::crypto::ring::default_provider().install_default();
-    let requests = requests();
+    let (wake, receiver) = mpsc::channel();
+    requests(wake.clone());
+    let mut wakes = Wakes { receiver, requests: VecDeque::new(), ended: false };
     // Name resolution reads the resolver configuration and loads the C
     // library's name-service modules (decision 28 of IMPLEMENTATION-LOG.md).
     let readable: Vec<&std::path::Path> =
@@ -236,13 +389,13 @@ pub fn run(address: &str, no_sandbox: bool, allow_local: &[IpAddr]) -> Result<()
     if let Some(name) = address.strip_prefix("zxnet:") {
         let channel = neoteletext_web::zxnet::Channel::from_short_name(name)
             .map_err(|error| (crate::exit::USAGE, format!("unknown live feed: {error:?}")))?;
-        run_zxnet(&channel, &requests, allow_local);
+        run_zxnet(&channel, &mut wakes, wake, allow_local);
     } else if address.starts_with("wss://") {
         let channel = neoteletext_web::zxnet::Channel::from_identifier(address)
             .map_err(|error| (crate::exit::USAGE, format!("unknown live feed: {error:?}")))?;
-        run_zxnet(&channel, &requests, allow_local);
+        run_zxnet(&channel, &mut wakes, wake, allow_local);
     } else {
-        run_web(address, &requests, allow_local);
+        run_web(address, &mut wakes, wake, allow_local);
     }
     Ok(())
 }
@@ -251,14 +404,14 @@ fn clock(start: StdInstant) -> Instant {
     Instant(u64::try_from(start.elapsed().as_micros()).unwrap_or(u64::MAX))
 }
 
-fn run_zxnet(channel: &neoteletext_web::zxnet::Channel, requests: &Receiver<Frame>, allow_local: &[IpAddr]) {
+fn run_zxnet(channel: &neoteletext_web::zxnet::Channel, wakes: &mut Wakes, wake: Sender<Wake>, allow_local: &[IpAddr]) {
     use neoteletext_web::zxnet::{LiveEvent, LiveInput, LiveOutput, LiveStorage, ZxnetFeed};
     let mut storage = Box::new(LiveStorage::default());
     let mut feed = ZxnetFeed::new(*channel, storage.buffers(), SystemRandom);
     if let Some(&address) = allow_local.first() {
         feed.allow_local(web_address(address));
     }
-    let mut pump = Pump::new(StdTransport::new(allow_local));
+    let mut pump = Pump::new(StdTransport::new(allow_local, wake));
     let start = StdInstant::now();
     let mut buffer = vec![0u8; READ_CHUNK];
     let broken = std::cell::Cell::new(false);
@@ -286,13 +439,13 @@ fn run_zxnet(channel: &neoteletext_web::zxnet::Channel, requests: &Receiver<Fram
     };
     feed.handle(clock(start), LiveInput::Start, &mut |output| sink(output, &mut pump));
     let mut next_tick = clock(start);
-    while !broken.get() {
+    while !broken.get() && !wakes.ended {
         let mut busy = false;
         if let Some(input) = pump.poll(ConnectionId::Live, &mut buffer) {
             busy = true;
             feed.handle(clock(start), LiveInput::Net(input), &mut |output| sink(output, &mut pump));
         }
-        while let Ok(frame) = requests.try_recv() {
+        while let Some(frame) = wakes.next_request() {
             busy = true;
             if let Frame::Request(mpp, sub) = frame
                 && let Some((page, subcode)) = page_request(mpp, sub)
@@ -301,6 +454,9 @@ fn run_zxnet(channel: &neoteletext_web::zxnet::Channel, requests: &Receiver<Fram
             }
         }
         if clock(start) >= next_tick {
+            // What a tick asks for, a reconnection above all, is taken up
+            // on the next turn, not after another wait.
+            busy = true;
             let mut timer = None;
             feed.handle(clock(start), LiveInput::Tick, &mut |output| {
                 if let LiveOutput::Timer(at) = output {
@@ -311,14 +467,14 @@ fn run_zxnet(channel: &neoteletext_web::zxnet::Channel, requests: &Receiver<Fram
             next_tick = timer.unwrap_or(Instant(clock(start).0 + 200_000));
         }
         if !busy {
-            std::thread::sleep(IDLE);
+            wakes.wait(clock(start), Some(next_tick));
         }
     }
 }
 
 // One event loop; splitting it would scatter the agent's sink and state.
 #[allow(clippy::too_many_lines)]
-fn run_web(address: &str, requests: &Receiver<Frame>, allow_local: &[IpAddr]) {
+fn run_web(address: &str, wakes: &mut Wakes, wake: Sender<Wake>, allow_local: &[IpAddr]) {
     use neoteletext_web::agent::{Event, Failure, Input, Output, Source as Came, Storage, UserAgent};
     use neoteletext_web::form::{FormMethod, FormSubmission};
     use neoteletext_web::http::MediaType;
@@ -336,7 +492,7 @@ fn run_web(address: &str, requests: &Receiver<Frame>, allow_local: &[IpAddr]) {
     }
     let mut agent: Box<UserAgent<'_, SystemRandom, COOKIE_SLOTS, COOKIE_BYTES>> =
         Box::new(UserAgent::new(config, storage.buffers(), SystemRandom));
-    let mut pump = Pump::new(StdTransport::new(allow_local));
+    let mut pump = Pump::new(StdTransport::new(allow_local, wake));
     let start = StdInstant::now();
     let mut buffer = vec![0u8; READ_CHUNK];
     let broken = std::cell::Cell::new(false);
@@ -422,7 +578,7 @@ fn run_web(address: &str, requests: &Receiver<Frame>, allow_local: &[IpAddr]) {
     };
     let open = channel.map_or(Input::OpenService(address), Input::OpenChannel);
     agent.handle(clock(start), open, &mut |output| sink(output, &mut pump, &mut next_tick));
-    while !broken.get() {
+    while !broken.get() && !wakes.ended {
         let mut busy = false;
         for connection in [ConnectionId::Fetch, ConnectionId::Push] {
             if let Some(input) = pump.poll(connection, &mut buffer) {
@@ -473,7 +629,7 @@ fn run_web(address: &str, requests: &Receiver<Frame>, allow_local: &[IpAddr]) {
                 break;
             }
         }
-        while let Ok(frame) = requests.try_recv() {
+        while let Some(frame) = wakes.next_request() {
             busy = true;
             let now = clock(start);
             let mut out = |output: Output<'_>| sink(output, &mut pump, &mut next_tick);
@@ -507,11 +663,14 @@ fn run_web(address: &str, requests: &Receiver<Frame>, allow_local: &[IpAddr]) {
             }
         }
         if next_tick.is_some_and(|at| clock(start) >= at) {
+            // What a tick asks for, a reconnection above all, is taken up
+            // on the next turn, not after another wait.
+            busy = true;
             next_tick = None;
             agent.handle(clock(start), Input::Tick, &mut |output| sink(output, &mut pump, &mut next_tick));
         }
         if !busy {
-            std::thread::sleep(IDLE);
+            wakes.wait(clock(start), next_tick);
         }
     }
 }

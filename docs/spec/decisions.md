@@ -1350,3 +1350,12 @@ Decided on 20 October 2026, on the owner's instruction to remove bold, italic an
 4. **The authored stream** keeps a Font Style triplet on page 113, sent as a service sends it, so that its every-mode page shows it ignored. Page 111, which showed the styles, is removed, and its number is left unused.
 
 *Reason:* The owner's instruction.
+
+**E.97 — The fetcher process waits on its requests and sockets, never on a timer.**
+Decided on 21 October 2026, on the owner's instruction, as T42 Browser's fetcher was changed the same day (its decision 46).
+1. **Each connection has a reader thread** that reads its socket, blocking, and wakes the fetcher's loop when bytes arrive, at most four 16 KB reads ahead of the loop; TLS records are decrypted on the loop's side. Closing the connection shuts its socket down, which ends the thread.
+2. **The loop sleeps until a request from the decoder, a socket or the state machine's next timer wakes it.** It slept 10 ms whenever it was idle, so a key waited for the sleep before it went and its answer waited again: a key's round trip had a median of 17 to 21 ms; it is 0.2 to 0.5 ms (debug build, this computer's own network), and 0.3 ms on Linux inside the sandbox, whose seccomp filter allows threads.
+3. **The fetcher ends when the decoder closes the pipe,** rather than when it next fails to write to it.
+4. **A tick counts as work,** so a connection a timer asks for, a reconnection above all, is taken up on the next turn.
+
+*Reason:* Typing back is only like a terminal if a key goes at once (decision E.90); the sleep was most of the round trip. A readiness library such as `mio` would be one more dependency for three connections.
