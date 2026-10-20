@@ -214,6 +214,13 @@ impl LinkLine {
     pub const fn is_other_service(&self) -> bool {
         !self.service.is_empty() || !self.url.is_empty()
     }
+
+    /// True when the target is a web page, to open outside teletext
+    /// (decision E.88).
+    #[must_use]
+    pub fn is_web(&self) -> bool {
+        self.url.as_bytes().starts_with(crate::tti::WEB_MARK)
+    }
 }
 
 /// Where a page-number or text link leads: a page of this service, a page
@@ -227,8 +234,18 @@ pub struct LinkDestination {
     pub address: PageAddress,
     /// The sub-page, `None` for any sub-page.
     pub subcode: Option<SubCode>,
-    /// The address, when the target is one.
+    /// The address, when the target is one, as written: a web page's keeps
+    /// its `web:` mark (decision E.88).
     pub url: Text<LINK_ADDRESS_BYTES>,
+}
+
+impl LinkDestination {
+    /// True when the target is a web page, to open outside teletext
+    /// (decision E.88).
+    #[must_use]
+    pub fn is_web(&self) -> bool {
+        self.url.as_bytes().starts_with(crate::tti::WEB_MARK)
+    }
 }
 
 /// An `LK` line: typing or choosing `number` on this page leads to

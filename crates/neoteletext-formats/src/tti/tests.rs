@@ -628,6 +628,31 @@ LK,300,https://weather.example/300.t42\nLK,400,sport:100\nLT,4,0,7,http://w.exam
     writer_keeps_links(page);
 }
 
+/// Decision E.88: `web:` and an address is a web page, allowed in `LN` and
+/// `LT` lines and refused in `LK`, kept whole with its mark.
+#[test]
+fn a_web_target_is_kept_with_its_mark_and_refused_for_a_number() {
+    let text = b"PN,10000\nOL,4,Story here\nLN,G,web:https://www.example/story,Story\n\
+LT,4,0,5,web:https://www.example/story\nLK,300,web:https://www.example/\nLT,5,0,4,web:ftp://x.example/\n";
+    let (pages, diagnostics) = read(text);
+    let page = &pages[0];
+    let green = page.links.as_slice()[0];
+    assert_eq!(green.url.as_bytes(), b"web:https://www.example/story");
+    assert!(green.is_web() && green.is_other_service());
+    let text_link = page.text_links.as_slice()[0];
+    assert!(text_link.destination.is_web());
+    assert_eq!(page.text_links.as_slice().len(), 1, "a web target must be http or https");
+    assert!(page.number_links.as_slice().is_empty(), "never in LK");
+    assert_eq!(diagnostics.len(), 2, "{diagnostics:?}");
+    #[cfg(feature = "std")]
+    {
+        let mut written = Vec::new();
+        crate::write::write_tti(&[page], &mut written).unwrap();
+        let (again, _) = read(&written);
+        assert_eq!(again[0].text_links.as_slice()[0].destination.url.as_bytes(), b"web:https://www.example/story");
+    }
+}
+
 #[cfg(feature = "std")]
 fn writer_keeps_links(page: &PageFile) {
     let mut written = Vec::new();

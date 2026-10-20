@@ -106,8 +106,13 @@ fn service_index(name: &[u8], services: &[String]) -> Option<Named> {
     services.iter().position(|known| *known == name).and_then(|index| u8::try_from(index).ok()).map(Named::Linked)
 }
 
-/// A link's destination with its service resolved; `None` when null.
+/// A link's destination with its service resolved; `None` when null. A
+/// link to a web page is null here: this viewer opens only teletext
+/// (decision E.88).
 fn destination(target: &page::LinkDestination, services: &[String]) -> Option<Destination> {
+    if target.is_web() {
+        return None;
+    }
     if !target.url.is_empty() {
         return Some(Destination::Address(String::from_utf8_lossy(target.url.as_bytes()).into_owned()));
     }

@@ -42,6 +42,9 @@ const PAGE_COMMANDS: [[u8; TTI_COMMAND_BYTES]; 17] = [
 const ADDRESS_MARK: &[u8] = b"://";
 /// The schemes an address in a page may use.
 const ADDRESS_SCHEMES: [&[u8]; 2] = [b"https://", b"http://"];
+/// What marks a link to a web page, to open outside teletext, rather than
+/// a teletext channel (Appendix E.1, decision E.88).
+pub const WEB_MARK: &[u8] = b"web:";
 /// The last row a text link may be on: rows 1 to 23 are the page's text.
 const TEXT_LINK_LAST_ROW: u8 = 23;
 
@@ -211,9 +214,12 @@ fn service_name(text: &[u8]) -> Option<Text<SERVICE_NAME_BYTES>> {
 /// A link target: `mpp`, `mpp:ssss`, `name:mpp` or `name:mpp:ssss`
 /// (Appendix E.1).
 /// An address as a link target: `http` or `https`, printable ASCII
-/// without spaces or commas, and short enough to keep.
+/// without spaces or commas, and short enough to keep; or `web:` and such
+/// an address, kept whole with its mark (decision E.88).
 fn link_address(text: &[u8]) -> Option<Text<LINK_ADDRESS_BYTES>> {
-    let lower_scheme = |scheme: &[u8]| text.get(..scheme.len()).is_some_and(|start| start.eq_ignore_ascii_case(scheme));
+    let address = text.strip_prefix(WEB_MARK).unwrap_or(text);
+    let lower_scheme =
+        |scheme: &[u8]| address.get(..scheme.len()).is_some_and(|start| start.eq_ignore_ascii_case(scheme));
     let valid = ADDRESS_SCHEMES.iter().any(|scheme| lower_scheme(scheme))
         && text.iter().all(|&byte| byte.is_ascii_graphic() && byte != b',');
     let (url, truncated) = Text::from_bytes(text);
@@ -223,7 +229,7 @@ fn link_address(text: &[u8]) -> Option<Text<LINK_ADDRESS_BYTES>> {
 /// A link target of Appendix E, or an address (concept section 3).
 fn link_destination(text: &[u8]) -> Option<LinkDestination> {
     let text = text.trim_ascii();
-    if text.windows(ADDRESS_MARK.len()).any(|window| window == ADDRESS_MARK) {
+    if text.starts_with(WEB_MARK) || text.windows(ADDRESS_MARK.len()).any(|window| window == ADDRESS_MARK) {
         let url = link_address(text)?;
         return Some(LinkDestination { service: Text::new(), address: DEFAULT_ADDRESS, subcode: None, url });
     }
@@ -637,7 +643,9 @@ impl TtiReader {
         let mut fields = Args::new(args);
         let number = page_address(fields.next().trim_ascii());
         let destination = link_destination(fields.rest());
-        let (Some(number), Some(destination)) = (number, destination) else {
+        // Typing a page number never leaves teletext (decision E.88).
+        let (Some(number), Some(destination)) = (number, destination.filter(|destination| !destination.is_web()))
+        else {
             self.issue(IssueKind::BadLinkTarget, out);
             return;
         };
