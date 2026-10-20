@@ -43,9 +43,9 @@ std = []
 [dev-dependencies]
 proptest = "1.7.0"
 # The golden tests compose and render pages, with every capability the
-# golden rasters were taken with: the non-default bold, italic and
-# animation among them, so a build of this crate alone renders the same.
-neoteletext-core = { workspace = true, features = ["default", "bold", "italic", "animation"] }
+# golden rasters were taken with: the non-default animation among them,
+# so a build of this crate alone renders the same.
+neoteletext-core = { workspace = true, features = ["default", "animation"] }
 
 [lints]
 workspace = true

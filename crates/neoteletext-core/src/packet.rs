@@ -31,7 +31,7 @@ mod objects;
 mod page_data;
 
 pub use function::{
-    ColourData, DisplayAttributes, FontStyleData, ObjectKind, ObjectNumber, ObjectSource, ObjectUsage, TripletFunction,
+    ColourData, DisplayAttributes, ObjectKind, ObjectNumber, ObjectSource, ObjectUsage, TripletFunction,
 };
 pub use links::CompositionalLink;
 pub use objects::{
@@ -1037,8 +1037,13 @@ mod tests {
             0x2D885,
             [0x27, 0x08, 0xDB],
         );
-        let style = FontStyleData { proportional: true, bold: true, italic: true, rows: 2 };
-        worked(TripletFunction::FontStyle { column: 4, style }, 0x13B84, [0x20, 0xB8, 0x27]);
+        // Font Style, with every style and two more rows, is not acted on
+        // (decision E.96).
+        worked(
+            TripletFunction::UnsupportedColumn { column: 4, mode: 0b01110, data: 0x27 },
+            0x13B84,
+            [0x20, 0xB8, 0x27],
+        );
     }
 
     /// REQ-PKT-010: one triplet of every other mode of Tables 28 and 29,

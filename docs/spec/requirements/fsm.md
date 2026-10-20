@@ -245,9 +245,9 @@ The stack is at most three records deep, because of the nesting rules of REQ-OBJ
 | Walking | Any other Object Invocation | Skip it and count it | Walking |
 | Walking | Any other row triplet: a reserved mode, DRCS Mode (decision E.95), or a Programme Delivery Control mode | None (REQ-L25-052) | Walking |
 | Walking | Column triplet of a reserved mode, or of mode 00110 | None; the active position is unchanged (REQ-L25-004) | Walking |
-| Walking | Column triplet of mode 01101, DRCS Character Invocation | Column becomes the address; nothing is emitted (decision E.95) | Walking |
+| Walking | Column triplet of mode 01101, DRCS Character Invocation, or 01110, Font Style | Column becomes the address; nothing is emitted (decisions E.95 and E.96) | Walking |
 | Walking | Column triplet of a character mode (REQ-L25-010) | Column becomes the address. If the data is 2/0 or above, emit a character event at the origin plus the active position, with the source's priority, unless REQ-OBJ-014 or REQ-L25-050 discards it | Walking |
-| Walking | Column triplet of an attribute mode: 00000, 00011, 00111, 01000, 01100 or 01110 | Column becomes the address. Emit an attribute event at the origin plus the active position, unless REQ-OBJ-014 or REQ-L25-050 discards it, or the level ignores the mode (REQ-L25-001) | Walking |
+| Walking | Column triplet of an attribute mode: 00000, 00011, 00111, 01000 or 01100 | Column becomes the address. Emit an attribute event at the origin plus the active position, unless REQ-OBJ-014 or REQ-L25-050 discards it, or the level ignores the mode (REQ-L25-001) | Walking |
 | Returning | The ended source is an object | Pop the walk record: restore the invoker's active position and origin; cancel the Origin Modifier (REQ-OBJ-002) | Walking |
 | Returning | The ended source is the local enhancement data | None | Finished |
 | Placing default objects | Next default object of REQ-OBJ-040, in order, that is found and accepted | The source is the default object, with origin and active position row 0, column 0 | Walking |
@@ -255,6 +255,7 @@ The stack is at most three records deep, because of the nesting rules of REQ-OBJ
 | Placing default objects | No more default objects | None | Finished |
 
 *Amended 20 October 2026 (decision E.95):* DRCS is not decoded, and the parts of this requirement that concerned it are removed.
+*Amended 20 October 2026 (decision E.96):* the Level 3.5 font styles are not drawn, and the parts of this requirement that concerned them are removed.
 
 *Verification:* The transition tests of REQ-FSM-009, and the tests of REQ-TST-015 and REQ-TST-017.
 
@@ -268,7 +269,6 @@ The state record of REQ-FSM-006 is kept for the underlying plane, which is the L
 - the flash mode, rate and phase;
 - conceal, with whether it was set by a non-spacing attribute;
 - window;
-- the font styles, including those extended from rows above by REQ-L25-028;
 - the horizontal part of the size;
 - the current G0 and G2 designation of the enhancement data.
 
@@ -285,4 +285,5 @@ The row starts from the start-of-row defaults, re-mapped as REQ-L25-022 describe
 
 The row after a row with spacing double height or double size is handled as REQ-L25-026 describes before this machine runs: its Level 1 bytes are not used, and only enhancement events are resolved on it.
 *Reason:* Annex C.2 orders contending attributes by where they take effect, then where they are placed, then transmission order. Steps 1 to 3 apply exactly that order to the underlying plane. Steps 4 to 6 add the planes of clause 13.2, which reproduce the worked example of clause 13.9.
+*Amended 20 October 2026 (decision E.96):* the Level 3.5 font styles are not drawn, and the parts of this requirement that concerned them are removed.
 *Verification:* The transition tests of REQ-FSM-009, and the worked examples of REQ-TST-016.

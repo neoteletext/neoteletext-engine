@@ -56,8 +56,7 @@ impl G3Glyph {
 /// How the renderer draws a character (REQ-RND-016).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum CharClass {
-    /// A G0 or G2 character: a 5 by 9 glyph, with rounding, underline and
-    /// the font styles.
+    /// A G0 or G2 character: a 5 by 9 glyph, with rounding and underline.
     Text,
     /// A G3 character, by its code (REQ-RND-037).
     G3(u8),

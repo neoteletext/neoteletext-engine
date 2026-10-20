@@ -200,8 +200,7 @@ fn row_0_is_always_bedstead() {
     }
 }
 
-/// REQ-FNT-008: colours, underline and the font styles apply as to any
-/// character.
+/// REQ-FNT-008: colours and underline apply as to any character.
 #[test]
 fn attributes_apply() {
     let grid = Grid::EMPTY;

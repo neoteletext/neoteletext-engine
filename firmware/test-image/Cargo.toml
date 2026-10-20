@@ -22,13 +22,11 @@ level25 = ["neoteletext-core/level25"]
 capabilities = [
     "level25",
     "neoteletext-core/objects",
-    "neoteletext-core/bold",
-    "neoteletext-core/italic",
     "neoteletext-core/side-panels",
     "neoteletext-core/colours32",
     "neoteletext-core/animation",
 ]
-modern-classic = ["level25", "neoteletext-core/objects", "neoteletext-core/bold"]
+modern-classic = ["level25", "neoteletext-core/objects", "neoteletext-core/nonspacing-attributes"]
 render = ["neoteletext-core/render"]
 bedstead = ["render", "neoteletext-core/bedstead"]
 viewer = ["neoteletext-core/viewer"]

@@ -27,8 +27,8 @@ use crate::config::{CellMode, Config};
 use crate::consts::{
     ADJACENT_CLUT_FLIP, CELL_DOTS, CELL_FIELD_LINES, CELL_HEIGHT, CELL_HEIGHT_SMALL, CELL_WIDTH, COLOUR_MAP_ENTRIES,
     COLOUR_TRANSPARENT, COLOURS, COLUMNS, FLASH_CYCLE_US, FLASH_FAST_HALF_UNITS, FLASH_FAST_OFF_UNITS,
-    FLASH_SLOW_ON_UNITS, FLASH_UNITS, GLYPH_DOTS, GLYPH_LINES, INDEX_4BIT_MAX, ITALIC_SHIFT_LOG2, MOSAIC_ROW_TENTHS,
-    PAGE_WIDTH, PALETTE_CONCEAL_BASE, PALETTE_FLASH_BASE, PALETTE_SIZE, PALETTE_TRANSPARENT, RECEIVER_COLUMNS, ROWS,
+    FLASH_SLOW_ON_UNITS, FLASH_UNITS, GLYPH_DOTS, GLYPH_LINES, INDEX_4BIT_MAX, MOSAIC_ROW_TENTHS, PAGE_WIDTH,
+    PALETTE_CONCEAL_BASE, PALETTE_FLASH_BASE, PALETTE_SIZE, PALETTE_TRANSPARENT, RECEIVER_COLUMNS, ROWS,
     SIDE_PANEL_AREA_COLUMNS, SIDE_PANEL_FIRST_COLUMN, SIDE_PANEL_MAX_COLUMNS,
 };
 use crate::glyphs::{CharClass, GlyphSet, class};
@@ -413,26 +413,13 @@ pub(crate) fn font_line_20(rows: &[u16], line: usize, rounding: bool) -> u16 {
     round(a, row(neighbour)) & CELL_MASK
 }
 
-/// The font styles (REQ-RND-039) and underline (REQ-RND-035) of a G0 or
-/// G2 character's line, after rounding. Kept out of line: Level 1 cells
-/// never have them, and the Level 1 path is every port's hot path.
+/// The underline (REQ-RND-035) of a G0 or G2 character's line, after
+/// rounding. Kept out of line: Level 1 cells never have it, and the Level 1
+/// path is every port's hot path.
 #[inline(never)]
 fn styled_line(mask: u16, cell: &Cell, source: usize, height: usize, underline: bool) -> u16 {
     let mut mask = mask;
-    let font = cell.attributes.font();
-    // Each style is drawn only when its capability is compiled in
-    // (decision E.71).
-    if cfg!(feature = "bold") && font.bold {
-        // Bold: the line ORed with itself one half-dot to the right.
-        mask |= mask >> 1;
-    }
-    let last = height.saturating_sub(1);
-    if cfg!(feature = "italic") && font.italic {
-        // Italic: shifted right by the lines below this one divided by 4.
-        let below = last.saturating_sub(source);
-        mask = mask.checked_shr((below >> ITALIC_SHIFT_LOG2) as u32).unwrap_or(0);
-    }
-    if underline && cell.attributes.underline() && source == last {
+    if underline && cell.attributes.underline() && source == height.saturating_sub(1) {
         // Underline: the last dot line, across the whole cell (decision
         // E.47).
         mask = CELL_MASK;
@@ -467,8 +454,7 @@ const fn source_line(size: Size, line: usize, height: usize) -> usize {
     }
 }
 
-/// A G3 character's line (REQ-RND-037): no rounding, font styles or
-/// underline. Kept out of line, like [`styled_line`].
+/// A G3 character's line (REQ-RND-037): no rounding or underline. Kept out of line, like [`styled_line`].
 #[inline(never)]
 fn g3_line(glyphs: &GlyphSet, code: u8, source: usize, mode: CellMode) -> u16 {
     let glyph = glyphs.g3(code);
@@ -544,9 +530,9 @@ fn resolved_colours<const PANEL_ROWS: usize>(
 /// The cell raster (REQ-RND-016): line `line` of the cell at text row `row`
 /// and column `column` (0 to 39 on the main page, 40 to 71 in the
 /// side-panel area), where `line` is 0 to 19 in the 12-by-20 mode and 0 to
-/// 9 in the 12-by-10 mode. Size, glyphs, mosaics, G3, underline, the
-/// font styles and, in the resolved mode, invert, flash, conceal and the
-/// display planes are all applied here.
+/// 9 in the 12-by-10 mode. Size, glyphs, mosaics, G3, underline and, in
+/// the resolved mode, invert, flash, conceal and the display planes are
+/// all applied here.
 #[must_use]
 // The row renderer calls this for every cell of every line; inlined into
 // its loop it measured 2 times faster (REQ-TST-050, `tests/performance.rs`).

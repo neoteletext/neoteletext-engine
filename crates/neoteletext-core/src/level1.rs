@@ -8,7 +8,7 @@
 //!
 //! The [`Cell`] and [`Grid`] also hold what Levels 2.5 and 3.5 add
 //! (decision E.42, REQ-L25-006): Colour Map colours, size in two parts,
-//! underline, invert, flash modes, font styles, which source wrote each
+//! underline, invert, flash modes, which source wrote each
 //! character, the side-panel area, the Colour Map, and the screen and row
 //! colours. The Level 1 decoding leaves all of them at their defaults.
 
@@ -109,18 +109,6 @@ pub enum FlashRate {
     FastPhase3,
 }
 
-/// The Level 3.5 font styles of a cell (Table 29 mode 01110, decision
-/// E.50). They apply to G0 and G2 characters only.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, Default)]
-pub struct FontStyle {
-    /// Bold.
-    pub bold: bool,
-    /// Italic.
-    pub italic: bool,
-    /// Proportional spacing, recorded but drawn at the fixed pitch.
-    pub proportional: bool,
-}
-
 /// Which source wrote a cell's character (REQ-L25-006); the display
 /// priority of clause 13.2 runs from Passive down to Level 1.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
@@ -140,31 +128,26 @@ pub enum CharSource {
 
 /// The cell attributes that Levels 2.5 and 3.5 add (decision E.42,
 /// REQ-L25-006): the horizontal part of the size, the flash mode and
-/// rate, underline, invert, the font styles, and the source of the
-/// character. They are packed into two bytes because a grid holds 1768
+/// rate, underline, invert, and the source of the character. They are packed into two bytes because a grid holds 1768
 /// cells and ports with small memories hold grids; read and set them with
 /// the methods.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub struct CellAttributes(u16);
 
 /// Bit layout of [`CellAttributes`]: width bits 0 and 1, flash mode 2 and
-/// 3, flash rate 4 and 5, underline 6, invert 7, bold 8, italic 9,
-/// proportional 10, source 11 to 13.
+/// 3, flash rate 4 and 5, underline 6, invert 7, source 8 to 10.
 const WIDTH_SHIFT: u32 = 0;
 const FLASH_MODE_SHIFT: u32 = 2;
 const FLASH_RATE_SHIFT: u32 = 4;
 const UNDERLINE_BIT: u16 = 1 << 6;
 const INVERT_BIT: u16 = 1 << 7;
-const BOLD_BIT: u16 = 1 << 8;
-const ITALIC_BIT: u16 = 1 << 9;
-const PROPORTIONAL_BIT: u16 = 1 << 10;
-const SOURCE_SHIFT: u32 = 11;
+const SOURCE_SHIFT: u32 = 8;
 const TWO_BITS: u16 = 0b11;
 const THREE_BITS: u16 = 0b111;
 
 impl CellAttributes {
-    /// Normal width, steady normal slow flash settings, no underline,
-    /// invert or font style, written by the Level 1 page.
+    /// Normal width, steady normal slow flash settings, no underline or
+    /// invert, written by the Level 1 page.
     pub const DEFAULT: Self = Self(0);
 
     const fn field(self, shift: u32, mask: u16) -> u16 {
@@ -269,24 +252,6 @@ impl CellAttributes {
         self.with_bit(INVERT_BIT, on)
     }
 
-    /// The Level 3.5 font styles.
-    #[must_use]
-    pub const fn font(self) -> FontStyle {
-        FontStyle {
-            bold: self.0 & BOLD_BIT != 0,
-            italic: self.0 & ITALIC_BIT != 0,
-            proportional: self.0 & PROPORTIONAL_BIT != 0,
-        }
-    }
-
-    /// With other font styles.
-    #[must_use]
-    pub const fn with_font(self, font: FontStyle) -> Self {
-        self.with_bit(BOLD_BIT, font.bold)
-            .with_bit(ITALIC_BIT, font.italic)
-            .with_bit(PROPORTIONAL_BIT, font.proportional)
-    }
-
     /// Which source wrote the character.
     #[must_use]
     pub const fn source(self) -> CharSource {
@@ -340,7 +305,7 @@ pub struct Cell {
     /// The source byte failed parity.
     pub parity_failed: bool,
     /// The attributes of Levels 2.5 and 3.5: width, flash mode and rate,
-    /// underline, invert, font styles and the character's source.
+    /// underline, invert and the character's source.
     pub attributes: CellAttributes,
 }
 
@@ -1318,7 +1283,7 @@ mod tests {
         let attributes = CellAttributes::DEFAULT.with_invert(true);
         grid.panel_cell_mut(1, 40).unwrap().attributes = attributes;
         assert!(grid.panels[0][0].attributes.invert());
-        grid.cells[3][4].attributes = attributes.with_font(FontStyle { bold: true, ..FontStyle::default() });
+        grid.cells[3][4].attributes = attributes.with_underline(true);
         grid.row_colours[5] = 17;
         grid.clear();
         assert_eq!(grid, Grid::empty());
@@ -1328,17 +1293,12 @@ mod tests {
     /// disturbing the others.
     #[test]
     fn cell_attributes_pack_independently() {
-        let fonts = [
-            FontStyle::default(),
-            FontStyle { bold: true, italic: false, proportional: true },
-            FontStyle { bold: false, italic: true, proportional: false },
-        ];
         let sources =
             [CharSource::Level1, CharSource::Local, CharSource::Active, CharSource::Adaptive, CharSource::Passive];
         for width in [Width::Normal, Width::LeftHalf, Width::RightHalf] {
             for mode in [FlashMode::Normal, FlashMode::Inverted, FlashMode::AdjacentClut] {
                 for rate in [FlashRate::Slow, FlashRate::FastPhase1, FlashRate::FastPhase2, FlashRate::FastPhase3] {
-                    for (font, source) in fonts.iter().zip(sources.iter().cycle()) {
+                    for source in &sources {
                         for flags in 0..4 {
                             let attributes = CellAttributes::DEFAULT
                                 .with_width(width)
@@ -1346,12 +1306,11 @@ mod tests {
                                 .with_flash_rate(rate)
                                 .with_underline(flags & 1 != 0)
                                 .with_invert(flags & 2 != 0)
-                                .with_font(*font)
                                 .with_source(*source);
                             assert_eq!(attributes.width(), width);
                             assert_eq!((attributes.flash_mode(), attributes.flash_rate()), (mode, rate));
                             assert_eq!((attributes.underline(), attributes.invert()), (flags & 1 != 0, flags & 2 != 0));
-                            assert_eq!((attributes.font(), attributes.source()), (*font, *source));
+                            assert_eq!(attributes.source(), *source);
                         }
                     }
                 }

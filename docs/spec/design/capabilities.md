@@ -4,7 +4,7 @@ How the decoder's optional capabilities are switched on and off at compile time,
 
 The rules are REQUIREMENTS.md decision E.71 and REQ-GEN-020, built on decision E.61 (compile-time features). Where this document and REQUIREMENTS.md differ, REQUIREMENTS.md wins.
 
-Downloadable characters (DRCS), monochrome and in colour, were removed on 20 October 2026 with their features `drcs` and `drcs-multicolour` (decision E.95).
+Downloadable characters (DRCS), monochrome and in colour, were removed on 20 October 2026 with their features `drcs` and `drcs-multicolour` (decision E.95), and bold and italic characters with `bold` and `italic` (decision E.96).
 
 ## 1. The principle
 
@@ -20,7 +20,7 @@ Those limits are the style. A decoder that removes them can still show teletext 
 
 The later levels of the standard, 2.5 and 3.5 (ETSI EN 300 706), add capabilities of two kinds:
 
-- **those that keep the constraints and make pages easier to write and to read:** more languages, colour without spending a character cell, reusable page parts, custom characters that sit in the grid like any other character, and bold for legibility;
+- **those that keep the constraints and make pages easier to write and to read:** more languages, colour without spending a character cell, reusable page parts, and custom characters that sit in the grid like any other character;
 - **those that remove the constraints:** thousands of colours, typographic styling, a wider page, per-pixel colour images, and motion.
 
 The project keeps the first kind and leaves out the second. The second kind is not deleted: every one of those capabilities is implemented and tested, and can be compiled in when a use needs it. The recommended build, the **modern-classic** profile, has them switched off.
@@ -43,14 +43,12 @@ The project keeps the first kind and leaves out the second. The second kind is n
 | Non-spacing colour and character attributes | Colour and style changes no longer take up a character cell, so text and graphics can sit side by side. The page is still a grid of cells. | `level25` |
 | The additional international character sets | Cyrillic, Greek, Arabic, Hebrew and the accented Latin options, so services can publish in their own languages. | always compiled |
 | Reusable page objects | Parts of a page defined once and placed many times. They change how pages are sent, not how they look. | `objects` |
-| Bold characters | Legibility, especially on small or distant screens. | `bold` |
 
 ### Implemented, but switched off in the profile: the capabilities that would dilute the style
 
 | Capability | What it would do to the page | Feature |
 |---|---|---|
 | The 32-colour palette | Lets a page redefine its colours from 4,096, which allows photographic shading and brand colours in place of the eight. | `colours32` |
-| Italic characters | Typographic styling that teletext never had. | `italic` |
 | Side panels | Widens the page beyond its 40 columns, to as many as 72. | `side-panels` |
 | Animation | Flash in several modes, rates and phases, sweeping across the page: motion graphics, beyond the single slow flash of Level 1. | `animation` |
 
@@ -67,12 +65,10 @@ Each capability is a Cargo feature of `neoteletext-core`:
 | `level15` | — | Level 1.5: accented characters and the G3 set placed by the page's enhancement data |
 | `level25` | — | Levels 2.5 and 3.5: the enhancement processor, with non-spacing attributes and characters |
 | `objects` | `level25` | Active, Adaptive and Passive objects, and default objects |
-| `bold` | `level25` | Bold characters |
-| `italic` | `level25` | Italic characters |
 | `side-panels` | `level25` | Side panels |
 | `colours32` | `level25` | Colour lookup tables 2 and 3, and redefinition of any table |
 | `animation` | `level25` | The additional flash functions |
-| `modern-classic` | — | The profile: `level15`, `level25`, `render`, `bedstead`, `viewer`, `forms`, `objects` and `bold` |
+| `modern-classic` | — | The profile: `level15`, `level25`, `render`, `bedstead`, `viewer`, `forms` and `objects` |
 
 **The default build has every feature on.** That is the rule of decision E.61, so that a plain dependency works. It is also what `neottx` and the conformance tests use, because they must show the whole of the standard. A port chooses the profile by turning the defaults off:
 
@@ -89,19 +85,17 @@ A capability is decided in one place in the decoder and, where it is drawn diffe
 | Feature | Where the decoder decides | Where the renderer decides |
 |---|---|---|
 | `objects` | Object invocations and default objects in the enhancement walk | — |
-| `bold`, `italic` | The Font Style triplet | Drawing a styled line |
 | `side-panels` | The side panel fields of X/28 and M/29 | The width of each row |
 | `colours32` | The Colour Map's colour words | — (the Colour Map itself) |
 | `animation` | The Additional Flash Functions triplet | — |
 
-Each test is a constant such as `cfg!(feature = "italic")`. The compiler removes the branch that cannot run, and the linker removes the code only that branch used. A build without a capability therefore contains neither its decoding nor its drawing, and pays nothing for it at run time.
+Each test is a constant such as `cfg!(feature = "animation")`. The compiler removes the branch that cannot run, and the linker removes the code only that branch used. A build without a capability therefore contains neither its decoding nor its drawing, and pays nothing for it at run time.
 
 ### What happens to a page that uses a capability compiled out
 
 | Feature compiled out | The page's data | What the viewer sees |
 |---|---|---|
 | `objects` | Invocations and default objects ignored | The page without its objects; its own enhancement data still applies |
-| `bold`, `italic` | The style not applied | Plain characters |
 | `side-panels` | No side panels | A 40-column page; anything placed in a panel is outside the page |
 | `colours32` | No redefinition; tables 2 and 3 are copies of tables 0 and 1 | At most the sixteen default colours, with the eight classic colours as the default |
 | `animation` | The triplet ignored | Steady text, except Level 1 flash, which still flashes |

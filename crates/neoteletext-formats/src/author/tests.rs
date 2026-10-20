@@ -16,13 +16,16 @@ use crate::page::RawBody;
 use neoteletext_core::consts::PACKET_LINKS;
 use neoteletext_core::ecc::{hamming84_encode, hamming2418_encode};
 use neoteletext_core::packet::{
-    Decoded, DefaultObject, FontStyleData, MotPageEntry, ObjectKind, ObjectPacket, ObjectSource, ObjectUsage,
-    TripletFunction, decode, mot_object_link,
+    Decoded, DefaultObject, MotPageEntry, ObjectKind, ObjectPacket, ObjectSource, ObjectUsage, TripletFunction, decode,
+    mot_object_link,
 };
 use neoteletext_core::types::Magazine;
 use std::vec::Vec;
 
 const BOTH: ObjectUsage = ObjectUsage(0b11);
+/// Font Style data with proportional spacing, bold and italic (D0 to D2)
+/// for two more rows (D6 to D4), Table 29.
+const EVERY_STYLE_TWO_ROWS: u8 = 0b010_0111;
 
 fn values(triplets: &Triplets) -> Vec<u32> {
     let resolve = |_: LocalObject, _: ObjectKind| -> Result<Triplet> { Err(AuthorError::UnknownLocalObject) };
@@ -320,7 +323,7 @@ fn drcs_and_character_triplets_match_the_worked_encodings() {
         ),
         (
             one(|t| {
-                t.font(4, FontStyleData { proportional: true, bold: true, italic: true, rows: 2 });
+                t.function(TripletFunction::UnsupportedColumn { column: 4, mode: 0b01110, data: EVERY_STYLE_TWO_ROWS });
             }),
             0x13B84,
             [0x44, 0x6E, 0x53],

@@ -167,11 +167,12 @@ A test shall decode the same streams with this project and with zvbi 0.2.44 at i
 - the character, as Unicode, with zvbi's private value 0xEF00 plus the code mapped to G3 positions;
 - the foreground and background colours, as Colour Map indices and not as colours, because zvbi's values for CLUT 1 entries 5 and 6 differ from Table 30 (decision E.43);
 - the size;
-- the underline, flash, conceal, bold, italic and proportional flags;
+- the underline, flash and conceal flags;
 - the screen colour index.
 
 The streams shall be the authored streams of REQ-TST-024 and the real data of REQ-TST-025, limited to streams whose triplets keep the order of Annex A.4 (decision E.46). The test shall also check the reading of the magazine of a Magazine Organization Table link (decision E.52), and record the result in that decision. DRCS cells shall not be compared, since this receiver does not decode DRCS and shows the Level 1 character there (decision E.95). Every difference shall be explained in the test source or fixed.
 *Amended 20 October 2026 (decision E.95):* DRCS is not decoded, and the parts of this requirement that concerned it are removed.
+*Amended 20 October 2026 (decision E.96):* the Level 3.5 font styles are not drawn, and the parts of this requirement that concerned them are removed.
 *Verification:* Test.
 
 **REQ-TST-024 — Authored Level 2.5 and 3.5 test streams with golden rasters.**

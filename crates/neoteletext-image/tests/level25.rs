@@ -16,7 +16,7 @@ use neoteletext_core::colour::{SidePanels, colour_index};
 use neoteletext_core::config::CellMode;
 use neoteletext_core::consts::{CELL_HEIGHT, CELL_WIDTH, COLUMNS, ROWS};
 use neoteletext_core::glyphs::GlyphSet;
-use neoteletext_core::level1::{Cell, CellAttributes, FlashMode, FlashRate, FontStyle, Glyph, Grid, Size, Width};
+use neoteletext_core::level1::{Cell, CellAttributes, FlashMode, FlashRate, Glyph, Grid, Size, Width};
 use neoteletext_core::render::{
     ALL_ROWS, ColourMode, FlashPhase, IndexBuffer, IndexFormat, RenderOptions, render_screen, row_width,
 };
@@ -27,7 +27,7 @@ use std::fmt::Write as _;
 use std::path::PathBuf;
 
 /// Raise when Level 2.5 and 3.5 rendering changes on purpose (REQ-TST-030).
-const FORMAT_VERSION: u32 = 4;
+const FORMAT_VERSION: u32 = 5;
 
 const BLACK: u8 = 0;
 const RED: u8 = 1;
@@ -203,12 +203,11 @@ fn g3_page() -> Grid {
 }
 
 /// Double width, double height and double size (REQ-RND-034), underline
-/// (REQ-RND-035), invert and conceal (REQ-RND-036) and the font styles
-/// (REQ-RND-039).
+/// (REQ-RND-035), and invert and conceal (REQ-RND-036).
 fn attributes_page() -> Grid {
     let mut grid = Grid::EMPTY;
     let plain = CellAttributes::DEFAULT;
-    write(&mut grid, 1, 2, "Size, underline, invert, styles", WHITE, BLACK, plain);
+    write(&mut grid, 1, 2, "Size, underline and invert", WHITE, BLACK, plain);
     for (offset, byte) in "DOUBLE".bytes().enumerate() {
         let glyph = Glyph::Char(CharRef::new(latin(), byte));
         let column = 2 + offset * 2;
@@ -242,25 +241,6 @@ fn attributes_page() -> Grid {
         put(&mut grid, 8, column, mosaic);
     }
     write(&mut grid, 10, 2, "Inverted text", RED, WHITE, plain.with_invert(true));
-    write(&mut grid, 12, 2, "Bold", WHITE, BLACK, plain.with_font(FontStyle { bold: true, ..FontStyle::default() }));
-    write(
-        &mut grid,
-        12,
-        10,
-        "Italic",
-        WHITE,
-        BLACK,
-        plain.with_font(FontStyle { italic: true, ..FontStyle::default() }),
-    );
-    write(
-        &mut grid,
-        12,
-        20,
-        "Both",
-        WHITE,
-        BLACK,
-        plain.with_font(FontStyle { bold: true, italic: true, proportional: true }),
-    );
     let mut concealed = Grid::EMPTY;
     write(&mut concealed, 0, 0, "Concealed until revealed", MAGENTA, BLACK, plain);
     for (column, cell) in concealed.cells[0].iter().enumerate().take(24) {

@@ -34,16 +34,13 @@ level15 = []
 # non-spacing attributes and characters. The capabilities below are each a
 # feature of their own (decision E.71, REQ-GEN-020).
 level25 = []
-# The non-spacing attributes (Table 27): colours, flash, display
-# attributes and font style placed by X/26 triplets. Off by default, the
+# The non-spacing attributes (Table 27): colours, flash and display
+# attributes placed by X/26 triplets. Off by default, the
 # owner's choice: without it those triplets only set the column, and
 # characters and objects are still placed.
 nonspacing-attributes = ["level25"]
 # Active, Adaptive and Passive objects, and default objects (area OBJ).
 objects = ["level25"]
-# Bold and italic characters (Table 28, Font Style).
-bold = ["nonspacing-attributes"]
-italic = ["nonspacing-attributes"]
 # Side panels (clause 12.5).
 side-panels = ["level25"]
 # CLUTs 2 and 3 and the redefinition of any CLUT (clause 12.4).
@@ -57,9 +54,9 @@ animation = ["nonspacing-attributes"]
 # with the default features off.
 classic = ["level15", "render", "bedstead", "viewer"]
 # The modern-classic profile (decision E.71): Level 1.5, and of Levels 2.5
-# and 3.5 only the non-spacing attributes, objects and bold. Used with the
+# and 3.5 only the non-spacing attributes and objects. Used with the
 # default features off.
-modern-classic = ["level15", "level25", "nonspacing-attributes", "render", "bedstead", "viewer", "forms", "objects", "bold"]
+modern-classic = ["level15", "level25", "nonspacing-attributes", "render", "bedstead", "viewer", "forms", "objects"]
 # The row renderer and the generated G3 glyphs (area RND).
 render = []
 # Bedstead, the one bundled font (REQ-FNT-001, decision E.72).

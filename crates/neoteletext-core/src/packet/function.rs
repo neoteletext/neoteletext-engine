@@ -10,17 +10,16 @@
 use super::Triplet;
 use crate::consts::{
     ATTRIBUTE_BOXING, ATTRIBUTE_CONCEAL, ATTRIBUTE_DOUBLE_HEIGHT, ATTRIBUTE_DOUBLE_WIDTH, ATTRIBUTE_INVERT,
-    ATTRIBUTE_UNDERLINE, FLASH_MODE_MASK, FLASH_RATE_MASK, FLASH_RATE_SHIFT, FONT_BOLD, FONT_ITALIC, FONT_PROPORTIONAL,
-    FONT_ROWS_MASK, FONT_ROWS_SHIFT, LEVEL_BIT_25, LEVEL_BIT_35, MODE_ADDITIONAL_FLASH, MODE_ADDRESS_ROW_0,
-    MODE_BACKGROUND_COLOUR, MODE_COLUMN_PDC, MODE_DIACRITIC_MASK, MODE_DISPLAY_ATTRIBUTES, MODE_DRCS_CHARACTER,
-    MODE_FONT_STYLE, MODE_FOREGROUND_COLOUR, MODE_FULL_ROW_COLOUR, MODE_FULL_SCREEN_COLOUR, MODE_G0_LEVEL_25,
-    MODE_G0_NO_DIACRITIC, MODE_G1, MODE_G2, MODE_G3_LEVEL_15, MODE_G3_LEVEL_25, MODE_MODIFIED_DESIGNATION,
-    MODE_OBJECT_DEFINITION_FIRST, MODE_OBJECT_DEFINITION_LAST, MODE_OBJECT_INVOCATION_FIRST,
-    MODE_OBJECT_INVOCATION_LAST, MODE_OBJECT_TYPE_MASK, MODE_ORIGIN_MODIFIER, MODE_ROW_PDC_FIRST, MODE_ROW_PDC_LAST,
-    MODE_SET_ACTIVE_POSITION, MODE_TERMINATION, OBJECT_ADDRESS_BIT6, OBJECT_ADDRESS_N8_N7_MASK,
-    OBJECT_NUMBER_HIGH_SHIFT, OBJECT_SOURCE_MASK, OBJECT_SOURCE_SHIFT, ROW_ADDRESS_BASE, ROW_ADDRESS_LAST,
-    ROW_ADDRESS_RESERVED_DEFAULT, TERMINATION_TYPE_MASK, TRIPLET_COLOUR_HIGH_SHIFT, TRIPLET_COLOUR_INDEX_MASK,
-    TRIPLET_DATA_FIELD_MASK,
+    ATTRIBUTE_UNDERLINE, FLASH_MODE_MASK, FLASH_RATE_MASK, FLASH_RATE_SHIFT, LEVEL_BIT_25, LEVEL_BIT_35,
+    MODE_ADDITIONAL_FLASH, MODE_ADDRESS_ROW_0, MODE_BACKGROUND_COLOUR, MODE_COLUMN_PDC, MODE_DIACRITIC_MASK,
+    MODE_DISPLAY_ATTRIBUTES, MODE_DRCS_CHARACTER, MODE_FONT_STYLE, MODE_FOREGROUND_COLOUR, MODE_FULL_ROW_COLOUR,
+    MODE_FULL_SCREEN_COLOUR, MODE_G0_LEVEL_25, MODE_G0_NO_DIACRITIC, MODE_G1, MODE_G2, MODE_G3_LEVEL_15,
+    MODE_G3_LEVEL_25, MODE_MODIFIED_DESIGNATION, MODE_OBJECT_DEFINITION_FIRST, MODE_OBJECT_DEFINITION_LAST,
+    MODE_OBJECT_INVOCATION_FIRST, MODE_OBJECT_INVOCATION_LAST, MODE_OBJECT_TYPE_MASK, MODE_ORIGIN_MODIFIER,
+    MODE_ROW_PDC_FIRST, MODE_ROW_PDC_LAST, MODE_SET_ACTIVE_POSITION, MODE_TERMINATION, OBJECT_ADDRESS_BIT6,
+    OBJECT_ADDRESS_N8_N7_MASK, OBJECT_NUMBER_HIGH_SHIFT, OBJECT_SOURCE_MASK, OBJECT_SOURCE_SHIFT, ROW_ADDRESS_BASE,
+    ROW_ADDRESS_LAST, ROW_ADDRESS_RESERVED_DEFAULT, TERMINATION_TYPE_MASK, TRIPLET_COLOUR_HIGH_SHIFT,
+    TRIPLET_COLOUR_INDEX_MASK, TRIPLET_DATA_FIELD_MASK,
 };
 
 /// A colour field of Tables 28 and 29 (decision E.43).
@@ -259,38 +258,6 @@ impl DisplayAttributes {
     }
 }
 
-/// The Font Style triplet's data (Table 29, mode 01110). D3 is reserved.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, Default)]
-pub struct FontStyleData {
-    /// D0: proportional spacing.
-    pub proportional: bool,
-    /// D1: bold.
-    pub bold: bool,
-    /// D2: italics.
-    pub italic: bool,
-    /// D6 to D4: the number of following rows the style extends over, 0
-    /// to 7.
-    pub rows: u8,
-}
-
-impl FontStyleData {
-    const fn from_data(data: u8) -> Self {
-        Self {
-            proportional: data & FONT_PROPORTIONAL != 0,
-            bold: data & FONT_BOLD != 0,
-            italic: data & FONT_ITALIC != 0,
-            rows: (data >> FONT_ROWS_SHIFT) & FONT_ROWS_MASK,
-        }
-    }
-
-    const fn data(self) -> u8 {
-        flag(self.proportional, FONT_PROPORTIONAL)
-            | flag(self.bold, FONT_BOLD)
-            | flag(self.italic, FONT_ITALIC)
-            | (self.rows & FONT_ROWS_MASK) << FONT_ROWS_SHIFT
-    }
-}
-
 const fn flag(on: bool, bit: u8) -> u8 {
     if on { bit } else { 0 }
 }
@@ -446,13 +413,6 @@ pub enum TripletFunction {
         /// The six functions.
         attributes: DisplayAttributes,
     },
-    /// Column mode 01110, Font Style (Level 3.5).
-    FontStyle {
-        /// The column.
-        column: u8,
-        /// The styles and row count.
-        style: FontStyleData,
-    },
     /// Column mode 01111, a G2 character.
     G2Character {
         /// The column.
@@ -470,8 +430,9 @@ pub enum TripletFunction {
         /// The mark, 0 to 15.
         diacritic: u8,
     },
-    /// Column mode 01101, DRCS Character Invocation, which is not acted on
-    /// (decision E.95): it moves the active position and does nothing else.
+    /// Column modes 01101, DRCS Character Invocation, and 01110, Font
+    /// Style, which are not acted on (decisions E.95 and E.96): each moves
+    /// the active position and does nothing else.
     UnsupportedColumn {
         /// The column.
         column: u8,
@@ -554,8 +515,7 @@ const fn column_function(triplet: Triplet) -> TripletFunction {
         MODE_G0_LEVEL_25 => F::G0Character { column, code: data },
         MODE_G3_LEVEL_25 => F::G3Character { column, code: data, level_15_form: false },
         MODE_DISPLAY_ATTRIBUTES => F::DisplayAttributes { column, attributes: DisplayAttributes::from_data(data) },
-        MODE_DRCS_CHARACTER => F::UnsupportedColumn { column, mode, data },
-        MODE_FONT_STYLE => F::FontStyle { column, style: FontStyleData::from_data(data) },
+        MODE_DRCS_CHARACTER | MODE_FONT_STYLE => F::UnsupportedColumn { column, mode, data },
         MODE_G2 => F::G2Character { column, code: data },
         MODE_G0_NO_DIACRITIC..=MODE_TERMINATION => {
             F::G0Diacritic { column, code: data, diacritic: mode & MODE_DIACRITIC_MASK }
@@ -610,7 +570,6 @@ impl TripletFunction {
             Self::ModifiedDesignation { column, designation } => (column, MODE_MODIFIED_DESIGNATION, designation),
             Self::G0Character { column, code } => (column, MODE_G0_LEVEL_25, code),
             Self::DisplayAttributes { column, attributes } => (column, MODE_DISPLAY_ATTRIBUTES, attributes.data()),
-            Self::FontStyle { column, style } => (column, MODE_FONT_STYLE, style.data()),
             Self::G2Character { column, code } => (column, MODE_G2, code),
             Self::G0Diacritic { column, code, diacritic } => {
                 (column, MODE_G0_NO_DIACRITIC | (diacritic & MODE_DIACRITIC_MASK), code)
@@ -646,7 +605,6 @@ impl TripletFunction {
             Self::G0Character { .. } => "G0 character",
             Self::DisplayAttributes { .. } => "Display Attributes",
             Self::UnsupportedColumn { .. } => "column triplet not acted on",
-            Self::FontStyle { .. } => "Font Style",
             Self::G2Character { .. } => "G2 character",
             Self::G0Diacritic { .. } => "G0 character with diacritical mark",
             Self::ReservedColumn { .. } => "reserved column triplet",
@@ -668,7 +626,6 @@ impl TripletFunction {
             | Self::G0Character { column, .. }
             | Self::DisplayAttributes { column, .. }
             | Self::UnsupportedColumn { column, .. }
-            | Self::FontStyle { column, .. }
             | Self::G2Character { column, .. }
             | Self::G0Diacritic { column, .. } => Some(column),
             Self::ProgrammeDeliveryColumn { .. }

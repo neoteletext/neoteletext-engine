@@ -1,6 +1,6 @@
 # Teletext specification audit — 11 October 2026
 
-*Note of 20 October 2026:* DRCS is no longer decoded (decision E.95), so this audit's findings about DRCS no longer apply.
+*Note of 20 October 2026:* DRCS is no longer decoded (decision E.95), and the Level 3.5 font styles, proportional spacing among them, are no longer drawn (decision E.96), so this audit's findings about them no longer apply.
 
 ## Assessment
 

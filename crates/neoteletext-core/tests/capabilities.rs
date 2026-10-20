@@ -6,14 +6,7 @@
 // The helpers serve only the tests of capabilities compiled out, so in a
 // build with every capability they are unused.
 #![cfg_attr(
-    all(
-        feature = "objects",
-        feature = "bold",
-        feature = "italic",
-        feature = "side-panels",
-        feature = "colours32",
-        feature = "animation"
-    ),
+    all(feature = "objects", feature = "side-panels", feature = "colours32", feature = "animation"),
     allow(dead_code, unused_imports, reason = "every capability is compiled in, so no test here runs")
 )]
 
@@ -43,20 +36,6 @@ fn objects_compiled_out_are_ignored() {
     let packets = display_page(0, &[], vec![x26(0, &data), x26(1, &object)]);
     let (grid, _) = build(&packets, neoteletext_core::config::PresentationLevel::Level35);
     assert_ne!(char_of(&grid.cells[3][4]), 'P');
-}
-
-/// Without bold or italic, the style is not applied (decision E.71).
-#[cfg(any(not(feature = "bold"), not(feature = "italic")))]
-#[test]
-fn font_styles_compiled_out_are_not_applied() {
-    use common::build_35;
-    use neoteletext_core::level1::FontStyle;
-    use neoteletext_core::packet::FontStyleData;
-    let styled = FontStyleData { bold: true, italic: true, proportional: false, rows: 1 };
-    let local = [set_position(3, 0), TripletFunction::FontStyle { column: 0, style: styled }];
-    let grid = build_35(&page(&[(3, &[b'A'; 40])], &local));
-    let font = grid.cells[3][1].attributes.font();
-    assert_eq!(font, FontStyle { bold: cfg!(feature = "bold"), italic: cfg!(feature = "italic"), proportional: false });
 }
 
 /// Without side panels, a page is always 40 columns (decision E.71).

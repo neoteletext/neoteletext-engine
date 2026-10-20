@@ -50,13 +50,11 @@ use crate::consts::{
     TRIPLETS_PER_PACKET, WALK_DEPTH,
 };
 use crate::level1::{
-    Cell, CellAttributes, CharSource, DisplayOptions, FlashMode, FlashRate, FontStyle, Glyph, Grid, Size, Width,
+    Cell, CellAttributes, CharSource, DisplayOptions, FlashMode, FlashRate, Glyph, Grid, Size, Width,
     resolve_designation, row_24_shown, row_codes,
 };
 use crate::objects::{self, Body, EnhancementLinks, Fetch, ObjectRef, row_of};
-use crate::packet::{
-    ColourData, DisplayAttributes, FontStyleData, ObjectKind, ObjectNumber, ObjectSource, TripletFunction,
-};
+use crate::packet::{ColourData, DisplayAttributes, ObjectKind, ObjectNumber, ObjectSource, TripletFunction};
 use crate::trace::{Machine, TraceSink};
 use crate::types::FixedVec;
 
@@ -132,7 +130,6 @@ struct Attrs {
     /// The non-spacing underline or separated mosaics attribute.
     underline: bool,
     invert: bool,
-    font: FontStyle,
 }
 
 impl Attrs {
@@ -149,7 +146,6 @@ impl Attrs {
         double_width: false,
         underline: false,
         invert: false,
-        font: FontStyle { bold: false, italic: false, proportional: false },
     };
 
     /// Applies the attributes a change sets.
@@ -171,9 +167,6 @@ impl Attrs {
             self.invert = display.invert;
             self.underline = display.underline;
         }
-        if let Some(font) = change.font {
-            self.font = font;
-        }
     }
 }
 
@@ -188,7 +181,6 @@ struct AttrChange {
     /// The six display attributes, which one triplet sets together; each
     /// is still its own type (decision E.47), and a 0 bit cancels.
     display: Option<DisplayAttributes>,
-    font: Option<FontStyle>,
     designation: Option<(G0Set, G2Set)>,
 }
 
@@ -200,7 +192,6 @@ impl AttrChange {
             background: later.background.or(self.background),
             flash: later.flash.or(self.flash),
             display: later.display.or(self.display),
-            font: later.font.or(self.font),
             designation: later.designation.or(self.designation),
         }
     }
@@ -297,8 +288,8 @@ fn enhancement_glyph(character: EnhChar, sets: (G0Set, G2Set), separated: bool) 
     (glyph, false)
 }
 
-/// True for a G0 or G2 character, the only ones that take underline and
-/// the Level 3.5 font styles (decisions E.47 and E.50).
+/// True for a G0 or G2 character, the only ones that take underline
+/// (decisions E.47 and E.50).
 const fn is_text(glyph: Glyph) -> bool {
     matches!(glyph, Glyph::Char(CharRef { set: CharSet::G0(_) | CharSet::G2(_), .. }))
 }
@@ -720,7 +711,6 @@ const fn triplet_transition(function: TripletFunction) -> (WalkState, WalkAction
         | F::G0Character { .. }
         | F::DisplayAttributes { .. }
         | F::UnsupportedColumn { .. }
-        | F::FontStyle { .. }
         | F::G2Character { .. }
         | F::G0Diacritic { .. } => (walking, WalkAction::Column(function)),
     }
@@ -1095,9 +1085,7 @@ impl<'a, 's> Walker<'a, 's> {
         // REQ-OBJ-013).
         let Some(column) = function.active_column() else { return };
         frame.column = column;
-        let level_35 = self.inputs.level.is_level35();
         let mut change = AttrChange::default();
-        let mut extra_rows = 0;
         let character = match function {
             TripletFunction::ForegroundColour { colour, .. } if ATTRIBUTES && colour.is_defined() => {
                 change.foreground = Some(colour.index);
@@ -1115,11 +1103,6 @@ impl<'a, 's> Walker<'a, 's> {
             }
             TripletFunction::DisplayAttributes { attributes, .. } if ATTRIBUTES => {
                 change.display = Some(attributes);
-                None
-            }
-            TripletFunction::FontStyle { style, .. } if ATTRIBUTES && level_35 => {
-                change.font = Some(font_of(style));
-                extra_rows = style.rows;
                 None
             }
             TripletFunction::ModifiedDesignation { designation, .. } => {
@@ -1161,7 +1144,7 @@ impl<'a, 's> Walker<'a, 's> {
         }
         match character {
             Some(character) => Self::character(frame, row, column, character, out),
-            None => Self::attribute(frame, row, column, change, extra_rows, out),
+            None => Self::attribute(frame, row, column, change, out),
         }
     }
 
@@ -1192,30 +1175,19 @@ impl<'a, 's> Walker<'a, 's> {
         }
     }
 
-    fn attribute(
-        frame: &mut Frame<'s>,
-        row: usize,
-        column: usize,
-        change: AttrChange,
-        extra_rows: u8,
-        out: &mut Collector,
-    ) {
+    fn attribute(frame: &mut Frame<'s>, row: usize, column: usize, change: AttrChange, out: &mut Collector) {
         if frame.plane == Plane::Passive {
             // REQ-OBJ-011: a Passive object's attributes are its own and
             // persist across rows until it changes them.
             frame.passive.apply(&change);
             return;
         }
-        // REQ-L25-028: a Font Style extends over the next 0 to 7 rows from
-        // the same column, stopping at row 24.
-        for target in row..=row.saturating_add(usize::from(extra_rows)).min(ROWS.saturating_sub(1)) {
-            let Some(slot) = out.slot(target, column) else { continue };
-            if frame.plane == Plane::Adaptive {
-                slot.adaptive_change = slot.adaptive_change.then(change);
-                slot.adaptive_owner = Some(frame.slot);
-            } else {
-                slot.underlying = slot.underlying.then(change);
-            }
+        let Some(slot) = out.slot(row, column) else { return };
+        if frame.plane == Plane::Adaptive {
+            slot.adaptive_change = slot.adaptive_change.then(change);
+            slot.adaptive_owner = Some(frame.slot);
+        } else {
+            slot.underlying = slot.underlying.then(change);
         }
     }
 
@@ -1326,17 +1298,6 @@ impl<'a, 's> Walker<'a, 's> {
             designation: None,
             passive: Attrs::PASSIVE,
         })
-    }
-}
-
-/// The styles of a Font Style triplet (REQ-L25-028).
-/// The font style a triplet sets; bold and italic only when their
-/// capabilities are compiled in (decision E.71).
-const fn font_of(style: FontStyleData) -> FontStyle {
-    FontStyle {
-        bold: style.bold && cfg!(feature = "bold"),
-        italic: style.italic && cfg!(feature = "italic"),
-        proportional: style.proportional,
     }
 }
 
@@ -1552,9 +1513,9 @@ fn cell_of(glyph: Glyph, attrs: &Attrs, source: CharSource, column: usize) -> Re
         }
     };
     if text {
-        // Decisions E.47 and E.50: underline and the font styles are for G0
-        // and G2 characters only.
-        attributes = attributes.with_underline(attrs.underline).with_font(attrs.font);
+        // Decisions E.47 and E.50: underline is for G0 and G2 characters
+        // only.
+        attributes = attributes.with_underline(attrs.underline);
     }
     Resolved {
         cell: Cell {

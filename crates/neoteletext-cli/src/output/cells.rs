@@ -16,8 +16,7 @@
 //! A cell is `CHARACTER/FOREGROUND/BACKGROUND/SIZE/FLAGS`. SIZE is the
 //! vertical role (`N` normal, `T` top half, `B` bottom half) followed by
 //! the horizontal role (`N`, `L` left half, `R` right half). FLAGS is any
-//! of `u` underline, `b` bold, `i` italic, `p` proportional, `f` flash,
-//! `c` conceal, `x` invert and `o` boxed.
+//! of `u` underline, `f` flash, `c` conceal, `x` invert and `o` boxed.
 
 use neoteletext_core::charset::{CharSet, compose, to_unicode};
 use neoteletext_core::level1::{Cell, Glyph, Grid, Size, Width};
@@ -57,12 +56,8 @@ fn size(cell: &Cell, out: &mut String) {
 }
 
 fn flags(cell: &Cell, out: &mut String) {
-    let font = cell.attributes.font();
     for (set, flag) in [
         (cell.attributes.underline(), 'u'),
-        (font.bold, 'b'),
-        (font.italic, 'i'),
-        (font.proportional, 'p'),
         (cell.flash, 'f'),
         (cell.conceal, 'c'),
         (cell.attributes.invert(), 'x'),

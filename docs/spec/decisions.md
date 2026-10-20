@@ -260,6 +260,8 @@ When producing text, the base letter and the Unicode combining character for the
 
 *Amended 10 October 2026:* Levels 2.5 and 3.5 are no longer excluded; the owner brought them into Phase 1 (decision E.40). Only a layout algorithm for proportional spacing remains excluded, because the standard defines none (decision E.50).
 
+*Note of 20 October 2026:* what this decision says of the Level 3.5 font styles (bold, italic and proportional spacing) and the Font Style triplet no longer applies; the triplet is not acted on (decision E.96).
+
 **E.28 — Where real teletext data comes from, and what the receiver must read.**
 A search on 1 October 2026 found that no television channel publishes its live teletext on the open internet as raw data. Real teletext data is available only in the following forms, and the input requirements are built around them.
 
@@ -335,6 +337,8 @@ The decisions taken from this are:
 - **Item 5.** Flash and reveal are resolved at render time in the resolved colour mode, instead of by palette changes. The change tracker limits the redrawing to rows that flash or conceal. The palette technique remains for Levels 1 and 1.5.
 
 *Note of 20 October 2026:* what this decision says of DRCS characters, pages, links or colour tables no longer applies; they are not decoded (decision E.95).
+
+*Note of 20 October 2026:* what this decision says of the Level 3.5 font styles (bold, italic and proportional spacing) and the Font Style triplet no longer applies; the triplet is not acted on (decision E.96).
 
 **E.30 — The web-native design, and what the jellytext project teaches.**
 neoteletext shall read pages from ordinary web servers as well as from broadcast data. It does so over:
@@ -583,6 +587,8 @@ On 10 October 2026 the project owner asked for complete Presentation Levels 2.5 
 
 *Note of 20 October 2026:* what this decision says of DRCS characters, pages, links or colour tables no longer applies; they are not decoded (decision E.95).
 
+*Note of 20 October 2026:* what this decision says of the Level 3.5 font styles (bold, italic and proportional spacing) and the Font Style triplet no longer applies; the triplet is not acted on (decision E.96).
+
 **E.41 — Principles for reading Levels 2.5 and 3.5.**
 The clauses for Levels 2.5 and 3.5 leave many details open. The research notes list them: `research/notes-level25-enhancement.md` section 12, `research/notes-level25-objects.md` section 14 and `research/notes-level25-drcs.md` section 15. Each is settled by one of decisions E.42 to E.56, and each of those decisions follows these principles:
 
@@ -620,6 +626,8 @@ The clauses for Levels 2.5 and 3.5 leave many details open. The research notes l
 *Reason:* Decision E.1 chose a separate pass so that Level 2.5 could be added later without redesign. Clause 13.3 describes local enhancement data as "a one-time usable Active Object", so one walk serves the local data and every object (`research/notes-level25-objects.md` section 2.3). Leaving the stored bytes untouched keeps acquisition and presentation apart (`ARCHITECTURE.md` section 8, rule 5).
 
 *Note of 20 October 2026:* what this decision says of DRCS characters, pages, links or colour tables no longer applies; they are not decoded (decision E.95).
+
+*Note of 20 October 2026:* what this decision says of the Level 3.5 font styles (bold, italic and proportional spacing) and the Font Style triplet no longer applies; the triplet is not acted on (decision E.96).
 
 **E.43 — The Colour Map and colour indices.**
 - **One colour number everywhere.** Every colour in the grid is a 5-bit Colour Map index from 0 to 31, equal to 8 × CLUT + entry, where CLUT is the colour lookup table. This is how every colour field of Tables 28 and 29 is coded, and it is the numbering of Figure 28. The Level 1 colours are CLUT 0 entries 0 to 7, so existing values keep their meaning. Index 8, which is CLUT 1 entry 0, is transparent, and that is already the renderer's transparent index (REQ-RND-023).
@@ -761,6 +769,8 @@ The clauses for Levels 2.5 and 3.5 leave many details open. The research notes l
 
 *Note of 20 October 2026:* what this decision says of DRCS characters, pages, links or colour tables no longer applies; they are not decoded (decision E.95).
 
+*Note of 20 October 2026:* what this decision says of the Level 3.5 font styles (bold, italic and proportional spacing) and the Font Style triplet no longer applies; the triplet is not acted on (decision E.96).
+
 **E.51 — Objects: resolution, nesting and limits.**
 - **Pointers.** A pointer in a Public Object Page or Global Public Object Page whose value is not a valid triplet address means that the object is absent. That covers the values 507 to 510, pointers into the pointer packets, and pointers to a triplet that is not an Object Definition. The value 0x1FF means "not used". Definitions in packets 1 and 2 of an object page cannot be reached by any pointer, and are ignored.
 - **Checks.** An invocation whose definition has a different type, or whose usage bits exclude the presentation level, is skipped. The object number bits N8 to N0 of the definition are not compared with those of the invocation.
@@ -871,6 +881,8 @@ Recorded on 11 October 2026 (REQ-DOC-004).
 *Reason:* Table C.1, clauses 12.3 and 15, and the rendering requirements REQ-RND-030 to REQ-RND-041. Keeping the palette mode as the default of `from_config` keeps the golden rasters of Levels 1 and 1.5 unchanged (REQ-TST-030).
 
 *Note of 20 October 2026:* what this decision says of DRCS characters, pages, links or colour tables no longer applies; they are not decoded (decision E.95).
+
+*Note of 20 October 2026:* what this decision says of the Level 3.5 font styles (bold, italic and proportional spacing) and the Font Style triplet no longer applies; the triplet is not acted on (decision E.96).
 
 **E.59 — Points of TTI files and the authoring builder that REQ-INP-023 to REQ-INP-025 leave open.**
 Recorded on 11 October 2026 (REQ-DOC-004).
@@ -1058,13 +1070,11 @@ Recorded on 12 October 2026, on the owner's instruction to add teletext feature 
    | Feature | Capability | When it is compiled out |
    |---|---|---|
    | `objects` | Active, Adaptive and Passive objects, and default objects (area OBJ) | Object invocations and default objects are ignored; a page's own enhancement data still applies |
-   | `bold` | Bold characters (Table 28, Font Style) | The style is not applied |
-   | `italic` | Italic characters (Table 28, Font Style) | The style is not applied |
    | `side-panels` | Side panels (clause 12.5) | There are no side panels; a page is always 40 columns, and anything placed in a panel is outside the page, as for a panel that is not enabled |
    | `colours32` | The Colour Map's CLUTs 2 and 3, and every redefinition of a CLUT by X/28/0, X/28/4, M/29/0 or M/29/4 (clause 12.4) | No CLUT is redefined, and CLUTs 2 and 3 are copies of CLUTs 0 and 1, so a page shows at most the sixteen default colours of CLUTs 0 and 1, and the eight classic colours stay the default |
    | `animation` | Additional Flash Functions: the flash modes, the fast rates and phases, incremental and decremental flash (Table 29) | The triplet is ignored; the Level 1 flash, slow and normal (decision E.48), is unchanged |
 
-2. **The profile is a feature too.** `modern-classic` turns on `level15`, `level25`, `render`, `original`, `viewer`, `forms`, `objects` and `bold`. A port uses it with the default features off.
+2. **The profile is a feature too.** `modern-classic` turns on `level15`, `level25`, `render`, `original`, `viewer`, `forms` and `objects`. A port uses it with the default features off.
 3. **What is not a feature.**
    - The 40 by 24 grid, the eight-colour default and the mosaics are Level 1, which every build has.
    - Non-spacing attributes are the enhancement area itself, the `level25` feature.
@@ -1077,6 +1087,8 @@ Recorded on 12 October 2026, on the owner's instruction to add teletext feature 
 *Reason:* Teletext's distinctive look comes from its constraints: a fixed 40 by 24 grid, eight saturated colours, block mosaics, attributes set within the text, and no proportional spacing or pictures. The profile keeps the capabilities that preserve those constraints, and those that make pages more usable without changing them: non-spacing attributes, more languages, monochrome custom characters in the grid, reusable objects and bold for legibility. It switches off, without removing, the capabilities that would dilute the style: a redefinable palette of 4,096 colours, italics, a page wider than 40 columns, per-pixel colour characters that tile into bitmap images, and animation. Each remains implemented and tested, and a port that needs one compiles it in. One feature per named capability keeps each one switchable alone, while the profile names the recommended choice once. `docs/spec/design/capabilities.md` explains the mechanism.
 
 *Note of 20 October 2026:* the `drcs` and `drcs-multicolour` features were removed with the decoding of dynamically redefinable characters (decision E.95); the profile's monochrome downloadable characters went with them.
+
+*Note of 20 October 2026:* the `bold` and `italic` features were removed with the Level 3.5 font styles (decision E.96); the profile's bold characters went with them.
 
 **E.72 — Fonts: Bedstead as the one bundled font, and every other font a 12 × 10 BDF loaded when it is named.**
 Decided by the owner on 12 October 2026. This supersedes decision E.62 and amends decisions E.25 and E.34 (REQ-WEB-014 now permits one kind of third-party request: a font named with its checksum). `docs/spec/design/font-security.md` is the security analysis of this decision.
@@ -1325,3 +1337,12 @@ Decided on 20 October 2026, on the owner's instruction to remove DRCS completely
 6. **Requirement area DRC is withdrawn,** with the requirements of other areas that concerned only DRCS.
 
 *Reason:* The owner's instruction. Decision E.54's readings of the X/28/3 bit order and the mode 3 pixel order had never been confirmed against a real Level 3.5 DRCS page (`open-questions-record.md`).
+
+**E.96 — The Level 3.5 font styles are not drawn.**
+Decided on 20 October 2026, on the owner's instruction to remove bold, italic and proportional spacing, set with the Font Style triplet, completely, keeping underline for links.
+1. **The Font Style triplet (Table 29 mode 01110) is not acted on,** at any level: it moves the active position, as every column triplet does (clause 12.3.4), and does nothing else; its row extension goes with it. A Level 2.5 decoder already read it this way.
+2. **Bold, italic and proportional spacing are gone** from the cell (`FontStyle` and its three bits), the renderer and the terminal output, with the `bold` and `italic` features; the modern-classic profile no longer has bold. Requirement REQ-RND-039 is withdrawn, and what decisions E.27, E.29, E.40, E.42, E.50, E.58 and E.71 say of the font styles no longer applies.
+3. **Underline stays,** as decision E.47 has it: the Display Attributes triplet's underline (Table 27), drawn on the last dot line of G0 and G2 characters (REQ-RND-035), and the render option that a port drawing its own link underline turns off (decision E.88).
+4. **The authored stream** keeps a Font Style triplet on page 113, sent as a service sends it, so that its every-mode page shows it ignored. Page 111, which showed the styles, is removed, and its number is left unused.
+
+*Reason:* The owner's instruction.

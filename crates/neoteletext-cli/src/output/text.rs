@@ -40,16 +40,12 @@ fn colour_of(map: &ColourMap, index: ColourIndex, screen: ColourIndex) -> Option
 }
 
 /// What a cell's escape sequence depends on.
-// Each flag is one SGR attribute of the fixed list.
-#[allow(clippy::struct_excessive_bools)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 struct Style {
     foreground: Option<[u8; 3]>,
     background: Option<[u8; 3]>,
     flash: bool,
     underline: bool,
-    bold: bool,
-    italic: bool,
 }
 
 impl Style {
@@ -59,14 +55,7 @@ impl Style {
         let screen = grid.screen_colour;
         let Some(cell) = cell else {
             let colour = colour_of(&grid.colour_map, screen, screen);
-            return Self {
-                foreground: colour,
-                background: colour,
-                flash: false,
-                underline: false,
-                bold: false,
-                italic: false,
-            };
+            return Self { foreground: colour, background: colour, flash: false, underline: false };
         };
         let (foreground, background) = if cell.attributes.invert() {
             (cell.background, cell.foreground)
@@ -75,22 +64,19 @@ impl Style {
         };
         let picture = grid.mix || (grid.boxed_mode && !cell.boxed);
         let text = matches!(cell.glyph, Glyph::Char(character) if class(character) == CharClass::Text);
-        let font = cell.attributes.font();
         Self {
             foreground: colour_of(&grid.colour_map, foreground, screen),
             background: if picture { None } else { colour_of(&grid.colour_map, background, screen) },
             flash: cell.flash,
             underline: text && cell.attributes.underline(),
-            bold: text && font.bold,
-            italic: text && font.italic,
         }
     }
 
-    /// Writes the selection. The sequences come from a fixed set: SGR 0, 1,
-    /// 3, 4, 5, 38;2, 48;2, 30 to 37, 39, 40 to 47 and 49.
+    /// Writes the selection. The sequences come from a fixed set: SGR 0, 4,
+    /// 5, 38;2, 48;2, 30 to 37, 39, 40 to 47 and 49.
     fn write(self, depth: ColourDepth, out: &mut String) {
         out.push_str("\x1b[0");
-        for (on, code) in [(self.bold, ";1"), (self.italic, ";3"), (self.underline, ";4"), (self.flash, ";5")] {
+        for (on, code) in [(self.underline, ";4"), (self.flash, ";5")] {
             if on {
                 out.push_str(code);
             }
@@ -147,7 +133,7 @@ mod tests {
     use neoteletext_core::charset::{CharRef, CharSet, G0, G0Set, NationalOption};
     use neoteletext_core::colour::{SidePanels, colour_index};
     use neoteletext_core::consts::COLOUR_TRANSPARENT;
-    use neoteletext_core::level1::{CellAttributes, FontStyle, Width};
+    use neoteletext_core::level1::{CellAttributes, Width};
     use neoteletext_core::types::Rgb12;
 
     fn grid_with(text: &str) -> Grid {
@@ -231,8 +217,8 @@ mod tests {
 
     /// REQ-RND-041: 24-bit colours come from the page's Colour Map, the
     /// 8-colour mode takes the nearest Level 1 colour, transparent cells
-    /// take the screen colour, invert swaps the colours, and underline,
-    /// bold and italic use their SGR codes on text.
+    /// take the screen colour, invert swaps the colours, and underline uses
+    /// its SGR code on text.
     #[test]
     fn terminal_colours_and_attributes() {
         let mut grid = grid_with("A");
@@ -249,17 +235,13 @@ mod tests {
         let eight = ansi(&grid, false, MosaicStyle::Unicode16, ColourDepth::Eight);
         let screen_eight = 40 + u16::from(nearest_of_eight(screen));
         assert!(eight.lines().nth(1).unwrap().starts_with(&format!("\x1b[0;33;{screen_eight}mA")));
-        // Invert, underline and the font styles.
+        // Invert and underline.
         let cell = &mut grid.cells[1][0];
         cell.foreground = 1;
         cell.background = 4;
-        cell.attributes = CellAttributes::DEFAULT.with_invert(true).with_underline(true).with_font(FontStyle {
-            bold: true,
-            italic: true,
-            proportional: false,
-        });
+        cell.attributes = CellAttributes::DEFAULT.with_invert(true).with_underline(true);
         let text = ansi(&grid, false, MosaicStyle::Unicode16, ColourDepth::Eight);
-        assert!(text.lines().nth(1).unwrap().starts_with("\x1b[0;1;3;4;34;41mA"));
+        assert!(text.lines().nth(1).unwrap().starts_with("\x1b[0;4;34;41mA"));
         // A side panel's empty row 0 is the screen colour.
         grid.side_panels = SidePanels { left: 1, right: 0 };
         let text = ansi(&grid, false, MosaicStyle::Unicode16, ColourDepth::Eight);

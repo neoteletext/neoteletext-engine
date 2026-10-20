@@ -6,8 +6,8 @@
 mod common;
 
 use common::{
-    Receiver, background, build, build_25, build_35, char_of, damage, display_page, end, foreground, g0, grid_of,
-    local_data, row_0, set_of, set_position, text, x26, x28,
+    Receiver, background, build, build_25, char_of, damage, display_page, end, foreground, g0, grid_of, local_data,
+    row_0, set_of, set_position, text, x26, x28,
 };
 use neoteletext_core::charset::{CharSet, G0, G0Set, G2Set};
 use neoteletext_core::colour::{ColourMap, colour_index};
@@ -17,8 +17,8 @@ use neoteletext_core::consts::{
     DOUBLE_HEIGHT, DOUBLE_WIDTH, FLASH, LATIN_AT_SIGN, MOSAIC_RED, NEW_BACKGROUND, NORMAL_SIZE, SEPARATED_MOSAICS,
     START_BOX, STEADY,
 };
-use neoteletext_core::level1::{Cell, CharSource, FlashMode, FlashRate, FontStyle, Glyph, Grid, Size, Width};
-use neoteletext_core::packet::{ColourData, DisplayAttributes, FontStyleData, Packet, TripletFunction};
+use neoteletext_core::level1::{Cell, CharSource, FlashMode, FlashRate, Glyph, Grid, Size, Width};
+use neoteletext_core::packet::{ColourData, DisplayAttributes, Packet, TripletFunction};
 use neoteletext_core::types::{DefaultColourFields, Designations, PresentationFields, Rgb12};
 
 const ALPHA_GREEN: u8 = 0x02;
@@ -192,8 +192,14 @@ fn only_three_row_triplets_set_the_active_row() {
     assert_eq!(text(&grid, 24), " ".repeat(40), "row 24 is not displayed under Annex H");
 }
 
+/// Font Style data with proportional spacing, bold and italic (D0 to D2)
+/// for two more rows (D6 to D4), Table 29.
+const EVERY_STYLE_TWO_ROWS: u8 = 0b010_0111;
+
 /// REQ-L25-004: every column mode except the reserved ones and Programme
 /// Delivery Control sets the column; a character below 2/0 writes nothing.
+/// DRCS Character Invocation and Font Style, not acted on, still set it
+/// (decisions E.95 and E.96).
 #[test]
 fn column_triplets_set_the_column() {
     use neoteletext_core::packet::{ObjectKind, ObjectSource};
@@ -201,12 +207,13 @@ fn column_triplets_set_the_column() {
     // each column triplet, so its "X" shows where the column went.
     let object = [common::define(ObjectKind::Passive, 0b11, common::local_number(1, 0)), g0(0, b'X'), end()];
     let invoke = common::invoke(ObjectSource::Local, ObjectKind::Passive, common::local_number(1, 0));
-    let cases: [(TripletFunction, u8); 5] = [
+    let cases: [(TripletFunction, u8); 6] = [
         (TripletFunction::ReservedColumn { column: 30, mode: 0b00100, data: 0 }, 2),
         (TripletFunction::ReservedColumn { column: 30, mode: 0b01010, data: 0 }, 2),
         (TripletFunction::ProgrammeDeliveryColumn { column: 30, data: 0 }, 2),
         (g0(30, 0x10), 30),
-        (TripletFunction::FontStyle { column: 30, style: FontStyleData::default() }, 30),
+        (TripletFunction::UnsupportedColumn { column: 30, mode: 0b01101, data: 0x40 }, 30),
+        (TripletFunction::UnsupportedColumn { column: 30, mode: 0b01110, data: EVERY_STYLE_TWO_ROWS }, 30),
     ];
     for (function, column) in cases {
         let local = [set_position(4, 2), function, invoke, end()];
@@ -456,34 +463,6 @@ fn additional_flash_functions() {
     assert_eq!(grid.cells[2][1].attributes.flash_rate(), FlashRate::Slow);
 }
 
-/// REQ-L25-028, REQ-TST-015: Font Style at Level 3.5 only, from its column
-/// over R further rows (the zvbi observation of a row count of 2), replaced
-/// by a later triplet, and for G0 and G2 characters only.
-#[test]
-fn font_style_extends_over_rows_at_level_35() {
-    let styled = FontStyleData { bold: true, italic: true, proportional: true, rows: 2 };
-    let local = [
-        set_position(3, 0),
-        TripletFunction::FontStyle { column: 4, style: styled },
-        set_position(4, 0),
-        TripletFunction::FontStyle { column: 10, style: FontStyleData::default() },
-    ];
-    let rows: &[(u8, &[u8])] =
-        &[(3, &[b'A'; 40]), (4, &[b'A'; 40]), (5, &[b'A'; 40]), (6, &[b'A'; 40]), (7, &[MOSAIC_RED, 0x7F])];
-    let all = FontStyle { bold: true, italic: true, proportional: true };
-    let grid = build_35(&page(rows, &local));
-    let font = |row: usize, column: usize| grid.cells[row][column].attributes.font();
-    assert_eq!((font(3, 3), font(3, 4), font(3, 39)), (FontStyle::default(), all, all));
-    assert_eq!((font(4, 4), font(4, 10)), (all, FontStyle::default()), "replaced from column 10");
-    assert_eq!((font(5, 4), font(6, 4)), (all, FontStyle::default()), "two rows only");
-    let grid = build_25(&page(rows, &local));
-    assert_eq!(grid.cells[3][4].attributes.font(), FontStyle::default(), "Level 2.5 ignores it");
-    // Only G0 and G2 characters take a style.
-    let local = [set_position(7, 0), TripletFunction::FontStyle { column: 0, style: styled }];
-    let grid = build_35(&page(rows, &local));
-    assert_eq!(grid.cells[7][1].attributes.font(), FontStyle::default(), "not a mosaic");
-}
-
 /// REQ-L25-030, REQ-L25-031, REQ-TST-016: the page's Colour Map from X/28/0
 /// and, at Level 3.5 only, X/28/4; the Table 30 defaults otherwise.
 #[test]
@@ -589,17 +568,11 @@ fn processing_order_of_local_data() {
 }
 
 /// REQ-L25-001, REQ-PRF-006, REQ-TST-015: one received page shown at each
-/// level without being acquired again; the Level 3.5 features are used at
-/// Level 3.5 only.
+/// level without being acquired again.
 #[test]
 fn levels_change_without_reacquisition() {
-    let styled = FontStyleData { bold: true, ..FontStyleData::default() };
-    let local = [
-        set_position(1, 0),
-        TripletFunction::G3Character { column: 1, code: 0x51, level_15_form: true },
-        g0(2, b'Z'),
-        TripletFunction::FontStyle { column: 3, style: styled },
-    ];
+    let local =
+        [set_position(1, 0), TripletFunction::G3Character { column: 1, code: 0x51, level_15_form: true }, g0(2, b'Z')];
     let packets = page(&[(1, b"ABCD")], &local);
     let mut receiver = Receiver::new();
     receiver.run(&packets, Config::default(), |decoder| {
@@ -611,8 +584,7 @@ fn levels_change_without_reacquisition() {
         assert_eq!(text(&level_1, 1).trim_end(), "ABCD");
         assert_eq!(set_of(&level_15.cells[1][1]), Some(CharSet::G3));
         assert_eq!(char_of(&level_15.cells[1][2]), 'C', "mode 01001 is not a Level 1.5 mode");
-        assert_eq!(char_of(&level_25.cells[1][2]), 'Z');
-        assert!(!level_25.cells[1][3].attributes.font().bold && level_35.cells[1][3].attributes.font().bold);
+        assert_eq!((char_of(&level_25.cells[1][2]), char_of(&level_35.cells[1][2])), ('Z', 'Z'));
         // The decoder still holds the page as received.
         let again = at(PresentationLevel::Level1);
         common::assert_same_cells(&again, &level_1, "again");

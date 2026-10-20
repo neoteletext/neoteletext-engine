@@ -308,7 +308,8 @@ pub const MODE_DISPLAY_ATTRIBUTES: u8 = 0x0C;
 /// Column mode 01101: DRCS Character Invocation (Table 29), recognised only
 /// to move the active position (decision E.95).
 pub const MODE_DRCS_CHARACTER: u8 = 0x0D;
-/// Column mode 01110: Font Style, Level 3.5 only (Table 29).
+/// Column mode 01110: Font Style, Level 3.5 only (Table 29), recognised
+/// only to move the active position (decision E.96).
 pub const MODE_FONT_STYLE: u8 = 0x0E;
 /// The colour index of a colour field: D4 to D0, CLUT in D4 D3 and entry
 /// in D2 to D0 (Tables 28 and 29, decision E.43).
@@ -364,16 +365,6 @@ pub const ATTRIBUTE_INVERT: u8 = 0x10;
 pub const ATTRIBUTE_UNDERLINE: u8 = 0x20;
 /// Display Attributes D6: double width.
 pub const ATTRIBUTE_DOUBLE_WIDTH: u8 = 0x40;
-/// Font Style data bit D0: proportional spacing (Table 29).
-pub const FONT_PROPORTIONAL: u8 = 0x01;
-/// Font Style D1: bold.
-pub const FONT_BOLD: u8 = 0x02;
-/// Font Style D2: italics.
-pub const FONT_ITALIC: u8 = 0x04;
-/// Shift of the Font Style row count R2 to R0, D6 to D4.
-pub const FONT_ROWS_SHIFT: u32 = 4;
-/// Mask of the row count after the shift.
-pub const FONT_ROWS_MASK: u8 = 0x07;
 /// Column mode 10000: G0 character without diacritical mark.
 pub const MODE_G0_NO_DIACRITIC: u8 = 0x10;
 /// Low four mode bits of modes 10001 to 11111 number the diacritic.
@@ -889,17 +880,13 @@ pub const SERVICE_FORMAT_2_BIT: u8 = 0x02;
 
 // Phase I2b: rendering and G3 glyphs
 // ---------------------------------------------------------------------------
-// G3 glyphs, the font styles and the resolved colour mode (REQ-RND-031 to
-// REQ-RND-040)
+// G3 glyphs and the resolved colour mode (REQ-RND-031 to REQ-RND-040)
 // ---------------------------------------------------------------------------
 
 /// The G3 set occupies codes 2/0 to 7/F (Table 48).
 pub const G3_FIRST_CODE: u8 = SPACE;
 /// Positions 2/0 to 7/F: six columns of sixteen (Table 48).
 pub const G3_CODES: usize = 96;
-/// Italic shifts a glyph line right by the lines below it divided by 4,
-/// done as a shift right by 2 (REQ-RND-039, decision E.50).
-pub const ITALIC_SHIFT_LOG2: u32 = 2;
 /// Adjacent-CLUT flash exclusive-ORs a Colour Map index with 8: the same
 /// entry of the neighbouring CLUT (decision E.48).
 pub const ADJACENT_CLUT_FLIP: u8 = 1 << CLUT_SHIFT;

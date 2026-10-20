@@ -1,11 +1,11 @@
 //! Tests of the rendering of Levels 2.5 and 3.5: the resolved colour mode,
 //! side panels, double width and size, underline, invert, flash and
-//! conceal, G3 drawing, the font styles and the flash timing
+//! conceal, G3 drawing and the flash timing
 //! (REQ-RND-030 to REQ-RND-040). Every grid is built by hand, so these
 //! tests depend on nothing but the grid (REQ-RND-001).
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 #![cfg_attr(
-    not(all(feature = "side-panels", feature = "bold", feature = "italic")),
+    not(feature = "side-panels"),
     allow(dead_code, unused_imports, reason = "helpers of the tests whose capability is compiled out (decision E.71)")
 )]
 
@@ -17,7 +17,6 @@ use crate::charset::{CharRef, CharSet, G0, G0Set, NationalOption};
 use crate::colour::SidePanels;
 use crate::consts::{G3_CODES, G3_FIRST_CODE, PAGE_WIDTH};
 use crate::level1::CellAttributes;
-use crate::level1::FontStyle;
 use std::vec;
 use std::vec::Vec;
 
@@ -703,42 +702,6 @@ fn the_underline_option_turns_underline_off_and_leaves_separated_mosaics() {
                     line_of(&grid, &cell, 1, 1, line, on),
                     "mosaic line {line}"
                 );
-            }
-        }
-    }
-}
-
-/// REQ-RND-039, decision E.50: bold ORs the line with itself one half-dot
-/// right; italic shifts it right by the lines below it divided by 4; bold
-/// first; proportional changes nothing; never on G3 or mosaics.
-// Needs its capability compiled in (decision E.71).
-#[cfg(all(feature = "bold", feature = "italic"))]
-#[test]
-fn font_styles() {
-    let grid = Grid::EMPTY;
-    let style =
-        |bold, italic, proportional| CellAttributes::DEFAULT.with_font(FontStyle { bold, italic, proportional });
-    for mode in [CellMode::Saa5050, CellMode::Saa5246a] {
-        let options = options(mode, 0, false);
-        let height = options.row_height();
-        let plain = Cell { glyph: text(b'N'), ..Cell::BLANK };
-        let at = |attributes, line| line_of(&grid, &Cell { attributes, ..plain }, 1, 1, line, options).mask;
-        for line in 0..height {
-            let base = at(CellAttributes::DEFAULT, line);
-            let bold = (base | base >> 1) & CELL_MASK;
-            let shift = (height - 1 - line) / 4;
-            assert_eq!(at(style(true, false, false), line), bold);
-            assert_eq!(at(style(false, true, false), line), base >> shift, "{mode:?} line {line}");
-            assert_eq!(at(style(true, true, false), line), bold >> shift);
-            assert_eq!(at(style(false, false, true), line), base);
-        }
-        let largest = (height - 1) / 4;
-        assert_eq!(largest, if mode == CellMode::Saa5050 { 4 } else { 2 });
-        for glyph in [g3(0x2B), Glyph::Mosaic { pattern: 0x15, separated: false }] {
-            let cell = Cell { glyph, ..Cell::BLANK };
-            let styled = Cell { attributes: style(true, true, true), ..cell };
-            for line in 0..height {
-                assert_eq!(line_of(&grid, &cell, 1, 1, line, options), line_of(&grid, &styled, 1, 1, line, options));
             }
         }
     }

@@ -5,7 +5,7 @@ use std::vec::Vec;
 
 use neoteletext_core::consts::{ROW_ADDRESS_BASE, ROW_ADDRESS_LAST, ROW_ADDRESS_ROW_24};
 use neoteletext_core::packet::{
-    ColourData, DisplayAttributes, FontStyleData, ObjectKind, ObjectNumber, ObjectSource, Triplet, TripletFunction,
+    ColourData, DisplayAttributes, ObjectKind, ObjectNumber, ObjectSource, Triplet, TripletFunction,
 };
 
 use super::{AuthorError, Result};
@@ -358,11 +358,6 @@ impl Triplets {
     /// Display Attributes (column mode 01100).
     pub fn attributes(&mut self, column: u8, attributes: DisplayAttributes) -> &mut Self {
         self.function(TripletFunction::DisplayAttributes { column, attributes })
-    }
-
-    /// Font Style (column mode 01110, Level 3.5).
-    pub fn font(&mut self, column: u8, style: FontStyleData) -> &mut Self {
-        self.function(TripletFunction::FontStyle { column, style })
     }
 
     /// Modified G0 and G2 Character Set Designation (column mode 01000)

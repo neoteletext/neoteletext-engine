@@ -25,7 +25,7 @@ The research notes `research/notes-level25-enhancement.md`, `research/notes-leve
 | Question | Answer | Evidence | Recorded in |
 |---|---|---|---|
 | What are the default colours of CLUT 1 entries 5 and 6? | Half magenta (7, 0, 7) and half cyan (0, 7, 7), as Table 30 gives. zvbi 0.2.44 differs, so comparisons with it use colour indices. | The page image of Table 30, page 89; a zvbi run on `oldvga` | E.43, REQ-TST-023 |
-| Which rows does the row count of a Font Style triplet reach? | The next R rows, from the same column to the end of each row | A zvbi run on `oldvga` | E.50, REQ-L25-028 |
+| Which rows does the row count of a Font Style triplet reach? | The next R rows, from the same column to the end of each row. No longer applies: the triplet is not acted on (decision E.96) | A zvbi run on `oldvga` | E.50, REQ-L25-028 |
 | How does zvbi report G3 characters? | As the private value 0xEF00 plus the code | A zvbi run on `oldvga` | REQ-TST-023 |
 | Does the strict row rule of clause 12.3.2 apply at Levels 2.5 and 3.5? | Yes. Object triplets carry object numbers in their address field. | Clause 12.3.2 and Table 28 | E.3 (amended), E.46 |
 | Which row colour applies when only default colours are sent? | The default row colour; the default screen colour does not replace it | Annex A.5 and Table 4 | E.45 |

@@ -2,13 +2,14 @@
 //! the builder of REQ-INP-025. Between them its pages use every triplet
 //! mode of Tables 28 and 29, the Colour Map, side panels of each width,
 //! every size, underline, invert, conceal, boxing, flash at each rate and
-//! phase, font styles, the G1, G2 and G3 sets, Local, Public and Global
+//! phase, the G1, G2 and G3 sets, Local, Public and Global
 //! objects of each type and priority reached through the Magazine
 //! Organization Table and through X/27/4 and X/27/5, default objects, the
 //! variants of X/28 and M/29 that are read, and the worked examples of
 //! clause 13.9 and Annex C.2. Pages 114 to 116 and 119 held DRCS
-//! characters, which are no longer decoded (decision E.95); their numbers
-//! are left unused.
+//! characters, which are no longer decoded (decision E.95), and page 111
+//! the Level 3.5 font styles, which are no longer drawn (decision E.96);
+//! their numbers are left unused.
 //!
 //! The stream is generated, never stored: `cargo xtask level25-stream`
 //! writes it as T42 and TTI, and the tests build it.
@@ -25,12 +26,12 @@ use std::vec::Vec;
 
 use neoteletext_core::consts::{
     ALPHA_BLACK, ALPHA_RED, ALPHA_WHITE, ALPHA_YELLOW, BLACK_BACKGROUND, COLOUR_BLUE_BIT, COLOUR_GREEN_BIT, CONCEAL,
-    DOUBLE_HEIGHT, END_BOX, FLASH, MODE_DRCS_CHARACTER, MODE_TERMINATION, MOSAIC_WHITE, NEW_BACKGROUND,
-    ROW_ADDRESS_LAST, ROW_ADDRESS_RESERVED_DEFAULT, START_BOX,
+    DOUBLE_HEIGHT, END_BOX, FLASH, MODE_DRCS_CHARACTER, MODE_FONT_STYLE, MODE_TERMINATION, MOSAIC_WHITE,
+    NEW_BACKGROUND, ROW_ADDRESS_LAST, ROW_ADDRESS_RESERVED_DEFAULT, START_BOX,
 };
 use neoteletext_core::packet::{
-    ColourData, DefaultObject, DisplayAttributes, FontStyleData, MotPageEntry, MotTotals, ObjectKind, ObjectSource,
-    ObjectUsage, Triplet, TripletFunction,
+    ColourData, DefaultObject, DisplayAttributes, MotPageEntry, MotTotals, ObjectKind, ObjectSource, ObjectUsage,
+    Triplet, TripletFunction,
 };
 use neoteletext_core::types::{
     ColourWords, FallbackFields, Magazine, PageAddress, PageNumber, Rgb12, SidePanelFields, SubCode,
@@ -55,6 +56,8 @@ const DRCS_MODE_DATA: u8 = 0x70;
 const DRCS_NORMAL: u8 = 0x40;
 /// A DRCS character number above 47, which Table 29 makes invalid.
 const DRCS_INVALID_CHARACTER: u8 = 50;
+/// Data bit D1 of Font Style: bold (Table 29), as page 113 sends it.
+const FONT_STYLE_BOLD: u8 = 0x02;
 /// Level 1 colours as Colour Map indices (decision E.43).
 const RED: u8 = colour(0, 1);
 const GREEN: u8 = colour(0, 2);
@@ -194,7 +197,6 @@ fn magazine_1(stream: &mut Stream) -> Result<()> {
     }
     stream.push(sizes_and_attributes()?.build()?);
     stream.push(flash()?.build()?);
-    stream.push(font_styles()?.build()?);
     stream.push(g3_and_g1()?.build()?);
     stream.push(g2_and_diacritics()?.build()?);
     stream.push(every_mode()?.build()?);
@@ -223,7 +225,7 @@ fn magazine_1_objects() -> Result<Objects> {
     let pop_passive = pop.define(0, ObjectKind::Passive, BOTH, passive)?;
     // Sub-page 1: an object for Level 3.5 only.
     let mut level_35 = Triplets::new();
-    level_35.font(0, FontStyleData { proportional: false, bold: true, italic: false, rows: 0 }).text(0, b"L3.5 ONLY");
+    level_35.text(0, b"L3.5 ONLY");
     let pop_level_35 = pop.define(1, ObjectKind::Active, LEVEL_35, level_35)?;
 
     let mut gpop = ObjectPage::new(address(0x1E0)?, true);
@@ -258,7 +260,7 @@ fn index() -> Result<DisplayPage> {
         b"101 COLOUR MAP     102 CLUTS 0 AND 1",
         b"103 SCREEN, ROWS   104-108 SIDE PANELS",
         b"109 SIZES, ATTRS   110 FLASH",
-        b"111 FONT STYLES    112 G3 AND G1 SETS",
+        b"112 G3 AND G1 SETS",
         b"113 EVERY MODE     117 CLAUSE 13.9",
         b"118 G2, DIACRITICS 120 ANNEX C.2",
         b"121 LOCAL OBJECTS  122 POP OBJECTS",
@@ -465,31 +467,6 @@ fn flash() -> Result<DisplayPage> {
     Ok(page)
 }
 
-/// 111: Level 3.5 font styles and their row extension (Table 29, mode
-/// 01110; decision E.50).
-fn font_styles() -> Result<DisplayPage> {
-    let mut page = page(0x111, b"FONT STYLES (LEVEL 3.5)")?;
-    let plain = FontStyleData::default();
-    let cases: [(u8, &[u8], FontStyleData); 4] = [
-        (3, b"BOLD TEXT", FontStyleData { bold: true, ..plain }),
-        (5, b"ITALIC TEXT", FontStyleData { italic: true, ..plain }),
-        (7, b"PROPORTIONAL TEXT", FontStyleData { proportional: true, ..plain }),
-        (9, b"ALL THREE FOR TWO MORE ROWS", FontStyleData { bold: true, italic: true, proportional: true, rows: 2 }),
-    ];
-    for (row, text, style) in cases {
-        page.text(row, 2, text)?;
-        page.local().position(row, 0)?.font(2, style);
-    }
-    page.text(10, 2, b"ROW 10 IS STYLED BY ROW 9")?;
-    page.text(11, 2, b"ROW 11 TOO; ROW 12 IS NOT")?;
-    page.text(12, 2, b"ROW 12 PLAIN")?;
-    page.text(14, 2, b"BOLD UNTIL HERE: THEN PLAIN AGAIN")?;
-    page.local().position(14, 0)?.font(2, FontStyleData { bold: true, ..plain }).font(19, plain);
-    page.text(16, 2, b"G1 MOSAICS ARE NEVER STYLED")?;
-    page.local().position(16, 0)?.font(0, FontStyleData { bold: true, italic: true, ..plain }).g1(30, 0x7F);
-    Ok(page)
-}
-
 /// 112: the G3 set by both modes, and G1 mosaics written by X/26
 /// (Table 29, modes 01011, 00010 and 00001).
 fn g3_and_g1() -> Result<DisplayPage> {
@@ -564,7 +541,10 @@ fn every_mode() -> Result<DisplayPage> {
     // and not acted on (decision E.95): the second moves the column only.
     local.raw(Triplet { address: ROW_ADDRESS_RESERVED_DEFAULT, mode: DRCS_MODE, data: DRCS_MODE_DATA });
     local.raw(Triplet { address: 13, mode: MODE_DRCS_CHARACTER, data: DRCS_NORMAL });
-    local.font(14, FontStyleData { bold: true, ..FontStyleData::default() }).g2(15, 0x41);
+    // Font Style, bold, sent as a service would and not acted on (decision
+    // E.96): it moves the column only.
+    local.raw(Triplet { address: 14, mode: MODE_FONT_STYLE, data: FONT_STYLE_BOLD });
+    local.g2(15, 0x41);
     // Column modes 10000 to 11111: G0 with each diacritical mark.
     for (column, mark) in (16u8..).zip(0u8..16) {
         local.diacritic(column, b'e', mark);
