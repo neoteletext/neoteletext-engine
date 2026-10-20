@@ -191,7 +191,7 @@ The browser lives only in `~/devel/neoteletext-browser`. Left over:
 
 ## The user agent (decision E.99)
 
-- **Build REQ-WEB-031:** `Config` takes the port's product, version and platform, checked and bounded; the agent composes and sends the string on requests and the upgrade; `neottx` gives `neottx/<version> (<OS family>; <architecture>)`. Tests as the requirement lists. Not built: the agent still sends `neoteletext/<version>` alone.
+- **Build REQ-WEB-031:** `Config` takes the port's product, significant version and operating system family, checked and bounded; the agent composes and sends the string on requests and the upgrade; `neottx` gives `neottx/<significant version> (<family>)`. Tests as the requirement lists. Not built: the agent still sends `neoteletext/<full version>`.
 
 ## Documentation
 

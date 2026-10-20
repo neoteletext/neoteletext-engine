@@ -1371,11 +1371,12 @@ Decided on 21 October 2026, on the owner's instruction to stop ticking decoders 
 
 *Reason:* A port that must tick blindly wakes for nothing; NeoTeletext woke every channel's decoder twelve times a second for its sounds' clock, whether or not anything played.
 
-**E.99 — The user agent names the program, its version and its platform.**
-Decided on 21 October 2026, on the owner's instruction to identify the client as a web browser's user agent does: its program and version, and the operating system it runs on.
-1. **The `User-Agent` header** is the port's product and version, the platform in brackets, then neoteletext and its version, in RFC 9110's product syntax: for example `NeoTeletext/0.1.0 (macOS; arm64) neoteletext/0.1.0`, `neottx/0.1.0 (Linux; x86_64) neoteletext/0.1.0`, `Teefax-ESP32/1.2 (ESP-IDF; xtensa) neoteletext/0.1.0` (REQ-WEB-031).
-2. **The platform is the operating system's family and the processor's architecture, not their versions,** and nothing about the person or the computer: no host name, language, screen or account. A port without an operating system names its board or its framework.
-3. **It is fixed for a build,** given by the port in `Config`, checked against the syntax and bounded at 128 bytes; a port that gives none sends the engine's own `neoteletext/<version>`, as before.
-4. **It goes on every request and on the push WebSocket's upgrade,** so a channel that takes input knows its receiver from the upgrade; a transport without HTTP carries it in the input session's HELLO (`neoteletext-common/INPUT.md`).
+**E.99 — The user agent names the program, its significant version and its platform's family.**
+Decided on 21 October 2026, on the owner's instruction to identify the client as a web browser's user agent does, and as user agents should have been: what browsers learned in reducing their user agents (2021 to 2023) and in client hints.
+1. **Honest.** The `User-Agent` header names the program that is speaking and nothing it is not: no other product's name for compatibility, as browsers' `Mozilla/5.0 … like Gecko` came to carry.
+2. **The significant version only:** the part that changes compatibility, the major version, or `0.` and the minor before 1.0 (`0.1`, `2`), as browsers now freeze the rest; the full version adds a fingerprint and tells a channel nothing it needs.
+3. **The operating system's family only** (`macOS`, `Windows`, `Linux`, `Android`, `iOS`; a board or framework, such as `ESP-IDF`, for a port without one), as client hints send by default. The operating system's version, the architecture, the device's model and anything about the person or the computer are what browsers now send only when a site asks, and the profile has no way to ask, so they are never sent.
+4. **The engine is named only when the program is not the engine's own:** `NeoTeletext/0.1 (macOS)`, `neottx/0.1 (Linux)`, but `Teefax/1 (ESP-IDF) neoteletext/0.1`.
+5. **The same for every user of a build,** given by the port in `Config`, checked against RFC 9110's product syntax and at most 64 bytes; a port that gives none sends `neoteletext/` and the engine's significant version. It goes on every request and on the push WebSocket's upgrade (REQ-WEB-031); a transport without HTTP carries it in the input session's HELLO (`neoteletext-common/INPUT.md`).
 
-*Reason:* A channel, like a web site, needs to know what it is serving, to work around a receiver's version or tell its viewers to update; the operating system's version and anything personal would add to a fingerprint (REQ-SEC-001) for no such need.
+*Reason:* A channel, like a web site, needs to know what it serves, to work around a receiver's version or tell its viewers to update; everything past that, the browsers found, is a fingerprint (REQ-SEC-001) or a lie told for compatibility.
