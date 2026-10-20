@@ -326,9 +326,22 @@ struct Wakes {
     receiver: Receiver<Wake>,
     requests: VecDeque<Frame>,
     ended: bool,
+    /// How many times the loop has slept, for the tests to count.
+    #[cfg(test)]
+    waits: Arc<std::sync::atomic::AtomicUsize>,
 }
 
 impl Wakes {
+    fn new(receiver: Receiver<Wake>) -> Self {
+        Self {
+            receiver,
+            requests: VecDeque::new(),
+            ended: false,
+            #[cfg(test)]
+            waits: Arc::default(),
+        }
+    }
+
     fn take(&mut self, wake: Wake) {
         match wake {
             Wake::Request(frame) => self.requests.push_back(frame),
@@ -349,6 +362,8 @@ impl Wakes {
     /// Sleeps until a request, a socket or the pipe's end wakes the loop,
     /// or until `deadline`, the state machine's next timer.
     fn wait(&mut self, now: Instant, deadline: Option<Instant>) {
+        #[cfg(test)]
+        self.waits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let woken = match deadline {
             Some(at) => match self.receiver.recv_timeout(Duration::from_micros(at.0.saturating_sub(now.0))) {
                 Ok(wake) => Some(wake),
@@ -376,7 +391,7 @@ pub fn run(address: &str, no_sandbox: bool, allow_local: &[IpAddr]) -> Result<()
     let _ = rustls::crypto::ring::default_provider().install_default();
     let (wake, receiver) = mpsc::channel();
     requests(wake.clone());
-    let mut wakes = Wakes { receiver, requests: VecDeque::new(), ended: false };
+    let mut wakes = Wakes::new(receiver);
     // Name resolution reads the resolver configuration and loads the C
     // library's name-service modules (decision 28 of IMPLEMENTATION-LOG.md).
     let readable: Vec<&std::path::Path> =
@@ -405,31 +420,50 @@ fn clock(start: StdInstant) -> Instant {
 }
 
 fn run_zxnet(channel: &neoteletext_web::zxnet::Channel, wakes: &mut Wakes, wake: Sender<Wake>, allow_local: &[IpAddr]) {
+    live_loop(channel, wakes, StdTransport::new(allow_local, wake), allow_local, &mut |frame| send(frame));
+}
+
+/// The live feed's loop over any transport, sending what it receives
+/// through `emit` until that fails or the decoder process goes.
+fn live_loop<T: Transport>(
+    channel: &neoteletext_web::zxnet::Channel,
+    wakes: &mut Wakes,
+    transport: T,
+    allow_local: &[IpAddr],
+    emit: &mut dyn FnMut(&Frame) -> std::io::Result<()>,
+) {
     use neoteletext_web::zxnet::{LiveEvent, LiveInput, LiveOutput, LiveStorage, ZxnetFeed};
     let mut storage = Box::new(LiveStorage::default());
     let mut feed = ZxnetFeed::new(*channel, storage.buffers(), SystemRandom);
     if let Some(&address) = allow_local.first() {
         feed.allow_local(web_address(address));
     }
-    let mut pump = Pump::new(StdTransport::new(allow_local, wake));
+    let mut pump = Pump::new(transport);
     let start = StdInstant::now();
     let mut buffer = vec![0u8; READ_CHUNK];
     let broken = std::cell::Cell::new(false);
-    let sink = |output: LiveOutput<'_>, pump: &mut Pump<StdTransport>| {
+    // The feed says, after every input, when it next needs a tick, and
+    // says nothing once it has stopped: the latest it said is the deadline.
+    let deadline: std::cell::Cell<Option<Instant>> = std::cell::Cell::new(None);
+    let mut sink = |output: LiveOutput<'_>, pump: &mut Pump<T>| {
         if let Some(net) = output.net() {
             pump.execute(net);
             return;
         }
         let result = match output {
-            LiveOutput::Packet(packet) => send(&Frame::Packet(packet.bytes)),
+            LiveOutput::Timer(at) => {
+                deadline.set(Some(at));
+                Ok(())
+            }
+            LiveOutput::Packet(packet) => emit(&Frame::Packet(packet.bytes)),
             LiveOutput::Event(LiveEvent::InitialPage { page, .. }) => {
-                send(&Frame::Notice(Notice::InitialPage(page.mpp())))
+                emit(&Frame::Notice(Notice::InitialPage(page.mpp())))
             }
             LiveOutput::Event(LiveEvent::GaveUp) => {
-                send(&Frame::Notice(Notice::Message("live feed: gave up reconnecting".into())))
+                emit(&Frame::Notice(Notice::Message("live feed: gave up reconnecting".into())))
             }
             LiveOutput::Event(LiveEvent::WrongName) => {
-                send(&Frame::Notice(Notice::Message("live feed: wrong service name".into())))
+                emit(&Frame::Notice(Notice::Message("live feed: wrong service name".into())))
             }
             _ => Ok(()),
         };
@@ -437,37 +471,34 @@ fn run_zxnet(channel: &neoteletext_web::zxnet::Channel, wakes: &mut Wakes, wake:
             broken.set(true);
         }
     };
-    feed.handle(clock(start), LiveInput::Start, &mut |output| sink(output, &mut pump));
-    let mut next_tick = clock(start);
+    let mut step = |input: LiveInput<'_>, pump: &mut Pump<T>| {
+        deadline.set(None);
+        feed.handle(clock(start), input, &mut |output| sink(output, pump));
+        deadline.get()
+    };
+    let mut next_tick = step(LiveInput::Start, &mut pump);
     while !broken.get() && !wakes.ended {
         let mut busy = false;
         if let Some(input) = pump.poll(ConnectionId::Live, &mut buffer) {
             busy = true;
-            feed.handle(clock(start), LiveInput::Net(input), &mut |output| sink(output, &mut pump));
+            next_tick = step(LiveInput::Net(input), &mut pump);
         }
         while let Some(frame) = wakes.next_request() {
             busy = true;
             if let Frame::Request(mpp, sub) = frame
                 && let Some((page, subcode)) = page_request(mpp, sub)
             {
-                feed.handle(clock(start), LiveInput::Request { page, subcode }, &mut |output| sink(output, &mut pump));
+                next_tick = step(LiveInput::Request { page, subcode }, &mut pump);
             }
         }
-        if clock(start) >= next_tick {
+        if next_tick.is_some_and(|at| clock(start) >= at) {
             // What a tick asks for, a reconnection above all, is taken up
             // on the next turn, not after another wait.
             busy = true;
-            let mut timer = None;
-            feed.handle(clock(start), LiveInput::Tick, &mut |output| {
-                if let LiveOutput::Timer(at) = output {
-                    timer = Some(at);
-                }
-                sink(output, &mut pump);
-            });
-            next_tick = timer.unwrap_or(Instant(clock(start).0 + 200_000));
+            next_tick = step(LiveInput::Tick, &mut pump);
         }
         if !busy {
-            wakes.wait(clock(start), Some(next_tick));
+            wakes.wait(clock(start), next_tick);
         }
     }
 }
@@ -672,5 +703,166 @@ fn run_web(address: &str, wakes: &mut Wakes, wake: Sender<Wake>, allow_local: &[
         if !busy {
             wakes.wait(clock(start), next_tick);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! The live feed's loop against a server played in memory: the feed's
+    //! own deadlines decide when the loop wakes (decision E.97).
+    #![allow(clippy::unwrap_used, clippy::expect_used, reason = "a test")]
+
+    use super::*;
+    use std::sync::Mutex;
+    use std::sync::atomic::Ordering;
+
+    /// How long the tests give the loop.
+    const LIMIT: Duration = Duration::from_secs(12);
+    /// A public address for the server, so no local-network rule applies.
+    const PEER: IpAddress = IpAddress::V4([93, 184, 216, 34]);
+    /// RFC 6455 section 5.2: a final text frame.
+    const TEXT_FRAME: u8 = 0x81;
+
+    /// What the server does once the WebSocket is open.
+    #[derive(Clone, Copy, PartialEq)]
+    enum Script {
+        /// Says nothing more.
+        Silent,
+        /// Refuses the service name, which stops the feed.
+        WrongName,
+    }
+
+    #[derive(Default)]
+    struct Server {
+        open: bool,
+        to_client: VecDeque<u8>,
+        opened_at: Option<StdInstant>,
+        closed_at: Option<StdInstant>,
+    }
+
+    struct Fake {
+        server: Arc<Mutex<Server>>,
+        script: Script,
+        wake: Sender<Wake>,
+    }
+
+    impl embedded_io::ErrorType for Fake {
+        type Error = embedded_io::ErrorKind;
+    }
+
+    impl Transport for Fake {
+        fn connect(&mut self, _: ConnectionId, _: &str, _: u16, _: Security) -> Result<(), Self::Error> {
+            self.server.lock().unwrap().open = true;
+            Ok(())
+        }
+
+        fn state(&mut self, _: ConnectionId) -> LinkState {
+            if self.server.lock().unwrap().open { LinkState::Open(PEER) } else { LinkState::Closed }
+        }
+
+        fn send(&mut self, _: ConnectionId, bytes: &[u8]) -> Result<(), Self::Error> {
+            let mut server = self.server.lock().unwrap();
+            if server.opened_at.is_some() {
+                return Ok(());
+            }
+            // The upgrade request: answer it, then follow the script.
+            let request = String::from_utf8_lossy(bytes);
+            let key = request
+                .lines()
+                .find_map(|line| {
+                    line.split_once(':').filter(|(name, _)| name.eq_ignore_ascii_case("sec-websocket-key"))
+                })
+                .map(|(_, value)| value.trim().to_owned())
+                .unwrap();
+            let accept = neoteletext_web::ws::accept_for(key.as_bytes());
+            let head = format!(
+                "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {}\r\n\r\n",
+                String::from_utf8_lossy(&accept)
+            );
+            server.to_client.extend(head.bytes());
+            if self.script == Script::WrongName {
+                let message = br#"["wrongname"]"#;
+                server.to_client.extend([TEXT_FRAME, u8::try_from(message.len()).unwrap()]);
+                server.to_client.extend(message);
+            }
+            server.opened_at = Some(StdInstant::now());
+            let _ = self.wake.send(Wake::Network);
+            Ok(())
+        }
+
+        fn receive(&mut self, _: ConnectionId, buffer: &mut [u8]) -> Result<Received, Self::Error> {
+            let mut server = self.server.lock().unwrap();
+            if !server.open {
+                return Ok(Received::Closed);
+            }
+            let count = server.to_client.read(buffer).unwrap_or(0);
+            Ok(if count == 0 { Received::Nothing } else { Received::Data(count) })
+        }
+
+        fn close(&mut self, _: ConnectionId) {
+            let mut server = self.server.lock().unwrap();
+            server.open = false;
+            // The slot is closed once before anything opens; only a close
+            // of the open WebSocket counts.
+            if server.opened_at.is_some() {
+                server.closed_at.get_or_insert_with(StdInstant::now);
+            }
+        }
+    }
+
+    /// Runs the loop against the script on a thread; returns the server,
+    /// the loop's count of sleeps, and the sender that ends it.
+    fn start(script: Script) -> (Arc<Mutex<Server>>, Arc<std::sync::atomic::AtomicUsize>, Sender<Wake>) {
+        let (wake, receiver) = mpsc::channel();
+        let mut wakes = Wakes::new(receiver);
+        let waits = wakes.waits.clone();
+        let server = Arc::new(Mutex::new(Server::default()));
+        let fake = Fake { server: server.clone(), script, wake: wake.clone() };
+        let channel = neoteletext_web::zxnet::Channel::from_address("wss://feed.example/live", "test").unwrap();
+        std::thread::spawn(move || live_loop(&channel, &mut wakes, fake, &[], &mut |_| Ok(())));
+        (server, waits, wake)
+    }
+
+    /// Waits for the server to see the connection close.
+    fn closed(server: &Mutex<Server>) -> (StdInstant, StdInstant) {
+        let started = StdInstant::now();
+        loop {
+            let state = server.lock().unwrap();
+            if let (Some(opened), Some(closed)) = (state.opened_at, state.closed_at) {
+                return (opened, closed);
+            }
+            drop(state);
+            assert!(started.elapsed() < LIMIT, "the connection was never closed");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    #[test]
+    fn a_silent_feed_is_dropped_when_its_inactivity_deadline_passes() {
+        // The feed's inactivity deadline, 5 s after the handshake, was lost
+        // behind the handshake's 30 s one: the silence went unnoticed, and
+        // the first keepalive went, about 25 s late.
+        let (server, _, end) = start(Script::Silent);
+        let (opened, closed) = closed(&server);
+        let silence = closed.duration_since(opened);
+        let inactivity = Duration::from_micros(neoteletext_web::consts::ZXNET_INACTIVITY_US);
+        assert!(silence >= inactivity && silence < inactivity * 3 / 2, "dropped after {silence:?}");
+        let _ = end.send(Wake::Ended);
+    }
+
+    #[test]
+    fn a_stopped_feed_sleeps_until_something_happens() {
+        // A feed that has stopped asks for no tick; the loop slept 200 ms
+        // and looked again, five times a second, for ever, once its stale
+        // handshake deadline had passed: run 32 s after the stop on 21
+        // October 2026, the old loop woke 5 times in the second counted.
+        let (server, waits, end) = start(Script::WrongName);
+        closed(&server);
+        std::thread::sleep(Duration::from_millis(100));
+        let before = waits.load(Ordering::Relaxed);
+        std::thread::sleep(Duration::from_secs(1));
+        let woken = waits.load(Ordering::Relaxed) - before;
+        assert!(woken <= 1, "the stopped loop woke {woken} times in a second");
+        let _ = end.send(Wake::Ended);
     }
 }

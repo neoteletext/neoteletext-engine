@@ -1358,4 +1358,6 @@ Decided on 21 October 2026, on the owner's instruction, as T42 Browser's fetcher
 3. **The fetcher ends when the decoder closes the pipe,** rather than when it next fails to write to it.
 4. **A tick counts as work,** so a connection a timer asks for, a reconnection above all, is taken up on the next turn.
 
+*Amended 21 October 2026:* the live feed's loop now follows the feed's own deadlines too. It kept only the deadline a tick reported, so after the handshake the feed's 5-second inactivity and keepalive deadlines were lost behind the handshake's 30 seconds, against REQ-INP-022; and once the feed stopped it woke every 200 ms for ever. It keeps the deadline the feed reports after every input, and sleeps with none once the feed has stopped. The loop takes its transport as a parameter, so its tests play the server in memory.
+
 *Reason:* Typing back is only like a terminal if a key goes at once (decision E.90); the sleep was most of the round trip. A readiness library such as `mio` would be one more dependency for three connections.
