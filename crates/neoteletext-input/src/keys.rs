@@ -184,6 +184,30 @@ pub fn unidentified() -> u32 {
     code("Unidentified").unwrap_or(FIRST_NAMED)
 }
 
+/// The keys that only modify others or lock a state (INPUT.md section 6.3):
+/// they go only in `ALL_KEYS` or `KEY_RELEASE`, as the Kitty keyboard
+/// protocol reports them only when asked. The located modifiers are codes
+/// 80 to 91 and the lock keys 15 to 17; the rest are W3C names.
+const MODIFIER_NAMES: [&str; 11] =
+    ["Alt", "AltGraph", "Control", "Fn", "FnLock", "Hyper", "Meta", "Shift", "Super", "Symbol", "SymbolLock"];
+const LOCKS: core::ops::RangeInclusive<u32> = 15..=17;
+const LOCATED_MODIFIERS: core::ops::RangeInclusive<u32> = 80..=91;
+
+/// Whether `code` is a key that only modifies others or locks a state.
+#[must_use]
+pub fn is_modifier(code: u32) -> bool {
+    LOCKS.contains(&code)
+        || LOCATED_MODIFIERS.contains(&code)
+        || name(code).is_some_and(|name| MODIFIER_NAMES.contains(&name))
+}
+
+/// Whether `code` is the dead key: an accent pressed before its letter
+/// (section 5.7 rule 4), which goes only in `ALL_KEYS`.
+#[must_use]
+pub fn is_dead(code: u32) -> bool {
+    name(code) == Some("Dead")
+}
+
 /// The W3C names given no code below 128, in their table's order.
 fn remaining() -> impl Iterator<Item = &'static str> {
     KEY_NAMES.iter().copied().filter(|name| !ONE_BYTE.contains(name))
@@ -260,6 +284,20 @@ mod tests {
         assert!(KEY_NAMES.iter().all(|each| code(each).is_some()), "every W3C name has a code");
         assert_eq!(code("NoSuchKey"), None);
         assert_eq!(code(""), None);
+    }
+
+    // REQ-INT-116.
+    #[test]
+    fn modifiers_locks_and_the_dead_key_are_known() {
+        for modifier in ["ShiftLeft", "MetaRight", "CapsLock", "NumLock", "AltGraph", "Shift", "Fn"] {
+            assert!(is_modifier(code(modifier).unwrap()), "{modifier}");
+        }
+        for other in ["Enter", "ArrowUp", "F1", "ColorF0Red", "Dead", "Unidentified"] {
+            assert!(!is_modifier(code(other).unwrap()), "{other}");
+        }
+        assert!(MODIFIER_NAMES.iter().all(|name| code(name).is_some()), "every name is in the table");
+        assert!(is_dead(code("Dead").unwrap()));
+        assert!(!is_dead(code("Escape").unwrap()));
     }
 
     // REQ-INT-104.

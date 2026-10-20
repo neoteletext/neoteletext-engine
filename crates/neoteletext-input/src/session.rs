@@ -5,7 +5,8 @@
 //! `neottx keyboard`, a microcontroller.
 
 use crate::control::Control;
-use crate::event::{Action, Event, InputError, Item, MouseAction, units, write};
+use crate::event::{self, Action, Event, InputError, Item, KeyCode, MouseAction, units, write};
+use crate::keys;
 use crate::modes::{
     AGENT, ALL_CAPS, ALL_KEYS, BASE_KEY, COMPOSE, KEY_RELEASE, MOUSE_ALL, MOUSE_DRAG, MOUSE_MODES, MOUSE_PIXELS, Modes,
     PAGE_CAP,
@@ -265,11 +266,22 @@ impl Session {
         };
         let event = match event {
             Event::Key(key) if key.action != Action::Press && !has(KEY_RELEASE) => return None,
+            // A dead key goes only in ALL_KEYS (section 5.7 rule 4), and a
+            // key that only modifies or locks only when keys are asked for
+            // whole (section 6.3).
+            Event::Key(event::Key { key: KeyCode::Functional(code), .. }) if keys::is_dead(code) && !has(ALL_KEYS) => {
+                return None;
+            }
+            Event::Key(event::Key { key: KeyCode::Functional(code), .. })
+                if keys::is_modifier(code) && !has(ALL_KEYS | KEY_RELEASE) =>
+            {
+                return None;
+            }
             Event::Key(mut key) => {
                 if !has(ALL_KEYS) {
                     key.text = None;
                 }
-                if !has(BASE_KEY) || key.base.map(crate::event::KeyCode::Character) == Some(key.key) {
+                if !has(BASE_KEY) || key.base.map(KeyCode::Character) == Some(key.key) {
                     key.base = None;
                 }
                 Event::Key(key)
@@ -599,15 +611,31 @@ mod tests {
         assert!(sent_item(&mut session, &release, None).is_some());
     }
 
+    // REQ-INT-116.
+    #[test]
+    fn a_dead_key_and_a_modifier_alone_go_only_when_asked_for() {
+        let functional = |name: &str| key(Action::Press, KeyCode::Functional(keys::code(name).unwrap()));
+        let mut session = welcomed(ALL_KEYS | KEY_RELEASE);
+        for quiet in ["Dead", "ShiftLeft", "AltGraph", "CapsLock"] {
+            assert_eq!(sent_item(&mut session, &functional(quiet), None), None, "{quiet}");
+        }
+        assert!(sent_item(&mut session, &functional("Enter"), None).is_some(), "a non-text key always");
+        session.control(&Control::PushMode(KEY_RELEASE)).unwrap();
+        assert!(sent_item(&mut session, &functional("ShiftLeft"), None).is_some(), "in KEY_RELEASE");
+        assert_eq!(sent_item(&mut session, &functional("Dead"), None), None, "the dead key is ALL_KEYS's");
+        session.control(&Control::PushMode(ALL_KEYS)).unwrap();
+        assert!(sent_item(&mut session, &functional("Dead"), None).is_some());
+    }
+
     // REQ-INT-115.
     #[test]
     fn the_mouse_goes_only_in_a_mouse_mode_or_on_its_page() {
         let mut session = welcomed(MOUSE_BUTTONS | MOUSE_DRAG | MOUSE_PIXELS);
-        let at = crate::event::Point { column: 10, row: 5, pixels: Some((120, 100)), mods: 0 };
-        let click = Item::Event(Event::Mouse(crate::event::Mouse { action: MouseAction::Press, button: 0, at }));
-        let wheel = Item::Event(Event::Wheel(crate::event::Wheel { dx: 0, dy: 120, at }));
-        let drag = Item::Event(Event::Mouse(crate::event::Mouse { action: MouseAction::Move, button: 1, at }));
-        let hover = Item::Event(Event::Mouse(crate::event::Mouse { action: MouseAction::Move, button: 0, at }));
+        let at = event::Point { column: 10, row: 5, pixels: Some((120, 100)), mods: 0 };
+        let click = Item::Event(Event::Mouse(event::Mouse { action: MouseAction::Press, button: 0, at }));
+        let wheel = Item::Event(Event::Wheel(event::Wheel { dx: 0, dy: 120, at }));
+        let drag = Item::Event(Event::Mouse(event::Mouse { action: MouseAction::Move, button: 1, at }));
+        let hover = Item::Event(Event::Mouse(event::Mouse { action: MouseAction::Move, button: 0, at }));
         assert_eq!(sent_item(&mut session, &click, Some(0x300)), None, "REQ-INT-115: not asked for");
         assert_eq!(sent_item(&mut session, &wheel, Some(0x300)), None);
         session.control(&Control::PageModes { page: 0x300, modes: MOUSE_BUTTONS }).unwrap();
