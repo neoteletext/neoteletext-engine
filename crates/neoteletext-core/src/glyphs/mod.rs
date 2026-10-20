@@ -277,8 +277,9 @@ impl<'a> GlyphSet<'a> {
         Self { in_use: None, by_set: [None; FONT_SET_COUNT], ..self }
     }
 
-    /// The set's own G0 and G2 glyphs, sorted by code point.
-    #[cfg(test)]
+    /// The set's own G0 and G2 glyphs, sorted by code point, for the tests
+    /// that draw with the shipped set.
+    #[cfg(all(test, feature = "bedstead"))]
     #[must_use]
     pub(crate) const fn entries(&self) -> &'static [GlyphEntry] {
         self.entries

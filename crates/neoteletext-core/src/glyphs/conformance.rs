@@ -326,6 +326,8 @@ mod tests {
 
     /// REQ-CHR-015: a font for a joined set needs every form of every
     /// joining letter; sin's initial form missing fails at sin's position.
+    /// The joined sets are neoteletext's own.
+    #[cfg(feature = "extended-sets")]
     #[test]
     fn a_missing_joined_form_fails() {
         let set = FONT_SETS[font_set_index("G0-Arabic-Persian").unwrap()].1;
