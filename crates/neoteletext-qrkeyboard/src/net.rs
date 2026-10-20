@@ -140,6 +140,26 @@ impl Stream {
         }
     }
 
+    /// Reads what arrives within `wait`, as [`Stream::read`] does. A zero
+    /// wait looks without waiting: the operating system refuses a zero
+    /// read timeout, so the socket is made non-blocking for that one read.
+    ///
+    /// # Errors
+    /// When the connection breaks or the socket refuses the setting.
+    pub fn read_within(&mut self, buffer: &mut [u8], wait: Duration) -> Result<Option<usize>, Error> {
+        if !wait.is_zero() {
+            self.set_read_timeout(wait)?;
+            return self.read(buffer);
+        }
+        let blocking = |stream: &Self, on: bool| {
+            stream.socket().set_nonblocking(!on).map_err(|error| Error::Network(error.to_string()))
+        };
+        blocking(self, false)?;
+        let read = self.read(buffer);
+        blocking(self, true)?;
+        read
+    }
+
     /// Closes the connection.
     pub fn close(&self) {
         let _ = self.socket().shutdown(Shutdown::Both);
@@ -324,13 +344,13 @@ impl WebSocket {
         self.send(OPCODE_BINARY, bytes)
     }
 
-    /// Waits up to `timeout` for a message: `None` when none came. Pings
-    /// are answered here.
+    /// Waits up to `timeout` for a message: `None` when none came. A zero
+    /// timeout looks at what has arrived without waiting. Pings are
+    /// answered here.
     ///
     /// # Errors
     /// When the connection breaks or the relay breaks the protocol.
     pub fn receive(&mut self, timeout: Duration) -> Result<Option<Incoming>, Error> {
-        self.stream.set_read_timeout(timeout)?;
         let mut chunk = vec![0_u8; READ_CHUNK];
         loop {
             if !self.unread.is_empty() {
@@ -363,7 +383,7 @@ impl WebSocket {
                     }
                 }
             }
-            let Some(count) = self.stream.read(&mut chunk)? else { return Ok(None) };
+            let Some(count) = self.stream.read_within(&mut chunk, timeout)? else { return Ok(None) };
             if count == 0 {
                 return Ok(Some(Incoming::Closed(None)));
             }
