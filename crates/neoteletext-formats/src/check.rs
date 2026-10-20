@@ -53,6 +53,8 @@ pub enum Problem {
     WithdrawnCommand,
     /// A `TF` line that is malformed or repeated (REQ-FNT-007).
     BadFontLine,
+    /// A `CU` line that could not be read (REQ-INT-006).
+    BadCursorLine,
     /// A warning.
     Warning(Warning),
 }
@@ -226,6 +228,7 @@ pub fn check_page(page: &PageFile, options: &CheckOptions<'_>, out: &mut dyn FnM
             IssueKind::BadLinkTarget => Problem::BadLinkTarget,
             IssueKind::WithdrawnCommand => Problem::WithdrawnCommand,
             IssueKind::BadFontLine => Problem::BadFontLine,
+            IssueKind::BadCursorLine => Problem::BadCursorLine,
             IssueKind::FormNeedsConversion => Problem::FormVersion2,
             IssueKind::FieldOverlap
             | IssueKind::FieldOutsideRow

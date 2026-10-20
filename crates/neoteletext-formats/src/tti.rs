@@ -13,9 +13,9 @@ use neoteletext_core::types::{PageAddress, SubCode};
 use crate::consts::{TTI_COMMAND_BYTES, TTI_FL_LINKS, TTI_FL_NO_LINK, TTI_FL_NULL_LINK, TTI_PACKED_CHARACTERS};
 use crate::item::{Capacity, Diagnostic, DiagnosticKind, Item, Reader, offset_of};
 use crate::page::{
-    DEFAULT_ADDRESS, EnhancementPacket, FONT_ADDRESS_BYTES, FONT_CHECKSUM_DIGITS, FastextLink, FieldKind, FormField,
-    FormMethod, FormOption, IssueKind, LINK_ADDRESS_BYTES, LinkDestination, LinkKey, LinkLine, NumberLink, PageFile,
-    PageFont, PageFunction, RawBody, RawPacket, SERVICE_NAME_BYTES, TextLink, Warning,
+    CursorLine, DEFAULT_ADDRESS, EnhancementPacket, FONT_ADDRESS_BYTES, FONT_CHECKSUM_DIGITS, FastextLink, FieldKind,
+    FormField, FormMethod, FormOption, IssueKind, LINK_ADDRESS_BYTES, LinkDestination, LinkKey, LinkLine, NumberLink,
+    PageFile, PageFont, PageFunction, RawBody, RawPacket, SERVICE_NAME_BYTES, TextLink, Warning,
 };
 use crate::text::Text;
 
@@ -32,9 +32,9 @@ const CODING_LAST: u32 = 0x7;
 /// The commands that belong to a page (REQ-INP-013, Appendices C and E,
 /// `CK` of REQ-CLI-006 and `TF` of REQ-FNT-007). `OP` is `OPTION`,
 /// recognised by its first two letters.
-const PAGE_COMMANDS: [[u8; TTI_COMMAND_BYTES]; 17] = [
+const PAGE_COMMANDS: [[u8; TTI_COMMAND_BYTES]; 18] = [
     *b"SC", *b"PS", *b"OL", *b"FL", *b"LN", *b"LK", *b"LT", *b"RE", *b"PF", *b"CK", *b"FD", *b"OP", *b"FS", *b"FP",
-    *b"FT", *b"FH", *b"TF",
+    *b"FT", *b"FH", *b"TF", *b"CU",
 ];
 /// What starts an address as a link target, rather than a page or a named
 /// service (the web-native concept section 3: "a target containing
@@ -387,6 +387,7 @@ impl TtiReader {
             b"LN" => self.link_line(args, out),
             b"LK" => self.number_link_line(args, out),
             b"LT" => self.text_link_line(args, out),
+            b"CU" => self.cursor_line(args, out),
             b"RE" => match hex(args).filter(|&value| value <= REGION_LAST) {
                 Some(value) => self.page.region = u8::try_from(value).ok(),
                 None => self.diagnostic(bad, out),
@@ -655,6 +656,23 @@ impl TtiReader {
         }
         if !self.page.number_links.push(NumberLink { number, destination, line: self.line_number }) {
             self.diagnostic(DiagnosticKind::CapacityExceeded { what: Capacity::Links }, out);
+        }
+    }
+
+    /// `CU,row,column,width,flags[,acked]` (REQ-INT-006): the page's cursor
+    /// record, decimal. The last line is kept.
+    fn cursor_line(&mut self, args: &[u8], out: &mut dyn FnMut(Item<'_>)) {
+        let mut fields = Args::new(args);
+        let byte = |field: &[u8]| decimal(field).and_then(|value| u8::try_from(value).ok());
+        let (row, column, width, flags) =
+            (byte(fields.next()), byte(fields.next()), byte(fields.next()), byte(fields.next()));
+        let rest = fields.rest().trim_ascii();
+        let acked = if rest.is_empty() { Some(0) } else { decimal(rest).and_then(|value| u16::try_from(value).ok()) };
+        match (row, column, width, flags, acked) {
+            (Some(row), Some(column), Some(width), Some(flags), Some(acked)) => {
+                self.page.cursor = Some(CursorLine { row, column, width, flags, acked, line: self.line_number });
+            }
+            _ => self.issue(IssueKind::BadCursorLine, out),
         }
     }
 

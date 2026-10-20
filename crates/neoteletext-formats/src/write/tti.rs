@@ -237,6 +237,10 @@ fn write_page(page: &PageFile, first: &PageFile, is_first: bool, out: &mut dyn W
         write_destination(&link.destination, out)?;
         writeln!(out)?;
     }
+    // REQ-INT-006: the page's cursor record.
+    if let Some(cursor) = page.cursor {
+        writeln!(out, "CU,{},{},{},{},{}", cursor.row, cursor.column, cursor.width, cursor.flags, cursor.acked)?;
+    }
     write_form_lines(page, out)?;
     // REQ-FNT-007: the writer keeps the page's font; a null one came from a
     // malformed line, which is not written back.

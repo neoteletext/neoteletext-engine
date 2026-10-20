@@ -754,3 +754,29 @@ fn a_pages_link_lines_are_its_own() {
     assert!(pages[1].number_links.is_empty(), "{:?}", pages[1].number_links.as_slice());
     assert!(pages[1].text_links.is_empty());
 }
+
+/// REQ-INT-006: `CU,row,column,width,flags[,acked]` is the page's cursor
+/// record; the last line is kept, the writer writes it back, and a line
+/// that cannot be read is reported and dropped.
+#[test]
+fn a_cursor_line_is_read_kept_and_written_back() {
+    let (pages, _) = read(b"PN,10000\nOL,5,Name: \nCU,1,0,0,0\nCU,5,6,20,1,42\nPN,10100\nCU,255,0,0,0\n");
+    let cursor = pages[0].cursor.unwrap();
+    assert_eq!((cursor.row, cursor.column, cursor.width, cursor.flags, cursor.acked), (5, 6, 20, 1, 42));
+    assert_eq!(pages[1].cursor.map(|cursor| (cursor.row, cursor.acked)), Some((255, 0)), "acked defaults to 0");
+    #[cfg(feature = "std")]
+    {
+        let mut written = Vec::new();
+        crate::write::write_tti(&[&pages[0]], &mut written).unwrap();
+        let (again, _) = read(&written);
+        assert_eq!(
+            again[0].cursor.map(|cursor| (cursor.row, cursor.column, cursor.width, cursor.flags, cursor.acked)),
+            Some((5, 6, 20, 1, 42))
+        );
+    }
+    for line in [b"CU,5,6\n".as_slice(), b"CU,256,0,0,0\n", b"CU,5,6,20,1,70000\n", b"CU,a,0,0,0\n"] {
+        let text = [b"PN,10000\n".as_slice(), line].concat();
+        let (pages, _) = read(&text);
+        assert!(pages[0].cursor.is_none() && pages[0].has_issue(IssueKind::BadCursorLine), "{line:?}");
+    }
+}

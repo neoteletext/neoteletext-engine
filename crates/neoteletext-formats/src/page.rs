@@ -276,6 +276,25 @@ pub struct TextLink {
     pub line: u32,
 }
 
+/// A `CU` line (REQ-INT-006): the page's cursor record of the input
+/// profile, as written. The fields are only read as numbers here; the
+/// input profile (`neoteletext-input`) checks what they mean.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub struct CursorLine {
+    /// The cursor's row, or 255 for no cursor.
+    pub row: u8,
+    /// Its column.
+    pub column: u8,
+    /// How far local echo may run.
+    pub width: u8,
+    /// The record's flags.
+    pub flags: u8,
+    /// The last key record acted on, or 0.
+    pub acked: u16,
+    /// The line of the file.
+    pub line: u32,
+}
+
 /// The field types of the Form Extension (Appendix C.3).
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum FieldKind {
@@ -527,6 +546,8 @@ pub enum IssueKind {
     OptionWithoutField,
     /// A `TF` line that is malformed or repeated (REQ-FNT-007).
     BadFontLine,
+    /// A `CU` line that could not be read (REQ-INT-006).
+    BadCursorLine,
 }
 
 impl IssueKind {
@@ -657,6 +678,8 @@ pub struct PageFile {
     pub number_links: FixedVec<NumberLink, NUMBER_LINKS>,
     /// `LT` lines.
     pub text_links: FixedVec<TextLink, TEXT_LINKS>,
+    /// The last `CU` line (REQ-INT-006).
+    pub cursor: Option<CursorLine>,
     /// The form.
     pub form: Form,
     /// Problems found while reading.
@@ -711,6 +734,7 @@ impl PageFile {
             links_valid: true,
             number_links: FixedVec::new(NumberLink { number: DEFAULT_ADDRESS, destination, line: 0 }),
             text_links: FixedVec::new(TextLink { row: 0, column: 0, length: 0, destination, line: 0 }),
+            cursor: None,
             form: Form::new(),
             issues: FixedVec::new(PageIssue { kind: IssueKind::BadField, line: 0 }),
             considered: 0,
@@ -740,6 +764,7 @@ impl PageFile {
         self.links_valid = true;
         self.number_links.clear();
         self.text_links.clear();
+        self.cursor = None;
         self.form.fields.clear();
         self.form.options.clear();
         self.form.submission = None;
@@ -859,6 +884,7 @@ impl PartialEq for PageFile {
             && self.links_valid == other.links_valid
             && self.number_links.as_slice() == other.number_links.as_slice()
             && self.text_links.as_slice() == other.text_links.as_slice()
+            && self.cursor == other.cursor
             && self.form == other.form
             && self.issues.as_slice() == other.issues.as_slice()
             && self.considered == other.considered
