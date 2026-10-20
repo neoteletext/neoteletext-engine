@@ -1240,3 +1240,20 @@ Decided by the owner on 20 October 2026.
 4. **Level A's memory numbers stay proposals** until the microcontroller build exists to measure them against.
 
 *Reason:* A speech codec would be a library needing approval, with an unmeasured cost on the smallest part, for a use (live talk over broadcast) nobody has asked for; IMA ADPCM already carries live sound over the network. A simultaneous start needs state the profile was redesigned to avoid. The codec's sources were the one thing the decoder's tests could not be checked against.
+
+**E.90 — Input: keys sent back to a channel, as a terminal sends them (area INT).**
+Decided by the owner on 20 October 2026, as T42 Browser's decision 44 (its `docs/interaction.md`). The detail is `design/input.md`.
+1. **A channel that says `"input": true`** in its descriptor, allowed only with push over a WebSocket, takes the viewer's keys back on that socket, one binary message a key. There is no other way in: no request per key, no forms over this path.
+2. **The key record is 14 bytes,** with up to 32 bytes of committed text, carrying a sequence number and the receiver's millisecond clock, and naming keys by the W3C `KeyboardEvent.key` and `KeyboardEvent.code` values in two numbered tables that only grow at the end.
+3. **The cursor record is optional,** as a cursor is: a game sends none and keys go just the same.
+4. **A new crate, `neoteletext-input`** (`no_std`, no allocation), holds both records, so a microcontroller can send keys and read cursors. It depends on the core and on the audio profile's carriage, which it shares (E.91); the WebSocket, TLS and the phone keyboard's cryptography stay out of the microcontroller crates (decision E.38).
+
+*Reason:* A terminal sends bytes and lets the host decide what they mean; a receiver that does the same executes nothing and keeps every page a plain teletext page, and a game, a form and a shell are the same to it.
+
+**E.91 — Input: the cursor record is type 4 of the audio profile's frame, on data channel 12.**
+Decided on 20 October 2026. The browser's design proposed data channel 13, to be checked against EN 300 708 first.
+1. **EN 300 708 Table 16 gives data channel 13 to Datavideo** (clause 6.6), so it is not free. The cursor record is instead record type 4 of the audio profile's frame (REQ-AUD-003), on the profile's own channel 12, a user-defined service of clause 6.7.3.2.
+2. **It is always one fragment** (16 bytes), so a receiver reads it from its packet without reassembly, and the audio receiver steps over it before reassembly, so a cursor's record id never meets a sound's. The audio crate exposes the frame (`record::split`, `record::write`) and the packet writer (`idl::packet`) that both use, so neither is written twice.
+3. **A TTI page carries it as a `CU` line,** kept by the reader and the writer. The engine's encoder does not turn it into a packet: the formats crate takes nothing from the input profile, and a receiver reads the line from the page it already has.
+
+*Reason:* Taking an allocated data channel would collide with a real service on air; the audio profile's carriage is proven, and one fragment needs nothing new.

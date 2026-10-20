@@ -7,12 +7,13 @@
 //! the fragment's index, [`FRAGMENT_DATA`] bytes of the record, and a CRC-16
 //! over the 36 bytes before it (clause 6.5.8.1).
 
+use neoteletext_core::consts::PACKET_BYTES;
 use neoteletext_core::consts::{
     ADDRESS_BYTE_0, ADDRESS_BYTE_1, IDL_AUDIO_CONTROL_BYTE, IDL_AUDIO_DATA_BYTES, IDL_AUDIO_DATA_START,
     IDL_AUDIO_SERVICE_BYTE, IDL_AUDIO_SERVICE_MASK, IDL_AUDIO_USER_DEFINED, IDL_CHANNEL_INDEPENDENT_AUDIO,
     IDL_DESIGNATION,
 };
-use neoteletext_core::ecc::hamming84;
+use neoteletext_core::ecc::{hamming84, hamming84_encode};
 use neoteletext_core::packet::Packet;
 
 use crate::MAX_RECORD;
@@ -82,6 +83,49 @@ pub fn is_audio(packet: &Packet) -> bool {
 #[must_use]
 pub fn fragment(packet: &Packet) -> Option<Result<Fragment, IdlError>> {
     is_audio(packet).then(|| read(packet))
+}
+
+/// The packet that carries fragment `index` of record `record` of audio
+/// service `service`: `chunk` is at most [`FRAGMENT_DATA`] bytes of the
+/// record, padded with zeros. It allocates nothing, so a microcontroller
+/// can send a one-fragment record such as the input profile's cursor.
+#[must_use]
+pub fn packet(service: u8, record: u8, index: u8, last: bool, chunk: &[u8]) -> Packet {
+    let mut bytes = [0_u8; PACKET_BYTES];
+    let mut set = |at: usize, value: u8| {
+        if let Some(byte) = bytes.get_mut(at) {
+            *byte = value;
+        }
+    };
+    set(ADDRESS_BYTE_0, hamming84_encode(IDL_CHANNEL_INDEPENDENT_AUDIO));
+    set(ADDRESS_BYTE_1, hamming84_encode(IDL_DESIGNATION));
+    set(IDL_AUDIO_SERVICE_BYTE, hamming84_encode(IDL_AUDIO_USER_DEFINED | (service & IDL_AUDIO_SERVICE_MASK)));
+    let mut control = 0;
+    if index == 0 {
+        control |= CONTROL_FIRST;
+    }
+    if last {
+        control |= CONTROL_LAST;
+    }
+    set(IDL_AUDIO_CONTROL_BYTE, hamming84_encode(control));
+    if let Some(audio) = bytes.get_mut(IDL_AUDIO_DATA_START..) {
+        if let Some(id) = audio.get_mut(0) {
+            *id = record;
+        }
+        if let Some(place) = audio.get_mut(1) {
+            *place = index;
+        }
+        let chunk = chunk.get(..chunk.len().min(FRAGMENT_DATA)).unwrap_or(&[]);
+        if let Some(target) = audio.get_mut(2..2usize.saturating_add(chunk.len())) {
+            target.copy_from_slice(chunk);
+        }
+        let checked = IDL_AUDIO_DATA_BYTES.saturating_sub(2);
+        let crc = crc16_idl(audio.get(..checked).unwrap_or(&[]));
+        if let Some(target) = audio.get_mut(checked..) {
+            target.copy_from_slice(&crc.to_be_bytes());
+        }
+    }
+    Packet { bytes }
 }
 
 fn read(packet: &Packet) -> Result<Fragment, IdlError> {

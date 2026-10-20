@@ -1,0 +1,18 @@
+[package]
+name = "neoteletext-input"
+description = "The input profile (area INT): key records a receiver sends to a channel, and the cursor record a channel sends back, no_std, no allocation"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# REQ-GEN-017 and decision E.38: the core's packet type, and the audio
+# profile's record frame and data-line carriage, which the cursor record
+# shares (decision E.91).
+[dependencies]
+neoteletext-core.workspace = true
+neoteletext-audio = { workspace = true, features = ["idl"] }
+
+[lints]
+workspace = true

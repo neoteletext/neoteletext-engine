@@ -19,6 +19,7 @@ neoteletext-formats = { path = "../crates/neoteletext-formats", features = ["def
 neoteletext-slicer = { path = "../crates/neoteletext-slicer" }
 neoteletext-web = { path = "../crates/neoteletext-web", features = ["default"] }
 neoteletext-audio = { path = "../crates/neoteletext-audio" }
+neoteletext-input = { path = "../crates/neoteletext-input" }
 
 [workspace]
 members = ["."]
@@ -133,6 +134,20 @@ bench = false
 [[bin]]
 name = "audio_packets"
 path = "fuzz_targets/audio_packets.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "key_records"
+path = "fuzz_targets/key_records.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "cursor_records"
+path = "fuzz_targets/cursor_records.rs"
 test = false
 doc = false
 bench = false

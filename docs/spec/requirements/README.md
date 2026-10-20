@@ -29,6 +29,7 @@
 | BRW | The browser (section F.20), withdrawn on 18 October 2026: the browser was removed from this repository | `brw.md` |
 | FNT | Fonts (section F.21) | `fnt.md` |
 | AUD | Audio: sounds carried with teletext, and their playing (section F.22) | `aud.md` |
+| INT | Input: keys sent back to a channel, and the cursor it answers with (section F.23) | `int.md` |
 | SEC | Security and sandboxing, which overrides every other area (section F.0.3) | `sec.md` |
 
 ## F.0.1 Delivery phases
@@ -77,6 +78,7 @@ The requirements are delivered in two phases.
 | REQ-SEC-021 | Guidance on hardware isolation for microcontroller ports. |
 | REQ-RND-026 | The glyph line cache. |
 | REQ-AUD-001 to REQ-AUD-021 and REQ-CLI-011 | The audio profile: sounds carried on independent data lines, over a network or in a file, and played on four channels (decisions E.84 to E.86). |
+| REQ-INT-001 to REQ-INT-006 | The input profile: keys sent back to a channel over its WebSocket, and the cursor record (decisions E.90 and E.91). |
 | REQ-CHR-012 to REQ-CHR-016 and REQ-CLI-010 | neoteletext's own character sets for about 55 more languages, the joining of Arabic-script letters, Thai and Lao, and writing pages in these sets (decision E.78). |
 
 Tests for a Phase 2 feature are delivered with that feature.

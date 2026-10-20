@@ -457,3 +457,31 @@ fn a_stopped_live_sound_is_not_restarted_by_its_blocks() {
     push(&mut receiver, &live_blocks(&sound, 1, 3), &mut sink);
     assert_eq!(sink.starts(), NO_STARTS);
 }
+
+#[test]
+fn a_cursor_record_on_the_audio_channel_is_left_to_the_input_profile() {
+    // The input profile's cursor record shares data channel 12 (decision
+    // E.91); with the record id of a sound's fragment in flight it must not
+    // disturb the sound, nor count as a refused record.
+    let sound = Sound::new(1, 1, Codec::Pcm16, 8_000, 1000, &tone(777)).unwrap();
+    let packets = broadcast(&sound, &[play(1, 1, &sound, None)]);
+    let mut cursor = [0_u8; 16];
+    let length = neoteletext_audio::record::write(
+        neoteletext_audio::record::TYPE_CURSOR,
+        &[0x01, 0x00, 0, 0, 255, 0, 0, 0],
+        &mut cursor,
+    )
+    .unwrap();
+    let cursor = neoteletext_audio::idl::packet(0, 0, 0, true, &cursor[..length]);
+    let mut arena = vec![0; ARENA];
+    let mut receiver = Receiver::<8, 2>::new(&mut arena);
+    let mut sink = Recorder::new();
+    let (first, rest) = packets.split_first().unwrap();
+    receiver.push_packet(first, &mut sink);
+    assert!(receiver.push_packet(&cursor, &mut sink), "it is a packet of the audio channel");
+    for packet in rest {
+        receiver.push_packet(packet, &mut sink);
+    }
+    assert_eq!(receiver.statistics().records_refused, 0);
+    assert_eq!(sink.starts(), [(1, SoundId { handle: 1, generation: 1 })]);
+}

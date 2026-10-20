@@ -101,8 +101,17 @@ dependencies = [
  "neoteletext-audio",
  "neoteletext-core",
  "neoteletext-formats",
+ "neoteletext-input",
  "neoteletext-slicer",
  "neoteletext-web",
+]
+
+[[package]]
+name = "neoteletext-input"
+version = "0.1.0"
+dependencies = [
+ "neoteletext-audio",
+ "neoteletext-core",
 ]
 
 [[package]]

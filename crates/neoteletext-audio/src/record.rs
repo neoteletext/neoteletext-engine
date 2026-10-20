@@ -15,6 +15,11 @@ pub const TYPE_OBJECT: u8 = 1;
 pub const TYPE_DATA: u8 = 2;
 /// Record type: a command.
 pub const TYPE_CONTROL: u8 = 3;
+/// Record type: the input profile's cursor record (area INT,
+/// `docs/spec/design/input.md`), carried with this profile's records on
+/// the same data channel because EN 300 708 Table 16 gives data channel 13
+/// to Datavideo. It is always one fragment; this receiver leaves it alone.
+pub const TYPE_CURSOR: u8 = 4;
 
 /// OBJECT's fixed fields: handle, generation, id, codec, rate, block bytes,
 /// sample count, block count.
@@ -164,15 +169,22 @@ pub fn framed_length(bytes: &[u8]) -> Result<usize, RecordError> {
     if body > MAX_BODY {
         return Err(RecordError::TooLong);
     }
-    Ok(RECORD_HEADER.saturating_add(body).saturating_add(RECORD_CRC))
+    Ok(record_length(body))
 }
 
-/// Reads one whole record, exactly `bytes` long.
+/// The bytes of a record with a body of `body` bytes.
+#[must_use]
+pub const fn record_length(body: usize) -> usize {
+    RECORD_HEADER.saturating_add(body).saturating_add(RECORD_CRC)
+}
+
+/// Checks one whole record's frame, exactly `bytes` long, and returns its
+/// type and body: the part of [`parse`] that every record type shares, for
+/// the profiles carried with this one.
 ///
 /// # Errors
-/// Any failure of REQ-AUD-003 to REQ-AUD-006: the frame, the CRC, the type
-/// or any field.
-pub fn parse(bytes: &[u8]) -> Result<Record<'_>, RecordError> {
+/// The frame's failures of REQ-AUD-003: the length, the CRC or the version.
+pub fn split(bytes: &[u8]) -> Result<(u8, &[u8]), RecordError> {
     if bytes.len() > MAX_RECORD {
         return Err(RecordError::TooLong);
     }
@@ -193,8 +205,36 @@ pub fn parse(bytes: &[u8]) -> Result<Record<'_>, RecordError> {
     if version != PROFILE_VERSION {
         return Err(RecordError::Version(version));
     }
+    Ok((header.get(1).copied().unwrap_or(0), body))
+}
+
+/// Writes a record of type `kind` around `body` into `out` and returns its
+/// length, or `None` when the body is over [`MAX_BODY`] or `out` is short.
+/// It allocates nothing.
+pub fn write(kind: u8, body: &[u8], out: &mut [u8]) -> Option<usize> {
+    if body.len() > MAX_BODY {
+        return None;
+    }
+    let length = record_length(body.len());
+    let record = out.get_mut(..length)?;
+    let (header, rest) = record.split_at_mut(RECORD_HEADER);
+    let (target, crc) = rest.split_at_mut(body.len());
+    let [high, low] = u16::try_from(body.len()).ok()?.to_be_bytes();
+    header.copy_from_slice(&[PROFILE_VERSION, kind, high, low]);
+    target.copy_from_slice(body);
+    crc.copy_from_slice(&crc32_parts(header, target).to_be_bytes());
+    Some(length)
+}
+
+/// Reads one whole record, exactly `bytes` long.
+///
+/// # Errors
+/// Any failure of REQ-AUD-003 to REQ-AUD-006: the frame, the CRC, the type
+/// or any field.
+pub fn parse(bytes: &[u8]) -> Result<Record<'_>, RecordError> {
+    let (kind, body) = split(bytes)?;
     let mut fields = Fields { bytes: body };
-    match header.get(1).copied().unwrap_or(0) {
+    match kind {
         TYPE_OBJECT => object(&mut fields).map(Record::Object),
         TYPE_DATA => {
             let data = Data {

@@ -10,6 +10,8 @@ use crate::control::{Channel, Play, fade};
 #[cfg(feature = "idl")]
 use crate::idl::{Reassembler, fragment};
 use crate::port::{SoundFormat, SoundId, Start, VoiceSink};
+#[cfg(feature = "idl")]
+use crate::record::TYPE_CURSOR;
 use crate::record::{Control, Operation, Record, parse};
 use crate::store::{Defined, Entry, Store, Stored};
 use crate::{CHANNELS, Codec, MAX_BLOCK_SAMPLES, PROGRESSIVE_BUFFER_MS};
@@ -147,6 +149,9 @@ impl<'a, const OBJECTS: usize, const SLOTS: usize> Receiver<'a, OBJECTS, SLOTS> 
     pub fn push_packet(&mut self, packet: &Packet, sink: &mut dyn VoiceSink) -> bool {
         let Some(result) = fragment(packet) else { return false };
         match result {
+            // The input profile's cursor record is one fragment; it never
+            // enters reassembly, so its record id cannot meet a sound's.
+            Ok(fragment) if fragment.first && fragment.last && fragment.data.get(1) == Some(&TYPE_CURSOR) => {}
             Ok(fragment) if fragment.service == self.service => {
                 if let Some((_, record)) = self.reassembler.push(&fragment) {
                     let mut copy = [0_u8; crate::MAX_RECORD];

@@ -433,6 +433,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "neoteletext-input"
+version = "0.1.0"
+dependencies = [
+ "neoteletext-audio",
+ "neoteletext-core",
+]
+
+[[package]]
 name = "neoteletext-slicer"
 version = "0.1.0"
 dependencies = [

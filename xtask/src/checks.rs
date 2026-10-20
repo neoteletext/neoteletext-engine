@@ -124,6 +124,7 @@ const PERMITTED: &[(&str, &[&str])] = &[
     ("neoteletext-image", &["neoteletext-core"]),
     ("neoteletext-audio", &["neoteletext-core"]),
     ("neoteletext-audio-mix", &[]),
+    ("neoteletext-input", &["neoteletext-core", "neoteletext-audio"]),
 ];
 
 /// REQ-GEN-017: compares each microcontroller crate's resolved normal
@@ -256,6 +257,7 @@ const LIBRARY_CRATES: &[&str] = &[
     "neoteletext-image",
     "neoteletext-audio",
     "neoteletext-audio-mix",
+    "neoteletext-input",
 ];
 const FORBIDDEN: &[&str] =
     &["std::fs", "std::net", "std::process", "std::env", "std::thread", "SystemTime", "Instant::now", "std::time"];

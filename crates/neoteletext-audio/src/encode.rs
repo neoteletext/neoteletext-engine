@@ -3,19 +3,12 @@
 
 use alloc::vec::Vec;
 
-use neoteletext_core::consts::{
-    ADDRESS_BYTE_0, ADDRESS_BYTE_1, IDL_AUDIO_CONTROL_BYTE, IDL_AUDIO_DATA_BYTES, IDL_AUDIO_DATA_START,
-    IDL_AUDIO_SERVICE_BYTE, IDL_AUDIO_SERVICE_MASK, IDL_AUDIO_USER_DEFINED, IDL_CHANNEL_INDEPENDENT_AUDIO,
-    IDL_DESIGNATION, PACKET_BYTES,
-};
-use neoteletext_core::ecc::hamming84_encode;
 use neoteletext_core::packet::Packet;
 
-use crate::crc::{crc16_idl, crc32};
-use crate::idl::{CONTROL_FIRST, CONTROL_LAST, FRAGMENT_DATA};
+use crate::idl::{FRAGMENT_DATA, packet};
 use crate::ima::{State, encode as encode_code};
-use crate::record::{DATA_FIXED, TAG_LABEL, TYPE_CONTROL, TYPE_DATA, TYPE_OBJECT};
-use crate::{Codec, MAX_BODY, MAX_RECORD, PROFILE_VERSION, SERVICE_SCOPE, rate_code};
+use crate::record::{DATA_FIXED, TAG_LABEL, TYPE_CONTROL, TYPE_DATA, TYPE_OBJECT, record_length, write};
+use crate::{Codec, MAX_BODY, SERVICE_SCOPE, rate_code};
 
 /// A sound ready to publish.
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -260,16 +253,13 @@ impl Command {
     }
 }
 
-/// A record: header, body and CRC-32 (REQ-AUD-003).
+/// A record: header, body and CRC-32 (REQ-AUD-003). A body longer than
+/// [`MAX_BODY`] gives an empty record, which no receiver accepts.
 #[must_use]
 pub fn frame(kind: u8, body: &[u8]) -> Vec<u8> {
-    let mut bytes = Vec::with_capacity(body.len().saturating_add(8).min(MAX_RECORD));
-    bytes.push(PROFILE_VERSION);
-    bytes.push(kind);
-    bytes.extend_from_slice(&u16::try_from(body.len()).unwrap_or(u16::MAX).to_be_bytes());
-    bytes.extend_from_slice(body);
-    let crc = crc32(&bytes);
-    bytes.extend_from_slice(&crc.to_be_bytes());
+    let mut bytes = alloc::vec![0_u8; record_length(body.len())];
+    let written = write(kind, body, &mut bytes).unwrap_or(0);
+    bytes.truncate(written);
     bytes
 }
 
@@ -282,40 +272,8 @@ pub fn packets(service: u8, mut record_id: u8, records: &[Vec<u8>]) -> (Vec<Pack
     for record in records {
         let count = record.len().div_ceil(FRAGMENT_DATA);
         for (index, chunk) in record.chunks(FRAGMENT_DATA).enumerate() {
-            let mut bytes = [0_u8; PACKET_BYTES];
-            let mut set = |at: usize, value: u8| {
-                if let Some(byte) = bytes.get_mut(at) {
-                    *byte = value;
-                }
-            };
-            set(ADDRESS_BYTE_0, hamming84_encode(IDL_CHANNEL_INDEPENDENT_AUDIO));
-            set(ADDRESS_BYTE_1, hamming84_encode(IDL_DESIGNATION));
-            set(IDL_AUDIO_SERVICE_BYTE, hamming84_encode(IDL_AUDIO_USER_DEFINED | (service & IDL_AUDIO_SERVICE_MASK)));
-            let mut control = 0;
-            if index == 0 {
-                control |= CONTROL_FIRST;
-            }
-            if index.saturating_add(1) == count {
-                control |= CONTROL_LAST;
-            }
-            set(IDL_AUDIO_CONTROL_BYTE, hamming84_encode(control));
-            if let Some(audio) = bytes.get_mut(IDL_AUDIO_DATA_START..) {
-                if let Some(id) = audio.get_mut(0) {
-                    *id = record_id;
-                }
-                if let Some(place) = audio.get_mut(1) {
-                    *place = u8::try_from(index).unwrap_or(u8::MAX);
-                }
-                if let Some(target) = audio.get_mut(2..2usize.saturating_add(chunk.len())) {
-                    target.copy_from_slice(chunk);
-                }
-                let checked = IDL_AUDIO_DATA_BYTES.saturating_sub(2);
-                let crc = crc16_idl(audio.get(..checked).unwrap_or(&[]));
-                if let Some(target) = audio.get_mut(checked..) {
-                    target.copy_from_slice(&crc.to_be_bytes());
-                }
-            }
-            out.push(Packet { bytes });
+            let last = index.saturating_add(1) == count;
+            out.push(packet(service, record_id, u8::try_from(index).unwrap_or(u8::MAX), last, chunk));
         }
         record_id = record_id.wrapping_add(1);
     }
