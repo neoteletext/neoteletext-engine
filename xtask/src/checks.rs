@@ -197,6 +197,8 @@ const APPLICATION_CRATES: &[(&str, &[&str])] = &[
         &[
             "neoteletext-app",
             "neoteletext-audio",
+            "neoteletext-input",
+            "neoteletext-qrkeyboard",
             "neoteletext-core",
             "neoteletext-formats",
             "neoteletext-slicer",

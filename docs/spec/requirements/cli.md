@@ -126,3 +126,15 @@ It never reads from the network and runs under the sandbox of REQ-SEC-017.
 
 It never reads from the network and runs under the sandbox of REQ-SEC-017. A build without the feature `sound` refuses the command (decision E.61).
 *Verification:* Tests that PCM written and read back through the receiver is exact and plays on the page and channel asked for, that IMA ADPCM reads back with a signal-to-noise ratio above 25 dB, that a rate outside the profile is refused, that a live sound plays back as the player reaches it and fades two seconds after the last block, that a live sound too fast for the pace is refused, and that a build without `sound` refuses the command.
+
+**REQ-CLI-012 — A QR code as a page.**
+*Phase:* Phase 2.
+`neottx qr <text> --page <mpp> [--row <r>] [--column <c>] <output>` shall write a TTI page whose rows, from row `r` (2 unless given), show the QR code of `text` in contiguous mosaics, one sixel a module, dark on white with its quiet zone, and shall refuse a code that does not fit rows 1 to 23 and 40 columns.
+*Verification:* A test reads the page back with the engine's own reader and refuses a code placed too low; the rendered page was decoded by a QR reader on 20 October 2026 (decision E.94).
+
+**REQ-CLI-013 — A phone as a channel's keyboard.**
+*Phase:* Phase 2.
+`neottx keyboard <ws address> [--relay <address>] [--pin] [--name <name>] [--qr-page <mpp> --qr-output <file>]` shall create a qrkeyboard instance (REQ-INT-007), show its QR in the terminal with the one line of warning ("Anyone who can see this code can type"), optionally write it as a page (REQ-CLI-012), connect to the channel's push WebSocket, and send each key of the paired phone as a key record (REQ-INT-001), down and up, its text in records of at most 32 bytes, with no modifier.
+*Verification:* The records it sends are written by the engine's key-record writer, which refuses anything out of range; pairing is REQ-INT-007's.
+
+*Amended 20 October 2026 (decision E.94):* **REQ-CLI-004's viewer types back.** On a channel whose descriptor declares input, while its WebSocket is open, `neottx view` sends every key to the channel as a key record, down then up (a terminal reports a key once), Control-C included, and tells the channel which page is open; Control-] leaves the keys to the viewer, and again gives them back, as telnet's escape character does.

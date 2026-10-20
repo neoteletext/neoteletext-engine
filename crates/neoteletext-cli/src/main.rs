@@ -6,6 +6,8 @@
 mod commands;
 mod contents;
 mod font;
+#[cfg(feature = "keyboard")]
+mod keyboard;
 mod options;
 mod output;
 mod sound;
@@ -333,6 +335,46 @@ enum Command {
         #[arg(long)]
         no_sandbox: bool,
     },
+    /// Write text, such as a qrkeyboard join address, as a QR code in a
+    /// TTI page's mosaics (REQ-CLI-012).
+    Qr {
+        /// The text.
+        text: String,
+        /// The page, 100 to 8FF.
+        #[arg(long)]
+        page: String,
+        /// The first row of the code.
+        #[arg(long, default_value_t = 2)]
+        row: usize,
+        /// The column the code starts at.
+        #[arg(long, default_value_t = 0)]
+        column: usize,
+        /// The TTI file to write.
+        output: PathBuf,
+    },
+    /// Make a phone the keyboard of a channel that takes input, through
+    /// qrkeyboard's relay: the phone's keys go to the channel's push
+    /// WebSocket as key records, as a browser would send them
+    /// (REQ-CLI-013). It holds the network.
+    Keyboard {
+        /// The channel's push WebSocket, `ws://` or `wss://`.
+        channel: String,
+        /// The qrkeyboard relay.
+        #[arg(long, default_value = "https://qrkeyboard.com")]
+        relay: String,
+        /// Pair with a PIN shown here, rather than a key in the QR.
+        #[arg(long)]
+        pin: bool,
+        /// The name the phone shows.
+        #[arg(long, default_value = "neottx")]
+        name: String,
+        /// Also write the QR as this page, for the channel to show.
+        #[arg(long, requires = "qr_output")]
+        qr_page: Option<String>,
+        /// The TTI file of that page.
+        #[arg(long, requires = "qr_page")]
+        qr_output: Option<PathBuf>,
+    },
     /// Work with loaded fonts (area FNT).
     Font {
         #[command(subcommand)]
@@ -395,6 +437,17 @@ fn main() -> ExitCode {
         } => {
             let options = sound::SoundOptions { page, channel, gain, codec, handle, looped, repeat, live, pace };
             sound::sound(&options, &input, &output, no_sandbox)
+        }
+        #[cfg(feature = "keyboard")]
+        Command::Qr { text, page, row, column, output } => keyboard::qr(&text, &page, row, column, &output),
+        #[cfg(feature = "keyboard")]
+        Command::Keyboard { channel, relay, pin, name, qr_page, qr_output } => {
+            let qr_page = qr_page.zip(qr_output);
+            keyboard::keyboard(&keyboard::KeyboardOptions { channel, relay, pin, name, qr_page })
+        }
+        #[cfg(not(feature = "keyboard"))]
+        Command::Qr { .. } | Command::Keyboard { .. } => {
+            Err(neoteletext_app::not_in_build("qr and keyboard", "keyboard"))
         }
         Command::SandboxTest => sandbox::self_test(),
         Command::Fetch { address, no_sandbox, allow_local } => commands::fetch(&address, no_sandbox, &allow_local),

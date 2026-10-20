@@ -200,7 +200,10 @@ fn requests() -> Receiver<Frame> {
     std::thread::spawn(move || {
         let mut input = std::io::stdin().lock();
         while let Ok(Some(frame)) = pipe::read(&mut input) {
-            let wanted = matches!(frame, Frame::Request(..) | Frame::Submit(_) | Frame::Confirm(_) | Frame::Follow(..));
+            let wanted = matches!(
+                frame,
+                Frame::Request(..) | Frame::Submit(_) | Frame::Confirm(_) | Frame::Follow(..) | Frame::Key(_)
+            );
             if wanted && sender.send(frame).is_err() {
                 break;
             }
@@ -338,6 +341,9 @@ fn run_web(address: &str, requests: &Receiver<Frame>, allow_local: &[IpAddr]) {
     let mut buffer = vec![0u8; READ_CHUNK];
     let broken = std::cell::Cell::new(false);
     let service_ready = std::cell::Cell::new(false);
+    // The push connection opened (true) or was lost (false), for the
+    // decoder to know when keys may go (area INT).
+    let push_state: std::cell::Cell<Option<bool>> = std::cell::Cell::new(None);
     let mut next_tick: Option<Instant> = Some(Instant(0));
     let sink = |output: Output<'_>, pump: &mut Pump<StdTransport>, next_tick: &mut Option<Instant>| {
         if let Some(net) = output.net() {
@@ -378,6 +384,15 @@ fn run_web(address: &str, requests: &Receiver<Frame>, allow_local: &[IpAddr]) {
                 send(&Frame::Notice(Notice::Message(format!("index.t42 was not used: {failure:?}"))))
             }
             Output::Event(Event::Unencrypted { .. }) => send(&Frame::Notice(Notice::Unencrypted)),
+            Output::Event(Event::PushConnected(_)) => {
+                push_state.set(Some(true));
+                Ok(())
+            }
+            // A bad message keeps the connection and says so with no wait.
+            Output::Event(Event::PushLost { retry_in_us, .. }) if retry_in_us > 0 => {
+                push_state.set(Some(false));
+                Ok(())
+            }
             Output::Event(Event::ConfirmSubmission { host, plain_http, first_to_origin, .. }) => {
                 send(&Frame::Notice(Notice::Confirm(host.to_string(), plain_http, first_to_origin)))
             }
@@ -414,6 +429,12 @@ fn run_web(address: &str, requests: &Receiver<Frame>, allow_local: &[IpAddr]) {
                 busy = true;
                 agent.handle(clock(start), Input::Net(input), &mut |output| sink(output, &mut pump, &mut next_tick));
             }
+        }
+        if let Some(open) = push_state.take()
+            && agent.descriptor().is_some_and(neoteletext_web::descriptor::Descriptor::input)
+            && send(&Frame::Notice(Notice::Input(open))).is_err()
+        {
+            break;
         }
         if service_ready.replace(false) {
             // Tell the decoder about the (new) service's linked services
@@ -476,6 +497,7 @@ fn run_web(address: &str, requests: &Receiver<Frame>, allow_local: &[IpAddr]) {
                     agent.handle(now, Input::Submit(form), &mut out);
                 }
                 Frame::Confirm(yes) => agent.handle(now, Input::ConfirmSubmission(yes), &mut out),
+                Frame::Key(record) => agent.handle(now, Input::Send(&record), &mut out),
                 Frame::Follow(service, mpp, sub) => {
                     if let Some((page, subcode)) = page_request(mpp, sub) {
                         agent.handle(now, Input::FollowLink { service: &service, page, subcode }, &mut out);

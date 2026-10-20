@@ -58,6 +58,7 @@ const BUILDS: &[Build] = &[
     Build { package: "neoteletext-cli", features: "live" },
     Build { package: "neoteletext-cli", features: "slice" },
     Build { package: "neoteletext-cli", features: "sound" },
+    Build { package: "neoteletext-cli", features: "keyboard" },
 ];
 
 /// `cargo xtask features`: lints and tests each build of [`BUILDS`].

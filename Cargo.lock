@@ -621,6 +621,8 @@ dependencies = [
  "neoteletext-core",
  "neoteletext-formats",
  "neoteletext-image",
+ "neoteletext-input",
+ "neoteletext-qrkeyboard",
  "neoteletext-web",
 ]
 

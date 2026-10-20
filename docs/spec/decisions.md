@@ -1276,3 +1276,12 @@ Decided on 20 October 2026, for T42 Browser's phone keyboard and `neottx keyboar
 4. **Checked against qrkeyboard's own code,** not against itself: hashes, a SPAKE2 run and sealed frames computed by its `crypto.ts`, and pairing through a running copy of its relay.
 
 *Reason:* Without the screen's side in the engine, every channel author who wants a phone as a keyboard would implement qrkeyboard's pairing and cryptography; and the browser's phone keyboard needs the same code.
+
+**E.94 — neottx: `qr`, `keyboard`, and typing back in `view`.**
+Decided on 20 October 2026, as the browser's decision 44 item 11.
+1. **`neottx qr`** writes any text, a qrkeyboard join address above all, as a QR code in a page's mosaics, so a channel can be the screen a phone scans, on any receiver. With one sixel a module a join address of about 100 bytes is a version 5 code at the low correction level: 23 columns by 15 rows with its quiet zone. A teletext sixel is 6 by 6⅔ dots, so the modules are nearly square; the rendered page was read by a QR reader (jsQR) on 20 October 2026.
+2. **`neottx keyboard`** is the bridge `interaction.md` section 9 describes: it pairs a phone through qrkeyboard and sends its keys to the channel's push WebSocket as key records, exactly as a browser would, so a channel takes a phone and a browser alike without implementing qrkeyboard. It holds the network, and runs without the sandbox, as `neottx fetch` holds it.
+3. **`neottx view` types back** on a channel that takes input: every key goes, as from a terminal, and Control-] leaves, as telnet's escape character does; the app's pipe carries the records (`Frame::Key`, at most 46 bytes) and the fetcher's word that keys may go (`Notice::Input`). A terminal reports a key once, so each goes down then up.
+4. **The command-line program asserts** that the web module's, the app pipe's and the input profile's bounds on a key record agree.
+
+*Reason:* Authors test a channel that takes input without the browser, and a channel author gets a phone keyboard by running one command.

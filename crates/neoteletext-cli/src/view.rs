@@ -83,6 +83,76 @@ fn map_form_key(key: KeyEvent) -> Option<FormKey> {
     })
 }
 
+/// The key that leaves a channel's keys, as telnet's escape character
+/// leaves its host's: Control and the right square bracket.
+const LEAVE_TYPING: char = ']';
+
+/// A terminal key as the input profile names it (area INT, REQ-INT-003):
+/// its key code and modifiers; `None` for keys the profile has no name for.
+fn key_record_of(key: KeyEvent) -> Option<(u16, u16)> {
+    use neoteletext_input::key::{ALT, CONTROL, SHIFT};
+    use neoteletext_input::names::{character_key, named_key};
+    let bit = |set: bool, value: u16| if set { value } else { 0 };
+    let mut modifiers = bit(key.modifiers.contains(KeyModifiers::SHIFT), SHIFT)
+        | bit(key.modifiers.contains(KeyModifiers::CONTROL), CONTROL)
+        | bit(key.modifiers.contains(KeyModifiers::ALT), ALT);
+    let code = match key.code {
+        KeyCode::Char(character) => character_key(character)?,
+        KeyCode::BackTab => {
+            modifiers |= SHIFT;
+            named_key("Tab")?
+        }
+        KeyCode::F(number) => named_key(&format!("F{number}"))?,
+        KeyCode::Enter => named_key("Enter")?,
+        KeyCode::Backspace => named_key("Backspace")?,
+        KeyCode::Tab => named_key("Tab")?,
+        KeyCode::Esc => named_key("Escape")?,
+        KeyCode::Left => named_key("ArrowLeft")?,
+        KeyCode::Right => named_key("ArrowRight")?,
+        KeyCode::Up => named_key("ArrowUp")?,
+        KeyCode::Down => named_key("ArrowDown")?,
+        KeyCode::Home => named_key("Home")?,
+        KeyCode::End => named_key("End")?,
+        KeyCode::PageUp => named_key("PageUp")?,
+        KeyCode::PageDown => named_key("PageDown")?,
+        KeyCode::Delete => named_key("Delete")?,
+        KeyCode::Insert => named_key("Insert")?,
+        _ => return None,
+    };
+    Some((code, modifiers))
+}
+
+/// Typing into a channel that takes input (area INT): the viewer's keys
+/// go to it as a terminal's go to its host.
+#[derive(Default)]
+struct Typing {
+    /// The channel's WebSocket is open and its descriptor declares input.
+    open: bool,
+    /// The viewer left the keys with Control-].
+    left: bool,
+    sequence: u16,
+    /// The page the channel was last told is open.
+    told: Option<u16>,
+}
+
+impl Typing {
+    fn on(&self) -> bool {
+        self.open && !self.left
+    }
+
+    fn send(&mut self, source: &mut dyn Source, event: neoteletext_input::key::Event<'_>, clock_ms: u32) {
+        self.sequence = match self.sequence.wrapping_add(1) {
+            0 => 1,
+            next => next,
+        };
+        let mut out = [0_u8; neoteletext_input::key::MAX_RECORD];
+        let record = neoteletext_input::key::Record { sequence: self.sequence, clock_ms, event };
+        if let Some(length) = record.write(&mut out) {
+            source.send_key(&out[..length]);
+        }
+    }
+}
+
 /// Restores the terminal however the viewer exits.
 struct RawGuard;
 
@@ -158,6 +228,7 @@ pub fn run(
     let mut pending: Option<Pending> = None;
     let mut prompt: Option<[u8; COLUMNS]> = None;
     let mut confirmed_services: HashSet<u8> = HashSet::new();
+    let mut typing = Typing::default();
     // The report of the last grid built. The page and store stay borrowed
     // until the key is handled, so it is recorded at the start of the next
     // pass, when nothing borrows the decoder.
@@ -211,6 +282,13 @@ pub fn run(
                     prompt = Some(message_row(if ok { "Sent." } else { "Not sent: the service refused it." }));
                 }
                 Notice::Service(_) => confirmed_services.clear(),
+                Notice::Input(open) => {
+                    typing.open = open;
+                    typing.told = None;
+                    if open {
+                        prompt = Some(message_row("Keys go to this channel. Ctrl-] leaves"));
+                    }
+                }
                 Notice::Message(text) => messages.push(text),
                 // REQ-WEB-009: a page that is not stored cannot be shown
                 // while the network is away.
@@ -250,6 +328,12 @@ pub fn run(
         }
         action = Action::None;
         let (requested, subcode) = viewer.requested();
+        // The channel is told which of its pages is open (REQ-INT-002).
+        let clock_ms = u32::try_from(start.elapsed().as_millis() & u128::from(u32::MAX)).unwrap_or(0);
+        if typing.on() && typing.told != Some(requested.mpp()) {
+            typing.told = Some(requested.mpp());
+            typing.send(source, neoteletext_input::key::Event::Page(Some(requested.mpp())), clock_ms);
+        }
         if viewer.state() == ViewerState::Searching && session.page(requested, subcode).is_some() {
             viewer.event(ViewerEvent::PagePresent);
         }
@@ -333,7 +417,31 @@ pub fn run(
         if event::poll(TICK)?
             && let Event::Key(key) = event::read()?
         {
-            if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+            let control = key.modifiers.contains(KeyModifiers::CONTROL);
+            if typing.open && control && key.code == KeyCode::Char(LEAVE_TYPING) {
+                typing.left = !typing.left;
+                typing.told = None;
+                prompt = Some(message_row(if typing.left {
+                    "Keys are the viewer's. Ctrl-] types again"
+                } else {
+                    "Keys go to this channel. Ctrl-] leaves"
+                }));
+                last_drawn = None;
+                continue;
+            }
+            // Every key is the channel's while it takes them, Control-C
+            // included, as a terminal's are its host's.
+            if typing.on() {
+                if let Some((code, modifiers)) = key_record_of(key) {
+                    let clock_ms = u32::try_from(start.elapsed().as_millis() & u128::from(u32::MAX)).unwrap_or(0);
+                    let press = neoteletext_input::key::Press { key: code, modifiers, physical: 0 };
+                    // A terminal reports a key once; it goes down and up.
+                    typing.send(source, neoteletext_input::key::Event::Down(press), clock_ms);
+                    typing.send(source, neoteletext_input::key::Event::Up(press), clock_ms);
+                }
+                continue;
+            }
+            if key.code == KeyCode::Char('c') && control {
                 break Ok(());
             }
             last_drawn = None;
