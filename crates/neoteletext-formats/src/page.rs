@@ -27,6 +27,9 @@ pub const LINK_LINES: usize = 5;
 /// The longest address a link may name (the web-native concept
 /// section 3): longer addresses make the link invalid.
 pub const LINK_ADDRESS_BYTES: usize = 256;
+/// What marks a link to a web page, to open outside teletext, rather than
+/// a teletext channel (Appendix E.1, decision E.88).
+pub const WEB_MARK: &[u8] = b"web:";
 /// `LK` lines per page: page numbers linked elsewhere (concept section 5
 /// item 3).
 pub const NUMBER_LINKS: usize = 8;
@@ -219,7 +222,7 @@ impl LinkLine {
     /// (decision E.88).
     #[must_use]
     pub fn is_web(&self) -> bool {
-        self.url.as_bytes().starts_with(crate::tti::WEB_MARK)
+        self.url.as_bytes().starts_with(WEB_MARK)
     }
 }
 
@@ -244,7 +247,7 @@ impl LinkDestination {
     /// (decision E.88).
     #[must_use]
     pub fn is_web(&self) -> bool {
-        self.url.as_bytes().starts_with(crate::tti::WEB_MARK)
+        self.url.as_bytes().starts_with(WEB_MARK)
     }
 }
 

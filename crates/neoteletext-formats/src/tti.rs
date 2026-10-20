@@ -15,7 +15,7 @@ use crate::item::{Capacity, Diagnostic, DiagnosticKind, Item, Reader, offset_of}
 use crate::page::{
     CursorLine, DEFAULT_ADDRESS, EnhancementPacket, FONT_ADDRESS_BYTES, FONT_CHECKSUM_DIGITS, FastextLink, FieldKind,
     FormField, FormMethod, FormOption, IssueKind, LINK_ADDRESS_BYTES, LinkDestination, LinkKey, LinkLine, NumberLink,
-    PageFile, PageFont, PageFunction, RawBody, RawPacket, SERVICE_NAME_BYTES, TextLink, Warning,
+    PageFile, PageFont, PageFunction, RawBody, RawPacket, SERVICE_NAME_BYTES, TextLink, WEB_MARK, Warning,
 };
 use crate::text::Text;
 
@@ -42,9 +42,6 @@ const PAGE_COMMANDS: [[u8; TTI_COMMAND_BYTES]; 18] = [
 const ADDRESS_MARK: &[u8] = b"://";
 /// The schemes an address in a page may use.
 const ADDRESS_SCHEMES: [&[u8]; 2] = [b"https://", b"http://"];
-/// What marks a link to a web page, to open outside teletext, rather than
-/// a teletext channel (Appendix E.1, decision E.88).
-pub const WEB_MARK: &[u8] = b"web:";
 /// The last row a text link may be on: rows 1 to 23 are the page's text.
 const TEXT_LINK_LAST_ROW: u8 = 23;
 
