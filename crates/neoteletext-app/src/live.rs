@@ -93,7 +93,12 @@ const OFFLINE_RETRY_US: u64 = 10_000_000;
 
 /// Starts the fetcher process for `address`. Must run before sandboxing:
 /// starting a program is blocked afterwards.
-pub fn open(address: &str, no_sandbox: bool, allow_local: &[std::net::IpAddr]) -> Result<Box<dyn Source>, Failure> {
+pub fn open(
+    address: &str,
+    no_sandbox: bool,
+    allow_local: &[std::net::IpAddr],
+    proxy: Option<&str>,
+) -> Result<Box<dyn Source>, Failure> {
     let program = std::env::current_exe().map_err(|error| (exit::INPUT, error.to_string()))?;
     let mut command = Command::new(program);
     command.arg("fetch").arg(address).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::inherit());
@@ -102,6 +107,9 @@ pub fn open(address: &str, no_sandbox: bool, allow_local: &[std::net::IpAddr]) -
     }
     for address in allow_local {
         command.arg("--allow-local").arg(address.to_string());
+    }
+    if let Some(proxy) = proxy {
+        command.arg("--proxy").arg(proxy);
     }
     let mut child = command.spawn().map_err(|error| (exit::INPUT, format!("cannot start the fetcher: {error}")))?;
     let requests = child.stdin.take().ok_or((exit::INPUT, "no pipe to the fetcher".to_string()))?;

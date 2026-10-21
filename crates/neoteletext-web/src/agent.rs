@@ -97,6 +97,11 @@ pub struct Config {
     /// The program the agent names itself as, in its `User-Agent`
     /// (REQ-WEB-031); `None` names the engine.
     pub product: Option<crate::user_agent::Product>,
+    /// The port's transport goes through a proxy (REQ-WEB-032), so the
+    /// peer it reports is the proxy, which the user chose: the local
+    /// network is then refused by what the agent can see of a host before
+    /// it connects ([`crate::proxy::hidden_local`]), not by the peer.
+    pub proxied: bool,
 }
 
 impl Default for Config {
@@ -117,6 +122,7 @@ impl Default for Config {
             persist_cookies: false,
             redirects_within_channel: false,
             product: None,
+            proxied: false,
         }
     }
 }
@@ -411,6 +417,21 @@ pub enum Event<'a> {
     },
     /// The push connection is open.
     PushConnected(PushMethod),
+    /// A request on the fetch connection was answered (REQ-WEB-033): for a
+    /// developer's view of the channel's network activity, each hop of a
+    /// redirect its own.
+    Exchanged {
+        /// The request's method.
+        method: Method,
+        /// The address asked for.
+        url: &'a str,
+        /// The response's status code.
+        status: u16,
+        /// The body's bytes.
+        bytes: usize,
+        /// Microseconds from the request to the end of its response.
+        elapsed_us: u64,
+    },
     /// An [`Input::Send`] was not sent: no push WebSocket is open, the
     /// channel does not take input, or the message is too long.
     InputDropped,
@@ -584,6 +605,8 @@ struct Exchange {
     reused: bool,
     /// One retry after a kept-alive connection closed unanswered.
     retried: bool,
+    /// When this request was made, for the exchange's report (REQ-WEB-033).
+    started: Instant,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1077,11 +1100,23 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
         if url.ip().is_some_and(|ip| self.blocked(ip)) {
             return Some(Failure::Blocked);
         }
+        // Through a proxy, names are resolved there: a local name is
+        // refused before the proxy is asked (REQ-WEB-032, REQ-SEC-006).
+        let allowed = url.ip().is_some_and(|ip| self.config.allowed_local.contains(&Some(ip)));
+        if self.config.proxied && !allowed && crate::proxy::hidden_local(url.host_text()) {
+            return Some(Failure::Blocked);
+        }
         None
     }
 
     fn blocked(&self, address: IpAddress) -> bool {
         address.is_blocked() && !self.config.allowed_local.contains(&Some(address))
+    }
+
+    /// Whether the peer a connection reached is refused: never through a
+    /// proxy, whose address it is (REQ-WEB-032).
+    fn peer_blocked(&self, peer: IpAddress) -> bool {
+        !self.config.proxied && self.blocked(peer)
     }
 
     /// REQ-SEC-007: the host was reached over HTTPS this session, or holds
@@ -1204,6 +1239,7 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
                 sent: false,
                 reused: false,
                 retried: false,
+                started: now,
             });
             self.start_exchange(now, sink);
         }
@@ -1301,7 +1337,7 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             return;
         }
         let Some(target) = self.fetch.target else { return };
-        if self.blocked(peer) {
+        if self.peer_blocked(peer) {
             sink(Output::Close { connection: ConnectionId::Fetch });
             self.fetch.link = Link::Closed;
             event(sink, Event::Blocked { connection: ConnectionId::Fetch, host: target.host.as_str() });
@@ -1501,6 +1537,21 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
     }
 
     /// A response is complete: act on it.
+    /// REQ-WEB-033: each exchange reported as it completes, for a
+    /// developer's view of the channel.
+    fn report_exchange(&self, now: Instant, exchange: &Exchange, status: u16, sink: &mut Sink<'_>) {
+        event(
+            sink,
+            Event::Exchanged {
+                method: exchange.method,
+                url: exchange.url.as_str(),
+                status,
+                bytes: self.fetch.body_len,
+                elapsed_us: now.0.saturating_sub(exchange.started.0),
+            },
+        );
+    }
+
     fn complete(&mut self, now: Instant, sink: &mut Sink<'_>) {
         let (Some(exchange), Some(head)) = (self.fetch.exchange, self.fetch.response) else { return };
         self.fetch.deadline = None;
@@ -1516,6 +1567,7 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             self.next_fetch_at = self.next_fetch_at.max(Instant(now.0.saturating_add(delay)));
         }
         let status = head.status;
+        self.report_exchange(now, &exchange, status, sink);
         let redirect = matches!(
             status,
             STATUS_MOVED_PERMANENTLY
@@ -1775,6 +1827,7 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
         exchange.redirects = exchange.redirects.saturating_add(1);
         exchange.sent = false;
         exchange.retried = false;
+        exchange.started = now;
         self.fetch.exchange = Some(exchange);
         self.start_exchange(now, sink);
     }
@@ -2081,7 +2134,7 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             return;
         }
         let Some(url) = self.push_address() else { return };
-        if self.blocked(peer) {
+        if self.peer_blocked(peer) {
             event(sink, Event::Blocked { connection: ConnectionId::Push, host: url.host_text() });
             self.push_lost(now, Some(PushProblem::Failure(Failure::Blocked)), true, sink);
             return;

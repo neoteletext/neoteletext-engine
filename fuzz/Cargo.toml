@@ -158,3 +158,10 @@ path = "fuzz_targets/cursor_records.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "proxy"
+path = "fuzz_targets/proxy.rs"
+test = false
+doc = false
+bench = false

@@ -76,7 +76,7 @@ fn a_receive_that_may_not_wait_answers_a_ping_and_sees_the_close() {
     let port = listener.local_addr().unwrap().port();
     let (replies, answers) = mpsc::channel();
     std::thread::spawn(move || server(&listener, &replies));
-    let mut socket = WebSocket::connect(&parse(&format!("ws://127.0.0.1:{port}/")).unwrap()).unwrap();
+    let mut socket = WebSocket::connect(&parse(&format!("ws://127.0.0.1:{port}/")).unwrap(), None).unwrap();
 
     let started = Instant::now();
     let closed = loop {

@@ -91,6 +91,7 @@ impl Common {
             verbose: self.verbose,
             no_sandbox: self.no_sandbox,
             allow_local: self.allow_local.clone(),
+            proxy: self.proxy.clone(),
         }
     }
 }

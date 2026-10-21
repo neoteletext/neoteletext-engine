@@ -1398,3 +1398,13 @@ Decided on 21 October 2026, on the owner's approval of the library ("if those li
 2. **Not in `neoteletext-input`:** the library always allocates, and the input crate is a microcontroller crate that allocates nothing (section 7 of the development process); a microcontroller receiver's keys are typed as composed characters, and a receiver with text to normalize normalizes it before it encodes.
 
 *Reason:* A channel compares what it receives; the same `é` must arrive as the same code point from every layout and input method.
+
+**E.102 — Proxies, and a report of each exchange.**
+Decided on 21 October 2026, for the browser's proxy setting and developer console (its decision 51), on the owner's instruction to build them.
+1. **The proxy's protocols are the engine's** (`neoteletext-web`'s `proxy`): `CONNECT` for an HTTP proxy, SOCKS5 with no authentication, written and read sans-IO and bounded, and, with the new `std` feature, a blocking handshake over any `std::io` stream and an owned `Proxy` that `neottx`, the qrkeyboard client and the browser's fetcher share; each of those opens its own socket, as the web crate reaches no network (REQ-SEC-016, REQ-WEB-032).
+2. **Through a proxy the agent keeps the local-network rule on what it can see:** `Config::proxied` makes it refuse local names and addresses before it connects, and not the peer, which is the proxy. The zxnet live feed does the same (`through_proxy`).
+3. **No proxy credentials:** a proxy that needs a password is refused; the engine would have to hold one.
+4. **The agent reports each exchange** (REQ-WEB-033): `Event::Exchanged`, with the method, address, status, size and time.
+5. **`neottx --proxy URL`** for every command that fetches, and for `neottx keyboard`.
+
+*Reason:* Both are protocol and the engine is where the browser's protocols live; `neottx` gains them at the same time.

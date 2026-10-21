@@ -11,7 +11,7 @@ publish.workspace = true
 # and cryptography, which the microcontroller crates never do (decision
 # E.38).
 [dependencies]
-neoteletext-web.workspace = true
+neoteletext-web = { workspace = true, features = ["std"] }
 # Transport Layer Security to the relay, as neottx's fetcher has it.
 rustls = { version = "0.23.32", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 webpki-roots = "1.0.3"

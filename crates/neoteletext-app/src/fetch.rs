@@ -7,6 +7,7 @@ use crate::pipe::{self, Frame, Notice};
 use neoteletext_core::policy::{ipv4_blocked, ipv6_blocked};
 use neoteletext_core::types::{Instant, PageAddress, SubCode};
 use neoteletext_web::port::{ConnectionId, LinkState, Pump, RandomSource, Received, Security, Transport};
+use neoteletext_web::proxy::Proxy;
 use neoteletext_web::url::IpAddress;
 use std::collections::VecDeque;
 use std::io::{Read, Write};
@@ -62,6 +63,8 @@ pub struct StdTransport {
     tls: Arc<rustls::ClientConfig>,
     allowed_local: Vec<IpAddr>,
     wake: Sender<Wake>,
+    /// Every connection goes through this proxy (REQ-WEB-032).
+    proxy: Option<Proxy>,
 }
 
 fn slot(connection: ConnectionId) -> usize {
@@ -90,7 +93,7 @@ impl StdTransport {
     /// A transport trusting the Mozilla root certificates, waking the loop
     /// through `wake`.
     #[must_use]
-    pub fn new(allowed_local: &[IpAddr], wake: Sender<Wake>) -> Self {
+    pub fn new(allowed_local: &[IpAddr], wake: Sender<Wake>, proxy: Option<Proxy>) -> Self {
         let roots = rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
         let tls = rustls::ClientConfig::builder().with_root_certificates(roots).with_no_client_auth();
         Self {
@@ -99,21 +102,47 @@ impl StdTransport {
             tls: Arc::new(tls),
             allowed_local: allowed_local.to_vec(),
             wake,
+            proxy,
         }
     }
 
-    fn open(&self, host: &str, port: u16, security: Security) -> Result<(Connection, IpAddr), String> {
-        let candidates: Vec<SocketAddr> =
-            (host, port).to_socket_addrs().map_err(|error| format!("{host}: {error}"))?.collect();
-        let allowed = candidates
-            .iter()
-            .find(|address| !blocked(address.ip()) || self.allowed_local.contains(&address.ip()))
-            .ok_or_else(|| format!("{host}: every address is on a blocked local network (REQ-SEC-006)"))?;
-        let mut socket =
-            TcpStream::connect_timeout(allowed, CONNECT_TIMEOUT).map_err(|error| format!("{host}: {error}"))?;
+    /// A socket that reaches `host` and `port`: directly, to an address the
+    /// local-network rule allows, or through the proxy, whose address the
+    /// user chose, after its handshake (REQ-WEB-032).
+    fn reach(&self, host: &str, port: u16) -> Result<(TcpStream, IpAddr), String> {
+        let socket = if let Some(proxy) = &self.proxy {
+            // The proxy's address may be local: the user chose it.
+            let address = (proxy.host.as_str(), proxy.port)
+                .to_socket_addrs()
+                .map_err(|error| format!("{}: {error}", proxy.host))?
+                .next()
+                .ok_or_else(|| format!("{}: no address", proxy.host))?;
+            let mut socket = TcpStream::connect_timeout(&address, CONNECT_TIMEOUT)
+                .map_err(|error| format!("{}: {error}", proxy.host))?;
+            socket.set_read_timeout(Some(CONNECT_TIMEOUT)).map_err(|error| error.to_string())?;
+            socket.set_write_timeout(Some(CONNECT_TIMEOUT)).map_err(|error| error.to_string())?;
+            proxy.open_tunnel(&mut socket, host, port)?;
+            socket
+        } else {
+            let candidates: Vec<SocketAddr> =
+                (host, port).to_socket_addrs().map_err(|error| format!("{host}: {error}"))?.collect();
+            let allowed = candidates
+                .iter()
+                .find(|address| !blocked(address.ip()) || self.allowed_local.contains(&address.ip()))
+                .ok_or_else(|| format!("{host}: every address is on a blocked local network (REQ-SEC-006)"))?;
+            let socket =
+                TcpStream::connect_timeout(allowed, CONNECT_TIMEOUT).map_err(|error| format!("{host}: {error}"))?;
+            socket.set_read_timeout(Some(CONNECT_TIMEOUT)).map_err(|error| error.to_string())?;
+            socket.set_write_timeout(Some(CONNECT_TIMEOUT)).map_err(|error| error.to_string())?;
+            socket
+        };
         socket.set_nodelay(true).map_err(|error| error.to_string())?;
-        socket.set_read_timeout(Some(CONNECT_TIMEOUT)).map_err(|error| error.to_string())?;
-        socket.set_write_timeout(Some(CONNECT_TIMEOUT)).map_err(|error| error.to_string())?;
+        let peer = socket.peer_addr().map_err(|error| error.to_string())?.ip();
+        Ok((socket, peer))
+    }
+
+    fn open(&self, host: &str, port: u16, security: Security) -> Result<(Connection, IpAddr), String> {
+        let (mut socket, peer) = self.reach(host, port)?;
         let tls = match security {
             Security::Plain => None,
             Security::Tls => {
@@ -135,7 +164,7 @@ impl StdTransport {
         let (chunks, incoming) = mpsc::sync_channel(READS_AHEAD);
         let wake = self.wake.clone();
         std::thread::spawn(move || read_socket(reader, &chunks, &wake));
-        Ok((Connection { socket, tls, incoming, pending: VecDeque::new() }, allowed.ip()))
+        Ok((Connection { socket, tls, incoming, pending: VecDeque::new() }, peer))
     }
 }
 
@@ -402,7 +431,8 @@ fn page_request(mpp: u16, sub: u16) -> Option<(PageAddress, Option<SubCode>)> {
 pub const CHANNEL_PREFIX: &str = "channel:";
 
 /// Runs the fetcher for `address` until the decoder process goes away.
-pub fn run(address: &str, no_sandbox: bool, allow_local: &[IpAddr]) -> Result<(), (u8, String)> {
+pub fn run(address: &str, no_sandbox: bool, allow_local: &[IpAddr], proxy: Option<&str>) -> Result<(), (u8, String)> {
+    let proxy = proxy.map(Proxy::parse).transpose().map_err(|message| (crate::exit::USAGE, message))?;
     let _ = rustls::crypto::ring::default_provider().install_default();
     let (wake, receiver) = mpsc::channel();
     requests(wake.clone());
@@ -419,13 +449,13 @@ pub fn run(address: &str, no_sandbox: bool, allow_local: &[IpAddr]) -> Result<()
     if let Some(name) = address.strip_prefix("zxnet:") {
         let channel = neoteletext_web::zxnet::Channel::from_short_name(name)
             .map_err(|error| (crate::exit::USAGE, format!("unknown live feed: {error:?}")))?;
-        run_zxnet(&channel, &mut wakes, wake, allow_local);
+        run_zxnet(&channel, &mut wakes, wake, allow_local, proxy);
     } else if address.starts_with("wss://") {
         let channel = neoteletext_web::zxnet::Channel::from_identifier(address)
             .map_err(|error| (crate::exit::USAGE, format!("unknown live feed: {error:?}")))?;
-        run_zxnet(&channel, &mut wakes, wake, allow_local);
+        run_zxnet(&channel, &mut wakes, wake, allow_local, proxy);
     } else {
-        run_web(address, &mut wakes, wake, allow_local);
+        run_web(address, &mut wakes, wake, allow_local, proxy);
     }
     Ok(())
 }
@@ -446,8 +476,16 @@ fn clock(start: StdInstant) -> Instant {
     Instant(u64::try_from(start.elapsed().as_micros()).unwrap_or(u64::MAX))
 }
 
-fn run_zxnet(channel: &neoteletext_web::zxnet::Channel, wakes: &mut Wakes, wake: Sender<Wake>, allow_local: &[IpAddr]) {
-    live_loop(channel, wakes, StdTransport::new(allow_local, wake), allow_local, &mut |frame| send(frame));
+fn run_zxnet(
+    channel: &neoteletext_web::zxnet::Channel,
+    wakes: &mut Wakes,
+    wake: Sender<Wake>,
+    allow_local: &[IpAddr],
+    proxy: Option<Proxy>,
+) {
+    let proxied = proxy.is_some();
+    let transport = StdTransport::new(allow_local, wake, proxy);
+    live_loop(channel, wakes, transport, allow_local, proxied, &mut |frame| send(frame));
 }
 
 /// The live feed's loop over any transport, sending what it receives
@@ -457,12 +495,16 @@ fn live_loop<T: Transport>(
     wakes: &mut Wakes,
     transport: T,
     allow_local: &[IpAddr],
+    proxied: bool,
     emit: &mut dyn FnMut(&Frame) -> std::io::Result<()>,
 ) {
     use neoteletext_web::zxnet::{LiveEvent, LiveInput, LiveOutput, LiveStorage, ZxnetFeed};
     let mut storage = Box::new(LiveStorage::default());
     let mut feed = ZxnetFeed::new(*channel, storage.buffers(), SystemRandom);
     feed.name_product(neottx().as_ref());
+    if proxied {
+        feed.through_proxy();
+    }
     if let Some(&address) = allow_local.first() {
         feed.allow_local(web_address(address));
     }
@@ -534,7 +576,7 @@ fn live_loop<T: Transport>(
 
 // One event loop; splitting it would scatter the agent's sink and state.
 #[allow(clippy::too_many_lines)]
-fn run_web(address: &str, wakes: &mut Wakes, wake: Sender<Wake>, allow_local: &[IpAddr]) {
+fn run_web(address: &str, wakes: &mut Wakes, wake: Sender<Wake>, allow_local: &[IpAddr], proxy: Option<Proxy>) {
     use neoteletext_web::agent::{Event, Failure, Input, Output, Source as Came, Storage, UserAgent};
     use neoteletext_web::form::{FormMethod, FormSubmission};
     use neoteletext_web::http::MediaType;
@@ -548,12 +590,13 @@ fn run_web(address: &str, wakes: &mut Wakes, wake: Sender<Wake>, allow_local: &[
     // (REQ-WEB-021).
     config.redirects_within_channel = channel.is_some();
     config.product = neottx();
+    config.proxied = proxy.is_some();
     for (slot, &address) in config.allowed_local.iter_mut().zip(allow_local) {
         *slot = Some(web_address(address));
     }
     let mut agent: Box<UserAgent<'_, SystemRandom, COOKIE_SLOTS, COOKIE_BYTES>> =
         Box::new(UserAgent::new(config, storage.buffers(), SystemRandom));
-    let mut pump = Pump::new(StdTransport::new(allow_local, wake));
+    let mut pump = Pump::new(StdTransport::new(allow_local, wake, proxy));
     let start = StdInstant::now();
     let mut buffer = vec![0u8; READ_CHUNK];
     let broken = std::cell::Cell::new(false);
@@ -850,7 +893,7 @@ mod tests {
         let server = Arc::new(Mutex::new(Server::default()));
         let fake = Fake { server: server.clone(), script, wake: wake.clone() };
         let channel = neoteletext_web::zxnet::Channel::from_address("wss://feed.example/live", "test").unwrap();
-        std::thread::spawn(move || live_loop(&channel, &mut wakes, fake, &[], &mut |_| Ok(())));
+        std::thread::spawn(move || live_loop(&channel, &mut wakes, fake, &[], false, &mut |_| Ok(())));
         (server, waits, wake)
     }
 
@@ -911,5 +954,73 @@ mod tests {
         let woken = waits.load(Ordering::Relaxed) - before;
         assert!(woken <= 1, "the stopped loop woke {woken} times in a second");
         let _ = end.send(Wake::Ended);
+    }
+
+    /// A proxy played on this computer: it reads the client's handshake,
+    /// answers with `answer`, then sends `HOST`, as the host would.
+    fn played_proxy(
+        kind: neoteletext_web::proxy::ProxyKind,
+        answer: Vec<u8>,
+    ) -> (u16, std::thread::JoinHandle<Vec<u8>>) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut heard = Vec::new();
+            let mut byte = [0_u8; 1];
+            let wanted = |heard: &[u8]| match kind {
+                neoteletext_web::proxy::ProxyKind::Http => heard.ends_with(b"\r\n\r\n"),
+                // The greeting, then the request for a 12-byte name.
+                neoteletext_web::proxy::ProxyKind::Socks5 => heard.len() == 3 + 5 + 12 + 2,
+            };
+            while !wanted(&heard) {
+                if kind == neoteletext_web::proxy::ProxyKind::Socks5 && heard.len() == 3 {
+                    stream.write_all(&[5, 0]).unwrap();
+                }
+                stream.read_exact(&mut byte).unwrap();
+                heard.push(byte[0]);
+            }
+            stream.write_all(&answer).unwrap();
+            stream.write_all(b"HOST").unwrap();
+            heard
+        });
+        (port, handle)
+    }
+
+    fn through(kind: neoteletext_web::proxy::ProxyKind, port: u16) -> StdTransport {
+        let (wake, _woken) = mpsc::channel();
+        StdTransport::new(&[], wake, Some(Proxy { kind, host: "127.0.0.1".into(), port }))
+    }
+
+    /// REQ-WEB-032: an HTTP proxy by CONNECT and a SOCKS5 proxy with the
+    /// host's name, on this computer, which the user chose; the tunnel's
+    /// first bytes are the host's.
+    #[test]
+    fn connections_go_through_the_proxy() {
+        use neoteletext_web::proxy::ProxyKind;
+        let (port, proxy) = played_proxy(ProxyKind::Http, b"HTTP/1.1 200 Connection established\r\n\r\n".to_vec());
+        let (mut socket, peer) = through(ProxyKind::Http, port).reach("news.example", 443).unwrap();
+        assert_eq!(peer, IpAddr::from([127, 0, 0, 1]), "the peer is the proxy");
+        let mut host = [0_u8; 4];
+        socket.read_exact(&mut host).unwrap();
+        assert_eq!(&host, b"HOST");
+        assert!(proxy.join().unwrap().starts_with(b"CONNECT news.example:443 HTTP/1.1\r\n"));
+        let (port, proxy) = played_proxy(ProxyKind::Socks5, vec![5, 0, 0, 1, 10, 0, 0, 1, 0, 80]);
+        let (mut socket, _) = through(ProxyKind::Socks5, port).reach("news.example", 80).unwrap();
+        socket.read_exact(&mut host).unwrap();
+        assert_eq!(&host, b"HOST");
+        assert_eq!(&proxy.join().unwrap()[3..8], &[5, 1, 0, 3, 12], "the name for the proxy to resolve");
+    }
+
+    /// REQ-WEB-032: a refusing proxy fails the connection; nothing goes
+    /// direct.
+    #[test]
+    fn a_refusing_proxy_fails_the_connection() {
+        use neoteletext_web::proxy::ProxyKind;
+        let (port, proxy) = played_proxy(ProxyKind::Http, b"HTTP/1.1 403 Forbidden\r\n\r\n".to_vec());
+        let error = through(ProxyKind::Http, port).reach("news.example", 443).unwrap_err();
+        assert!(error.contains("the proxy refused the connection to news.example"), "{error}");
+        proxy.join().unwrap();
+        assert!(Proxy::parse("ftp://p.example:21").is_err());
     }
 }

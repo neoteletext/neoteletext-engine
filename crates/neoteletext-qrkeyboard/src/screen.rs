@@ -106,6 +106,8 @@ pub struct Screen {
     reconnect_delay: Duration,
     acknowledged: VecDeque<(String, bool)>,
     held: Vec<(String, Instant)>,
+    /// Every connection to the relay goes through this proxy (REQ-WEB-032).
+    proxy: Option<neoteletext_web::proxy::Proxy>,
 }
 
 /// The time `wait` from now.
@@ -125,12 +127,21 @@ impl Screen {
     /// # Errors
     /// A configuration outside the relay's limits, a relay that cannot be
     /// reached, refuses, or answers out of protocol.
-    pub fn create(relay: &str, config: ScreenConfig) -> Result<Self, Error> {
+    pub fn create(
+        relay: &str,
+        config: ScreenConfig,
+        proxy: Option<neoteletext_web::proxy::Proxy>,
+    ) -> Result<Self, Error> {
         config.check()?;
         let relay = net::parse(relay.trim_end_matches('/'))?;
         let origin = relay.as_str().trim_end_matches('/').to_owned();
-        let (status, body) =
-            net::request(&net::parse(&format!("{origin}/i"))?, "POST", None, Some(&config.value().text()))?;
+        let (status, body) = net::request(
+            &net::parse(&format!("{origin}/i"))?,
+            "POST",
+            None,
+            Some(&config.value().text()),
+            proxy.as_ref(),
+        )?;
         if status != neoteletext_web::consts::STATUS_OK {
             return Err(Error::Status(status));
         }
@@ -183,13 +194,14 @@ impl Screen {
             reconnect_delay: RECONNECT_FIRST,
             acknowledged: VecDeque::new(),
             held: Vec::new(),
+            proxy,
         };
         screen.connect()?;
         Ok(screen)
     }
 
     fn connect(&mut self) -> Result<(), Error> {
-        let mut socket = WebSocket::connect(&self.socket_address)?;
+        let mut socket = WebSocket::connect(&self.socket_address, self.proxy.as_ref())?;
         let auth = Value::object(&[("t", Value::string("auth")), ("owner", Value::string(&self.owner))]);
         socket.send_text(&auth.text())?;
         self.socket = Some(socket);
@@ -481,7 +493,7 @@ impl Screen {
         self.pairing = None;
         let origin = self.relay.as_str().trim_end_matches('/');
         let end = net::parse(&format!("{origin}/i/{}/end", self.join.code))?;
-        let (status, _) = net::request(&end, "POST", Some(&self.owner), None)?;
+        let (status, _) = net::request(&end, "POST", Some(&self.owner), None, self.proxy.as_ref())?;
         if status == neoteletext_web::consts::STATUS_OK || status == neoteletext_web::consts::STATUS_NOT_FOUND {
             Ok(())
         } else {

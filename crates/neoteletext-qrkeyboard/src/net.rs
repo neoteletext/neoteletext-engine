@@ -3,6 +3,7 @@
 //! read and written by the engine's own bounded code (`neoteletext_web`'s
 //! `http` and `ws`). Every read has a time limit; nothing waits forever.
 
+use neoteletext_web::proxy::Proxy;
 use std::fmt::Write as _;
 use std::io::{ErrorKind, Read, Write};
 use std::net::{Shutdown, TcpStream, ToSocketAddrs};
@@ -68,15 +69,31 @@ impl Stream {
     /// # Errors
     /// When the name does not resolve, the connection is refused or times
     /// out, or TLS fails.
-    pub fn connect(url: &Url) -> Result<Self, Error> {
+    pub fn connect(url: &Url, proxy: Option<&Proxy>) -> Result<Self, Error> {
         let host = url.host_text();
-        let target = (host, url.port())
-            .to_socket_addrs()
-            .map_err(|error| Error::Network(format!("{host}: {error}")))?
-            .next()
-            .ok_or_else(|| Error::Network(format!("{host}: no address")))?;
-        let socket = TcpStream::connect_timeout(&target, CONNECT_TIMEOUT)
-            .map_err(|error| Error::Network(format!("{host}: {error}")))?;
+        let socket = if let Some(proxy) = proxy {
+            // Through the proxy the port's setting names (REQ-WEB-032),
+            // whose address the user chose.
+            let target = (proxy.host.as_str(), proxy.port)
+                .to_socket_addrs()
+                .map_err(|error| Error::Network(format!("{}: {error}", proxy.host)))?
+                .next()
+                .ok_or_else(|| Error::Network(format!("{}: no address", proxy.host)))?;
+            let mut socket = TcpStream::connect_timeout(&target, CONNECT_TIMEOUT)
+                .map_err(|error| Error::Network(format!("{}: {error}", proxy.host)))?;
+            socket.set_read_timeout(Some(CONNECT_TIMEOUT)).map_err(|error| Error::Network(error.to_string()))?;
+            socket.set_write_timeout(Some(CONNECT_TIMEOUT)).map_err(|error| Error::Network(error.to_string()))?;
+            proxy.open_tunnel(&mut socket, host, url.port()).map_err(Error::Network)?;
+            socket
+        } else {
+            let target = (host, url.port())
+                .to_socket_addrs()
+                .map_err(|error| Error::Network(format!("{host}: {error}")))?
+                .next()
+                .ok_or_else(|| Error::Network(format!("{host}: no address")))?;
+            TcpStream::connect_timeout(&target, CONNECT_TIMEOUT)
+                .map_err(|error| Error::Network(format!("{host}: {error}")))?
+        };
         socket.set_nodelay(true).map_err(|error| Error::Network(error.to_string()))?;
         socket.set_read_timeout(Some(CONNECT_TIMEOUT)).map_err(|error| Error::Network(error.to_string()))?;
         socket.set_write_timeout(Some(CONNECT_TIMEOUT)).map_err(|error| Error::Network(error.to_string()))?;
@@ -184,8 +201,9 @@ pub fn request(
     method: &str,
     authorization: Option<&str>,
     json: Option<&str>,
+    proxy: Option<&Proxy>,
 ) -> Result<(u16, Vec<u8>), Error> {
-    let mut stream = Stream::connect(url)?;
+    let mut stream = Stream::connect(url, proxy)?;
     let mut head = format!(
         "{method} {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\nAccept: application/json\r\n",
         url.target(),
@@ -281,8 +299,8 @@ impl WebSocket {
     ///
     /// # Errors
     /// A network failure or a refused handshake.
-    pub fn connect(url: &Url) -> Result<Self, Error> {
-        let mut stream = Stream::connect(url)?;
+    pub fn connect(url: &Url, proxy: Option<&Proxy>) -> Result<Self, Error> {
+        let mut stream = Stream::connect(url, proxy)?;
         let mut random = OsRandom;
         let key = ws::new_key(&mut random);
         let mut buffer = vec![0_u8; MAX_HEAD];

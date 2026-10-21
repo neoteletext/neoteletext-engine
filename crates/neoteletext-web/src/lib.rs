@@ -36,7 +36,7 @@
     clippy::unimplemented
 )]
 
-#[cfg(test)]
+#[cfg(any(test, feature = "std"))]
 extern crate std;
 
 pub mod consts;
@@ -47,6 +47,7 @@ pub mod json;
 pub mod sha1;
 pub mod sha256;
 
+pub mod proxy;
 pub mod url;
 pub mod user_agent;
 

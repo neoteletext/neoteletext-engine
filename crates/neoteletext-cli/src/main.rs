@@ -79,6 +79,10 @@ pub struct Common {
     /// test server on 127.0.0.1 (REQ-SEC-006 is otherwise strict).
     #[arg(long, value_name = "IP")]
     pub allow_local: Vec<std::net::IpAddr>,
+    /// Make every connection through this proxy: http://host:port or
+    /// socks5://host:port (REQ-WEB-032).
+    #[arg(long, value_name = "URL")]
+    pub proxy: Option<String>,
 }
 
 /// Parity policy names (decision E.8).
@@ -261,6 +265,9 @@ enum Command {
         /// Local-network addresses allowed.
         #[arg(long)]
         allow_local: Vec<std::net::IpAddr>,
+        /// The proxy.
+        #[arg(long)]
+        proxy: Option<String>,
     },
     /// Write a channel's contents.txt, to standard output, from a folder
     /// of page files (REQ-CLI-008).
@@ -376,6 +383,10 @@ enum Command {
         /// The TTI file of that page.
         #[arg(long, requires = "qr_page")]
         qr_output: Option<PathBuf>,
+        /// Make every connection through this proxy: http://host:port or
+        /// socks5://host:port (REQ-WEB-032).
+        #[arg(long, value_name = "URL")]
+        proxy: Option<String>,
     },
     /// Work with loaded fonts (area FNT).
     Font {
@@ -443,16 +454,18 @@ fn main() -> ExitCode {
         #[cfg(feature = "keyboard")]
         Command::Qr { text, page, row, column, output } => keyboard::qr(&text, &page, row, column, &output),
         #[cfg(feature = "keyboard")]
-        Command::Keyboard { channel, relay, pin, name, qr_page, qr_output } => {
+        Command::Keyboard { channel, relay, pin, name, qr_page, qr_output, proxy } => {
             let qr_page = qr_page.zip(qr_output);
-            keyboard::keyboard(&keyboard::KeyboardOptions { channel, relay, pin, name, qr_page })
+            keyboard::keyboard(&keyboard::KeyboardOptions { channel, relay, pin, name, qr_page, proxy })
         }
         #[cfg(not(feature = "keyboard"))]
         Command::Qr { .. } | Command::Keyboard { .. } => {
             Err(neoteletext_app::not_in_build("qr and keyboard", "keyboard"))
         }
         Command::SandboxTest => sandbox::self_test(),
-        Command::Fetch { address, no_sandbox, allow_local } => commands::fetch(&address, no_sandbox, &allow_local),
+        Command::Fetch { address, no_sandbox, allow_local, proxy } => {
+            commands::fetch(&address, no_sandbox, &allow_local, proxy.as_deref())
+        }
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,

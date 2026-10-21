@@ -51,7 +51,7 @@ impl Phone {
         let hash = fragment(join_url, "h").and_then(from_base64url).ok_or(Error::Address)?;
         let key = fragment(join_url, "k")
             .map(|key| from_base64url(key).and_then(|key| <[u8; SECRET_BYTES]>::try_from(key).ok()));
-        let (status, body) = net::request(&net::parse(&format!("{origin}/j/{code}"))?, "GET", None, None)?;
+        let (status, body) = net::request(&net::parse(&format!("{origin}/j/{code}"))?, "GET", None, None, None)?;
         if status != neoteletext_web::consts::STATUS_OK {
             return Err(Error::Status(status));
         }
@@ -69,7 +69,7 @@ impl Phone {
         };
         let relay =
             net::parse(resolved.get("relay").and_then(Value::as_str).ok_or(Error::Protocol("a relay address"))?)?;
-        let mut socket = WebSocket::connect(&relay)?;
+        let mut socket = WebSocket::connect(&relay, None)?;
         socket.send_text(&Value::object(&[("t", Value::string("join"))]).text())?;
         let deadline = later(PAIRING_TIMEOUT);
         let mut pairing: Option<Pairing> = None;

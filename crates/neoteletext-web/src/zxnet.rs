@@ -408,6 +408,8 @@ pub struct ZxnetFeed<'m, R: RandomSource> {
     allowed_local: Option<IpAddress>,
     /// The `User-Agent` of the upgrade (REQ-WEB-031).
     user_agent: crate::user_agent::UserAgentString,
+    /// The transport goes through a proxy (REQ-WEB-032).
+    proxied: bool,
     phase: Phase,
     key: HandshakeKey,
     head: HeadCollector,
@@ -600,6 +602,7 @@ impl<'m, R: RandomSource> ZxnetFeed<'m, R> {
             random,
             allowed_local: None,
             user_agent: crate::user_agent::UserAgentString::default(),
+            proxied: false,
             phase: Phase::Stopped,
             key: [0; crate::consts::WEBSOCKET_KEY_TEXT],
             head: HeadCollector::default(),
@@ -617,6 +620,13 @@ impl<'m, R: RandomSource> ZxnetFeed<'m, R> {
     /// test server.
     pub fn allow_local(&mut self, address: IpAddress) {
         self.allowed_local = Some(address);
+    }
+
+    /// The transport goes through a proxy (REQ-WEB-032): the peer it
+    /// reports is the proxy's, and a local name is refused before the proxy
+    /// is asked.
+    pub fn through_proxy(&mut self) {
+        self.proxied = true;
     }
 
     /// The program the feed names itself as in its upgrade's `User-Agent`
@@ -685,10 +695,11 @@ impl<'m, R: RandomSource> ZxnetFeed<'m, R> {
     }
 
     fn connect(&mut self, now: Instant, sink: &mut LiveSink<'_>) {
-        if let Some(ip) = self.channel.address.ip()
-            && ip.is_blocked()
-            && self.allowed_local != Some(ip)
-        {
+        let ip = self.channel.address.ip();
+        let allowed = ip.is_some_and(|ip| self.allowed_local == Some(ip));
+        let blocked = ip.is_some_and(IpAddress::is_blocked)
+            || self.proxied && crate::proxy::hidden_local(self.channel.address.host_text());
+        if blocked && !allowed {
             self.phase = Phase::Stopped;
             event(sink, LiveEvent::Blocked);
             return;
@@ -702,7 +713,7 @@ impl<'m, R: RandomSource> ZxnetFeed<'m, R> {
         if !matches!(self.phase, Phase::Connecting { .. }) {
             return;
         }
-        if peer.is_blocked() && self.allowed_local != Some(peer) {
+        if !self.proxied && peer.is_blocked() && self.allowed_local != Some(peer) {
             sink(LiveOutput::Close);
             self.phase = Phase::Stopped;
             event(sink, LiveEvent::Blocked);

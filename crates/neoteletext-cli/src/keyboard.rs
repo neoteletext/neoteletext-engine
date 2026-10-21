@@ -99,6 +99,8 @@ pub struct KeyboardOptions {
     pub name: String,
     /// The page whose QR to write, and where.
     pub qr_page: Option<(String, std::path::PathBuf)>,
+    /// The proxy every connection goes through (REQ-WEB-032).
+    pub proxy: Option<String>,
 }
 
 /// One input session with the channel (INPUT.md section 6): HELLO, its
@@ -240,14 +242,20 @@ fn terminal_qr(matrix: &Matrix) -> String {
 pub fn keyboard(options: &KeyboardOptions) -> Result<(), Failure> {
     let url =
         net::parse(&options.channel).map_err(|_| (exit::USAGE, format!("{}: a ws or wss address", options.channel)))?;
+    let proxy = options
+        .proxy
+        .as_deref()
+        .map(neoteletext_web::proxy::Proxy::parse)
+        .transpose()
+        .map_err(|message| (exit::USAGE, message))?;
     let config = ScreenConfig {
         name: options.name.clone(),
         layout: Layout::Terminal,
         pin: options.pin,
         rejoin_seconds: Some(REJOIN_SECONDS),
     };
-    let mut screen =
-        Screen::create(&options.relay, config).map_err(|error| (exit::INPUT, format!("{}: {error}", options.relay)))?;
+    let mut screen = Screen::create(&options.relay, config, proxy.clone())
+        .map_err(|error| (exit::INPUT, format!("{}: {error}", options.relay)))?;
     let join = screen.join().clone();
     let matrix = Matrix::new(&join.url, Correction::Medium).map_err(|error| (exit::INPUT, error.to_string()))?;
     println!("{}", terminal_qr(&matrix));
@@ -259,7 +267,8 @@ pub fn keyboard(options: &KeyboardOptions) -> Result<(), Failure> {
         qr(&join.url, page, 2, 0, output)?;
         println!("The QR is on page {page} in {}.", output.display());
     }
-    let socket = WebSocket::connect(&url).map_err(|error| (exit::INPUT, format!("{}: {error}", options.channel)))?;
+    let socket = WebSocket::connect(&url, proxy.as_ref())
+        .map_err(|error| (exit::INPUT, format!("{}: {error}", options.channel)))?;
     let mut channel = Channel::open(socket)?;
     loop {
         channel.receive(Duration::ZERO)?;

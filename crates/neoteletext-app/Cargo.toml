@@ -17,7 +17,7 @@ neoteletext-image.workspace = true
 neoteletext-formats = { workspace = true, features = ["std", "transport", "sliced", "pages", "tti", "ep1", "edittf", "dump", "bdf"] }
 neoteletext-slicer = { workspace = true, optional = true }
 # Under `live`: the whole user agent, with push, forms and cookies.
-neoteletext-web = { workspace = true, optional = true, features = ["default"] }
+neoteletext-web = { workspace = true, optional = true, features = ["default", "std"] }
 embedded-io = { workspace = true, optional = true }
 rustls = { version = "0.23.32", default-features = false, features = ["ring", "std", "tls12", "logging"], optional = true }
 webpki-roots = { version = "1.0.3", optional = true }

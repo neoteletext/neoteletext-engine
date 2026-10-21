@@ -914,6 +914,55 @@ fn the_user_agent_goes_on_requests_and_the_upgrade() {
     }
 }
 
+/// REQ-WEB-032 with REQ-SEC-006: through a proxy, the peer is the proxy
+/// and may be local, and a local name is refused before anything is sent.
+#[test]
+fn through_a_proxy_local_names_are_refused_and_the_proxy_may_be_local() {
+    let proxied = Config { proxied: true, ..Config::default() };
+    let replay = Replay::new(&[("printer.local", PUBLIC)]);
+    let mut harness = Harness::new(proxied, replay);
+    let records = harness.open("http://printer.local/service.json");
+    assert!(has_event(&records, "Blocked"), "{records:?}");
+    assert!(harness.replay().connects.is_empty(), "nothing was sent to the proxy");
+    // The proxy on this network: the peer the transport reports.
+    let mut replay = Replay::new(&[("tt.example", PRIVATE)]);
+    replay.reply("tt.example:80", json_response(&descriptor("")));
+    let mut harness = Harness::new(proxied, replay);
+    assert!(has_event(&harness.open("http://tt.example/service.json"), "ServiceReady"));
+    let mut replay = Replay::new(&[("tt.example", PRIVATE)]);
+    replay.reply("tt.example:80", json_response(&descriptor("")));
+    let mut harness = Harness::new(Config::default(), replay);
+    assert!(
+        has_event(&harness.open("http://tt.example/service.json"), "Blocked"),
+        "without a proxy the peer is the host"
+    );
+}
+
+/// REQ-WEB-033: each answered request is reported, with its method,
+/// address, status and size, for a developer's view of the channel.
+#[test]
+fn each_exchange_is_reported() {
+    let mut replay = Replay::new(&[("tt.example", PUBLIC)]);
+    replay.reply("tt.example:80", json_response(&descriptor("")));
+    let mut harness = Harness::new(Config::default(), replay);
+    let records = harness.open("http://tt.example/service.json");
+    let exchanged: Vec<&str> = events(&records).into_iter().filter(|event| event.starts_with("Exchanged")).collect();
+    assert_eq!(exchanged.len(), 1, "{records:?}");
+    assert!(
+        exchanged[0]
+            .starts_with("Exchanged { method: Get, url: \"http://tt.example/service.json\", status: 200, bytes: "),
+        "{exchanged:?}"
+    );
+    harness.replay().reply("tt.example:80", tti_response(&[]));
+    let records = harness.fetch(0x100);
+    assert!(
+        events(&records)
+            .iter()
+            .any(|event| event.starts_with("Exchanged { method: Get, url: \"http://tt.example/p/100\", status: 200")),
+        "{records:?}"
+    );
+}
+
 #[test]
 fn stale_kept_alive_connection_is_retried_once_for_a_get() {
     let mut harness = plain_service();

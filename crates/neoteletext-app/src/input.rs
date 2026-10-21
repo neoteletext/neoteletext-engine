@@ -51,6 +51,9 @@ pub struct Options {
     pub no_sandbox: bool,
     /// Local-network addresses a web service may use (REQ-SEC-006).
     pub allow_local: Vec<IpAddr>,
+    /// The proxy every connection goes through, `http://host:port` or
+    /// `socks5://host:port` (REQ-WEB-032).
+    pub proxy: Option<String>,
 }
 
 /// Bytes read from the input at a time.
@@ -91,7 +94,7 @@ pub fn is_live(input: &str) -> bool {
 /// Starts the fetcher process for a live input (REQ-SEC-018).
 #[cfg(feature = "live")]
 fn live_source(options: &Options) -> Result<Box<dyn Source>, Failure> {
-    crate::live::open(&options.input, options.no_sandbox, &options.allow_local)
+    crate::live::open(&options.input, options.no_sandbox, &options.allow_local, options.proxy.as_deref())
 }
 
 /// A build without the `live` feature has no web module to fetch with.

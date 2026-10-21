@@ -30,7 +30,7 @@ fn screen(relay: String, config: ScreenConfig) -> (Join, mpsc::Receiver<Event>) 
     let (join_sender, join) = mpsc::channel();
     let (events_sender, events) = mpsc::channel();
     thread::spawn(move || {
-        let mut screen = Screen::create(&relay, config).unwrap();
+        let mut screen = Screen::create(&relay, config, None).unwrap();
         join_sender.send(screen.join().clone()).unwrap();
         let started = Instant::now();
         while started.elapsed() < LIMIT {

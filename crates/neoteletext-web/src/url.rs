@@ -274,6 +274,17 @@ fn check_path(text: &[u8], query: bool) -> Result<(), UrlError> {
     Ok(())
 }
 
+/// `text` as an IP address when it is one, as a host is written without
+/// brackets: strict dotted decimal, or RFC 4291's text form.
+#[must_use]
+pub fn ip_literal(text: &str) -> Option<IpAddress> {
+    if text.contains(':') {
+        parse_ipv6(text.as_bytes()).ok().map(IpAddress::V6)
+    } else {
+        parse_ipv4(text.as_bytes()).ok().map(IpAddress::V4)
+    }
+}
+
 /// Parses an IPv4 address in strict dotted decimal: four parts of one to
 /// three digits, no leading zeros, each at most 255.
 fn parse_ipv4(text: &[u8]) -> Result<[u8; IPV4_OCTETS], UrlError> {
