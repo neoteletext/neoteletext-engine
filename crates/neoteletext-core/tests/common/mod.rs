@@ -547,3 +547,15 @@ pub fn worst_case_page() -> Vec<Packet> {
     packets.extend(gpop);
     packets
 }
+
+/// Page enhancement fields giving the default screen and row colours, black
+/// background substitution and the colour table re-mapping (Table 33), with
+/// the designations a Level 1 page has.
+pub fn colours(screen: u8, row: u8, substitution: bool, remapping: u8) -> PresentationFields {
+    use neoteletext_core::types::{DefaultColourFields, Designations, PresentationFields};
+    PresentationFields {
+        designations: Some(Designations { default: 0, second: 0x7F }),
+        colours: Some(DefaultColourFields { screen, row, black_background_substitution: substitution, remapping }),
+        ..PresentationFields::default()
+    }
+}

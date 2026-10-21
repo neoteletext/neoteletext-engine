@@ -103,6 +103,19 @@ required-features = [
 ]
 
 [[test]]
+name = "level25_attributes"
+# The non-spacing attributes, a capability of their own, off by default
+# (decision E.71).
+required-features = [
+    "nonspacing-attributes",
+    "level15",
+    "level25",
+    "objects",
+    "side-panels",
+    "colours32",
+]
+
+[[test]]
 name = "objects"
 required-features = ["level25", "objects"]
 

@@ -11,9 +11,9 @@
 mod common;
 
 use common::{
-    DISPLAY, Mot, ObjectDef, Receiver, build, build_25, build_35, char_of, define, display_page, end, foreground, g0,
-    invoke, link, local_data, local_number, mot_packets, null_link, object_link, object_page, object_page_data,
-    object_page_packets, origin, page_grid, public_number, row_0, set_position, text, text_at, x26, x27, x28,
+    DISPLAY, Mot, ObjectDef, Receiver, build, build_25, build_35, char_of, define, display_page, end, g0, invoke, link,
+    local_data, local_number, mot_packets, null_link, object_link, object_page, object_page_data, object_page_packets,
+    origin, page_grid, public_number, row_0, set_position, text, text_at, x26, x27, x28,
 };
 use neoteletext_core::colour::{SidePanels, colour_index};
 use neoteletext_core::config::{Config, PresentationLevel};
@@ -21,16 +21,12 @@ use neoteletext_core::consts::{
     LINK_FUNCTION_GPOP, LINK_FUNCTION_POP, OBJECT_INVOCATIONS_PER_TYPE, OBJECTS_OPEN_AT_ONCE, PAGE_FUNCTION_DRCS,
 };
 use neoteletext_core::enhance::MAX_WALK_STEPS;
-use neoteletext_core::level1::CharSource;
 use neoteletext_core::objects::{self, PageLink};
 use neoteletext_core::packet::{
     ColourData, DefaultObject, MotPageEntry, ObjectKind, ObjectNumber, ObjectSource, Packet, TripletFunction,
 };
 use neoteletext_core::types::{FallbackFields, PageAddress, PresentationFields, SidePanelFields, SubCode};
 
-const ALPHA_GREEN: u8 = 0x02;
-const ALPHA_BLUE: u8 = 0x04;
-const ALPHA_RED: u8 = 0x01;
 const L25: PresentationLevel = PresentationLevel::Level25;
 const L35: PresentationLevel = PresentationLevel::Level35;
 const POP: u16 = 0x1A0;
@@ -86,93 +82,108 @@ fn page_with_objects(rows: &[(u8, &[u8])], local: &[TripletFunction], objects: &
     display_page(0, rows, others)
 }
 
-/// The Level 1 row of the clause 13.9 example (columns 0 to 27).
-fn example_row() -> Vec<u8> {
-    let mut row = vec![ALPHA_BLUE];
-    row.extend_from_slice(b"THE FAST DOG AND");
-    row.push(ALPHA_RED);
-    row.extend_from_slice(b"CAT");
-    row.push(ALPHA_GREEN);
-    row.extend_from_slice(b"RAN IN");
-    row
-}
-
-/// The object of the clause 13.9 example: "LAZY", "COW" after Foreground
-/// Pink, "FOX", and "SAT" after Foreground Yellow. Pink is CLUT 2 entry 0
-/// (REQ-TST-016).
-fn example_body() -> Vec<TripletFunction> {
-    let mut body = text_at(5, b"LAZY");
-    body.push(foreground(10, PINK));
-    body.extend(text_at(10, b"COW"));
-    body.extend(text_at(18, b"FOX"));
-    body.push(foreground(22, YELLOW));
-    body.extend(text_at(22, b"SAT"));
-    body
-}
-
-const PINK: u8 = colour_index(2, 0);
-const YELLOW: u8 = colour_index(0, 3);
-const BLUE: u8 = colour_index(0, 4);
-const RED: u8 = colour_index(0, 1);
-const GREEN: u8 = colour_index(0, 2);
 const WHITE: u8 = colour_index(0, 7);
 
-/// REQ-OBJ-009, REQ-OBJ-010, REQ-OBJ-011, REQ-TST-016: the object example of clause
-/// 13.9 for each type, from each source (REQ-OBJ-001).
-#[test]
-fn clause_13_9_object_example() {
-    let expected = [
-        // THE, LAZY, COW, AND, FOX, SAT, IN.
-        (ObjectKind::Active, [BLUE, BLUE, PINK, PINK, RED, YELLOW, YELLOW]),
-        (ObjectKind::Adaptive, [BLUE, BLUE, PINK, PINK, PINK, YELLOW, GREEN]),
-        (ObjectKind::Passive, [BLUE, WHITE, PINK, BLUE, PINK, YELLOW, GREEN]),
-    ];
-    let words = [1, 5, 10, 14, 18, 22, 26];
-    let row = example_row();
-    for (kind, colours) in expected {
-        for source in [ObjectSource::Local, ObjectSource::Public, ObjectSource::Global] {
-            let number = if source == ObjectSource::Local { local_number(1, 0) } else { public_number(0, 0) };
-            let local = [set_position(2, 0), invoke(source, kind, number)];
-            let mut packets = page_with_objects(&[(2, &row)], &local, &[local_object(kind, 1, &example_body())]);
-            let object = ObjectDef::new(kind, 0, example_body());
-            packets.extend(object_page(if source == ObjectSource::Global { GPOP } else { POP }, 0, &[object]));
-            let (grid, report) = build(&packets, L25);
-            assert_eq!(report.unwrap().objects, 1, "{kind:?} from {source:?}");
-            assert_eq!(text(&grid, 2).trim_end(), " THE LAZY COW AND FOX SAT IN", "{kind:?} from {source:?}");
-            for (word, (&column, &colour)) in words.iter().zip(colours.iter()).enumerate() {
-                for offset in 0..2 {
-                    let cell = grid.cells[2][column + offset];
-                    assert_eq!(cell.foreground, colour, "{kind:?} from {source:?}: word {word}");
+/// The object example of clause 13.9 and the Passive object's defaults:
+/// their attributes are the non-spacing ones, off by default (decision
+/// E.71).
+#[cfg(feature = "nonspacing-attributes")]
+mod attributes {
+    use super::*;
+    use common::foreground;
+    use neoteletext_core::level1::CharSource;
+
+    const ALPHA_GREEN: u8 = 0x02;
+    const ALPHA_BLUE: u8 = 0x04;
+    const ALPHA_RED: u8 = 0x01;
+
+    /// The Level 1 row of the clause 13.9 example (columns 0 to 27).
+    fn example_row() -> Vec<u8> {
+        let mut row = vec![ALPHA_BLUE];
+        row.extend_from_slice(b"THE FAST DOG AND");
+        row.push(ALPHA_RED);
+        row.extend_from_slice(b"CAT");
+        row.push(ALPHA_GREEN);
+        row.extend_from_slice(b"RAN IN");
+        row
+    }
+
+    /// The object of the clause 13.9 example: "LAZY", "COW" after Foreground
+    /// Pink, "FOX", and "SAT" after Foreground Yellow. Pink is CLUT 2 entry 0
+    /// (REQ-TST-016).
+    fn example_body() -> Vec<TripletFunction> {
+        let mut body = text_at(5, b"LAZY");
+        body.push(foreground(10, PINK));
+        body.extend(text_at(10, b"COW"));
+        body.extend(text_at(18, b"FOX"));
+        body.push(foreground(22, YELLOW));
+        body.extend(text_at(22, b"SAT"));
+        body
+    }
+
+    const PINK: u8 = colour_index(2, 0);
+    const YELLOW: u8 = colour_index(0, 3);
+    const BLUE: u8 = colour_index(0, 4);
+    const RED: u8 = colour_index(0, 1);
+    const GREEN: u8 = colour_index(0, 2);
+
+    /// REQ-OBJ-009, REQ-OBJ-010, REQ-OBJ-011, REQ-TST-016: the object example of clause
+    /// 13.9 for each type, from each source (REQ-OBJ-001).
+    #[test]
+    fn clause_13_9_object_example() {
+        let expected = [
+            // THE, LAZY, COW, AND, FOX, SAT, IN.
+            (ObjectKind::Active, [BLUE, BLUE, PINK, PINK, RED, YELLOW, YELLOW]),
+            (ObjectKind::Adaptive, [BLUE, BLUE, PINK, PINK, PINK, YELLOW, GREEN]),
+            (ObjectKind::Passive, [BLUE, WHITE, PINK, BLUE, PINK, YELLOW, GREEN]),
+        ];
+        let words = [1, 5, 10, 14, 18, 22, 26];
+        let row = example_row();
+        for (kind, colours) in expected {
+            for source in [ObjectSource::Local, ObjectSource::Public, ObjectSource::Global] {
+                let number = if source == ObjectSource::Local { local_number(1, 0) } else { public_number(0, 0) };
+                let local = [set_position(2, 0), invoke(source, kind, number)];
+                let mut packets = page_with_objects(&[(2, &row)], &local, &[local_object(kind, 1, &example_body())]);
+                let object = ObjectDef::new(kind, 0, example_body());
+                packets.extend(object_page(if source == ObjectSource::Global { GPOP } else { POP }, 0, &[object]));
+                let (grid, report) = build(&packets, L25);
+                assert_eq!(report.unwrap().objects, 1, "{kind:?} from {source:?}");
+                assert_eq!(text(&grid, 2).trim_end(), " THE LAZY COW AND FOX SAT IN", "{kind:?} from {source:?}");
+                for (word, (&column, &colour)) in words.iter().zip(colours.iter()).enumerate() {
+                    for offset in 0..2 {
+                        let cell = grid.cells[2][column + offset];
+                        assert_eq!(cell.foreground, colour, "{kind:?} from {source:?}: word {word}");
+                    }
                 }
+                let plane = match kind {
+                    ObjectKind::Active => CharSource::Active,
+                    ObjectKind::Adaptive => CharSource::Adaptive,
+                    ObjectKind::Passive => CharSource::Passive,
+                };
+                assert_eq!(grid.cells[2][5].attributes.source(), plane);
+                assert_eq!(grid.cells[2][14].attributes.source(), CharSource::Level1);
             }
-            let plane = match kind {
-                ObjectKind::Active => CharSource::Active,
-                ObjectKind::Adaptive => CharSource::Adaptive,
-                ObjectKind::Passive => CharSource::Passive,
-            };
-            assert_eq!(grid.cells[2][5].attributes.source(), plane);
-            assert_eq!(grid.cells[2][14].attributes.source(), CharSource::Level1);
         }
     }
-}
 
-/// REQ-OBJ-011: every invocation of a Passive object starts from its
-/// defaults, and its attributes persist across rows.
-#[test]
-fn passive_objects_start_from_their_defaults() {
-    let body = [foreground(0, PINK), g0(0, b'a'), set_position(1, 0), g0(0, b'b')];
-    let local = [
-        set_position(3, 0),
-        invoke(ObjectSource::Local, ObjectKind::Passive, local_number(1, 0)),
-        set_position(3, 10),
-        invoke(ObjectSource::Local, ObjectKind::Passive, local_number(1, 0)),
-    ];
-    let mut object = local_object(ObjectKind::Passive, 1, &body);
-    object.insert(1, foreground(0, colour_index(0, 1)));
-    let grid = build_25(&page_with_objects(&[(4, &[ALPHA_GREEN, b'x'])], &local, &[object]));
-    assert_eq!((grid.cells[3][0].foreground, grid.cells[4][0].foreground), (PINK, PINK), "persists to row 4");
-    assert_eq!(grid.cells[3][10].foreground, PINK, "the second invocation starts again from white");
-    assert_eq!(grid.cells[4][1].foreground, GREEN, "the page under the object is not affected");
+    /// REQ-OBJ-011: every invocation of a Passive object starts from its
+    /// defaults, and its attributes persist across rows.
+    #[test]
+    fn passive_objects_start_from_their_defaults() {
+        let body = [foreground(0, PINK), g0(0, b'a'), set_position(1, 0), g0(0, b'b')];
+        let local = [
+            set_position(3, 0),
+            invoke(ObjectSource::Local, ObjectKind::Passive, local_number(1, 0)),
+            set_position(3, 10),
+            invoke(ObjectSource::Local, ObjectKind::Passive, local_number(1, 0)),
+        ];
+        let mut object = local_object(ObjectKind::Passive, 1, &body);
+        object.insert(1, foreground(0, colour_index(0, 1)));
+        let grid = build_25(&page_with_objects(&[(4, &[ALPHA_GREEN, b'x'])], &local, &[object]));
+        assert_eq!((grid.cells[3][0].foreground, grid.cells[4][0].foreground), (PINK, PINK), "persists to row 4");
+        assert_eq!(grid.cells[3][10].foreground, PINK, "the second invocation starts again from white");
+        assert_eq!(grid.cells[4][1].foreground, GREEN, "the page under the object is not affected");
+    }
 }
 
 /// REQ-OBJ-002, REQ-OBJ-014, REQ-L25-041: the Origin Modifier places an
