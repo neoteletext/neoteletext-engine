@@ -8,6 +8,8 @@ mod contents;
 mod font;
 #[cfg(feature = "keyboard")]
 mod keyboard;
+#[cfg(any(feature = "view", feature = "keyboard"))]
+mod nfc;
 mod options;
 mod output;
 mod sound;

@@ -1388,6 +1388,13 @@ Decided by the owner on 21 October 2026, adopting the merge of the built input p
 3. **The channel answers in teletext:** the cursor record (type 4), whose acknowledgement is now the input count, and the new control record (type 5) on the same data channel, which the audio receiver steps over.
 4. **`neoteletext-input` holds all of it,** still `no_std` and allocation-free: the wire primitives, the functional codes, the stream's encoder and decoders, the modes, both records and a receiver's session (the count, the round trip and the rate), so every receiver applies the modes and the rate alike.
 5. **The normative text lives in `INPUT.md` section 12;** `int.md` keeps each requirement's number and title, so the traceability table covers them, and `design/input.md` points there.
-6. **Normalization Form C** (REQ-INT-116 rule 3) needs Unicode's composition tables, a library that awaits the owner's approval; until then text is sent as typed.
+6. **Normalization Form C** (REQ-INT-116 rule 3) needs Unicode's composition tables, a library: see E.101.
 
 *Reason:* The built profile could not grow but by a new version, carried no mouse, paste or composition, and sent the typing rhythm for no use; the Input Event Protocol had no teletext and no carriage a broadcast or a file could hold. Keeping one of each would be two formats where one does.
+
+**E.101 — Typed text is normalized by the receivers, with `unicode-normalization`.**
+Decided on 21 October 2026, on the owner's approval of the library ("if those libraries are rust then approved").
+1. **`neottx view` and `neottx keyboard` send text, and a KEY's text, in Normalization Form C** (`neoteletext-common/INPUT.md` section 5.7 rule 3, REQ-INT-116), through `unicode-normalization` (MIT or Apache-2.0), pinned at 0.1.25 in `neoteletext-cli` and taken only with the `view` and `keyboard` areas. A paste is data and goes as it was copied.
+2. **Not in `neoteletext-input`:** the library always allocates, and the input crate is a microcontroller crate that allocates nothing (section 7 of the development process); a microcontroller receiver's keys are typed as composed characters, and a receiver with text to normalize normalizes it before it encodes.
+
+*Reason:* A channel compares what it receives; the same `é` must arrive as the same code point from every layout and input method.

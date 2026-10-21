@@ -163,7 +163,8 @@ impl Channel {
 
     fn send(&mut self, item: &Item<'_>) -> Result<(), Failure> {
         let mut out = [0_u8; MAX_MESSAGE];
-        match self.session.send(item, None, self.now_ms(), &mut out) {
+        let now_ms = self.now_ms();
+        match crate::nfc::with_nfc(item, |item| self.session.send(item, None, now_ms, &mut out)) {
             Ok(0) => Ok(()),
             Ok(length) => self.write(&out[..length]),
             Err(SendError::NotWelcomed) => Err((exit::INPUT, "the channel does not take input".to_owned())),

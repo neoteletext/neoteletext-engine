@@ -295,7 +295,8 @@ impl Typing {
         clock_ms: u32,
     ) {
         let mut out = [0_u8; neoteletext_input::MAX_MESSAGE];
-        if let Ok(length @ 1..) = self.input.send(item, open, clock_ms, &mut out) {
+        let sent = crate::nfc::with_nfc(item, |item| self.input.send(item, open, clock_ms, &mut out));
+        if let Ok(length @ 1..) = sent {
             source.send_input(&out[..length]);
         }
     }
