@@ -406,6 +406,8 @@ pub struct ZxnetFeed<'m, R: RandomSource> {
     buffers: LiveBuffers<'m>,
     random: R,
     allowed_local: Option<IpAddress>,
+    /// The `User-Agent` of the upgrade (REQ-WEB-031).
+    user_agent: crate::user_agent::UserAgentString,
     phase: Phase,
     key: HandshakeKey,
     head: HeadCollector,
@@ -597,6 +599,7 @@ impl<'m, R: RandomSource> ZxnetFeed<'m, R> {
             buffers,
             random,
             allowed_local: None,
+            user_agent: crate::user_agent::UserAgentString::default(),
             phase: Phase::Stopped,
             key: [0; crate::consts::WEBSOCKET_KEY_TEXT],
             head: HeadCollector::default(),
@@ -614,6 +617,12 @@ impl<'m, R: RandomSource> ZxnetFeed<'m, R> {
     /// test server.
     pub fn allow_local(&mut self, address: IpAddress) {
         self.allowed_local = Some(address);
+    }
+
+    /// The program the feed names itself as in its upgrade's `User-Agent`
+    /// (REQ-WEB-031); without one, the engine.
+    pub fn name_product(&mut self, product: Option<&crate::user_agent::Product>) {
+        self.user_agent = crate::user_agent::UserAgentString::of(product);
     }
 
     /// The channel.
@@ -706,8 +715,9 @@ impl<'m, R: RandomSource> ZxnetFeed<'m, R> {
         // they are skipped, not taken as a broken connection.
         self.frames = FrameReader::skipping_oversized();
         let mut writer = Writer::new(self.buffers.request);
-        let written = ws::write_handshake_headers(&mut writer, &self.channel.address, &self.key)
-            .and_then(|()| writer.put(crate::consts::CRLF));
+        let written =
+            ws::write_handshake_headers(&mut writer, &self.channel.address, &self.key, self.user_agent.as_bytes())
+                .and_then(|()| writer.put(crate::consts::CRLF));
         if written.is_err() {
             self.dropped(now, true, sink);
             return;

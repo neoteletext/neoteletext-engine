@@ -287,7 +287,10 @@ impl WebSocket {
         let key = ws::new_key(&mut random);
         let mut buffer = vec![0_u8; MAX_HEAD];
         let mut writer = Writer::new(&mut buffer);
-        ws::write_handshake_headers(&mut writer, url, &key).map_err(|_| Error::Limit("the handshake"))?;
+        // The relay is not a channel: the engine names itself (REQ-WEB-031).
+        let user_agent = neoteletext_web::user_agent::UserAgentString::default();
+        ws::write_handshake_headers(&mut writer, url, &key, user_agent.as_bytes())
+            .map_err(|_| Error::Limit("the handshake"))?;
         writer.put(b"\r\n").map_err(|_| Error::Limit("the handshake"))?;
         let length = writer.len();
         stream.write_all(buffer.get(..length).unwrap_or(&[]))?;

@@ -176,9 +176,6 @@ pub mod header {
     pub const SEC_WEBSOCKET_PROTOCOL: &[u8] = b"Sec-WebSocket-Protocol";
 }
 
-/// The fixed `User-Agent` value, naming neoteletext and its version
-/// (REQ-WEB-014).
-pub const USER_AGENT: &str = concat!("neoteletext/", env!("CARGO_PKG_VERSION"));
 /// `Accept` for pages and the descriptor: the two page media types and JSON
 /// (REQ-WEB-014).
 pub const ACCEPT_PAGES: &[u8] = b"text/x-teletext-tti, application/x-teletext-t42, application/json";

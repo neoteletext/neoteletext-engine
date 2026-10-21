@@ -430,6 +430,18 @@ pub fn run(address: &str, no_sandbox: bool, allow_local: &[IpAddr]) -> Result<()
     Ok(())
 }
 
+/// `neottx` as it names itself to a channel (REQ-WEB-031): `neottx/0.1
+/// (macOS)`, one of the engine's own programs; on a system Rust does not
+/// name, the engine's own string.
+fn neottx() -> Option<neoteletext_web::user_agent::Product> {
+    neoteletext_web::user_agent::os_family().map(|family| neoteletext_web::user_agent::Product {
+        name: "neottx",
+        version: env!("CARGO_PKG_VERSION"),
+        family,
+        engine_own: true,
+    })
+}
+
 fn clock(start: StdInstant) -> Instant {
     Instant(u64::try_from(start.elapsed().as_micros()).unwrap_or(u64::MAX))
 }
@@ -450,6 +462,7 @@ fn live_loop<T: Transport>(
     use neoteletext_web::zxnet::{LiveEvent, LiveInput, LiveOutput, LiveStorage, ZxnetFeed};
     let mut storage = Box::new(LiveStorage::default());
     let mut feed = ZxnetFeed::new(*channel, storage.buffers(), SystemRandom);
+    feed.name_product(neottx().as_ref());
     if let Some(&address) = allow_local.first() {
         feed.allow_local(web_address(address));
     }
@@ -534,6 +547,7 @@ fn run_web(address: &str, wakes: &mut Wakes, wake: Sender<Wake>, allow_local: &[
     // An address naming a channel's folder keeps redirects inside it
     // (REQ-WEB-021).
     config.redirects_within_channel = channel.is_some();
+    config.product = neottx();
     for (slot, &address) in config.allowed_local.iter_mut().zip(allow_local) {
         *slot = Some(web_address(address));
     }

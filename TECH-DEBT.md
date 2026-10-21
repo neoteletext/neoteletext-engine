@@ -189,10 +189,6 @@ The browser lives only in `~/devel/neoteletext-browser`. Left over:
 
 - **The core decoder's next deadline:** `Decoder` does not say when it next needs `tick` (its completion timeout and staleness), so a port still ticks it on an interval. Give it a `next_tick` as the audio receiver now has.
 
-## The user agent (decision E.99)
-
-- **Build REQ-WEB-031:** `Config` takes the port's product, significant version and operating system family, checked and bounded; the agent composes and sends the string on requests and the upgrade; `neottx` gives `neottx/<significant version> (<family>)`. Tests as the requirement lists. Not built: the agent still sends `neoteletext/<full version>`.
-
 ## Documentation
 
 - **One development-process document** (the owner asked): written on 21 October 2026, shared with the browser, as `~/devel/neoteletext-common/DEVELOPMENT.md`. Still owed: remove from CLAUDE.md the sections it now holds ("How work proceeds", "Tracking work", the process parts of "Working with the specification") and README's "Checks", leaving pointers, and make the engine's other changes in its appendix B.

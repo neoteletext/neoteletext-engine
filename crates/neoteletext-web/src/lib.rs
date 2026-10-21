@@ -48,6 +48,7 @@ pub mod sha1;
 pub mod sha256;
 
 pub mod url;
+pub mod user_agent;
 
 pub mod cookie;
 pub mod http;

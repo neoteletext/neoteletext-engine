@@ -71,13 +71,18 @@ pub fn accept_for(key: &[u8]) -> [u8; WEBSOCKET_ACCEPT_TEXT] {
 }
 
 /// Writes the opening handshake request line and headers (RFC 6455
-/// section 4.1): only the headers of the profile (REQ-WEB-014). The caller
-/// adds the `Cookie` header, if any, and the empty line that ends the
-/// request.
-pub fn write_handshake_headers(writer: &mut Writer<'_>, url: &Url, key: &HandshakeKey) -> Result<(), Overflow> {
+/// section 4.1): only the headers of the profile (REQ-WEB-014), with
+/// `user_agent` (REQ-WEB-031). The caller adds the `Cookie` header, if any,
+/// and the empty line that ends the request.
+pub fn write_handshake_headers(
+    writer: &mut Writer<'_>,
+    url: &Url,
+    key: &HandshakeKey,
+    user_agent: &[u8],
+) -> Result<(), Overflow> {
     http::write_request_line(writer, Method::Get, url.target())?;
     http::write_host(writer, url)?;
-    http::write_header(writer, header::USER_AGENT, crate::consts::USER_AGENT.as_bytes())?;
+    http::write_header(writer, header::USER_AGENT, user_agent)?;
     http::write_header(writer, header::UPGRADE, UPGRADE_WEBSOCKET)?;
     http::write_header(writer, header::CONNECTION, crate::consts::CONNECTION_UPGRADE)?;
     http::write_header(writer, header::SEC_WEBSOCKET_KEY, key)?;
@@ -455,16 +460,13 @@ mod tests {
         let key = *b"dGhlIHNhbXBsZSBub25jZQ==";
         let mut buffer = [0u8; 512];
         let mut writer = Writer::new(&mut buffer);
-        write_handshake_headers(&mut writer, &url, &key).unwrap();
+        write_handshake_headers(&mut writer, &url, &key, b"NeoTeletext/0.1 (macOS)").unwrap();
         writer.put(crate::consts::CRLF).unwrap();
         let text = core::str::from_utf8(writer.written()).unwrap();
         assert_eq!(
             text,
-            std::format!(
-                "GET /ws/teefax HTTP/1.1\r\nHost: zxnet.co.uk\r\nUser-Agent: {}\r\nUpgrade: websocket\r\n\
-                 Connection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n",
-                crate::consts::USER_AGENT
-            )
+            "GET /ws/teefax HTTP/1.1\r\nHost: zxnet.co.uk\r\nUser-Agent: NeoTeletext/0.1 (macOS)\r\nUpgrade: websocket\r\n\
+             Connection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
         );
     }
 

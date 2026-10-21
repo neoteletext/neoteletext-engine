@@ -889,6 +889,31 @@ fn cookies_go_with_websocket_upgrades() {
     assert_eq!(header_value(handshake, "Cookie").as_deref(), Some("s=v1"));
 }
 
+/// REQ-WEB-031: the port's product names the agent on every request and
+/// on the push WebSocket's upgrade; with none, the engine names itself.
+#[test]
+#[cfg(feature = "push")]
+fn the_user_agent_goes_on_requests_and_the_upgrade() {
+    use neoteletext_web::user_agent::{Product, significant_version};
+    let engine = significant_version(env!("CARGO_PKG_VERSION"));
+    let teefax = Product { name: "Teefax", version: "1.4.2", family: "ESP-IDF", engine_own: false };
+    for (product, expected) in
+        [(Some(teefax), format!("Teefax/1 (ESP-IDF) neoteletext/{engine}")), (None, format!("neoteletext/{engine}"))]
+    {
+        let mut replay = Replay::new(&[("tt.example", PUBLIC)]);
+        let json = descriptor(r#","push":{"address":"ws://tt.example/push","method":"websocket"}"#);
+        replay.reply("tt.example:80", json_response(&json));
+        replay.reply("tt.example:80", Reply::WebSocket(Vec::new()));
+        let mut harness = Harness::new(Config { product, ..Config::default() }, replay);
+        assert!(has_event(&harness.open("http://tt.example/service.json"), "PushConnected"));
+        let requests = harness.replay().requests_to("tt.example:80");
+        assert_eq!(requests.len(), 2, "the descriptor and the upgrade");
+        for request in &requests {
+            assert_eq!(header_value(request, "User-Agent").as_deref(), Some(expected.as_str()));
+        }
+    }
+}
+
 #[test]
 fn stale_kept_alive_connection_is_retried_once_for_a_get() {
     let mut harness = plain_service();

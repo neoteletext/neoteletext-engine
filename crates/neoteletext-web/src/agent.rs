@@ -19,6 +19,7 @@
 //! branch that would reach the missing part tests a constant, so the
 //! optimiser and the linker drop that part's code.
 
+use crate::user_agent::UserAgentString;
 use neoteletext_core::policy;
 use neoteletext_core::types::{Instant, PageAddress, SubCode};
 
@@ -93,6 +94,9 @@ pub struct Config {
     /// channel. For a service opened by its descriptor, the channel is its
     /// origin. Off by default, which keeps `neottx`'s behaviour.
     pub redirects_within_channel: bool,
+    /// The program the agent names itself as, in its `User-Agent`
+    /// (REQ-WEB-031); `None` names the engine.
+    pub product: Option<crate::user_agent::Product>,
 }
 
 impl Default for Config {
@@ -112,6 +116,7 @@ impl Default for Config {
             cookies_total: DEFAULT_COOKIES_TOTAL,
             persist_cookies: false,
             redirects_within_channel: false,
+            product: None,
         }
     }
 }
@@ -689,6 +694,9 @@ struct PushConnection {
 #[derive(Debug)]
 pub struct UserAgent<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> {
     config: Config,
+    /// The `User-Agent` sent on every request and upgrade, composed once
+    /// (REQ-WEB-031).
+    named_as: UserAgentString,
     buffers: Buffers<'m>,
     random: R,
     jar: CookieJar<SLOTS, COOKIE_BYTES>,
@@ -790,6 +798,7 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
         let mut jar = CookieJar::new();
         jar.set_limits(config.cookies_per_host, config.cookies_total);
         Self {
+            named_as: UserAgentString::of(config.product.as_ref()),
             config,
             buffers,
             random,
@@ -1232,7 +1241,7 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
         let mut writer = Writer::new(self.buffers.fetch_request);
         http::write_request_line(&mut writer, exchange.method, exchange.url.target())?;
         http::write_host(&mut writer, &exchange.url)?;
-        http::write_header(&mut writer, header::USER_AGENT, crate::consts::USER_AGENT.as_bytes())?;
+        http::write_header(&mut writer, header::USER_AGENT, self.named_as.as_bytes())?;
         http::write_header(&mut writer, header::ACCEPT, ACCEPT_PAGES)?;
         http::write_header(&mut writer, header::ACCEPT_ENCODING, IDENTITY)?;
         if let Purpose::Page { page, subcode, .. } = exchange.purpose
@@ -2097,11 +2106,13 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
         }
         let written = (|| -> Result<bool, Overflow> {
             match self.push.method {
-                PushMethod::WebSocket => ws::write_handshake_headers(&mut writer, &url, &self.push.key)?,
+                PushMethod::WebSocket => {
+                    ws::write_handshake_headers(&mut writer, &url, &self.push.key, self.named_as.as_bytes())?;
+                }
                 PushMethod::ServerSentEvents => {
                     http::write_request_line(&mut writer, Method::Get, url.target())?;
                     http::write_host(&mut writer, &url)?;
-                    http::write_header(&mut writer, header::USER_AGENT, crate::consts::USER_AGENT.as_bytes())?;
+                    http::write_header(&mut writer, header::USER_AGENT, self.named_as.as_bytes())?;
                     http::write_header(&mut writer, header::ACCEPT, ACCEPT_EVENT_STREAM)?;
                     http::write_header(&mut writer, header::ACCEPT_ENCODING, IDENTITY)?;
                     let last = self.push.sse.last_event_id();
