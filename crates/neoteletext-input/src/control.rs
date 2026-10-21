@@ -84,8 +84,12 @@ impl From<WireError> for ControlError {
 /// Reads a control message's body.
 ///
 /// # Errors
-/// Anything section 7.2 refuses, or bytes left over.
+/// Anything section 7.2 refuses: a body longer than [`MAX_BODY`], which
+/// would not be one fragment, or bytes left over.
 pub fn read_body(body: &[u8]) -> Result<Control<'_>, ControlError> {
+    if body.len() > MAX_BODY {
+        return Err(ControlError::BadValue("longer than one fragment"));
+    }
     let mut reader = Reader::new(body);
     if reader.byte()? != EVENT {
         return Err(ControlError::BadValue("no event byte"));
@@ -250,5 +254,19 @@ mod tests {
         assert!(read_body(&[0xFF, PAGE_MODES, 0x80, 0x01, 0x08]).is_err(), "page 0x080");
         assert!(read_body(&[0xFF, POP_MODE, 0x01, 0x00]).is_err(), "bytes after");
         assert!(read_body(&[0x01, WELCOME, 2, 0]).is_err(), "no event byte");
+    }
+
+    /// The fuzz target `control_records` found an extension of 78 bytes
+    /// read but then not written: a body is at most one fragment's.
+    #[test]
+    fn a_body_longer_than_a_fragment_is_refused() {
+        let mut long = std::vec![0xFF, 0x4E, 0x4E];
+        long.extend(core::iter::repeat_n(0x4E, 0x4E));
+        assert_eq!(read_body(&long), Err(ControlError::BadValue("longer than one fragment")));
+        let mut fits = std::vec![0xFF, 0x40, u8::try_from(MAX_BODY - 3).unwrap()];
+        fits.extend(core::iter::repeat_n(0, MAX_BODY - 3));
+        let read = read_body(&fits).unwrap();
+        let mut out = [0_u8; MAX_BODY];
+        assert_eq!(write_body(&read, &mut out), Ok(MAX_BODY), "the longest body reads and writes back");
     }
 }
