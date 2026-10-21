@@ -326,6 +326,9 @@ struct Wakes {
     receiver: Receiver<Wake>,
     requests: VecDeque<Frame>,
     ended: bool,
+    /// A socket woke the loop since its turn began: its bytes are looked
+    /// at before the loop sleeps again.
+    network: bool,
     /// How many times the loop has slept, for the tests to count.
     #[cfg(test)]
     waits: Arc<std::sync::atomic::AtomicUsize>,
@@ -337,6 +340,7 @@ impl Wakes {
             receiver,
             requests: VecDeque::new(),
             ended: false,
+            network: false,
             #[cfg(test)]
             waits: Arc::default(),
         }
@@ -345,8 +349,9 @@ impl Wakes {
     fn take(&mut self, wake: Wake) {
         match wake {
             Wake::Request(frame) => self.requests.push_back(frame),
-            // The sockets are looked at on the loop's next turn.
-            Wake::Network => {}
+            // The sockets are looked at on the loop's next turn, which then
+            // comes at once.
+            Wake::Network => self.network = true,
             Wake::Ended => self.ended = true,
         }
     }
@@ -359,9 +364,19 @@ impl Wakes {
         self.requests.pop_front()
     }
 
+    /// A turn of the loop begins: the sockets are about to be looked at,
+    /// so a wake that came before is answered.
+    fn turn(&mut self) {
+        self.network = false;
+    }
+
     /// Sleeps until a request, a socket or the pipe's end wakes the loop,
-    /// or until `deadline`, the state machine's next timer.
+    /// or until `deadline`, the state machine's next timer; not at all when
+    /// a socket woke it since its turn began.
     fn wait(&mut self, now: Instant, deadline: Option<Instant>) {
+        if self.network {
+            return;
+        }
         #[cfg(test)]
         self.waits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let woken = match deadline {
@@ -478,6 +493,7 @@ fn live_loop<T: Transport>(
     };
     let mut next_tick = step(LiveInput::Start, &mut pump);
     while !broken.get() && !wakes.ended {
+        wakes.turn();
         let mut busy = false;
         if let Some(input) = pump.poll(ConnectionId::Live, &mut buffer) {
             busy = true;
@@ -610,6 +626,7 @@ fn run_web(address: &str, wakes: &mut Wakes, wake: Sender<Wake>, allow_local: &[
     let open = channel.map_or(Input::OpenService(address), Input::OpenChannel);
     agent.handle(clock(start), open, &mut |output| sink(output, &mut pump, &mut next_tick));
     while !broken.get() && !wakes.ended {
+        wakes.turn();
         let mut busy = false;
         for connection in [ConnectionId::Fetch, ConnectionId::Push] {
             if let Some(input) = pump.poll(connection, &mut buffer) {
@@ -835,6 +852,22 @@ mod tests {
             assert!(started.elapsed() < LIMIT, "the connection was never closed");
             std::thread::sleep(Duration::from_millis(10));
         }
+    }
+
+    /// A socket's wake taken while the loop looked for requests is not
+    /// lost: the loop does not then sleep with the socket's bytes unread.
+    /// It did, until the next timer, when a channel's answer arrived
+    /// between the loop's look at its sockets and its look for requests: a
+    /// key's answer waited for the heartbeat, 25 s.
+    #[test]
+    fn a_network_wake_taken_with_the_requests_is_not_lost() {
+        let (wake, receiver) = mpsc::channel();
+        let mut wakes = Wakes::new(receiver);
+        wake.send(Wake::Network).unwrap();
+        assert!(wakes.next_request().is_none(), "no request, only bytes");
+        let started = StdInstant::now();
+        wakes.wait(Instant(0), Some(Instant(5_000_000)));
+        assert!(started.elapsed() < Duration::from_secs(1), "slept {:?} with bytes waiting", started.elapsed());
     }
 
     #[test]
