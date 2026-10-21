@@ -744,6 +744,8 @@ pub struct UserAgent<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES
     close_fetch_after: bool,
     queue: [Option<(PageAddress, Option<SubCode>)>; PAGE_QUEUE],
     next_fetch_at: Instant,
+    /// The deadline the port was last told, so it is told only of a change.
+    timer_told: Option<Instant>,
     cache: [Option<CacheEntry>; CACHE_ENTRIES],
     cache_tick: u64,
     form: FormState,
@@ -851,6 +853,7 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             close_fetch_after: false,
             queue: [None; PAGE_QUEUE],
             next_fetch_at: Instant(0),
+            timer_told: None,
             cache: [None; CACHE_ENTRIES],
             cache_tick: 0,
             form: FormState {
@@ -935,6 +938,7 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
 
     /// Handles one input. Outputs go to `sink` before this returns.
     pub fn handle(&mut self, now: Instant, input: Input<'_>, sink: &mut Sink<'_>) {
+        let ticked = matches!(input, Input::Tick);
         match input {
             Input::Tick => self.tick(now, sink),
             Input::Net(net) => match net {
@@ -1003,8 +1007,15 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             Input::Send(message) => self.send_input(message, sink),
         }
         self.dispatch(now, sink);
-        if let Some(at) = self.next_deadline() {
-            sink(Output::Timer { at });
+        // The port is told its timer when the deadline changes, and again
+        // after a tick, which spent the one it had; not after every input,
+        // which woke the port twice for each (decision E.103).
+        let deadline = self.next_deadline();
+        if ticked || deadline != self.timer_told {
+            self.timer_told = deadline;
+            if let Some(at) = deadline {
+                sink(Output::Timer { at });
+            }
         }
     }
 

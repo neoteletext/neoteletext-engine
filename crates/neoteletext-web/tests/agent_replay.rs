@@ -332,6 +332,28 @@ fn not_found_and_failures_leave_pages_alone() {
     ));
 }
 
+/// Decision E.103: the port is told its timer when its deadline changes
+/// and after a tick, not after every input. Before this every input was
+/// followed by one while any deadline stood, waking the port's loop twice
+/// for each.
+#[test]
+fn the_timer_is_told_on_a_change_and_after_a_tick() {
+    let timers = |records: &[Rec]| records.iter().filter(|record| matches!(record, Rec::Timer(_))).count();
+    let mut harness = plain_service();
+    harness.replay().reply("tt.example:80", Reply::Bytes(response("500 Oops", &["Retry-After: 30"], b"")));
+    assert!(has_event(&harness.fetch(0x101), "FetchFailed"));
+    // Retry-After holds the next fetch back: a deadline stands.
+    let records = harness.fetch(0x102);
+    assert!(records.iter().any(|record| matches!(record, Rec::Timer(at) if at.0 >= harness.now.0 + 29 * SECOND)));
+    // Inputs that move no deadline are told no timer.
+    harness.input(Input::WallClock(1_700_000_000));
+    harness.input(Input::WallClock(1_700_000_000));
+    assert_eq!(timers(&harness.take()), 0, "nothing changed");
+    // A tick spends the deadline the port had: it is told the next, once.
+    harness.advance(SECOND);
+    assert_eq!(timers(&harness.take()), 1, "told again after a tick");
+}
+
 #[test]
 fn size_limit_abandons_the_response() {
     let mut replay = Replay::new(&[("tt.example", PUBLIC)]);

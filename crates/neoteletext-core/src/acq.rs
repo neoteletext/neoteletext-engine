@@ -874,13 +874,20 @@ impl<'a> Decoder<'a> {
             }
             Decoded::Magazine { magazine, packet } => {
                 self.count(magazine, crate::consts::PACKET_MAGAZINE_ENHANCEMENT);
-                if let Some(slot) = self.magazine_data.get_mut(magazine.index()) {
+                // Magazine packets repeat with the cycle; only one that
+                // changes what every page of the magazine may draw from is
+                // an event (decision E.103).
+                let changed = self.magazine_data.get_mut(magazine.index()).is_some_and(|slot| {
+                    let before = *slot;
                     match packet {
                         MagazinePacket::Data(fields) => slot.data = Some(fields),
                         MagazinePacket::Level35(fields) => slot.level35 = Some(fields),
                     }
+                    *slot != before
+                });
+                if changed {
+                    events(Event::MagazineData(magazine));
                 }
-                events(Event::MagazineData(magazine));
             }
             _ => {}
         }
@@ -1781,6 +1788,17 @@ mod tests {
         assert_eq!(decoder.magazine_data(mag(5)), MagazineData::default());
         assert!(events.contains(&Event::MagazineData(mag(5))));
         feed(&mut decoder, &[encode::magazine_enhancement(mag(5), 0, &fields)], &mut events);
+        // The same packet again, as a cycle repeats it, changes nothing and
+        // is no event (decision E.103); a different one is.
+        events.clear();
+        feed(&mut decoder, &[encode::magazine_enhancement(mag(5), 0, &fields)], &mut events);
+        assert!(!events.contains(&Event::MagazineData(mag(5))), "a repeat is no event: {events:?}");
+        let other = PresentationFields {
+            colours: Some(crate::types::DefaultColourFields { screen: 5, ..Default::default() }),
+            ..PresentationFields::default()
+        };
+        feed(&mut decoder, &[encode::magazine_enhancement(mag(5), 0, &other)], &mut events);
+        assert!(events.contains(&Event::MagazineData(mag(5))), "a change is");
         decoder.start_new_input(&mut |_| {});
         assert_eq!(decoder.magazine_data(mag(5)), MagazineData::default());
     }

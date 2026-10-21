@@ -1408,3 +1408,11 @@ Decided on 21 October 2026, for the browser's proxy setting and developer consol
 5. **`neottx --proxy URL`** for every command that fetches, and for `neottx keyboard`.
 
 *Reason:* Both are protocol and the engine is where the browser's protocols live; `neottx` gains them at the same time.
+
+**E.103 — Three costs a port paid on every message are paid only when something changed.**
+Decided on 21 October 2026, on the owner's instruction to act on the browser's efficiency analysis of that day, which measured them in the browser's decoder and fetcher.
+1. **`Event::MagazineData` is emitted only when the magazine's data changed.** An M/29 packet repeats with the cycle; before this, every repeat re-rendered every shown page of a port that redraws on the event, as the browser's decoder does.
+2. **`Output::Timer` is emitted when the agent's deadline changed, and after a tick**, which spent the deadline the port had. Before this it followed every input, so each woke the port's loop twice. A port keeps the earliest deadline it was told until it fires; a stale earlier one costs it one tick that finds nothing due.
+3. **`Receiver::tick` walks its store once.** It was `OBJECTS` walks of `OBJECTS` entries (65,536 slot reads for 256 objects) on every message a port handled, with no sound stored.
+
+*Reason:* A port handles these on every packet batch and every input; what they cost was measured there, and none of the three changed what a port sees, only when it is told.

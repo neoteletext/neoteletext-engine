@@ -73,15 +73,14 @@ impl<'a, const OBJECTS: usize, const SLOTS: usize> Receiver<'a, OBJECTS, SLOTS> 
     /// for it to resume (REQ-AUD-014).
     pub fn tick(&mut self, now_ms: u64, sink: &mut dyn VoiceSink) {
         self.now_ms = now_ms;
-        let stalled: [Option<Entry>; OBJECTS] = core::array::from_fn(|index| {
-            self.store
-                .entries()
-                .nth(index)
-                .filter(|entry| {
-                    entry.live && entry.at_sink && now_ms.saturating_sub(entry.arrived_ms) >= crate::LIVE_STALL_MS
-                })
-                .copied()
-        });
+        // One pass over the store: a port ticks on every message it
+        // handles, so this is paid constantly (decision E.103).
+        let mut stalled: [Option<Entry>; OBJECTS] = [None; OBJECTS];
+        for (slot, entry) in stalled.iter_mut().zip(self.store.entries()) {
+            if entry.live && entry.at_sink && now_ms.saturating_sub(entry.arrived_ms) >= crate::LIVE_STALL_MS {
+                *slot = Some(*entry);
+            }
+        }
         for entry in stalled.iter().flatten() {
             for index in 0..CHANNELS {
                 let Some(channel) = self.channels.get_mut(usize::from(index)) else { continue };
