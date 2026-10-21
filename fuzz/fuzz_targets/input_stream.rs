@@ -37,11 +37,11 @@ fuzz_target!(|data: &[u8]| {
 fn joined(items: &[String]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for item in items {
-        if let (Some(last), Some(text)) = (out.last_mut(), item.strip_prefix("Text(\"")) {
-            if let Some(previous) = last.strip_prefix("Text(\"").and_then(|rest| rest.strip_suffix("\")")) {
-                *last = format!("Text(\"{previous}{text}");
-                continue;
-            }
+        if let (Some(last), Some(text)) = (out.last_mut(), item.strip_prefix("Text(\""))
+            && let Some(previous) = last.strip_prefix("Text(\"").and_then(|rest| rest.strip_suffix("\")"))
+        {
+            *last = format!("Text(\"{previous}{text}");
+            continue;
         }
         out.push(item.clone());
     }
