@@ -19,8 +19,10 @@ error-trait = []
 std = []
 
 [dev-dependencies]
-# The Level 2.5 tests compose and render pages.
-neoteletext-core = { workspace = true, features = ["default"] }
+# The Level 2.5 tests compose and render pages, with the capabilities that
+# are not default named, so a build of this crate alone renders as the
+# workspace does (decision E.105).
+neoteletext-core = { workspace = true, features = ["default", "objects", "side-panels", "additional-flash-functions"] }
 
 [lints]
 workspace = true

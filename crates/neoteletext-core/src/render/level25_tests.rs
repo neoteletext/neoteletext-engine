@@ -221,7 +221,7 @@ fn palette_mode_is_refused_where_it_cannot_draw() {
         }),
         ("inverted flash", |grid| {
             grid.cells[2][5].flash = true;
-            grid.cells[2][5].attributes = CellAttributes::DEFAULT.with_flash_mode(FlashMode::Inverted);
+            grid.cells[2][5].attributes = CellAttributes::DEFAULT.with_flash_mode(FlashMode::InvertPhase);
         }),
         ("adjacent-CLUT flash", |grid| {
             grid.cells[2][5].flash = true;
@@ -260,14 +260,14 @@ fn invert_flash_and_conceal_combinations() {
         (true, None, false, false, ON, (BLUE, RED)),
         (false, Some(FlashMode::Normal), false, false, ON, (RED, BLUE)),
         (false, Some(FlashMode::Normal), false, false, OFF, (BLUE, BLUE)),
-        (false, Some(FlashMode::Inverted), false, false, ON, (BLUE, BLUE)),
-        (false, Some(FlashMode::Inverted), false, false, OFF, (RED, BLUE)),
+        (false, Some(FlashMode::InvertPhase), false, false, ON, (BLUE, BLUE)),
+        (false, Some(FlashMode::InvertPhase), false, false, OFF, (RED, BLUE)),
         (false, Some(FlashMode::AdjacentClut), false, false, ON, (RED, BLUE)),
         (false, Some(FlashMode::AdjacentClut), false, false, OFF, (flip(RED), BLUE)),
         (true, Some(FlashMode::Normal), false, false, ON, (BLUE, RED)),
         (true, Some(FlashMode::Normal), false, false, OFF, (RED, RED)),
-        (true, Some(FlashMode::Inverted), false, false, ON, (RED, RED)),
-        (true, Some(FlashMode::Inverted), false, false, OFF, (BLUE, RED)),
+        (true, Some(FlashMode::InvertPhase), false, false, ON, (RED, RED)),
+        (true, Some(FlashMode::InvertPhase), false, false, OFF, (BLUE, RED)),
         (true, Some(FlashMode::AdjacentClut), false, false, ON, (BLUE, RED)),
         (true, Some(FlashMode::AdjacentClut), false, false, OFF, (flip(BLUE), RED)),
         (false, None, true, false, ON, (BLUE, BLUE)),
@@ -279,8 +279,8 @@ fn invert_flash_and_conceal_combinations() {
         (false, Some(FlashMode::Normal), true, true, OFF, (BLUE, BLUE)),
         (false, Some(FlashMode::AdjacentClut), true, false, OFF, (BLUE, BLUE)),
         (false, Some(FlashMode::AdjacentClut), true, true, OFF, (flip(RED), BLUE)),
-        (true, Some(FlashMode::Inverted), true, false, OFF, (RED, RED)),
-        (true, Some(FlashMode::Inverted), true, true, OFF, (BLUE, RED)),
+        (true, Some(FlashMode::InvertPhase), true, false, OFF, (RED, RED)),
+        (true, Some(FlashMode::InvertPhase), true, true, OFF, (BLUE, RED)),
         (true, Some(FlashMode::AdjacentClut), true, true, OFF, (flip(BLUE), RED)),
     ];
     let grid = Grid::EMPTY;
@@ -791,7 +791,7 @@ fn change_tracking_in_the_resolved_mode() {
     let rates = [
         (2, FlashRate::Slow, FlashMode::Normal),
         (4, FlashRate::FastPhase1, FlashMode::Normal),
-        (6, FlashRate::FastPhase2, FlashMode::Inverted),
+        (6, FlashRate::FastPhase2, FlashMode::InvertPhase),
         (8, FlashRate::FastPhase3, FlashMode::AdjacentClut),
     ];
     for (row, rate, mode) in rates {

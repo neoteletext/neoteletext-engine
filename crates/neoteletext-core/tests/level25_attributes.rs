@@ -250,10 +250,10 @@ fn receiver_area_is_never_written() {
     assert_eq!(report.unwrap().faults.discarded_writes, 3);
 }
 
-/// The Additional Flash Functions (Table 29) are the `animation` feature's,
+/// The Additional Flash Functions (Table 29) are the feature of that name,
 /// which builds on the non-spacing attributes.
-#[cfg(feature = "animation")]
-mod animation {
+#[cfg(feature = "additional-flash-functions")]
+mod additional_flash_functions {
     use super::*;
     use neoteletext_core::consts::{FLASH, STEADY};
     use neoteletext_core::level1::{Cell, FlashMode, FlashRate};
@@ -282,7 +282,7 @@ mod animation {
         let state = |cell: Cell| (cell.flash, cell.attributes.flash_mode(), cell.attributes.flash_rate());
         assert!(!state(cell(0)).0);
         assert_eq!(state(cell(1)), (true, FlashMode::Normal, FlashRate::Slow));
-        assert_eq!(state(cell(3)), (true, FlashMode::Inverted, FlashRate::FastPhase2));
+        assert_eq!(state(cell(3)), (true, FlashMode::InvertPhase, FlashRate::FastPhase2));
         assert_eq!(state(cell(5)), (true, FlashMode::AdjacentClut, FlashRate::FastPhase1));
         assert!(!cell(7).flash, "steady");
         let phases =

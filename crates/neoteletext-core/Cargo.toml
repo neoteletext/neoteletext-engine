@@ -11,18 +11,21 @@ publish.workspace = true
 [dependencies]
 
 [features]
-# Decision E.61: each optional area of the core is a feature, all on by
-# default. Ports turn the defaults off and name what they use.
+# Decision E.61: each optional area of the core is a feature. The default
+# is Levels 1.0 and 1.5, and of Levels 2.5 and 3.5 the non-spacing
+# attributes and the 32-colour Colour Map of both levels (decision E.105);
+# objects, side panels and the Additional Flash Functions are named by a
+# build that wants them. Ports turn the defaults off and name what they use.
 default = [
     "level15",
     "level25",
+    "nonspacing-attributes",
+    "level25-32colors",
+    "level35-32colors",
     "render",
     "bedstead",
     "viewer",
     "forms",
-    "objects",
-    "side-panels",
-    "colours32",
     "extended-sets",
 ]
 # neoteletext's own character sets at values Table 32 reserves
@@ -35,18 +38,26 @@ level15 = []
 # feature of their own (decision E.71, REQ-GEN-020).
 level25 = []
 # The non-spacing attributes (Table 27): colours, flash and display
-# attributes placed by X/26 triplets. Off by default, the
-# owner's choice: without it those triplets only set the column, and
-# characters and objects are still placed.
+# attributes placed by X/26 triplets. On by default (decision E.105);
+# without it those triplets only set the column, and characters and objects
+# are still placed.
 nonspacing-attributes = ["level25"]
 # Active, Adaptive and Passive objects, and default objects (area OBJ).
 objects = ["level25"]
 # Side panels (clause 12.5).
 side-panels = ["level25"]
-# CLUTs 2 and 3 and the redefinition of any CLUT (clause 12.4).
-colours32 = ["level25"]
-# Additional Flash Functions: flash modes, fast rates and phases (Table 29).
-animation = ["nonspacing-attributes"]
+# The Colour Map of Level 2.5 (clause 12.4): CLUTs 2 and 3, redefined by
+# X/28/0 Format 1 and M/29/0 (Tables 4 and 11). Without it they are copies
+# of CLUTs 0 and 1 (decision E.105).
+level25-32colors = ["level25"]
+# The Colour Map of Level 3.5: as Level 2.5, and CLUTs 0 and 1 redefined by
+# X/28/4 and M/29/4 (Tables 10 and 13), never CLUT 1 entry 0, which is
+# transparent (decision E.105).
+level35-32colors = ["level25-32colors"]
+# Additional Flash Functions (Table 29, column mode 00111): the flash
+# modes and the flash rates and phases beyond Level 1's flash (decision
+# E.105, which names it as the standard does).
+additional-flash-functions = ["nonspacing-attributes"]
 # The classic profile: teletext as nearly every service sent it and nearly
 # every receiver showed it, Level 1.5 and nothing of Levels 2.5 and 3.5.
 # A page using a later level shows as a Level 1.5 receiver showed it. Pair
@@ -99,7 +110,7 @@ required-features = [
     "level25",
     "objects",
     "side-panels",
-    "colours32",
+    "level35-32colors",
 ]
 
 [[test]]
@@ -112,7 +123,7 @@ required-features = [
     "level25",
     "objects",
     "side-panels",
-    "colours32",
+    "level35-32colors",
 ]
 
 [[test]]
@@ -125,7 +136,8 @@ required-features = ["level25", "bedstead"]
 
 [[test]]
 name = "reporting"
-required-features = ["level15", "level25", "viewer"]
+# Its pages invoke objects, which are not default (decision E.105).
+required-features = ["level15", "level25", "viewer", "objects"]
 
 [[example]]
 name = "minimal_port"

@@ -36,25 +36,25 @@ impl RowScope {
 /// (Table 29, mode 00111).
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum FlashMode {
-    /// 00: steady.
+    /// 00: "Steady" (Table 29).
     Steady,
-    /// 01: normal flash to background.
+    /// 01: "Normal flash to background colour".
     Normal,
-    /// 10: flash with the phases inverted.
-    Inverted,
-    /// 11: flash to the colour in the adjacent CLUT.
+    /// 10: "Invert phase of flash to background colour".
+    InvertPhase,
+    /// 11: "Flash to the corresponding colour in an adjacent CLUT".
     AdjacentClut,
 }
 
 impl FlashMode {
     /// Every mode, in the order of their codes.
-    pub const ALL: [Self; 4] = [Self::Steady, Self::Normal, Self::Inverted, Self::AdjacentClut];
+    pub const ALL: [Self; 4] = [Self::Steady, Self::Normal, Self::InvertPhase, Self::AdjacentClut];
 
     const fn bits(self) -> u8 {
         match self {
             Self::Steady => 0b00,
             Self::Normal => 0b01,
-            Self::Inverted => 0b10,
+            Self::InvertPhase => 0b10,
             Self::AdjacentClut => 0b11,
         }
     }

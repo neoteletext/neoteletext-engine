@@ -48,9 +48,9 @@ The project keeps the first kind and leaves out the second. The second kind is n
 
 | Capability | What it would do to the page | Feature |
 |---|---|---|
-| The 32-colour palette | Lets a page redefine its colours from 4,096, which allows photographic shading and brand colours in place of the eight. | `colours32` |
+| The 32-colour palette | Lets a page redefine its colours from 4,096, which allows photographic shading and brand colours in place of the eight. | `level25-32colors`, `level35-32colors` |
 | Side panels | Widens the page beyond its 40 columns, to as many as 72. | `side-panels` |
-| Animation | Flash in several modes, rates and phases, sweeping across the page: motion graphics, beyond the single slow flash of Level 1. | `animation` |
+| Additional Flash Functions (Table 29) | Flash in several modes, rates and phases, with "apparent movement" across the page, beyond the single slow flash of Level 1. | `additional-flash-functions` |
 
 When a capability is compiled out, pages that use it still display. Its data is ignored and the page shows as it would on a receiver without that capability. That is how teletext was always meant to degrade, since every page must also work on a Level 1 television.
 
@@ -63,20 +63,22 @@ Each capability is a Cargo feature of `neoteletext-core`:
 | Feature | Needs | What it adds |
 |---|---|---|
 | `level15` | — | Level 1.5: accented characters and the G3 set placed by the page's enhancement data |
-| `level25` | — | Levels 2.5 and 3.5: the enhancement processor, with non-spacing attributes and characters |
+| `level25` | — | Levels 2.5 and 3.5: the enhancement processor, placing characters by the page's enhancement data |
+| `nonspacing-attributes` | `level25` | The non-spacing attributes of Table 27: colours, flash and display attributes placed by X/26 triplets |
+| `level25-32colors` | `level25` | The Colour Map of Level 2.5 (clause 12.4): CLUTs 2 and 3, redefined by X/28/0 Format 1 and M/29/0 |
+| `level35-32colors` | `level25-32colors` | The Colour Map of Level 3.5: as Level 2.5, and CLUTs 0 and 1 redefined by X/28/4 and M/29/4, never CLUT 1 entry 0 |
 | `objects` | `level25` | Active, Adaptive and Passive objects, and default objects |
 | `side-panels` | `level25` | Side panels |
-| `colours32` | `level25` | Colour lookup tables 2 and 3, and redefinition of any table |
-| `animation` | `level25` | The additional flash functions |
-| `modern-classic` | — | The profile: `level15`, `level25`, `render`, `bedstead`, `viewer`, `forms` and `objects` |
+| `additional-flash-functions` | `nonspacing-attributes` | The Additional Flash Functions of Table 29, column mode 00111 |
+| `modern-classic` | — | The profile: `level15`, `level25`, `nonspacing-attributes`, `render`, `bedstead`, `viewer`, `forms` and `objects` |
 
-**The default build has every feature on.** That is the rule of decision E.61, so that a plain dependency works. It is also what `neottx` and the conformance tests use, because they must show the whole of the standard. A port chooses the profile by turning the defaults off:
+**The default build** (decision E.105, the owner's instruction of 22 October 2026, amending decision E.61's rule that every feature is on): Levels 1.0 and 1.5, and of Levels 2.5 and 3.5 the non-spacing attributes and the Colour Map of both levels: `level15`, `level25`, `nonspacing-attributes`, `level25-32colors`, `level35-32colors`, with `render`, `bedstead`, `viewer`, `forms` and `extended-sets`. Objects, side panels and the Additional Flash Functions are not default: a build names them, as the conformance tests do (the gate runs them with every feature). `neottx` uses the default. A port chooses the profile by turning the defaults off:
 
 ```toml
 neoteletext-core = { version = "...", default-features = false, features = ["modern-classic"] }
 ```
 
-A port can also name capabilities one by one, for example the profile plus `colours32`.
+A port can also name capabilities one by one, for example the profile plus `level35-32colors`.
 
 ### What a feature switches
 
@@ -86,10 +88,11 @@ A capability is decided in one place in the decoder and, where it is drawn diffe
 |---|---|---|
 | `objects` | Object invocations and default objects in the enhancement walk | — |
 | `side-panels` | The side panel fields of X/28 and M/29 | The width of each row |
-| `colours32` | The Colour Map's colour words | — (the Colour Map itself) |
-| `animation` | The Additional Flash Functions triplet | — |
+| `level25-32colors` | The colour words of X/28/0 and M/29/0, and CLUTs 2 and 3 apart from 0 and 1 | — (the Colour Map itself) |
+| `level35-32colors` | The colour words of X/28/4 and M/29/4 | — (the Colour Map itself) |
+| `additional-flash-functions` | The Additional Flash Functions triplet | — |
 
-Each test is a constant such as `cfg!(feature = "animation")`. The compiler removes the branch that cannot run, and the linker removes the code only that branch used. A build without a capability therefore contains neither its decoding nor its drawing, and pays nothing for it at run time.
+Each test is a constant such as `cfg!(feature = "additional-flash-functions")`. The compiler removes the branch that cannot run, and the linker removes the code only that branch used. A build without a capability therefore contains neither its decoding nor its drawing, and pays nothing for it at run time.
 
 ### What happens to a page that uses a capability compiled out
 
@@ -97,8 +100,9 @@ Each test is a constant such as `cfg!(feature = "animation")`. The compiler remo
 |---|---|---|
 | `objects` | Invocations and default objects ignored | The page without its objects; its own enhancement data still applies |
 | `side-panels` | No side panels | A 40-column page; anything placed in a panel is outside the page |
-| `colours32` | No redefinition; tables 2 and 3 are copies of tables 0 and 1 | At most the sixteen default colours, with the eight classic colours as the default |
-| `animation` | The triplet ignored | Steady text, except Level 1 flash, which still flashes |
+| `level25-32colors` | No redefinition; tables 2 and 3 are copies of tables 0 and 1 | At most the sixteen default colours, with the eight classic colours as the default |
+| `level35-32colors` (with `level25-32colors`) | Tables 0 and 1 keep their defaults; tables 2 and 3 are redefined | The eight classic colours as the default, and sixteen of the page's own |
+| `additional-flash-functions` | The triplet ignored | Steady text, except Level 1 flash, which still flashes |
 
 None of these is an error. Fault statistics count only what they always did, such as absent objects.
 
@@ -116,7 +120,7 @@ The profile saves 2,864 bytes, about 4 percent. The profile is chosen for how pa
 
 ## 4. Testing
 
-- **The default build** runs the whole conformance suite, with every capability.
+- **The gate** runs the whole conformance suite with every feature (`--all-features`); the default build runs the tests its features allow.
 - **Each test of a capability** requires that capability's feature, so a build without it does not run the test.
 - **`crates/neoteletext-core/tests/capabilities.rs`** checks each capability compiled out: that its data is ignored exactly as section 3 says.
 - **`cargo xtask features`** builds, lints and tests the core with Levels 1.5 and 2.5 and every capability off, and with the `modern-classic` profile, besides the builds of decision E.61.
@@ -127,7 +131,7 @@ The profile saves 2,864 bytes, about 4 percent. The profile is chosen for how pa
 A new switchable capability follows the same steps:
 
 1. **Record it first:** a decision in REQUIREMENTS.md Part E that says what it is, what happens to page data when it is compiled out, and which side of the principle of section 1 it falls on.
-2. **Add the feature** to `crates/neoteletext-core/Cargo.toml`, in the default list, and in `modern-classic` if it keeps the style.
+2. **Add the feature** to `crates/neoteletext-core/Cargo.toml`, in the default list only if the owner says so (decision E.105), and in `modern-classic` if it keeps the style.
 3. **Gate its decision point** in the decoder, and its drawing in the renderer, with `cfg!(feature = "...")`. Behaviour when it is compiled out must be the "not supported" behaviour of a lower level, never an error.
 4. **Gate its tests** with `#[cfg(feature = "...")]`, and add a test to `tests/capabilities.rs` for the compiled-out behaviour.
 5. **Add it to the builds** of `xtask/src/features.rs` and the test image's features in `firmware/test-image/Cargo.toml`, and measure with `cargo xtask size`.

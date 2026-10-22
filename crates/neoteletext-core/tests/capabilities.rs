@@ -1,4 +1,4 @@
-//! Each capability of decision E.71 compiled out (REQ-GEN-020): its page
+//! Each capability of decisions E.71 and E.105 compiled out (REQ-GEN-020): its page
 //! data is ignored as the decision says, never an error. Each test runs
 //! only in the builds that leave its capability out; the builds with it
 //! test what it does in `level25.rs` and `objects.rs`.
@@ -6,7 +6,12 @@
 // The helpers serve only the tests of capabilities compiled out, so in a
 // build with every capability they are unused.
 #![cfg_attr(
-    all(feature = "objects", feature = "side-panels", feature = "colours32", feature = "animation"),
+    all(
+        feature = "objects",
+        feature = "side-panels",
+        feature = "level35-32colors",
+        feature = "additional-flash-functions"
+    ),
     allow(dead_code, unused_imports, reason = "every capability is compiled in, so no test here runs")
 )]
 
@@ -14,6 +19,33 @@ mod common;
 
 use common::{display_page, local_data, set_position};
 use neoteletext_core::packet::{Packet, TripletFunction};
+
+/// Decision E.105: the default build is Levels 1.0 and 1.5, the non-spacing
+/// attributes and the Colour Map of Levels 2.5 and 3.5, and nothing more of
+/// Levels 2.5 and 3.5; read from the manifest, whatever this build's
+/// features.
+#[test]
+fn the_default_features_are_decision_e105() {
+    let manifest = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml")).unwrap();
+    let start = manifest.find("\ndefault = [").unwrap();
+    let list = &manifest[start..start + manifest[start..].find(']').unwrap()];
+    let mut features: Vec<&str> = list.split('"').skip(1).step_by(2).collect();
+    features.sort_unstable();
+    let mut expected = vec![
+        "level15",
+        "level25",
+        "nonspacing-attributes",
+        "level25-32colors",
+        "level35-32colors",
+        "render",
+        "bedstead",
+        "viewer",
+        "forms",
+        "extended-sets",
+    ];
+    expected.sort_unstable();
+    assert_eq!(features, expected);
+}
 
 /// Page 100 with Level 1 rows and local enhancement data.
 fn page(rows: &[(u8, &[u8])], local: &[TripletFunction]) -> Vec<Packet> {
@@ -53,11 +85,11 @@ fn side_panels_compiled_out_are_never_shown() {
     assert_eq!(grid.side_panels, SidePanels { left: 0, right: 0 });
 }
 
-/// Without the 32-colour Colour Map, nothing redefines a CLUT, and CLUTs 2
-/// and 3 are copies of CLUTs 0 and 1 (decision E.71).
-#[cfg(not(feature = "colours32"))]
+/// Without the Colour Map of Level 2.5, nothing redefines a CLUT, and CLUTs
+/// 2 and 3 are copies of CLUTs 0 and 1 (decision E.105).
+#[cfg(not(feature = "level25-32colors"))]
 #[test]
-fn colours32_compiled_out_keeps_the_default_sixteen() {
+fn level25_32colors_compiled_out_keeps_the_default_sixteen() {
     use common::{build_35, x28};
     use neoteletext_core::colour::{ColourMap, colour_index};
     use neoteletext_core::types::{PresentationFields, Rgb12};
@@ -74,11 +106,29 @@ fn colours32_compiled_out_keeps_the_default_sixteen() {
     }
 }
 
-/// Without animation, Additional Flash Functions change nothing, and the
-/// Level 1 flash is unchanged (decision E.71).
-#[cfg(not(feature = "animation"))]
+/// With the Colour Map of Level 2.5 and without that of Level 3.5, X/28/0
+/// redefines CLUTs 2 and 3, and X/28/4 redefines nothing: CLUTs 0 and 1
+/// keep their defaults even at Level 3.5 (decision E.105).
+#[cfg(all(feature = "level25-32colors", not(feature = "level35-32colors")))]
 #[test]
-fn animation_compiled_out_leaves_level_1_flash() {
+fn level35_32colors_compiled_out_keeps_cluts_0_and_1() {
+    use common::{build_35, x28};
+    use neoteletext_core::colour::{ColourMap, colour_index};
+    use neoteletext_core::types::{PresentationFields, Rgb12};
+    let words = core::array::from_fn(|entry| Rgb12::new(9, entry as u8, 0));
+    let fields = PresentationFields { colour_words: Some(words), ..PresentationFields::default() };
+    let grid = build_35(&display_page(0, &[(1, b"A")], vec![x28(0, &fields), x28(4, &fields)]));
+    assert_eq!(grid.colour_map.entry(colour_index(2, 3)), Rgb12::new(9, 3, 0), "CLUT 2 from X/28/0");
+    for entry in 0..16u8 {
+        assert_eq!(grid.colour_map.entry(entry), ColourMap::DEFAULT.entry(entry), "CLUT 0 and 1 entry {entry}");
+    }
+}
+
+/// Without the Additional Flash Functions, their triplet changes nothing,
+/// and the Level 1 flash is unchanged (decision E.105).
+#[cfg(not(feature = "additional-flash-functions"))]
+#[test]
+fn additional_flash_functions_compiled_out_leave_level_1_flash() {
     use common::build_25;
     use neoteletext_core::consts::FLASH;
     use neoteletext_core::level1::{FlashMode, FlashRate};

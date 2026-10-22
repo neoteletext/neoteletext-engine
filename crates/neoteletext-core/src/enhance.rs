@@ -39,15 +39,15 @@ use crate::consts::{
     ALPHA_BLACK, ALPHA_WHITE, ATTRIBUTE_LAST, BLACK_BACKGROUND, C5_NEWSFLASH, C6_SUBTITLE, C7_SUPPRESS_HEADER,
     C10_INHIBIT_DISPLAY, CLUT_ENTRY_MASK, COLOUR_BLACK, COLOUR_WHITE, COLUMNS, CONCEAL, CONTIGUOUS_MOSAICS,
     DOUBLE_HEIGHT, DOUBLE_HEIGHT_FIRST_ROW, DOUBLE_HEIGHT_LAST_ROW, DOUBLE_SIZE, DOUBLE_WIDTH, END_BOX, ESC, FLASH,
-    FLASH_MODE_ADJACENT_CLUT, FLASH_MODE_INVERTED, FLASH_MODE_NORMAL, FLASH_RATE_DECREMENTAL, FLASH_RATE_INCREMENTAL,
-    FLASH_RATE_PHASE_1, FLASH_RATE_PHASE_2, FLASH_RATE_PHASE_3, FLASH_RATE_SLOW, G1_G0_COLUMNS_FIRST,
-    G1_G0_COLUMNS_LAST, G3_UNDEFINED, HOLD_MOSAICS, LATIN_AT_SIGN, LATIN_G2_UNDEFINED, LOCAL_TRIPLETS, MOSAIC_BIT5,
-    MOSAIC_BLACK, MOSAIC_WHITE, NEW_BACKGROUND, NORMAL_SIZE, OBJECT_BODY_TRIPLETS, OBJECT_INVOCATIONS_PER_TYPE,
-    OBJECT_TYPES, OBJECTS_OPEN_AT_ONCE, OBJECTS_OPENED_IN_SUCCESSION, PAGE_FUNCTION_DRCS, PAGE_FUNCTION_GDRCS,
-    PAGE_FUNCTION_GPOP, PAGE_FUNCTION_MOT, PAGE_FUNCTION_POP, PAGE_MOT, RECEIVER_COLUMNS, RELEASE_MOSAICS,
-    ROW_ADDRESS_LAST, ROW_COLOUR_DOWN_TO_BOTTOM, ROW_COLOUR_THIS_ROW, ROWS, SCREEN_COLUMNS, SEPARATED_MOSAICS,
-    SIDE_PANEL_FIRST_ROW, SIDE_PANEL_ROWS, SPACE, START_BOX, STEADY, TRIPLET_AT_SIGN_CODE, TRIPLET_FIRST_CHARACTER,
-    TRIPLETS_PER_PACKET, WALK_DEPTH,
+    FLASH_MODE_ADJACENT_CLUT, FLASH_MODE_INVERT_PHASE, FLASH_MODE_NORMAL, FLASH_RATE_DECREMENTAL,
+    FLASH_RATE_INCREMENTAL, FLASH_RATE_PHASE_1, FLASH_RATE_PHASE_2, FLASH_RATE_PHASE_3, FLASH_RATE_SLOW,
+    G1_G0_COLUMNS_FIRST, G1_G0_COLUMNS_LAST, G3_UNDEFINED, HOLD_MOSAICS, LATIN_AT_SIGN, LATIN_G2_UNDEFINED,
+    LOCAL_TRIPLETS, MOSAIC_BIT5, MOSAIC_BLACK, MOSAIC_WHITE, NEW_BACKGROUND, NORMAL_SIZE, OBJECT_BODY_TRIPLETS,
+    OBJECT_INVOCATIONS_PER_TYPE, OBJECT_TYPES, OBJECTS_OPEN_AT_ONCE, OBJECTS_OPENED_IN_SUCCESSION, PAGE_FUNCTION_DRCS,
+    PAGE_FUNCTION_GDRCS, PAGE_FUNCTION_GPOP, PAGE_FUNCTION_MOT, PAGE_FUNCTION_POP, PAGE_MOT, RECEIVER_COLUMNS,
+    RELEASE_MOSAICS, ROW_ADDRESS_LAST, ROW_COLOUR_DOWN_TO_BOTTOM, ROW_COLOUR_THIS_ROW, ROWS, SCREEN_COLUMNS,
+    SEPARATED_MOSAICS, SIDE_PANEL_FIRST_ROW, SIDE_PANEL_ROWS, SPACE, START_BOX, STEADY, TRIPLET_AT_SIGN_CODE,
+    TRIPLET_FIRST_CHARACTER, TRIPLETS_PER_PACKET, WALK_DEPTH,
 };
 use crate::level1::{
     Cell, CellAttributes, CharSource, DisplayOptions, FlashMode, FlashRate, Glyph, Grid, Size, Width,
@@ -201,9 +201,9 @@ impl AttrChange {
 /// 00111, decision E.48); `None` for its reserved values, which only set the
 /// column (REQ-L25-027).
 fn flash_of(mode: u8, rate: u8, reserved: u8, column: u8) -> Option<Flash> {
-    // Without animation compiled in, the triplet changes nothing; the
-    // Level 1 flash is unchanged (decision E.71).
-    if !cfg!(feature = "animation") {
+    // Without the Additional Flash Functions compiled in, the triplet
+    // changes nothing; the Level 1 flash is unchanged (decision E.105).
+    if !cfg!(feature = "additional-flash-functions") {
         return None;
     }
     if reserved != 0 {
@@ -220,7 +220,7 @@ fn flash_of(mode: u8, rate: u8, reserved: u8, column: u8) -> Option<Flash> {
     };
     let mode = match mode {
         FLASH_MODE_NORMAL => FlashMode::Normal,
-        FLASH_MODE_INVERTED => FlashMode::Inverted,
+        FLASH_MODE_INVERT_PHASE => FlashMode::InvertPhase,
         FLASH_MODE_ADJACENT_CLUT => FlashMode::AdjacentClut,
         _ => return Some(Flash::Steady),
     };
@@ -2059,20 +2059,24 @@ fn rebuild_rows<const PANEL_ROWS: usize>(
 
 #[cfg(test)]
 #[cfg_attr(
-    not(all(feature = "animation")),
-    allow(dead_code, unused_imports, reason = "helpers of the tests whose capability is compiled out (decision E.71)")
+    not(feature = "additional-flash-functions"),
+    allow(
+        dead_code,
+        unused_imports,
+        reason = "helpers of the tests whose capability is compiled out (decision E.105)"
+    )
 )]
 #[allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 mod tests {
     use super::*;
-    #[cfg(feature = "animation")]
+    #[cfg(feature = "additional-flash-functions")]
     use crate::consts::FLASH_MODE_STEADY;
     use crate::consts::MOSAIC_FULL;
 
     /// REQ-L25-027, decision E.48: the flash a triplet sets, and its
     /// reserved values.
-    // Needs its capability compiled in (decision E.71).
-    #[cfg(feature = "animation")]
+    // Needs its capability compiled in (decision E.105).
+    #[cfg(feature = "additional-flash-functions")]
     #[test]
     fn additional_flash_values() {
         let on = |mode, rate| Some(Flash::On { mode, rate, start: 3 });
@@ -2082,8 +2086,8 @@ mod tests {
             on(FlashMode::Normal, Rate::Fixed(FlashRate::Slow))
         );
         assert_eq!(
-            flash_of(FLASH_MODE_INVERTED, FLASH_RATE_PHASE_3, 0, 3),
-            on(FlashMode::Inverted, Rate::Fixed(FlashRate::FastPhase3))
+            flash_of(FLASH_MODE_INVERT_PHASE, FLASH_RATE_PHASE_3, 0, 3),
+            on(FlashMode::InvertPhase, Rate::Fixed(FlashRate::FastPhase3))
         );
         assert_eq!(
             flash_of(FLASH_MODE_ADJACENT_CLUT, FLASH_RATE_INCREMENTAL, 0, 3),

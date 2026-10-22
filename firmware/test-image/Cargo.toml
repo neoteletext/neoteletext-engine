@@ -17,14 +17,14 @@ neoteletext-web = { path = "../../crates/neoteletext-web", default-features = fa
 # Each feature roots the entry points of one optional area, and enables it.
 level15 = ["neoteletext-core/level15"]
 level25 = ["neoteletext-core/level25"]
-# Every capability of Levels 2.5 and 3.5 (decision E.71), and the
-# modern-classic profile's choice of them.
+# Every capability of Levels 2.5 and 3.5 (decisions E.71 and E.105), and
+# the modern-classic profile's choice of them.
 capabilities = [
     "level25",
     "neoteletext-core/objects",
     "neoteletext-core/side-panels",
-    "neoteletext-core/colours32",
-    "neoteletext-core/animation",
+    "neoteletext-core/level35-32colors",
+    "neoteletext-core/additional-flash-functions",
 ]
 modern-classic = ["level25", "neoteletext-core/objects", "neoteletext-core/nonspacing-attributes"]
 render = ["neoteletext-core/render"]

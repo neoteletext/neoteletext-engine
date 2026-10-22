@@ -27,7 +27,7 @@ use std::fmt::Write as _;
 use std::path::PathBuf;
 
 /// Raise when Level 2.5 and 3.5 rendering changes on purpose (REQ-TST-030).
-const FORMAT_VERSION: u32 = 5;
+const FORMAT_VERSION: u32 = 6;
 
 const BLACK: u8 = 0;
 const RED: u8 = 1;
@@ -255,7 +255,7 @@ fn flash_page() -> Grid {
     let mut grid = Grid::EMPTY;
     write(&mut grid, 1, 2, "Flash modes and rates", WHITE, BLACK, CellAttributes::DEFAULT);
     let rates = [FlashRate::Slow, FlashRate::FastPhase1, FlashRate::FastPhase2, FlashRate::FastPhase3];
-    let modes = [FlashMode::Normal, FlashMode::Inverted, FlashMode::AdjacentClut];
+    let modes = [FlashMode::Normal, FlashMode::InvertPhase, FlashMode::AdjacentClut];
     for (mode_index, mode) in modes.into_iter().enumerate() {
         for (rate_index, rate) in rates.into_iter().enumerate() {
             let row = 3 + mode_index * 5 + rate_index;

@@ -11,7 +11,7 @@ cargo build --release -p neoteletext-cli
 # the program is target/release/neottx
 ```
 
-Every part is on by default. A smaller program leaves parts out (decision E.61):
+Every part below is on by default. A smaller program leaves parts out (decision E.61):
 
 | Feature | What it adds |
 |---|---|
@@ -23,7 +23,13 @@ Every part is on by default. A smaller program leaves parts out (decision E.61):
 cargo build --release -p neoteletext-cli --no-default-features --features view
 ```
 
-That program reads files, shows and converts pages, and is about half the size, with no TLS code. Every command stays in the help text. A command whose part is left out exits with status 2 and says the build does not include it. Without `view`, `show` draws images at scale 1 unless `--scale` is given.
+Three capabilities of Levels 2.5 and 3.5 are off by default (decision E.105) and are named to build them in: `objects`, `side-panels` and `additional-flash-functions`:
+
+```sh
+cargo build --release -p neoteletext-cli --features objects,side-panels,additional-flash-functions
+```
+
+That program with `--no-default-features --features view` reads files, shows and converts pages, and is about half the size, with no TLS code. Every command stays in the help text. A command whose part is left out exits with status 2 and says the build does not include it. Without `view`, `show` draws images at scale 1 unless `--scale` is given.
 
 The toolchain is pinned in `rust-toolchain.toml`. `scripts/check.sh full` runs every gate: formatting, clippy, the tests, the layer and constant checks, and the build for the bare-metal target.
 
@@ -120,7 +126,7 @@ A live input runs in two processes (REQ-SEC-018). A fetcher process does the net
 
 ### Levels 2.5 and 3.5
 
-At the default level, 3.5, `neottx` also keeps the enhancement pages a service sends (object pages and the Magazine Organization Table) and the magazine packets M/29, and draws each page with them: the page's own Colour Map of 32 colours, screen and row colours, side panels, double width and double size, underline, invert, the additional flash modes, the G3 set and objects. Downloadable characters (DRCS) are not drawn: the Level 1 character beneath shows (decision E.95). Nor are the Level 3.5 font styles, bold, italic and proportional spacing (decision E.96). A fault in any of these removes only what depends on it; the Level 1 page always shows. `--level 1.5` shows a page as a Level 1.5 receiver would, without re-acquiring anything. `cargo xtask level25-stream FILE.t42` writes a test stream with a page for each feature, indexed on page 100.
+At the default level, 3.5, `neottx` also keeps the enhancement pages a service sends (object pages and the Magazine Organization Table) and the magazine packets M/29, and draws each page with them: the page's own Colour Map of 32 colours (CLUTs 2 and 3 from X/28/0 and M/29/0, and at Level 3.5 CLUTs 0 and 1 from X/28/4 and M/29/4), screen and row colours, the non-spacing attributes (colours, double width and double size, underline, invert and the rest of Table 27) and the G3 set. Objects, side panels and the Additional Flash Functions are drawn by a build that names them (above). Downloadable characters (DRCS) are not drawn: the Level 1 character beneath shows (decision E.95). Nor are the Level 3.5 font styles, bold, italic and proportional spacing (decision E.96). A fault in any of these removes only what depends on it; the Level 1 page always shows. `--level 1.5` shows a page as a Level 1.5 receiver would, without re-acquiring anything. `cargo xtask level25-stream FILE.t42` writes a test stream with a page for each feature, indexed on page 100.
 
 ## The viewer
 

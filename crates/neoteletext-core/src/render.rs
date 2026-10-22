@@ -142,7 +142,7 @@ pub fn flash_unit(now: Instant) -> u8 {
 /// - fast flash (2 hertz) with phase p is off in units 2(p − 1) and 2p − 1
 ///   of each half-second of six units, and on otherwise.
 ///
-/// Inverted flash swaps the phases; that is the cell raster's business.
+/// Invert phase flash swaps the phases; that is the cell raster's business.
 #[must_use]
 pub const fn flash_on(rate: FlashRate, unit: u8) -> bool {
     let unit = unit % FLASH_UNITS;
@@ -469,7 +469,7 @@ fn g3_line(glyphs: &GlyphSet, code: u8, source: usize, mode: CellMode) -> u16 {
 /// swapped for inverted flash (decision E.48).
 fn flash_shown(cell: &Cell, flash: FlashPhase) -> bool {
     let attributes = cell.attributes;
-    flash.is_on(attributes.flash_rate()) != (attributes.flash_mode() == FlashMode::Inverted)
+    flash.is_on(attributes.flash_rate()) != (attributes.flash_mode() == FlashMode::InvertPhase)
 }
 
 /// The display planes of Annex C.1 (Table C.1, REQ-L25-029): the index a

@@ -449,7 +449,7 @@ Decision E.61 makes each crate's optional areas Cargo features, all on by defaul
 
 | Crate | Features |
 |---|---|
-| `neoteletext-core` | `level15`, `level25`, `render`, `bedstead`, `viewer`, `forms`, `extended-sets` (neoteletext's own character sets and the joining pass, decision E.78); the capabilities `objects`, `side-panels`, `colours32`, `animation` (decision E.71); the profile `modern-classic` (not default) |
+| `neoteletext-core` | Default (decision E.105): `level15`, `level25`, `nonspacing-attributes`, `level25-32colors`, `level35-32colors`, `render`, `bedstead`, `viewer`, `forms`, `extended-sets` (neoteletext's own character sets and the joining pass, decision E.78). Not default: the capabilities `objects`, `side-panels`, `additional-flash-functions` (decision E.71), and the profile `modern-classic` |
 | `neoteletext-formats` | `transport`, `sliced`, `pages`, `tti`, `ep1`, `edittf`, `dump`, `check`, `bdf` (the font reader of REQ-FNT-002), and `std` (not default) |
 | `neoteletext-web` | `push`, `forms`, `cookies` |
 | `neoteletext-app` | `live`, `slice`, `write-text` (the text-to-page writer and its `unicode-bidi` dependency) |

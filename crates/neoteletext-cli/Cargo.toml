@@ -52,6 +52,12 @@ sound = ["dep:neoteletext-audio"]
 # `neottx qr` and `neottx keyboard`: qrkeyboard, with its TLS and
 # cryptography (decision E.93).
 keyboard = ["dep:neoteletext-qrkeyboard", "dep:unicode-normalization"]
+# The capabilities of Levels 2.5 and 3.5 that are not default (decision
+# E.105): objects, side panels and the Additional Flash Functions of
+# Table 29. Not default; a build names them.
+objects = ["neoteletext-core/objects"]
+side-panels = ["neoteletext-core/side-panels"]
+additional-flash-functions = ["neoteletext-core/additional-flash-functions"]
 
 [lints]
 workspace = true

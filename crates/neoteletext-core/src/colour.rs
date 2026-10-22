@@ -251,9 +251,9 @@ impl PagePresentation {
 #[must_use]
 pub fn resolve(sources: &PresentationSources<'_>, level: PresentationLevel, base: &ColourMap) -> PagePresentation {
     let mut out = PagePresentation::defaults(*base);
-    if !cfg!(feature = "colours32") {
-        // Decision E.71: without the 32-colour Colour Map, CLUTs 2 and 3
-        // are copies of CLUTs 0 and 1, and nothing redefines a CLUT.
+    if !cfg!(feature = "level25-32colors") {
+        // Decision E.105: without the Colour Map of Level 2.5, CLUTs 2 and
+        // 3 are copies of CLUTs 0 and 1, and nothing redefines a CLUT.
         let (low, high) = out.colour_map.entries.split_at_mut(COLOUR_MAP_ENTRIES / 2);
         high.copy_from_slice(low);
     }
@@ -266,14 +266,15 @@ pub fn resolve(sources: &PresentationSources<'_>, level: PresentationLevel, base
     let ordered = [sources.page, page_35, sources.magazine, magazine_35];
     let first = |group: fn(&PresentationFields) -> bool| ordered.into_iter().flatten().find(|fields| group(fields));
 
-    let redefinable = cfg!(feature = "colours32");
-    if redefinable
+    // CLUTs 2 and 3 are the Level 2.5 Colour Map's, CLUTs 0 and 1 the
+    // Level 3.5 one's (decision E.105).
+    if cfg!(feature = "level25-32colors")
         && let Some(words) =
             [sources.page, sources.magazine].into_iter().flatten().find_map(|fields| fields.colour_words)
     {
         out.colour_map.set_cluts(CLUT_LEVEL_25_FIRST, &words);
     }
-    if redefinable
+    if cfg!(feature = "level35-32colors")
         && let Some(words) = [page_35, magazine_35].into_iter().flatten().find_map(|fields| fields.colour_words)
     {
         out.colour_map.set_cluts(CLUT_LEVEL_35_FIRST, &words);
@@ -315,7 +316,7 @@ const _: () = assert!(COLOUR_WORDS == 2 * CLUT_ENTRIES);
 
 #[cfg(test)]
 #[cfg_attr(
-    not(all(feature = "side-panels", feature = "colours32")),
+    not(all(feature = "side-panels", feature = "level35-32colors")),
     allow(dead_code, unused_imports, reason = "helpers of the tests whose capability is compiled out (decision E.71)")
 )]
 #[allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
@@ -380,8 +381,8 @@ mod tests {
 
     /// REQ-L25-030: each source and order of precedence, Level 3.5 data
     /// ignored at Level 2.5, and CLUT 1 entry 0 kept transparent.
-    // Needs its capability compiled in (decision E.71).
-    #[cfg(feature = "colours32")]
+    // Needs its capability compiled in (decision E.105).
+    #[cfg(feature = "level35-32colors")]
     #[test]
     fn colour_map_sources_and_precedence() {
         let base = ColourMap::DEFAULT;

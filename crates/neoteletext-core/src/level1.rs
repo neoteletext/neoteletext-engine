@@ -85,12 +85,15 @@ pub enum Width {
 /// Levels 1 and 1.5 every flash is [`FlashMode::Normal`].
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum FlashMode {
-    /// The off phase shows the background colour.
+    /// "Normal flash to background colour" (Table 29, D1 D0 = 01): the off
+    /// phase shows the background colour.
     Normal,
-    /// As normal, with the on and off phases swapped.
-    Inverted,
-    /// The off phase shows the foreground index exclusive-ORed with 8: the
-    /// same entry of the neighbouring CLUT.
+    /// "Invert phase of flash to background colour" (10): as normal, with
+    /// the on and off phases swapped.
+    InvertPhase,
+    /// "Flash to the corresponding colour in an adjacent CLUT" (11): the
+    /// off phase shows the foreground index exclusive-ORed with 8, the
+    /// same entry of CLUT 0 and 1, or 2 and 3.
     AdjacentClut,
 }
 
@@ -187,7 +190,7 @@ impl CellAttributes {
     #[must_use]
     pub const fn flash_mode(self) -> FlashMode {
         match self.field(FLASH_MODE_SHIFT, TWO_BITS) {
-            1 => FlashMode::Inverted,
+            1 => FlashMode::InvertPhase,
             2 => FlashMode::AdjacentClut,
             _ => FlashMode::Normal,
         }
@@ -198,7 +201,7 @@ impl CellAttributes {
     pub const fn with_flash_mode(self, mode: FlashMode) -> Self {
         let bits = match mode {
             FlashMode::Normal => 0,
-            FlashMode::Inverted => 1,
+            FlashMode::InvertPhase => 1,
             FlashMode::AdjacentClut => 2,
         };
         self.with_field(FLASH_MODE_SHIFT, TWO_BITS, bits)
@@ -1296,7 +1299,7 @@ mod tests {
         let sources =
             [CharSource::Level1, CharSource::Local, CharSource::Active, CharSource::Adaptive, CharSource::Passive];
         for width in [Width::Normal, Width::LeftHalf, Width::RightHalf] {
-            for mode in [FlashMode::Normal, FlashMode::Inverted, FlashMode::AdjacentClut] {
+            for mode in [FlashMode::Normal, FlashMode::InvertPhase, FlashMode::AdjacentClut] {
                 for rate in [FlashRate::Slow, FlashRate::FastPhase1, FlashRate::FastPhase2, FlashRate::FastPhase3] {
                     for source in &sources {
                         for flags in 0..4 {

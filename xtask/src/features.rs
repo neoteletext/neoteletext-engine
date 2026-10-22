@@ -1,9 +1,10 @@
 //! The fixed list of feature builds the gate lints and tests (decision
 //! E.61, rule 6): `cargo xtask features`.
 //!
-//! Every crate's default build is covered by the workspace run with all
-//! features. This list adds each crate with no optional area and with each
-//! area alone, because a `cfg` mistake shows only in the builds that leave
+//! The workspace run with all features covers every crate's default build
+//! but the core's, whose default is not every feature (decision E.105) and
+//! is a build here. This list adds each crate with no optional area and
+//! with each area alone, because a `cfg` mistake shows only in the builds that leave
 //! something out. It is a fixed list rather than every combination: the
 //! features are additive, so each area alone and none at all cover the
 //! seams.
@@ -26,6 +27,10 @@ const BUILDS: &[Build] = &[
     // modern-classic profile (decision E.71, REQ-GEN-020).
     Build { package: "neoteletext-core", features: "level15,level25" },
     Build { package: "neoteletext-core", features: "modern-classic" },
+    // The default build, and the Colour Map of Level 2.5 without that of
+    // Level 3.5 (decision E.105).
+    Build { package: "neoteletext-core", features: "default" },
+    Build { package: "neoteletext-core", features: "level15,level25,level25-32colors" },
     Build { package: "neoteletext-core", features: "classic" },
     Build { package: "neoteletext-core", features: "render" },
     Build { package: "neoteletext-core", features: "bedstead" },

@@ -147,17 +147,11 @@ None of it is committed or implemented. Owed:
   - a transcription of the 1990 WST Lao table (Figure 33) for phase 4;
   - the exact positions of Ukrainian Ґ ґ.
 
-## Non-spacing attributes off by default (17 October 2026)
+## The default features (decision E.105, 22 October 2026)
 
-The owner's instruction: the Level 2.5 and 3.5 attributes that take no character cell stay in the code but are off by default. The core feature `nonspacing-attributes` gates the Table 27 column triplets for foreground and background colour, Additional Flash Functions, Display Attributes and Font Style (`ATTRIBUTES` in `crates/neoteletext-core/src/enhance.rs`); without it each only sets the column. `bold`, `italic` and `animation` now require it and left the defaults; `modern-classic` names it, since decision E.71 keeps these attributes in the profile.
+The non-spacing attributes, off by default on the owner's instruction of 17 October, are on again, with the Colour Map of Levels 2.5 and 3.5 (`level25-32colors`, `level35-32colors`); objects, side panels and the Additional Flash Functions are named by a build. The decision, the capabilities document, the porting guide, `ARCHITECTURE.md`, the user guide and REQ-GEN-020 are updated, and the default build's tests pass.
 
-- **Decision and requirements:** amend E.61 and E.71 (the defaults are no longer "all on"; the feature list), the L25 requirements that assume the attributes (REQ-L25-023 and its neighbours), and REQ-GEN-020. Row and screen colours (Table 26 row triplets) and Modified G0/G2 Designation were left on; record that.
-- **Tests failing in a default-features build** (the gate tests `--all-features` only, so it still passes): in `crates/neoteletext-core/tests/level25.rs`, `objects.rs` and `drcs.rs`: additional_flash_functions, boxing_and_windows, clause_13_9_object_example, colour_triplets_set_colour_map_indices, contention_examples_of_annex_c2, display_attributes_against_level_1, font_style_extends_over_rows_at_level_35, g1_mosaics_follow_the_non_spacing_separated_attribute, levels_change_without_reacquisition, mode_0_characters_take_the_cell_colours, passive_objects_start_from_their_defaults, receiver_area_is_never_written, remapping_and_black_background_substitution, row_below_spacing_double_height, sizes_follow_annex_c3. Gate them on the feature, and add a test in `tests/capabilities.rs` that the triplets only set the column without it.
-- **`cargo xtask features`** (full gate): its `level25` and `level15,level25` builds now lack the attributes, so the tests above fail there too; add a `nonspacing-attributes` build.
-- **Test gating fixed along the way:** `tests/capabilities.rs` DRCS helpers and the `FontStyle` import in `src/render/level25_tests.rs` were gated as if the defaults held every capability; a default build would not compile.
-- **Golden rasters and the cli and image crates' Level 2.5 tests** (`level25_corpus.rs`, `neoteletext-image/tests/level25.rs`, `enhancement_reporting.rs`): not run with the default features.
-- **Documents:** `docs/spec/design/capabilities.md` (the feature table and profile), `docs/spec/design/porting.md` line 34, the user guide's feature list, ARCHITECTURE.md if it lists features.
-- **Sizes:** `cargo xtask size` with the new default.
+- **Sizes:** `cargo xtask size` with the new default and the split colour features (the `thumbv6m-none-eabi` target is not installed on this Mac).
 - **The `classic` profile** (core feature, 17 October 2026): Level 1.5, the renderer, Bedstead and the viewer, with nothing of Levels 2.5 and 3.5; added to `cargo xtask features`. Owed: a decision in Part E and REQ-GEN-020 (what "the vast majority of teletext" means, with evidence), `docs/spec/design/capabilities.md` and `docs/spec/design/porting.md`, a `cargo xtask size` row, and whether `neottx` should offer a classic build. `forms` is left out because broadcast teletext had no forms; confirm with the owner.
 
 ## Picture-to-page converter `scripts/image-to-teletext.py` (18 October 2026)

@@ -950,7 +950,7 @@ pub const FLASH_MODE_STEADY: u8 = 0b00;
 /// Normal flash to the background colour.
 pub const FLASH_MODE_NORMAL: u8 = 0b01;
 /// Flash to the background colour in inverted phase.
-pub const FLASH_MODE_INVERTED: u8 = 0b10;
+pub const FLASH_MODE_INVERT_PHASE: u8 = 0b10;
 /// Flash to the same entry of the adjacent CLUT.
 pub const FLASH_MODE_ADJACENT_CLUT: u8 = 0b11;
 /// Flash rate codes, Table 29 mode 00111 data bits D4 to D2: slow, 1 hertz.

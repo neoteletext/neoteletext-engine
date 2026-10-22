@@ -444,7 +444,7 @@ fn flash() -> Result<DisplayPage> {
         let label: &[u8] = match mode {
             FlashMode::Steady => b"STD",
             FlashMode::Normal => b"NOR",
-            FlashMode::Inverted => b"INV",
+            FlashMode::InvertPhase => b"INV",
             FlashMode::AdjacentClut => b"ADJ",
         };
         page.text(row, 0, label)?;

@@ -28,7 +28,7 @@ neoteletext-formats = { version = "...", default-features = false }  # T42 only
 
 | Crate | Features |
 |---|---|
-| `neoteletext-core` | `level15`, `level25`, `render`, `bedstead`, `viewer`, `forms`; the capabilities of Levels 2.5 and 3.5 `objects`, `side-panels`, `colours32`, `animation`; and the profile `modern-classic` |
+| `neoteletext-core` | `level15`, `level25`, `render`, `bedstead`, `viewer`, `forms`; the capabilities of Levels 2.5 and 3.5 `nonspacing-attributes`, `level25-32colors`, `level35-32colors` (default, decision E.105), `objects`, `side-panels`, `additional-flash-functions` (not default); and the profile `modern-classic` |
 | `neoteletext-formats` | `transport`, `sliced`, `pages`, `tti`, `ep1`, `edittf`, `dump`, `check`, and `std` |
 | `neoteletext-web` | `push`, `forms`, `cookies` |
 
