@@ -111,6 +111,9 @@ The cookie store shall follow current cookie practice (decision E.35): the lates
 - **Opaque values.** Cookie values are opaque: the client never interprets session contents.
 - **Limits.** The store shall hold at most a configurable number of cookies per host, 50 by default, and in total, 100 by default, in caller-provided memory (REQ-GEN-003). The least recently used cookies beyond these limits are discarded, expired cookies first.
 - **Persistence.** The store may be saved between runs only as REQ-SEC-013 allows. It can be wiped at any time.
+- **Kept by the port.** A port may keep the store itself and give the agent an interface to it; the rules above are then the port's to apply, with the engine's jar to apply them (decision E.104).
+- **Times.** Each cookie keeps when it was made and last sent, in seconds, and the store can list its cookies and remove those of a host or a time range (decision E.104).
+- **`Clear-Site-Data`.** A response over an encrypted connection whose `Clear-Site-Data` names `"cookies"` or `"*"` shall clear its host's cookies before its own `Set-Cookie` values are stored; over plain HTTP the header shall be ignored (decision E.104).
 
 *Verification:* A test for every rule above. Where the draft has a published test suite (the web-platform-tests cookie tests), the applicable cases shall be adapted and run.
 
@@ -233,7 +236,7 @@ The web module shall implement exactly the following profile, and nothing beyond
 | Protocol | HTTP/1.1 over plain or TLS connections supplied by the port |
 | Methods | GET, and POST for form submission only |
 | Request headers sent | `Host`, `User-Agent` (fixed for the build, naming the port's program, its version and platform, and neoteletext and its version, REQ-WEB-031), `Accept` (the two page media types and JSON, or `text/event-stream` for server-sent events, decision E.39), `Accept-Encoding: identity`, `Cookie`, `If-None-Match`, `If-Modified-Since`, `Content-Type` and `Content-Length` (form submissions only), `Last-Event-ID` (server-sent events only), and the WebSocket upgrade headers. No other headers are sent, in particular no `Referer`. |
-| Response handling | Status codes 200, 204, 301, 302, 303, 304, 307, 308, 404 and other 4xx and 5xx codes as errors. Headers: `Content-Type`, `Content-Length`, `Transfer-Encoding: chunked`, `Location`, `Set-Cookie`, `ETag`, `Last-Modified`, `Cache-Control` (`max-age`, `no-cache`, `no-store`), `Retry-After`. Other headers are ignored. |
+| Response handling | Status codes 200, 204, 301, 302, 303, 304, 307, 308, 404 and other 4xx and 5xx codes as errors. Headers: `Content-Type`, `Content-Length`, `Transfer-Encoding: chunked`, `Location`, `Set-Cookie`, `Clear-Site-Data` (decision E.104), `ETag`, `Last-Modified`, `Cache-Control` (`max-age`, `no-cache`, `no-store`), `Retry-After`. Other headers are ignored. |
 | Connections | One request at a time per connection. Connections may be reused (persistent connections); pipelining is not used. |
 | Push | WebSocket (RFC 6455) and server-sent events, as REQ-WEB-005 defines |
 | Content | TTI pages, T42 packets and the JSON service descriptor. Nothing else is interpreted. |

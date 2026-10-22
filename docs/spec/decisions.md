@@ -1416,3 +1416,12 @@ Decided on 21 October 2026, on the owner's instruction to act on the browser's e
 3. **`Receiver::tick` walks its store once.** It was `OBJECTS` walks of `OBJECTS` entries (65,536 slot reads for 256 objects) on every message a port handled, with no sound stored.
 
 *Reason:* A port handles these on every packet batch and every input; what they cost was measured there, and none of the three changed what a port sees, only when it is told.
+
+**E.104 — A port may keep the agent's cookies, and a server may clear them.**
+Decided on 22 October 2026 for the browser's cookies (its decision 62, `cookies.md`), whose trusted core is to hold every cookie so that a fetcher compromised by its server sees only the cookies of the requests it is sending (the browser's requirement 7.5).
+1. **`Cookies`, an interface for a cookie store** (`cookie.rs`): `header_for`, `store_within`, `reached_securely`, `clear_host` and `wipe`, each the jar's method of the same name. The engine's `CookieJar` is one. `UserAgent::with_cookies` takes a port's instead; the agent's own jar then stays empty, and saving and loading are the port's. `UserAgent::new` is unchanged.
+2. **`Clear-Site-Data`** (W3C Clear Site Data sections 3.1 and 4.2): a response over an encrypted connection naming `"cookies"` or `"*"` clears the cookies of its host in the agent's store, before that response's own `Set-Cookie` values are stored, so a server can sign the user out and set a fresh cookie at once. Over plain HTTP it is ignored, since anyone on the path could send it. The types are quoted strings compared exactly; unknown types are ignored. `"cache"` and `"storage"` change nothing yet.
+3. **Each cookie keeps when it was made and last sent, in seconds** (`CookieInfo::created_at`, `used_at`), through replacement and saving, so a port can list cookies and clear those of a time range. `CookieJar::cookies` lists them, `remove_where` removes those a rule chooses, and `clear_host` a host's. The saved format becomes version 2 with the two times; version 1 data is not read, so cookies a port saved before this are not restored once.
+
+*Reason:* A browser with processes of different trust needs the store outside the process that speaks to the network; `Clear-Site-Data` is how a current server signs a user out everywhere; listing and clearing by time are what a browser's cookie controls need. Each is a small, bounded addition to the jar's rules, which stay the engine's (REQ-WEB-006).
+

@@ -17,10 +17,11 @@ use head::HeadError;
 
 use crate::bytes::{Overflow, TextBuf, Writer, copy_prefix, hex_value, parse_decimal, split_once, trim_ows};
 use crate::consts::{
-    CHUNKED, CONNECTION_CLOSE, CONNECTION_UPGRADE, CRLF, HTTP_MAJOR, HTTP_MINOR_0, HTTP_MINOR_1, HTTP_VERSION,
-    IDENTITY, MAX_CHUNK_LINE, MAX_CHUNK_SIZE_DIGITS, MAX_CONTENT_LENGTH_DIGITS, MAX_URL_LENGTH, MAX_VALIDATOR_LENGTH,
-    STATUS_INFORMATIONAL_FIRST, STATUS_LIMIT, STATUS_NO_CONTENT, STATUS_NOT_MODIFIED, STATUS_SUCCESS_FIRST,
-    STATUS_SWITCHING_PROTOCOLS, UPGRADE_WEBSOCKET, WEBSOCKET_ACCEPT_TEXT, cache, header, media,
+    CHUNKED, CLEAR_COOKIES, CLEAR_EVERYTHING, CONNECTION_CLOSE, CONNECTION_UPGRADE, CRLF, HTTP_MAJOR, HTTP_MINOR_0,
+    HTTP_MINOR_1, HTTP_VERSION, IDENTITY, MAX_CHUNK_LINE, MAX_CHUNK_SIZE_DIGITS, MAX_CONTENT_LENGTH_DIGITS,
+    MAX_URL_LENGTH, MAX_VALIDATOR_LENGTH, STATUS_INFORMATIONAL_FIRST, STATUS_LIMIT, STATUS_NO_CONTENT,
+    STATUS_NOT_MODIFIED, STATUS_SUCCESS_FIRST, STATUS_SWITCHING_PROTOCOLS, UPGRADE_WEBSOCKET, WEBSOCKET_ACCEPT_TEXT,
+    cache, header, media,
 };
 
 /// Why a response was rejected (REQ-WEB-014, REQ-SEC-011).
@@ -198,6 +199,8 @@ pub struct ResponseHead {
     /// `Sec-WebSocket-Extensions` or `Sec-WebSocket-Protocol` present,
     /// neither of which this client asks for (RFC 6455 section 4.1).
     pub websocket_extras: bool,
+    /// `Clear-Site-Data` names `"cookies"` or `"*"` (decision E.104).
+    pub clear_cookies: bool,
 }
 
 /// True when a comma-separated header value contains `token`, ignoring
@@ -282,6 +285,11 @@ fn read_header(
         head.websocket_extras = true;
     } else if is(header::SET_COOKIE) {
         on_set_cookie(raw_value);
+    } else if is(header::CLEAR_SITE_DATA) {
+        // A list of quoted types; an unknown type is ignored (W3C Clear
+        // Site Data section 3.1).
+        head.clear_cookies |=
+            value.split(|&b| b == b',').map(trim_ows).any(|item| item == CLEAR_COOKIES || item == CLEAR_EVERYTHING);
     }
     Ok(())
 }
@@ -332,6 +340,7 @@ pub fn parse_head(bytes: &[u8], on_set_cookie: &mut dyn FnMut(&[u8])) -> Result<
         connection_upgrade: false,
         websocket_accept: None,
         websocket_extras: false,
+        clear_cookies: false,
     };
     let mut framing = FramingHeaders::default();
     for field in parsed.fields() {
@@ -639,6 +648,23 @@ mod tests {
 
     fn head(text: &[u8]) -> Result<ResponseHead, HttpError> {
         parse_head(text, &mut |_| {})
+    }
+
+    /// Decision E.104: `Clear-Site-Data` clears cookies when it names
+    /// `"cookies"` or `"*"`, quoted and exactly; anything else does not.
+    #[test]
+    fn clear_site_data_names_cookies() {
+        let clears = |value: &str| {
+            let text = std::format!("HTTP/1.1 200 OK\r\nContent-Length: 0\r\nClear-Site-Data: {value}\r\n\r\n");
+            head(text.as_bytes()).unwrap().clear_cookies
+        };
+        for value in ["\"cookies\"", "\"cache\", \"cookies\"", "\"*\"", " \"storage\" ,\"cookies\" "] {
+            assert!(clears(value), "{value}");
+        }
+        for value in ["cookies", "\"Cookies\"", "\"cache\"", "\"cookies", "\"\"", "\"cookies\"x"] {
+            assert!(!clears(value), "{value}");
+        }
+        assert!(!head(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n").unwrap().clear_cookies);
     }
 
     #[test]

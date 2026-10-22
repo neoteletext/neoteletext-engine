@@ -152,6 +152,8 @@ pub mod header {
     pub const LOCATION: &[u8] = b"Location";
     /// `Set-Cookie` (RFC 6265bis section 4.1).
     pub const SET_COOKIE: &[u8] = b"Set-Cookie";
+    /// `Clear-Site-Data` (W3C Clear Site Data section 3.1, decision E.104).
+    pub const CLEAR_SITE_DATA: &[u8] = b"Clear-Site-Data";
     /// `ETag` (RFC 9110 section 8.8.3).
     pub const ETAG: &[u8] = b"ETag";
     /// `Last-Modified` (RFC 9110 section 8.8.2).
@@ -189,6 +191,11 @@ pub const CHUNKED: &[u8] = b"chunked";
 /// The `Connection` option that ends a persistent connection (RFC 9112
 /// section 9.6).
 pub const CONNECTION_CLOSE: &[u8] = b"close";
+/// The `Clear-Site-Data` types that clear cookies, each a quoted string
+/// compared exactly (W3C Clear Site Data sections 3.1 and 3.2).
+pub const CLEAR_COOKIES: &[u8] = b"\"cookies\"";
+/// The wildcard type, which clears every type.
+pub const CLEAR_EVERYTHING: &[u8] = b"\"*\"";
 /// The `Connection` option of a protocol upgrade (RFC 6455 section 4.1).
 pub const CONNECTION_UPGRADE: &[u8] = b"Upgrade";
 /// The upgrade token for WebSocket (RFC 6455 section 4.1).

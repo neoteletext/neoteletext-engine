@@ -37,7 +37,7 @@ use crate::consts::{
     STATUS_REDIRECT_FIRST, STATUS_SEE_OTHER, STATUS_SUCCESS_FIRST, STATUS_TEMPORARY_REDIRECT, SUBSCRIBE, SUBSCRIBE_ALL,
     SUBSCRIBE_QUERY, header, media,
 };
-use crate::cookie::{CookieJar, CookieRejected, Site};
+use crate::cookie::{CookieJar, CookieRejected, Cookies, Site};
 use crate::descriptor::{Descriptor, DescriptorError, PushMethod};
 use crate::form::{self, FormMethod, FormRefused, FormSubmission};
 use crate::http::{self, BodyDecoder, HeadCollector, HttpError, MediaType, Method, ResponseHead};
@@ -723,6 +723,9 @@ pub struct UserAgent<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES
     buffers: Buffers<'m>,
     random: R,
     jar: CookieJar<SLOTS, COOKIE_BYTES>,
+    /// The port's cookies, kept outside the agent, used instead of `jar`
+    /// when given (decision E.104).
+    port_cookies: Option<&'m mut dyn Cookies>,
     wall_clock: Option<(Instant, u64)>,
     descriptor: Option<Descriptor>,
     pending_descriptor: Option<(Url, bool, bool)>,
@@ -759,11 +762,62 @@ fn event(sink: &mut Sink<'_>, event: Event<'_>) {
     sink(Output::Event(event));
 }
 
+/// Where the agent's cookies are: the port's, when it gave some
+/// (decision E.104), else the agent's own jar.
+fn cookie_store<'a, 'm, const SLOTS: usize, const BYTES: usize>(
+    jar: &'a mut CookieJar<SLOTS, BYTES>,
+    port: &'a mut Option<&'m mut dyn Cookies>,
+) -> &'a mut (dyn Cookies + 'm) {
+    match port {
+        Some(port) => &mut **port,
+        None => jar,
+    }
+}
+
+/// Stores the `Set-Cookie` values of a complete response head, after
+/// clearing the host's cookies when the head says `Clear-Site-Data:
+/// "cookies"` over an encrypted connection (W3C Clear Site Data section
+/// 4.2, decision E.104), so that a response can sign the user out and set
+/// a fresh cookie at once. The head is read twice: first for what it
+/// clears, then for what it sets.
+#[allow(clippy::too_many_arguments, reason = "a cookie's context: where, how, when")]
+fn store_response_cookies(
+    store: &mut dyn Cookies,
+    head_bytes: &[u8],
+    host: &str,
+    path: &str,
+    scope: Option<&str>,
+    secure: bool,
+    seconds: u64,
+    calendar: bool,
+    sink: &mut Sink<'_>,
+) -> Result<ResponseHead, HttpError> {
+    let mut setting = false;
+    let head = http::parse_head(head_bytes, &mut |_| setting = true)?;
+    if !cfg!(feature = "cookies") {
+        if setting {
+            event(sink, Event::CookieRejected(CookieRejected::NotCompiledIn));
+        }
+        return Ok(head);
+    }
+    if head.clear_cookies && secure {
+        store.clear_host(host);
+    }
+    if setting {
+        let _ = http::parse_head(head_bytes, &mut |value| {
+            if let Err(rejected) = store.store_within(value, host, path, scope, secure, seconds, calendar) {
+                event(sink, Event::CookieRejected(rejected));
+            }
+        });
+    }
+    Ok(head)
+}
+
 /// Writes the `Cookie` header for a request to `url`, if any cookie
 /// matches, keeping room for the empty line and `body_len` bytes of body.
 /// Returns true when some matching cookies did not fit.
-fn write_cookie_header<const SLOTS: usize, const BYTES: usize>(
-    jar: &mut CookieJar<SLOTS, BYTES>,
+fn write_cookie_header(
+    jar: &mut dyn Cookies,
     writer: &mut Writer<'_>,
     url: &Url,
     path: &str,
@@ -820,9 +874,23 @@ fn channel_file_media(t42: bool, media: MediaType, body: &[u8]) -> Result<MediaT
 impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'m, R, SLOTS, COOKIE_BYTES> {
     /// A new agent with no service open.
     pub fn new(config: Config, buffers: Buffers<'m>, random: R) -> Self {
+        Self::with_store(config, buffers, random, None)
+    }
+
+    /// A new agent whose cookies the port keeps (decision E.104): every
+    /// cookie it would send is asked of `cookies`, and every cookie a
+    /// response sets is given to it; the agent's own jar stays empty, and
+    /// [`Self::save_cookies`] and [`Self::load_cookies`] are the port's
+    /// business, not the agent's.
+    pub fn with_cookies(config: Config, buffers: Buffers<'m>, random: R, cookies: &'m mut dyn Cookies) -> Self {
+        Self::with_store(config, buffers, random, Some(cookies))
+    }
+
+    fn with_store(config: Config, buffers: Buffers<'m>, random: R, port_cookies: Option<&'m mut dyn Cookies>) -> Self {
         let mut jar = CookieJar::new();
         jar.set_limits(config.cookies_per_host, config.cookies_total);
         Self {
+            port_cookies,
             named_as: UserAgentString::of(config.product.as_ref()),
             config,
             buffers,
@@ -1002,7 +1070,7 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
                     self.confirm(confirmed, sink);
                 }
             }
-            Input::WipeCookies => self.jar.wipe(),
+            Input::WipeCookies => cookie_store(&mut self.jar, &mut self.port_cookies).wipe(),
             Input::WallClock(unix) => self.wall_clock = Some((now, unix)),
             Input::Send(message) => self.send_input(message, sink),
         }
@@ -1137,7 +1205,11 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
         let host = url.host_text();
         let (seconds, _) = self.seconds(now);
         let reached = self.secure_hosts.iter().flatten().any(|known| known.as_str() == host)
-            || cfg!(feature = "cookies") && self.jar.reached_securely(host, seconds);
+            || cfg!(feature = "cookies")
+                && self.port_cookies.as_deref().map_or_else(
+                    || self.jar.reached_securely(host, seconds),
+                    |port| port.reached_securely(host, seconds),
+                );
         policy::is_downgrade(reached, url.origin().parts(), host)
     }
 
@@ -1310,7 +1382,15 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             writer.put(CRLF)?;
         }
         let path = exchange.url.path();
-        if write_cookie_header(&mut self.jar, &mut writer, &exchange.url, path, exchange.site, seconds, body_len)? {
+        if write_cookie_header(
+            cookie_store(&mut self.jar, &mut self.port_cookies),
+            &mut writer,
+            &exchange.url,
+            path,
+            exchange.site,
+            seconds,
+            body_len,
+        )? {
             event(sink, Event::CookiesTruncated);
         }
         writer.put(CRLF)?;
@@ -1468,23 +1548,15 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
         let Some(exchange) = self.fetch.exchange else { return false };
         let (seconds, calendar) = self.seconds(now);
         let head_len = self.fetch.head.len();
-        let Self { buffers, jar, channel, .. } = self;
+        let Self { buffers, jar, port_cookies, channel, .. } = self;
         let head_bytes = buffers.fetch_head.get(..head_len).unwrap_or(&[]);
         let host = exchange.url.host_text();
         let path = exchange.url.path();
         let secure = exchange.url.is_secure();
         // A channel's cookies stay in its folder (REQ-WEB-026).
         let scope = channel.as_ref().map(Url::path);
-        let parsed = http::parse_head(head_bytes, &mut |value| {
-            let stored = if cfg!(feature = "cookies") {
-                jar.store_within(value, host, path, scope, secure, seconds, calendar)
-            } else {
-                Err(CookieRejected::NotCompiledIn)
-            };
-            if let Err(rejected) = stored {
-                event(sink, Event::CookieRejected(rejected));
-            }
-        });
+        let store = cookie_store(jar, port_cookies);
+        let parsed = store_response_cookies(store, head_bytes, host, path, scope, secure, seconds, calendar, sink);
         let head = match parsed {
             Ok(head) => head,
             Err(error) => {
@@ -2187,7 +2259,15 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             }
             // Cookies go with upgrades and event streams too (REQ-WEB-006).
             let path = folder.as_ref().map_or(url.path(), Url::path);
-            let truncated = write_cookie_header(&mut self.jar, &mut writer, &url, path, Site::SameService, seconds, 0)?;
+            let truncated = write_cookie_header(
+                cookie_store(&mut self.jar, &mut self.port_cookies),
+                &mut writer,
+                &url,
+                path,
+                Site::SameService,
+                seconds,
+                0,
+            )?;
             writer.put(CRLF)?;
             Ok(truncated)
         })();
@@ -2264,18 +2344,20 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
         let Some(url) = self.push_address() else { return false };
         let (seconds, calendar) = self.seconds(now);
         let head_len = self.push.head.len();
-        let Self { buffers, jar, .. } = self;
+        let Self { buffers, jar, port_cookies, .. } = self;
         let head_bytes = buffers.push_head.get(..head_len).unwrap_or(&[]);
-        let parsed = http::parse_head(head_bytes, &mut |value| {
-            let stored = if cfg!(feature = "cookies") {
-                jar.store(value, url.host_text(), url.path(), url.is_secure(), seconds, calendar)
-            } else {
-                Err(CookieRejected::NotCompiledIn)
-            };
-            if let Err(rejected) = stored {
-                event(sink, Event::CookieRejected(rejected));
-            }
-        });
+        let store = cookie_store(jar, port_cookies);
+        let parsed = store_response_cookies(
+            store,
+            head_bytes,
+            url.host_text(),
+            url.path(),
+            None,
+            url.is_secure(),
+            seconds,
+            calendar,
+            sink,
+        );
         let head = match parsed {
             Ok(head) => head,
             Err(error) => {

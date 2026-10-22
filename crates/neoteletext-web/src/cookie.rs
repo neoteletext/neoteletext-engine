@@ -92,6 +92,11 @@ struct Record {
     via_secure: bool,
     created: u64,
     last_access: u64,
+    /// When it was first stored and last sent, in seconds of the jar's
+    /// clock (decision E.104): for a port that lists cookies or clears
+    /// those of a time range.
+    created_at: u64,
+    used_at: u64,
 }
 
 impl Record {
@@ -126,6 +131,103 @@ struct Attributes<'a> {
     http_only: bool,
     partitioned: bool,
     same_site: SameSite,
+}
+
+/// One stored cookie as a port may see it (decision E.104): which host it
+/// belongs to, its size, its times and whether it lasts beyond the session.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct CookieInfo<'a> {
+    /// The host that set it.
+    pub host: &'a [u8],
+    /// The bytes it holds: host, name, value and path.
+    pub bytes: usize,
+    /// When it was first stored, in seconds of the jar's clock.
+    pub created_at: u64,
+    /// When it was last sent, or stored when never sent.
+    pub used_at: u64,
+    /// When it expires; `None` for a session cookie.
+    pub expires: Option<u64>,
+    /// It was set over an encrypted connection.
+    pub via_secure: bool,
+}
+
+/// Where a user agent keeps its cookies (decision E.104). The engine's
+/// [`CookieJar`] is one; a port may keep them elsewhere, as a browser that
+/// holds them in a more trusted process than the one that speaks to the
+/// network does, and give the agent this interface instead
+/// (`UserAgent::with_cookies`). Each method is the jar's method of the
+/// same name.
+pub trait Cookies: core::fmt::Debug {
+    /// Writes the `Cookie` header value for a request: see
+    /// [`CookieJar::header_for`].
+    fn header_for(
+        &mut self,
+        host: &str,
+        path: &str,
+        secure: bool,
+        site: Site,
+        now: u64,
+        out: &mut Writer<'_>,
+    ) -> (usize, bool);
+    /// Processes one `Set-Cookie` header value: see
+    /// [`CookieJar::store_within`].
+    #[allow(clippy::too_many_arguments, reason = "the arguments of `CookieJar::store_within`")]
+    fn store_within(
+        &mut self,
+        header: &[u8],
+        host: &str,
+        request_path: &str,
+        scope: Option<&str>,
+        secure: bool,
+        now: u64,
+        wall_clock: bool,
+    ) -> Result<(), CookieRejected>;
+    /// See [`CookieJar::reached_securely`].
+    fn reached_securely(&self, host: &str, now: u64) -> bool;
+    /// A response from `host` over an encrypted connection said
+    /// `Clear-Site-Data: "cookies"`: see [`CookieJar::clear_host`].
+    fn clear_host(&mut self, host: &str);
+    /// Erases every cookie: see [`CookieJar::wipe`].
+    fn wipe(&mut self);
+}
+
+impl<const SLOTS: usize, const BYTES: usize> Cookies for CookieJar<SLOTS, BYTES> {
+    fn header_for(
+        &mut self,
+        host: &str,
+        path: &str,
+        secure: bool,
+        site: Site,
+        now: u64,
+        out: &mut Writer<'_>,
+    ) -> (usize, bool) {
+        Self::header_for(self, host, path, secure, site, now, out)
+    }
+
+    fn store_within(
+        &mut self,
+        header: &[u8],
+        host: &str,
+        request_path: &str,
+        scope: Option<&str>,
+        secure: bool,
+        now: u64,
+        wall_clock: bool,
+    ) -> Result<(), CookieRejected> {
+        Self::store_within(self, header, host, request_path, scope, secure, now, wall_clock)
+    }
+
+    fn reached_securely(&self, host: &str, now: u64) -> bool {
+        Self::reached_securely(self, host, now)
+    }
+
+    fn clear_host(&mut self, host: &str) {
+        Self::clear_host(self, host);
+    }
+
+    fn wipe(&mut self) {
+        Self::wipe(self);
+    }
 }
 
 /// The cookie store, with `SLOTS` records and `BYTES` bytes of text.
@@ -167,6 +269,46 @@ impl<const SLOTS: usize, const BYTES: usize> CookieJar<SLOTS, BYTES> {
         self.records = [None; SLOTS];
         self.arena = [0; BYTES];
         self.used = 0;
+    }
+
+    /// Each cookie held, expired ones included until evicted (decision
+    /// E.104).
+    pub fn cookies(&self) -> impl Iterator<Item = CookieInfo<'_>> + '_ {
+        self.records.iter().flatten().map(|record| self.info(record))
+    }
+
+    fn info<'j>(&'j self, record: &Record) -> CookieInfo<'j> {
+        CookieInfo {
+            host: self.parts(record).host,
+            bytes: record.total_len(),
+            created_at: record.created_at,
+            used_at: record.used_at,
+            expires: record.expires,
+            via_secure: record.via_secure,
+        }
+    }
+
+    /// Removes every cookie `selected` chooses (decision E.104). Returns
+    /// how many went.
+    pub fn remove_where(&mut self, selected: &dyn Fn(&CookieInfo<'_>) -> bool) -> usize {
+        let mut removed = 0usize;
+        let mut index = 0usize;
+        while index < SLOTS {
+            let chosen = self.records.get(index).copied().flatten().is_some_and(|record| selected(&self.info(&record)));
+            if chosen {
+                self.remove(index);
+                removed = removed.saturating_add(1);
+            }
+            index = index.saturating_add(1);
+        }
+        removed
+    }
+
+    /// Removes every cookie of `host`: `Clear-Site-Data` naming
+    /// `"cookies"` (W3C Clear Site Data section 4.2), for the host the jar
+    /// is the store of (decision E.104).
+    pub fn clear_host(&mut self, host: &str) {
+        self.remove_where(&|cookie| cookie.host == host.as_bytes());
     }
 
     /// The number of cookies held, expired ones included until evicted.
@@ -348,7 +490,8 @@ impl<const SLOTS: usize, const BYTES: usize> CookieJar<SLOTS, BYTES> {
         let existing = self.find(host, name, path);
         let created = match existing {
             Some(index) => {
-                let created = self.records.get(index).copied().flatten().map(|record| record.created);
+                let created =
+                    self.records.get(index).copied().flatten().map(|record| (record.created, record.created_at));
                 self.remove(index);
                 created
             }
@@ -380,8 +523,10 @@ impl<const SLOTS: usize, const BYTES: usize> CookieJar<SLOTS, BYTES> {
             partitioned: attributes.partitioned,
             same_site: attributes.same_site,
             via_secure: secure,
-            created: created.unwrap_or(tick),
+            created: created.map_or(tick, |(created, _)| created),
             last_access: tick,
+            created_at: created.map_or(now, |(_, created_at)| created_at),
+            used_at: now,
         };
         let slot = self.records.iter_mut().find(|slot| slot.is_none()).ok_or(CookieRejected::NoRoom)?;
         *slot = Some(record);
@@ -476,6 +621,7 @@ impl<const SLOTS: usize, const BYTES: usize> CookieJar<SLOTS, BYTES> {
             written = written.saturating_add(1);
             if let Some(Some(stored)) = self.records.get_mut(index) {
                 stored.last_access = tick;
+                stored.used_at = now;
             }
         }
         (written, truncated)
@@ -502,16 +648,19 @@ impl<const SLOTS: usize, const BYTES: usize> CookieJar<SLOTS, BYTES> {
 
     /// Writes the cookies that may be saved (REQ-SEC-013): only those with
     /// an expiry that has not passed. Each record is one line:
-    /// `expires flags host-length name-length value-length path-length`
-    /// in decimal, a space, then the four texts back to back.
+    /// `expires created used flags host-length name-length value-length
+    /// path-length` in decimal, a space, then the four texts back to back
+    /// (version 2, decision E.104: the times a port lists and clears by).
     pub fn export(&self, now: u64, out: &mut Writer<'_>) -> Result<usize, Overflow> {
         out.put(EXPORT_VERSION)?;
         let mut count = 0usize;
         for record in self.records.iter().flatten() {
             let Some(expires) = record.expires.filter(|&expires| expires > now) else { continue };
             let parts = self.parts(record);
-            out.decimal(expires)?;
-            out.byte(b' ')?;
+            for time in [expires, record.created_at, record.used_at] {
+                out.decimal(time)?;
+                out.byte(b' ')?;
+            }
             out.decimal(u64::from(encode_flags(record)))?;
             for len in [parts.host.len(), parts.name.len(), parts.value.len(), parts.path.len()] {
                 out.byte(b' ')?;
@@ -542,14 +691,14 @@ impl<const SLOTS: usize, const BYTES: usize> CookieJar<SLOTS, BYTES> {
     }
 
     fn import_one<'d>(&mut self, data: &'d [u8], now: u64) -> Option<(bool, &'d [u8])> {
-        let mut fields = [0u64; 6];
+        let mut fields = [0u64; 8];
         let mut rest = data;
         for field in &mut fields {
             let end = rest.iter().position(|&b| b == b' ')?;
             *field = parse_decimal(rest.get(..end)?, crate::bytes::MAX_U64_DIGITS)?;
             rest = rest.get(end.saturating_add(1)..)?;
         }
-        let [expires, flags, host_len, name_len, value_len, path_len] = fields;
+        let [expires, created_at, used_at, flags, host_len, name_len, value_len, path_len] = fields;
         let lens = [host_len, name_len, value_len, path_len].map(|len| usize::try_from(len).unwrap_or(usize::MAX));
         let total = lens.iter().try_fold(0usize, |sum, &len| sum.checked_add(len))?;
         let texts = rest.get(..total)?;
@@ -585,12 +734,20 @@ impl<const SLOTS: usize, const BYTES: usize> CookieJar<SLOTS, BYTES> {
         built.ok()?;
         let secure = flags & FLAG_VIA_SECURE != 0;
         let stored = self.store(writer.written(), host, "/", secure, now, false).is_ok();
+        // Its times as saved, none later than now.
+        if stored
+            && let Some(index) = self.find(host.as_bytes(), name, path)
+            && let Some(Some(record)) = self.records.get_mut(index)
+        {
+            record.created_at = created_at.min(now);
+            record.used_at = used_at.min(now).max(record.created_at);
+        }
         Some((stored, rest))
     }
 }
 
 /// The first line of exported cookie data.
-const EXPORT_VERSION: &[u8] = b"neoteletext-cookies 1\n";
+const EXPORT_VERSION: &[u8] = b"neoteletext-cookies 2\n";
 const FLAG_SECURE: u8 = 1;
 const FLAG_HTTP_ONLY: u8 = 2;
 const FLAG_PARTITIONED: u8 = 4;
@@ -1152,8 +1309,69 @@ mod tests {
         tampered[len - 1] = b'x';
         let mut fresh = Jar::new();
         assert_eq!(fresh.import(&tampered, NOW), 0);
-        assert_eq!(fresh.import(b"neoteletext-cookies 1\n9999999999 1 3 1 1 1 a.bx=1/\n", NOW), 0, "a bad host");
+        assert_eq!(fresh.import(b"neoteletext-cookies 2\n9999999999 1 1 1 3 1 1 1 a bx1/\n", NOW), 0, "a bad host");
+        assert_eq!(fresh.import(b"neoteletext-cookies 2\n9999999999 1 1 9 3 1 1 1 a.bx1/\n", NOW), 1, "the same, good");
+        assert_eq!(
+            fresh.import(b"neoteletext-cookies 1\n9999999999 1 3 1 1 1 a.bx1/\n", NOW),
+            0,
+            "version 1 is not read"
+        );
         assert_eq!(fresh.import(b"garbage", NOW), 0);
+    }
+
+    /// Decision E.104: each cookie's times, in seconds, are kept through a
+    /// replacement, a sending and a save; a port can list cookies, remove
+    /// those a rule chooses, and clear a host.
+    #[test]
+    fn times_listing_and_removal() {
+        let mut jar = Jar::new();
+        jar.store(b"a=1; Max-Age=3600", "a.example", "/", true, NOW, true).unwrap();
+        jar.store(b"b=1", "b.example", "/", true, NOW + 10, true).unwrap();
+        jar.store(b"a=2; Max-Age=3600", "a.example", "/", true, NOW + 20, true).unwrap();
+        let mut buffer = [0u8; 64];
+        let _ = jar.header_for("a.example", "/", true, Site::SameService, NOW + 30, &mut Writer::new(&mut buffer));
+        let listed =
+            jar.cookies().map(|cookie| (cookie.host, cookie.created_at, cookie.used_at, cookie.expires.is_some()));
+        assert!(
+            listed.eq([(&b"a.example"[..], NOW, NOW + 30, true), (&b"b.example"[..], NOW + 10, NOW + 10, false)]),
+            "a replaced cookie keeps its creation"
+        );
+        assert_eq!(
+            jar.cookies().map(|cookie| cookie.bytes).sum::<usize>(),
+            "a.examplea2/".len() + "b.exampleb1/".len()
+        );
+
+        let mut saved = [0u8; 256];
+        let mut writer = Writer::new(&mut saved);
+        jar.export(NOW + 40, &mut writer).unwrap();
+        let mut restored = Jar::new();
+        assert_eq!(restored.import(writer.written(), NOW + 50), 1);
+        assert!(
+            restored.cookies().map(|cookie| (cookie.created_at, cookie.used_at)).eq([(NOW, NOW + 30)]),
+            "the times as saved"
+        );
+
+        assert_eq!(jar.remove_where(&|cookie| cookie.created_at >= NOW + 5), 1);
+        assert_eq!(jar.len(), 1);
+        jar.store(b"c=1", "a.example", "/", true, NOW, true).unwrap();
+        jar.clear_host("a.example");
+        assert!(jar.is_empty());
+    }
+
+    /// Decision E.104: the jar serves an agent through the `Cookies`
+    /// interface as it does directly.
+    #[test]
+    fn the_jar_is_a_cookies_store() {
+        let mut jar = Jar::new();
+        let store: &mut dyn Cookies = &mut jar;
+        store.store_within(b"a=1", "a.example", "/channel/page", Some("/channel/"), true, NOW, true).unwrap();
+        let mut buffer = [0u8; 64];
+        let mut writer = Writer::new(&mut buffer);
+        assert_eq!(store.header_for("a.example", "/channel/x", true, Site::SameService, NOW, &mut writer), (1, false));
+        assert_eq!(writer.written(), b"a=1");
+        assert!(store.reached_securely("a.example", NOW));
+        store.clear_host("a.example");
+        assert!(!store.reached_securely("a.example", NOW));
     }
 
     #[test]

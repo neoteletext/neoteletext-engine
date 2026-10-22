@@ -16,5 +16,10 @@ fuzz_target!(|data: &[u8]| {
     }
     let mut imported = Jar::new();
     imported.import(data, 1_000);
+    // A saved cookie's times are never later than now, nor used before made
+    // (decision E.104).
+    for cookie in imported.cookies() {
+        assert!(cookie.created_at <= cookie.used_at && cookie.used_at <= 1_000);
+    }
     core::hint::black_box(imported.len());
 });

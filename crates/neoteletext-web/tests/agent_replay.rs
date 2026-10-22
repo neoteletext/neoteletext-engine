@@ -14,6 +14,8 @@ use common::{Counter, Replay, Reply, header_value, response};
 use common::{client_frame, server_frame};
 use neoteletext_core::types::{Instant, PageAddress, SubCode};
 use neoteletext_web::agent::{Config, Input, Output, Source, Storage, Subscription, UserAgent};
+use neoteletext_web::bytes::Writer;
+use neoteletext_web::cookie::{CookieJar, CookieRejected, Cookies, Site};
 use neoteletext_web::form::{FormMethod, FormSubmission};
 use neoteletext_web::http::MediaType;
 use neoteletext_web::port::{ConnectionId, Pump, Security};
@@ -57,13 +59,17 @@ fn record(output: Output<'_>) -> Rec {
 
 impl Harness {
     fn new(config: Config, replay: Replay) -> Self {
+        Self::keeping(config, replay, None)
+    }
+
+    /// A harness whose agent's cookies `cookies` keeps (decision E.104).
+    fn keeping(config: Config, replay: Replay, cookies: Option<&'static mut dyn Cookies>) -> Self {
         let storage: &'static mut Storage = Box::leak(Box::new(Storage::new()));
-        Self {
-            agent: UserAgent::new(config, storage.buffers(), Counter(0)),
-            pump: Pump::new(replay),
-            now: Instant(1_000 * SECOND),
-            out: Vec::new(),
-        }
+        let agent = match cookies {
+            Some(cookies) => UserAgent::with_cookies(config, storage.buffers(), Counter(0), cookies),
+            None => UserAgent::new(config, storage.buffers(), Counter(0)),
+        };
+        Self { agent, pump: Pump::new(replay), now: Instant(1_000 * SECOND), out: Vec::new() }
     }
 
     fn handle(&mut self, input: Input<'_>) {
@@ -476,10 +482,14 @@ fn allowed_local_service() {
 }
 
 fn secure_service() -> Harness {
+    secure_service_keeping(None)
+}
+
+fn secure_service_keeping(cookies: Option<&'static mut dyn Cookies>) -> Harness {
     let mut replay = Replay::new(&[("secure.example", PUBLIC)]);
     let json = br#"{"name":"S","initial_page":"100","page_template":"/p/{mpp}"}"#;
     replay.reply("secure.example:443", json_response(json));
-    let mut harness = Harness::new(Config::default(), replay);
+    let mut harness = Harness::keeping(Config::default(), replay, cookies);
     let records = harness.open("https://secure.example/d.json");
     assert!(has_event(&records, "ServiceReady { name: \"S\""), "{records:?}");
     assert_eq!(harness.replay().connects[0].3, Security::Tls);
@@ -894,6 +904,130 @@ fn cookies_round_trip_and_wipe() {
     assert!(harness.agent.cookies().is_empty());
 }
 
+/// What a port's cookie store was asked and given.
+#[derive(Debug, Default)]
+struct PortLog {
+    asked: Vec<String>,
+    set: Vec<String>,
+    cleared: Vec<String>,
+}
+
+/// A port's cookie store: the engine's jar, recording each call.
+#[derive(Debug)]
+struct PortCookies {
+    jar: CookieJar<100, 32768>,
+    log: std::rc::Rc<std::cell::RefCell<PortLog>>,
+}
+
+impl Cookies for PortCookies {
+    fn header_for(
+        &mut self,
+        host: &str,
+        path: &str,
+        secure: bool,
+        site: Site,
+        now: u64,
+        out: &mut Writer<'_>,
+    ) -> (usize, bool) {
+        self.log.borrow_mut().asked.push(std::format!("{host}{path}"));
+        self.jar.header_for(host, path, secure, site, now, out)
+    }
+
+    fn store_within(
+        &mut self,
+        header: &[u8],
+        host: &str,
+        request_path: &str,
+        scope: Option<&str>,
+        secure: bool,
+        now: u64,
+        wall_clock: bool,
+    ) -> Result<(), CookieRejected> {
+        self.log.borrow_mut().set.push(String::from_utf8_lossy(header).into_owned());
+        self.jar.store_within(header, host, request_path, scope, secure, now, wall_clock)
+    }
+
+    fn reached_securely(&self, host: &str, now: u64) -> bool {
+        self.jar.reached_securely(host, now)
+    }
+
+    fn clear_host(&mut self, host: &str) {
+        self.log.borrow_mut().cleared.push(host.to_string());
+        self.jar.clear_host(host);
+    }
+
+    fn wipe(&mut self) {
+        self.jar.wipe();
+    }
+}
+
+fn port_cookies() -> (&'static mut dyn Cookies, std::rc::Rc<std::cell::RefCell<PortLog>>) {
+    let log = std::rc::Rc::new(std::cell::RefCell::new(PortLog::default()));
+    let store: &'static mut PortCookies =
+        Box::leak(Box::new(PortCookies { jar: CookieJar::new(), log: std::rc::Rc::clone(&log) }));
+    (store, log)
+}
+
+/// Decision E.104: a port that keeps the cookies is asked for each
+/// request's and given each response's; the agent keeps none.
+#[test]
+#[cfg(feature = "cookies")]
+fn a_port_keeps_the_cookies() {
+    let (store, log) = port_cookies();
+    let mut harness = secure_service_keeping(Some(store));
+    harness.replay().reply("secure.example:443", tti_response(&["Set-Cookie: id=1; Secure; Path=/"]));
+    harness.replay().reply("secure.example:443", tti_response(&[]));
+    harness.fetch(0x100);
+    harness.advance(SECOND);
+    harness.fetch(0x101);
+    let last = harness.replay().requests_to("secure.example:443").pop().unwrap();
+    assert_eq!(header_value(&last, "Cookie").as_deref(), Some("id=1"), "the port's header");
+    assert_eq!(log.borrow().set, ["id=1; Secure; Path=/"]);
+    assert!(log.borrow().asked.iter().any(|asked| asked == "secure.example/p/101"), "{:?}", log.borrow().asked);
+    assert!(harness.agent.cookies().is_empty(), "the agent's own jar holds nothing");
+}
+
+/// Decision E.104 (W3C Clear Site Data section 4.2): `Clear-Site-Data:
+/// "cookies"` over HTTPS clears the host's cookies before the same
+/// response's are stored; over plain HTTP it is ignored.
+#[test]
+#[cfg(feature = "cookies")]
+fn clear_site_data_clears_before_the_response_sets() {
+    let (store, log) = port_cookies();
+    let mut harness = secure_service_keeping(Some(store));
+    harness.replay().reply("secure.example:443", tti_response(&["Set-Cookie: old=1; Secure; Path=/"]));
+    harness.replay().reply(
+        "secure.example:443",
+        tti_response(&["Clear-Site-Data: \"cache\", \"cookies\"", "Set-Cookie: fresh=1; Secure; Path=/"]),
+    );
+    harness.replay().reply("secure.example:443", tti_response(&[]));
+    harness.fetch(0x100);
+    harness.advance(SECOND);
+    harness.fetch(0x101);
+    harness.advance(SECOND);
+    harness.fetch(0x102);
+    let last = harness.replay().requests_to("secure.example:443").pop().unwrap();
+    assert_eq!(header_value(&last, "Cookie").as_deref(), Some("fresh=1"));
+    assert_eq!(log.borrow().cleared, ["secure.example"]);
+
+    // Over plain HTTP nothing is cleared.
+    let mut replay = Replay::new(&[("plain.example", PUBLIC)]);
+    let json = br#"{"name":"P","initial_page":"100","page_template":"/p/{mpp}"}"#;
+    replay.reply("plain.example:80", json_response(json));
+    let mut plain = Harness::new(Config::default(), replay);
+    plain.open("http://plain.example/d.json");
+    plain.replay().reply("plain.example:80", tti_response(&["Set-Cookie: kept=1; Path=/"]));
+    plain.replay().reply("plain.example:80", tti_response(&["Clear-Site-Data: \"*\""]));
+    plain.replay().reply("plain.example:80", tti_response(&[]));
+    plain.fetch(0x100);
+    plain.advance(SECOND);
+    plain.fetch(0x101);
+    plain.advance(SECOND);
+    plain.fetch(0x102);
+    let last = plain.replay().requests_to("plain.example:80").pop().unwrap();
+    assert_eq!(header_value(&last, "Cookie").as_deref(), Some("kept=1"));
+}
+
 #[test]
 #[cfg(all(feature = "push", feature = "cookies"))]
 fn cookies_go_with_websocket_upgrades() {
@@ -1106,10 +1240,10 @@ fn cookies_not_compiled_in_are_reported_and_never_kept() {
     assert!(harness.agent.cookies().is_empty());
 
     // Cookies saved by a build that has them are not restored.
-    let mut jar = neoteletext_web::cookie::CookieJar::<4, 1024>::new();
+    let mut jar = CookieJar::<4, 1024>::new();
     jar.store(b"keep=1; Max-Age=3600", "tt.example", "/", false, UNIX_NOW, true).unwrap();
     let mut saved = [0u8; 1024];
-    let mut writer = neoteletext_web::bytes::Writer::new(&mut saved);
+    let mut writer = Writer::new(&mut saved);
     assert_eq!(jar.export(UNIX_NOW, &mut writer), Ok(1));
     let mut storage = MemoryStorage(writer.written().to_vec());
     let mut scratch = [0u8; 4096];
@@ -1374,18 +1508,11 @@ fn a_channel_cookie_set_for_the_whole_host_stays_in_its_folder() {
     harness.fetch(0x100);
     let last = harness.replay().requests_to("site.example:80").last().unwrap().clone();
     assert_eq!(header_value(&last, "Cookie").as_deref(), Some("s=1"), "sent inside the folder");
-    let mut store = neoteletext_web::cookie::CookieJar::<8, 1024>::new();
+    let mut store = CookieJar::<8, 1024>::new();
     let out = &mut [0u8; 64];
     store.store_within(b"s=1; Path=/", "h.example", "/one/x", Some("/one/"), false, 0, false).unwrap();
-    let mut writer = neoteletext_web::bytes::Writer::new(out);
-    let (count, _) = store.header_for(
-        "h.example",
-        "/two/100.tti",
-        false,
-        neoteletext_web::cookie::Site::SameService,
-        0,
-        &mut writer,
-    );
+    let mut writer = Writer::new(out);
+    let (count, _) = store.header_for("h.example", "/two/100.tti", false, Site::SameService, 0, &mut writer);
     assert_eq!(count, 0, "never sent to another folder");
 }
 
