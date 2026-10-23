@@ -200,7 +200,7 @@ The SAA5050-style rendering, including rounding and separated mosaic geometry (d
 *Verification:* Test and inspection.
 
 **REQ-TST-040 — Fuzz testing.**
-Every reader, the packet decoder, the slicer, and the HTTP, WebSocket, server-sent event, descriptor, form and address (REQ-WEB-016) parsers of the web module shall have a fuzzing target for `cargo fuzz` (libFuzzer). The targets shall run in continuous integration for a fixed time on each change, and for longer periods on a schedule. Every input that has ever found a fault shall be kept in the repository as a regression test.
+Every reader, the packet decoder, the slicer, and the HTTP, WebSocket, server-sent event, descriptor, form, address (REQ-WEB-016), contents file (REQ-WEB-025) and zxnet live feed message (REQ-INP-022) parsers of the web module shall have a fuzzing target for `cargo fuzz` (libFuzzer). The transport stream reader shall also have one fed packets whose PID, continuity counter, payload unit start and adaptation field the fuzzer chooses, so that continuity and section reassembly are explored directly and not only through format detection. The targets shall run in continuous integration for a fixed time on each change, and for longer periods on a schedule. Every input that has ever found a fault shall be kept in the repository as a regression test.
 *Verification:* Inspection; continuous integration logs.
 
 **REQ-TST-041 — Coverage.**

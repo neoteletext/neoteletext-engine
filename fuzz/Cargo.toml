@@ -179,3 +179,24 @@ path = "fuzz_targets/proxy.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "contents"
+path = "fuzz_targets/contents.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "zxnet_message"
+path = "fuzz_targets/zxnet_message.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ts_packets"
+path = "fuzz_targets/ts_packets.rs"
+test = false
+doc = false
+bench = false
