@@ -16,8 +16,8 @@ Related documents:
 | Piece | Where | What it does |
 |---|---|---|
 | `viewer::Key` | `crates/neoteletext-core/src/viewer.rs:20` | The page functions: digits, the four colours, Index, Home, next and previous page and sub-page, Reveal, Hold, Mix, Zoom, Back, Forward. |
-| `forms::FormKey` | `crates/neoteletext-core/src/forms.rs:250` | A second enum for forms, mixing keyboard keys (`Tab`, `Char`, `Backspace`) with remote keys (`RemoteDigit`, the colours). |
-| `forms::MULTITAP_US` | `crates/neoteletext-core/src/forms.rs:34` | Telephone-style letter entry from digits, for remotes (REQ-NAV-009). |
+| `forms::FormKey` | `crates/neoteletext-core/src/forms/editing.rs:13` | A second enum for forms, mixing keyboard keys (`Tab`, `Char`, `Backspace`) with remote keys (`RemoteDigit`, the colours). |
+| `forms::MULTITAP_US` | `crates/neoteletext-core/src/forms.rs:33` | Telephone-style letter entry from digits, for remotes (REQ-NAV-009). |
 | `port::Keys` | `crates/neoteletext-core/src/port.rs` | The port's key trait: `poll() -> Option<Key>`. Nothing implements it yet. |
 | `map_key`, `map_form_key` | `crates/neoteletext-cli/src/view.rs` | `neottx`'s crossterm bindings. |
 | The modal loop | `crates/neoteletext-cli/src/view.rs`, the event loop | `neottx` decides which consumer gets a key, in this order: Ctrl+C quits; a pending form submission takes Enter or F4 as yes; a focused form gets form keys; `q` or Esc quits; Tab focuses the form; otherwise the viewer. |

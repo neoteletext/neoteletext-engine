@@ -82,7 +82,7 @@ Phase 1 owes:
 - regenerating traceability and adding an implementation log row.
 
 **Phase 2 done (18 October 2026), uncommitted until the gate passes:**
-- the 18 sets of groups 0101, 0111 and 1011 and the Vietnamese and Armenian G2 sets (`charset/tables.rs`), designated in Tables 32, 33 and 34 behind the core feature `extended-sets` (on by default; off in `classic` and `modern-classic`);
+- the 18 sets of groups 0101, 0111 and 1011 and the Vietnamese and Armenian G2 sets (`charset/g0_extended.rs` and `charset/g2.rs`), designated in Tables 32, 33 and 34 behind the core feature `extended-sets` (on by default; off in `classic` and `modern-classic`);
 - Latin English as the second set of those designations when no Table 33 value is received;
 - Vietnamese, and Yoruba and Igbo, are whole G0 sets, not national options: an X/26 mark is placed on the base form, never on a national option's character (REQ-CHR-002). The design, E.81 and REQ-CHR-012 to 014 are amended;
 - marks from the page's G2 set (`charset::page_mark`): Vietnamese 4/C is the hook above, kept as mark 16, with 76 more compositions (`EXTENDED_COMPOSITIONS`);
@@ -118,7 +118,7 @@ Phases 3 and 4 owe:
   - ё and Ё are compositions of е and Е with the diaeresis (`EXTENDED_COMPOSITIONS`), so every Cyrillic set without them, the standard's Russian included, reaches them by an X/26 mark at Level 1.5 and above; Level 1 shows е, as Russian teletext did. `write-text` writes them that way;
   - Tatar has Щ at 2/7 (was the apostrophe) and щ at 3/E (was >, whose partner < is ң); the design section 8.2 table and a decision are owed;
   - Balochi gains ۏ after و and ࢩ after ی; `noto-teletext-arabic.bdf` redrawn (361 glyphs, all eight sets conform);
-  - the group 1001 tables are now written by `scripts/arabic-sets.py` between marker lines in `tables.rs`, with ArabicShaping.txt 16.0 downloaded and checked by SHA-256. Its private-use allocation is by sorted letter, so adding a letter renumbered U+F002B onwards; make the allocation stable (append only) before the private-use table is recorded as a decision;
+  - the group 1001 tables are now written by `scripts/arabic-sets.py` between marker lines in `charset/arabic_script.rs`, with ArabicShaping.txt 16.0 downloaded and checked by SHA-256. Its private-use allocation is by sorted letter, so adding a letter renumbered U+F002B onwards; make the allocation stable (append only) before the private-use table is recorded as a decision;
   - owed: tests (ё by X/26 in a Kyrgyz and a Russian page, Tatar 2/7 and 3/E, Balochi ۏ and ࢩ joined), and re-running the language measurement.
 - Kazakh in Cyrillic is not covered (Kazakh is in Latin by the owner's decision).
 - **Gaps in the standard's sets, for the record:** Russian ё (Russian teletext wrote е), Greek Ό, German ẞ, Ukrainian ʼ, Romanian ș ț with comma below (the option has ş ţ with cedilla), obsolete Thai ฃ ฅ ฦ.

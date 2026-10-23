@@ -369,7 +369,7 @@ Decisions E.77 to E.82 extend the receiver to about 55 more languages without ch
 
 | Part | Layer and module | Notes |
 |---|---|---|
-| Designations of the reserved values (REQ-CHR-012) | L3, `charset` (`tables.rs`) | New rows in the Table 32, 33 and 34 lookups. Each new designation names Latin English as its second G0 set. Behind the core feature `extended-sets`; without it the values stay reserved and fall back as REQ-CHR-003 describes. |
+| Designations of the reserved values (REQ-CHR-012) | L3, `charset` (`charset/extended_designations.rs`) | New rows in the Table 32, 33 and 34 lookups. Each new designation names Latin English as its second G0 set. Behind the core feature `extended-sets`; without it the values stay reserved and fall back as REQ-CHR-003 describes. |
 | The new G0 and G2 code tables (REQ-CHR-013, REQ-CHR-016) | L3, `charset` | Constant tables like the standard's, one per set. `G0Set` and `G2Set` gain variants, and `NationalOption` gains the African Latin options (`NationalOption::EXTENDED`). Characters stay a set and a 7-bit code (REQ-CHR-001). |
 | Marks from the page's G2 set (REQ-CHR-014) | L3, `charset`, used by `level15` and `enhance` | Column 4 of each G2 set that holds marks; the Vietnamese set's 4/C is the hook above. |
 | Arabic-script joining (REQ-CHR-015) | L3, new module `joining` | One bounded pass per row after the presentation level's pass, called from `compose`. It records each letter's form in the cell, and `glyphs` maps the letter and form to a presentation-form or private-use code point. |
