@@ -983,6 +983,26 @@ fn server_sent_events_push_and_resumption() {
     assert_profile_headers(harness.replay());
 }
 
+/// Finding F-77 (the review's probe G): with `Content-Length` framing, the
+/// final body step's data reaches the event parser before the stream ends,
+/// so its last event is delivered and its id kept for resumption. The
+/// final step's data was dropped.
+#[test]
+#[cfg(feature = "push")]
+fn the_last_bytes_of_a_sized_event_stream_are_read() {
+    let mut harness = push_service("sse", "http://tt.example/events");
+    let body = "id: 6\nevent: page\ndata: PN,10000\n\n";
+    let head = format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\n\r\n", body.len());
+    harness.replay().chunk = 4096;
+    harness.replay().reply("tt.example:80", Reply::Bytes(format!("{head}{body}").into_bytes()));
+    harness.replay().reply("tt.example:80", Reply::Silent);
+    let records = harness.open("http://tt.example/service.json");
+    assert_eq!(pages(&records).len(), 1, "the last event is delivered: {records:?}");
+    harness.advance(SECOND);
+    let again = harness.replay().requests_to("tt.example:80").pop().unwrap();
+    assert_eq!(header_value(&again, "Last-Event-ID").as_deref(), Some("6"), "its id is kept");
+}
+
 #[test]
 #[cfg(feature = "push")]
 fn push_to_blocked_peer_is_refused() {
