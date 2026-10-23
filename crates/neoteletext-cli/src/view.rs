@@ -119,7 +119,7 @@ pub fn run(
     // Releases and repeats where the terminal has the Kitty keyboard
     // protocol, a paste as one event, and the focus (INPUT.md section 9.6).
     let enhanced = terminal::supports_keyboard_enhancement().unwrap_or(false);
-    let guard = RawGuard { enhanced };
+    let guard = RawGuard::new(enhanced);
     let mut out = std::io::stdout();
     execute!(out, terminal::EnterAlternateScreen, cursor::Hide, EnableBracketedPaste, EnableFocusChange)?;
     if enhanced {
