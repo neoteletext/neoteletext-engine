@@ -87,7 +87,8 @@ The Web user agent (L7) sits beside the lower layers rather than above them in t
   - Linux sliced records;
   - raw VBI samples, through the slicer;
   - page files (TTI, EP1, edit.tf addresses and screen dumps), through the page encoder, so that page files take the same path as broadcasts (REQ-ARCH-004);
-  - format detection.
+  - format detection;
+  - the links a page file's TTI Link Extension lines give a receiver (`links`, feature `pages`): each key's, page number's and text run's destination with its service resolved, and the row 24 the receiver draws (REQ-NAV-011), drawn by the same code as the encoder's broadcast row (decision E.108). `neoteletext-app::extras` and NeoTeletext's decoder both use it.
 - **Must not know about:** pages, characters, rendering or the web.
 - **Key types:** `Packet`, `PacketMeta`, `Reader` (streaming, fed bytes in any chunk size), `Encoder`.
 - **Requirements:** INP, SLC, FSM-002.

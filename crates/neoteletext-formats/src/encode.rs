@@ -30,7 +30,7 @@ use crate::consts::{
     NOT_TEXT_PAGE_MARKER, PAGE_CODING_NIBBLES, PAGE_CODING_TRIPLETS, TTI_PACKED_CHARACTER_BASE, TTI_PACKED_CHARACTERS,
     TTI_TRIPLET_CHARACTER_BITS, TTI_TRIPLET_CHARACTER_MASK,
 };
-use crate::page::{FASTEXT_LINKS, LinkKey, PageFile, RawBody, RawPacket};
+use crate::page::{FASTEXT_LINKS, LinkKey, LinkLine, PageFile, RawBody, RawPacket};
 
 pub use neoteletext_core::consts::{DESIGNATION_GROUP_SHIFT, G2_RIGHT_GUILLEMET};
 use neoteletext_core::consts::{DESIGNATION_LATIN_ENGLISH, NO_SECOND_G0};
@@ -68,7 +68,7 @@ pub struct LinkRow {
 }
 
 /// The colour of a key's prompt: red, green, yellow and cyan (REQ-NAV-011).
-const fn key_colour(key: LinkKey) -> u8 {
+pub(crate) const fn key_colour(key: LinkKey) -> u8 {
     match key {
         LinkKey::Red => COLOUR_RED_BIT,
         LinkKey::Green => COLOUR_GREEN_BIT,
@@ -78,40 +78,57 @@ const fn key_colour(key: LinkKey) -> u8 {
     }
 }
 
-/// Draws row 24 from a page's `LN` links, or `None` when the page has no
-/// valid `LN` links. A link to another service is drawn in white, with the
-/// "»" mark, as Appendix E.2 rule 4 asks for broadcast.
-#[must_use]
-pub fn link_row(page: &PageFile) -> Option<LinkRow> {
-    if !page.uses_link_lines() || !page.links_valid {
-        return None;
-    }
+/// How one coloured link's prompt is drawn in row 24.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) struct Prompt {
+    /// The prompt's colour, as an alphanumeric colour's bits.
+    pub(crate) colour: u8,
+    /// The link leaves the service: the "»" mark goes before its label.
+    pub(crate) leaves: bool,
+}
+
+/// Draws row 24 from a page's coloured `LN` links, each as `prompt` says,
+/// or blank where it says `None` (REQ-NAV-011). The one drawing of the row,
+/// for broadcast ([`link_row`]) and for a receiver
+/// ([`crate::links::receiver_links`]).
+pub(crate) fn draw_link_row(page: &PageFile, mut prompt: impl FnMut(&LinkLine) -> Option<Prompt>) -> LinkRow {
     let mut row = LinkRow { codes: [SPACE; COLUMNS], marks: FixedVec::new(0) };
     for link in page.links.as_slice().iter().filter(|link| link.key.is_coloured()) {
+        let Some(Prompt { colour, leaves }) = prompt(link) else { continue };
         let start = link.key.fastext_index().saturating_mul(PROMPT_COLUMNS);
-        let Some(prompt) = row.codes.get_mut(start..start.saturating_add(PROMPT_COLUMNS)) else { continue };
-        let (colour, label_start, limit) = if link.is_other_service() {
-            (COLOUR_WHITE, 2, OTHER_SERVICE_LABEL_CHARACTERS)
-        } else {
-            (key_colour(link.key), 1, LABEL_CHARACTERS)
-        };
-        if let Some(attribute) = prompt.first_mut() {
+        let Some(codes) = row.codes.get_mut(start..start.saturating_add(PROMPT_COLUMNS)) else { continue };
+        let (label_start, limit) = if leaves { (2, OTHER_SERVICE_LABEL_CHARACTERS) } else { (1, LABEL_CHARACTERS) };
+        if let Some(attribute) = codes.first_mut() {
             *attribute = ALPHA_BLACK | colour;
         }
-        if link.is_other_service() {
-            if let Some(mark) = prompt.get_mut(1) {
+        if leaves {
+            if let Some(mark) = codes.get_mut(1) {
                 *mark = GUILLEMET_FALLBACK;
             }
             let _ = row.marks.push(u8::try_from(start.saturating_add(1)).unwrap_or(0));
         }
         let label = link.label.as_bytes().iter().take(limit);
-        for (slot, &byte) in prompt.iter_mut().skip(label_start).zip(label) {
+        for (slot, &byte) in codes.iter_mut().skip(label_start).zip(label) {
             let code = byte & CODE_MASK_7BIT;
-            // A label may not carry attributes into the receiver's row.
+            // REQ-NAV-011: a label may not carry attributes into the row.
             *slot = if code < SPACE { SPACE } else { code };
         }
     }
-    Some(row)
+    row
+}
+
+/// Draws row 24 from a page's `LN` links for broadcast, or `None` when the
+/// page has no valid `LN` links. A link to another service is drawn in
+/// white, with the "»" mark, as Appendix E.2 rule 4 asks for broadcast.
+#[must_use]
+pub fn link_row(page: &PageFile) -> Option<LinkRow> {
+    if !page.uses_link_lines() || !page.links_valid {
+        return None;
+    }
+    Some(draw_link_row(page, |link| {
+        let leaves = link.is_other_service();
+        Some(Prompt { colour: if leaves { COLOUR_WHITE } else { key_colour(link.key) }, leaves })
+    }))
 }
 
 /// Computes the page checksum of clause 9.6.1 (REQ-ECC-007): header bytes

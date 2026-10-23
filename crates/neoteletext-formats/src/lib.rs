@@ -16,6 +16,8 @@
 //!   each under the feature of its name.
 //! - `encode` (feature `pages`): page files to packets (REQ-ARCH-004,
 //!   REQ-INP-019).
+//! - `links` (feature `pages`): a page's links as a receiver follows them,
+//!   and the row 24 it draws (REQ-NAV-011).
 //! - [`detect`]: format detection and the [`detect::AutoReader`]
 //!   (REQ-INP-005), over the formats compiled in.
 //! - `check` (feature `check`): the TTI page checker behind `neottx check`
@@ -87,6 +89,8 @@ pub mod bdf;
 pub mod detect;
 #[cfg(feature = "pages")]
 pub mod encode;
+#[cfg(feature = "pages")]
+pub mod links;
 
 #[cfg(feature = "std")]
 pub mod write;

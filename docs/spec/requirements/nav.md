@@ -35,8 +35,9 @@ The row shall be drawn in the receiver's fixed style:
 - the key colour for text;
 - no flash, conceal, double height or other attribute from the page.
 
-Because the receiver draws the row, every link prompt is always shown whole (REQ-SEC-024).
-*Verification:* Test that page attempts to alter row 24 have no effect, and that the drawn row matches the link data exactly.
+Because the receiver draws the row, every link prompt is always shown whole (REQ-SEC-024). The engine draws it in one place, `neoteletext_formats::links::receiver_links`, for every port (decision E.108).
+*Verification:* Test that page attempts to alter row 24 have no effect, and that the drawn row matches the link data exactly; tests of `receiver_links` for each kind of destination, a null link, a label's control codes and invalid links.
+*Amended 23 October 2026 (decision E.108):* where the row is drawn, and its tests.
 
 **REQ-NAV-012 — Following a link to another service.**
 When a coloured key's link leads to a different service (REQ-WEB-015), and that origin has not been confirmed before in this session, the link shall not be followed at once. Instead:

@@ -1461,3 +1461,12 @@ Taken on 23 October 2026 while the owner was away, as the owner had instructed, 
 
 *Reason:* The development process asks to measure before building and to keep the simpler code when it suffices; the code that redraws only changed rows exists and is measured to give the gain.
 
+**E.108 — A receiver's links and row 24 are read by `neoteletext-formats`.**
+Taken on 23 October 2026 while the owner was away, as the owner had instructed, for NeoTeletext's decoder, which needs the receiver-drawn row 24 of REQ-NAV-011 and every coloured key's destination, and cannot depend on `neoteletext-app`, which brings its own sandboxing and live features.
+1. **`neoteletext_formats::links`** (feature `pages`, `no_std`, no allocation) holds what `neoteletext-app::extras::from_page` held: `resolve`, a link's destination with its service resolved among the descriptor's (Appendix E.2 rule 2), and `receiver_links`, every key's destination and the receiver's row 24. `extras::from_page` calls them, so there is one implementation.
+2. **One drawing of row 24.** The encoder's broadcast row (Appendix E.2 rule 4) and the receiver's row are drawn by one function, which each calls with its own rule for a prompt: the broadcast row draws a link leaving the service in white, the receiver's draws it in its key's colour and leaves a null link's prompt blank. The receiver's row now holds `>` at a mark's column, as the broadcast row does, for a renderer that draws no mark; `neottx` draws the "»" over it as before.
+3. **Destinations name their kind:** a page (of this service, or of a linked service by its index), an address, or a web page (decision E.88); `web` says whether the port opens web pages, and a port that does not gets such links as null, as `neottx` did.
+4. **X/27/0 stays the source of this service's page links** for a port that reads packets: `PageLinks::from_page` gives them for every page, TTI pages included, since the encoder writes X/27/0 from `LN` lines (and from `FL` lines when there are none), with links to other services and to addresses null; those come from `receiver_links`.
+
+*Reason:* The engine does the teletext (NeoTeletext's requirement 2.1): one reader of the Link Extension for every port. A label's control codes reached the receiver's row in the app's copy (fixed on 23 October 2026 before the move); the encoder's copy already kept them out.
+

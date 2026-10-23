@@ -4,21 +4,13 @@
 //! and read by the viewer.
 
 use neoteletext_core::charset::{CharRef, CharSet, G2Set};
-use neoteletext_core::consts::{
-    ALPHA_RED, ALPHA_YELLOW, COLOUR_ATTRIBUTE_MASK, COLUMNS, G2_RIGHT_GUILLEMET, ROWS, SPACE,
-};
+use neoteletext_core::consts::{COLUMNS, G2_RIGHT_GUILLEMET, ROWS};
 use neoteletext_core::forms::{FieldKind, FieldSpec, FormSpec, Method, OptionSpec};
 use neoteletext_core::level1::{Glyph, Grid};
 use neoteletext_core::nav::{LinkTarget, PageLinks};
 use neoteletext_core::types::{FixedVec, PageAddress, SubCode};
-use neoteletext_formats::page::{self, LinkKey, PageFile};
-
-/// Colours of the four prompts: red, green, yellow, cyan (REQ-NAV-011).
-const KEY_COLOURS: [u8; 4] = [ALPHA_RED, ALPHA_RED + 1, ALPHA_YELLOW, ALPHA_YELLOW + 3];
-/// Columns per prompt: four equal prompts across the row.
-const PROMPT_COLUMNS: usize = COLUMNS / 4;
-/// Label characters after the colour attribute.
-const LABEL_CHARACTERS: usize = PROMPT_COLUMNS - 1;
+use neoteletext_formats::links::{self, INDEX_KEY as FORMATS_INDEX_KEY, KEYS_WITH_INDEX as FORMATS_KEYS};
+use neoteletext_formats::page::{self, PageFile};
 
 /// What the viewer needs beyond the packets of one page.
 #[derive(Clone, Debug)]
@@ -45,9 +37,9 @@ pub struct PageExtras {
 }
 
 /// The coloured keys and Index.
-pub const KEYS_WITH_INDEX: usize = 5;
+pub const KEYS_WITH_INDEX: usize = FORMATS_KEYS;
 /// Index's place among [`PageExtras::key_addresses`].
-pub const INDEX_KEY: usize = 4;
+pub const INDEX_KEY: usize = FORMATS_INDEX_KEY;
 
 /// Where a page-number or text link leads, with services resolved.
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -91,58 +83,23 @@ impl PageExtras {
     }
 }
 
-/// The service a link names.
-enum Named {
-    /// This service.
-    This,
-    /// A linked service, by its index among the descriptor's.
-    Linked(u8),
-}
-
-/// The service named in a link; `None` for one the descriptor does not
-/// name, which makes the link null (Appendix E.2 rule 2).
-fn service_index(name: &[u8], services: &[String]) -> Option<Named> {
-    if name.is_empty() {
-        return Some(Named::This);
-    }
-    let name = String::from_utf8_lossy(name);
-    services.iter().position(|known| *known == name).and_then(|index| u8::try_from(index).ok()).map(Named::Linked)
-}
-
-/// A link's destination with its service resolved; `None` when null. A
-/// link to a web page is null here: this viewer opens only teletext
-/// (decision E.88).
-fn destination(target: &page::LinkDestination, services: &[String]) -> Option<Destination> {
-    if target.is_web() {
-        return None;
-    }
-    if !target.url.is_empty() {
-        return Some(Destination::Address(String::from_utf8_lossy(target.url.as_bytes()).into_owned()));
-    }
-    let service = match service_index(target.service.as_bytes(), services)? {
-        Named::This => None,
-        Named::Linked(index) => Some(index),
-    };
-    Some(Destination::Page(LinkTarget {
-        address: target.address,
-        subcode: target.subcode.unwrap_or(SubCode::ANY),
-        service,
-    }))
-}
-
-fn key_index(key: LinkKey) -> Option<usize> {
-    match key {
-        LinkKey::Red => Some(0),
-        LinkKey::Green => Some(1),
-        LinkKey::Yellow => Some(2),
-        LinkKey::Cyan => Some(3),
-        LinkKey::Index => None,
+/// A destination of the shared reader of links (`neoteletext_formats::links`)
+/// as this viewer follows it: a web page is null, since it opens only
+/// teletext (decision E.88), and was already made null there.
+fn destination(target: links::Destination<'_>) -> Option<Destination> {
+    match target {
+        links::Destination::Page { address, subcode, service } => {
+            Some(Destination::Page(LinkTarget { address, subcode: subcode.unwrap_or(SubCode::ANY), service }))
+        }
+        links::Destination::Address(url) => Some(Destination::Address(String::from_utf8_lossy(url).into_owned())),
+        links::Destination::Web(_) => None,
     }
 }
 
 /// The extension data of a page file. `services` are the descriptor's
 /// linked services, in order; a link naming another is null (Appendix E.2
-/// rule 2).
+/// rule 2). The links and row 24 are `neoteletext_formats::links`'s, the
+/// one implementation every port uses.
 #[must_use]
 pub fn from_page(page: &PageFile, url: &str, services: &[String]) -> PageExtras {
     let mut extras = PageExtras {
@@ -155,61 +112,37 @@ pub fn from_page(page: &PageFile, url: &str, services: &[String]) -> PageExtras 
         text_links: Vec::new(),
         input_modes: page.input_modes.map(|line| line.modes),
     };
-    if page.uses_link_lines() && page.links_valid {
-        let mut links = PageLinks::default();
-        let mut row = [SPACE; COLUMNS];
-        let mut marks = Vec::new();
-        for line in page.links.as_slice() {
-            let target = page::LinkDestination {
-                service: line.service,
-                address: line.address,
-                subcode: line.subcode,
-                url: line.url,
-            };
-            let Some(destination) = destination(&target, services) else { continue };
-            let other_site = match &destination {
-                Destination::Page(target) => target.service.is_some(),
-                Destination::Address(_) => true,
-            };
-            let (page_target, address) = match destination {
-                Destination::Page(target) => (Some(target), None),
+    if let Some(receiver) = links::receiver_links(page, services, false) {
+        let mut page_links = PageLinks::default();
+        for (index, key) in receiver.keys.into_iter().enumerate() {
+            let (target, address) = match key.and_then(destination) {
+                Some(Destination::Page(target)) => (Some(target), None),
                 // An address is not a page of this service: the key has
                 // no X/27 link, and the address goes to the interface.
-                Destination::Address(address) => (None, Some(address)),
+                Some(Destination::Address(address)) => (None, Some(address)),
+                None => (None, None),
             };
-            if let Some(index) = key_index(line.key) {
-                links.keys[index] = page_target;
-                extras.key_addresses[index] = address;
-                let start = index * PROMPT_COLUMNS;
-                row[start] = KEY_COLOURS[index] & COLOUR_ATTRIBUTE_MASK;
-                let mut column = start + 1;
-                if other_site {
-                    // The receiver's mark for leaving the service.
-                    marks.push(column);
-                    column += 1;
-                }
-                for &byte in line.label.as_bytes().iter().take(start + 1 + LABEL_CHARACTERS - column) {
-                    let code = byte & 0x7F;
-                    // REQ-NAV-011: no attribute from the page in the
-                    // receiver's row.
-                    row[column] = if code < SPACE { SPACE } else { code };
-                    column += 1;
-                }
-            } else {
-                links.index = page_target;
-                extras.key_addresses[INDEX_KEY] = address;
+            match page_links.keys.get_mut(index) {
+                Some(slot) => *slot = target,
+                None => page_links.index = target,
+            }
+            if let Some(slot) = extras.key_addresses.get_mut(index) {
+                *slot = address;
             }
         }
-        extras.links = Some(links);
-        extras.row24 = Some((row, marks));
+        extras.links = Some(page_links);
+        extras.row24 = Some((
+            receiver.row.codes,
+            receiver.row.marks.as_slice().iter().map(|&column| usize::from(column)).collect(),
+        ));
     }
     for link in page.number_links.as_slice() {
-        if let Some(destination) = destination(&link.destination, services) {
+        if let Some(destination) = links::resolve(&link.destination, services, false).and_then(destination) {
             extras.number_links.push((link.number, destination));
         }
     }
     for link in page.text_links.as_slice() {
-        if let Some(destination) = destination(&link.destination, services) {
+        if let Some(destination) = links::resolve(&link.destination, services, false).and_then(destination) {
             extras.text_links.push(TextLinkExtras {
                 row: link.row,
                 column: link.column,
@@ -350,7 +283,7 @@ mod tests {
     fn a_labels_control_codes_never_reach_row_24() {
         let page = page_file(b"PN,10000\r\nOL,1,TEXT\r\nLN,R,101,Fl\x08ash\r\nLN,G,140,Big\x0dTall\r\n");
         let (row, _) = from_page(&page, "https://example.org/100.tti", &[]).row24.unwrap();
-        assert!(row.iter().enumerate().all(|(column, &code)| code >= SPACE || column % PROMPT_COLUMNS == 0), "{row:?}");
+        assert!(row.iter().enumerate().all(|(column, &code)| code >= b' ' || column % (COLUMNS / 4) == 0), "{row:?}");
         assert_eq!(&row[1..7], b"Fl ash");
         assert_eq!(&row[11..19], b"Big Tall");
     }
