@@ -292,7 +292,9 @@ impl Proxy {
 
     /// Asks the proxy at the other end of `stream` for a tunnel to `host`
     /// and `port` ([`tunnel`]), with the error said for the user. The port
-    /// opens the stream: this crate reaches no network (REQ-SEC-016).
+    /// opens the stream: this crate reaches no network (REQ-SEC-016). The
+    /// bytes it returns are the first of the tunnel's, read with the
+    /// proxy's answer: they come before anything read from `stream` next.
     ///
     /// # Errors
     /// The proxy refuses, breaks its protocol, or the stream fails.
@@ -301,7 +303,7 @@ impl Proxy {
         stream: &mut S,
         host: &str,
         port: u16,
-    ) -> Result<(), std::string::String> {
+    ) -> Result<std::vec::Vec<u8>, std::string::String> {
         tunnel(stream, self.kind, host, port)
             .map_err(|error| std::format!("the proxy refused the connection to {host}: {error:?}"))
     }
@@ -321,10 +323,17 @@ pub enum TunnelError {
 #[cfg(feature = "std")]
 const MAX_CONNECT_REPLY: usize = crate::consts::DEFAULT_HEADER_LIMIT;
 
+/// Bytes read from the proxy at a time while its answer to `CONNECT` is
+/// awaited: a whole answer of a common proxy in one read.
+#[cfg(feature = "std")]
+const CONNECT_READ: usize = 1024;
+
 /// Asks the proxy at the other end of `stream` for a tunnel to `host` and
 /// `port`, blocking within the stream's own timeouts. On success the
-/// stream reaches the host, and nothing of the host's has been read: the
-/// answer is read a byte at a time to its end.
+/// stream reaches the host, and the bytes returned are the first of the
+/// host's, read in the same reads as the proxy's answer (REQ-WEB-032):
+/// the caller hands them on before anything it reads from `stream`. A
+/// SOCKS5 answer is read to its exact length, so it returns none.
 ///
 /// # Errors
 /// The proxy's refusal or broken answer, or the stream's failure.
@@ -334,7 +343,7 @@ pub fn tunnel<S: std::io::Read + std::io::Write>(
     kind: ProxyKind,
     host: &str,
     port: u16,
-) -> Result<(), TunnelError> {
+) -> Result<std::vec::Vec<u8>, TunnelError> {
     let mut request = [0_u8; 4 + 1 + SOCKS_MAX_NAME + 2 + 32];
     match kind {
         ProxyKind::Http => {
@@ -343,11 +352,18 @@ pub fn tunnel<S: std::io::Read + std::io::Write>(
             stream.flush().map_err(TunnelError::Io)?;
             let mut collector = HeadCollector::default();
             let mut head = std::vec![0_u8; MAX_CONNECT_REPLY];
-            let mut byte = [0_u8; 1];
+            let mut chunk = [0_u8; CONNECT_READ];
             loop {
-                stream.read_exact(&mut byte).map_err(TunnelError::Io)?;
-                if read_connect_reply(&mut collector, &mut head, &byte).map_err(TunnelError::Proxy)?.is_some() {
-                    return Ok(());
+                let count = match stream.read(&mut chunk) {
+                    Ok(0) => return Err(TunnelError::Io(std::io::ErrorKind::UnexpectedEof.into())),
+                    Ok(count) => count,
+                    Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+                    Err(error) => return Err(TunnelError::Io(error)),
+                };
+                let input = chunk.get(..count).unwrap_or(&[]);
+                // The head reader bounds the answer to `MAX_CONNECT_REPLY`.
+                if let Some(used) = read_connect_reply(&mut collector, &mut head, input).map_err(TunnelError::Proxy)? {
+                    return Ok(input.get(used..).unwrap_or(&[]).to_vec());
                 }
             }
         }
@@ -367,7 +383,8 @@ pub fn tunnel<S: std::io::Read + std::io::Write>(
             let total = socks_reply_length(start_bytes).map_err(TunnelError::Proxy)?;
             let rest = rest.get_mut(..total.saturating_sub(5)).ok_or(TunnelError::Proxy(ProxyError::Malformed))?;
             stream.read_exact(rest).map_err(TunnelError::Io)?;
-            read_socks_reply(reply.get(..total).unwrap_or(&[])).map_err(TunnelError::Proxy)
+            read_socks_reply(reply.get(..total).unwrap_or(&[])).map_err(TunnelError::Proxy)?;
+            Ok(std::vec::Vec::new())
         }
     }
 }
@@ -480,22 +497,38 @@ mod tests {
         }
     }
 
-    /// The blocking handshake against an answer played from memory.
+    /// A stream whose reads give the answer in the pieces it was cut into,
+    /// one piece a read, as a socket gives what has arrived.
     #[cfg(feature = "std")]
-    struct Played {
-        answer: std::io::Cursor<Vec<u8>>,
+    struct Arrivals {
+        pieces: std::collections::VecDeque<Vec<u8>>,
+        reads: usize,
         sent: Vec<u8>,
     }
 
     #[cfg(feature = "std")]
-    impl std::io::Read for Played {
-        fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
-            self.answer.read(buffer)
+    impl Arrivals {
+        fn new(pieces: &[&[u8]]) -> Self {
+            Self { pieces: pieces.iter().map(|piece| piece.to_vec()).collect(), reads: 0, sent: Vec::new() }
         }
     }
 
     #[cfg(feature = "std")]
-    impl std::io::Write for Played {
+    impl std::io::Read for Arrivals {
+        fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+            self.reads = self.reads.saturating_add(1);
+            let Some(mut piece) = self.pieces.pop_front() else { return Ok(0) };
+            let count = piece.len().min(buffer.len());
+            buffer[..count].copy_from_slice(&piece[..count]);
+            if count < piece.len() {
+                self.pieces.push_front(piece.split_off(count));
+            }
+            Ok(count)
+        }
+    }
+
+    #[cfg(feature = "std")]
+    impl std::io::Write for Arrivals {
         fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
             self.sent.extend_from_slice(bytes);
             Ok(bytes.len())
@@ -505,31 +538,44 @@ mod tests {
         }
     }
 
+    /// The proxy's answer and the host's first bytes arrive in one read:
+    /// they are handed back, not lost, and the answer takes one read, not
+    /// one a byte.
     #[cfg(feature = "std")]
     #[test]
-    fn the_handshake_reads_no_byte_of_the_tunnel() {
-        use std::io::Read as _;
-        let mut http =
-            Played { answer: std::io::Cursor::new(b"HTTP/1.1 200 OK\r\n\r\nHOST".to_vec()), sent: Vec::new() };
-        tunnel(&mut http, ProxyKind::Http, "news.example", 443).unwrap();
+    fn the_tunnels_first_bytes_read_with_the_answer_are_handed_back() {
+        let mut http = Arrivals::new(&[b"HTTP/1.1 200 Connection established\r\nVia: p\r\n\r\n\x16\x03\x01HOST"]);
+        let early = tunnel(&mut http, ProxyKind::Http, "news.example", 443).unwrap();
         assert!(http.sent.starts_with(b"CONNECT news.example:443 "));
-        let mut after = std::string::String::new();
-        http.read_to_string(&mut after).unwrap();
-        assert_eq!(after, "HOST", "the host's bytes are left for the tunnel");
-        let mut socks = Played {
-            answer: std::io::Cursor::new(std::vec![5, 0, 5, 0, 0, 1, 10, 0, 0, 1, 0, 80, b'H']),
-            sent: Vec::new(),
-        };
-        tunnel(&mut socks, ProxyKind::Socks5, "news.example", 80).unwrap();
+        assert_eq!(early, b"\x16\x03\x01HOST", "the host's bytes are the caller's");
+        assert_eq!(http.reads, 1, "the answer is read whole, not a byte at a time");
+
+        let mut split = Arrivals::new(&[b"HTTP/1.1 200 OK\r", b"\n\r\n", b"LATER"]);
+        assert_eq!(tunnel(&mut split, ProxyKind::Http, "news.example", 443).unwrap(), b"");
+        assert_eq!(split.pieces.front().map(Vec::as_slice), Some(&b"LATER"[..]), "nothing past the answer was read");
+
+        let mut socks = Arrivals::new(&[&[5, 0], &[5, 0, 0, 1, 10, 0, 0, 1, 0, 80, b'H']]);
+        assert_eq!(tunnel(&mut socks, ProxyKind::Socks5, "news.example", 80).unwrap(), b"");
         assert_eq!(&socks.sent[..3], &SOCKS_GREETING);
-        let mut refused =
-            Played { answer: std::io::Cursor::new(b"HTTP/1.1 502 Bad Gateway\r\n\r\n".to_vec()), sent: Vec::new() };
+
+        let mut refused = Arrivals::new(&[b"HTTP/1.1 502 Bad Gateway\r\n\r\n"]);
         assert!(matches!(
             tunnel(&mut refused, ProxyKind::Http, "x.example", 80),
             Err(TunnelError::Proxy(ProxyError::Refused(502)))
         ));
-        let mut silent = Played { answer: std::io::Cursor::new(Vec::new()), sent: Vec::new() };
+        let mut closed = Arrivals::new(&[b"HTTP/1.1 200 OK\r\n"]);
+        assert!(matches!(tunnel(&mut closed, ProxyKind::Http, "x.example", 80), Err(TunnelError::Io(_))));
+        let mut silent = Arrivals::new(&[]);
         assert!(matches!(tunnel(&mut silent, ProxyKind::Socks5, "x.example", 80), Err(TunnelError::Io(_))));
+        let endless: Vec<u8> = [b"HTTP/1.1 200 OK\r\nX: ".as_slice(), &[b'a'; MAX_CONNECT_REPLY]].concat();
+        let mut long = Arrivals::new(&[&endless]);
+        assert!(
+            matches!(
+                tunnel(&mut long, ProxyKind::Http, "x.example", 80),
+                Err(TunnelError::Proxy(ProxyError::Malformed))
+            ),
+            "an answer longer than the head limit"
+        );
     }
 
     /// REQ-WEB-032 with REQ-SEC-006: what the client can see as local.

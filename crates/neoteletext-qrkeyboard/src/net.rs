@@ -84,7 +84,13 @@ impl Stream {
                 .map_err(|error| Error::Network(format!("{}: {error}", proxy.host)))?;
             socket.set_read_timeout(Some(CONNECT_TIMEOUT)).map_err(|error| Error::Network(error.to_string()))?;
             socket.set_write_timeout(Some(CONNECT_TIMEOUT)).map_err(|error| Error::Network(error.to_string()))?;
-            proxy.open_tunnel(&mut socket, host, url.port()).map_err(Error::Network)?;
+            let early = proxy.open_tunnel(&mut socket, host, url.port()).map_err(Error::Network)?;
+            // The relay speaks only when spoken to, over HTTP and TLS
+            // alike: bytes of its before this side's first are a broken
+            // protocol, not data to keep.
+            if !early.is_empty() {
+                return Err(Error::Protocol("the relay spoke through the proxy before it was asked"));
+            }
             socket
         } else {
             let target = (host, url.port())

@@ -108,8 +108,10 @@ impl StdTransport {
 
     /// A socket that reaches `host` and `port`: directly, to an address the
     /// local-network rule allows, or through the proxy, whose address the
-    /// user chose, after its handshake (REQ-WEB-032).
-    fn reach(&self, host: &str, port: u16) -> Result<(TcpStream, IpAddr), String> {
+    /// user chose, after its handshake (REQ-WEB-032). With it, the host's
+    /// first bytes when the proxy's answer brought them.
+    fn reach(&self, host: &str, port: u16) -> Result<(TcpStream, IpAddr, Vec<u8>), String> {
+        let mut early = Vec::new();
         let socket = if let Some(proxy) = &self.proxy {
             // The proxy's address may be local: the user chose it.
             let address = (proxy.host.as_str(), proxy.port)
@@ -121,7 +123,7 @@ impl StdTransport {
                 .map_err(|error| format!("{}: {error}", proxy.host))?;
             socket.set_read_timeout(Some(CONNECT_TIMEOUT)).map_err(|error| error.to_string())?;
             socket.set_write_timeout(Some(CONNECT_TIMEOUT)).map_err(|error| error.to_string())?;
-            proxy.open_tunnel(&mut socket, host, port)?;
+            early = proxy.open_tunnel(&mut socket, host, port)?;
             socket
         } else {
             let candidates: Vec<SocketAddr> =
@@ -138,18 +140,32 @@ impl StdTransport {
         };
         socket.set_nodelay(true).map_err(|error| error.to_string())?;
         let peer = socket.peer_addr().map_err(|error| error.to_string())?.ip();
-        Ok((socket, peer))
+        Ok((socket, peer, early))
     }
 
     fn open(&self, host: &str, port: u16, security: Security) -> Result<(Connection, IpAddr), String> {
-        let (mut socket, peer) = self.reach(host, port)?;
+        let (mut socket, peer, early) = self.reach(host, port)?;
+        let mut pending = VecDeque::new();
         let tls = match security {
-            Security::Plain => None,
+            Security::Plain => {
+                pending.extend(early);
+                None
+            }
             Security::Tls => {
                 let name = rustls::pki_types::ServerName::try_from(host.to_string())
                     .map_err(|error| format!("{host}: {error}"))?;
                 let mut connection =
                     rustls::ClientConnection::new(self.tls.clone(), name).map_err(|error| error.to_string())?;
+                // What came through the tunnel with the proxy's answer is
+                // the server's, read before the socket's next bytes.
+                let mut records = early.as_slice();
+                while !records.is_empty() {
+                    let taken = connection.read_tls(&mut records).map_err(|error| format!("{host}: TLS: {error}"))?;
+                    connection.process_new_packets().map_err(|error| format!("{host}: TLS: {error}"))?;
+                    if taken == 0 {
+                        break;
+                    }
+                }
                 while connection.is_handshaking() {
                     connection.complete_io(&mut socket).map_err(|error| format!("{host}: TLS: {error}"))?;
                 }
@@ -164,7 +180,7 @@ impl StdTransport {
         let (chunks, incoming) = mpsc::sync_channel(READS_AHEAD);
         let wake = self.wake.clone();
         std::thread::spawn(move || read_socket(reader, &chunks, &wake));
-        Ok((Connection { socket, tls, incoming, pending: VecDeque::new() }, peer))
+        Ok((Connection { socket, tls, incoming, pending }, peer))
     }
 }
 
@@ -980,8 +996,9 @@ mod tests {
                 stream.read_exact(&mut byte).unwrap();
                 heard.push(byte[0]);
             }
-            stream.write_all(&answer).unwrap();
-            stream.write_all(b"HOST").unwrap();
+            // The answer and the host's first bytes in one write, as a proxy
+            // relaying a server that speaks at once may send them.
+            stream.write_all(&[answer.as_slice(), b"HOST"].concat()).unwrap();
             heard
         });
         (port, handle)
@@ -999,17 +1016,45 @@ mod tests {
     fn connections_go_through_the_proxy() {
         use neoteletext_web::proxy::ProxyKind;
         let (port, proxy) = played_proxy(ProxyKind::Http, b"HTTP/1.1 200 Connection established\r\n\r\n".to_vec());
-        let (mut socket, peer) = through(ProxyKind::Http, port).reach("news.example", 443).unwrap();
+        // What the proxy's answer brought, then what the socket gives.
+        let first_four = |mut socket: TcpStream, early: Vec<u8>| {
+            let mut host = early;
+            let mut rest = vec![0_u8; b"HOST".len().saturating_sub(host.len())];
+            socket.read_exact(&mut rest).unwrap();
+            host.extend(rest);
+            host
+        };
+        let (socket, peer, early) = through(ProxyKind::Http, port).reach("news.example", 443).unwrap();
         assert_eq!(peer, IpAddr::from([127, 0, 0, 1]), "the peer is the proxy");
-        let mut host = [0_u8; 4];
-        socket.read_exact(&mut host).unwrap();
-        assert_eq!(&host, b"HOST");
+        assert_eq!(first_four(socket, early), b"HOST");
         assert!(proxy.join().unwrap().starts_with(b"CONNECT news.example:443 HTTP/1.1\r\n"));
         let (port, proxy) = played_proxy(ProxyKind::Socks5, vec![5, 0, 0, 1, 10, 0, 0, 1, 0, 80]);
-        let (mut socket, _) = through(ProxyKind::Socks5, port).reach("news.example", 80).unwrap();
-        socket.read_exact(&mut host).unwrap();
-        assert_eq!(&host, b"HOST");
+        let (socket, _, early) = through(ProxyKind::Socks5, port).reach("news.example", 80).unwrap();
+        assert!(early.is_empty(), "a SOCKS5 answer is read to its length");
+        assert_eq!(first_four(socket, early), b"HOST");
         assert_eq!(&proxy.join().unwrap()[3..8], &[5, 1, 0, 3, 12], "the name for the proxy to resolve");
+    }
+
+    /// REQ-WEB-032: the host's first bytes that came with the proxy's
+    /// answer reach the connection's reader before the socket's next.
+    #[test]
+    fn the_tunnels_first_bytes_reach_the_connection() {
+        use neoteletext_web::proxy::ProxyKind;
+        let (port, proxy) = played_proxy(ProxyKind::Http, b"HTTP/1.1 200 Connection established\r\n\r\n".to_vec());
+        let transport = through(ProxyKind::Http, port);
+        let (mut connection, _) = transport.open("news.example", 80, Security::Plain).unwrap();
+        proxy.join().unwrap();
+        let mut seen = Vec::new();
+        let mut buffer = [0_u8; 16];
+        let started = std::time::Instant::now();
+        while seen.len() < b"HOST".len() && started.elapsed() < Duration::from_secs(5) {
+            match connection.receive(&mut buffer) {
+                Received::Data(count) => seen.extend_from_slice(&buffer[..count]),
+                Received::Nothing => std::thread::yield_now(),
+                Received::Closed => break,
+            }
+        }
+        assert_eq!(seen, b"HOST");
     }
 
     /// REQ-WEB-032: a refusing proxy fails the connection; nothing goes

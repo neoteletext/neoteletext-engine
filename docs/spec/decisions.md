@@ -1407,6 +1407,8 @@ Decided on 21 October 2026, for the browser's proxy setting and developer consol
 4. **The agent reports each exchange** (REQ-WEB-033): `Event::Exchanged`, with the method, address, status, size and time.
 5. **`neottx --proxy URL`** for every command that fetches, and for `neottx keyboard`.
 
+*Amended 23 October 2026, while the owner was away, as the owner had instructed:* the blocking handshake read an HTTP proxy's answer a byte at a time, 47 reads for a two-line answer, so as never to read past it. It reads 1 KB at a time through the bounded head reader, and `tunnel` and `Proxy::open_tunnel` return the bytes read past the answer, the first of the host's, which the caller hands on before anything it reads next: `neottx`'s fetcher puts them before the socket's bytes, or into TLS before its handshake. The qrkeyboard client refuses them, since its relay speaks only when spoken to. A SOCKS5 answer is read to its exact length and returns none.
+
 *Reason:* Both are protocol and the engine is where the browser's protocols live; `neottx` gains them at the same time.
 
 **E.103 — Three costs a port paid on every message are paid only when something changed.**
