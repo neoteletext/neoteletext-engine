@@ -2,6 +2,8 @@
 //! with the clause it comes from (implementation decision 6). Teletext
 //! values come only from `neoteletext_core::consts`.
 
+use neoteletext_core::consts::{FIELD_PERIOD_US, FLASH_CYCLE_US, FLASH_UNITS};
+
 // ---------------------------------------------------------------------------
 // Time: the caller's clock counts microseconds (REQ-GEN-005).
 // ---------------------------------------------------------------------------
@@ -469,6 +471,26 @@ pub const ZXNET_WALK_SETTLE_US: u64 = MICROSECONDS_PER_SECOND;
 /// The most pages the walk remembers from `pageExists` (8 magazines of
 /// 256 page numbers).
 pub const ZXNET_MAX_PAGES: usize = 2048;
+
+// ---------------------------------------------------------------------------
+// Rendering, for ports that draw what the agent fetches
+// ---------------------------------------------------------------------------
+
+/// The shortest interval between two legitimately different renderings of
+/// one page: one unit of the Level 2.5 and 3.5 flash cycle, a twelfth of
+/// a second (EN 300 706 Table 29, Additional Flash Functions, timed as
+/// decision E.48 says). With slow and fast flash on one page, the slow
+/// flash goes off at unit 9 and the fast phases change at every second
+/// unit, so two changes can be one unit apart, and none closer. A port
+/// may hold a page's frames to one in each such interval, keeping the
+/// newest, without losing any change a viewer could see (NeoTeletext's
+/// security review, finding F-11). Rounded down, so never longer than a
+/// unit.
+pub const MIN_FRAME_INTERVAL_US: u64 = FLASH_CYCLE_US / FLASH_UNITS as u64;
+// Twelve intervals fit in one cycle: the interval is not longer than a unit.
+const _: () = assert!(MIN_FRAME_INTERVAL_US * (FLASH_UNITS as u64) <= FLASH_CYCLE_US);
+// Nor shorter than one field of a 50-field display.
+const _: () = assert!(MIN_FRAME_INTERVAL_US >= FIELD_PERIOD_US);
 
 // ---------------------------------------------------------------------------
 // The user agent's defaults (REQ-WEB-004, REQ-SEC-011, REQ-SEC-020)
