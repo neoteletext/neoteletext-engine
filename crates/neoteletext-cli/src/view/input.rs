@@ -35,8 +35,7 @@ impl ViewState {
                 );
             }
             Some(Event::FocusGained | Event::FocusLost) => {
-                self.typing.unfocused = matches!(woke, Some(Event::FocusLost));
-                self.typing.tell_focus(source, clock_ms);
+                self.typing.focus_changed(matches!(woke, Some(Event::FocusLost)), source, clock_ms);
             }
             _ => {}
         }
@@ -53,8 +52,7 @@ impl ViewState {
         clock_ms: u32,
     ) -> ControlFlow<()> {
         let control = key.modifiers.contains(KeyModifiers::CONTROL);
-        if self.typing.open
-            && self.typing.input.welcomed()
+        if self.typing.may_leave()
             && control
             && key.code == KeyCode::Char(LEAVE_TYPING)
             && key.kind != KeyEventKind::Release
@@ -66,7 +64,7 @@ impl ViewState {
         // included, as a terminal's are its host's.
         if self.typing.on() {
             let open = Some(self.viewer.requested().0.mpp());
-            let all_keys = self.typing.input.modes_on(open) & neoteletext_input::modes::ALL_KEYS != 0;
+            let all_keys = self.typing.all_keys(open);
             let mut buffer = [0_u8; 4];
             if let Some(item) = input_of(key, all_keys, &mut buffer) {
                 self.typing.send(source, &item, open, clock_ms);
@@ -118,10 +116,8 @@ impl ViewState {
     /// Control-]: leaving typing is losing the focus, and the channel lets
     /// go of what is held (REQ-INT-108); pressed again, keys go to it again.
     fn leave_or_return_to_typing(&mut self, source: &mut dyn Source, clock_ms: u32) {
-        self.typing.left = !self.typing.left;
-        self.typing.tell_focus(source, clock_ms);
-        self.typing.told = None;
-        self.prompt = Some(message_row(if self.typing.left {
+        let left = self.typing.leave_or_return(source, clock_ms);
+        self.prompt = Some(message_row(if left {
             "Keys are the viewer's. Ctrl-] types again"
         } else {
             "Keys go to this channel. Ctrl-] leaves"

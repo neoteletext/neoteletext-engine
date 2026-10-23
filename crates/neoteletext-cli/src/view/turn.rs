@@ -52,7 +52,7 @@ impl ViewState {
             // The modes the open page's `IM` line asks for, while it is open
             // (REQ-INT-114); the session adds them to its stack's top.
             if let Some(modes) = page_extras.as_ref().and_then(|extras| extras.input_modes) {
-                self.typing.input.modes.set_page_modes(requested.mpp(), modes);
+                self.typing.set_page_modes(requested.mpp(), modes);
             }
             let shown = Shown { page, extras: page_extras.as_ref(), config: &config, now };
             self.activate_form(session, &shown);
@@ -115,20 +115,14 @@ impl ViewState {
         if self.typing.on() && !was_on {
             self.prompt = Some(message_row("Keys go to this channel. Ctrl-] leaves"));
         }
-        if let Some(address) = self.typing.go_to.take().and_then(PageAddress::from_mpp)
+        if let Some(address) = self.typing.take_go_to().and_then(PageAddress::from_mpp)
             && address != requested
         {
             self.viewer = Viewer::new(address);
             self.action = Action::Request(address, SubCode::ANY);
             return true;
         }
-        // The channel is told which of its pages is open (INPUT.md section
-        // 5.4).
-        if self.typing.on() && self.typing.told != Some(requested.mpp()) {
-            self.typing.told = Some(requested.mpp());
-            let page = neoteletext_input::event::Item::Event(neoteletext_input::event::Event::Page(requested.mpp()));
-            self.typing.send(source, &page, Some(requested.mpp()), clock_ms);
-        }
+        self.typing.tell_open_page(source, requested.mpp(), clock_ms);
         false
     }
 }
