@@ -3,6 +3,10 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, reason = "a test")]
 
+use std::io::{BufRead, BufReader, Read, Write};
+use std::net::TcpListener;
+use std::thread;
+
 use super::*;
 use crate::config::Layout;
 use crate::crypto::Role;
@@ -105,4 +109,49 @@ fn a_release_of_a_key_not_held_is_dropped() {
     assert_eq!(receive(&mut screen, &again), [], "a second release of a released key");
     let never = sealed(&mut phone, "up", "ArrowLeft");
     assert_eq!(receive(&mut screen, &never), [], "a release of a key never pressed");
+}
+
+/// A relay played here: it answers one `POST /i` with the instance `answer`
+/// names, on its own address, and closes. Its origin.
+fn instance_relay(owner_token_json: &'static str) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    thread::spawn(move || {
+        let (stream, _) = listener.accept().unwrap();
+        let mut reader = BufReader::new(stream.try_clone().unwrap());
+        let mut length = 0;
+        loop {
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            if line == "\r\n" || line.is_empty() {
+                break;
+            }
+            if let Some(value) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                length = value.trim().parse().unwrap();
+            }
+        }
+        let mut body = vec![0_u8; length];
+        reader.read_exact(&mut body).unwrap();
+        let answer =
+            format!(r#"{{"code":"{CODE}","ownerToken":"{owner_token_json}","relay":"ws://127.0.0.1:{port}/s"}}"#);
+        let mut stream = stream;
+        write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{answer}", answer.len())
+            .unwrap();
+    });
+    format!("http://127.0.0.1:{port}")
+}
+
+/// Finding F-39, decision E.116 item 2: the relay's owner token is written
+/// into `Authorization: Bearer`, so it is held to the message id alphabet,
+/// and a token with a line break, a space or a byte outside ASCII is
+/// refused before anything is sent with it.
+#[test]
+fn an_owner_token_outside_the_id_alphabet_is_refused() {
+    // As JSON writes them: a CR LF that would start a header of its own,
+    // a space, a non-ASCII letter and a NUL.
+    for token in [r"owner\r\nX-Injected: 1", "own er", r"ownér", r"own\u0000er"] {
+        let config = ScreenConfig { name: "test".into(), layout: Layout::Terminal, pin: false, rejoin_seconds: None };
+        let result = Screen::create(&instance_relay(token), config, None);
+        assert_eq!(result.err(), Some(Error::Protocol("an owner token")), "{token}");
+    }
 }

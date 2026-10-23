@@ -68,7 +68,14 @@ pub struct Message {
 /// Whether `id` is a message id (`MESSAGE_ID_PATTERN`).
 #[must_use]
 pub fn is_id(id: &str) -> bool {
-    id.len() == MESSAGE_ID_LENGTH && id.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
+    id.len() == MESSAGE_ID_LENGTH && id.bytes().all(is_id_byte)
+}
+
+/// Whether `byte` is in a message id's alphabet, base64url's
+/// (`MESSAGE_ID_PATTERN`, RFC 4648 section 5).
+#[must_use]
+pub const fn is_id_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-'
 }
 
 /// Reads the plaintext of a sealed frame from the phone; `None` for

@@ -122,6 +122,14 @@ fn is_code(code: &str) -> bool {
     code.len() == CODE_LENGTH && code.bytes().all(|byte| byte.is_ascii_uppercase() || (b'2'..=b'7').contains(&byte))
 }
 
+/// Whether the relay's owner token may be sent: it goes into an
+/// `Authorization: Bearer` header, so it is held to the message id
+/// alphabet, which the relay's 32 random bytes in base64url are written in
+/// (decision E.116 item 2).
+fn is_owner_token(token: &str) -> bool {
+    !token.is_empty() && token.len() <= MAX_TOKEN && token.bytes().all(message::is_id_byte)
+}
+
 impl Screen {
     /// Asks the relay at `relay` (an `https` origin, or `http` for one on
     /// this computer) for an instance, and connects to it.
@@ -156,7 +164,7 @@ impl Screen {
         let owner = answer
             .get("ownerToken")
             .and_then(Value::as_str)
-            .filter(|token| !token.is_empty() && token.len() <= MAX_TOKEN)
+            .filter(|token| is_owner_token(token))
             .ok_or(Error::Protocol("an owner token"))?;
         let socket_address =
             net::parse(answer.get("relay").and_then(Value::as_str).ok_or(Error::Protocol("a relay address"))?)?;
