@@ -6,8 +6,8 @@
 //! September 2026). The protocol's records are [`crate::dbsc`]'s.
 
 use super::{
-    BoundChange, Event, Exchange, Method, Purpose, RandomSource, ResponseHead, Sink, Site, UserAgent, cookie_store,
-    event,
+    BoundChange, Event, Exchange, Method, Purpose, RandomSource, ResponseHead, Sink, Site, UserAgent,
+    cookies::cookie_store, event,
 };
 use crate::bytes::{Overflow, TextBuf, Writer};
 use crate::dbsc::{
