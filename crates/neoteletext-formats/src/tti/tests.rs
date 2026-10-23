@@ -11,14 +11,16 @@
 
 use super::*;
 use crate::encode::encode_page;
-use crate::page::{FormMethod, IssueKind, LinkKey, PageFile};
+use crate::item::{Diagnostic, DiagnosticKind, Item};
+use crate::page::{FieldKind, FormMethod, IssueKind, LinkKey, PageFile, PageFunction, Warning};
 use crate::testing::{diagnostics, pages, same_in_any_chunks};
 use neoteletext_core::consts::{
-    ALPHA_BLACK, ALPHA_RED, C11_SERIAL, COLOUR_GREEN, MODE_G0_NO_DIACRITIC, MODE_SET_ACTIVE_POSITION, MODE_TERMINATION,
-    ROW_ADDRESS_LAST,
+    ALPHA_BLACK, ALPHA_RED, C11_SERIAL, COLOUR_GREEN, DOUBLE_HEIGHT, MODE_G0_NO_DIACRITIC, MODE_SET_ACTIVE_POSITION,
+    MODE_TERMINATION, ROW_ADDRESS_LAST,
 };
 use neoteletext_core::ecc::check_parity;
 use neoteletext_core::packet::{Decoded, PageFormat, PagePacket, Triplet, decode};
+use neoteletext_core::types::{PageAddress, SubCode};
 use std::vec::Vec;
 
 mod enhancement;
