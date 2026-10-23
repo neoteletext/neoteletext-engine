@@ -151,7 +151,9 @@ fn origins() {
         ("https://a.b/", "ws://a.b/", false),
         ("http://a.b/", "http://c.a.b/", false),
         ("http://xn--bcher-kva.example/", "http://XN--BCHER-KVA.example/", true),
-        ("http://[::1]/", "http://[0:0:0:0:0:0:0:1]/", false),
+        // Finding F-96: one address, however written, is one origin.
+        ("http://[::1]/", "http://[0:0:0:0:0:0:0:1]/", true),
+        ("http://[2001:db8::1]/", "http://[2001:0DB8:0:0:0:0:0:0001]/", true),
     ];
     for (a, b, same) in pairs {
         assert_eq!(origin(a).same(&origin(b)), same, "{a} {b}");
@@ -164,4 +166,27 @@ fn blocked_literals() {
         assert!(Url::parse(blocked).unwrap().ip().unwrap().is_blocked(), "{blocked}");
     }
     assert!(!Url::parse("http://8.8.8.8/").unwrap().ip().unwrap().is_blocked());
+}
+
+/// Finding F-96 (decision E.114 item 9): an IPv6 host is kept in RFC
+/// 5952's text form, so the memory of secure hosts, the cookie host and
+/// the table of confirmed origins do not split between two spellings.
+#[test]
+fn ipv6_hosts_are_kept_in_rfc_5952_form() {
+    for (input, canonical) in [
+        ("http://[0:0:0:0:0:0:0:1]/", "::1"),
+        ("http://[2001:DB8:0:0:1:0:0:1]/", "2001:db8::1:0:0:1"),
+        ("http://[2001:db8:0:1:1:1:1:1]/", "2001:db8:0:1:1:1:1:1"),
+        ("http://[0001:0db8::]/", "1:db8::"),
+        ("http://[1:0:0:2:0:0:0:3]/", "1:0:0:2::3"),
+        ("http://[1:0:0:2:3:0:0:4]/", "1::2:3:0:0:4"),
+        ("http://[::]/", "::"),
+        ("http://[0:0:0:0:0:ffff:808:808]/", "::ffff:8.8.8.8"),
+        ("http://[::1.2.3.4]/", "::102:304"),
+        ("http://[fe80:0:0:0:0:0:0:0]/", "fe80::"),
+    ] {
+        let url = Url::parse(input).unwrap();
+        assert_eq!(url.host_text(), canonical, "{input}");
+        assert_eq!(url.as_str(), std::format!("http://[{canonical}]/"), "{input}");
+    }
 }

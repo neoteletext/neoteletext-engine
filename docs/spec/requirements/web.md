@@ -262,7 +262,7 @@ Any response or message outside the profile shall be rejected with a diagnostic,
 
 **REQ-WEB-015 — The origin.**
 An origin is the combination of scheme, host and port of an address, after the address has been normalised by the parser of REQ-WEB-016:
-- the host is compared in lower case;
+- the host is compared in lower case, and an IPv6 host in RFC 5952's text form (section 4, with section 5's mixed form for an IPv4-mapped address), so that one address has one spelling (decision E.114 item 9; `ipv6_hosts_are_kept_in_rfc_5952_form` and `origins`, which fail on the code before 24 October 2026);
 - a missing port is the scheme's default port (80 for `http` and `ws`, 443 for `https` and `wss`).
 
 Two addresses have the same origin only if all three parts are equal. The one exception is that `ws` and `wss` addresses count as the same origin as the `http` or `https` address with the same host and port. Every security rule that depends on "the same service" or "the same origin" shall use this definition and no other:
