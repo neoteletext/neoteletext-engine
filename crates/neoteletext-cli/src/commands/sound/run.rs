@@ -5,7 +5,7 @@ use super::SoundOptions;
 use super::wave::read_wave;
 use crate::bounded_file::read_bounded;
 use crate::commands::io_failure;
-use neoteletext_app::sandbox::{self, Policy};
+use crate::commands::sandbox_closed;
 use neoteletext_app::{Failure, exit};
 use neoteletext_audio::Codec;
 use neoteletext_audio::encode::{Command, Sound, packets};
@@ -43,8 +43,7 @@ pub fn sound(options: &SoundOptions, input: &Path, output: &Path, no_sandbox: bo
     let bytes = read_bounded(input, WAV_MAX_FILE_BYTES)?;
     let mut out = File::create(output).map_err(|error| io_failure(output, error))?;
     // Every file is open (REQ-SEC-017).
-    sandbox::apply(Policy { writable_directory: None, network: false, readable: &[] }, no_sandbox)
-        .map_err(|message| (exit::INPUT, message))?;
+    sandbox_closed(no_sandbox)?;
     let wave = read_wave(&bytes).map_err(|message| (exit::INPUT, format!("{}: {message}", input.display())))?;
     let block = match codec {
         Codec::ImaAdpcm => neoteletext_audio::IMA_BLOCK_LARGE,

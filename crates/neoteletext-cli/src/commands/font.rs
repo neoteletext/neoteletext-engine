@@ -4,8 +4,8 @@
 //! (REQ-FNT-011, decision E.75): the character sets a font conforms for.
 
 use super::io_failure;
+use super::sandbox_closed;
 use crate::bounded_file::read_bounded;
-use neoteletext_app::sandbox::{self, Policy};
 use neoteletext_app::{Failure, exit};
 use neoteletext_core::consts::{FONT_MAX_CHARACTERS, FONT_MAX_FILE_BYTES};
 use neoteletext_core::glyphs::LoadedFont;
@@ -28,8 +28,7 @@ pub fn convert_font(input: &Path, output: &Path, map: Option<&Path>, no_sandbox:
     let mut out = File::create(output).map_err(|error| io_failure(output, error))?;
     // Every file is open: nothing that follows needs the file system or the
     // network (REQ-SEC-017).
-    sandbox::apply(Policy { writable_directory: None, network: false, readable: &[] }, no_sandbox)
-        .map_err(|message| (exit::INPUT, message))?;
+    sandbox_closed(no_sandbox)?;
     let name = input.display();
     let mut glyphs = vec![SourceGlyph::EMPTY; SOURCE_FONT_MAX_CHARACTERS];
     let font = read_source(&source, &mut glyphs)
@@ -77,8 +76,7 @@ pub(super) fn read_table(path: &Path) -> Result<Vec<FontGlyph>, Failure> {
 /// `neottx font sets FONT [--library-line NAME]`.
 pub fn font_sets(path: &Path, library_line: Option<&str>, no_sandbox: bool) -> Result<(), Failure> {
     let bytes = read_bounded(path, FONT_MAX_FILE_BYTES)?;
-    sandbox::apply(Policy { writable_directory: None, network: false, readable: &[] }, no_sandbox)
-        .map_err(|message| (exit::INPUT, message))?;
+    sandbox_closed(no_sandbox)?;
     let name = path.display();
     let mut glyphs = vec![FontGlyph::EMPTY; FONT_MAX_CHARACTERS];
     let font = read(&bytes, &mut glyphs)

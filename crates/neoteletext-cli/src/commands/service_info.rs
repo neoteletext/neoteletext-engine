@@ -1,14 +1,14 @@
 //! `neottx service-info` (REQ-SVC-005): the broadcast service data of
 //! packet 8/30.
 
-use super::sandbox;
+use super::sandbox_closed;
 use neoteletext_app::input::{self, Options};
 use neoteletext_app::{Failure, exit};
 
 /// `neottx service-info`.
 pub fn service_info(options: &Options) -> Result<(), Failure> {
     let session = input::load(options)?;
-    sandbox(options, None)?;
+    sandbox_closed(options.no_sandbox)?;
     let Some(info) = session.service() else {
         return Err((exit::NOT_FOUND, "no packet 8/30 in the input".into()));
     };

@@ -1,7 +1,7 @@
 //! `neottx list` (REQ-CLI-001): the pages and sub-pages found, with their
 //! counts and error statistics.
 
-use super::sandbox;
+use super::sandbox_closed;
 use neoteletext_app::Failure;
 use neoteletext_app::input::{self, Options};
 use neoteletext_core::acq::StoredPage;
@@ -11,7 +11,7 @@ use std::io::Write;
 /// `neottx list`.
 pub fn list(options: &Options) -> Result<(), Failure> {
     let mut session = input::load(options)?;
-    sandbox(options, None)?;
+    sandbox_closed(options.no_sandbox)?;
     let mut out = std::io::stdout().lock();
     let pages = session.pages();
     let page_count = pages.len();

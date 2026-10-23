@@ -7,7 +7,6 @@ use crate::terminal::{self, Display, TextArea};
 use clap::ValueEnum;
 pub use neoteletext_app::Failure;
 use neoteletext_app::exit;
-use neoteletext_app::input::Options;
 use neoteletext_app::sandbox::{self, Policy};
 use neoteletext_app::session::Session;
 use neoteletext_core::fsm::PageKey;
@@ -140,9 +139,17 @@ fn grid_of(session: &mut Session, key: PageKey) -> Result<Grid, Failure> {
         .ok_or_else(|| (exit::NOT_FOUND, format!("page {} not found", String::from_utf8_lossy(&key.address.ascii()))))
 }
 
-fn sandbox(options: &Options, writable: Option<&Path>) -> Result<(), Failure> {
-    sandbox::apply(Policy { writable_directory: writable, network: false, readable: &[] }, options.no_sandbox)
+/// Applies the sandbox (REQ-SEC-017) with `writable` the one directory the
+/// command may still write in; `no_sandbox` is `--no-sandbox`.
+fn sandbox_writable(writable: Option<&Path>, no_sandbox: bool) -> Result<(), Failure> {
+    sandbox::apply(Policy { writable_directory: writable, network: false, readable: &[] }, no_sandbox)
         .map_err(|message| (exit::INPUT, message))
+}
+
+/// Applies the sandbox with nothing left to write and no network: every
+/// file the command needs is already open (REQ-SEC-017).
+pub(crate) fn sandbox_closed(no_sandbox: bool) -> Result<(), Failure> {
+    sandbox_writable(None, no_sandbox)
 }
 
 fn mosaic_style(legacy: bool) -> MosaicStyle {

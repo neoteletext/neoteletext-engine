@@ -7,9 +7,9 @@
 //! standard output and standard error.
 
 use super::io_failure;
+use super::sandbox_closed;
 use crate::ansi::{MosaicStyle, plain};
 use neoteletext_app::input::{self, Options};
-use neoteletext_app::sandbox::{self, Policy};
 use neoteletext_app::session::Session;
 use neoteletext_app::{Failure, exit};
 use neoteletext_core::types::PageAddress;
@@ -156,8 +156,7 @@ pub fn contents(options: &Options) -> Result<(), Failure> {
             None => skipped += 1,
         }
     }
-    sandbox::apply(Policy { writable_directory: None, network: false, readable: &[] }, options.no_sandbox)
-        .map_err(|message| (exit::INPUT, message))?;
+    sandbox_closed(options.no_sandbox)?;
     let mut pages: BTreeMap<PageAddress, Found> = BTreeMap::new();
     for file in &mut loaded {
         let wanted: Vec<PageAddress> = if let Some(page) = file.page {

@@ -6,13 +6,12 @@ use neoteletext_app::Failure;
 use neoteletext_app::input::Options;
 #[cfg(feature = "view")]
 use {
-    super::{display, mosaic_style, scale_for},
+    super::{display, mosaic_style, sandbox_closed, scale_for},
     crate::ansi::ColourDepth,
     crate::frame::Frame,
     crate::terminal::{self, Display},
     neoteletext_app::exit,
     neoteletext_app::input,
-    neoteletext_app::sandbox::{self, Policy},
     neoteletext_core::consts::ROWS,
     std::io::IsTerminal,
 };
@@ -34,8 +33,7 @@ pub fn view(
     let widest = (COLUMNS + usize::from(SIDE_PANEL_MAX_COLUMNS)) * CELL_WIDTH;
     let height = ROWS * Frame::still(session.decoder().config(), false).options.row_height();
     let scale = scale_for(raster_args, area, (widest, height));
-    sandbox::apply(Policy { writable_directory: None, network: false, readable: &[] }, options.no_sandbox)
-        .map_err(|message| (exit::INPUT, message))?;
+    sandbox_closed(options.no_sandbox)?;
     let depth = if colours8 { ColourDepth::Eight } else { ColourDepth::TrueColour };
     crate::view::run(&mut session, source.as_mut(), display, scale, depth, mosaic_style(legacy_mosaics))
         .map_err(|error| (exit::INPUT, error.to_string()))

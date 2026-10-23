@@ -1,7 +1,7 @@
 //! `neottx show` (REQ-CLI-001): one page in the terminal, as an iTerm2
 //! image or as characters.
 
-use super::{Selection, display, grid_of, mosaic_style, parse_selection, sandbox, scale_for, selected};
+use super::{Selection, display, grid_of, mosaic_style, parse_selection, sandbox_closed, scale_for, selected};
 use crate::ansi::{ColourDepth, ansi, plain};
 use crate::args::{GraphicsChoice, RasterArgs};
 use crate::frame::Frame;
@@ -36,7 +36,7 @@ pub fn show(
     let frame = Frame::still(session.decoder().config(), raster_args.reveal);
     // Measure the terminal before the sandbox closes /dev/tty.
     let area = if display == Display::Iterm2 { terminal::text_area() } else { None };
-    sandbox(options, None)?;
+    sandbox_closed(options.no_sandbox)?;
     let key = selected(&session, selection)?[0];
     let grid = grid_of(&mut session, key)?;
     let mut out = std::io::stdout().lock();

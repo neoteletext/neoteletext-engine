@@ -2,7 +2,7 @@
 
 use super::font::read_table;
 use super::io_failure;
-use super::{ImageFormat, Selection, grid_of, page_file_name, parse_selection, sandbox, scale_for, selected};
+use super::{ImageFormat, Selection, grid_of, page_file_name, parse_selection, sandbox_writable, scale_for, selected};
 use crate::args::RasterArgs;
 use crate::frame::Frame;
 use crate::image::{png, ppm, raster_in};
@@ -39,7 +39,7 @@ pub fn render(
             .filter(|parent| !parent.as_os_str().is_empty())
             .map_or_else(|| PathBuf::from("."), Path::to_path_buf)
     };
-    sandbox(options, Some(&directory))?;
+    sandbox_writable(Some(&directory), options.no_sandbox)?;
     let extension = match image {
         ImageFormat::Png => "png",
         ImageFormat::Ppm => "ppm",

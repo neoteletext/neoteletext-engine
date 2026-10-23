@@ -2,7 +2,7 @@
 
 use crate::bounded_file::read_bounded;
 use crate::commands::io_failure;
-use neoteletext_app::sandbox::{self, Policy};
+use crate::commands::sandbox_closed;
 use neoteletext_app::{Failure, exit};
 use std::fs::File;
 use std::io::Write;
@@ -23,8 +23,7 @@ pub fn write_text(set: &str, page: &str, input: &Path, output: &Path, no_sandbox
     let text = String::from_utf8(bytes).map_err(|_| (exit::INPUT, format!("{}: not UTF-8", input.display())))?;
     let mut out = File::create(output).map_err(|error| io_failure(output, error))?;
     // Every file is open (REQ-SEC-017).
-    sandbox::apply(Policy { writable_directory: None, network: false, readable: &[] }, no_sandbox)
-        .map_err(|message| (exit::INPUT, message))?;
+    sandbox_closed(no_sandbox)?;
     let written = neoteletext_app::write_text::write_text(set, mpp, &text).map_err(|error| io_failure(input, error))?;
     out.write_all(&written.tti).and_then(|()| out.flush()).map_err(|error| io_failure(output, error))?;
     eprintln!("{}: {} rows, {} X/26 triplets", output.display(), written.rows, written.triplets);
