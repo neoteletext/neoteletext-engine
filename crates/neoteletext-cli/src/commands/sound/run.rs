@@ -25,17 +25,7 @@ const LOOP: u8 = neoteletext_audio::record::FLAG_LOOP;
 /// `neottx sound`.
 pub fn sound(options: &SoundOptions, input: &Path, output: &Path, no_sandbox: bool) -> Result<(), Failure> {
     let page = page_number(&options.page)?;
-    let codec = match options.codec.as_str() {
-        "ima" => Codec::ImaAdpcm,
-        "pcm" => Codec::Pcm16,
-        other => return Err((exit::USAGE, format!("{other}: the codec is ima or pcm"))),
-    };
-    if options.channel >= neoteletext_audio::CHANNELS
-        || options.gain > neoteletext_audio::MAX_GAIN
-        || options.repeat == 0
-    {
-        return Err((exit::USAGE, "the channel is 0 to 3, the gain 0 to 100 and the repeat at least 1".to_owned()));
-    }
+    let codec = checked_codec(options)?;
     let bytes = read_bounded(input, WAV_MAX_FILE_BYTES)?;
     let mut out = File::create(output).map_err(|error| io_failure(output, error))?;
     // Every file is open (REQ-SEC-017).
@@ -91,17 +81,7 @@ pub fn sound(options: &SoundOptions, input: &Path, output: &Path, no_sandbox: bo
     let mut records = vec![sound.object_record().map_err(|error| (exit::INPUT, format!("{error:?}")))?];
     records.extend(sound.data_records());
     records.push(command.record());
-    let mut written = 0_usize;
-    let mut record_id = 0;
-    for _ in 0..options.repeat {
-        // A repeat keeps its record ids: the same records again.
-        let (packets, _) = packets(0, record_id, &records);
-        for packet in &packets {
-            out.write_all(&packet.bytes).map_err(|error| io_failure(output, error))?;
-        }
-        written = written.saturating_add(packets.len());
-        record_id = 0;
-    }
+    let written = write_repeats(&mut out, output, &records, options.repeat)?;
     out.flush().map_err(|error| io_failure(output, error))?;
     eprintln!(
         "{}: {} samples at {} Hz, {} bytes of {}, {written} packets for page {page:03X}",
@@ -112,6 +92,40 @@ pub fn sound(options: &SoundOptions, input: &Path, output: &Path, no_sandbox: bo
         options.codec
     );
     Ok(())
+}
+
+/// The codec the options name, once the channel, gain and repeat are
+/// checked to be in range.
+fn checked_codec(options: &SoundOptions) -> Result<Codec, Failure> {
+    let codec = match options.codec.as_str() {
+        "ima" => Codec::ImaAdpcm,
+        "pcm" => Codec::Pcm16,
+        other => return Err((exit::USAGE, format!("{other}: the codec is ima or pcm"))),
+    };
+    if options.channel >= neoteletext_audio::CHANNELS
+        || options.gain > neoteletext_audio::MAX_GAIN
+        || options.repeat == 0
+    {
+        return Err((exit::USAGE, "the channel is 0 to 3, the gain 0 to 100 and the repeat at least 1".to_owned()));
+    }
+    Ok(codec)
+}
+
+/// Writes a stored sound's records `repeat` times; returns the number of
+/// packets written.
+fn write_repeats(out: &mut File, output: &Path, records: &[Vec<u8>], repeat: u8) -> Result<usize, Failure> {
+    let mut written = 0_usize;
+    let mut record_id = 0;
+    for _ in 0..repeat {
+        // A repeat keeps its record ids: the same records again.
+        let (packets, _) = packets(0, record_id, records);
+        for packet in &packets {
+            out.write_all(&packet.bytes).map_err(|error| io_failure(output, error))?;
+        }
+        written = written.saturating_add(packets.len());
+        record_id = 0;
+    }
+    Ok(written)
 }
 
 /// A live sound's packets as a player reading `pace` packets a second
