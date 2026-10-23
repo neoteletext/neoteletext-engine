@@ -155,12 +155,16 @@ pub(super) mod encode {
     use super::{T1, T2, T13, set_stream_bits};
     use crate::consts::{
         BLACK_SUBSTITUTION_SHIFT, COLOUR_PRIMARY_BITS, COLOUR_WORD_BITS, COLOUR_WORDS_START, DEFAULT_ROW_COLOUR_SHIFT,
-        DEFAULT_SCREEN_COLOUR_SHIFT, DESIGNATION_DEFAULT_SHIFT, DESIGNATION_MASK, DESIGNATION_SECOND_HIGH_MASK,
-        DESIGNATION_SECOND_LOW_BITS, DESIGNATION_SECOND_LOW_SHIFT, NIBBLE_MASK, REMAPPING_MASK, REMAPPING_SHIFT,
+        DEFAULT_SCREEN_COLOUR_SHIFT, DESIGNATION_DEFAULT_SHIFT, DESIGNATION_DOWNLOAD_FUNCTION, DESIGNATION_MASK,
+        DESIGNATION_SECOND_HIGH_MASK, DESIGNATION_SECOND_LOW_BITS, DESIGNATION_SECOND_LOW_SHIFT, NIBBLE_MASK,
+        PACKET_MAGAZINE_ENHANCEMENT, PACKET_PAGE_ENHANCEMENT, REMAPPING_MASK, REMAPPING_SHIFT,
         SIDE_PANEL_COLUMNS_SHIFT, SIDE_PANEL_LEFT_SHIFT, SIDE_PANEL_RIGHT_SHIFT, SIDE_PANEL_STATUS_SHIFT,
         TRIPLET_COLOUR_INDEX_MASK, TRIPLETS_PER_PACKET,
     };
-    use crate::types::PresentationFields;
+    use crate::types::{Magazine, PresentationFields};
+
+    use super::super::triplets::encode::value_packet;
+    use super::super::{Packet, PageFormat, Triplet};
 
     /// Triplet values for the shared field groups; absent groups are 0.
     #[must_use]
@@ -204,6 +208,45 @@ pub(super) mod encode {
                 | (u32::from(colours.remapping) & REMAPPING_MASK) << REMAPPING_SHIFT;
         }
         values
+    }
+
+    /// Triplets 1 and 2 of X/28/0 format 1 or M/29/0 for a basic Level 1
+    /// page: page function 0, page coding 0 (Table 4).
+    #[must_use]
+    pub fn designation_triplets(default_designation: u8, second_designation: u8) -> [Triplet; 2] {
+        let first = (u32::from(default_designation & 0x7F) << 7) | (u32::from(second_designation & 0xF) << 14);
+        let second = u32::from((second_designation >> 4) & 0x7);
+        [Triplet::from_value(first), Triplet::from_value(second)]
+    }
+
+    /// Packet X/28/0 format 1 (designation 0) or X/28/4 (designation 4)
+    /// (Tables 4 and 10). Absent field groups are written as 0.
+    #[must_use]
+    pub fn page_enhancement(
+        magazine: Magazine,
+        designation: u8,
+        format: PageFormat,
+        fields: &PresentationFields,
+    ) -> Packet {
+        value_packet(magazine, PACKET_PAGE_ENHANCEMENT, designation, &presentation_values(format.bits(), fields))
+    }
+
+    /// Packet M/29/0 (designation 0) or M/29/4 (designation 4) with packet
+    /// function 0000000 (Tables 11 and 13).
+    #[must_use]
+    pub fn magazine_enhancement(magazine: Magazine, designation: u8, fields: &PresentationFields) -> Packet {
+        value_packet(magazine, PACKET_MAGAZINE_ENHANCEMENT, designation, &presentation_values(0, fields))
+    }
+
+    /// Packet X/28/3 with the page function and coding only (Table 9), as
+    /// a pattern download page sends it.
+    #[must_use]
+    pub fn page_function(magazine: Magazine, format: PageFormat) -> Packet {
+        let mut values = [0; TRIPLETS_PER_PACKET];
+        if let Some(first) = values.first_mut() {
+            *first = format.bits();
+        }
+        value_packet(magazine, PACKET_PAGE_ENHANCEMENT, DESIGNATION_DOWNLOAD_FUNCTION, &values)
     }
 }
 
