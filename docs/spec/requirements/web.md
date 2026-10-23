@@ -250,7 +250,7 @@ The web module shall implement exactly the following profile, and nothing beyond
 - images, audio, video and other media;
 - downloads to files;
 - embedding one page inside another;
-- content from a third party loaded into a page, except a font named by the channel or the page at another address, which is permitted only with its SHA-256, without cookies or `Referer`, and only while the viewer allows fonts from other sites (REQ-FNT-003; `docs/spec/design/font-security.md` section 3.4);
+- content from a third party loaded into a page (the one exception, a font named by the channel or the page, was withdrawn on 23 October 2026 with REQ-FNT-006 and REQ-FNT-007, decision E.111);
 - plugins;
 - `file:`, `data:`, `javascript:` and all other address schemes except those of REQ-WEB-016;
 - proxy auto-configuration;
@@ -402,7 +402,7 @@ A channel's file addresses are its folder's address followed by one of the file 
 - **`initial_page`** is a page number of three decimal digits, the magazine 1 to 8 first.
 - **`name`,** when present, is the channel's own name for itself. A port may show it outside the page, but never in row 0, which belongs to the receiver (REQ-SEC-005).
 - **`services`,** the linked channels, gives each one a short name, a display name, and either `channel`, the address of the linked channel's folder in the form of REQ-WEB-023, or `descriptor`, the address of a descriptor service (REQ-WEB-018). An entry with both, or neither, shall be refused.
-- **`font`,** an object with `address` and `sha256`, names the channel's font (REQ-FNT-006).
+- **`font`,** which named the channel's font, was withdrawn on 23 October 2026 (decision E.111): it is an unknown member.
 - **`aliases`, `refresh`, `push` and `form_origins`** are as REQ-WEB-002 defines them. A push address shall be on the channel's origin, in any folder.
 
 Unknown members shall be refused, as REQ-WEB-002 requires of every descriptor.

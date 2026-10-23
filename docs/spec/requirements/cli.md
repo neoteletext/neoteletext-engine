@@ -62,11 +62,10 @@ The program shall exit with:
 *Errors:*
 - **Too many links.** More than four coloured links, a repeated key, or two `LK` lines for the same page number.
 - **Bad link targets.** Targets naming services missing from a given descriptor, and `LK` or `LT` lines whose target, page number or position is invalid (Appendix E.1).
-- **Bad font lines.** A `TF` line that is malformed or repeated (REQ-FNT-007).
 - **Bad log lines.** An `LG` line the reader refuses, or more than a page may carry (REQ-INP-026).
 - **Bad labels.** Labels too long for the prompt, or using characters the page's G0 set cannot show.
 - **Bad form fields.** Overlapping fields, fields outside the row, or version 2.0 form syntax.
-- **Withdrawn commands.** Use of the withdrawn `FH` command.
+- **Withdrawn commands.** Use of the withdrawn `FH` command, or of the withdrawn `TF` line (decision E.111).
 
 *Warnings:*
 - **Page number not shown.** A link to a page in the same service whose page number does not appear in the page's text (Appendix E.2 rule 5), or an `LK` line that links a page number the page's text does not show (Appendix E.2 rule 7, decision E.64).

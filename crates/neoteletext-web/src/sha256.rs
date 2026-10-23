@@ -1,6 +1,6 @@
-//! SHA-256 (FIPS 180-4), which names fonts: a font is fetched, checked and
-//! cached by its digest (REQ-FNT-006). Written in the project,
-//! as SHA-1 is (decision E.38).
+//! SHA-256 (FIPS 180-4), which the gate's checks of the bundled and
+//! converted fonts' exports use (REQ-FNT-001, REQ-FNT-012). Written in the
+//! project, as SHA-1 is (decision E.38).
 
 use crate::bytes::copy_prefix;
 use crate::consts::{SHA256_BLOCK_BYTES, SHA256_DIGEST_BYTES, SHA256_HEX_DIGITS};
@@ -142,8 +142,8 @@ pub fn digest(data: &[u8]) -> Digest {
     sha.finish()
 }
 
-/// A digest written as 64 hexadecimal digits, upper or lower case
-/// (REQ-FNT-004, REQ-FNT-006, REQ-FNT-007); `None` for anything else.
+/// A digest written as 64 hexadecimal digits, upper or lower case, as a
+/// font library's index gives it (REQ-FNT-004); `None` for anything else.
 #[must_use]
 pub fn parse_hex(text: &[u8]) -> Option<Digest> {
     if text.len() != SHA256_HEX_DIGITS {

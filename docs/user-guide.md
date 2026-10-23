@@ -232,7 +232,7 @@ Pages are drawn in Bedstead 3.261, the one bundled font (REQ-FNT-001, decision E
 
 ## Fonts
 
-Pages are drawn in Bedstead unless another font is named. `neottx render --font FILE` draws a page's text in a loaded font: a BDF file of 12 × 10 or 12 × 20 cells, encoded in Unicode, with at most 1,024 characters (REQ-FNT-002); anything else is refused with the line at fault. A character the font lacks is drawn in Bedstead. Row 0's status area is always drawn in Bedstead. A channel may name its font in `channel.json` (`"font": {"address": "teletext.bdf", "sha256": "…"}`) and a page with a TTI line `TF,address,sha256`; the TTI reader and writer keep that line, and the page checker reports a malformed one.
+Pages are drawn in Bedstead unless another font is named. `neottx render --font FILE` draws a page's text in a loaded font: a BDF file of 12 × 10 or 12 × 20 cells, encoded in Unicode, with at most 1,024 characters (REQ-FNT-002); anything else is refused with the line at fault. A character the font lacks is drawn in Bedstead. Row 0's status area is always drawn in Bedstead. A channel or a page cannot name a font (decision E.111): `channel.json` refuses a `font` member, and the page checker reports a TTI `TF` line as a withdrawn command.
 
 A font library is a folder with a `fonts.txt` index listing fonts by title, each with its SHA-256 (`f`, the file name or address, the title and the checksum, separated by tabs). `third_party/noto/` is such a library. The windowed browser that chooses fonts from libraries is maintained in the separate neoteletext-browser repository.
 

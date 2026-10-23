@@ -49,10 +49,9 @@ pub enum Problem {
     BadFormField,
     /// A version 2.0 form.
     FormVersion2,
-    /// The withdrawn `FH` command.
+    /// The withdrawn `FH` command, or the withdrawn `TF` line (decision
+    /// E.111).
     WithdrawnCommand,
-    /// A `TF` line that is malformed or repeated (REQ-FNT-007).
-    BadFontLine,
     /// A `CU` line that could not be read (REQ-INT-006).
     BadCursorLine,
     /// An `IM` line that could not be read (REQ-INT-114).
@@ -233,7 +232,6 @@ pub fn check_page(page: &PageFile, options: &CheckOptions<'_>, out: &mut dyn FnM
             IssueKind::TooManyLinks | IssueKind::RepeatedKey => Problem::TooManyLinks,
             IssueKind::BadLinkTarget => Problem::BadLinkTarget,
             IssueKind::WithdrawnCommand => Problem::WithdrawnCommand,
-            IssueKind::BadFontLine => Problem::BadFontLine,
             IssueKind::BadCursorLine => Problem::BadCursorLine,
             IssueKind::BadModesLine => Problem::BadModesLine,
             IssueKind::BadLogLine(why) => Problem::BadLogLine(why),

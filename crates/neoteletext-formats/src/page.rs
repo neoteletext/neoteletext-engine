@@ -56,36 +56,6 @@ pub const FORM_ADDRESS_BYTES: usize = 128;
 pub const FORM_TOKEN_BYTES: usize = 64;
 /// Problems recorded on one page for the page checker.
 pub const PAGE_ISSUES: usize = 16;
-/// Bytes of a `TF` line's font address (REQ-FNT-007); a longer one makes
-/// the line malformed.
-pub const FONT_ADDRESS_BYTES: usize = 256;
-/// Hexadecimal digits of a `TF` line's SHA-256 (REQ-FNT-007).
-pub const FONT_CHECKSUM_DIGITS: usize = 64;
-
-/// The font a page names with a `TF` line (REQ-FNT-007). Pages from T42
-/// packets or a broadcast cannot name one.
-// Held inline, like every text of a page file: the crate allocates nothing,
-// so the large variant cannot be boxed.
-#[allow(clippy::large_enum_variant)]
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
-pub enum PageFont {
-    /// No `TF` line.
-    #[default]
-    None,
-    /// `TF,address,sha256`: the address as written, absolute or relative to
-    /// the page's own address, and the 64 hexadecimal digits of its SHA-256.
-    /// The address is checked by the strict address parser where it is
-    /// used.
-    Named {
-        /// The font's address.
-        address: Text<FONT_ADDRESS_BYTES>,
-        /// Its SHA-256, as written.
-        sha256: [u8; FONT_CHECKSUM_DIGITS],
-    },
-    /// A second `TF` line or a malformed one: the page names no font, and
-    /// is drawn in the font that applies without it.
-    Null,
-}
 /// Number of X/27/0 links (clause 9.6.1).
 pub const FASTEXT_LINKS: usize = 6;
 
@@ -547,7 +517,8 @@ pub enum IssueKind {
     RepeatedKey,
     /// An `LN` target that could not be read.
     BadLinkTarget,
-    /// The withdrawn `FH` command (Appendix C.2).
+    /// The withdrawn `FH` command (Appendix C.2), or the withdrawn `TF`
+    /// line, which named a page's font (decision E.111).
     WithdrawnCommand,
     /// A version 2.0 field definition, with no column or width
     /// (Appendix C.6).
@@ -562,8 +533,6 @@ pub enum IssueKind {
     BadField,
     /// An `OPTION` line with no SELECT or RADIO field before it.
     OptionWithoutField,
-    /// A `TF` line that is malformed or repeated (REQ-FNT-007).
-    BadFontLine,
     /// A `CU` line that could not be read (REQ-INT-006).
     BadCursorLine,
     /// An `IM` line that could not be read or names modes not defined
@@ -713,8 +682,6 @@ pub struct PageFile {
     pub issues: FixedVec<PageIssue, PAGE_ISSUES>,
     /// Bit w set when warning w was marked `CK,considered`.
     pub considered: u16,
-    /// The font the page names (REQ-FNT-007).
-    pub font: PageFont,
     /// The line of `PN`, or 0.
     pub line: u32,
 }
@@ -766,7 +733,6 @@ impl PageFile {
             form: Form::new(),
             issues: FixedVec::new(PageIssue { kind: IssueKind::BadField, line: 0 }),
             considered: 0,
-            font: PageFont::None,
             line: 0,
         }
     }
@@ -802,7 +768,6 @@ impl PageFile {
         self.form.interactive = false;
         self.issues.clear();
         self.considered = 0;
-        self.font = PageFont::None;
         self.line = 0;
     }
 

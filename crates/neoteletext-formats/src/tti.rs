@@ -13,10 +13,9 @@ use neoteletext_core::types::{PageAddress, SubCode};
 use crate::consts::{TTI_COMMAND_BYTES, TTI_FL_LINKS, TTI_FL_NO_LINK, TTI_FL_NULL_LINK, TTI_PACKED_CHARACTERS};
 use crate::item::{Capacity, Diagnostic, DiagnosticKind, Item, Reader, offset_of};
 use crate::page::{
-    CursorLine, DEFAULT_ADDRESS, EnhancementPacket, FONT_ADDRESS_BYTES, FONT_CHECKSUM_DIGITS, FastextLink, FieldKind,
-    FormField, FormMethod, FormOption, INPUT_MODE_BITS, IssueKind, LINK_ADDRESS_BYTES, LinkDestination, LinkKey,
-    LinkLine, ModesLine, NumberLink, PageFile, PageFont, PageFunction, RawBody, RawPacket, SERVICE_NAME_BYTES,
-    TextLink, WEB_MARK, Warning,
+    CursorLine, DEFAULT_ADDRESS, EnhancementPacket, FastextLink, FieldKind, FormField, FormMethod, FormOption,
+    INPUT_MODE_BITS, IssueKind, LINK_ADDRESS_BYTES, LinkDestination, LinkKey, LinkLine, ModesLine, NumberLink,
+    PageFile, PageFunction, RawBody, RawPacket, SERVICE_NAME_BYTES, TextLink, WEB_MARK, Warning,
 };
 use crate::text::Text;
 
@@ -31,7 +30,7 @@ const REGION_LAST: u32 = 0xF;
 const CODING_LAST: u32 = 0x7;
 
 /// The commands that belong to a page (REQ-INP-013, Appendices C and E,
-/// `CK` of REQ-CLI-006 and `TF` of REQ-FNT-007). `OP` is `OPTION`,
+/// `CK` of REQ-CLI-006, and `TF`, withdrawn by decision E.111). `OP` is `OPTION`,
 /// recognised by its first two letters.
 const PAGE_COMMANDS: [[u8; TTI_COMMAND_BYTES]; 19] = [
     *b"SC", *b"PS", *b"OL", *b"FL", *b"LN", *b"LK", *b"LT", *b"RE", *b"PF", *b"CK", *b"FD", *b"OP", *b"FS", *b"FP",
@@ -134,23 +133,6 @@ fn parse_number(text: &[u8], radix: u32) -> Option<u32> {
         value = value.checked_mul(radix)?.checked_add(digit)?;
     }
     Some(value)
-}
-
-/// The font of a `TF` line's arguments, `address,sha256` (REQ-FNT-007):
-/// the address is everything before the last comma, printable ASCII with
-/// no spaces, and the checksum is 64 hexadecimal digits.
-fn font_line(args: &[u8]) -> Option<PageFont> {
-    let comma = args.iter().rposition(|&byte| byte == b',')?;
-    let (address, sha256) = (args.get(..comma)?, args.get(comma.saturating_add(1)..)?);
-    if address.is_empty() || address.len() > FONT_ADDRESS_BYTES || !address.iter().all(u8::is_ascii_graphic) {
-        return None;
-    }
-    let sha256: [u8; FONT_CHECKSUM_DIGITS] = sha256.try_into().ok()?;
-    if !sha256.iter().all(u8::is_ascii_hexdigit) {
-        return None;
-    }
-    let (address, _) = Text::from_bytes(address);
-    Some(PageFont::Named { address, sha256 })
 }
 
 fn hex(text: &[u8]) -> Option<u32> {
@@ -437,21 +419,10 @@ impl TtiReader {
                     self.diagnostic(DiagnosticKind::CapacityExceeded { what: Capacity::Text }, out);
                 }
             }
-            b"FH" => self.issue(IssueKind::WithdrawnCommand, out),
-            b"TF" => self.font_line(args, out),
+            // `TF` named a page's font, withdrawn on 23 October 2026
+            // (decision E.111): reported, and nothing of it kept.
+            b"FH" | b"TF" => self.issue(IssueKind::WithdrawnCommand, out),
             _ => self.diagnostic(DiagnosticKind::UnknownCommand { command: name }, out),
-        }
-    }
-
-    /// `TF,address,sha256` (REQ-FNT-007): the page's font. A second line or
-    /// a malformed one makes the page's font null, and the page is still
-    /// read.
-    fn font_line(&mut self, args: &[u8], out: &mut dyn FnMut(Item<'_>)) {
-        if let (PageFont::None, Some(font)) = (self.page.font, font_line(args)) {
-            self.page.font = font;
-        } else {
-            self.page.font = PageFont::Null;
-            self.issue(IssueKind::BadFontLine, out);
         }
     }
 

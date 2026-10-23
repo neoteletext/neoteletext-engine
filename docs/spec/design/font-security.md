@@ -6,6 +6,8 @@ Written on 12 October 2026, before the fonts are built. It changed two requireme
 
 *Note of 18 October 2026:* the analysis was written for the browser, which was removed from this repository on that date and is maintained in the separate neoteletext-browser repository (decision E.76). In this repository its threats concern `neottx` and the web module: a font is read only in the confined fetcher or decoder of REQ-SEC-018, and the process that draws never parses one (REQ-FNT-003). What it says of the interface process, the profile directory and the font cache (REQ-FNT-009, withdrawn), the tuning screen, the status line and `neoteletext_browser` applies to that repository.
 
+*Note of 23 October 2026:* fonts named by a channel or a page were withdrawn (decision E.111, REQ-FNT-006 and REQ-FNT-007): what this analysis says of them, sections 3.4 and 3.5 above all, no longer applies; the threats of user-chosen fonts remain as written.
+
 ## 1. What is being protected
 
 | Asset | Why it matters |

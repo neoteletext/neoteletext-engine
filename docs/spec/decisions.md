@@ -1116,6 +1116,7 @@ Decided by the owner on 12 October 2026. This supersedes decision E.62 and amend
 
 *Note of 20 October 2026:* what this decision says of DRCS characters, pages, links or colour tables no longer applies; they are not decoded (decision E.95).
 
+*Note of 23 October 2026:* what this decision says of fonts named by the channel or the page, in items 3, 4 and 6, no longer applies (decision E.111).
 
 **E.73 — Discovery: an ordinary web address leads to a channel by pointing to it.** Moved out of the engine on 16 October 2026 (decision E.76), and withdrawn on 18 October 2026: it concerned only the browser, which was removed from this repository and is maintained in the separate neoteletext-browser repository.
 
@@ -1487,4 +1488,13 @@ Taken on 23 October 2026 while the owner was away, as the owner had instructed, 
 4. **Not built** (each listed in `TECH-DEBT.md`): sessions kept across runs (they live as long as the agent, so a restarted port registers again when the server next asks); RS256; federated sessions (`provider_key` and the other `provider_` parameters, and the permission they need); `Secure-Session-Skipped`; the `.well-known/device-bound-sessions` file and its `registering_origins`; `allowed_refresh_initiators` (read and ignored: every request the agent makes is the user's own navigation); the platform key stores of item 2.
 
 *Reason:* The requirement asks for the protocol where a port can keep such a key, and the engine's rules put every key store outside the libraries; building the protocol sans-IO lets every port with a key store use it, and the narrowings keep a draft's open points from widening what a server can make the agent do.
+
+**E.111 — A channel or a page no longer names a font; the user's fonts and the engine's own stay.**
+Taken on 23 October 2026 while the owner was away, as the owner had instructed, after NeoTeletext's owner said that day of the browser fetching fonts from channels (its requirements 3.5 and 5.7): "completely remove this, we will not be supporting alternate fonts".
+1. **Withdrawn: REQ-FNT-006 and REQ-FNT-007,** a channel's font in `channel.json` and a page's `TF` line. No receiver built on the engine fetches them: the browser is removing them, and `neottx` never did. Kept, they would hold an exception to REQ-WEB-014's rule against third-party content loaded into a page that nothing uses.
+2. **Removed with them:** the TTI reader's `TF` reading and `PageFont`, the writer's `TF` line, the checker's "bad font line", and the descriptor's `font` member with `Member::Font`, `FontAddress` and `FontSha256`. A `TF` line is now reported as a withdrawn command, as `FH` is, and a `font` member is refused as unknown, as REQ-WEB-024 refuses every unknown member; no channel the engine or the browser serves had one.
+3. **Kept, for the engine's own uses:** Bedstead (REQ-FNT-001), the font form and its reader (REQ-FNT-002), fonts the user names, as `neottx render --font` loads them, and font libraries (REQ-FNT-003 and REQ-FNT-004, amended to the user alone), one user font per character set (REQ-FNT-005, amended), drawing a loaded font (REQ-FNT-008), the converter (REQ-FNT-010), conformance (REQ-FNT-011) and the Noto-derived fonts (REQ-FNT-012). The owner's words concern what a browser fetches from channels; the user's own fonts are the engine's decisions E.72, E.75 and E.77, and are not withdrawn without the owner.
+4. **REQ-WEB-014** loses its one exception for third-party content; **REQ-WEB-024** loses the `font` member.
+
+*Reason:* The owner's instruction for the browser, which is the engine's only port that fetched channel fonts' kind of content; requirements no port meets, which widen a security rule, are withdrawn rather than kept.
 

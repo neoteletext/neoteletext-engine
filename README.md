@@ -18,7 +18,7 @@ Each crate's optional parts are Cargo features, on by default, so a port or a sm
 |---|---|
 | [docs/user-guide.md](docs/user-guide.md) | The `neottx` program: commands, inputs, outputs, profiles and settings. |
 | [docs/spec/design/porting.md](docs/spec/design/porting.md) | Writing a port of the library for a new display or device. |
-| [docs/spec/design/font-security.md](docs/spec/design/font-security.md) | The security analysis of the font strategy: Bedstead bundled, other 12 × 10 BDF fonts loaded when the user, channel or page names them. |
+| [docs/spec/design/font-security.md](docs/spec/design/font-security.md) | The security analysis of the font strategy: Bedstead bundled, other 12 × 10 BDF fonts loaded when the user names them. |
 | [docs/spec/design/capabilities.md](docs/spec/design/capabilities.md) | The compile-time capability features and the modern-classic profile: what keeps teletext's distinctive look and is kept, and what would dilute it and is switched off. |
 | [docs/spec/](docs/spec/README.md) | The specification: requirements, decisions, design and open questions. |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | The layers, their boundaries and allowed dependencies. |
@@ -49,4 +49,4 @@ The project is licensed under the MIT licence; see [LICENSE](LICENSE). Bundled t
 
 ## Licensing of data
 
-No standards documents, GPL code or broadcast recordings are kept in this repository. The one bundled font is Bedstead 3.261 (`third_party/bedstead/`, decision E.72), whose provenance, licence and checksum are recorded in `third_party/bedstead/PROVENANCE.md`; no other glyphs are kept here. Other fonts are 12 × 10 BDF files that the browser loads when the user, a channel or a page names them (area FNT).
+No standards documents, GPL code or broadcast recordings are kept in this repository. The one bundled font is Bedstead 3.261 (`third_party/bedstead/`, decision E.72), whose provenance, licence and checksum are recorded in `third_party/bedstead/PROVENANCE.md`; no other glyphs are kept here. Other fonts are 12 × 10 BDF files loaded when the user names them (area FNT); a channel or a page cannot name one (decision E.111).

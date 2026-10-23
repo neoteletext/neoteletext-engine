@@ -111,14 +111,12 @@ fn linked_numbers_must_be_shown() {
     assert_eq!(check(page), [(Severity::Warning, Problem::Warning(Warning::PageNumberNotShown), 4)]);
 }
 
-/// REQ-CLI-006, REQ-FNT-007: a malformed or repeated `TF` line is an error.
+/// REQ-CLI-006, decision E.111: a `TF` line is a withdrawn command, an
+/// error, however it is written.
 #[test]
-fn bad_font_lines_are_errors() {
+fn font_lines_are_withdrawn_commands() {
     let sha = "5ee6246b7f9bd197f47ce0741ea799a55ac08af775869a08c085803e02a3f14d";
-    let good = std::format!("PN,10000\nTF,f.bdf,{sha}\nOL,1,A\n");
-    assert!(check(good.as_bytes()).iter().all(|(_, problem, _)| *problem != Problem::BadFontLine));
-    let twice = std::format!("PN,10000\nTF,f.bdf,{sha}\nTF,g.bdf,{sha}\nOL,1,A\n");
-    assert!(check(twice.as_bytes()).contains(&(Severity::Error, Problem::BadFontLine, 3)));
-    let malformed = "PN,10000\nTF,f.bdf,123\nOL,1,A\n";
-    assert!(check(malformed.as_bytes()).contains(&(Severity::Error, Problem::BadFontLine, 2)));
+    for page in [std::format!("PN,10000\nTF,f.bdf,{sha}\nOL,1,A\n"), "PN,10000\nTF,f.bdf,123\nOL,1,A\n".into()] {
+        assert!(check(page.as_bytes()).contains(&(Severity::Error, Problem::WithdrawnCommand, 2)), "{page}");
+    }
 }

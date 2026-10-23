@@ -403,8 +403,8 @@ pub const SHA1_DIGEST_BYTES: usize = 20;
 /// The block length of SHA-1 (RFC 3174 section 4).
 pub const SHA1_BLOCK_BYTES: usize = 64;
 
-/// Bytes of a SHA-256 digest (FIPS 180-4 section 1), which names a font
-/// (REQ-FNT-006).
+/// Bytes of a SHA-256 digest (FIPS 180-4 section 1), which names a font of
+/// a library (REQ-FNT-004).
 pub const SHA256_DIGEST_BYTES: usize = 32;
 /// Bytes of a SHA-256 message block (FIPS 180-4 section 5.2.1).
 pub const SHA256_BLOCK_BYTES: usize = 64;

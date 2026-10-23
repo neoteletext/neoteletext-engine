@@ -1,6 +1,6 @@
 # F.21 Fonts (FNT)
 
-This area is the receiver's fonts (decision E.72): the bundled Bedstead font, and fonts in one 12 × 10 form loaded when the user, the channel or the page names them. The security analysis is `docs/spec/design/font-security.md`. Mosaics and G3 characters are not fonts and are not affected.
+This area is the receiver's fonts (decision E.72): the bundled Bedstead font, and fonts in one 12 × 10 form loaded when the user names them. A channel or a page cannot name a font (decision E.111). The security analysis is `docs/spec/design/font-security.md`. Mosaics and G3 characters are not fonts and are not affected.
 
 **REQ-FNT-001 — The bundled font.**
 The receiver shall carry one font, Bedstead 3.261, in the 5-dot by 9-line form of REQ-RND-010, drawn with the character rounding of REQ-RND-012. It is the default font of every page and the only font of the receiver's own drawing: row 0's status area, the receiver's row 24 messages and any confirmation. It is the only font compiled into the receiver; the Noto-derived fonts of REQ-FNT-012 are kept in the repository but loaded at run time (decision E.77). Its provenance and licence (CC0 1.0 and section 55 of the United Kingdom Copyright, Designs and Patents Act 1988) shall be recorded in `third_party/bedstead/PROVENANCE.md`, with the SHA-256 of its export, which the gate checks. A character it lacks, and that cannot be composed from a base letter and a spacing mark (decision E.26), shall be drawn as the placeholder of REQ-CHR-004.
@@ -27,6 +27,7 @@ A font may be loaded from a local file the user names, as `neottx render --font`
 
 Fonts and library indexes shall be read only in a confined process: the fetcher, or the decoder, of REQ-SEC-018. The process that draws the page shall never parse a font. It receives the font's bytes, whose SHA-256 it computes itself, and a glyph table of at most 1,024 entries, each a code point and ten or twenty 12-bit rows, all of one height (decision E.77), whose shape it checks (`docs/spec/design/font-security.md` section 3.1). When a font is named with a SHA-256, a file with any other checksum shall be refused.
 *Verification:* Tests that a font named by each of the three is fetched, that nothing else fetches one, and that a wrong checksum is refused.
+*Amended 23 October 2026 (decision E.111):* a channel or a page can no longer name a font, so a font is loaded only when the user names it, and none is fetched at another site on a channel's or page's behalf; what this requirement says of fonts named by the channel or the page no longer applies.
 
 **REQ-FNT-004 — Font libraries.**
 A font library is a folder, in the form of a channel's folder (REQ-WEB-023), holding an index named `fonts.txt`. The index has one entry per line, fields separated by one tab, and comments and empty lines as `contents.txt` has (REQ-WEB-025):
@@ -44,14 +45,13 @@ The index is at most 64 kilobytes and 1,000 lines; a line of an unknown kind is 
 The user chooses at most one font for each character set of REQ-FNT-011 (decision E.75 item 6). A character on a page's rows 1 to 24 shall be drawn from the first of: the page's font (REQ-FNT-007), the channel's font (REQ-FNT-006), the user's font for the character's own set, and Bedstead. When the user has set "always use my fonts", the user's font for the character's set, or Bedstead if none is chosen for it, shall be used whatever the channel or page names. A character the font in use lacks shall come from the user's font for its set, then from Bedstead, then the placeholder (REQ-CHR-004). The receiver's own drawing shall always use Bedstead (REQ-FNT-001).
 *Amended 13 October 2026* (decision E.75 item 6, issue #216): one user font per character set, replacing the single user font.
 *Verification:* Tests of each step of the order, that characters of two sets on one page come from the fonts chosen for their sets, of the user's override, of the fallback for a missing character, and that row 0's status area is drawn in Bedstead whatever font a page names.
+*Amended 23 October 2026 (decision E.111):* the page's font and the channel's are gone from the order: a character is drawn from the user's font for its own set, then Bedstead, then the placeholder; "always use my fonts" has nothing left to override.
 
-**REQ-FNT-006 — A channel's font.**
-`channel.json` (REQ-WEB-024) may have a member `font`, an object with `address`, a file name in the channel's folder or an address, and `sha256`, 64 hexadecimal digits; both are required, so a font at another address always carries its checksum (REQ-WEB-014). The font is fetched when the channel opens, after its settings and bundle, and the channel's pages are drawn in the font that would apply without it until it arrives.
-*Verification:* Tests of a channel with a font in its folder, one with a font elsewhere, and one whose font fails its checksum.
+**REQ-FNT-006 — Withdrawn: A channel's font.**
+Withdrawn on 23 October 2026 (decision E.111): no receiver built on the engine fetches a font a channel names. NeoTeletext's owner removed channel fonts from the browser on 23 October 2026 ("completely remove this, we will not be supporting alternate fonts", its requirements 3.5 and 5.7), and `neottx` never fetched one. `channel.json`'s `font` member is refused as an unknown member (REQ-WEB-024).
 
-**REQ-FNT-007 — A page's font.**
-A TTI page may name its font with a line `TF,address,sha256`, applying to the page or sub-page of the most recent `PN` line: the address of a font file, absolute or relative to the page's own address, and its SHA-256. Other TTI readers ignore the line as an unknown command. A page has at most one `TF` line; a second, a malformed line or a checksum that is not 64 hexadecimal digits makes the page's font null, with a diagnostic, and the page is still shown. A page from T42 packets or a broadcast cannot name a font. The TTI writer keeps the line, and the page checker (REQ-CLI-006) reports a malformed one as an error.
-*Verification:* Reader, writer and checker tests; tests that a page's font draws that page only.
+**REQ-FNT-007 — Withdrawn: A page's font.**
+Withdrawn on 23 October 2026 (decision E.111), for the same reason: a TTI page's `TF` line is reported as a withdrawn command, as `FH` is, and nothing of it is kept or written back; the page is read as if the line were absent.
 
 **REQ-FNT-008 — Drawing a loaded font.**
 A loaded font's character shall be drawn as its 12 × 10 bitmap with each line repeated in the 12 × 20 cell, and enlarged for double height, double width and double size as any character is (REQ-RND-011, REQ-RND-034). Foreground and background colours, flash, conceal, boxing, underline and the other attributes apply as to any character. The glyphs shall reach a decoder process as a bounded message of the pipe, at most one font per message, checked again on arrival. A font whose every row of every glyph is made of identical pixel pairs, a doubled 5- or 6-dot matrix, shall be drawn with the character rounding of decision E.13 whenever rounding is on, as the bundled glyphs are; any other loaded font shall be drawn without rounding.

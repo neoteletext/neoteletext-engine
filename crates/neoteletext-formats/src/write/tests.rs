@@ -168,8 +168,11 @@ fn page_sets_are_written_in_the_order_of_annex_b7() {
     assert_eq!(stream, expected);
 }
 
-/// REQ-FNT-007: the writer keeps a page's font line.
+/// Decision E.111: a withdrawn `TF` line is not kept, so not written back.
 #[test]
-fn the_font_line_round_trips() {
-    round_trip(b"PN,10000\nTF,https://fonts.example/f.bdf,5ee6246b7f9bd197f47ce0741ea799a55ac08af775869a08c085803e02a3f14d\nOL,1,A\n");
+fn a_withdrawn_font_line_is_not_written() {
+    let (pages, _) = read(b"PN,10000\nTF,https://fonts.example/f.bdf,5ee6246b7f9bd197f47ce0741ea799a55ac08af775869a08c085803e02a3f14d\nOL,1,A\n");
+    let mut written = Vec::new();
+    write_tti(&pages.iter().collect::<Vec<_>>(), &mut written).unwrap();
+    assert!(!String::from_utf8_lossy(&written).contains("TF,"), "{}", String::from_utf8_lossy(&written));
 }
