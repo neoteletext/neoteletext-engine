@@ -49,6 +49,16 @@ pub enum Item<'a> {
     SubtitlePage(PageAddress),
     /// Malformed input (REQ-INP-020).
     Diagnostic(Diagnostic),
+    /// A channel's log line for its author (REQ-INP-026): never part of a
+    /// page, and shown only in a developer's view.
+    Log {
+        /// The level and the checked text.
+        line: crate::log::LogLine<'a>,
+        /// The page of the most recent `PN` line, `None` before any.
+        page: Option<PageAddress>,
+        /// The line of the file, from 1.
+        line_number: u32,
+    },
 }
 
 /// A problem in the input and where it was found.

@@ -268,6 +268,8 @@ pub struct TtiReader {
     position: u64,
     page: PageFile,
     started: bool,
+    /// `LG` lines since the last `PN` (REQ-INP-026).
+    log_lines: usize,
     has_content: bool,
     file_description: Text<{ crate::page::DESCRIPTION_BYTES }>,
     file_source: Text<{ crate::page::DESCRIPTION_BYTES }>,
@@ -297,6 +299,7 @@ impl TtiReader {
             position: 0,
             page: PageFile::new(),
             started: false,
+            log_lines: 0,
             has_content: false,
             file_description: Text::new(),
             file_source: Text::new(),
@@ -354,6 +357,7 @@ impl TtiReader {
             b"PN" => self.page_number(args, out),
             b"DE" | b"DS" => self.description(name, args, out),
             b"CT" => {}
+            b"LG" => self.log_line(args, out),
             _ if !PAGE_COMMANDS.contains(&name) => {
                 self.diagnostic(DiagnosticKind::UnknownCommand { command: name }, out);
             }
@@ -451,9 +455,27 @@ impl TtiReader {
         }
     }
 
+    /// `LG,level,text`: a log line for the channel's author (REQ-INP-026),
+    /// passed on at once, at most `MAX_LOG_LINES_PER_PAGE` from a `PN`.
+    fn log_line(&mut self, args: &[u8], out: &mut dyn FnMut(Item<'_>)) {
+        if self.log_lines >= crate::log::MAX_LOG_LINES_PER_PAGE {
+            self.issue(IssueKind::TooManyLogLines, out);
+            return;
+        }
+        self.log_lines = self.log_lines.saturating_add(1);
+        match crate::log::read(args) {
+            Ok(line) => {
+                let page = self.started.then_some(self.page.address);
+                out(Item::Log { line, page, line_number: self.line_number });
+            }
+            Err(why) => self.issue(IssueKind::BadLogLine(why), out),
+        }
+    }
+
     fn page_number(&mut self, args: &[u8], out: &mut dyn FnMut(Item<'_>)) {
         self.emit(out);
         self.page.clear();
+        self.log_lines = 0;
         self.function_designation = None;
         self.page.description = self.file_description;
         self.page.source = self.file_source;
@@ -954,6 +976,7 @@ impl Reader for TtiReader {
         self.emit(out);
         self.started = false;
         self.has_content = false;
+        self.log_lines = 0;
     }
 }
 

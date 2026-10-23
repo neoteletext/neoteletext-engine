@@ -57,6 +57,10 @@ pub enum Problem {
     BadCursorLine,
     /// An `IM` line that could not be read (REQ-INT-114).
     BadModesLine,
+    /// An `LG` line that was refused, and why (REQ-INP-026).
+    BadLogLine(crate::log::LogRefused),
+    /// More `LG` lines than a page may carry (REQ-INP-026).
+    TooManyLogLines,
     /// A warning.
     Warning(Warning),
 }
@@ -232,6 +236,8 @@ pub fn check_page(page: &PageFile, options: &CheckOptions<'_>, out: &mut dyn FnM
             IssueKind::BadFontLine => Problem::BadFontLine,
             IssueKind::BadCursorLine => Problem::BadCursorLine,
             IssueKind::BadModesLine => Problem::BadModesLine,
+            IssueKind::BadLogLine(why) => Problem::BadLogLine(why),
+            IssueKind::TooManyLogLines => Problem::TooManyLogLines,
             IssueKind::FormNeedsConversion => Problem::FormVersion2,
             IssueKind::FieldOverlap
             | IssueKind::FieldOutsideRow

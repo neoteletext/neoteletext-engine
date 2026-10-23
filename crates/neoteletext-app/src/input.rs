@@ -222,6 +222,12 @@ pub fn load_for(options: &Options, wanted: Option<PageAddress>) -> Result<Sessio
             }
         }
         Item::TeletextEntry { pid, entry, .. } => languages.push((pid, entry.language)),
+        // REQ-INP-026: a channel's log lines are for its author, shown
+        // with -v and never on a page.
+        Item::Log { line, page, line_number } if verbose > 0 => {
+            let page = page.map_or_else(|| "before any page".to_owned(), |page| format!("page {:03X}", page.mpp()));
+            eprintln!("neottx: log {:?} at line {line_number}, {page}: {}", line.level, line.text);
+        }
         _ => {}
     })?;
     session.finish();

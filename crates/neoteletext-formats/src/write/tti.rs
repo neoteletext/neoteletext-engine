@@ -289,6 +289,21 @@ fn write_form_lines(page: &PageFile, out: &mut dyn Write) -> io::Result<()> {
     Ok(())
 }
 
+/// Writes a log line for a channel's author (REQ-INP-026), `LG,level,text`
+/// and a line end, refusing text the reader would refuse, so that a
+/// channel's tools write only lines a receiver takes.
+///
+/// # Errors
+/// [`io::ErrorKind::InvalidInput`] for refused text, or the writer's error.
+pub fn write_log_line(level: crate::log::LogLevel, text: &str, out: &mut dyn Write) -> io::Result<()> {
+    crate::log::check(text.as_bytes())
+        .map_err(|why| io::Error::new(io::ErrorKind::InvalidInput, std::format!("a log line refused: {why:?}")))?;
+    out.write_all(b"LG,")?;
+    out.write_all(&[level.letter(), b','])?;
+    out.write_all(text.as_bytes())?;
+    writeln!(out)
+}
+
 /// Writes sub-pages as one TTI file (REQ-INP-014): the first page's
 /// description and source at the top, then each sub-page from its `PN`
 /// line. Reading the file reproduces the pages.

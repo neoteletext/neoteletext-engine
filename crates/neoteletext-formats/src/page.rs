@@ -569,6 +569,10 @@ pub enum IssueKind {
     /// An `IM` line that could not be read or names modes not defined
     /// (REQ-INT-114).
     BadModesLine,
+    /// An `LG` line that was refused (REQ-INP-026).
+    BadLogLine(crate::log::LogRefused),
+    /// More `LG` lines than a page may carry (REQ-INP-026).
+    TooManyLogLines,
 }
 
 impl IssueKind {

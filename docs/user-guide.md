@@ -168,7 +168,7 @@ Every command accepts these options. Each one changes a setting of REQUIREMENTS.
 | `--no-rounding` | Turns character rounding off (REQ-RND-012). | Rounding on |
 | `--single-start-box` | Accepts a single Start Box code (decision E.17). | Two required |
 | `--pages N` | Pages and sub-pages kept in memory. | 4096 |
-| `-v`, `-vv` | Diagnostics; `-vv` adds the state machine trace (REQ-FSM-010). | Off |
+| `-v`, `-vv` | Diagnostics, and a channel's log lines (`LG`, REQ-INP-026); `-vv` adds the state machine trace (REQ-FSM-010). | Off |
 
 ### Profiles
 

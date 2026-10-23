@@ -123,7 +123,7 @@ pub fn in_transmission_order<'p>(pages: &[&'p PageFile]) -> std::vec::Vec<&'p Pa
 #[cfg(feature = "tti")]
 mod tti;
 #[cfg(feature = "tti")]
-pub use tti::write_tti;
+pub use tti::{write_log_line, write_tti};
 #[cfg(feature = "bdf")]
 mod font;
 #[cfg(feature = "bdf")]

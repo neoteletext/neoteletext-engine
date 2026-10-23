@@ -1470,3 +1470,12 @@ Taken on 23 October 2026 while the owner was away, as the owner had instructed, 
 
 *Reason:* The engine does the teletext (NeoTeletext's requirement 2.1): one reader of the Link Extension for every port. A label's control codes reached the receiver's row in the app's copy (fixed on 23 October 2026 before the move); the encoder's copy already kept them out.
 
+**E.109 — A channel logs for its author with `LG` lines in its TTI files.**
+Taken on 23 October 2026 while the owner was away, as the owner had instructed, for the "Console" tab NeoTeletext is adding to its developer tools, like a web browser's console; teletext has no scripts, so the channel itself must say what it wants its author to see.
+1. **The carriage is a TTI line, `LG,level,text`** (REQ-INP-026), not a kind of push message or a field of `contents.txt`. A TTI line travels everywhere a channel's pages do: in fetched page files, in pushed WebSocket text messages and server-sent `page` events (both TTI), and in local files. A push message kind would leave channels without push mute, and `contents.txt` is read once, when the channel opens. A WebSocket text message may hold `LG` lines and no page. A channel that pushes only T42 sends its log lines as a text message of their own.
+2. **The record:** a level of three, `E`, `W` or `I`, and UTF-8 text of 1 to 200 bytes with no control character and no bidirectional formatting character; anything else is refused whole, so a console never shows a line the reader cleaned into something the channel did not send. At most 16 lines from each `PN` line, so one file cannot flood a console.
+3. **Passed on at once, outside the page:** the TTI reader gives each as `Item::Log` (with the page of the last `PN` line and the line number) as it reads it; the page is unchanged, and other TTI readers ignore the line as an unknown command. A port's decoder that reads page files with `neoteletext-formats` receives them with no other change; NeoTeletext's decoder passes them to its console.
+4. **`neottx`** prints them on standard error with `-v`, `neottx check` reports refused and surplus lines as errors, and the engine's local test server sends one on page 100.
+
+*Reason:* The channel's own pages are the one carriage every channel has; strict, small records are what a console can show without being spoofed.
+

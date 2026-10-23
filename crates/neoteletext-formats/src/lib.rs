@@ -20,6 +20,8 @@
 //!   and the row 24 it draws (REQ-NAV-011).
 //! - [`detect`]: format detection and the [`detect::AutoReader`]
 //!   (REQ-INP-005), over the formats compiled in.
+//! - [`log`]: a channel's log lines, `LG` in a TTI file, for its author's
+//!   console (REQ-INP-026); the TTI reader gives them as [`Item::Log`].
 //! - `check` (feature `check`): the TTI page checker behind `neottx check`
 //!   (REQ-CLI-006).
 //! - `bdf` (feature `bdf`): the strict reader of the 12 by 10 and 12 by 20
@@ -77,6 +79,7 @@ pub mod dump;
 pub mod edittf;
 #[cfg(feature = "ep1")]
 pub mod ep1;
+pub mod log;
 pub mod page;
 #[cfg(feature = "tti")]
 pub mod tti;

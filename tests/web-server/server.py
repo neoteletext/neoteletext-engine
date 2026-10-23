@@ -47,6 +47,8 @@ PAGES = {
         "LN,G,300,Contact",
         "LN,Y,other:100,Other",
         "LN,I,100,",
+        # REQ-INP-026: a log line for the channel's author.
+        "LG,I,page 100 served by the local test server",
         "",
     ]),
     "200": "\r\n".join([
