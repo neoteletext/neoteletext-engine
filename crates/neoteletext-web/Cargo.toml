@@ -28,9 +28,18 @@ cookies = []
 # REQ-GEN-011 and REQ-GEN-016: `core::error::Error` for the error types,
 # which needs `core::fmt`.
 error-trait = []
+# Device Bound Session Credentials (REQ-WEB-017, decision E.110): sessions
+# bound to a key the port keeps on the device. Not default: a port without
+# protected key storage has no use for it, and the session store is memory
+# every agent would carry.
+dbsc = []
 # A port with the standard library: the blocking proxy handshake over any
 # `std::io` stream (REQ-WEB-032).
 std = []
+
+[[test]]
+name = "dbsc"
+required-features = ["dbsc"]
 
 [dev-dependencies]
 proptest = "1.7.0"

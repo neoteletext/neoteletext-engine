@@ -50,6 +50,7 @@ const BUILDS: &[Build] = &[
     Build { package: "neoteletext-web", features: "push" },
     Build { package: "neoteletext-web", features: "forms" },
     Build { package: "neoteletext-web", features: "cookies" },
+    Build { package: "neoteletext-web", features: "dbsc" },
     Build { package: "neoteletext-audio", features: "" },
     Build { package: "neoteletext-audio", features: "idl" },
     Build { package: "neoteletext-audio", features: "ima" },

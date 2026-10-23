@@ -363,6 +363,17 @@ pub fn parse_head(bytes: &[u8], on_set_cookie: &mut dyn FnMut(&[u8])) -> Result<
     Ok(head)
 }
 
+/// Calls `each` with the value of every field of a complete response head
+/// named `name` (compared without regard to case), in the order received;
+/// a head that does not parse gives none. For the fields [`parse_head`]
+/// does not keep, such as those of Device Bound Session Credentials.
+pub fn each_field(bytes: &[u8], name: &[u8], each: &mut dyn FnMut(&[u8])) {
+    let Ok(parsed) = head::parse(bytes) else { return };
+    for field in parsed.fields().filter(|field| field.name.eq_ignore_ascii_case(name)) {
+        each(field.value);
+    }
+}
+
 /// The empty line that ends a head (RFC 9112 section 2.1).
 const HEAD_END: [u8; 4] = *b"\r\n\r\n";
 

@@ -16,7 +16,8 @@
 //!
 //! - Foundation: [`consts`], [`bytes`], [`base64`], [`sha1`], [`json`];
 //! - addresses and origins: [`url`];
-//! - protocols: [`http`], [`ws`], [`sse`], [`cookie`];
+//! - protocols: [`http`], [`ws`], [`sse`], [`cookie`], and `dbsc` (feature
+//!   `dbsc`): Device Bound Session Credentials (REQ-WEB-017);
 //! - content: [`channel`], [`contents`], [`descriptor`], [`form`];
 //! - the machines: [`agent`] (the [`agent::UserAgent`]) and [`zxnet`]
 //!   (the [`zxnet::ZxnetFeed`]);
@@ -52,6 +53,8 @@ pub mod url;
 pub mod user_agent;
 
 pub mod cookie;
+#[cfg(feature = "dbsc")]
+pub mod dbsc;
 pub mod http;
 pub mod sse;
 pub mod ws;

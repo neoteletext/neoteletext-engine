@@ -17,7 +17,7 @@ neoteletext-core = { path = "../crates/neoteletext-core" }
 # target writes back.
 neoteletext-formats = { path = "../crates/neoteletext-formats", features = ["default", "std"] }
 neoteletext-slicer = { path = "../crates/neoteletext-slicer" }
-neoteletext-web = { path = "../crates/neoteletext-web", features = ["default"] }
+neoteletext-web = { path = "../crates/neoteletext-web", features = ["default", "dbsc"] }
 neoteletext-audio = { path = "../crates/neoteletext-audio" }
 neoteletext-input = { path = "../crates/neoteletext-input" }
 
@@ -100,6 +100,13 @@ bench = false
 [[bin]]
 name = "channel_log"
 path = "fuzz_targets/channel_log.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "dbsc"
+path = "fuzz_targets/dbsc.rs"
 test = false
 doc = false
 bench = false

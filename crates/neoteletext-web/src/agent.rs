@@ -508,6 +508,31 @@ pub enum Event<'a> {
     CookieRejected(CookieRejected),
     /// Not every matching cookie fitted in a request.
     CookiesTruncated,
+    /// A device-bound session changed (REQ-WEB-017, feature `dbsc`).
+    BoundSession {
+        /// The session's identifier, empty when a registration failed
+        /// before the server named one.
+        session: &'a str,
+        /// What happened.
+        change: BoundChange,
+    },
+}
+
+/// What happened to a device-bound session (REQ-WEB-017).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum BoundChange {
+    /// The server registered it: its cookies are kept bound to a key on
+    /// this device.
+    Registered,
+    /// Its cookies were refreshed with a proof of the key.
+    Refreshed,
+    /// It ended: the server said so, refused it, it lapsed, or its site's
+    /// data was cleared. Its key is deleted.
+    Ended,
+    /// A registration the server asked for was not made, or not accepted.
+    RegistrationFailed,
+    /// A refresh did not bring new cookies; the request it held went on.
+    RefreshFailed,
 }
 
 /// An output of the agent.
@@ -585,11 +610,28 @@ enum PageFile {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Purpose {
-    Descriptor { via_link: bool, channel: bool },
+    Descriptor {
+        via_link: bool,
+        channel: bool,
+    },
     FrontDoor,
-    Page { page: PageAddress, subcode: Option<SubCode>, file: PageFile },
+    Page {
+        page: PageAddress,
+        subcode: Option<SubCode>,
+        file: PageFile,
+    },
     Form,
     Contents,
+    /// Registers a device-bound session (REQ-WEB-017).
+    #[cfg_attr(not(feature = "dbsc"), allow(dead_code, reason = "made only with the feature `dbsc`"))]
+    Register,
+    /// Refreshes the device-bound session in `slot`; `retried` after the
+    /// server's 403 and a fresh challenge.
+    #[cfg_attr(not(feature = "dbsc"), allow(dead_code, reason = "made only with the feature `dbsc`"))]
+    Refresh {
+        slot: u8,
+        retried: bool,
+    },
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -756,6 +798,44 @@ pub struct UserAgent<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES
     push: PushConnection,
     subscribe_all: bool,
     subscribed: [Option<PageAddress>; MAX_SUBSCRIBED_PAGES],
+    /// The port's keys that never leave the device (REQ-WEB-017).
+    #[cfg(feature = "dbsc")]
+    device_keys: Option<&'m mut dyn crate::dbsc::DeviceKeys>,
+    /// Device-bound sessions and the exchanges they wait for.
+    #[cfg(feature = "dbsc")]
+    bound: bound::Bound,
+}
+
+#[cfg(feature = "dbsc")]
+mod bound;
+
+/// The longest session instructions a bound session's exchange reads.
+#[cfg(feature = "dbsc")]
+const BOUND_INSTRUCTIONS_LIMIT: usize = crate::dbsc::MAX_INSTRUCTIONS_BYTES;
+#[cfg(not(feature = "dbsc"))]
+const BOUND_INSTRUCTIONS_LIMIT: usize = 0;
+
+/// Without device-bound sessions (feature `dbsc`) nothing waits for one.
+#[cfg(not(feature = "dbsc"))]
+impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'_, R, SLOTS, COOKIE_BYTES> {
+    #[allow(clippy::unused_self, reason = "the same call as the feature's")]
+    const fn bound_next(&self, _: &mut Sink<'_>) -> Option<(Purpose, Url, Method, Site)> {
+        None
+    }
+
+    #[allow(clippy::unused_self, reason = "the same call as the feature's")]
+    const fn bound_defer(&self, _: Instant, _: Purpose, _: &Url, _: Method, _: Site) -> bool {
+        false
+    }
+
+    #[allow(clippy::unused_self, reason = "the same call as the feature's")]
+    const fn bound_head(&self, _: Instant, _: &Exchange, _: &ResponseHead, _: &mut Sink<'_>) {}
+
+    #[allow(clippy::unused_self, reason = "the same call as the feature's")]
+    const fn bound_complete(&self, _: Instant, _: &Exchange, _: &ResponseHead, _: &mut Sink<'_>) {}
+
+    #[allow(clippy::unused_self, reason = "the same call as the feature's")]
+    const fn bound_failed(&self, _: Purpose, _: &mut Sink<'_>) {}
 }
 
 fn event(sink: &mut Sink<'_>, event: Event<'_>) {
@@ -946,6 +1026,10 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             },
             subscribe_all: true,
             subscribed: [None; MAX_SUBSCRIBED_PAGES],
+            #[cfg(feature = "dbsc")]
+            device_keys: None,
+            #[cfg(feature = "dbsc")]
+            bound: bound::Bound::new(),
         }
     }
 
@@ -1233,7 +1317,9 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
     /// Starts the next request when the fetch connection is free.
     fn dispatch(&mut self, now: Instant, sink: &mut Sink<'_>) {
         while self.fetch.exchange.is_none() {
-            let (purpose, url, method, site) = if let Some((url, via_link, channel)) = self.pending_descriptor.take() {
+            let (purpose, url, method, site) = if let Some(bound) = self.bound_next(sink) {
+                bound
+            } else if let Some((url, via_link, channel)) = self.pending_descriptor.take() {
                 let site = if via_link { Site::CrossServiceNavigation } else { Site::SameService };
                 (Purpose::Descriptor { via_link, channel }, url, Method::Get, site)
             } else if let Some(url) = self.front_door.take() {
@@ -1306,6 +1392,11 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             } else {
                 return;
             };
+            // REQ-WEB-017: a request that would go without a bound
+            // session's cookie waits for the session's refresh.
+            if self.bound_defer(now, purpose, &url, method, site) {
+                continue;
+            }
             self.next_fetch_at = Instant(now.0.saturating_add(self.config.fetch_interval_us));
             if let Some(failure) = self.refusal(now, &url) {
                 Self::report_refusal(ConnectionId::Fetch, &url, failure, sink);
@@ -1356,7 +1447,10 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
 
     fn write_request(&mut self, now: Instant, exchange: &Exchange, sink: &mut Sink<'_>) -> Result<usize, Overflow> {
         let (seconds, _) = self.seconds(now);
-        let body_len = if exchange.method == Method::Post { self.form.body_len } else { 0 };
+        // Only a form's request has a body; the bound sessions' requests
+        // are posted empty (REQ-WEB-017).
+        let body_len =
+            if exchange.method == Method::Post && exchange.purpose == Purpose::Form { self.form.body_len } else { 0 };
         let mut writer = Writer::new(self.buffers.fetch_request);
         http::write_request_line(&mut writer, exchange.method, exchange.url.target())?;
         http::write_host(&mut writer, &exchange.url)?;
@@ -1375,12 +1469,16 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             }
         }
         if exchange.method == Method::Post {
-            http::write_header(&mut writer, header::CONTENT_TYPE, media::FORM_URLENCODED)?;
+            if exchange.purpose == Purpose::Form {
+                http::write_header(&mut writer, header::CONTENT_TYPE, media::FORM_URLENCODED)?;
+            }
             writer.put(header::CONTENT_LENGTH)?;
             writer.put(b": ")?;
             writer.decimal(body_len as u64)?;
             writer.put(CRLF)?;
         }
+        #[cfg(feature = "dbsc")]
+        bound::write_headers(&mut self.bound, self.device_keys.as_deref_mut(), exchange, &mut writer)?;
         let path = exchange.url.path();
         if write_cookie_header(
             cookie_store(&mut self.jar, &mut self.port_cookies),
@@ -1463,7 +1561,7 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
         // retry a GET once on a new connection (RFC 9112 section 9.3.1).
         // A form submission is never repeated without the viewer (RFC 9110
         // section 9.2.2).
-        let idempotent = exchange.purpose != Purpose::Form;
+        let idempotent = !matches!(exchange.purpose, Purpose::Form | Purpose::Register | Purpose::Refresh { .. });
         if idempotent && exchange.sent && exchange.reused && !exchange.retried && !self.fetch.started {
             if let Some(current) = &mut self.fetch.exchange {
                 current.retried = true;
@@ -1574,8 +1672,10 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             // than the page limit publishes page files instead.
             Purpose::Page { .. } | Purpose::Form | Purpose::FrontDoor => self.config.page_limit,
             Purpose::Contents => crate::contents::MAX_BYTES,
+            Purpose::Register | Purpose::Refresh { .. } => BOUND_INSTRUCTIONS_LIMIT,
         }
         .min(self.buffers.body.len());
+        self.bound_head(now, &exchange, &head, sink);
         match BodyDecoder::new(head.framing, limit) {
             Ok(decoder) => {
                 self.fetch.response = Some(head);
@@ -1616,6 +1716,7 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
                 self.form.phase = FormPhase::Idle;
                 event(sink, Event::SubmissionFailed { status: None, failure: Some(failure) });
             }
+            Purpose::Register | Purpose::Refresh { .. } => self.bound_failed(purpose, sink),
         }
     }
 
@@ -1651,6 +1752,12 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
         }
         let status = head.status;
         self.report_exchange(now, &exchange, status, sink);
+        // A bound session's exchange is never redirected (REQ-WEB-017).
+        if matches!(exchange.purpose, Purpose::Register | Purpose::Refresh { .. }) {
+            self.fetch.exchange = None;
+            self.bound_complete(now, &exchange, &head, sink);
+            return;
+        }
         let redirect = matches!(
             status,
             STATUS_MOVED_PERMANENTLY
@@ -1670,8 +1777,9 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
         let body = self.buffers.body.get(..self.fetch.body_len).unwrap_or(&[]);
         let secure = exchange.url.is_secure();
         match exchange.purpose {
-            // complete_channel handled every one of these.
-            Purpose::FrontDoor | Purpose::Contents => {}
+            // complete_channel handled every one of these, and
+            // bound_complete the bound sessions'.
+            Purpose::FrontDoor | Purpose::Contents | Purpose::Register | Purpose::Refresh { .. } => {}
             Purpose::Descriptor { via_link, channel } => {
                 // A channel's settings may come as any type REQ-WEB-027
                 // accepts for them; a service's descriptor only as JSON.

@@ -200,6 +200,7 @@ The Web user agent (L7) sits beside the lower layers rather than above them in t
   - the contents file's reader (`contents`, REQ-WEB-025);
   - push subscriptions;
   - form encoding and submission;
+  - Device Bound Session Credentials (`dbsc`, and the agent's `agent::bound`, feature `dbsc`, REQ-WEB-017): the registration and challenge headers, the session instructions, the proofs and the session store; the keys are the port's;
   - the zxnet live feed.
 
   It is fed received bytes, the time and requests. It produces bytes to send, timers, TTI or T42 bytes for Ingress, and events.
@@ -215,7 +216,7 @@ The Web user agent (L7) sits beside the lower layers rather than above them in t
   - `Clock`;
   - `Keys`;
   - `CookieStorage`;
-  - `DeviceKey` (Phase 2).
+  - `DeviceKeys` (`neoteletext-web::dbsc`, feature `dbsc`, Phase 2): P-256 keys that never leave the device, made, used to sign and deleted by the port.
 - **Must not know about:** any implementation.
 
 ### L9 Applications and ports — `neoteletext-app`, `neoteletext-cli`, the WebAssembly host, `neoteletext-ffi`, users' ports
@@ -452,7 +453,7 @@ Decision E.61 makes each crate's optional areas Cargo features, all on by defaul
 |---|---|
 | `neoteletext-core` | Default (decision E.105): `level15`, `level25`, `nonspacing-attributes`, `level25-32colors`, `level35-32colors`, `render`, `bedstead`, `viewer`, `forms`, `extended-sets` (neoteletext's own character sets and the joining pass, decision E.78). Not default: the capabilities `objects`, `side-panels`, `additional-flash-functions` (decision E.71), and the profile `modern-classic` |
 | `neoteletext-formats` | `transport`, `sliced`, `pages`, `tti`, `ep1`, `edittf`, `dump`, `check`, `bdf` (the font reader of REQ-FNT-002), and `std` (not default) |
-| `neoteletext-web` | `push`, `forms`, `cookies` |
+| `neoteletext-web` | `push`, `forms`, `cookies`; not default: `dbsc` (REQ-WEB-017, decision E.110), `error-trait` and `std` |
 | `neoteletext-app` | `live`, `slice`, `write-text` (the text-to-page writer and its `unicode-bidi` dependency) |
 | `neoteletext-audio` | `idl`, `ima`, and `encode` (not default) |
 | `neoteletext-cli` | `view`, `live`, `slice`, `write-text`, `sound` |

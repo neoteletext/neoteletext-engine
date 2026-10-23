@@ -217,3 +217,12 @@ The browser lives only in `~/devel/neoteletext-browser`. Left over:
 ## GitHub issues not opened (23 October 2026)
 
 The round of 23 October 2026 (decisions E.106 onward) could not open GitHub issues: the permission system refused writes to GitHub while the owner was away. Each piece of work is recorded in its decision and in `IMPLEMENTATION-LOG.md`; issues are owed for: the qrkeyboard waker (E.106), the proxy's CONNECT reply, flash rendering, channel log records, Device Bound Session Credentials, channel-named fonts, row 24 and the keys' destinations, and the exported sub-page bound.
+
+## Device Bound Session Credentials (decision E.110, 23 October 2026)
+
+Built behind `neoteletext-web`'s feature `dbsc`; owed:
+- **Platform key stores** for a port (macOS Secure Enclave or Keychain, Windows TPM through CNG, Linux Secret Service): the libraries proposed in E.110 item 2 need the owner's approval by name before any port builds them.
+- **Sessions across runs:** an export and import of `Sessions`, as the cookie jar has, for a port to keep with its cookies.
+- **Draft features not built:** RS256, federated sessions, `Secure-Session-Skipped`, `.well-known/device-bound-sessions`, `allowed_refresh_initiators`, attribute matching of credentials (needs the `Cookies` interface to show attributes), redirects of registration.
+- **The draft moves:** recheck the Editor's Draft before the browser ships the feature, and amend E.110.
+- **A real server:** no public server was tried; Google's test pages need a browser that sends Chrome's headers.

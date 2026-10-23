@@ -134,6 +134,9 @@ pub mod header {
     pub const ACCEPT_ENCODING: &[u8] = b"Accept-Encoding";
     /// `Cookie` (RFC 6265bis section 5.7).
     pub const COOKIE: &[u8] = b"Cookie";
+    /// RFC 9110 section 11.6.2: sent only with a device-bound session's
+    /// registration, when the server gave the value (REQ-WEB-017).
+    pub const AUTHORIZATION: &[u8] = b"Authorization";
     /// `If-None-Match` (RFC 9110 section 13.1.2).
     pub const IF_NONE_MATCH: &[u8] = b"If-None-Match";
     /// `If-Modified-Since` (RFC 9110 section 13.1.3).
