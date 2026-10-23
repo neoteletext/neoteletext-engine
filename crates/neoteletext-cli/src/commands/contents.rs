@@ -6,6 +6,7 @@
 //! titles are taken from the decoded pages. Nothing is written but
 //! standard output and standard error.
 
+use super::io_failure;
 use crate::ansi::{MosaicStyle, plain};
 use neoteletext_app::input::{self, Options};
 use neoteletext_app::sandbox::{self, Policy};
@@ -130,7 +131,7 @@ fn load(options: &Options, path: &Path, file: ChannelFile, modified: Option<Syst
 /// `neottx contents FOLDER`.
 pub fn contents(options: &Options) -> Result<(), Failure> {
     let folder = Path::new(&options.input);
-    let listing = std::fs::read_dir(folder).map_err(|error| (exit::INPUT, format!("{}: {error}", folder.display())))?;
+    let listing = std::fs::read_dir(folder).map_err(|error| io_failure(folder, error))?;
     let mut files: Vec<(PathBuf, ChannelFile, Option<SystemTime>)> = Vec::new();
     for entry in listing.flatten() {
         // Only the folder's own files: a subfolder is another channel.

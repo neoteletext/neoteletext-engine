@@ -1,6 +1,7 @@
 //! `neottx render` (REQ-RND-007): one page, or all, as image files.
 
 use super::font::read_table;
+use super::io_failure;
 use super::{ImageFormat, Selection, grid_of, page_file_name, parse_selection, sandbox, scale_for, selected};
 use crate::args::RasterArgs;
 use crate::frame::Frame;
@@ -30,7 +31,7 @@ pub fn render(
     let glyphs = GlyphSet::bedstead().with_fonts(loaded, [None; FONT_SET_COUNT]);
     let pages = selected(&session, selection)?;
     let directory: PathBuf = if selection == Selection::All {
-        std::fs::create_dir_all(output).map_err(|error| (exit::INPUT, format!("{}: {error}", output.display())))?;
+        std::fs::create_dir_all(output).map_err(|error| io_failure(output, error))?;
         output.to_path_buf()
     } else {
         output
@@ -60,7 +61,7 @@ pub fn render(
         } else {
             output.to_path_buf()
         };
-        std::fs::write(&target, bytes).map_err(|error| (exit::INPUT, format!("{}: {error}", target.display())))?;
+        std::fs::write(&target, bytes).map_err(|error| io_failure(&target, error))?;
     }
     Ok(())
 }

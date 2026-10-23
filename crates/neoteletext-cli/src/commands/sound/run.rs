@@ -4,6 +4,7 @@
 use super::SoundOptions;
 use super::wave::read_wave;
 use crate::bounded_file::read_bounded;
+use crate::commands::io_failure;
 use neoteletext_app::sandbox::{self, Policy};
 use neoteletext_app::{Failure, exit};
 use neoteletext_audio::Codec;
@@ -40,7 +41,7 @@ pub fn sound(options: &SoundOptions, input: &Path, output: &Path, no_sandbox: bo
         return Err((exit::USAGE, "the channel is 0 to 3, the gain 0 to 100 and the repeat at least 1".to_owned()));
     }
     let bytes = read_bounded(input, WAV_MAX_FILE_BYTES)?;
-    let mut out = File::create(output).map_err(|error| (exit::INPUT, format!("{}: {error}", output.display())))?;
+    let mut out = File::create(output).map_err(|error| io_failure(output, error))?;
     // Every file is open (REQ-SEC-017).
     sandbox::apply(Policy { writable_directory: None, network: false, readable: &[] }, no_sandbox)
         .map_err(|message| (exit::INPUT, message))?;
@@ -77,9 +78,9 @@ pub fn sound(options: &SoundOptions, input: &Path, output: &Path, no_sandbox: bo
         let packets = live_packets(&sound, &command, &wave.samples, options.repeat, options.pace)
             .map_err(|message| (exit::INPUT, format!("{}: {message}", input.display())))?;
         for packet in &packets {
-            out.write_all(&packet.bytes).map_err(|error| (exit::INPUT, format!("{}: {error}", output.display())))?;
+            out.write_all(&packet.bytes).map_err(|error| io_failure(output, error))?;
         }
-        out.flush().map_err(|error| (exit::INPUT, format!("{}: {error}", output.display())))?;
+        out.flush().map_err(|error| io_failure(output, error))?;
         eprintln!(
             "{}: {} samples at {} Hz sent live {} times, {} packets at {} a second for page {page:03X}",
             output.display(),
@@ -101,12 +102,12 @@ pub fn sound(options: &SoundOptions, input: &Path, output: &Path, no_sandbox: bo
         // A repeat keeps its record ids: the same records again.
         let (packets, _) = packets(0, record_id, &records);
         for packet in &packets {
-            out.write_all(&packet.bytes).map_err(|error| (exit::INPUT, format!("{}: {error}", output.display())))?;
+            out.write_all(&packet.bytes).map_err(|error| io_failure(output, error))?;
         }
         written = written.saturating_add(packets.len());
         record_id = 0;
     }
-    out.flush().map_err(|error| (exit::INPUT, format!("{}: {error}", output.display())))?;
+    out.flush().map_err(|error| io_failure(output, error))?;
     eprintln!(
         "{}: {} samples at {} Hz, {} bytes of {}, {written} packets for page {page:03X}",
         output.display(),

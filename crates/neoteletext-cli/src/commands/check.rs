@@ -1,6 +1,7 @@
 //! `neottx check` (REQ-CLI-006): the page checker, with the service
 //! descriptor its links are resolved against.
 
+use super::io_failure;
 use neoteletext_app::input;
 use neoteletext_app::{Failure, exit};
 use neoteletext_formats::Item;
@@ -31,7 +32,7 @@ pub fn check(files: &[PathBuf], descriptor: Option<&Path>) -> Result<(), Failure
     let options = CheckOptions { services: descriptor.map(|_| names.as_slice()) };
     let mut errors = 0u32;
     for file in files {
-        let mut input = File::open(file).map_err(|error| (exit::INPUT, format!("{}: {error}", file.display())))?;
+        let mut input = File::open(file).map_err(|error| io_failure(file, error))?;
         let mut reader = neoteletext_formats::tti::TtiReader::default();
         input::pump(&mut input, &mut reader, &mut |item| {
             if let Item::Page(page) = item {

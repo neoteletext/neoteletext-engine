@@ -1,6 +1,7 @@
 //! `neottx qr` (REQ-CLI-012): text, such as a qrkeyboard join address, as
 //! a QR code in a TTI page's mosaics.
 
+use super::io_failure;
 use super::page_number;
 use neoteletext_app::{Failure, exit};
 use neoteletext_qrkeyboard::qr::{Correction, Matrix};
@@ -47,7 +48,7 @@ fn qr_page(text: &str, page: u16, row: usize, column: usize) -> Result<String, F
 /// `neottx qr`: writes the QR of `text` as a TTI page.
 pub fn qr(text: &str, page: &str, row: usize, column: usize, output: &Path) -> Result<(), Failure> {
     let tti = qr_page(text, page_number(page)?, row, column)?;
-    std::fs::write(output, tti).map_err(|error| (exit::INPUT, format!("{}: {error}", output.display())))
+    std::fs::write(output, tti).map_err(|error| io_failure(output, error))
 }
 
 #[cfg(test)]

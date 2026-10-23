@@ -3,6 +3,7 @@
 //! sandboxed, only where the conversion is exact. `neottx font sets`
 //! (REQ-FNT-011, decision E.75): the character sets a font conforms for.
 
+use super::io_failure;
 use crate::bounded_file::read_bounded;
 use neoteletext_app::sandbox::{self, Policy};
 use neoteletext_app::{Failure, exit};
@@ -24,7 +25,7 @@ use std::path::Path;
 pub fn convert_font(input: &Path, output: &Path, map: Option<&Path>, no_sandbox: bool) -> Result<(), Failure> {
     let source = read_bounded(input, SOURCE_FONT_MAX_FILE_BYTES)?;
     let map_text = map.map(|path| read_bounded(path, FONT_MAP_MAX_FILE_BYTES)).transpose()?;
-    let mut out = File::create(output).map_err(|error| (exit::INPUT, format!("{}: {error}", output.display())))?;
+    let mut out = File::create(output).map_err(|error| io_failure(output, error))?;
     // Every file is open: nothing that follows needs the file system or the
     // network (REQ-SEC-017).
     sandbox::apply(Policy { writable_directory: None, network: false, readable: &[] }, no_sandbox)
@@ -54,9 +55,7 @@ pub fn convert_font(input: &Path, output: &Path, map: Option<&Path>, no_sandbox:
     let mut written = Vec::new();
     write_font(&mut written, &text, table.get(..count).unwrap_or(&[]))
         .map_err(|error| (exit::INPUT, format!("{name}: {error}")))?;
-    out.write_all(&written)
-        .and_then(|()| out.flush())
-        .map_err(|error| (exit::INPUT, format!("{}: {error}", output.display())))?;
+    out.write_all(&written).and_then(|()| out.flush()).map_err(|error| io_failure(output, error))?;
     eprintln!("{}: {count} characters from a {} x {} cell", output.display(), font.width, font.height);
     Ok(())
 }

@@ -168,6 +168,12 @@ fn scale_for(raster_args: &RasterArgs, area: Option<TextArea>, (width, height): 
     Scale { x: factor, y: factor, aspect: raster_args.aspect }
 }
 
+/// The failure to read or write `path`: the input exit status and the
+/// path with the error, as every command words it (REQ-CLI-005).
+pub(crate) fn io_failure(path: &Path, error: impl std::fmt::Display) -> Failure {
+    (exit::INPUT, format!("{}: {error}", path.display()))
+}
+
 /// A file name for a page, from validated parts only (REQ-SEC-010).
 fn page_file_name(key: PageKey, extension: &str) -> String {
     let name = format!("P{}-{:04X}.{extension}", String::from_utf8_lossy(&key.address.ascii()), key.subcode.value());
