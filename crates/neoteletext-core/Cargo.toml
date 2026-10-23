@@ -135,6 +135,10 @@ name = "performance"
 required-features = ["level25", "bedstead"]
 
 [[test]]
+name = "flash_cost"
+required-features = ["level25", "bedstead"]
+
+[[test]]
 name = "reporting"
 # Its pages invoke objects, which are not default (decision E.105).
 required-features = ["level15", "level25", "viewer", "objects"]

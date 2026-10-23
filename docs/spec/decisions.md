@@ -1445,3 +1445,19 @@ Taken on 23 October 2026 while the owner was away, as the owner had instructed, 
 
 *Reason:* The development process's rule on waiting (section 6), and REQ-INT-008's reason: a key or a "finish" goes at once. A readiness library would be one more dependency for one socket.
 
+**E.107 — A flashing page is redrawn by the rows the tracker reports; no second row renderer.**
+Taken on 23 October 2026 while the owner was away, as the owner had instructed, after NeoTeletext measured its decoder at 0.7 to 1.1 per cent and its trusted core at 1.4 to 1.6 per cent of one processor with eight flashing pages shown; its decoder builds the grid again and draws all 25 rows at every change of a flash rate's phase.
+1. **The engine already has the renderer asked for:** `ChangeTracker::changed_rows` reports exactly the rows whose look differs between two flash phases (REQ-RND-032), and `render_screen` draws only the rows of a mask (REQ-RND-019, REQ-RND-022). No second one is added.
+2. **Measured** by `flash_cost` (`crates/neoteletext-core/tests/flash_cost.rs`, release build, this computer under a load average of about 20, the fastest of 15 batches of 500 phase changes), per change of phase on a page whose rows 1 to 23 hold text:
+
+   | Rows flashing | Grid built again, all rows drawn (NeoTeletext's way) | All rows drawn | Tracked rows drawn | Grid built again, tracked rows drawn |
+   |---|---|---|---|---|
+   | 1 | 814 to 815 µs | 753 to 763 µs | 65 to 67 µs | 116 to 121 µs |
+   | 3 | 809 to 838 µs | 766 to 796 µs | 127 to 128 µs | 179 to 265 µs |
+   | 23 | 819 to 835 µs | 765 to 782 µs | 729 to 736 µs | 785 to 792 µs |
+
+   The tracker costs 34 to 38 µs and building the grid 50 to 53 µs of each. The measurement checks that the tracker reported exactly the flashing rows.
+3. **What it means for a port:** with eight pages each flashing one row at slow flash (two changes a second), drawing every row costs about 13 ms a second (1.3 per cent of one processor), drawing the tracked rows about 2 ms (0.2 per cent): about seven times less for a page with a few flashing rows, nothing for a page whose every row flashes. A port that uses it keeps the frame it last drew, and sends on only the rows drawn; what a port's own display costs (NeoTeletext's core) falls with the rows it receives, which the engine does not measure.
+
+*Reason:* The development process asks to measure before building and to keep the simpler code when it suffices; the code that redraws only changed rows exists and is measured to give the gain.
+

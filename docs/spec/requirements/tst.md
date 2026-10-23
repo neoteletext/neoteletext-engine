@@ -226,7 +226,10 @@ They shall also report hardware-independent drawing costs on the build machine, 
 - the average number of machine instructions per cell-line draw, where the platform's performance counters allow it.
 
 These figures let each port estimate its own budget. Redrawing every row of every field, for example, takes 500,000 cell-line draws per second.
+
+They shall also report what a change of flash phase costs on a page with one, three and every row flashing, in the resolved colour mode: building the grid again and drawing every row, drawing every row, and drawing only the rows the change tracker reports (REQ-RND-032), with and without building the grid again, and the tracker's own cost. The measurement shall check that the tracker reported exactly the flashing rows, so that it is known to exercise the drawing of changed rows.
 *Verification:* Test.
+*Amended 23 October 2026 (decision E.107):* the cost of a change of flash phase.
 
 **REQ-TST-060 — Synthetic signal tests.**
 A test signal generator shall produce sampled teletext lines to EN 300 706 at each sample rate of REQ-SLC-002, with controllable:
