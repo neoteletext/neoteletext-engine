@@ -613,6 +613,39 @@ fn form_destinations_are_restricted() {
     assert!(has_event(&harness.take(), "SubmissionSucceeded { status: 204 }"));
 }
 
+/// Finding F-16 (decision E.112; the review's probe E): a form sent to a
+/// permitted origin that answers 307 or 308 is not sent again to a third
+/// origin, which would get the viewer's values and the token with no check
+/// and no confirmation. A 307 within the target's origin is followed.
+#[test]
+#[cfg(feature = "forms")]
+fn a_form_redirected_with_its_method_kept_stays_on_its_target_origin() {
+    for status in ["307 Temporary Redirect", "308 Permanent Redirect"] {
+        let mut harness = plain_service();
+        harness.replay().resolve.insert("third.example".to_string(), PUBLIC);
+        let away = response(status, &["Location: http://third.example/collect"], b"");
+        harness.replay().reply("forms.example:80", Reply::Bytes(away));
+        harness.replay().reply("third.example:80", Reply::Bytes(response("204 No Content", &[], b"")));
+        let fields = [("a", "1")];
+        harness.input(Input::Submit(submission("http://tt.example/p/400", "http://forms.example/in", &fields)));
+        harness.input(Input::ConfirmSubmission(true));
+        let records = harness.take();
+        assert!(has_event(&records, "SubmissionRefused(Origin)"), "{status}: {records:?}");
+        assert!(harness.replay().requests_to("third.example:80").is_empty(), "{status}: nothing to the third origin");
+    }
+    // Within the target's origin, the method and body are kept.
+    let mut harness = plain_service();
+    let along = response("307 Temporary Redirect", &["Location: /in/again"], b"");
+    harness.replay().reply("forms.example:80", Reply::Bytes(along));
+    harness.replay().reply("forms.example:80", Reply::Bytes(response("204 No Content", &[], b"")));
+    let fields = [("a", "1")];
+    harness.input(Input::Submit(submission("http://tt.example/p/400", "http://forms.example/in", &fields)));
+    harness.input(Input::ConfirmSubmission(true));
+    assert!(has_event(&harness.take(), "SubmissionSucceeded { status: 204 }"));
+    let last = harness.replay().requests_to("forms.example:80").last().unwrap().clone();
+    assert!(String::from_utf8_lossy(&last).starts_with("POST /in/again HTTP/1.1"));
+}
+
 #[test]
 #[cfg(feature = "forms")]
 fn form_responses() {

@@ -3,7 +3,7 @@
 
 use neoteletext_core::types::Instant;
 
-use super::{Event, Exchange, Failure, Link, Output, Purpose, Sink, UserAgent, event};
+use super::{Event, Exchange, Failure, FormPhase, Link, Output, Purpose, Sink, UserAgent, event};
 use crate::channel::{self, ChannelFile};
 use crate::consts::{
     MAX_REDIRECTS, MAX_RETRY_AFTER_US, MICROSECONDS_PER_SECOND, STATUS_FOUND, STATUS_MOVED_PERMANENTLY, STATUS_OK,
@@ -11,6 +11,7 @@ use crate::consts::{
 };
 use crate::cookie::Site;
 use crate::descriptor::Descriptor;
+use crate::form::FormRefused;
 use crate::http::{MediaType, Method, ResponseHead};
 use crate::port::{ConnectionId, RandomSource};
 use crate::url::{Url, UrlError};
@@ -129,6 +130,19 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
         // RFC 9110 section 15.4: 303 always becomes GET, and 301 and 302
         // do for POST, as browsers do; 307 and 308 keep the method.
         let status = head.status;
+        // A form whose method and body a 307 or 308 would keep is not sent
+        // to any origin but its target's: the viewer's values and token
+        // would reach an origin neither checked nor confirmed (REQ-SEC-009,
+        // REQ-WEB-008, decision E.112, finding F-16).
+        let method_kept = status == STATUS_TEMPORARY_REDIRECT || status == STATUS_PERMANENT_REDIRECT;
+        if exchange.purpose == Purpose::Form
+            && method_kept
+            && !self.form.target.is_some_and(|target| next.origin().same(&target.origin()))
+        {
+            self.form.phase = FormPhase::Idle;
+            event(sink, Event::SubmissionRefused(FormRefused::Origin));
+            return;
+        }
         if status == STATUS_SEE_OTHER
             || ((status == STATUS_MOVED_PERMANENTLY || status == STATUS_FOUND) && exchange.method == Method::Post)
         {

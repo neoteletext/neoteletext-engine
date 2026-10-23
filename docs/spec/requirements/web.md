@@ -150,7 +150,7 @@ In addition, the web module shall:
 
   Anything larger shall be abandoned with a diagnostic.
 - **treat everything received as untrusted input.** Page files, packets, descriptors and headers all pass the robustness requirement REQ-GEN-008, including fuzzing (REQ-TST-040).
-- **restrict form submission.** A form may submit only to the origin of the page containing it, or to an origin listed in the service descriptor (decision E.31 item 6). A form on a page fetched over plain HTTP may submit over plain HTTP. Before a form is submitted over plain HTTP, the status area shall show a warning that the entered values will be sent unencrypted.
+- **restrict form submission.** A form may submit only to the origin of the page containing it, or to an origin listed in the service descriptor (decision E.31 item 6). A redirect of a submission that keeps its method and body, a 307 or 308, shall not leave the submission's target origin (REQ-SEC-009, decision E.112). A form on a page fetched over plain HTTP may submit over plain HTTP. Before a form is submitted over plain HTTP, the status area shall show a warning that the entered values will be sent unencrypted.
 - **ignore headers in page content.** The withdrawn `FH` form command shall be ignored with a diagnostic, never acted on (decision E.31 item 2).
 *Verification:* Test for each rule; fuzzing of the HTTP, WebSocket, server-sent event and descriptor parsers.
 

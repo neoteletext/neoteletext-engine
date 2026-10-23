@@ -89,9 +89,10 @@ Plain HTTP is allowed for reading, cookies and forms (decision E.32). The follow
 - **Confirm the first submission.** The first submission to any origin shall require explicit confirmation showing that origin.
 - **No password fields.** Forms shall offer no field type for passwords or secrets (Appendix C has none).
 - **Restricted destinations.** Forms may submit only to the origins of REQ-WEB-008.
+- **Redirected submissions keep their origin.** A submission answered by a 307 or 308 redirect, which keeps the method and the body, shall be refused, with nothing sent, when the new address is not on the submission's own target origin; a 307 or 308 within that origin is followed, and a 303, and a 301 or 302 answering a POST, become a GET with no body (decision E.112).
 
 *Reason:* Any page can draw "enter your password". The user must always be able to see where their input will go.
-*Verification:* Test.
+*Verification:* Test. The redirect rule by `a_form_redirected_with_its_method_kept_stays_on_its_target_origin`, which fails on the code before 24 October 2026 (finding F-16 of NeoTeletext's security review).
 
 **REQ-SEC-010 — Safe text and terminal output.**
 - **Allow-list only.** The text and terminal renderers (REQ-RND-008 and REQ-RND-009) shall emit only an allow-list of printable characters. The terminal graphics renderer (REQ-RND-029) writes no page text at all, only image data it encodes itself.
