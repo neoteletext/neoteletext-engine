@@ -8,7 +8,7 @@ use super::geometry::{
 
 /// The shape of a G3 position (Table 48), or `None` for the positions
 /// with no character and for 5/F, the background-colour space.
-#[allow(clippy::too_many_lines)] // One arm per position of Table 48.
+#[allow(clippy::too_many_lines, reason = "one arm per position of Table 48")]
 pub(super) fn shape(code: u8) -> Option<Shape> {
     use X::{Centre as XC, Left as XL, Right as XR};
     use Y::{Bottom as B, Half as H, Third as T1, Top as T, TwoThirds as T2};
