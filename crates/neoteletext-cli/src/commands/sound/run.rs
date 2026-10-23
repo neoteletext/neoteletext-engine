@@ -4,8 +4,7 @@
 use super::SoundOptions;
 use super::wave::read_wave;
 use crate::bounded_file::read_bounded;
-use crate::commands::io_failure;
-use crate::commands::sandbox_closed;
+use crate::commands::{io_failure, page_number, sandbox_closed};
 use neoteletext_app::{Failure, exit};
 use neoteletext_audio::Codec;
 use neoteletext_audio::encode::{Command, Sound, packets};
@@ -25,10 +24,7 @@ const LOOP: u8 = neoteletext_audio::record::FLAG_LOOP;
 
 /// `neottx sound`.
 pub fn sound(options: &SoundOptions, input: &Path, output: &Path, no_sandbox: bool) -> Result<(), Failure> {
-    let page = u16::from_str_radix(&options.page, 16)
-        .ok()
-        .filter(|&mpp| neoteletext_core::types::PageAddress::from_mpp(mpp).is_some())
-        .ok_or_else(|| (exit::USAGE, format!("{}: not a page number 100 to 8FF", options.page)))?;
+    let page = page_number(&options.page)?;
     let codec = match options.codec.as_str() {
         "ima" => Codec::ImaAdpcm,
         "pcm" => Codec::Pcm16,

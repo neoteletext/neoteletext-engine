@@ -187,12 +187,14 @@ fn page_file_name(key: PageKey, extension: &str) -> String {
     name.bytes().filter(|&byte| is_safe_file_name_byte(byte)).map(char::from).collect()
 }
 
-#[cfg(feature = "keyboard")]
+/// A page number 100 to 8FF, as `--page` gives it to the commands that
+/// write a page or its sound.
+#[cfg(any(feature = "keyboard", feature = "sound", feature = "write-text"))]
 fn page_number(text: &str) -> Result<u16, Failure> {
     u16::from_str_radix(text, 16)
         .ok()
-        .filter(|page| (0x100..=0x8FF).contains(page))
-        .ok_or_else(|| (exit::USAGE, format!("{text}: a page is 100 to 8FF")))
+        .filter(|&mpp| PageAddress::from_mpp(mpp).is_some())
+        .ok_or_else(|| (exit::USAGE, format!("{text}: not a page number 100 to 8FF")))
 }
 
 #[cfg(test)]

@@ -1,8 +1,7 @@
 //! `neottx write-text` in a build with it.
 
 use crate::bounded_file::read_bounded;
-use crate::commands::io_failure;
-use crate::commands::sandbox_closed;
+use crate::commands::{io_failure, page_number, sandbox_closed};
 use neoteletext_app::{Failure, exit};
 use std::fs::File;
 use std::io::Write;
@@ -15,10 +14,7 @@ const TEXT_MAX_FILE_BYTES: usize = 16 * 1024;
 
 /// `neottx write-text`.
 pub fn write_text(set: &str, page: &str, input: &Path, output: &Path, no_sandbox: bool) -> Result<(), Failure> {
-    let mpp = u16::from_str_radix(page, 16)
-        .ok()
-        .filter(|&mpp| neoteletext_core::types::PageAddress::from_mpp(mpp).is_some())
-        .ok_or_else(|| (exit::USAGE, format!("{page}: not a page number 100 to 8FF")))?;
+    let mpp = page_number(page)?;
     let bytes = read_bounded(input, TEXT_MAX_FILE_BYTES)?;
     let text = String::from_utf8(bytes).map_err(|_| (exit::INPUT, format!("{}: not UTF-8", input.display())))?;
     let mut out = File::create(output).map_err(|error| io_failure(output, error))?;
