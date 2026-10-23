@@ -2,7 +2,6 @@
 //! and their acknowledgements.
 
 use super::{ACKNOWLEDGED, Event, Screen};
-use crate::config::Layout;
 use crate::message::{self, FromPhone};
 use crate::pairing::Outcome;
 use std::time::Instant;
@@ -42,21 +41,21 @@ impl Screen {
                 events.push(Event::Finished);
                 return;
             }
-            FromPhone::Text(text) if self.has_text() => {
+            FromPhone::Text(text) if self.config.layout.has_text() => {
                 events.push(Event::Text(text));
                 true
             }
-            FromPhone::Special { key, count } if self.has_text() => {
+            FromPhone::Special { key, count } if self.config.layout.has_text() => {
                 events.push(Event::Special { key, count });
                 true
             }
-            FromPhone::Down(key) if self.has_key(&key) => {
+            FromPhone::Down(key) if self.config.layout.has_key(&key) => {
                 self.held.retain(|(held, _)| *held != key);
                 self.held.push((key.clone(), Instant::now()));
                 events.push(Event::Down(key));
                 true
             }
-            FromPhone::Up(key) if self.has_key(&key) => {
+            FromPhone::Up(key) if self.config.layout.has_key(&key) => {
                 self.held.retain(|(held, _)| *held != key);
                 events.push(Event::Up(key));
                 true
@@ -76,52 +75,5 @@ impl Screen {
         let Ok(plaintext) = message::pack(&message::ack(id, ok)) else { return };
         let Some(frame) = self.channel.as_mut().and_then(|(sealer, _)| sealer.seal(&plaintext)) else { return };
         self.send_binary(&frame);
-    }
-
-    fn has_text(&self) -> bool {
-        matches!(self.config.layout, Layout::Terminal | Layout::Preset("keyboard"))
-    }
-
-    /// Whether `key` is a key of the layout (`controls.ts` `PRESETS`).
-    fn has_key(&self, key: &str) -> bool {
-        const DPAD: [&str; 5] = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Enter"];
-        const COLOURS: [&str; 4] = ["ColorF0Red", "ColorF1Green", "ColorF2Yellow", "ColorF3Blue"];
-        const TELETEXT: [&str; 16] = [
-            "1",
-            "2",
-            "3",
-            "4",
-            "5",
-            "6",
-            "7",
-            "8",
-            "9",
-            "0",
-            "Teletext",
-            "Exit",
-            "ArrowLeft",
-            "ChannelDown",
-            "ChannelUp",
-            "ArrowRight",
-        ];
-        const REMOTE: [&str; 9] = [
-            "BrowserBack",
-            "BrowserHome",
-            "ContextMenu",
-            "AudioVolumeDown",
-            "AudioVolumeMute",
-            "AudioVolumeUp",
-            "ChannelDown",
-            "MediaPlayPause",
-            "ChannelUp",
-        ];
-        const GAMEPAD: [&str; 2] = ["a", "b"];
-        match self.config.layout {
-            Layout::Terminal => DPAD.contains(&key) || COLOURS.contains(&key),
-            Layout::Preset("teletext") => COLOURS.contains(&key) || TELETEXT.contains(&key),
-            Layout::Preset("remote") => DPAD.contains(&key) || REMOTE.contains(&key) || COLOURS.contains(&key),
-            Layout::Preset("gamepad") => DPAD.contains(&key) || GAMEPAD.contains(&key),
-            Layout::Preset(_) => false,
-        }
     }
 }
