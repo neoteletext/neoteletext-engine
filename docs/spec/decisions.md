@@ -1498,3 +1498,50 @@ Taken on 23 October 2026 while the owner was away, as the owner had instructed, 
 
 *Reason:* The owner's instruction for the browser, which is the engine's only port that fetched channel fonts' kind of content; requirements no port meets, which widen a security rule, are withdrawn rather than kept.
 
+**E.112 — A form redirected with its method kept does not leave its target's origin.**
+Taken on 24 October 2026 while the owner was away, as the owner had instructed, after NeoTeletext's security review of that day (its finding F-16) found that a form submitted to a permitted origin that answers 307 or 308 is sent again, with the viewer's values and its `ttx_token`, to a third origin, with no check against the origins the channel may submit to and no first-submission confirmation (REQ-WEB-008, REQ-SEC-009).
+1. **A 307 or 308 redirect of a form submission to any origin other than the submission's own target is refused** with `FormRefused::Origin`, and nothing is sent to the new origin.
+2. **Unchanged:** a 307 or 308 within the target's origin is followed; a 303, and a 301 or 302 answering a POST, become a GET with no body, as before.
+3. **Not taken:** checking the new origin against `may_submit` and asking for the first-submission confirmation again, which needs the port's answer in the middle of a redirect; and turning the request into a GET, which a 307 or 308 forbids (RFC 9110 sections 15.4.8 and 15.4.9).
+4. **REQ-SEC-009 and REQ-WEB-008 gain the rule** with the code.
+
+*Reason:* It is the least privilege and the simplest to verify. A redirect within the origin still works, and a service that redirects a submitted form to another origin is not a pattern teletext forms use.
+
+**E.113 — Through a proxy, local names are refused by a wider list.**
+Taken on 24 October 2026 while the owner was away, as the owner had instructed, after NeoTeletext's security review of that day (its finding F-17). Through a proxy the agent sees only the name it asks for, not the address (decision E.102 item 2), and `hidden_local` refused only `localhost` and names under `.localhost`, `.local` and `.internal`, so `router`, `nas.lan` and `x.home.arpa` reached the local network through a proxy on it.
+1. **`hidden_local` also refuses** a name of one label (no dot once a trailing dot is removed), and names under `.home.arpa` (RFC 8375), `.lan`, `.corp`, `.intranet`, `.private` and `.localdomain`, compared without regard to case.
+2. **Through a proxy the local-network rule is by name, with this list,** and REQ-SEC-006 says so with the code. A public name that resolves to a local address, such as `10.0.0.1.nip.io`, stays a residual, which NeoTeletext's security analysis states.
+3. **Not taken:** resolving the name here and asking the proxy for the checked address, which tells the local resolver every name and so defeats the privacy a user sets a proxy for.
+
+*Reason:* The names a home or office network gives its devices are what the rule must stop when it cannot see addresses; the proxy's privacy is why a user sets one.
+
+**E.114 — The web user agent's other choices from NeoTeletext's security review.**
+Taken on 24 October 2026 while the owner was away, as the owner had instructed, for the findings of NeoTeletext's security review of that day in `neoteletext-web` whose behaviour the standards leave open. Each takes the narrower behaviour, and each fails closed.
+1. **A cookie import skips a bad record and goes on** (finding F-13): an expired or over-long record is read past and not stored, and only a malformed one ends the import, which before ended at the first bad record and lost every later cookie. A saved path is stored as it was saved, not rebuilt into a `Path=` attribute that the 1024-byte attribute limit drops, widening the cookie to `/`.
+2. **Cookies of a response from outside the channel's folder are not stored** (finding F-42): the folder's scope applies to responses from inside it, and a response from a permitted form target, or from a same-origin redirect outside the folder, stores none.
+3. **The memory of hosts reached securely evicts the host least recently seen** when its `SECURE_HOSTS` entries are full (finding F-43), so the rule against downgrade keeps holding for the hosts in use rather than filling silently.
+4. **A redirect to nowhere is a fault:** an empty, non-UTF-8, or same-address and same-method `Location` gives `Failure::BadRedirect` (finding F-44), where it resolved to the request's own address and spent six requests.
+5. **A channel's folder holds no encoded separator:** a path with `%2E`, `%2F` or `%5C`, in either case, after the folder is outside it (finding F-45).
+6. **Device Bound Session Credentials,** behind the feature `dbsc`, which no port enables yet (findings F-14, F-91 and F-92): a session identifier is refused unless it is non-empty and every byte is in `0x21..=0x7E`; a structured-field string the agent writes may hold only `0x20..=0x7E`; registrations are bounded for each origin in each hour by a named constant; `include_site` is refused, so a session covers its own host alone, narrowing decision E.110 item 3; and instructions naming a member twice are refused.
+7. **An event id holding a control byte, DEL or invalid UTF-8 is invalid,** as one holding NUL is (finding F-76), so `Last-Event-ID` never carries an invalid field value (RFC 9110 section 5.5).
+8. **The close codes 1005, 1006 and 1015 are never sent back** in a close frame (finding F-92), since RFC 6455 section 7.4.1 reserves them for use outside frames.
+9. **An IPv6 host is kept in RFC 5952's text form** (finding F-96), so the memory of secure hosts, the cookie host and the table of confirmed origins do not split between two spellings of one address.
+
+*Reason:* Each closes a finding with the smallest change to what a server can make the agent do; none widens a rule.
+
+**E.115 — More address ranges count as local, and an embedded IPv4 address is judged as itself.**
+Taken on 24 October 2026 while the owner was away, as the owner had instructed, after NeoTeletext's security review of that day (its finding F-46) listed ranges `neoteletext-core`'s `policy` did not block (REQ-SEC-006).
+1. **Blocked:** `::a.b.c.d`, the IPv4-compatible addresses (deprecated, RFC 4291 section 2.5.5.1); `fec0::/10`, site-local (deprecated, RFC 3879); `192.0.0.0/24`, the IETF protocol assignments (RFC 6890); and `198.18.0.0/15`, benchmarking (RFC 2544).
+2. **An address of NAT64's `64:ff9b::/96` (RFC 6052) or `64:ff9b:1::/48` (RFC 8215), or of 6to4's `2002::/16` (RFC 3056), is judged by the IPv4 address it embeds,** so a private IPv4 address cannot be reached by writing it inside an IPv6 one.
+3. **REQ-SEC-006's list gains them** with the code.
+
+*Reason:* Each range reaches this computer, the local network or a translator to them; each is named in the code with its RFC.
+
+**E.116 — The qrkeyboard screen trusts the phone and the relay less.**
+Taken on 24 October 2026 while the owner was away, as the owner had instructed, after NeoTeletext's security review of that day (its findings F-38, F-39 and F-71).
+1. **A release is passed on only for a key the screen holds** (`FromPhone::Up`, finding F-38); a release of any other key is acknowledged and dropped.
+2. **The owner token the relay gives must be in `message::is_id`'s alphabet** before it is written into `Authorization: Bearer` (finding F-39); it was checked only for length.
+3. **"Phone connected" is reported after the first frame that authenticates** (finding F-71), not on the first salt frame.
+4. **The constant-time comparison:** the review proposes `subtle`'s `ConstantTimeEq` (`subtle` 2.6.1, BSD-3-Clause), since the compiler does not promise to keep `constant_time_equal`'s fold constant in time. `subtle` is already in the lockfile, through `aes-gcm`, `p256` and `rustls`, but a direct dependency is a library added, which needs the owner's approval by name (`DEVELOPMENT.md` section 7). It is proposed here and not added until the owner approves it; the fold stays until then.
+
+*Reason:* The phone and the relay are outside the user's computer; what they send is held to what the screen expects of them.
