@@ -103,6 +103,9 @@ pub struct Screen {
     socket: Option<WebSocket>,
     pairing: Option<Pairing>,
     channel: Option<(Sealer, Opener)>,
+    /// A frame from the phone has proved it holds the pairing secret: a
+    /// PIN run's confirmation, or a sealed frame that opened.
+    authenticated: bool,
     pin_attempts: u32,
     locked: bool,
     finished: bool,
@@ -197,6 +200,7 @@ impl Screen {
             socket: None,
             pairing: None,
             channel: None,
+            authenticated: false,
             pin_attempts: 0,
             locked: false,
             finished: false,
@@ -229,10 +233,10 @@ impl Screen {
         &self.join
     }
 
-    /// Whether a phone is paired now.
+    /// Whether a phone is paired now, and has proved it.
     #[must_use]
     pub const fn connected(&self) -> bool {
-        self.channel.is_some()
+        self.channel.is_some() && self.authenticated
     }
 
     /// A waker that ends this screen's [`wait`](Self::wait) from another
@@ -269,6 +273,7 @@ impl Screen {
             socket.close();
         }
         self.channel = None;
+        self.authenticated = false;
         self.pairing = None;
         let origin = self.relay.as_str().trim_end_matches('/');
         let end = net::parse(&format!("{origin}/i/{}/end", self.join.code))?;

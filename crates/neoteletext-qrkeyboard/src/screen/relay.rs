@@ -76,5 +76,6 @@ impl Screen {
         }
         self.pairing = None;
         self.channel = None;
+        self.authenticated = false;
     }
 }

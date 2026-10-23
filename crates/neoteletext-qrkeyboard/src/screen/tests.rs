@@ -35,6 +35,7 @@ impl Screen {
             socket: None,
             pairing: None,
             channel: None,
+            authenticated: false,
             pin_attempts: 0,
             locked: false,
             finished: false,
@@ -154,4 +155,32 @@ fn an_owner_token_outside_the_id_alphabet_is_refused() {
         let result = Screen::create(&instance_relay(token), config, None);
         assert_eq!(result.err(), Some(Error::Protocol("an owner token")), "{token}");
     }
+}
+
+/// Finding F-71, decision E.116 item 3: in no-PIN mode a salt frame proves
+/// nothing, since anyone on the relay can send one; the phone is reported
+/// connected with the first frame that opens under the pairing key.
+#[test]
+fn a_phone_is_connected_once_a_frame_authenticates() {
+    let mut screen = Screen::offline();
+    let (mut phone, events) = pair(&mut screen, KEY);
+    assert_eq!(events, [], "a salt alone");
+    assert!(!screen.connected());
+    let down = sealed(&mut phone, "down", "ArrowUp");
+    assert_eq!(receive(&mut screen, &down), [Event::Connected, Event::Down("ArrowUp".into())]);
+    assert!(screen.connected());
+}
+
+/// Finding F-71: an end without the pairing key, such as a relay, never
+/// connects, however many frames it sends.
+#[test]
+fn an_end_without_the_key_is_never_connected() {
+    let mut screen = Screen::offline();
+    let (mut stranger, events) = pair(&mut screen, [KEY[0].wrapping_add(1); SECRET_BYTES]);
+    assert_eq!(events, []);
+    for _ in 0..2 {
+        let down = sealed(&mut stranger, "down", "ArrowUp");
+        assert_eq!(receive(&mut screen, &down), []);
+    }
+    assert!(!screen.connected());
 }

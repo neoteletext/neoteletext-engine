@@ -62,9 +62,16 @@ pub fn directional_keys(secret: &[u8; SECRET_BYTES], role: Role, salt: &[u8; 2 *
 
 /// Whether two byte strings are equal, in time that does not depend on
 /// where they differ.
+///
+/// The compiler promises nothing about the time of this fold, so each step
+/// goes through `black_box`, which keeps it from turning the fold into a
+/// loop that stops at the first difference. `black_box` is a best effort
+/// too; `subtle`'s `ConstantTimeEq` is the stronger answer, proposed by
+/// decision E.116 item 4 and not added until the owner approves it.
 #[must_use]
 pub fn constant_time_equal(left: &[u8], right: &[u8]) -> bool {
-    left.len() == right.len() && left.iter().zip(right).fold(0_u8, |difference, (a, b)| difference | (a ^ b)) == 0
+    left.len() == right.len()
+        && left.iter().zip(right).fold(0_u8, |difference, (a, b)| core::hint::black_box(difference | (a ^ b))) == 0
 }
 
 /// Random bytes from the operating system.

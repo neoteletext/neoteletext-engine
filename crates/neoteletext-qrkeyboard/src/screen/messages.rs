@@ -9,6 +9,7 @@ use std::time::Instant;
 impl Screen {
     pub(super) fn binary(&mut self, frame: &[u8], events: &mut Vec<Event>) {
         if let Some(pairing) = &mut self.pairing {
+            let by_pin = pairing.uses_pin();
             let (out, outcome) = pairing.receive(frame);
             for frame in out {
                 self.send_binary(&frame);
@@ -24,12 +25,23 @@ impl Screen {
                     self.channel = Some(*channel);
                     self.pin_attempts = 0;
                     self.keepalive = Instant::now();
-                    events.push(Event::Connected);
+                    // A PIN run's confirmation has authenticated the phone;
+                    // a salt alone has not, and anyone on the relay can
+                    // send one, so in no-PIN mode the first sealed frame
+                    // that opens does it (decision E.116 item 3).
+                    self.authenticated = by_pin;
+                    if by_pin {
+                        events.push(Event::Connected);
+                    }
                 }
             }
             return;
         }
         let Some(plaintext) = self.channel.as_mut().and_then(|(_, opener)| opener.open(frame)) else { return };
+        if !self.authenticated {
+            self.authenticated = true;
+            events.push(Event::Connected);
+        }
         let Some(message) = message::read(&plaintext) else { return };
         if let Some((_, ok)) = self.acknowledged.iter().find(|(id, _)| *id == message.id).cloned() {
             self.acknowledge(&message.id, ok);
