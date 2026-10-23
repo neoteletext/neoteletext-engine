@@ -14,8 +14,8 @@ use crate::fsm::{
     page_transition,
 };
 use crate::packet::{
-    CompositionalLink, Decoded, Header, MagazinePacket, Packet, PacketError, PacketMeta, PagePacket, ServicePacket,
-    decode,
+    CompositionalLink, Decoded, Enhancement, Header, MagazinePacket, Packet, PacketError, PacketMeta, PagePacket, Row,
+    ServicePacket, decode,
 };
 use crate::trace::{Machine, TraceEntry};
 use crate::types::{ControlBits, Instant, Magazine, PageAddress, PageNumber};
@@ -26,14 +26,7 @@ impl Decoder<'_> {
         let decoded = match decode(packet) {
             Ok(decoded) => decoded,
             Err(error) => {
-                match error {
-                    PacketError::BadAddress => {
-                        self.stats.address_failures = self.stats.address_failures.saturating_add(1);
-                    }
-                    PacketError::BadDesignation => {
-                        self.stats.designation_failures = self.stats.designation_failures.saturating_add(1);
-                    }
-                }
+                self.count_failure(error);
                 events(Event::Discarded(Discard::Packet(error)));
                 return;
             }
@@ -43,29 +36,8 @@ impl Decoder<'_> {
                 self.count(header.magazine, 0);
                 self.header(&header, now, events);
             }
-            Decoded::Row(row) => {
-                self.count(row.magazine, row.row);
-                let as_received = row_index(row.row).map(|index| (index, &row.bytes));
-                self.row_like(row.magazine, now, events, as_received, |page, policy| {
-                    let failures = page.merge(usize::from(row.row), 0, &row.bytes, policy);
-                    (row.row, failures)
-                });
-            }
-            Decoded::Enhancement(enhancement) => {
-                self.count(enhancement.magazine, crate::consts::PACKET_ENHANCEMENT);
-                let failures = enhancement.triplets.iter().filter(|t| t.is_none()).count() as u32;
-                self.stats.triplet_failures = self.stats.triplet_failures.saturating_add(failures);
-                let data = packet.data();
-                let as_received = enhancement_index(enhancement.designation).map(|index| (index, &data));
-                self.row_like(enhancement.magazine, now, events, as_received, |page, _| {
-                    let code = usize::from(enhancement.designation);
-                    if let Some(slot) = page.enhancements.get_mut(code) {
-                        *slot = enhancement.triplets;
-                        page.enhancements_present |= 1u16.checked_shl(code as u32).unwrap_or(0);
-                    }
-                    (crate::consts::PACKET_ENHANCEMENT, 0)
-                });
-            }
+            Decoded::Row(row) => self.display_row(&row, now, events),
+            Decoded::Enhancement(enhancement) => self.enhancement_packet(enhancement, packet, now, events),
             Decoded::Links(links) => {
                 self.count(links.magazine, crate::consts::PACKET_LINKS);
                 self.row_like(links.magazine, now, events, None, |page, _| {
@@ -87,24 +59,72 @@ impl Decoder<'_> {
             Decoded::CompositionalLinks { .. } | Decoded::PageData { .. } | Decoded::Magazine { .. } => {
                 self.enhancement_data(decoded, now, events);
             }
-            Decoded::Service(service) => {
-                self.count(Magazine::from_bits(0), crate::consts::PACKET_SERVICE);
-                // REQ-ACQ-018: a new network identification in format 1
-                // means a new service, whose magazine data differs.
-                let format_1 = |packet: &ServicePacket| packet.designation & SERVICE_FORMAT_2_BIT == 0;
-                if format_1(&service)
-                    && self.service.is_some_and(|old| format_1(&old) && old.network_id != service.network_id)
-                {
-                    self.discard_magazine_data(events);
-                }
-                self.service = Some(service);
-                events(Event::ServiceData);
-            }
+            Decoded::Service(service) => self.service_packet(service, events),
             Decoded::Ignored(address) => {
                 self.count(address.magazine, address.number);
                 self.stats.ignored = self.stats.ignored.saturating_add(1);
             }
         }
+    }
+
+    /// Counts a packet whose address or designation failed to decode.
+    fn count_failure(&mut self, error: PacketError) {
+        match error {
+            PacketError::BadAddress => {
+                self.stats.address_failures = self.stats.address_failures.saturating_add(1);
+            }
+            PacketError::BadDesignation => {
+                self.stats.designation_failures = self.stats.designation_failures.saturating_add(1);
+            }
+        }
+    }
+
+    /// Stores a display row packet X/1 to X/25 into its page.
+    fn display_row(&mut self, row: &Row, now: Instant, events: &mut dyn FnMut(Event)) {
+        self.count(row.magazine, row.row);
+        let as_received = row_index(row.row).map(|index| (index, &row.bytes));
+        self.row_like(row.magazine, now, events, as_received, |page, policy| {
+            let failures = page.merge(usize::from(row.row), 0, &row.bytes, policy);
+            (row.row, failures)
+        });
+    }
+
+    /// Stores an X/26 enhancement packet's triplets into its page, counting
+    /// the triplets that failed to decode.
+    fn enhancement_packet(
+        &mut self,
+        enhancement: Enhancement,
+        packet: &Packet,
+        now: Instant,
+        events: &mut dyn FnMut(Event),
+    ) {
+        self.count(enhancement.magazine, crate::consts::PACKET_ENHANCEMENT);
+        let failures = enhancement.triplets.iter().filter(|t| t.is_none()).count() as u32;
+        self.stats.triplet_failures = self.stats.triplet_failures.saturating_add(failures);
+        let data = packet.data();
+        let as_received = enhancement_index(enhancement.designation).map(|index| (index, &data));
+        self.row_like(enhancement.magazine, now, events, as_received, |page, _| {
+            let code = usize::from(enhancement.designation);
+            if let Some(slot) = page.enhancements.get_mut(code) {
+                *slot = enhancement.triplets;
+                page.enhancements_present |= 1u16.checked_shl(code as u32).unwrap_or(0);
+            }
+            (crate::consts::PACKET_ENHANCEMENT, 0)
+        });
+    }
+
+    /// Takes a broadcast service data packet 8/30 (REQ-ACQ-018).
+    fn service_packet(&mut self, service: ServicePacket, events: &mut dyn FnMut(Event)) {
+        self.count(Magazine::from_bits(0), crate::consts::PACKET_SERVICE);
+        // REQ-ACQ-018: a new network identification in format 1
+        // means a new service, whose magazine data differs.
+        let format_1 = |packet: &ServicePacket| packet.designation & SERVICE_FORMAT_2_BIT == 0;
+        if format_1(&service) && self.service.is_some_and(|old| format_1(&old) && old.network_id != service.network_id)
+        {
+            self.discard_magazine_data(events);
+        }
+        self.service = Some(service);
+        events(Event::ServiceData);
     }
 
     /// Stores the page-related packets X/27/4, X/27/5 and X/28, and the
