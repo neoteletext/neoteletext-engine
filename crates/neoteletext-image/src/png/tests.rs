@@ -1,6 +1,7 @@
 //! PNG writer tests, checked against an independent fixed-Huffman inflater.
 #![allow(clippy::indexing_slicing, clippy::unwrap_used, clippy::arithmetic_side_effects, clippy::comparison_chain)]
 
+use super::deflate::{DISTANCE_BASE, LENGTH_BASE};
 use super::*;
 use crate::palette::{CLUT0, palette};
 use std::vec;
