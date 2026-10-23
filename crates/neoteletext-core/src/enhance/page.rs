@@ -5,15 +5,15 @@ use super::{Collector, Inputs, RowCells, Rows, Walker};
 
 use super::planes::{Area, area_of};
 use crate::acq::{EnhancementKey, EnhancementLookup, EnhancementReport, MagazineData, PageBuild, StoredPage};
-use crate::colour::{self, ColourMap, PresentationSources, SidePanels};
-use crate::config::Config;
+use crate::colour::{self, ColourIndex, ColourMap, PagePresentation, PresentationSources, SidePanels};
+use crate::config::{Config, PresentationLevel};
 use crate::consts::{
     C5_NEWSFLASH, C6_SUBTITLE, C7_SUPPRESS_HEADER, C10_INHIBIT_DISPLAY, COLUMNS, PAGE_FUNCTION_DRCS,
     PAGE_FUNCTION_GDRCS, PAGE_FUNCTION_GPOP, PAGE_FUNCTION_MOT, PAGE_FUNCTION_POP, PAGE_MOT, RECEIVER_COLUMNS, ROWS,
     SIDE_PANEL_ROWS,
 };
 use crate::level1::{Cell, DisplayOptions, Grid, Size, resolve_designation, row_24_shown};
-use crate::objects::{self};
+use crate::objects::{self, EnhancementLinks};
 use crate::trace::TraceSink;
 
 /// True when the page is an enhancement page and so never shown as text
@@ -99,17 +99,7 @@ fn process<const PANEL_ROWS: usize>(
     let (designation, second_g0, _) = resolve_designation(Some(page), magazine, &config);
     grid.designation = designation;
 
-    // REQ-L25-030, REQ-L25-031, REQ-L25-040: the page-level data.
-    let page_fields = page.page_data.map(|data| data.fields);
-    let page_fields_35 = page.page_data_level35.map(|data| data.fields);
-    let sources = PresentationSources {
-        page: page_fields.as_ref(),
-        page_level_35: page_fields_35.as_ref(),
-        magazine: magazine.data.as_ref(),
-        magazine_level_35: magazine.level35.as_ref(),
-        fallback: links.fallback,
-    };
-    let presentation = colour::resolve(&sources, level, &ColourMap::DEFAULT);
+    let presentation = presentation(page, magazine, &links, level);
     // Panels need every panel row of the grid.
     let panels = if PANEL_ROWS >= SIDE_PANEL_ROWS { presentation.side_panels } else { SidePanels::NONE };
     let inputs = Inputs {
@@ -129,12 +119,7 @@ fn process<const PANEL_ROWS: usize>(
     let mut walker = Walker::new(&inputs);
     walker.walk(&mut page_level, trace);
     let mut report = walker.report;
-    let screen = page_level.screen.unwrap_or(presentation.default_screen);
-    let fallback_row = if page_level.screen.is_some() { screen } else { presentation.default_row };
-    let mut row_colours = [fallback_row; ROWS];
-    for (colour, explicit) in row_colours.iter_mut().zip(page_level.row_colours) {
-        *colour = explicit.unwrap_or(fallback_row);
-    }
+    let (screen, row_colours) = page_colours(&page_level, &presentation);
 
     let control = page.control.0;
     let rows = Rows {
@@ -151,6 +136,51 @@ fn process<const PANEL_ROWS: usize>(
     };
     rebuild_rows(grid, &rows, row_24_shown, &mut report);
 
+    store_presentation(grid, &presentation, screen, row_colours, panels);
+    report
+}
+
+/// The page's presentation (REQ-L25-030, REQ-L25-031, REQ-L25-040): from
+/// the page-level data of the page and its magazine.
+fn presentation(
+    page: &StoredPage,
+    magazine: &MagazineData,
+    links: &EnhancementLinks,
+    level: PresentationLevel,
+) -> PagePresentation {
+    let page_fields = page.page_data.map(|data| data.fields);
+    let page_fields_35 = page.page_data_level35.map(|data| data.fields);
+    let sources = PresentationSources {
+        page: page_fields.as_ref(),
+        page_level_35: page_fields_35.as_ref(),
+        magazine: magazine.data.as_ref(),
+        magazine_level_35: magazine.level35.as_ref(),
+        fallback: links.fallback,
+    };
+    colour::resolve(&sources, level, &ColourMap::DEFAULT)
+}
+
+/// The screen colour and the row colours the page-level run set (decision
+/// E.45), with the presentation's defaults where it set none.
+fn page_colours(page_level: &Collector, presentation: &PagePresentation) -> (ColourIndex, [ColourIndex; ROWS]) {
+    let screen = page_level.screen.unwrap_or(presentation.default_screen);
+    let fallback_row = if page_level.screen.is_some() { screen } else { presentation.default_row };
+    let mut row_colours = [fallback_row; ROWS];
+    for (colour, explicit) in row_colours.iter_mut().zip(page_level.row_colours) {
+        *colour = explicit.unwrap_or(fallback_row);
+    }
+    (screen, row_colours)
+}
+
+/// Stores the page's colours and panels in the grid, and marks the rows
+/// the rebuilt cells make double height.
+fn store_presentation<const PANEL_ROWS: usize>(
+    grid: &mut Grid<PANEL_ROWS>,
+    presentation: &PagePresentation,
+    screen: ColourIndex,
+    row_colours: [ColourIndex; ROWS],
+    panels: SidePanels,
+) {
     grid.colour_map = presentation.colour_map;
     grid.screen_colour = screen;
     grid.row_colours = row_colours;
@@ -161,7 +191,6 @@ fn process<const PANEL_ROWS: usize>(
             grid.double_height_rows |= 1u32.checked_shl(row as u32).unwrap_or(0);
         }
     }
-    report
 }
 
 /// Rebuilds the rows the page shows, top to bottom, so that each row knows
