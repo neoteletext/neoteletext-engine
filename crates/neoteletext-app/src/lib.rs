@@ -14,6 +14,7 @@
 // REQ-SEC-003: this crate reads input from outside its process.
 #![deny(
     clippy::indexing_slicing,
+    clippy::string_slice,
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,

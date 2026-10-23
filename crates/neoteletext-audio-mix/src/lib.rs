@@ -14,6 +14,7 @@
 #![forbid(unsafe_code)]
 #![deny(
     clippy::indexing_slicing,
+    clippy::string_slice,
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,

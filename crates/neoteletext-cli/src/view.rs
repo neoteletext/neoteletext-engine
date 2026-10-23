@@ -321,7 +321,9 @@ pub fn run(
                 let open = Some(viewer.requested().0.mpp());
                 typing.send(
                     source,
-                    &neoteletext_input::event::Item::Event(neoteletext_input::event::Event::Paste(&text[..end])),
+                    &neoteletext_input::event::Item::Event(neoteletext_input::event::Event::Paste(
+                        text.get(..end).unwrap_or_default(),
+                    )),
                     open,
                     clock_ms,
                 );

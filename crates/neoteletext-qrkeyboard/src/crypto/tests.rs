@@ -1,4 +1,4 @@
-#![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
+#![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::string_slice, clippy::arithmetic_side_effects)]
 
 use super::spake2::{SCALAR_BYTES, reduce};
 use super::*;

@@ -1,4 +1,4 @@
-#![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
+#![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::string_slice, clippy::panic)]
 //! The tests of the contents.txt reader (REQ-WEB-025).
 
 use super::*;
