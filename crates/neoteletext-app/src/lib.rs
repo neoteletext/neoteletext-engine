@@ -11,6 +11,18 @@
 //! sampled video, and `write-text` for writing pages from text. The types stay whatever the features; a part left
 //! out is refused with [`not_in_build`].
 
+// REQ-SEC-003: this crate reads input from outside its process.
+#![deny(
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::arithmetic_side_effects,
+    clippy::unreachable,
+    clippy::todo,
+    clippy::unimplemented
+)]
+
 pub mod convert;
 #[cfg(feature = "live")]
 pub mod descriptor;

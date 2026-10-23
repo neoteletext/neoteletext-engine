@@ -17,10 +17,10 @@ pub fn list(options: &Options) -> Result<(), Failure> {
     let page_count = pages.len();
     let keys: Vec<PageKey> = pages.iter().map(|page| page.key).collect();
     let mut index = 0;
-    while index < pages.len() {
-        let address = pages[index].key.address;
+    while let Some(first) = pages.get(index) {
+        let address = first.key.address;
         let subpages: Vec<&&StoredPage> =
-            pages[index..].iter().take_while(|page| page.key.address == address).collect();
+            pages.get(index..).unwrap_or_default().iter().take_while(|page| page.key.address == address).collect();
         let receptions: u32 = subpages.iter().map(|page| page.receptions).sum();
         let errors: u32 = subpages.iter().map(|page| page.errors).sum();
         let codes: Vec<String> = subpages.iter().map(|page| format!("{:04X}", page.key.subcode.value())).collect();
@@ -33,7 +33,7 @@ pub fn list(options: &Options) -> Result<(), Failure> {
             errors,
             codes.join(" ")
         );
-        index += subpages.len();
+        index = index.saturating_add(subpages.len());
     }
     // REQ-L25-051: enhancement faults are met only when a page is built, so
     // every page is built once to count them.
@@ -48,7 +48,7 @@ pub fn list(options: &Options) -> Result<(), Failure> {
         out,
         "\n{} page(s); packets per magazine 1-8: {:?}; address failures {}; parity failures {}; triplet failures {}; discarded {}",
         page_count,
-        [1, 2, 3, 4, 5, 6, 7, 0].map(|m| stats.per_magazine[m]),
+        [1, 2, 3, 4, 5, 6, 7, 0].map(|m| stats.per_magazine.get(m).copied().unwrap_or(0)),
         stats.address_failures,
         stats.parity_failures,
         stats.triplet_failures,

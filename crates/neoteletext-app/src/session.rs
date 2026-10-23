@@ -207,8 +207,10 @@ impl Session {
         let mut out = [b' '; HEADER_DISPLAY_BYTES];
         let rolling = self.decoder.rolling_header();
         let clock = self.decoder.clock();
-        out[..rolling.len()].copy_from_slice(rolling);
-        out[rolling.len()..].copy_from_slice(clock);
+        // The rolling part and the clock fill the header's display bytes.
+        for (byte, &shown) in out.iter_mut().zip(rolling.iter().chain(clock)) {
+            *byte = shown;
+        }
         out
     }
 

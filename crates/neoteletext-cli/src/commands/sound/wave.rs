@@ -17,16 +17,22 @@ pub(super) fn read_wave(bytes: &[u8]) -> Result<Wave, String> {
     let rest = rest.get(4..).and_then(|rest| rest.strip_prefix(b"WAVE")).ok_or("not a WAVE file")?;
     let mut format: Option<(u16, u16, u32, u16)> = None;
     let mut chunks = rest;
-    while let Some(header) = chunks.get(..8) {
-        let size = usize::try_from(u32::from_le_bytes([header[4], header[5], header[6], header[7]]))
-            .map_err(|_| "chunk size")?;
+    while let Some(&[a, b, c, d, size_0, size_1, size_2, size_3]) = chunks.first_chunk::<8>() {
+        let size = usize::try_from(u32::from_le_bytes([size_0, size_1, size_2, size_3])).map_err(|_| "chunk size")?;
         let body = chunks.get(8..8_usize.saturating_add(size)).ok_or("a chunk runs past the end of the file")?;
-        match &header[..4] {
+        match &[a, b, c, d] {
             b"fmt " => {
-                let field =
-                    |at: usize| body.get(at..at + 2).map(|b| u16::from_le_bytes([b[0], b[1]])).ok_or("short fmt chunk");
-                let rate =
-                    body.get(4..8).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]])).ok_or("short fmt chunk")?;
+                let field = |at: usize| {
+                    body.get(at..)
+                        .and_then(<[u8]>::first_chunk::<2>)
+                        .map(|&b| u16::from_le_bytes(b))
+                        .ok_or("short fmt chunk")
+                };
+                let rate = body
+                    .get(4..)
+                    .and_then(<[u8]>::first_chunk::<4>)
+                    .map(|&b| u32::from_le_bytes(b))
+                    .ok_or("short fmt chunk")?;
                 format = Some((field(0)?, field(2)?, rate, field(14)?));
             }
             b"data" => {
@@ -36,12 +42,19 @@ pub(super) fn read_wave(bytes: &[u8]) -> Result<Wave, String> {
                         "16-bit PCM, mono or stereo, is needed: format {tag}, {bits} bits, {channels} channels"
                     ));
                 }
-                let frame = usize::from(channels) * 2;
+                // Two bytes a sample, one sample a channel.
+                let frame = if channels == 2 { 4 } else { 2 };
                 let samples = body
                     .chunks_exact(frame)
                     .map(|frame| {
-                        let left = i32::from(i16::from_le_bytes([frame[0], frame[1]]));
-                        let right = frame.get(2..4).map_or(left, |b| i32::from(i16::from_le_bytes([b[0], b[1]])));
+                        let sample = |at: usize| {
+                            frame
+                                .get(at..)
+                                .and_then(<[u8]>::first_chunk::<2>)
+                                .map(|&b| i32::from(i16::from_le_bytes(b)))
+                        };
+                        let left = sample(0).unwrap_or(0);
+                        let right = sample(2).unwrap_or(left);
                         i16::try_from(i32::midpoint(left, right)).unwrap_or(0)
                     })
                     .collect();
@@ -56,6 +69,7 @@ pub(super) fn read_wave(bytes: &[u8]) -> Result<Wave, String> {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects, reason = "a test")]
 mod tests {
     use super::*;
 

@@ -49,7 +49,7 @@ fn put_string(buffer: &mut Vec<u8>, text: &str) {
     let bytes = text.as_bytes();
     let length = u32::try_from(bytes.len()).unwrap_or(0);
     buffer.extend_from_slice(&length.to_be_bytes());
-    buffer.extend_from_slice(&bytes[..length as usize]);
+    buffer.extend_from_slice(bytes.get(..length as usize).unwrap_or_default());
 }
 
 fn put_option(buffer: &mut Vec<u8>, text: Option<&String>) {
@@ -70,18 +70,21 @@ impl Cursor<'_> {
         Ok(head)
     }
 
+    /// The next `N` bytes.
+    fn array<const N: usize>(&mut self) -> io::Result<[u8; N]> {
+        self.bytes(N)?.try_into().map_err(|_| io::Error::other("malformed frame"))
+    }
+
     fn byte(&mut self) -> io::Result<u8> {
-        Ok(self.bytes(1)?[0])
+        Ok(u8::from_be_bytes(self.array()?))
     }
 
     fn u16(&mut self) -> io::Result<u16> {
-        let bytes = self.bytes(2)?;
-        Ok(u16::from_be_bytes([bytes[0], bytes[1]]))
+        Ok(u16::from_be_bytes(self.array()?))
     }
 
     fn u32(&mut self) -> io::Result<usize> {
-        let bytes = self.bytes(4)?;
-        Ok(u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize)
+        Ok(u32::from_be_bytes(self.array()?) as usize)
     }
 
     fn string(&mut self) -> io::Result<String> {
@@ -238,7 +241,7 @@ pub fn read(input: &mut dyn Read) -> io::Result<Option<Frame>> {
             cursor.end()?;
             Frame::Notice(Notice::Confirm(host, plain, first))
         }
-        SUBMITTED if payload.len() == 1 => Frame::Notice(Notice::Submitted(payload[0] != 0)),
+        SUBMITTED if payload.len() == 1 => Frame::Notice(Notice::Submitted(payload.first() != Some(&0))),
         SHOW => {
             Frame::Notice(Notice::ShowPage(u16::from_be_bytes(payload.as_slice().try_into().map_err(|_| invalid())?)))
         }
@@ -265,9 +268,9 @@ pub fn read(input: &mut dyn Read) -> io::Result<Option<Frame>> {
             cursor.end()?;
             Frame::Submit(Submission { page_url, post, target, token, action, fields })
         }
-        CONFIRM if payload.len() == 1 => Frame::Confirm(payload[0] != 0),
+        CONFIRM if payload.len() == 1 => Frame::Confirm(payload.first() != Some(&0)),
         KEY if payload.len() <= MAX_INPUT_MESSAGE => Frame::Input(payload),
-        INPUT if payload.len() == 1 => Frame::Notice(Notice::Input(payload[0] != 0)),
+        INPUT if payload.len() == 1 => Frame::Notice(Notice::Input(payload.first() != Some(&0))),
         FOLLOW => {
             let mpp = cursor.u16()?;
             let sub = cursor.u16()?;

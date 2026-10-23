@@ -30,7 +30,7 @@ pub fn service_info(options: &Options) -> Result<(), Failure> {
             "local offset: {}{}:{:02}",
             if offset < 0 { '-' } else { '+' },
             offset.unsigned_abs() / 2,
-            (offset.unsigned_abs() % 2) * 30
+            if offset % 2 == 0 { 0 } else { 30 }
         );
     }
     // REQ-SVC-005: the core decodes the message with the Latin G0 set.

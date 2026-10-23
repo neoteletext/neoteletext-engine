@@ -30,12 +30,12 @@ fn qr_page(text: &str, page: u16, row: usize, column: usize) -> Result<String, F
     }
     let mut tti = format!("PN,{page:03X}00\r\nSC,0000\r\nPS,8000\r\n");
     for (index, line) in rows.iter().enumerate() {
-        let _ = write!(tti, "OL,{},", row + index);
+        let _ = write!(tti, "OL,{},", row.saturating_add(index));
         tti.push_str(&" ".repeat(column));
         for &code in line {
             if code < 0x20 {
                 tti.push(ESCAPE);
-                tti.push(char::from(code + ESCAPE_OFFSET));
+                tti.push(char::from(code.saturating_add(ESCAPE_OFFSET)));
             } else {
                 tti.push(char::from(code));
             }
@@ -52,6 +52,7 @@ pub fn qr(text: &str, page: &str, row: usize, column: usize, output: &Path) -> R
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, reason = "a test")]
 mod tests {
     use super::*;
 

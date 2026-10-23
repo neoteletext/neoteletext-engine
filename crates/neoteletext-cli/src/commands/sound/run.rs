@@ -138,11 +138,13 @@ fn live_packets(
         // The block is whole once its last sample is captured.
         let captured =
             u64::try_from((usize::from(index).saturating_add(1)).saturating_mul(per_block)).unwrap_or(u64::MAX);
-        let due = usize::try_from(captured.saturating_mul(u64::from(pace)) / u64::from(sound.rate_hz.max(1)))
-            .unwrap_or(usize::MAX);
+        let due = usize::try_from(
+            captured.saturating_mul(u64::from(pace)).checked_div(u64::from(sound.rate_hz.max(1))).unwrap_or(0),
+        )
+        .unwrap_or(usize::MAX);
         while out.len() < due {
             let cycle = announcement.len().saturating_add(latest.len()).max(1);
-            let at = filler % cycle;
+            let at = filler.checked_rem(cycle).unwrap_or(0);
             let packet = announcement.get(at).or_else(|| latest.get(at.saturating_sub(announcement.len())));
             out.extend(packet.copied());
             filler = filler.saturating_add(1);

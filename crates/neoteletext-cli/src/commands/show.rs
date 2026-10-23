@@ -37,13 +37,14 @@ pub fn show(
     // Measure the terminal before the sandbox closes /dev/tty.
     let area = if display == Display::Iterm2 { terminal::text_area() } else { None };
     sandbox_closed(options.no_sandbox)?;
-    let key = selected(&session, selection)?[0];
+    let key = *selected(&session, selection)?.first().ok_or((exit::NOT_FOUND, "no page found".to_owned()))?;
     let grid = grid_of(&mut session, key)?;
     let mut out = std::io::stdout().lock();
     match display {
         Display::Iterm2 => {
             // A page with side panels is wider (REQ-RND-033).
-            let scale = scale_for(raster_args, area, (row_width(&grid), ROWS * frame.options.row_height()));
+            let scale =
+                scale_for(raster_args, area, (row_width(&grid), ROWS.saturating_mul(frame.options.row_height())));
             let image = raster(&grid, frame, scale, Rgba::opaque(0, 0, 0));
             let encoded = png(&image).map_err(|error| (exit::INPUT, error.to_string()))?;
             let _ = out.write_all(iterm2_inline(&encoded, image.width, image.height).as_bytes());

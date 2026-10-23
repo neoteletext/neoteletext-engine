@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::panic, reason = "a test")]
 use super::*;
 use neoteletext_app::exit;
 

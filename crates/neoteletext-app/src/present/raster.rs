@@ -53,14 +53,14 @@ pub fn raster(
         options.colour = ColourMode::Resolved(FlashPhase::STEADY);
     }
     let width = row_width(grid);
-    let height = ROWS * options.row_height();
-    let mut indices = vec![0u8; width * height];
+    let height = ROWS.saturating_mul(options.row_height());
+    let mut indices = vec![0u8; width.saturating_mul(height)];
     let mut buffer = IndexBuffer { format: IndexFormat::Bits8, data: &mut indices, stride: width };
     // The buffer is sized for the whole page and the mode suits the grid,
     // so rendering cannot fail.
     let _ = render_screen(grid, ALL_ROWS, glyphs, options, &mut buffer);
     let (scaled_width, scaled_height) = scaled_size(width, height, scale.x, scale.y, scale.aspect);
-    let mut scaled = vec![0u8; scaled_width * scaled_height];
+    let mut scaled = vec![0u8; scaled_width.saturating_mul(scaled_height)];
     let _ = scale_indices(&indices, width, height, scale.x.max(1), scale.y.max(1), scale.aspect, &mut scaled);
     let palette = match options.colour {
         ColourMode::Palette => palette(&clut0_of(&grid.colour_map), picture, flash_visible, options.reveal).to_vec(),

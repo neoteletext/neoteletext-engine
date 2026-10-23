@@ -60,8 +60,9 @@ impl Channel {
         let mut out = [0_u8; MAX_MESSAGE];
         let length = neoteletext_input::event::write(&Item::Event(hello), &mut out)
             .map_err(|error| (exit::INPUT, format!("HELLO: {error:?}")))?;
-        channel.write(&out[..length])?;
-        let deadline = Instant::now() + Duration::from_millis(u64::from(neoteletext_input::WELCOME_TIMEOUT_MS));
+        channel.write(out.get(..length).ok_or((exit::INPUT, "HELLO: longer than a message".to_owned()))?)?;
+        let wait = Duration::from_millis(u64::from(neoteletext_input::WELCOME_TIMEOUT_MS));
+        let deadline = Instant::now().checked_add(wait).unwrap_or_else(Instant::now);
         while let State::Waiting(_) = channel.session.state() {
             channel.receive(deadline.saturating_duration_since(Instant::now()))?;
             channel.session.tick(channel.now_ms());
@@ -113,7 +114,7 @@ impl Channel {
         let now_ms = self.now_ms();
         match crate::nfc::with_nfc(item, |item| self.session.send(item, None, now_ms, &mut out)) {
             Ok(0) => Ok(()),
-            Ok(length) => self.write(&out[..length]),
+            Ok(length) => self.write(out.get(..length).ok_or((exit::INPUT, "input longer than a message".to_owned()))?),
             Err(SendError::NotWelcomed) => Err((exit::INPUT, "the channel does not take input".to_owned())),
             Err(SendError::Input(error)) => Err((exit::INPUT, format!("input not sent: {error:?}"))),
         }
@@ -158,11 +159,11 @@ impl Channel {
         }
         let mut start = 0;
         while start < clean.len() {
-            let mut end = (start + MAX_MESSAGE).min(clean.len());
+            let mut end = start.saturating_add(MAX_MESSAGE).min(clean.len());
             while !clean.is_char_boundary(end) {
-                end -= 1;
+                end = end.saturating_sub(1);
             }
-            self.send(&Item::Text(&clean[start..end]))?;
+            self.send(&Item::Text(clean.get(start..end).unwrap_or_default()))?;
             start = end;
         }
         Ok(())

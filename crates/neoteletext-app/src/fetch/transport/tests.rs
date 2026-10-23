@@ -1,5 +1,5 @@
 //! The transport through a proxy played on this computer (REQ-WEB-032).
-#![allow(clippy::unwrap_used, clippy::expect_used, reason = "a test")]
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, reason = "a test")]
 
 use super::*;
 

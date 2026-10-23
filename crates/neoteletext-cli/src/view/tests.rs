@@ -1,4 +1,4 @@
-#![allow(clippy::unwrap_used, reason = "a test")]
+#![allow(clippy::unwrap_used, clippy::indexing_slicing, reason = "a test")]
 
 use super::terminal_io::{Wakened, next_event};
 use super::typing::{host_page, input_of};

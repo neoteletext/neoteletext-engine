@@ -14,7 +14,7 @@ pub fn services(options: &Options) -> Result<(), Failure> {
     let mut out = std::io::stdout().lock();
     input::pump(input.as_mut(), reader.as_mut(), &mut |item| match item {
         Item::TeletextEntry { program, pid, entry } => {
-            found += 1;
+            found = found.saturating_add(1);
             let _ = writeln!(
                 out,
                 "program {program:>5}  PID {pid:#06x}  language {}  {:?}  page {}",

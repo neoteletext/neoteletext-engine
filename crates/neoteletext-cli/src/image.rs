@@ -33,7 +33,7 @@ pub fn raster_in(grid: &Grid, frame: Frame, scale: Scale, picture: Rgba, glyphs:
 /// Encodes a raster as PNG bytes.
 pub fn png(raster: &Raster) -> std::io::Result<Vec<u8>> {
     let mut out = Vec::new();
-    let mut scratch = vec![0u8; 2 * (raster.width + 1)];
+    let mut scratch = vec![0u8; raster.width.saturating_add(1).saturating_mul(2)];
     let width = raster.width;
     neoteletext_image::png::write(
         &mut out,
@@ -41,7 +41,8 @@ pub fn png(raster: &Raster) -> std::io::Result<Vec<u8>> {
         raster.height,
         &raster.palette,
         &mut |y, row: &mut [u8]| {
-            if let Some(source) = raster.indices.get(y * width..(y + 1) * width) {
+            if let Some(source) = raster.indices.get(y.saturating_mul(width)..y.saturating_add(1).saturating_mul(width))
+            {
                 row.copy_from_slice(source);
             }
         },
@@ -65,7 +66,7 @@ pub fn ppm(raster: &Raster, fill: Rgba) -> std::io::Result<Vec<u8>> {
 #[must_use]
 pub fn base64(bytes: &[u8]) -> String {
     const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    let mut out = String::with_capacity(bytes.len().div_ceil(3).saturating_mul(4));
     for chunk in bytes.chunks(3) {
         let b = [
             chunk.first().copied().unwrap_or(0),
@@ -73,10 +74,11 @@ pub fn base64(bytes: &[u8]) -> String {
             chunk.get(2).copied().unwrap_or(0),
         ];
         let value = (u32::from(b[0]) << 16) | (u32::from(b[1]) << 8) | u32::from(b[2]);
-        for index in 0..4 {
+        // The four sextets, most significant first.
+        for (index, shift) in [18, 12, 6, 0].into_iter().enumerate() {
             if index <= chunk.len() {
-                let sextet = (value >> (18 - 6 * index)) & 0x3F;
-                out.push(char::from(ALPHABET[sextet as usize]));
+                let sextet = (value >> shift) & 0x3F;
+                out.push(ALPHABET.get(sextet as usize).map_or('=', |&letter| char::from(letter)));
             } else {
                 out.push('=');
             }

@@ -6,6 +6,18 @@
 //! The program is this library, so that it can be tested; the binary
 //! calls [`run`] and nothing else.
 
+// REQ-SEC-003: this crate reads input from outside its process.
+#![deny(
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::arithmetic_side_effects,
+    clippy::unreachable,
+    clippy::todo,
+    clippy::unimplemented
+)]
+
 mod ansi;
 mod args;
 mod bounded_file;

@@ -316,7 +316,7 @@ pub fn run(
             Some(Event::Paste(text)) if typing.on() => {
                 let mut end = text.len().min(neoteletext_input::MAX_PASTE);
                 while !text.is_char_boundary(end) {
-                    end -= 1;
+                    end = end.saturating_sub(1);
                 }
                 let open = Some(viewer.requested().0.mpp());
                 typing.send(
