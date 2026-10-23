@@ -1522,6 +1522,32 @@ fn a_channel_cookie_set_for_the_whole_host_stays_in_its_folder() {
     assert_eq!(count, 0, "never sent to another folder");
 }
 
+/// Finding F-15 (REQ-WEB-026; the review's probe A): a cookie a channel's
+/// push handshake sets for the whole host stays in the channel's folder,
+/// as one a page sets does. It was stored with no scope, so `Path=/`
+/// reached every other channel on the host.
+#[test]
+#[cfg(all(feature = "push", feature = "cookies"))]
+fn a_push_handshake_cookie_stays_in_its_channel_folder() {
+    let mut harness = site_harness(Config::default());
+    let settings = br#"{"push":{"address":"http://site.example/a/events","method":"sse"}}"#;
+    harness.replay().reply("site.example:80", json_response(settings));
+    let head = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nSet-Cookie: s=1; Path=/\r\n\
+                Transfer-Encoding: chunked\r\n\r\n";
+    harness.replay().reply("site.example:80", not_found());
+    harness.replay().reply("site.example:80", Reply::Bytes(head.as_bytes().to_vec()));
+    let records = harness.open_channel("http://site.example/a/");
+    assert!(has_event(&records, "PushConnected(ServerSentEvents)"), "{records:?}");
+    harness.replay().reply("site.example:80", not_found());
+    harness.replay().reply("site.example:80", not_found());
+    harness.open_channel("http://site.example/b/");
+    harness.replay().reply("site.example:80", tti_response(&[]));
+    harness.fetch(0x100);
+    let last = harness.replay().requests_to("site.example:80").last().unwrap().clone();
+    assert_eq!(request_path(&last), "/b/100.tti");
+    assert_eq!(header_value(&last, "Cookie"), None, "not sent to another channel's folder");
+}
+
 #[cfg(feature = "push")]
 fn input_service(input: bool) -> Harness {
     let mut replay = Replay::new(&[("tt.example", PUBLIC)]);

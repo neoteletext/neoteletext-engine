@@ -264,15 +264,18 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
         let Some(url) = self.push_address() else { return false };
         let (seconds, calendar) = self.seconds(now);
         let head_len = self.push.head.len();
-        let Self { buffers, jar, port_cookies, .. } = self;
+        let Self { buffers, jar, port_cookies, channel, .. } = self;
         let head_bytes = buffers.push_head.get(..head_len).unwrap_or(&[]);
+        // A channel's cookies stay in its folder, those its push handshake
+        // sets as much as a page's (REQ-WEB-026, finding F-15).
+        let scope = channel.as_ref().map(Url::path);
         let store = cookie_store(jar, port_cookies);
         let parsed = store_response_cookies(
             store,
             head_bytes,
             url.host_text(),
             url.path(),
-            None,
+            scope,
             url.is_secure(),
             seconds,
             calendar,
