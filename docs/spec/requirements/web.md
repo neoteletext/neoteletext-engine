@@ -110,7 +110,7 @@ The cookie store shall follow current cookie practice (decision E.35): the lates
 *The store:*
 - **Opaque values.** Cookie values are opaque: the client never interprets session contents.
 - **Limits.** The store shall hold at most a configurable number of cookies per host, 50 by default, and in total, 100 by default, in caller-provided memory (REQ-GEN-003). The least recently used cookies beyond these limits are discarded, expired cookies first.
-- **Persistence.** The store may be saved between runs only as REQ-SEC-013 allows. It can be wiped at any time.
+- **Persistence.** The store may be saved between runs only as REQ-SEC-013 allows. It can be wiped at any time. Saved data is untrusted when it is read back: each record is stored through the rules above with the path it was saved with, a record those rules refuse (one expired since it was saved, for example) is skipped and the import goes on, and only a record whose end cannot be found ends it (decision E.114 item 1).
 - **Kept by the port.** A port may keep the store itself and give the agent an interface to it; the rules above are then the port's to apply, with the engine's jar to apply them (decision E.104).
 - **Times.** Each cookie keeps when it was made and last sent, in seconds, and the store can list its cookies and remove those of a host or a time range (decision E.104).
 - **`Clear-Site-Data`.** A response over an encrypted connection whose `Clear-Site-Data` names `"cookies"` or `"*"` shall clear its host's cookies before its own `Set-Cookie` values are stored; over plain HTTP the header shall be ignored (decision E.104).

@@ -1,9 +1,10 @@
 //! The persistence format of the cookie store (REQ-SEC-013, version 2 of
 //! decision E.104): export, and import of the data as untrusted.
 
+use super::store::PathRule;
 use super::{CookieJar, Record, SameSite};
-use crate::bytes::{Overflow, Writer, parse_decimal};
-use crate::consts::{MAX_COOKIE_ATTRIBUTE_VALUE, MAX_COOKIE_NAME_VALUE};
+use crate::bytes::{MAX_U64_DIGITS, Overflow, Writer, parse_decimal};
+use crate::consts::MAX_COOKIE_NAME_VALUE;
 
 /// The first line of exported cookie data.
 const EXPORT_VERSION: &[u8] = b"neoteletext-cookies 2\n";
@@ -12,6 +13,12 @@ const FLAG_HTTP_ONLY: u8 = 2;
 const FLAG_PARTITIONED: u8 = 4;
 const FLAG_VIA_SECURE: u8 = 8;
 const FLAG_SAME_SITE_SHIFT: u32 = 4;
+/// The longest attributes an import writes after the name and value:
+/// `; Max-Age=` and its digits, then every flag `decode_flags` can write.
+const IMPORT_ATTRIBUTE_BYTES: usize =
+    b"; Max-Age=".len() + MAX_U64_DIGITS + b"; Secure; HttpOnly; Partitioned".len() + b"; SameSite=Strict".len();
+/// The header an import rebuilds: `name=value` and its attributes.
+const IMPORT_HEADER_BYTES: usize = MAX_COOKIE_NAME_VALUE + b"=".len() + IMPORT_ATTRIBUTE_BYTES;
 
 impl<const SLOTS: usize, const BYTES: usize> CookieJar<SLOTS, BYTES> {
     /// Writes the cookies that may be saved (REQ-SEC-013): only those with
@@ -45,8 +52,11 @@ impl<const SLOTS: usize, const BYTES: usize> CookieJar<SLOTS, BYTES> {
     }
 
     /// Reads cookies written by [`Self::export`]. The saved data is treated
-    /// as untrusted: every record is checked, and the first malformed one
-    /// ends the import. Returns the number of cookies restored.
+    /// as untrusted: every record is checked. A record the rules refuse,
+    /// such as one that has expired since it was saved, is read past and
+    /// not stored; only a malformed one ends the import, since its end
+    /// cannot be found (finding F-13, decision E.114 item 1). Returns the
+    /// number of cookies restored.
     pub fn import(&mut self, data: &[u8], now: u64) -> usize {
         let Some(mut rest) = data.strip_prefix(EXPORT_VERSION) else { return 0 };
         let mut restored = 0usize;
@@ -63,7 +73,7 @@ impl<const SLOTS: usize, const BYTES: usize> CookieJar<SLOTS, BYTES> {
         let mut rest = data;
         for field in &mut fields {
             let end = rest.iter().position(|&b| b == b' ')?;
-            *field = parse_decimal(rest.get(..end)?, crate::bytes::MAX_U64_DIGITS)?;
+            *field = parse_decimal(rest.get(..end)?, MAX_U64_DIGITS)?;
             rest = rest.get(end.saturating_add(1)..)?;
         }
         let [expires, created_at, used_at, flags, host_len, name_len, value_len, path_len] = fields;
@@ -77,31 +87,35 @@ impl<const SLOTS: usize, const BYTES: usize> CookieJar<SLOTS, BYTES> {
         let value_start = host_len.checked_add(name_len)?;
         let value = texts.get(value_start..value_start.checked_add(value_len)?)?;
         let path = texts.get(value_start.checked_add(value_len)?..)?;
-        let host = core::str::from_utf8(host).ok()?;
+        // The record's end is known from here, so a refused record is read
+        // past rather than ending the import (finding F-13).
+        let Ok(host) = core::str::from_utf8(host) else { return Some((false, rest)) };
         if crate::url::Url::parse_host_only(host).is_err() || path.first() != Some(&b'/') {
-            return None;
+            return Some((false, rest));
         }
         // Rebuild the header and store it through the normal rules, so a
-        // tampered file cannot create a cookie the rules would refuse.
-        let mut header = [0u8; MAX_COOKIE_NAME_VALUE + MAX_COOKIE_ATTRIBUTE_VALUE + 128];
+        // tampered file cannot create a cookie the rules would refuse. The
+        // path is passed as saved, not as an attribute (finding F-13).
+        let mut header = [0u8; IMPORT_HEADER_BYTES];
         let mut writer = Writer::new(&mut header);
-        let flags = u8::try_from(flags).ok()?;
-        let lifetime = expires.checked_sub(now)?;
+        let Ok(flags) = u8::try_from(flags) else { return Some((false, rest)) };
+        // An expired record gives `Max-Age=0`, which the rules refuse.
+        let lifetime = expires.saturating_sub(now);
         let built = (|| -> Result<(), Overflow> {
             if !name.is_empty() {
                 writer.put(name)?;
             }
             writer.byte(b'=')?;
             writer.put(value)?;
-            writer.put(b"; Path=")?;
-            writer.put(path)?;
             writer.put(b"; Max-Age=")?;
             writer.decimal(lifetime)?;
             decode_flags(flags, &mut writer)
         })();
-        built.ok()?;
+        if built.is_err() {
+            return Some((false, rest));
+        }
         let secure = flags & FLAG_VIA_SECURE != 0;
-        let stored = self.store(writer.written(), host, "/", secure, now, false).is_ok();
+        let stored = self.store_with_path(writer.written(), host, PathRule::Saved(path), secure, now, false).is_ok();
         // Its times as saved, none later than now.
         if stored
             && let Some(index) = self.find(host.as_bytes(), name, path)
