@@ -52,6 +52,7 @@ These two media types are defined by this project. For interoperability, the mod
 
 The module shall:
 - follow at most 5 redirects. When the port asks for redirects to stay within the channel, a redirect that leaves the channel shall instead be reported, not followed (REQ-WEB-021);
+- treat a redirect whose `Location` is empty, is not UTF-8, or names the request's own address with the method unchanged as a fault after that one request, never following it (decision E.114 item 4; `a_redirect_to_nowhere_is_a_fault_after_one_request`, which fails on the code before 24 October 2026);
 - treat 404 as "page not in this service";
 - report other failures as events without disturbing pages already stored.
 *Verification:* Test against the local test server of REQ-WEB-013.

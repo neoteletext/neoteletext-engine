@@ -103,11 +103,14 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
             self.finish_purpose(exchange.purpose, Err(Failure::TooManyRedirects), sink);
             return;
         }
-        let Some(location) = head.location else {
+        // An empty or non-UTF-8 `Location` leads nowhere: it would resolve
+        // to the request's own address (decision E.114 item 4, F-44).
+        let location = head.location.as_ref().and_then(|location| core::str::from_utf8(location.as_bytes()).ok());
+        let Some(location) = location.filter(|location| !location.is_empty()) else {
             self.finish_purpose(exchange.purpose, Err(Failure::BadRedirect), sink);
             return;
         };
-        let next = match exchange.url.join(location.as_str()) {
+        let next = match exchange.url.join(location) {
             Ok(url) if !url.scheme().is_websocket() => url,
             Ok(_) => {
                 self.finish_purpose(exchange.purpose, Err(Failure::Address(UrlError::Scheme)), sink);
@@ -130,6 +133,14 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
         // RFC 9110 section 15.4: 303 always becomes GET, and 301 and 302
         // do for POST, as browsers do; 307 and 308 keep the method.
         let status = head.status;
+        // The same address with the same method is the same request again.
+        let method_changes = status == STATUS_SEE_OTHER
+            || ((status == STATUS_MOVED_PERMANENTLY || status == STATUS_FOUND) && exchange.method == Method::Post);
+        let next_method = if method_changes { Method::Get } else { exchange.method };
+        if next.as_str() == exchange.url.as_str() && next_method == exchange.method {
+            self.finish_purpose(exchange.purpose, Err(Failure::BadRedirect), sink);
+            return;
+        }
         // A form whose method and body a 307 or 308 would keep is not sent
         // to any origin but its target's: the viewer's values and token
         // would reach an origin neither checked nor confirmed (REQ-SEC-009,
@@ -143,9 +154,7 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
             event(sink, Event::SubmissionRefused(FormRefused::Origin));
             return;
         }
-        if status == STATUS_SEE_OTHER
-            || ((status == STATUS_MOVED_PERMANENTLY || status == STATUS_FOUND) && exchange.method == Method::Post)
-        {
+        if method_changes {
             exchange.method = Method::Get;
             self.form.body_len = 0;
         }

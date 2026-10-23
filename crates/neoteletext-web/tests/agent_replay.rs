@@ -426,14 +426,43 @@ fn redirects_are_followed_up_to_five() {
     let Rec::Page { url, .. } = pages(&records)[0] else { unreachable!() };
     assert_eq!(url, "http://tt.example/c");
 
-    for _ in 0..6 {
-        harness.replay().reply("tt.example:80", Reply::Bytes(response("302 Found", &["Location: /loop"], b"")));
+    for hop in 0..6 {
+        let location = format!("Location: /loop{hop}");
+        harness.replay().reply("tt.example:80", Reply::Bytes(response("302 Found", &[&location], b"")));
     }
     harness.advance(SECOND);
     assert!(has_event(
         &harness.fetch(0x101),
         "FetchFailed { page: PageAddress { magazine: Magazine(1), page: PageNumber(1) }, subcode: None, failure: TooManyRedirects"
     ));
+}
+
+/// Finding F-44 (decision E.114 item 4; the review's probe B): a
+/// `Location` that is empty, is not UTF-8, or names the request's own
+/// address with the method unchanged leads nowhere, and is a fault after
+/// one request. It resolved to the request's own address and spent six
+/// requests, outside the fetch interval.
+#[test]
+fn a_redirect_to_nowhere_is_a_fault_after_one_request() {
+    let empty = b"HTTP/1.1 302 Found\r\nLocation: \r\nContent-Length: 0\r\n\r\n".to_vec();
+    let not_utf8 = b"HTTP/1.1 302 Found\r\nLocation: /p/\xff\r\nContent-Length: 0\r\n\r\n".to_vec();
+    let itself = response("302 Found", &["Location: http://tt.example/p/100"], b"");
+    let relative_itself = response("307 Temporary Redirect", &["Location: /p/100"], b"");
+    let see_itself = response("303 See Other", &["Location: /p/100"], b"");
+    for reply in [empty, not_utf8, itself, relative_itself, see_itself] {
+        let mut harness = plain_service();
+        for _ in 0..6 {
+            harness.replay().reply("tt.example:80", Reply::Bytes(reply.clone()));
+        }
+        let records = harness.fetch(0x100);
+        let shown = String::from_utf8_lossy(&reply).into_owned();
+        assert!(has_event(&records, "FetchFailed {"), "{shown}: {records:?}");
+        assert!(
+            records.iter().any(|record| format!("{record:?}").contains("failure: BadRedirect")),
+            "{shown}: {records:?}"
+        );
+        assert_eq!(harness.replay().requests_to("tt.example:80").len(), 2, "{shown}: the descriptor and one request");
+    }
 }
 
 #[test]
