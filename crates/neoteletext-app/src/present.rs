@@ -13,8 +13,6 @@ use neoteletext_core::render::{source_cell, source_columns};
 
 mod raster;
 mod receiver_page;
-#[cfg(test)]
-mod tests;
 
 pub use raster::{Raster, Scale, raster};
 pub use receiver_page::receiver_grid;
@@ -94,3 +92,6 @@ pub fn plain(grid: &Grid, reveal: bool, mosaics: MosaicStyle) -> String {
     }
     out
 }
+
+#[cfg(test)]
+mod tests;

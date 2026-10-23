@@ -473,7 +473,7 @@ pub fn fetch(_address: &str, _no_sandbox: bool, _allow_local: &[IpAddr], _proxy:
 /// The short names of the services a descriptor lists, for `--descriptor`.
 #[cfg(feature = "live")]
 fn descriptor_service_names(path: &Path) -> Result<Vec<Vec<u8>>, Failure> {
-    neoteletext_app::live::descriptor_service_names(path)
+    neoteletext_app::descriptor::descriptor_service_names(path)
 }
 
 /// Service descriptors are read by the web module, which a build without
