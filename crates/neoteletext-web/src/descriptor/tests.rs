@@ -135,6 +135,27 @@ fn input_needs_a_websocket() {
     assert!(!Descriptor::parse(VALID.as_bytes(), &base()).unwrap().input());
 }
 
+/// Finding F-90 (INPUT.md section 4): keys go back only to a push
+/// WebSocket on the descriptor's own origin. A service's descriptor could
+/// send them to any origin; a channel's push was already held to its own.
+#[test]
+fn input_goes_only_to_the_descriptors_own_origin() {
+    let plain = Url::parse("http://s.example/service.json").unwrap();
+    let with =
+        |push: &str| std::format!(r#"{{"name":"S","initial_page":"100","page_template":"/{{mpp}}","push":{push}}}"#);
+    let parse = |push: &str| Descriptor::parse(with(push).as_bytes(), &plain).map(|descriptor| descriptor.input());
+    assert_eq!(
+        parse(r#"{"address":"ws://keys.example/p","method":"websocket","input":true}"#),
+        Err(DescriptorError::Invalid(Member::PushInput))
+    );
+    assert_eq!(
+        parse(r#"{"address":"ws://s.example:8080/p","method":"websocket","input":true}"#),
+        Err(DescriptorError::Invalid(Member::PushInput)),
+        "another port is another origin"
+    );
+    assert_eq!(parse(r#"{"address":"ws://keys.example/p","method":"websocket"}"#), Ok(false), "push alone may");
+}
+
 #[test]
 fn https_descriptor_cannot_name_plain_addresses() {
     let cases: [(&str, Member); 4] = [

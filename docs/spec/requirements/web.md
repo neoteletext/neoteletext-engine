@@ -29,7 +29,7 @@ A web teletext service shall be identified by the address of a small descriptor 
 - the service name;
 - the initial page;
 - a page address template;
-- optionally, a push address and the push method (WebSocket or server-sent events), and with a WebSocket only, `"input": true` in the `push` object: the channel takes the viewer's keys back on that socket (area INT, decision E.90; *amended 20 October 2026, decision E.92*);
+- optionally, a push address and the push method (WebSocket or server-sent events), and with a WebSocket only, `"input": true` in the `push` object: the channel takes the viewer's keys back on that socket (area INT, decision E.90; *amended 20 October 2026, decision E.92*), which shall then be on the descriptor's own origin, as `INPUT.md` section 4 requires (*amended 24 October 2026*, finding F-90 of NeoTeletext's security review; `input_goes_only_to_the_descriptors_own_origin`, which fails on the code before it);
 - optionally, a list of other origins that forms may submit to;
 - optionally, the default character set region (decision E.4);
 - optionally, a list of other services that links may lead to (Appendix E). Each has a short name, a display name and the address of its own descriptor;
