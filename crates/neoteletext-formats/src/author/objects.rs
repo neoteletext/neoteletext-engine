@@ -184,59 +184,11 @@ impl ObjectPage {
         let first_packet = (pointer_packets as u8).saturating_add(1).max(OBJECT_DEFINITION_FIRST_PACKET);
         let reserved = usize::from(first_packet.saturating_sub(OBJECT_DEFINITION_FIRST_PACKET));
         let start = reserved.saturating_mul(TRIPLETS_PER_PACKET);
-
-        let mut sequence: Vec<Triplet> = Vec::new();
-        let mut pointers: Vec<(ObjectKind, usize, u16)> = Vec::new();
-        let local = |_: super::triplets::LocalObject, _: ObjectKind| Err(AuthorError::UnknownLocalObject);
-        let count = sub.objects.len();
-        for (position, object) in sub.objects.iter().enumerate() {
-            let absolute = start.saturating_add(sequence.len());
-            pointers.push((object.kind, object.index, u16::try_from(absolute).unwrap_or(OBJECT_POINTER_UNUSED)));
-            let number = public_number(s1, object.index);
-            sequence.push(
-                TripletFunction::ObjectDefinition { usage: object.usage, kind: object.kind, number }.to_triplet(),
-            );
-            sequence.extend(object.body.resolved(&local)?);
-            let more = position.saturating_add(1) < count;
-            let kind = match (final_subpage, more) {
-                (false, true) => TERMINATION_INTERMEDIATE_MORE,
-                (false, false) => TERMINATION_INTERMEDIATE_LAST,
-                (true, true) => TERMINATION_FINAL_MORE,
-                (true, false) => TERMINATION_FINAL_LAST,
-            };
-            sequence.push(TripletFunction::Termination { kind }.to_triplet());
-        }
-        if let Some(&marker) = sequence.last() {
-            while !start.saturating_add(sequence.len()).is_multiple_of(TRIPLETS_PER_PACKET) {
-                sequence.push(marker);
-            }
-        }
-        if start.saturating_add(sequence.len()) > usize::from(OBJECT_TRIPLET_LAST).saturating_add(1) {
-            return Err(AuthorError::ObjectSubPageFull);
-        }
+        let (sequence, mut pointers) = definition_sequence(s1, sub, start, final_subpage)?;
         for &(kind, index, value) in &sub.overrides {
             pointers.push((kind, index, value));
         }
-
-        let mut tables = Vec::new();
-        for packet in 1..=pointer_packets {
-            let mut triplets = [Triplet::default(); TRIPLETS_PER_PACKET];
-            for slot in triplets.iter_mut().skip(1) {
-                *slot = encode::pointer_triplet(OBJECT_POINTER_UNUSED, OBJECT_POINTER_UNUSED);
-            }
-            tables.push((u8::try_from(packet).unwrap_or(1), triplets));
-        }
-        for &(kind, index, value) in &pointers {
-            let (packet, triplet, odd) = pointer_place(kind, index);
-            let Some((_, triplets)) = tables.iter_mut().find(|(number, _)| *number == packet) else { continue };
-            let Some(slot) = triplets.get_mut(triplet) else { continue };
-            let current = slot.value();
-            let (even, odd_value) = (
-                current as u16 & OBJECT_POINTER_UNUSED,
-                (current >> OBJECT_POINTER_BITS) as u16 & OBJECT_POINTER_UNUSED,
-            );
-            *slot = if odd { encode::pointer_triplet(even, value) } else { encode::pointer_triplet(value, odd_value) };
-        }
+        let tables = pointer_tables(pointer_packets, &pointers);
 
         let mut page = new_page(self.address, neoteletext_core::types::SubCode::new(0));
         let function = if self.global { PAGE_FUNCTION_GPOP } else { PAGE_FUNCTION_POP };
@@ -246,36 +198,115 @@ impl ObjectPage {
             page.set_row(usize::from(*packet), &packed_row(OBJECT_POINTER_DATA_BIT, triplets));
             last_packet = last_packet.max(*packet);
         }
-        let mut rows: BTreeMap<u8, [Triplet; TRIPLETS_PER_PACKET]> = BTreeMap::new();
-        let mut enhancements: BTreeMap<u8, [Triplet; TRIPLETS_PER_PACKET]> = BTreeMap::new();
-        for (offset, &triplet) in sequence.iter().enumerate() {
-            let number = u16::try_from(start.saturating_add(offset)).unwrap_or(u16::MAX);
-            match triplet_location(number).ok_or(AuthorError::ObjectSubPageFull)? {
-                TripletLocation::Row { packet, triplet: index } => {
-                    let slots = rows.entry(packet).or_insert([Triplet::default(); TRIPLETS_PER_PACKET]);
-                    *slots.get_mut(usize::from(index)).ok_or(AuthorError::ObjectSubPageFull)? = triplet;
-                }
-                TripletLocation::Enhancement { designation, triplet: index } => {
-                    let slots = enhancements.entry(designation).or_insert([Triplet::default(); TRIPLETS_PER_PACKET]);
-                    *slots.get_mut(usize::from(index)).ok_or(AuthorError::ObjectSubPageFull)? = triplet;
-                }
-            }
-        }
-        for (&packet, triplets) in &rows {
-            // Byte 6 of packets 3 and 4 says "definitions" with B1 = 0, and
-            // is reserved elsewhere (clause 10.5.1.2).
-            page.set_row(usize::from(packet), &packed_row(0, triplets));
-            last_packet = last_packet.max(packet);
-        }
-        for (&designation, triplets) in &enhancements {
-            if !page.enhancements.push(EnhancementPacket { designation, triplets: *triplets }) {
-                return Err(AuthorError::ObjectSubPageFull);
-            }
-            last_packet = enhancement_last_packet(designation);
-        }
+        let last_packet = place_triplets(&mut page, &sequence, start, last_packet)?;
         page.subcode = enhancement_subcode(last_packet, self.update, s1);
         Ok(page)
     }
+}
+
+/// A pointer to write: the object's type, its index, and the triplet
+/// address it points to.
+type Pointer = (ObjectKind, usize, u16);
+
+/// The object definitions of a sub-page in order, each followed by its
+/// Termination Marker, padded to whole packets (clause 10.5.1.3), and the
+/// pointer to each definition.
+fn definition_sequence(
+    s1: u8,
+    sub: &SubPage,
+    start: usize,
+    final_subpage: bool,
+) -> Result<(Vec<Triplet>, Vec<Pointer>)> {
+    let mut sequence: Vec<Triplet> = Vec::new();
+    let mut pointers: Vec<(ObjectKind, usize, u16)> = Vec::new();
+    let local = |_: super::triplets::LocalObject, _: ObjectKind| Err(AuthorError::UnknownLocalObject);
+    let count = sub.objects.len();
+    for (position, object) in sub.objects.iter().enumerate() {
+        let absolute = start.saturating_add(sequence.len());
+        pointers.push((object.kind, object.index, u16::try_from(absolute).unwrap_or(OBJECT_POINTER_UNUSED)));
+        let number = public_number(s1, object.index);
+        sequence
+            .push(TripletFunction::ObjectDefinition { usage: object.usage, kind: object.kind, number }.to_triplet());
+        sequence.extend(object.body.resolved(&local)?);
+        let more = position.saturating_add(1) < count;
+        let kind = match (final_subpage, more) {
+            (false, true) => TERMINATION_INTERMEDIATE_MORE,
+            (false, false) => TERMINATION_INTERMEDIATE_LAST,
+            (true, true) => TERMINATION_FINAL_MORE,
+            (true, false) => TERMINATION_FINAL_LAST,
+        };
+        sequence.push(TripletFunction::Termination { kind }.to_triplet());
+    }
+    if let Some(&marker) = sequence.last() {
+        while !start.saturating_add(sequence.len()).is_multiple_of(TRIPLETS_PER_PACKET) {
+            sequence.push(marker);
+        }
+    }
+    if start.saturating_add(sequence.len()) > usize::from(OBJECT_TRIPLET_LAST).saturating_add(1) {
+        return Err(AuthorError::ObjectSubPageFull);
+    }
+    Ok((sequence, pointers))
+}
+
+/// The pointer packets 1 to `pointer_packets`, every pointer unused but
+/// those given (clause 10.5.1.2).
+fn pointer_tables(
+    pointer_packets: usize,
+    pointers: &[(ObjectKind, usize, u16)],
+) -> Vec<(u8, [Triplet; TRIPLETS_PER_PACKET])> {
+    let mut tables = Vec::new();
+    for packet in 1..=pointer_packets {
+        let mut triplets = [Triplet::default(); TRIPLETS_PER_PACKET];
+        for slot in triplets.iter_mut().skip(1) {
+            *slot = encode::pointer_triplet(OBJECT_POINTER_UNUSED, OBJECT_POINTER_UNUSED);
+        }
+        tables.push((u8::try_from(packet).unwrap_or(1), triplets));
+    }
+    for &(kind, index, value) in pointers {
+        let (packet, triplet, odd) = pointer_place(kind, index);
+        let Some((_, triplets)) = tables.iter_mut().find(|(number, _)| *number == packet) else { continue };
+        let Some(slot) = triplets.get_mut(triplet) else { continue };
+        let current = slot.value();
+        let (even, odd_value) =
+            (current as u16 & OBJECT_POINTER_UNUSED, (current >> OBJECT_POINTER_BITS) as u16 & OBJECT_POINTER_UNUSED);
+        *slot = if odd { encode::pointer_triplet(even, value) } else { encode::pointer_triplet(value, odd_value) };
+    }
+    tables
+}
+
+/// Places the definition sequence, from triplet `start`, in the rows and
+/// packets X/26 that `triplet_location` gives, and returns the last packet
+/// number sent, starting from `last_packet`.
+fn place_triplets(page: &mut PageFile, sequence: &[Triplet], start: usize, last_packet: u8) -> Result<u8> {
+    let mut last_packet = last_packet;
+    let mut rows: BTreeMap<u8, [Triplet; TRIPLETS_PER_PACKET]> = BTreeMap::new();
+    let mut enhancements: BTreeMap<u8, [Triplet; TRIPLETS_PER_PACKET]> = BTreeMap::new();
+    for (offset, &triplet) in sequence.iter().enumerate() {
+        let number = u16::try_from(start.saturating_add(offset)).unwrap_or(u16::MAX);
+        match triplet_location(number).ok_or(AuthorError::ObjectSubPageFull)? {
+            TripletLocation::Row { packet, triplet: index } => {
+                let slots = rows.entry(packet).or_insert([Triplet::default(); TRIPLETS_PER_PACKET]);
+                *slots.get_mut(usize::from(index)).ok_or(AuthorError::ObjectSubPageFull)? = triplet;
+            }
+            TripletLocation::Enhancement { designation, triplet: index } => {
+                let slots = enhancements.entry(designation).or_insert([Triplet::default(); TRIPLETS_PER_PACKET]);
+                *slots.get_mut(usize::from(index)).ok_or(AuthorError::ObjectSubPageFull)? = triplet;
+            }
+        }
+    }
+    for (&packet, triplets) in &rows {
+        // Byte 6 of packets 3 and 4 says "definitions" with B1 = 0, and
+        // is reserved elsewhere (clause 10.5.1.2).
+        page.set_row(usize::from(packet), &packed_row(0, triplets));
+        last_packet = last_packet.max(packet);
+    }
+    for (&designation, triplets) in &enhancements {
+        if !page.enhancements.push(EnhancementPacket { designation, triplets: *triplets }) {
+            return Err(AuthorError::ObjectSubPageFull);
+        }
+        last_packet = enhancement_last_packet(designation);
+    }
+    Ok(last_packet)
 }
 
 /// The last-packet number of X/26 with a designation code (Annex A.1).
