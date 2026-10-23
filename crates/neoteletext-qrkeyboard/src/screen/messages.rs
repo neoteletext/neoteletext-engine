@@ -56,8 +56,14 @@ impl Screen {
                 true
             }
             FromPhone::Up(key) if self.config.layout.has_key(&key) => {
+                // Only a key the screen holds is released (decision E.116
+                // item 1): releases are bounded by presses, and a release
+                // of anything else is acknowledged and dropped.
+                let before = self.held.len();
                 self.held.retain(|(held, _)| *held != key);
-                events.push(Event::Up(key));
+                if self.held.len() < before {
+                    events.push(Event::Up(key));
+                }
                 true
             }
             // Keys outside the layout are ignored, as the SDK ignores them.

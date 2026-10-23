@@ -283,14 +283,4 @@ impl Screen {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn join_codes_are_the_relays() {
-        assert!(is_code("ABCDEFGHIJKLMN27"));
-        assert!(!is_code("ABCDEFGHIJKLMN28"), "8 is not base-32");
-        assert!(!is_code("abcdefghijklmn27"));
-        assert!(!is_code("ABC"));
-    }
-}
+mod tests;
