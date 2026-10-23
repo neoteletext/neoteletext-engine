@@ -8,7 +8,8 @@ use neoteletext_core::consts::MODE_COLUMN_RESERVED_1;
 use neoteletext_core::packet::Triplet;
 
 use crate::consts::{BASE64_BITS, EDITTF_TRIPLET_CHARACTERS};
-use crate::item::{Diagnostic, DiagnosticKind, Item, Reader, offset_of};
+use crate::item::{Diagnostic, DiagnosticKind, Item, Reader};
+use crate::lines::Lines;
 use crate::page::PageFile;
 
 mod base64;
@@ -39,12 +40,7 @@ const FILLER: Triplet = Triplet { address: 0, mode: MODE_COLUMN_RESERVED_1, data
 /// A reader of edit.tf addresses, one per line.
 #[derive(Clone, Debug)]
 pub struct EditTfReader {
-    line: [u8; LINE_BYTES],
-    len: usize,
-    overflow: bool,
-    line_number: u32,
-    line_offset: u64,
-    position: u64,
+    lines: Lines<LINE_BYTES>,
     page: PageFile,
 }
 
@@ -58,23 +54,16 @@ impl EditTfReader {
     /// A reader.
     #[must_use]
     pub const fn new() -> Self {
-        Self {
-            line: [0; LINE_BYTES],
-            len: 0,
-            overflow: false,
-            line_number: 0,
-            line_offset: 0,
-            position: 0,
-            page: PageFile::new(),
-        }
+        Self { lines: Lines::new(), page: PageFile::new() }
     }
 
     fn end_line(&mut self, out: &mut dyn FnMut(Item<'_>)) {
-        self.line_number = self.line_number.saturating_add(1);
-        let line = self.line;
-        let text = line.get(..self.len).unwrap_or(&[]);
-        let diagnostic = |kind| Item::Diagnostic(Diagnostic::at_line(self.line_offset, self.line_number, kind));
-        if self.overflow {
+        // A copy, so that parsing the line can borrow the reader's page.
+        let lines = self.lines;
+        let line = lines.line();
+        let text = line.text;
+        let diagnostic = |kind| Item::Diagnostic(Diagnostic::at_line(lines.offset(), lines.number(), kind));
+        if line.overflow {
             out(diagnostic(DiagnosticKind::LineTooLong));
         } else if !text.trim_ascii().is_empty() {
             match parse(text, &mut self.page) {
@@ -86,32 +75,21 @@ impl EditTfReader {
                 Err(kind) => out(diagnostic(kind)),
             }
         }
-        self.len = 0;
-        self.overflow = false;
+        self.lines.clear();
     }
 }
 
 impl Reader for EditTfReader {
     fn feed(&mut self, bytes: &[u8], out: &mut dyn FnMut(Item<'_>)) {
-        let base = self.position;
-        self.position = offset_of(base, bytes.len());
-        for (index, &byte) in bytes.iter().enumerate() {
-            if self.len == 0 && !self.overflow {
-                self.line_offset = offset_of(base, index);
-            }
-            if byte == b'\n' {
-                self.end_line(out);
-            } else if let Some(slot) = self.line.get_mut(self.len) {
-                *slot = byte;
-                self.len = self.len.saturating_add(1);
-            } else {
-                self.overflow = true;
-            }
+        let mut rest = bytes;
+        while let Some(after) = self.lines.take(rest) {
+            self.end_line(out);
+            rest = after;
         }
     }
 
     fn finish(&mut self, out: &mut dyn FnMut(Item<'_>)) {
-        if self.len > 0 || self.overflow {
+        if self.lines.finish() {
             self.end_line(out);
         }
     }

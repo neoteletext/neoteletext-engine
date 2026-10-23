@@ -12,6 +12,23 @@ pub(super) const REGION_LAST: u32 = 0xF;
 /// Page coding is 3 bits (Table 3).
 pub(super) const CODING_LAST: u32 = 0x7;
 
+/// Sets `target` to as much of `value` as it holds, and returns whether
+/// all of it was kept. A cut can land just after a carriage return in the
+/// value; those the cut leaves at the end are dropped, since written back
+/// before the line feed they would read as line ending (REQ-INP-013) and
+/// the value would change on every read and write (F-103).
+pub(super) fn set_value<const N: usize>(target: &mut Text<N>, value: &[u8]) -> bool {
+    let mut kept = value.get(..N).unwrap_or(value);
+    let whole = kept.len() == value.len();
+    if !whole {
+        while let Some(stripped) = kept.strip_suffix(b"\r") {
+            kept = stripped;
+        }
+    }
+    // `kept` fits, so `set` keeps all of it.
+    target.set(kept) && whole
+}
+
 /// Comma-separated arguments.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Args<'a> {

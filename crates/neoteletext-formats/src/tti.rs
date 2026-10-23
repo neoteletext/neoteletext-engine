@@ -3,7 +3,8 @@
 //! (Appendix C), read line by line.
 
 use crate::consts::TTI_COMMAND_BYTES;
-use crate::item::{Item, Reader, offset_of};
+use crate::item::{Item, Reader};
+use crate::lines::Lines;
 use crate::page::PageFile;
 use crate::text::Text;
 
@@ -33,12 +34,7 @@ const PAGE_COMMANDS: [[u8; TTI_COMMAND_BYTES]; 19] = [
 /// [`Item::Page`] when the next `PN` line or the end of input completes it.
 #[derive(Clone, Debug)]
 pub struct TtiReader {
-    line: [u8; LINE_BYTES],
-    len: usize,
-    overflow: bool,
-    line_number: u32,
-    line_offset: u64,
-    position: u64,
+    lines: Lines<LINE_BYTES>,
     page: PageFile,
     started: bool,
     /// `LG` lines since the last `PN` (REQ-INP-026).
@@ -64,12 +60,7 @@ impl TtiReader {
     #[must_use]
     pub const fn new() -> Self {
         Self {
-            line: [0; LINE_BYTES],
-            len: 0,
-            overflow: false,
-            line_number: 0,
-            line_offset: 0,
-            position: 0,
+            lines: Lines::new(),
             page: PageFile::new(),
             started: false,
             log_lines: 0,
@@ -85,25 +76,15 @@ impl TtiReader {
 
 impl Reader for TtiReader {
     fn feed(&mut self, bytes: &[u8], out: &mut dyn FnMut(Item<'_>)) {
-        let base = self.position;
-        self.position = offset_of(base, bytes.len());
-        for (index, &byte) in bytes.iter().enumerate() {
-            if self.len == 0 && !self.overflow {
-                self.line_offset = offset_of(base, index);
-            }
-            if byte == b'\n' {
-                self.end_line(out);
-            } else if let Some(slot) = self.line.get_mut(self.len) {
-                *slot = byte;
-                self.len = self.len.saturating_add(1);
-            } else {
-                self.overflow = true;
-            }
+        let mut rest = bytes;
+        while let Some(after) = self.lines.take(rest) {
+            self.end_line(out);
+            rest = after;
         }
     }
 
     fn finish(&mut self, out: &mut dyn FnMut(Item<'_>)) {
-        if self.len > 0 || self.overflow {
+        if self.lines.finish() {
             self.end_line(out);
         }
         self.emit(out);

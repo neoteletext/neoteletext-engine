@@ -9,17 +9,17 @@ use crate::consts::TTI_COMMAND_BYTES;
 use crate::item::{Capacity, Diagnostic, DiagnosticKind, Item};
 use crate::page::{INPUT_MODE_BITS, IssueKind, ModesLine, PageFunction, Warning};
 
-use super::fields::{Args, CODING_LAST, REGION_LAST, decimal, hex, page_address, result_page};
+use super::fields::{Args, CODING_LAST, REGION_LAST, decimal, hex, page_address, result_page, set_value};
 use super::row_text::decode_text;
 use super::{PAGE_COMMANDS, TtiReader};
 
 impl TtiReader {
     pub(super) fn diagnostic(&self, kind: DiagnosticKind, out: &mut dyn FnMut(Item<'_>)) {
-        out(Item::Diagnostic(Diagnostic::at_line(self.line_offset, self.line_number, kind)));
+        out(Item::Diagnostic(Diagnostic::at_line(self.lines.offset(), self.lines.number(), kind)));
     }
 
     pub(super) fn issue(&mut self, kind: IssueKind, out: &mut dyn FnMut(Item<'_>)) {
-        self.issue_at(kind, self.line_number, out);
+        self.issue_at(kind, self.lines.number(), out);
     }
 
     pub(super) fn issue_at(&mut self, kind: IssueKind, line: u32, out: &mut dyn FnMut(Item<'_>)) {
@@ -30,12 +30,13 @@ impl TtiReader {
     }
 
     pub(super) fn end_line(&mut self, out: &mut dyn FnMut(Item<'_>)) {
-        self.line_number = self.line_number.saturating_add(1);
-        if self.overflow {
+        // A copy, so that handling the line can borrow the reader.
+        let lines = self.lines;
+        let line = lines.line();
+        if line.overflow {
             self.diagnostic(DiagnosticKind::LineTooLong, out);
         }
-        let line = self.line;
-        let mut text = line.get(..self.len).unwrap_or(&[]);
+        let mut text = line.text;
         // Every carriage return before the line feed is line ending
         // (REQ-INP-013): a value kept with one could not be written back
         // unchanged, since the writer's line feed would make it CR LF.
@@ -43,8 +44,7 @@ impl TtiReader {
             text = stripped;
         }
         self.command(text, out);
-        self.len = 0;
-        self.overflow = false;
+        self.lines.clear();
     }
 
     fn command(&mut self, line: &[u8], out: &mut dyn FnMut(Item<'_>)) {
@@ -70,7 +70,7 @@ impl TtiReader {
                 if !self.started && !self.has_content {
                     // Content before any PN: the page gets the default address.
                     self.diagnostic(DiagnosticKind::MissingPageNumber, out);
-                    self.page.line = self.line_number;
+                    self.page.line = self.lines.number();
                 }
                 self.has_content = true;
                 self.page_command(name, args, out);
@@ -96,7 +96,7 @@ impl TtiReader {
             b"LT" => self.text_link_line(args, out),
             b"CU" => self.cursor_line(args, out),
             b"IM" => match decimal(args.trim_ascii()).filter(|&modes| modes & !INPUT_MODE_BITS == 0) {
-                Some(modes) => self.page.input_modes = Some(ModesLine { modes, line: self.line_number }),
+                Some(modes) => self.page.input_modes = Some(ModesLine { modes, line: self.lines.number() }),
                 None => self.issue(IssueKind::BadModesLine, out),
             },
             b"RE" => match hex(args).filter(|&value| value <= REGION_LAST) {
@@ -138,7 +138,7 @@ impl TtiReader {
                 }
             }
             b"FT" => {
-                if !self.page.form.token.set(args) {
+                if !set_value(&mut self.page.form.token, args) {
                     self.diagnostic(DiagnosticKind::CapacityExceeded { what: Capacity::Text }, out);
                 }
             }
@@ -160,7 +160,7 @@ impl TtiReader {
         match crate::log::read(args) {
             Ok(line) => {
                 let page = self.started.then_some(self.page.address);
-                out(Item::Log { line, page, line_number: self.line_number });
+                out(Item::Log { line, page, line_number: self.lines.number() });
             }
             Err(why) => self.issue(IssueKind::BadLogLine(why), out),
         }
@@ -173,7 +173,7 @@ impl TtiReader {
         self.function_designation = None;
         self.page.description = self.file_description;
         self.page.source = self.file_source;
-        self.page.line = self.line_number;
+        self.page.line = self.lines.number();
         self.started = true;
         self.has_content = false;
         self.last_row = None;
@@ -201,7 +201,7 @@ impl TtiReader {
             (_, false) => &mut self.file_source,
             (_, true) => &mut self.page.source,
         };
-        if !target.set(args) {
+        if !set_value(target, args) {
             self.diagnostic(DiagnosticKind::CapacityExceeded { what: Capacity::Text }, out);
         }
     }
