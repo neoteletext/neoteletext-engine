@@ -66,6 +66,8 @@ The Web user agent (L7) sits beside the lower layers rather than above them in t
 
 ## 3. What each layer owns
 
+Each module named below is one concept. Since the reorganisation of 24 October 2026 (`docs/spec/design/reorganisation-2026-10-24.md`), a module with parts is a file of its own name holding the concept's spine (the type, its construction and the `mod` lines) beside a directory of that name holding the parts, one concept per file, in the 2018 layout (no `mod.rs`); section 7 gives one sentence per directory. A module's unit tests are its `tests.rs`, declared `#[cfg(test)] mod tests;` as the parent's last item. The module names, and so the layer table of section 9, are unchanged, and every public path is kept by re-exports.
+
 ### Foundation — `neoteletext-core::{consts, ecc, types}`
 
 - **Owns:**
@@ -436,6 +438,95 @@ Each boundary is one narrow type. Nothing reaches past its neighbour.
 | `neoteletext-ffi` | L9: the C interface (Phase 2) | The only crate with `unsafe` |
 | `xtask` | Tooling, not shipped | `std` |
 
+### Module layout
+
+Where each crate's code lives, one sentence per directory (the reorganisation of 24 October 2026). The `tests.rs` files and `tests/` directories under `src/` hold unit tests and are not listed.
+
+**`neoteletext-core`**
+- `consts/`: the constants by the clause that defines them: signal framing, packets, pages, coding, triplets, enhancement packets, object pages, character sets, spacing attributes, colour, geometry, timing and audio.
+- `types/`: the shared types: addresses, the fixed-capacity collection, a loaded font's glyph and the X/28 and M/29 field groups.
+- `packet/`: one file per packet kind: the header, X/26 triplets and their fields and functions, editorial and compositional links, X/28 and M/29, the Magazine Organization Table, object pages, broadcast service data, and the encoders.
+- `acq/`: the decoder's parts: reception of packets, the stored page, the cache-mode store, the enhancement pages and their store, the events and the statistics.
+- `charset/`: one file per table of clause 15 (Latin and national options, the standard's other G0 sets, G2, G3, mosaics, diacritics, designation, composition) and neoteletext's own sets (the extended designations, the extended G0 sets, Arabic script, Thai and Lao), with the code-table lookup.
+- `level1/`: the cell, the grid, page assembly, the choice of character sets and the row attribute machine.
+- `colour/`: the page-level presentation data and the side panels beside the Colour Map.
+- `objects/`: an object's links, its definition and where its triplets come from.
+- `enhance/`: the enhancement processor's parts: its entry points, the attributes, enhancement characters, display planes, the walk's machine, row resolution and the size rules; `enhance/walk/` holds object invocation and the placement of column triplets.
+- `glyphs/`: the generated Bedstead and G3 tables, a font loaded at run time and a font's conformance per set.
+- `render/`: the render options, the cell raster, the row renderer, the colours, flash and change tracking.
+- `viewer/`: the viewer's keys, its screen and the status area of row 0.
+- `forms/`: a form's declaration, editing, validation, submission and drawing.
+
+**`neoteletext-formats`**
+- `page/`: the records a page file carries beyond its rows: packets, links, the Form Extension, the interaction lines and the reader's issues.
+- `tti/`: the TTI reader's line dispatcher, argument grammar, row text, packed lines, link lines, link targets and Form Extension.
+- `encode/`: the page encoder's parts: one page in transmission order, the rows, X/28/0, packed triplets, the link row, the checksum and the order of a set of pages.
+- `transport/`: the transport stream reader, with PSI sections and the PAT and PMT in `transport/reader/`.
+- `pes/`: the PES packet header and its teletext data units.
+- `sliced/`: the Linux sliced VBI reader.
+- `detect/`: the detector's scoring, the automatic reader and the stand-in for any reader compiled in.
+- `edittf/`: edit.tf addresses: the base64url codec, the parser and the writer.
+- `bdf/`: the BDF reader, the converter's source fonts and the font converter.
+- `write/`: the TTI writer, the T42 page writer and the font writer.
+- `author/`: the authored Level 2.5 and 3.5 stream: display pages, object pages, the MOT and triplets, with `author/streams/` holding one file per magazine of the stream.
+
+**`neoteletext-slicer`**
+- `slicer/`: the line slicer's parts: the line, its settings, black level, run-in, framing code, bits, the transition driver and the outcome.
+- `generator/`: the test-signal generator's noise source.
+
+**`neoteletext-image`**
+- `png/`: the PNG writer's deflate encoder.
+
+**`neoteletext-web`**
+- `http/`: the response head parser, the head as the profile reads it, and the body's framing.
+- `url/`: the strict address parser's lexical pass, host grammar and path grammar.
+- `proxy/`: the HTTP `CONNECT` and SOCKS5 handshakes, and the blocking tunnel over `std::io` (feature `std`).
+- `cookie/`: the cookie store's `Set-Cookie` algorithm, the `Cookie` header, the date algorithm and the persistence format.
+- `dbsc/`: Device Bound Session Credentials: structured fields, the two headers, the session instructions, the proof and the session store.
+- `descriptor/`: the descriptor's member grammar, its page address template and its links to other sites.
+- `zxnet/`: the live feed's channel, vocabulary, messages, page walk and connection.
+- `agent/`: the user agent's parts: configuration, vocabulary, entry point, service opening, requests, responses, pages, forms, cookies, the fetch and push connections, and the agent's side of `dbsc`.
+
+**`neoteletext-audio`, `neoteletext-audio-mix`**
+- `idl/`: record reassembly from fragments.
+- `record/`: the record frame every record type shares.
+- `store/`: the arena sounds are defined in, and a live sound's ring.
+- `receiver/`: the broadcast carriage, starting plays and sending samples to the sink.
+- `mixer/` (`neoteletext-audio-mix`): live sounds in the mixer.
+
+**`neoteletext-input`**
+- `event/`: encoding and decoding the input stream.
+- `keys/`: the one-byte key codes and the United States layout.
+- `session/`: the acknowledged count, the mode filter and the rate limit.
+
+**`neoteletext-qrkeyboard`**
+- `crypto/`: SPAKE2 pairing and sealed frames.
+- `net/`: the relay connection, its HTTP request and its WebSocket.
+- `screen/`: the screen's wait, the relay's control text and the phone's frames.
+
+**`neoteletext-app`**
+- `input/`: the live feed's inputs beside the file and pipe reading of the parent.
+- `pipe/`: the frames' wire form between the two processes of live mode.
+- `fetch/`: the fetcher process: the std transport, its wakes, the pipe to the decoder, and the zxnet and web loops.
+- `live/`: the decoder side of live mode: starting the fetcher and which pages a response may fill.
+- `present/`: the palette-index raster and the receiver-drawn page.
+- `convert/`: stored pages back to page files.
+- `extras/`: a TTI form as the core's form specification.
+- `sandbox/`: the Linux sandbox and the platforms without one.
+- `write_text/`: the writer's set table and encoding, right-to-left lines, and Thai and Lao rows.
+
+**`neoteletext-cli`** (the program is the library `lib.rs`; `main.rs` calls its `run`)
+- `args/`: the tests of the command-line specification `args.rs`.
+- `commands/`: one file per `neottx` command; `commands/sound/` and `commands/write_text/` hold the commands' code for a build that has them, under an ungated parent that answers in every build.
+- `view/`: the terminal viewer's keys, terminal side, typing into a channel and the form-origin ticker.
+
+**`xtask`**
+- `checks/`: the four source checks, one file each: layers, dependencies, constants and operating-system access.
+- `test_code/`: telling test code from production code, by module and by item, for the checks and the traceability table.
+- `g3/`: the G3 geometry and the Table 48 shape list.
+- `glyphs/`: the generated Bedstead table, G3 table and required-character lists.
+- `size/`: the ELF reader of the size check.
+
 ### Features: a build contains only the parts it uses
 
 Decision E.61 makes each crate's optional areas Cargo features, all on by default, because the linker cannot remove code reachable through a run-time choice. The rules that keep them safe:
@@ -468,7 +559,7 @@ If `neoteletext-core` grows unwieldy, the natural split is `core` (Foundation to
 
 ## 8. The rules, and how they are enforced
 
-1. **Downward dependencies only.** Between crates this is enforced by the crate graph. Within `neoteletext-core`, a check in `xtask` reads each module's `use` statements and compares them with the allowed-dependency table in section 9. Continuous integration fails on any violation (REQ-ARCH-011).
+1. **Downward dependencies only.** Between crates this is enforced by the crate graph. Within `neoteletext-core`, a check in `xtask` reads each module's `use` statements and compares them with the allowed-dependency table in section 9. Continuous integration fails on any violation (REQ-ARCH-011). This check and those of `check-constants` and `check-io` read production code only: a file whose module is declared for tests is skipped whole, and a test-only item anywhere else is skipped where it stands (`xtask/src/test_code.rs`).
 2. **One narrow type per boundary** (section 5). Types from two or more layers down shall not appear in a layer's public interface.
 3. **No input or output below L9.** Layers 0 to 7 are sans-IO and pure (REQ-SEC-016), enforced by clippy's `disallowed-methods` and `disallowed-types` lists.
 4. **Security decisions in one place.** Only `policy` decides. Other layers call it, and the check in rule 1 forbids them from reimplementing it by forbidding direct use of the low-level address and origin tests outside `policy` and L7.
@@ -480,6 +571,7 @@ If `neoteletext-core` grows unwieldy, the natural split is `core` (Foundation to
    - the row and Level 1.5 machines, and the enhancement walk and row resolution of Levels 2.5 and 3.5, in L3;
    - the viewer machine in L6;
    - the protocol machines in L7.
+8. **No panics on outside input.** Every crate root carries one no-panic deny list (indexing and slicing, string slicing, `unwrap`, `expect`, `panic!`, arithmetic with side effects, `unreachable!`, `todo!`, `unimplemented!`), and `scripts/check.sh fast` fails when a root lacks it or its list differs (REQ-SEC-003, `DEVELOPMENT.md` section 6). Tests allow what they need, with the reason.
 
 ---
 
