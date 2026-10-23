@@ -57,29 +57,7 @@ impl<const OBJECTS: usize> Store<'_, OBJECTS> {
         if size > self.arena.len() {
             return Defined::ResourceLimit;
         }
-        let mut evicted: usize = 0;
-        let offset = loop {
-            if let Some(offset) = self.find_space(size) {
-                break offset;
-            }
-            // Evict the oldest sound nothing needs.
-            let victim = self
-                .entries
-                .iter()
-                .enumerate()
-                .filter_map(|(index, entry)| entry.filter(|entry| !busy(entry.sound)).map(|entry| (index, entry.stamp)))
-                .min_by_key(|&(_, stamp)| stamp)
-                .map(|(index, _)| index);
-            match victim {
-                Some(index) => {
-                    if let Some(slot) = self.entries.get_mut(index) {
-                        *slot = None;
-                    }
-                    evicted = evicted.saturating_add(1);
-                }
-                None => return Defined::ResourceLimit,
-            }
-        };
+        let Some((offset, evicted)) = self.make_space(size, busy) else { return Defined::ResourceLimit };
         let Some(slot) = self.entries.iter().position(Option::is_none) else { return Defined::ResourceLimit };
         self.clock = self.clock.wrapping_add(1);
         let entry = Entry { offset, stamp: self.clock, ..fresh };
@@ -92,6 +70,30 @@ impl<const OBJECTS: usize> Store<'_, OBJECTS> {
             *place = Some(entry);
         }
         Defined::New { replaced, evicted }
+    }
+
+    /// Finds `size` free bytes, evicting the oldest sounds nothing needs
+    /// until they are found. Returns their offset and how many sounds were
+    /// evicted, or `None` when every sound left is needed.
+    fn make_space(&mut self, size: usize, busy: &dyn Fn(SoundId) -> bool) -> Option<(usize, usize)> {
+        let mut evicted: usize = 0;
+        loop {
+            if let Some(offset) = self.find_space(size) {
+                return Some((offset, evicted));
+            }
+            // Evict the oldest sound nothing needs.
+            let victim = self
+                .entries
+                .iter()
+                .enumerate()
+                .filter_map(|(index, entry)| entry.filter(|entry| !busy(entry.sound)).map(|entry| (index, entry.stamp)))
+                .min_by_key(|&(_, stamp)| stamp)
+                .map(|(index, _)| index)?;
+            if let Some(slot) = self.entries.get_mut(victim) {
+                *slot = None;
+            }
+            evicted = evicted.saturating_add(1);
+        }
     }
 
     /// First fit: the lowest offset where `size` bytes are free.
