@@ -4,17 +4,14 @@
 //! The parser is a byte-at-a-time state machine, so a PES packet never has
 //! to be held whole: its memory is one data unit.
 
-use neoteletext_core::consts::{FRAMING_CODE_DVB, FRAMING_CODE_DVB_INVERTED, PACKET_BYTES};
-use neoteletext_core::ecc::reverse_bits;
-use neoteletext_core::packet::{Packet, PacketMeta};
-
 use crate::consts::{
     DATA_IDENTIFIER_EBU_FIRST, DATA_IDENTIFIER_EBU_LAST, DATA_IDENTIFIER_VBI_FIRST, DATA_IDENTIFIER_VBI_LAST,
-    DATA_UNIT_FIELD_PARITY, DATA_UNIT_HEADER_BYTES, DATA_UNIT_INVERTED, DATA_UNIT_LINE_MASK, DATA_UNIT_SUBTITLE,
-    DATA_UNIT_TELETEXT, DATA_UNIT_TELETEXT_LENGTH, PES_FIXED_HEADER_BYTES, PES_OPTIONAL_HEADER_BYTES, PES_PTS_BYTES,
-    PES_PTS_PRESENT, PES_START_CODE, PTS_TO_US_DENOMINATOR, PTS_TO_US_NUMERATOR, STREAM_ID_PRIVATE_1,
+    DATA_UNIT_HEADER_BYTES, PES_FIXED_HEADER_BYTES, PES_OPTIONAL_HEADER_BYTES, PES_PTS_BYTES,
 };
 use crate::item::{Diagnostic, DiagnosticKind, Item, Reader, offset_of};
+
+mod header;
+mod units;
 
 /// Bytes of the PES header the parser holds: the fixed part and the three
 /// bytes of the optional header up to `PES_header_data_length`.
@@ -185,157 +182,6 @@ impl PesParser {
             }
         }
     }
-
-    fn hunt(&mut self, byte: u8, offset: u64) {
-        let expected = PES_START_CODE.get(self.header_len).copied();
-        if expected == Some(byte) {
-            if let Some(slot) = self.header.get_mut(self.header_len) {
-                *slot = byte;
-            }
-            self.header_len = self.header_len.saturating_add(1);
-            if self.header_len == PES_START_CODE.len() {
-                self.state = State::Header;
-            }
-        } else if byte == 0 && self.header_len == PES_START_CODE.len().saturating_sub(1) {
-            // Three zeros: the oldest is not part of a start code.
-            self.note_skipped(offset.saturating_sub(2), 1);
-        } else {
-            let start = offset.saturating_sub(u64::try_from(self.header_len).unwrap_or(0));
-            self.note_skipped(start, self.header_len.saturating_add(1));
-            self.header_len = 0;
-        }
-    }
-
-    fn header_byte(&mut self, byte: u8, offset: u64, out: &mut dyn FnMut(Item<'_>)) {
-        if let Some(slot) = self.header.get_mut(self.header_len) {
-            *slot = byte;
-        }
-        self.header_len = self.header_len.saturating_add(1);
-        if self.header_len <= PES_START_CODE.len() {
-            if PES_START_CODE.get(self.header_len.saturating_sub(1)) != Some(&byte) {
-                out(Item::Diagnostic(Diagnostic::at(offset, DiagnosticKind::BadPesHeader)));
-                self.end_of_packet();
-            }
-            return;
-        }
-        if self.header_len < PES_FIXED_HEADER_BYTES {
-            return;
-        }
-        if self.header_len == PES_FIXED_HEADER_BYTES {
-            self.report_skipped(out);
-            let high = self.header.get(LENGTH_INDEX).copied().unwrap_or(0);
-            let low = self.header.get(LENGTH_INDEX.saturating_add(1)).copied().unwrap_or(0);
-            // REQ-GEN-007: assembled big-endian, as ISO/IEC 13818-1 orders it.
-            let length = usize::from(u16::from_be_bytes([high, low]));
-            self.remaining = if length == 0 { None } else { Some(length) };
-            let stream_id = self.header.get(STREAM_ID_INDEX).copied().unwrap_or(0);
-            if stream_id != STREAM_ID_PRIVATE_1 {
-                out(Item::Diagnostic(Diagnostic::at(offset, DiagnosticKind::NotPrivateStream { stream_id })));
-                if self.remaining.is_none() {
-                    // An unbounded packet of another stream cannot be skipped.
-                    self.end_of_packet();
-                } else {
-                    self.state = State::Skip;
-                }
-                return;
-            }
-            if self.remaining.is_none() {
-                out(Item::Diagnostic(Diagnostic::at(offset, DiagnosticKind::UnboundedPes)));
-            }
-            return;
-        }
-        self.count_byte();
-        if self.header_len == HEADER_BYTES && self.state == State::Header {
-            let flags = self.header.get(FLAGS_INDEX).copied().unwrap_or(0);
-            self.pts_wanted = flags & PES_PTS_PRESENT != 0;
-            self.pts_len = 0;
-            self.timestamp = None;
-            self.header_data_left = usize::from(self.header.get(HEADER_DATA_LENGTH_INDEX).copied().unwrap_or(0));
-            if self.header_data_left == 0 {
-                self.finish_header();
-            } else {
-                self.state = State::HeaderData;
-            }
-        }
-    }
-
-    fn finish_header(&mut self) {
-        if self.pts_wanted && self.pts_len == PES_PTS_BYTES {
-            self.timestamp = pts_microseconds(self.pts);
-        }
-        self.state = State::DataIdentifier;
-    }
-
-    fn unit_byte(&mut self, byte: u8, offset: u64, out: &mut dyn FnMut(Item<'_>)) {
-        if self.unit_len == 0 && self.remaining.is_none() && byte == 0 && self.raw {
-            // data_unit_id 0 is reserved (EN 300 472 Table 3): in an unbounded
-            // packet it can only be the next start code.
-            self.state = State::Hunting;
-            self.header_len = 0;
-            self.hunt(byte, offset);
-            return;
-        }
-        if let Some(slot) = self.unit.get_mut(self.unit_len) {
-            *slot = byte;
-            self.unit_len = self.unit_len.saturating_add(1);
-        }
-        let length = usize::from(self.unit.get(1).copied().unwrap_or(0));
-        if self.unit_len >= DATA_UNIT_HEADER_BYTES && self.unit_len == DATA_UNIT_HEADER_BYTES.saturating_add(length) {
-            let unit_start = offset.saturating_sub(u64::try_from(self.unit_len).unwrap_or(0)).saturating_add(1);
-            self.data_unit(unit_start, out);
-            self.unit_len = 0;
-        }
-        self.count_byte();
-    }
-
-    fn data_unit(&self, offset: u64, out: &mut dyn FnMut(Item<'_>)) {
-        let id = self.unit.first().copied().unwrap_or(0);
-        let length = self.unit.get(1).copied().unwrap_or(0);
-        let framing = match id {
-            DATA_UNIT_TELETEXT | DATA_UNIT_SUBTITLE => FRAMING_CODE_DVB,
-            DATA_UNIT_INVERTED => FRAMING_CODE_DVB_INVERTED,
-            // Stuffing and every other unit are skipped by their length.
-            _ => return,
-        };
-        if usize::from(length) < DATA_UNIT_TELETEXT_LENGTH {
-            out(Item::Diagnostic(Diagnostic::at(offset, DiagnosticKind::ShortDataUnit { id, length })));
-            return;
-        }
-        let data = self.unit.get(DATA_UNIT_HEADER_BYTES..).unwrap_or(&[]);
-        let field_line = data.first().copied().unwrap_or(0);
-        let found = data.get(1).copied().unwrap_or(0);
-        if found != framing {
-            let at = offset.saturating_add(3);
-            out(Item::Diagnostic(Diagnostic::at(at, DiagnosticKind::BadFramingCode { value: found })));
-            return;
-        }
-        let mut bytes = [0; PACKET_BYTES];
-        for (target, &source) in bytes.iter_mut().zip(data.iter().skip(2)) {
-            // EN 300 472 clause 4.4: bits are in the order they appear in the
-            // VBI, so each byte is the bit-reverse of the internal form.
-            *target = reverse_bits(source);
-        }
-        let line_offset = field_line & DATA_UNIT_LINE_MASK;
-        let meta = PacketMeta {
-            line: if line_offset == 0 { None } else { Some(u16::from(line_offset)) },
-            // field_parity 1 is the first field (EN 300 472 Table 4).
-            second_field: if line_offset == 0 { None } else { Some(field_line & DATA_UNIT_FIELD_PARITY == 0) },
-            timestamp_us: self.timestamp,
-            source: self.source,
-            quality: None,
-        };
-        out(Item::Packet { packet: Packet { bytes }, meta });
-    }
-}
-
-/// Converts a coded PTS (ISO/IEC 13818-1 clause 2.4.3.7) to microseconds.
-fn pts_microseconds(coded: [u8; PES_PTS_BYTES]) -> Option<u64> {
-    let [b0, b1, b2, b3, b4] = coded.map(u64::from);
-    // PTS[32..30] in bits 3..1 of byte 0; PTS[29..15] in bytes 1 and 2;
-    // PTS[14..0] in bytes 3 and 4; the low bit of bytes 0, 2 and 4 is a
-    // marker.
-    let pts = ((b0 >> 1) & 0x7) << 30 | b1 << 22 | (b2 >> 1) << 15 | b3 << 7 | b4 >> 1;
-    pts.checked_mul(PTS_TO_US_NUMERATOR)?.checked_div(PTS_TO_US_DENOMINATOR)
 }
 
 /// A reader for raw files of PES packets (REQ-INP-009).
