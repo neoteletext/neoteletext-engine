@@ -31,7 +31,7 @@ pub(super) struct Wakes {
     network: bool,
     /// How many times the loop has slept, for the tests to count.
     #[cfg(test)]
-    pub(super) waits: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    waits: std::sync::Arc<std::sync::atomic::AtomicUsize>,
 }
 
 impl Wakes {
@@ -44,6 +44,13 @@ impl Wakes {
             #[cfg(test)]
             waits: std::sync::Arc::default(),
         }
+    }
+
+    /// The count of the loop's sleeps, shared, for the tests to read while
+    /// the loop runs.
+    #[cfg(test)]
+    pub(super) fn waits(&self) -> std::sync::Arc<std::sync::atomic::AtomicUsize> {
+        self.waits.clone()
     }
 
     fn take(&mut self, wake: Wake) {

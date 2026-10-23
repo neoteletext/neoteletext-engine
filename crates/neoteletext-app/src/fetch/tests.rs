@@ -111,7 +111,7 @@ impl Transport for Fake {
 fn start(script: Script) -> (Arc<Mutex<Server>>, Arc<std::sync::atomic::AtomicUsize>, Sender<Wake>) {
     let (wake, receiver) = mpsc::channel();
     let mut wakes = Wakes::new(receiver);
-    let waits = wakes.waits.clone();
+    let waits = wakes.waits();
     let server = Arc::new(Mutex::new(Server::default()));
     let fake = Fake { server: server.clone(), script, wake: wake.clone() };
     let channel = neoteletext_web::zxnet::Channel::from_address("wss://feed.example/live", "test").unwrap();
