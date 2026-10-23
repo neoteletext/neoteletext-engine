@@ -4,7 +4,7 @@
 
 use super::{Collector, Frame, Inputs, Range, Slot, Walker};
 
-use super::attributes::Attrs;
+use super::Attrs;
 use super::machine::{
     Ended, WalkAction, WalkEvent, WalkState, traced_action, walk_event_name, walk_state_name, walk_transition,
 };

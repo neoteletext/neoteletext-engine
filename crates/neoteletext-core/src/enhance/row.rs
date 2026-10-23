@@ -4,9 +4,10 @@
 
 use super::{Collector, RANGES, Range, RowCells, Rows, Walker};
 
-use super::attributes::{AttrChange, Attrs, Flash, LEVEL_1_FLASH, flash_rate};
+use super::attributes::{Flash, LEVEL_1_FLASH, flash_rate};
 use super::characters::{enhancement_glyph, is_text};
 use super::planes::Plane;
+use super::{AttrChange, Attrs};
 use crate::acq::EnhancementReport;
 use crate::charset::{CharRef, CharSet, G0, G0Set, G2Set, mosaic_pattern};
 use crate::colour::{ColourIndex, Remapping};
