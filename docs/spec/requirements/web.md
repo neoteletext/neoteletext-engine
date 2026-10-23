@@ -394,8 +394,9 @@ A channel's address shall be checked and written in one canonical form, so that 
 An address whose folder path breaks any of these rules shall be refused with a diagnostic that names the rule, never corrected. Letter case in the host and an explicit default port are not ambiguous, and are normalised. The root folder `/` is a channel like any other.
 
 A channel's file addresses are its folder's address followed by one of the file names of REQ-WEB-019. An address whose path is a folder followed by one of those names belongs to that folder's channel. Any other address names no channel.
+An address lies inside a channel when it has the channel's origin and its path starts with the folder's path; a path holding `%2E`, `%2F` or `%5C`, in either case, after the folder lies outside it, since a server that decodes them could follow them out of the folder (decision E.114 item 5). This holds for every rule of REQ-WEB-026 and for REQ-WEB-021's redirects.
 *Reason:* Path tricks such as `%2F`, `..` and doubled slashes are the classic way to make one address look like another. Refusing them outright costs nothing, because the allowed set holds the names hosting services use.
-*Verification:* A table of addresses, valid and invalid, including `%2F`, `%2E`, `..`, `.`, doubled slashes, upper-case hosts, default and explicit ports, a query, a fragment, nine segments, a segment of 65 characters, and `/ab/` against `/a/`.
+*Verification:* A table of addresses, valid and invalid, including `%2F`, `%2E`, `..`, `.`, doubled slashes, upper-case hosts, default and explicit ports, a query, a fragment, nine segments, a segment of 65 characters, and `/ab/` against `/a/`. Encoded separators after a folder by `an_encoded_separator_after_the_folder_is_outside_it`, which fails on the code before 24 October 2026 (finding F-45 of NeoTeletext's security review).
 
 **REQ-WEB-024 — `channel.json`.**
 `channel.json` is the service descriptor of REQ-WEB-002, read by the same strict, bounded reader with the same 16-kilobyte limit, with these differences (decision E.70 item 7):
