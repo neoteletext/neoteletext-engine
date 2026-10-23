@@ -2,7 +2,7 @@
 //! refused before connecting (REQ-SEC-006, REQ-SEC-007), the scheduler
 //! with the rate limit and the queue, and the request written.
 
-use neoteletext_core::types::Instant;
+use neoteletext_core::types::{Instant, PageAddress, SubCode};
 
 #[cfg(feature = "dbsc")]
 use super::bound;
@@ -67,22 +67,8 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
             } else if let Some(url) = self.front_door.take() {
                 (Purpose::FrontDoor, url, Method::Get, Site::SameService)
             } else if let Some((page, subcode, t42)) = self.second_try.take() {
-                // The other file of a page whose first answered 404 or 410
-                // (REQ-WEB-019), without waiting for the rate limit: it is
-                // the same request, completed.
-                let Some(folder) = self.channel else { continue };
-                match channel::file_url(&folder, ChannelFile::Page { page, t42 }) {
-                    Ok(url) => (
-                        Purpose::Page { page, subcode, file: PageFile::Channel { t42, second: true } },
-                        url,
-                        Method::Get,
-                        Site::SameService,
-                    ),
-                    Err(error) => {
-                        event(sink, Event::FetchFailed { page, subcode, failure: Failure::Address(error) });
-                        continue;
-                    }
-                }
+                let Some(request) = self.second_try_request(page, subcode, t42, sink) else { continue };
+                request
             } else if let Some(url) = self.contents.take() {
                 (Purpose::Contents, url, Method::Get, Site::SameService)
             } else if cfg!(feature = "forms") && self.form.phase == FormPhase::Queued {
@@ -94,43 +80,8 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
                 (Purpose::Form, url, self.form.method, self.form.site)
             } else if self.queue.iter().any(Option::is_some) && now >= self.next_fetch_at {
                 let Some((page, subcode)) = self.take_queued() else { return };
-                let Some(descriptor) = &self.descriptor else {
-                    event(sink, Event::FetchFailed { page, subcode, failure: Failure::NoService });
-                    continue;
-                };
-                if self
-                    .cache_entry(page, subcode)
-                    .is_some_and(|entry| entry.fresh_until.is_some_and(|until| now < until))
-                {
-                    event(sink, Event::PageCurrent { page, subcode });
-                    continue;
-                }
-                let (address, file) = match self.channel {
-                    Some(folder) => {
-                        // The file that answered last time is asked again,
-                        // so its validators apply; otherwise the extension
-                        // that last answered in the channel.
-                        let t42 = self.cache_entry(page, subcode).map_or(self.t42_first, |entry| entry.t42);
-                        (
-                            channel::file_url(&folder, ChannelFile::Page { page, t42 }),
-                            PageFile::Channel { t42, second: false },
-                        )
-                    }
-                    None => (descriptor.page_url(page, subcode), PageFile::Template),
-                };
-                let url = match address {
-                    Ok(url) => url,
-                    Err(error) => {
-                        event(sink, Event::FetchFailed { page, subcode, failure: Failure::Address(error) });
-                        continue;
-                    }
-                };
-                let site = if core::mem::take(&mut self.navigation_pending) {
-                    Site::CrossServiceNavigation
-                } else {
-                    Site::SameService
-                };
-                (Purpose::Page { page, subcode, file }, url, Method::Get, site)
+                let Some(request) = self.page_request(now, page, subcode, sink) else { continue };
+                request
             } else {
                 return;
             };
@@ -159,6 +110,74 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
             });
             self.start_exchange(now, sink);
         }
+    }
+
+    /// The other file of a page whose first answered 404 or 410
+    /// (REQ-WEB-019), without waiting for the rate limit: it is the same
+    /// request, completed. `None` when there is no channel or the address
+    /// fails, which is reported.
+    fn second_try_request(
+        &self,
+        page: PageAddress,
+        subcode: Option<SubCode>,
+        t42: bool,
+        sink: &mut Sink<'_>,
+    ) -> Option<(Purpose, Url, Method, Site)> {
+        let folder = self.channel?;
+        match channel::file_url(&folder, ChannelFile::Page { page, t42 }) {
+            Ok(url) => Some((
+                Purpose::Page { page, subcode, file: PageFile::Channel { t42, second: true } },
+                url,
+                Method::Get,
+                Site::SameService,
+            )),
+            Err(error) => {
+                event(sink, Event::FetchFailed { page, subcode, failure: Failure::Address(error) });
+                None
+            }
+        }
+    }
+
+    /// The request for a queued page. `None` when there is no service, the
+    /// cached copy is still fresh, or the address fails, each reported.
+    fn page_request(
+        &mut self,
+        now: Instant,
+        page: PageAddress,
+        subcode: Option<SubCode>,
+        sink: &mut Sink<'_>,
+    ) -> Option<(Purpose, Url, Method, Site)> {
+        let Some(descriptor) = &self.descriptor else {
+            event(sink, Event::FetchFailed { page, subcode, failure: Failure::NoService });
+            return None;
+        };
+        if self.cache_entry(page, subcode).is_some_and(|entry| entry.fresh_until.is_some_and(|until| now < until)) {
+            event(sink, Event::PageCurrent { page, subcode });
+            return None;
+        }
+        let (address, file) = match self.channel {
+            Some(folder) => {
+                // The file that answered last time is asked again,
+                // so its validators apply; otherwise the extension
+                // that last answered in the channel.
+                let t42 = self.cache_entry(page, subcode).map_or(self.t42_first, |entry| entry.t42);
+                (channel::file_url(&folder, ChannelFile::Page { page, t42 }), PageFile::Channel { t42, second: false })
+            }
+            None => (descriptor.page_url(page, subcode), PageFile::Template),
+        };
+        let url = match address {
+            Ok(url) => url,
+            Err(error) => {
+                event(sink, Event::FetchFailed { page, subcode, failure: Failure::Address(error) });
+                return None;
+            }
+        };
+        let site = if core::mem::take(&mut self.navigation_pending) {
+            Site::CrossServiceNavigation
+        } else {
+            Site::SameService
+        };
+        Some((Purpose::Page { page, subcode, file }, url, Method::Get, site))
     }
 
     /// Sends the current exchange's request, connecting first if needed.
