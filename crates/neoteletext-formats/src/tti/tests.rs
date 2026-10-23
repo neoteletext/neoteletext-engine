@@ -844,6 +844,8 @@ fn refused_and_surplus_log_lines_are_diagnosed() {
 
 /// REQ-INP-026: the writer writes what the reader takes, and refuses what
 /// it would refuse.
+// The writer is in `write`, which needs the standard library.
+#[cfg(feature = "std")]
 #[test]
 fn the_writer_writes_log_lines_the_reader_takes() {
     use crate::log::LogLevel;

@@ -179,6 +179,7 @@ mod tests {
 
     /// REQ-RND-041 with REQ-RND-033: rows are written with their side
     /// panels, left, main, right; row 0's panel area is blank.
+    #[cfg(feature = "side-panels")]
     #[test]
     fn plain_text_composes_side_panels() {
         let mut grid = grid_with("MAIN");
@@ -242,7 +243,11 @@ mod tests {
         cell.attributes = CellAttributes::DEFAULT.with_invert(true).with_underline(true);
         let text = ansi(&grid, false, MosaicStyle::Unicode16, ColourDepth::Eight);
         assert!(text.lines().nth(1).unwrap().starts_with("\x1b[0;4;34;41mA"));
-        // A side panel's empty row 0 is the screen colour.
+        // A side panel's empty row 0 is the screen colour, in a build that
+        // has side panels (decision E.105).
+        if !cfg!(feature = "side-panels") {
+            return;
+        }
         grid.side_panels = SidePanels { left: 1, right: 0 };
         let text = ansi(&grid, false, MosaicStyle::Unicode16, ColourDepth::Eight);
         let screen_fg = 30 + u16::from(nearest_of_eight(screen));

@@ -136,12 +136,15 @@ pub fn iterm2_inline(png: &[u8], width: usize, height: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "side-panels")]
     use neoteletext_core::colour::SidePanels;
+    #[cfg(any(feature = "side-panels", feature = "view"))]
     use neoteletext_core::config::PresentationLevel;
 
     /// REQ-RND-033, REQ-RND-030: a page with side panels is wider, and at
     /// Level 2.5 its palette is the page's 32 colours; at Level 1.5 the
     /// 144-entry palette of the palette mode.
+    #[cfg(feature = "side-panels")]
     #[test]
     fn rasters_follow_the_level_and_the_panels() {
         let mut grid = Grid::EMPTY;

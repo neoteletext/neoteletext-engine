@@ -15,7 +15,9 @@ use common::{client_frame, server_frame};
 use neoteletext_core::types::{Instant, PageAddress, SubCode};
 use neoteletext_web::agent::{Config, Input, Output, Source, Storage, Subscription, UserAgent};
 use neoteletext_web::bytes::Writer;
-use neoteletext_web::cookie::{CookieJar, CookieRejected, Cookies, Site};
+use neoteletext_web::cookie::{CookieJar, Cookies};
+#[cfg(feature = "cookies")]
+use neoteletext_web::cookie::{CookieRejected, Site};
 use neoteletext_web::form::{FormMethod, FormSubmission};
 use neoteletext_web::http::MediaType;
 use neoteletext_web::port::{ConnectionId, Pump, Security};
@@ -905,6 +907,7 @@ fn cookies_round_trip_and_wipe() {
 }
 
 /// What a port's cookie store was asked and given.
+#[cfg(feature = "cookies")]
 #[derive(Debug, Default)]
 struct PortLog {
     asked: Vec<String>,
@@ -913,12 +916,14 @@ struct PortLog {
 }
 
 /// A port's cookie store: the engine's jar, recording each call.
+#[cfg(feature = "cookies")]
 #[derive(Debug)]
 struct PortCookies {
     jar: CookieJar<100, 32768>,
     log: std::rc::Rc<std::cell::RefCell<PortLog>>,
 }
 
+#[cfg(feature = "cookies")]
 impl Cookies for PortCookies {
     fn header_for(
         &mut self,
@@ -961,6 +966,7 @@ impl Cookies for PortCookies {
     }
 }
 
+#[cfg(feature = "cookies")]
 fn port_cookies() -> (&'static mut dyn Cookies, std::rc::Rc<std::cell::RefCell<PortLog>>) {
     let log = std::rc::Rc::new(std::cell::RefCell::new(PortLog::default()));
     let store: &'static mut PortCookies =
