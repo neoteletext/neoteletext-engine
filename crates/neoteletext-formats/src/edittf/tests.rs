@@ -7,9 +7,14 @@
     clippy::cast_possible_truncation
 )]
 
+use super::base64::pack_codes;
 use super::*;
+use crate::consts::{EDITTF_CHARACTERS_24, EDITTF_CHARACTERS_25};
+use crate::item::DiagnosticKind;
+use crate::page::{EnhancementPacket, FastextLink, PageFile};
 use crate::testing::{diagnostics, pages, same_in_any_chunks};
-use neoteletext_core::consts::{MODE_TERMINATION, ROW_ADDRESS_LAST, SPACE};
+use neoteletext_core::consts::{COLUMNS, MODE_TERMINATION, ROW_ADDRESS_LAST, ROWS, SPACE, TRIPLETS_PER_PACKET};
+use neoteletext_core::types::{PageAddress, SubCode};
 use std::vec::Vec;
 
 pub(crate) fn written(page: &PageFile) -> Vec<u8> {

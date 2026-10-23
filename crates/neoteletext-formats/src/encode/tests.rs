@@ -2,13 +2,16 @@
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects, clippy::panic)]
 
 use super::*;
-use crate::page::{EnhancementPacket, FastextLink, LinkKey, LinkLine, PageFunction};
+use crate::page::{EnhancementPacket, FastextLink, LinkKey, LinkLine, PageFile, PageFunction, RawBody, RawPacket};
 use crate::text::Text;
 use neoteletext_core::charset::{CharRef, CharSet, G2Set, designation, to_unicode};
-use neoteletext_core::consts::{C4_ERASE, C7_SUPPRESS_HEADER, C13, MODE_G0_NO_DIACRITIC, ROW_ADDRESS_BASE};
-use neoteletext_core::ecc::check_parity;
-use neoteletext_core::packet::{Decoded, PageFormat, PagePacket, decode};
-use neoteletext_core::types::{ControlBits, Designations, PageAddress};
+use neoteletext_core::consts::{
+    C4_ERASE, C7_SUPPRESS_HEADER, C13, COLOUR_WHITE, COLUMNS, DATA_BYTES, HEADER_DISPLAY_BYTES, MODE_G0_NO_DIACRITIC,
+    MODE_G2, MODE_SET_ACTIVE_POSITION, ROW_ADDRESS_BASE, ROW_ADDRESS_ROW_24, SPACE, TRIPLETS_PER_PACKET,
+};
+use neoteletext_core::ecc::{check_parity, hamming84, hamming2418, with_odd_parity};
+use neoteletext_core::packet::{Decoded, Packet, PageFormat, PagePacket, Triplet, decode};
+use neoteletext_core::types::{ControlBits, Designations, PageAddress, SubCode};
 use std::vec::Vec;
 
 fn encode_all(page: &PageFile) -> Vec<Packet> {

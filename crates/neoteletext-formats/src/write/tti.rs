@@ -164,6 +164,25 @@ fn write_fastext(page: &PageFile, out: &mut dyn Write) -> io::Result<()> {
 }
 
 fn write_page(page: &PageFile, first: &PageFile, is_first: bool, out: &mut dyn Write) -> io::Result<()> {
+    write_page_head(page, first, is_first, out)?;
+    write_rows_and_fields(page, out)?;
+    write_packed_lines(page, out)?;
+    write_links(page, out)?;
+    write_interaction_lines(page, out)?;
+    write_form_lines(page, out)?;
+    for warning in Warning::ALL {
+        if page.considered & warning.bit() != 0 {
+            out.write_all(b"CK,considered,")?;
+            out.write_all(warning.name())?;
+            writeln!(out)?;
+        }
+    }
+    Ok(())
+}
+
+/// `PN`, the `DE` and `DS` lines that differ from the file's first page, `SC`,
+/// `PS`, `RE` and `PF`.
+fn write_page_head(page: &PageFile, first: &PageFile, is_first: bool, out: &mut dyn Write) -> io::Result<()> {
     out.write_all(b"PN,")?;
     out.write_all(&page.address.ascii())?;
     writeln!(out, "{:02}", page.subpage)?;
@@ -185,6 +204,11 @@ fn write_page(page: &PageFile, first: &PageFile, is_first: bool, out: &mut dyn W
     if let Some(function) = page.function {
         writeln!(out, "PF,{:X},{:X}", function.function, function.coding)?;
     }
+    Ok(())
+}
+
+/// The `OL` rows, each followed by the `FD` lines of the fields on it.
+fn write_rows_and_fields(page: &PageFile, out: &mut dyn Write) -> io::Result<()> {
     for row in 0..STORED_ROWS {
         if !page.has_row(row) {
             continue;
@@ -198,6 +222,12 @@ fn write_page(page: &PageFile, first: &PageFile, is_first: bool, out: &mut dyn W
             }
         }
     }
+    Ok(())
+}
+
+/// The packed enhancement lines: X/26 by designation code, then the other
+/// packets as they were read.
+fn write_packed_lines(page: &PageFile, out: &mut dyn Write) -> io::Result<()> {
     let mut enhancements = page.enhancements;
     enhancements.as_mut_slice().sort_unstable_by_key(|packet| packet.designation);
     for packet in enhancements.as_slice() {
@@ -215,6 +245,11 @@ fn write_page(page: &PageFile, first: &PageFile, is_first: bool, out: &mut dyn W
         }
         writeln!(out)?;
     }
+    Ok(())
+}
+
+/// `FL`, then the `LN`, `LK` and `LT` link lines.
+fn write_links(page: &PageFile, out: &mut dyn Write) -> io::Result<()> {
     write_fastext(page, out)?;
     for link in page.links.as_slice() {
         out.write_all(&[b'L', b'N', b',', link.key.letter(), b','])?;
@@ -237,6 +272,11 @@ fn write_page(page: &PageFile, first: &PageFile, is_first: bool, out: &mut dyn W
         write_destination(&link.destination, out)?;
         writeln!(out)?;
     }
+    Ok(())
+}
+
+/// The interaction lines, `CU` and `IM`.
+fn write_interaction_lines(page: &PageFile, out: &mut dyn Write) -> io::Result<()> {
     // REQ-INT-006: the page's cursor record.
     if let Some(cursor) = page.cursor {
         writeln!(out, "CU,{},{},{},{},{}", cursor.row, cursor.column, cursor.width, cursor.flags, cursor.acked)?;
@@ -244,14 +284,6 @@ fn write_page(page: &PageFile, first: &PageFile, is_first: bool, out: &mut dyn W
     // REQ-INT-114: the input modes the page asks for.
     if let Some(modes) = page.input_modes {
         writeln!(out, "IM,{}", modes.modes)?;
-    }
-    write_form_lines(page, out)?;
-    for warning in Warning::ALL {
-        if page.considered & warning.bit() != 0 {
-            out.write_all(b"CK,considered,")?;
-            out.write_all(warning.name())?;
-            writeln!(out)?;
-        }
     }
     Ok(())
 }

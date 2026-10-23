@@ -3,6 +3,7 @@
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 
 use super::*;
+use crate::encode::encode_page;
 use crate::page::{FastextLink, PageFile};
 use crate::t42::{T42Reader, T42Variant};
 use crate::testing::{packets, run};
