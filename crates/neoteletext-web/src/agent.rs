@@ -1091,6 +1091,11 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
         Ok(self.jar.import(scratch.get(..len).unwrap_or(&[]), seconds))
     }
 
+    /// Erases every cookie, the port's when it keeps them (REQ-SEC-013).
+    fn wipe_cookies(&mut self) {
+        cookie_store(&mut self.jar, &mut self.port_cookies).wipe();
+    }
+
     /// Handles one input. Outputs go to `sink` before this returns.
     pub fn handle(&mut self, now: Instant, input: Input<'_>, sink: &mut Sink<'_>) {
         let ticked = matches!(input, Input::Tick);
@@ -1157,7 +1162,7 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
                     self.confirm(confirmed, sink);
                 }
             }
-            Input::WipeCookies => cookie_store(&mut self.jar, &mut self.port_cookies).wipe(),
+            Input::WipeCookies => self.wipe_cookies(),
             Input::WallClock(unix) => self.wall_clock = Some((now, unix)),
             Input::Send(message) => self.send_input(message, sink),
         }
@@ -1778,7 +1783,6 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             return;
         }
         let body = self.buffers.body.get(..self.fetch.body_len).unwrap_or(&[]);
-        let secure = exchange.url.is_secure();
         match exchange.purpose {
             // complete_channel handled every one of these, and
             // bound_complete the bound sessions'.
@@ -1816,35 +1820,42 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             }
             // Only a build with forms makes a form request.
             Purpose::Form if !cfg!(feature = "forms") => {}
-            Purpose::Form => {
-                self.form.phase = FormPhase::Idle;
-                let success = (STATUS_SUCCESS_FIRST..STATUS_REDIRECT_FIRST).contains(&status);
-                if success && head.media == MediaType::Tti {
-                    sink(Output::PageBytes(PageBytes {
-                        source: Source::Form,
-                        media: head.media,
-                        url: exchange.url.as_str(),
-                        secure,
-                        bytes: body,
-                    }));
-                    event(sink, Event::SubmissionPage);
-                } else if success {
-                    event(sink, Event::SubmissionSucceeded { status });
-                } else if status >= STATUS_CLIENT_ERROR_FIRST && head.media == MediaType::Tti {
-                    // REQ-WEB-011 item 3: a TTI page is displayed whatever
-                    // the status; the error is still reported.
-                    sink(Output::PageBytes(PageBytes {
-                        source: Source::Form,
-                        media: head.media,
-                        url: exchange.url.as_str(),
-                        secure,
-                        bytes: body,
-                    }));
-                    event(sink, Event::SubmissionFailed { status: Some(status), failure: None });
-                } else {
-                    event(sink, Event::SubmissionFailed { status: Some(status), failure: None });
-                }
-            }
+            Purpose::Form => self.complete_form(&exchange, &head, sink),
+        }
+    }
+
+    /// A form's response is complete (REQ-WEB-011): its TTI page, or the
+    /// success or failure the `FP` pages show.
+    fn complete_form(&mut self, exchange: &Exchange, head: &ResponseHead, sink: &mut Sink<'_>) {
+        let status = head.status;
+        let body = self.buffers.body.get(..self.fetch.body_len).unwrap_or(&[]);
+        let secure = exchange.url.is_secure();
+        self.form.phase = FormPhase::Idle;
+        let success = (STATUS_SUCCESS_FIRST..STATUS_REDIRECT_FIRST).contains(&status);
+        if success && head.media == MediaType::Tti {
+            sink(Output::PageBytes(PageBytes {
+                source: Source::Form,
+                media: head.media,
+                url: exchange.url.as_str(),
+                secure,
+                bytes: body,
+            }));
+            event(sink, Event::SubmissionPage);
+        } else if success {
+            event(sink, Event::SubmissionSucceeded { status });
+        } else if status >= STATUS_CLIENT_ERROR_FIRST && head.media == MediaType::Tti {
+            // REQ-WEB-011 item 3: a TTI page is displayed whatever
+            // the status; the error is still reported.
+            sink(Output::PageBytes(PageBytes {
+                source: Source::Form,
+                media: head.media,
+                url: exchange.url.as_str(),
+                secure,
+                bytes: body,
+            }));
+            event(sink, Event::SubmissionFailed { status: Some(status), failure: None });
+        } else {
+            event(sink, Event::SubmissionFailed { status: Some(status), failure: None });
         }
     }
 
@@ -2282,12 +2293,33 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             return;
         }
         let len = writer.len();
-        let message = text.get(..len).unwrap_or(&[]);
+        self.send_push_frame(OPCODE_TEXT, text.get(..len).unwrap_or(&[]), sink);
+    }
+
+    /// Writes one frame on the push WebSocket and sends it; false when it
+    /// does not fit the request buffer.
+    fn send_push_frame(&mut self, opcode: u8, payload: &[u8], sink: &mut Sink<'_>) -> bool {
         let mut frame = Writer::new(self.buffers.push_request);
-        if ws::write_frame(&mut frame, OPCODE_TEXT, message, &mut self.random).is_ok() {
+        if ws::write_frame(&mut frame, opcode, payload, &mut self.random).is_err() {
+            return false;
+        }
+        let len = frame.len();
+        sink(Output::Send {
+            connection: ConnectionId::Push,
+            bytes: self.buffers.push_request.get(..len).unwrap_or(&[]),
+        });
+        true
+    }
+
+    /// Writes a close frame with `code` on the push WebSocket and sends it.
+    fn send_push_close(&mut self, code: u16, sink: &mut Sink<'_>) {
+        let mut frame = Writer::new(self.buffers.push_request);
+        if ws::write_close(&mut frame, code, &mut self.random).is_ok() {
             let len = frame.len();
-            let bytes = self.buffers.push_request.get(..len).unwrap_or(&[]);
-            sink(Output::Send { connection: ConnectionId::Push, bytes });
+            sink(Output::Send {
+                connection: ConnectionId::Push,
+                bytes: self.buffers.push_request.get(..len).unwrap_or(&[]),
+            });
         }
     }
 
@@ -2512,46 +2544,22 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
         let (used, done) = match self.push.frames.feed(message, input) {
             Ok(result) => result,
             Err(error) => {
-                let mut frame = Writer::new(self.buffers.push_request);
-                if ws::write_close(&mut frame, error.close_code(), &mut self.random).is_ok() {
-                    let len = frame.len();
-                    sink(Output::Send {
-                        connection: ConnectionId::Push,
-                        bytes: self.buffers.push_request.get(..len).unwrap_or(&[]),
-                    });
-                }
+                self.send_push_close(error.close_code(), sink);
                 self.push_lost(now, Some(PushProblem::WebSocket(error)), true, sink);
                 return None;
             }
         };
-        let url = self.push.url;
-        let url_text = url.as_ref().map_or("", Url::as_str);
-        let secure = url.as_ref().is_some_and(Url::is_secure);
         match done {
             // The push reader is strict, so it never skips a message.
             None | Some(WsMessage::Skipped) => {}
             Some(WsMessage::Text(len)) => {
                 self.push.healthy = true;
-                let bytes = self.buffers.push_message.get(..len).unwrap_or(&[]);
-                sink(Output::PageBytes(PageBytes {
-                    source: Source::Push,
-                    media: MediaType::Tti,
-                    url: url_text,
-                    secure,
-                    bytes,
-                }));
+                self.deliver_push_page(MediaType::Tti, len, sink);
             }
             Some(WsMessage::Binary(len)) => {
                 if len % T42_PACKET == 0 {
                     self.push.healthy = true;
-                    let bytes = self.buffers.push_message.get(..len).unwrap_or(&[]);
-                    sink(Output::PageBytes(PageBytes {
-                        source: Source::Push,
-                        media: MediaType::T42,
-                        url: url_text,
-                        secure,
-                        bytes,
-                    }));
+                    self.deliver_push_page(MediaType::T42, len, sink);
                 } else {
                     event(sink, Event::PushLost { retry_in_us: 0, problem: Some(PushProblem::PacketLength) });
                 }
@@ -2559,28 +2567,12 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             Some(WsMessage::Ping) => {
                 let mut payload = [0u8; crate::consts::WS_CONTROL_MAX];
                 let len = copy_prefix(&mut payload, self.push.frames.control_payload());
-                let mut frame = Writer::new(self.buffers.push_request);
-                if ws::write_frame(&mut frame, OPCODE_PONG, payload.get(..len).unwrap_or(&[]), &mut self.random).is_ok()
-                {
-                    let len = frame.len();
-                    sink(Output::Send {
-                        connection: ConnectionId::Push,
-                        bytes: self.buffers.push_request.get(..len).unwrap_or(&[]),
-                    });
-                }
+                self.send_push_frame(OPCODE_PONG, payload.get(..len).unwrap_or(&[]), sink);
             }
             Some(WsMessage::Pong) => self.push.healthy = true,
             Some(WsMessage::Close(code)) => {
                 // RFC 6455 section 5.5.1: answer with a close, then end.
-                let mut frame = Writer::new(self.buffers.push_request);
-                let reply = code.unwrap_or(crate::consts::CLOSE_NORMAL);
-                if ws::write_close(&mut frame, reply, &mut self.random).is_ok() {
-                    let len = frame.len();
-                    sink(Output::Send {
-                        connection: ConnectionId::Push,
-                        bytes: self.buffers.push_request.get(..len).unwrap_or(&[]),
-                    });
-                }
+                self.send_push_close(code.unwrap_or(crate::consts::CLOSE_NORMAL), sink);
                 self.push_lost(now, None, true, sink);
                 return None;
             }
@@ -2621,20 +2613,10 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
     }
 
     fn deliver_event(&mut self, dispatched: Option<SseEvent>, sink: &mut Sink<'_>) {
-        let url = self.push.url;
-        let url_text = url.as_ref().map_or("", Url::as_str);
-        let secure = url.as_ref().is_some_and(Url::is_secure);
         match dispatched {
             Some(SseEvent::Page(len)) => {
                 self.push.healthy = true;
-                let bytes = self.buffers.push_message.get(..len).unwrap_or(&[]);
-                sink(Output::PageBytes(PageBytes {
-                    source: Source::Push,
-                    media: MediaType::Tti,
-                    url: url_text,
-                    secure,
-                    bytes,
-                }));
+                self.deliver_push_page(MediaType::Tti, len, sink);
             }
             Some(SseEvent::Packets(len)) => {
                 let message = self.buffers.push_message.get_mut(..len).unwrap_or(&mut []);
@@ -2652,14 +2634,7 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
                 match crate::base64::decode_in_place(message, kept) {
                     Ok(decoded) if decoded % T42_PACKET == 0 => {
                         self.push.healthy = true;
-                        let bytes = self.buffers.push_message.get(..decoded).unwrap_or(&[]);
-                        sink(Output::PageBytes(PageBytes {
-                            source: Source::Push,
-                            media: MediaType::T42,
-                            url: url_text,
-                            secure,
-                            bytes,
-                        }));
+                        self.deliver_push_page(MediaType::T42, decoded, sink);
                     }
                     Ok(_) => event(sink, Event::PushLost { retry_in_us: 0, problem: Some(PushProblem::PacketLength) }),
                     Err(_) => event(sink, Event::PushLost { retry_in_us: 0, problem: Some(PushProblem::Base64) }),
@@ -2667,6 +2642,16 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             }
             Some(SseEvent::Other) | None => {}
         }
+    }
+
+    /// Delivers the first `len` bytes of the push message as a pushed page
+    /// of `media`.
+    fn deliver_push_page(&self, media: MediaType, len: usize, sink: &mut Sink<'_>) {
+        let url = self.push.url;
+        let url_text = url.as_ref().map_or("", Url::as_str);
+        let secure = url.as_ref().is_some_and(Url::is_secure);
+        let bytes = self.buffers.push_message.get(..len).unwrap_or(&[]);
+        sink(Output::PageBytes(PageBytes { source: Source::Push, media, url: url_text, secure, bytes }));
     }
 
     // -----------------------------------------------------------------
@@ -2679,6 +2664,12 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
         {
             self.abandon_fetch(Failure::Timeout, sink);
         }
+        self.push_tick(now, sink);
+    }
+
+    /// The push half of [`Self::tick`]: the backoff, the set-up's time
+    /// limits and the heartbeat.
+    fn push_tick(&mut self, now: Instant, sink: &mut Sink<'_>) {
         if !cfg!(feature = "push") {
             return;
         }
@@ -2716,14 +2707,7 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
     fn heartbeat(&mut self, now: Instant, sink: &mut Sink<'_>) {
         let PushPhase::Open { heard, pinged } = self.push.phase else { return };
         if self.push.method == PushMethod::WebSocket && pinged.is_none() {
-            let mut frame = Writer::new(self.buffers.push_request);
-            if ws::write_frame(&mut frame, OPCODE_PING, b"", &mut self.random).is_ok() {
-                let len = frame.len();
-                sink(Output::Send {
-                    connection: ConnectionId::Push,
-                    bytes: self.buffers.push_request.get(..len).unwrap_or(&[]),
-                });
-            }
+            self.send_push_frame(OPCODE_PING, b"", sink);
             self.push.phase = PushPhase::Open { heard, pinged: Some(now) };
             return;
         }
@@ -2741,14 +2725,7 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             event(sink, Event::InputDropped);
             return;
         }
-        let mut frame = Writer::new(self.buffers.push_request);
-        if ws::write_frame(&mut frame, OPCODE_BINARY, message, &mut self.random).is_ok() {
-            let len = frame.len();
-            sink(Output::Send {
-                connection: ConnectionId::Push,
-                bytes: self.buffers.push_request.get(..len).unwrap_or(&[]),
-            });
-        } else {
+        if !self.send_push_frame(OPCODE_BINARY, message, sink) {
             event(sink, Event::InputDropped);
         }
     }
