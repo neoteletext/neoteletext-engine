@@ -75,8 +75,8 @@ This covers descriptors, pages, push connections and form submissions. Local-net
 *Verification:* Test against a list of blocked addresses and encodings, including redirects and names that resolve to blocked addresses. Through a proxy, `single_label_and_private_use_names_are_local_through_a_proxy` and `through_a_proxy_local_names_are_refused_and_the_proxy_may_be_local`, which refuse `router`, `nas.lan` and `x.home.arpa` and fail on the code before 24 October 2026 (finding F-17 of NeoTeletext's security review).
 
 **REQ-SEC-007 — No downgrade.**
-Once a service has been reached over HTTPS, every later connection for that service shall use encryption, for the rest of the session and for as long as its cookies last. This covers pages, push, redirects and form submissions. A redirect from HTTPS to plain HTTP shall be refused. A descriptor fetched over HTTPS shall not name plain `http://` or `ws://` addresses; if it does, the descriptor shall be rejected.
-*Verification:* Test.
+Once a service has been reached over HTTPS, every later connection for that service shall use encryption, for the rest of the session and for as long as its cookies last. This covers pages, push, redirects and form submissions. A redirect from HTTPS to plain HTTP shall be refused. A descriptor fetched over HTTPS shall not name plain `http://` or `ws://` addresses; if it does, the descriptor shall be rejected. The memory of hosts reached over HTTPS is bounded (`SECURE_HOSTS`); when it is full, the host least recently reached is forgotten, so the rule keeps holding for the hosts in use (decision E.114 item 3).
+*Verification:* Test; the bounded memory by `the_secure_host_memory_forgets_the_host_least_recently_seen`, which fails on the code before 24 October 2026 (finding F-43 of NeoTeletext's security review).
 
 **REQ-SEC-008 — Plain HTTP, as decided.**
 Plain HTTP is allowed for reading, cookies and forms (decision E.32). The following safeguards are mandatory:

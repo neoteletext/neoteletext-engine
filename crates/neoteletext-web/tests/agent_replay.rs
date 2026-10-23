@@ -515,6 +515,33 @@ fn no_downgrade_after_https() {
     assert!(!harness.replay().connects.iter().any(|(_, _, port, _)| *port == 80));
 }
 
+/// Finding F-43 (decision E.114 item 3): when the memory of hosts reached
+/// over HTTPS is full, the host least recently seen is forgotten, so the
+/// rule against downgrade holds for the hosts in use. The memory filled
+/// silently, and the 33rd host was never remembered.
+#[test]
+fn the_secure_host_memory_forgets_the_host_least_recently_seen() {
+    let hosts: Vec<String> =
+        (0..=neoteletext_web::consts::SECURE_HOSTS).map(|index| format!("h{index}.example")).collect();
+    let resolve: Vec<(&str, IpAddress)> = hosts.iter().map(|host| (host.as_str(), PUBLIC)).collect();
+    let mut harness = Harness::new(Config::default(), Replay::new(&resolve));
+    let json = br#"{"name":"S","initial_page":"100","page_template":"/p/{mpp}"}"#;
+    for host in &hosts {
+        harness.replay().reply(&format!("{host}:443"), json_response(json));
+        let records = harness.open(&format!("https://{host}/d.json"));
+        assert!(has_event(&records, "ServiceReady"), "{host}: {records:?}");
+        harness.advance(SECOND);
+    }
+    let newest = hosts.last().unwrap();
+    let records = harness.open(&format!("http://{newest}/d.json"));
+    assert!(has_event(&records, "DowngradeRefused"), "the newest host is remembered: {records:?}");
+    harness.advance(SECOND);
+    let oldest = &hosts[0];
+    harness.replay().reply(&format!("{oldest}:80"), json_response(json));
+    let records = harness.open(&format!("http://{oldest}/d.json"));
+    assert!(!has_event(&records, "DowngradeRefused"), "the oldest host is forgotten: {records:?}");
+}
+
 #[test]
 fn tls_unavailable() {
     let config = Config { tls_available: false, ..Config::default() };
