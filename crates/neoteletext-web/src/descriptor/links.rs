@@ -122,24 +122,36 @@ impl Descriptor {
             let short_name = short_name.ok_or(DescriptorError::Missing(Member::ServiceName))?;
             let display_name = display_name.ok_or(DescriptorError::Missing(Member::ServiceDisplayName))?;
             let url = url.ok_or(DescriptorError::Missing(Member::ServiceDescriptor))?;
-            if self.service(short_name.as_str()).is_some() {
-                return Err(DescriptorError::Duplicate(Member::ServiceName));
-            }
-            let start = self.service_addresses.len();
-            self.service_addresses
-                .push(url.as_str().as_bytes())
-                .map_err(|_| DescriptorError::TooMany(Member::Services))?;
-            let end = self.service_addresses.len();
-            let narrow = |v: usize| u16::try_from(v).map_err(|_| DescriptorError::TooMany(Member::Services));
-            let slot = self.services.get_mut(count).ok_or(DescriptorError::TooMany(Member::Services))?;
-            *slot = Some(LinkedService {
-                short_name,
-                display_name,
-                channel: is_channel,
-                address_start: narrow(start)?,
-                address_end: narrow(end)?,
-            });
+            self.store_service(count, short_name, display_name, &url, is_channel)?;
             count = count.saturating_add(1);
         }
+    }
+
+    /// Stores linked service number `count`, refusing a second service of
+    /// the same name, and its address in the arena.
+    fn store_service(
+        &mut self,
+        count: usize,
+        short_name: TextBuf<MAX_SHORT_NAME>,
+        display_name: TextBuf<MAX_SERVICE_NAME>,
+        url: &Url,
+        is_channel: bool,
+    ) -> Result<(), DescriptorError> {
+        if self.service(short_name.as_str()).is_some() {
+            return Err(DescriptorError::Duplicate(Member::ServiceName));
+        }
+        let start = self.service_addresses.len();
+        self.service_addresses.push(url.as_str().as_bytes()).map_err(|_| DescriptorError::TooMany(Member::Services))?;
+        let end = self.service_addresses.len();
+        let narrow = |v: usize| u16::try_from(v).map_err(|_| DescriptorError::TooMany(Member::Services));
+        let slot = self.services.get_mut(count).ok_or(DescriptorError::TooMany(Member::Services))?;
+        *slot = Some(LinkedService {
+            short_name,
+            display_name,
+            channel: is_channel,
+            address_start: narrow(start)?,
+            address_end: narrow(end)?,
+        });
+        Ok(())
     }
 }
