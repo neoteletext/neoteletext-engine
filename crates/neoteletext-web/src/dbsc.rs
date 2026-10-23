@@ -42,6 +42,15 @@ pub const ALGORITHM: &[u8] = b"ES256";
 /// Sessions kept at once; a registration with every slot taken is not
 /// made.
 pub const MAX_SESSIONS: usize = 4;
+/// Registrations one origin may have the agent make in an hour: as many
+/// as the store holds at once. Each makes and, when it fails, deletes a
+/// key in the port's protected storage, so a server is not let do that
+/// without bound (decision E.114 item 6, finding F-91).
+pub const MAX_REGISTRATIONS_PER_HOUR: u8 = 4;
+/// The window of [`MAX_REGISTRATIONS_PER_HOUR`], in seconds.
+pub const REGISTRATION_WINDOW_SECONDS: u64 = 60 * 60;
+// Every slot of the store can be filled within one window.
+const _: () = assert!(MAX_REGISTRATIONS_PER_HOUR as usize == MAX_SESSIONS);
 /// The longest session identifier kept.
 pub const MAX_SESSION_ID: usize = 64;
 /// The longest challenge kept.
