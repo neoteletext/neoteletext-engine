@@ -61,6 +61,8 @@ extern crate std;
 
 pub mod consts;
 pub mod item;
+#[cfg(any(feature = "tti", feature = "edittf"))]
+mod lines;
 pub mod text;
 
 // Decision E.61: the readers, the encoder and the checker are features; the

@@ -64,7 +64,7 @@ impl TtiReader {
         let mut kept = Text::new();
         let label_truncated = !set_value(&mut kept, label);
         let link =
-            LinkLine { key, service, address, subcode, url, label: kept, label_truncated, line: self.line_number };
+            LinkLine { key, service, address, subcode, url, label: kept, label_truncated, line: self.lines.number() };
         if !self.page.links.push(link) {
             self.page.links_valid = false;
             self.diagnostic(DiagnosticKind::CapacityExceeded { what: Capacity::Links }, out);
@@ -86,7 +86,7 @@ impl TtiReader {
             self.issue(IssueKind::RepeatedKey, out);
             return;
         }
-        if !self.page.number_links.push(NumberLink { number, destination, line: self.line_number }) {
+        if !self.page.number_links.push(NumberLink { number, destination, line: self.lines.number() }) {
             self.diagnostic(DiagnosticKind::CapacityExceeded { what: Capacity::Links }, out);
         }
     }
@@ -102,7 +102,7 @@ impl TtiReader {
         let acked = if rest.is_empty() { Some(0) } else { decimal(rest).and_then(|value| u16::try_from(value).ok()) };
         match (row, column, width, flags, acked) {
             (Some(row), Some(column), Some(width), Some(flags), Some(acked)) => {
-                self.page.cursor = Some(CursorLine { row, column, width, flags, acked, line: self.line_number });
+                self.page.cursor = Some(CursorLine { row, column, width, flags, acked, line: self.lines.number() });
             }
             _ => self.issue(IssueKind::BadCursorLine, out),
         }
@@ -130,7 +130,7 @@ impl TtiReader {
             self.issue(IssueKind::BadLinkTarget, out);
             return;
         }
-        let link = TextLink { row, column, length, destination, line: self.line_number };
+        let link = TextLink { row, column, length, destination, line: self.lines.number() };
         if !self.page.text_links.push(link) {
             self.diagnostic(DiagnosticKind::CapacityExceeded { what: Capacity::Links }, out);
         }
