@@ -62,7 +62,9 @@ The web module shall refuse to connect to these addresses:
 - **Link-local:** 169.254.0.0/16 and fe80::/10.
 - **Shared address space:** 100.64.0.0/10.
 - **Unspecified and multicast addresses.**
-- **The IPv4-mapped IPv6 forms of all of these.**
+- **Special-purpose:** the IETF protocol assignments 192.0.0.0/24 (RFC 6890) and benchmarking 198.18.0.0/15 (RFC 2544).
+- **Deprecated IPv6 forms:** the IPv4-compatible addresses ::a.b.c.d (RFC 4291 section 2.5.5.1) and site-local fec0::/10 (RFC 3879).
+- **IPv6 addresses that embed one of these IPv4 addresses:** the IPv4-mapped form ::ffff:a.b.c.d, NAT64's 64:ff9b::/96 (RFC 6052) and 64:ff9b:1::/48 (RFC 8215), and 6to4's 2002::/16 (RFC 3056). Each is judged by the IPv4 address it embeds (decision E.115).
 
 The check shall be applied:
 - to the address the connection actually reaches, which the transport reports after name resolution (REQ-WEB-001);
@@ -70,7 +72,7 @@ The check shall be applied:
 
 This covers descriptors, pages, push connections and form submissions. Local-network services can be allowed only by naming them explicitly in the configuration.
 *Reason:* A web-native client on a home network is a classic target for requests forged to reach routers and other devices behind it ("server-side request forgery").
-*Verification:* Test against a list of blocked addresses and encodings, including redirects and names that resolve to blocked addresses.
+*Verification:* Test against a list of blocked addresses and encodings, including redirects and names that resolve to blocked addresses. The ranges added by decision E.115 are tested by `policy::tests::ranges_from_the_security_review_are_blocked` in `neoteletext-core`.
 
 **REQ-SEC-007 — No downgrade.**
 Once a service has been reached over HTTPS, every later connection for that service shall use encryption, for the rest of the session and for as long as its cookies last. This covers pages, push, redirects and form submissions. A redirect from HTTPS to plain HTTP shall be refused. A descriptor fetched over HTTPS shall not name plain `http://` or `ws://` addresses; if it does, the descriptor shall be rejected.
