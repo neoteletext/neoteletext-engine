@@ -264,3 +264,27 @@ fn the_store_is_bounded_and_replaces_by_identifier() {
     assert_eq!(ended.len(), MAX_SESSIONS);
     assert!(sessions.iter().next().is_none());
 }
+
+/// Finding F-92 (decision E.114 item 6): instructions naming a member
+/// twice, at any level, are refused; the later one overwrote the earlier.
+#[test]
+fn instructions_naming_a_member_twice_are_refused() {
+    let credentials = r#""credentials":[{"type":"cookie","name":"a"}]"#;
+    let scope = r#""scope":{"include_site":false}"#;
+    for body in [
+        std::format!(r#"{{"session_identifier":"s","session_identifier":"t",{scope},{credentials}}}"#),
+        std::format!(r#"{{"session_identifier":"s",{scope},{scope},{credentials}}}"#),
+        std::format!(r#"{{"session_identifier":"s","continue":true,"continue":false,{scope},{credentials}}}"#),
+        std::format!(
+            r#"{{"session_identifier":"s","scope":{{"include_site":false,"include_site":true}},{credentials}}}"#
+        ),
+        std::format!(
+            r#"{{"session_identifier":"s","scope":{{"include_site":false,"scope_specification":[{{"type":"include","path":"/a","path":"/"}}]}},{credentials}}}"#
+        ),
+        std::format!(
+            r#"{{"session_identifier":"s",{scope},"credentials":[{{"type":"cookie","name":"a","name":"b"}}]}}"#
+        ),
+    ] {
+        assert_eq!(read_instructions(body.as_bytes()), Err(InstructionsError::Malformed), "{body}");
+    }
+}

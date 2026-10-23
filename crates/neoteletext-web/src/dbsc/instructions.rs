@@ -66,6 +66,13 @@ pub enum InstructionsError {
 
 type Read<T> = Result<T, InstructionsError>;
 
+/// The members each object of the instructions may name once (section
+/// 9.6).
+const INSTRUCTION_MEMBERS: [&[u8]; 5] = [b"session_identifier", b"refresh_url", b"continue", b"scope", b"credentials"];
+const SCOPE_MEMBERS: [&[u8]; 3] = [b"origin", b"include_site", b"scope_specification"];
+const RULE_MEMBERS: [&[u8]; 3] = [b"type", b"domain", b"path"];
+const CREDENTIAL_MEMBERS: [&[u8]; 3] = [b"type", b"name", b"attributes"];
+
 fn next<'a>(reader: &mut JsonReader<'a>) -> Read<Token<'a>> {
     reader.next_token().map_err(|_| InstructionsError::Malformed)?.ok_or(InstructionsError::Malformed)
 }
@@ -111,19 +118,31 @@ fn skip(reader: &mut JsonReader<'_>) -> Read<()> {
 }
 
 /// Calls `member` with each member name of the object `first` begins;
-/// `member` reads the value or returns false to have it skipped.
-fn object<'a>(
+/// `member` reads the value or returns false to have it skipped. A member
+/// of `known` named twice is refused, so a later one cannot replace an
+/// earlier (decision E.114 item 6, finding F-92).
+fn object<'a, const KNOWN: usize>(
     first: Token<'a>,
     reader: &mut JsonReader<'a>,
+    known: [&[u8]; KNOWN],
     mut member: impl FnMut(JsonStr<'a>, &mut JsonReader<'a>) -> Read<bool>,
 ) -> Read<()> {
     if first != Token::BeginObject {
         return Err(InstructionsError::Missing);
     }
+    let mut seen = [false; KNOWN];
     loop {
         match next(reader)? {
             Token::EndObject => return Ok(()),
             Token::Key(name) => {
+                if let Some(index) = known.iter().position(|known| name.equals(known))
+                    && let Some(seen) = seen.get_mut(index)
+                {
+                    if *seen {
+                        return Err(InstructionsError::Malformed);
+                    }
+                    *seen = true;
+                }
                 if !member(name, reader)? {
                     skip(reader)?;
                 }
@@ -167,7 +186,7 @@ pub fn read_instructions(body: &[u8]) -> Read<Answer> {
     let mut scope = None;
     let mut credentials = None;
     let first = next(&mut reader)?;
-    object(first, &mut reader, |name, reader| {
+    object(first, &mut reader, INSTRUCTION_MEMBERS, |name, reader| {
         if name.equals(b"session_identifier") {
             id = Some(identifier(reader)?);
         } else if name.equals(b"refresh_url") {
@@ -212,7 +231,7 @@ fn read_scope<'a>(first: Token<'a>, reader: &mut JsonReader<'a>) -> Read<Scope> 
     let mut origin = None;
     let mut include_site = None;
     let mut rules = [None; MAX_SCOPE_RULES];
-    object(first, reader, |name, reader| {
+    object(first, reader, SCOPE_MEMBERS, |name, reader| {
         if name.equals(b"origin") {
             origin = Some(string(reader)?);
         } else if name.equals(b"include_site") {
@@ -239,7 +258,7 @@ fn read_rule<'a>(first: Token<'a>, reader: &mut JsonReader<'a>) -> Read<ScopeRul
     let mut include = None;
     let mut domain = TextBuf::from_bytes(b"*").ok_or(InstructionsError::TooLarge)?;
     let mut path = TextBuf::from_bytes(b"/").ok_or(InstructionsError::TooLarge)?;
-    object(first, reader, |name, reader| {
+    object(first, reader, RULE_MEMBERS, |name, reader| {
         if name.equals(b"type") {
             let kind: TextBuf<MAX_RULE_TEXT> = string(reader)?;
             include = match kind.as_bytes() {
@@ -268,7 +287,7 @@ fn read_credentials<'a>(first: Token<'a>, reader: &mut JsonReader<'a>) -> Read<C
         let mut cookie = false;
         let mut name: Option<TextBuf<MAX_CREDENTIAL_NAME>> = None;
         let mut partitioned = false;
-        object(first, reader, |member, reader| {
+        object(first, reader, CREDENTIAL_MEMBERS, |member, reader| {
             if member.equals(b"type") {
                 let kind: TextBuf<MAX_RULE_TEXT> = string(reader)?;
                 cookie = kind.as_bytes() == b"cookie";

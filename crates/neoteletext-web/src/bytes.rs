@@ -4,6 +4,10 @@
 
 /// Decimal digits of the largest `u64`, 18446744073709551615.
 pub const MAX_U64_DIGITS: usize = 20;
+/// The bits one hexadecimal digit holds.
+const HEX_DIGIT_BITS: u32 = 4;
+/// The hexadecimal digits of a `u32`, the widest [`Writer::hex`] writes.
+pub const U32_HEX_DIGITS: u32 = u32::BITS / HEX_DIGIT_BITS;
 
 /// The output buffer was too small.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -86,11 +90,16 @@ impl<'a> Writer<'a> {
         self.put(text)
     }
 
-    /// Appends `value` as `width` uppercase hexadecimal digits.
+    /// Appends `value` as `width` uppercase hexadecimal digits. A width
+    /// beyond [`U32_HEX_DIGITS`] fails, rather than shift past the value's
+    /// bits (finding F-92).
     pub fn hex(&mut self, value: u32, width: u32) -> Result<(), Overflow> {
-        let mut shift = width.saturating_mul(4);
+        if width > U32_HEX_DIGITS {
+            return Err(Overflow);
+        }
+        let mut shift = width.saturating_mul(HEX_DIGIT_BITS);
         while shift > 0 {
-            shift = shift.saturating_sub(4);
+            shift = shift.saturating_sub(HEX_DIGIT_BITS);
             let nibble = ((value >> shift) & 0xF) as u8;
             self.byte(neoteletext_core::types::hex_digit(nibble))?;
         }
@@ -307,6 +316,17 @@ mod tests {
         assert_eq!(parse_decimal(b"+1", 5), None);
         assert_eq!(parse_decimal(b"", 5), None);
         assert_eq!(parse_decimal(b"123456", 5), None);
+    }
+
+    /// Finding F-92: a width wider than a `u32` has digits fails rather
+    /// than shifting past the value's bits, which panicked in a debug build.
+    #[test]
+    fn a_hex_width_beyond_the_value_fails() {
+        let mut buffer = [0u8; 16];
+        let mut writer = Writer::new(&mut buffer);
+        writer.hex(0xABCD_EF01, 8).unwrap();
+        assert_eq!(writer.written(), b"ABCDEF01");
+        assert_eq!(writer.hex(1, 9), Err(Overflow));
     }
 
     #[test]

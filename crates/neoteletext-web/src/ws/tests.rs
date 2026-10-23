@@ -196,3 +196,15 @@ fn oversized_messages_fail_or_are_skipped() {
     assert_eq!(got, [WsMessage::Skipped, WsMessage::Skipped, WsMessage::Text(2)]);
     assert_eq!(&buffer[..2], b"hi");
 }
+
+/// Finding F-92 (decision E.114 item 8): RFC 6455 section 7.4.1 reserves
+/// 1005, 1006 and 1015 for use outside frames, so a close frame carrying
+/// one is a protocol error, answered with 1002, and never sent back.
+#[test]
+fn reserved_close_codes_are_a_protocol_error() {
+    for code in [1005_u16, 1006, 1015] {
+        let [high, low] = code.to_be_bytes();
+        assert_eq!(read_all(&[0x88, 2, high, low], 64, 1), Err(WsError::Protocol), "{code}");
+    }
+    assert!(read_all(&[0x88, 2, 0x03, 0xE8], 64, 1).is_ok(), "1000 is read");
+}

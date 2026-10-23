@@ -295,6 +295,10 @@ pub const CLOSE_PROTOCOL_ERROR: u16 = 1002;
 pub const CLOSE_INVALID_DATA: u16 = 1007;
 /// Close status: message too big.
 pub const CLOSE_TOO_BIG: u16 = 1009;
+/// Close statuses that RFC 6455 section 7.4.1 reserves for use outside
+/// frames: no status received (1005), closed without a close frame (1006)
+/// and the TLS handshake failed (1015).
+pub const CLOSE_RESERVED: [u16; 3] = [1005, 1006, 1015];
 /// Bytes of a close status code.
 pub const CLOSE_CODE_BYTES: usize = 2;
 /// The WebSocket text message that subscribes to pages (REQ-WEB-005).
