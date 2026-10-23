@@ -87,3 +87,29 @@ fn long_field_names_and_types_are_ignored() {
     assert_eq!(got.len(), 2);
     assert!(got.iter().all(|(event, _)| *event == SseEvent::Other));
 }
+
+/// Finding F-76 (decision E.114 item 7; the review's probe G): an id
+/// holding a control byte, DEL or invalid UTF-8 is ignored, as one holding
+/// NUL is, so `Last-Event-ID` never carries an invalid field value (RFC
+/// 9110 section 5.5). They were kept and echoed.
+#[test]
+fn an_id_that_is_no_field_value_is_ignored() {
+    let mut parser = SseParser::new();
+    let mut message = [0u8; 64];
+    parser.feed(&mut message, b"id: good\ndata: 1\n\n").unwrap();
+    for stream in [
+        &b"id: a\x01b\ndata: 2\n\n"[..],
+        b"id: a\x1bb\ndata: 2\n\n",
+        b"id: a\x7f\ndata: 2\n\n",
+        b"id: \xff\xfe\ndata: 2\n\n",
+    ] {
+        let mut rest = stream;
+        while !rest.is_empty() {
+            let (used, _) = parser.feed(&mut message, rest).unwrap();
+            rest = &rest[used..];
+        }
+        assert_eq!(parser.last_event_id(), b"good", "{stream:?}");
+    }
+    parser.feed(&mut message, "id: caf\u{e9}\ndata: 3\n\n".as_bytes()).unwrap();
+    assert_eq!(parser.last_event_id(), "caf\u{e9}".as_bytes(), "UTF-8 text is kept");
+}

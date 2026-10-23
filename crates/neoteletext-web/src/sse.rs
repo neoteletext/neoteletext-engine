@@ -247,9 +247,12 @@ impl SseParser {
                 }
             }
             Field::Id => {
-                if byte == 0 || self.id_pending.push(&[byte]).is_err() {
-                    // Section 9.2.6: an id containing NUL is ignored; an id
-                    // too long to keep is ignored too.
+                if byte.is_ascii_control() || self.id_pending.push(&[byte]).is_err() {
+                    // Section 9.2.6: an id containing NUL is ignored; so is
+                    // one with any other control byte or DEL, which could not
+                    // be sent back as `Last-Event-ID` (RFC 9110 section 5.5,
+                    // decision E.114 item 7, finding F-76), and one too long
+                    // to keep.
                     self.id_invalid = true;
                 }
             }
@@ -279,7 +282,8 @@ impl SseParser {
         match field {
             Field::Data => self.append_data(message, b'\n'),
             Field::Id => {
-                if !self.id_invalid {
+                // An id that is not UTF-8 is ignored too (finding F-76).
+                if !self.id_invalid && core::str::from_utf8(self.id_pending.as_bytes()).is_ok() {
                     self.id_buffer = self.id_pending;
                 }
                 Ok(())
