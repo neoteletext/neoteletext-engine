@@ -96,10 +96,20 @@ pub fn write(kind: u8, body: &[u8], out: &mut [u8]) -> Option<usize> {
 
 /// Reads fields from a body, failing on any short read.
 pub(super) struct Fields<'a> {
-    pub(super) bytes: &'a [u8],
+    bytes: &'a [u8],
 }
 
 impl<'a> Fields<'a> {
+    /// The fields of `bytes`, read from the start.
+    pub(super) fn new(bytes: &'a [u8]) -> Self {
+        Self { bytes }
+    }
+
+    /// Whether every byte has been read.
+    pub(super) fn is_empty(&self) -> bool {
+        self.bytes.is_empty()
+    }
+
     pub(super) fn take(&mut self, count: usize) -> Result<&'a [u8], RecordError> {
         if self.bytes.len() < count {
             return Err(RecordError::Truncated);
