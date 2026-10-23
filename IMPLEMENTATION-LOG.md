@@ -89,6 +89,35 @@ Started 10 October 2026. Instruction: implement the whole system, targeting only
 | 81 | REQ-WEB-017, Device Bound Session Credentials: what of it can the engine build, where do the keys live, and does it need a library? | The protocol, sans-IO, behind the feature `dbsc` (decision E.110), after the W3C Editor's Draft of 8 September 2026: header readers, instructions, proofs, a store of four sessions, registration, deferral before a request, refresh with one retry after a 403. Keys are the port's (`DeviceKeys`), since the libraries have no operating-system access; no dependency was added, and the platform libraries are proposed for the owner. Narrowings and what is not built are in E.110. Tests: 8 of the module, 6 against a played server; the fuzz target `dbsc` ran 24.3 million inputs in 121 s with no fault. | The engine's rules place key stores in ports; a library needs the owner's approval by name. |
 | 82 | NeoTeletext's owner removed channel fonts from the browser on 23 October 2026. Are the engine's requirements for fonts named by a channel or a page withdrawn too, and what of the user's fonts? | Withdrawn: REQ-FNT-006 and REQ-FNT-007 (decision E.111), with the code that served only them: `TF` reading and writing, `PageFont`, the checker's bad-font-line problem, and `channel.json`'s `font` member. A `TF` line is a withdrawn command; `font` is an unknown member. Kept: Bedstead, the BDF form and reader, user-chosen fonts and libraries, per-set fonts, drawing, the converter, conformance and the Noto fonts; REQ-FNT-003 and REQ-FNT-005 amended; REQ-WEB-014 loses its exception. The new tests fail on the old code. | The owner's words concern what a browser fetches from channels; the user's own fonts are the engine's own decisions and stay without the owner's word. |
 
+## Status at the end of the round for NeoTeletext (23 October 2026)
+
+Eight pieces of work NeoTeletext needed from the engine, done while the owner was away, as the owner had instructed (rows 76 to 82, decisions E.106 to E.111). Each was committed through the commit gate (`scripts/check.sh fast`); none is pushed.
+
+| Work | Commit | Verified by |
+|---|---|---|
+| The qrkeyboard screen's wait is woken from another thread (E.106, REQ-INT-009) | 11ca52c | `tests/wake.rs` against a played relay; the pairing tests through a local relay and over TLS through qrkeyboard.com |
+| The proxy's `CONNECT` answer read in chunks; the tunnel's first bytes handed back (E.102 amended, REQ-WEB-032 amended) | 953b0a8 | a test whose read count fails on the old code (47 reads, not 1); a fetcher test that the bytes reach the connection |
+| A flashing page redrawn by the tracked rows: measured, no new renderer (E.107, REQ-TST-050 amended) | 0e62c03 | `flash_cost`, release build: about 815 µs a phase change for every row against 116 to 121 µs for one flashing row |
+| A link label's control codes kept out of the receiver's row 24 (a fault) | 4376b2a | a test that fails on the old code |
+| A receiver's links and row 24 read in `neoteletext-formats` (E.108, REQ-NAV-011 amended) | 5c40732 | the module's tests, and a test that `LN` lines reach a decoder as X/27/0 |
+| The viewer's sub-page bound made public | 0d05d1f | the gate |
+| A channel's log lines, `LG` (E.109, REQ-INP-026) | 4824ec2 | reader, writer and checker tests; the fuzz target `channel_log`, 3.9 million inputs in 121 s |
+| Device Bound Session Credentials behind the feature `dbsc` (E.110, REQ-WEB-017 amended) | 53a8494 | 8 module tests, 6 against a played server; the fuzz target `dbsc`, 24.3 million inputs in 121 s |
+| Fonts named by channels and pages withdrawn (E.111, REQ-FNT-006 and REQ-FNT-007) | 25d529b | reader and checker tests that fail on the old code |
+
+**NOT DONE**, with the reason:
+
+| Item | Reason |
+|---|---|
+| GitHub issues for this round's work | The permission system refused writes to GitHub while the owner was away; `TECH-DEBT.md` lists them. |
+| The full gate | Not asked for; every commit passed the commit gate. The fuzz targets were run on `foundintelquiet4060` by hand. |
+| `neottx keyboard` end to end against a channel and a phone | No such test existed; its change (one wait for both sockets) is covered only by the qrkeyboard tests. |
+| Platform key stores for bound sessions, and their libraries | A library needs the owner's approval by name; the engine's libraries reach no operating system. E.110 item 2 proposes them. |
+| Bound sessions across runs, RS256, federation and the draft's other parts | Listed in E.110 item 4 and `TECH-DEBT.md`. |
+| A redraw renderer for flashing pages | The engine already has one; measured (E.107). |
+
+**For the owner to review:** decisions E.106 to E.111; E.110's narrowings of the DBSC draft and its proposed libraries; E.111's withdrawal, which keeps the user's own fonts; E.109's choice of a TTI line for log records.
+
 ## Status at the end of this round (10 October 2026)
 
 Done and verified by `NEOTELETEXT_REMOTE=oldvga scripts/check.sh full`: formatting, clippy with warnings as errors, every test on macOS, under Rosetta on `x86_64-apple-darwin` and on x86_64 Linux, the `no_std` crates on `x86_64-unknown-none`, the layer, constant, input-output and dependency checks, `cargo-deny`, core line coverage of 92.55% (REQ-TST-041 asks for 90%), and the nine fuzzing targets. `docs/traceability.md` lists 271 requirements; every Phase 1 requirement is cited by code, a test or a record except those below.

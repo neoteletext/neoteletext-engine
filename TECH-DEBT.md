@@ -226,3 +226,7 @@ Built behind `neoteletext-web`'s feature `dbsc`; owed:
 - **Draft features not built:** RS256, federated sessions, `Secure-Session-Skipped`, `.well-known/device-bound-sessions`, `allowed_refresh_initiators`, attribute matching of credentials (needs the `Cookies` interface to show attributes), redirects of registration.
 - **The draft moves:** recheck the Editor's Draft before the browser ships the feature, and amend E.110.
 - **A real server:** no public server was tried; Google's test pages need a browser that sends Chrome's headers.
+
+## Timed tests under load (23 October 2026)
+
+`neoteletext-cli`'s `typing` test, whose median budget is 2 ms (REQ-INT-008), failed the commit gate once at 2.8 ms with the machine's load average near 20, and three times more when run alone, then passed five times in a row; nothing on its path had changed. A timed test that fails under load stops unrelated commits: consider measuring it against an unloaded baseline, or running it only in the full gate.
