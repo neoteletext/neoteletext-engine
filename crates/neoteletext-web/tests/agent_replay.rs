@@ -465,6 +465,34 @@ fn a_redirect_to_nowhere_is_a_fault_after_one_request() {
     }
 }
 
+/// Finding F-75 (RFC 9110 section 15.2; the review's probe D): interim
+/// 1xx heads before the final one are read past, on the fetch and the
+/// push connections. Every 1xx but 101 failed the exchange, so a server
+/// sending `103 Early Hints` was unusable.
+#[test]
+fn interim_responses_before_the_final_one_are_read_past() {
+    let mut harness = plain_service();
+    let mut reply =
+        b"HTTP/1.1 103 Early Hints\r\nLink: </style>; rel=preload\r\n\r\nHTTP/1.1 100 Continue\r\n\r\n".to_vec();
+    reply.extend(response("200 OK", &["Content-Type: text/x-teletext-tti"], TTI));
+    harness.replay().reply("tt.example:80", Reply::Bytes(reply));
+    let records = harness.fetch(0x100);
+    assert_eq!(pages(&records).len(), 1, "{records:?}");
+    assert!(!has_event(&records, "FetchFailed"), "{records:?}");
+}
+
+/// Finding F-75: the same on a push connection's handshake.
+#[test]
+#[cfg(feature = "push")]
+fn interim_responses_before_a_push_handshake_are_read_past() {
+    let mut harness = push_service("sse", "http://tt.example/events");
+    let stream = b"HTTP/1.1 103 Early Hints\r\n\r\nHTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\
+                   Transfer-Encoding: chunked\r\n\r\n";
+    harness.replay().reply("tt.example:80", Reply::Bytes(stream.to_vec()));
+    let records = harness.open("http://tt.example/service.json");
+    assert!(has_event(&records, "PushConnected(ServerSentEvents)"), "{records:?}");
+}
+
 #[test]
 fn redirects_to_blocked_addresses_are_refused() {
     let mut harness = plain_service();

@@ -199,6 +199,19 @@ fn read_header(
     Ok(())
 }
 
+/// True when the complete head in `bytes` is an interim response, a 1xx
+/// other than 101: RFC 9110 section 15.2 asks a client to read past any
+/// number of them before the final response, and their fields are
+/// ignored (finding F-75). A head that does not parse is not interim, so
+/// [`parse_head`] reports it.
+#[must_use]
+pub fn is_interim(bytes: &[u8]) -> bool {
+    head::parse(bytes).is_ok_and(|parsed| {
+        (STATUS_INFORMATIONAL_FIRST..STATUS_SUCCESS_FIRST).contains(&parsed.status)
+            && parsed.status != STATUS_SWITCHING_PROTOCOLS
+    })
+}
+
 /// Parses and checks a complete response head held in `bytes`.
 /// `on_set_cookie` receives each `Set-Cookie` value in order.
 pub fn parse_head(bytes: &[u8], on_set_cookie: &mut dyn FnMut(&[u8])) -> Result<ResponseHead, HttpError> {
@@ -223,7 +236,7 @@ pub fn parse_head(bytes: &[u8], on_set_cookie: &mut dyn FnMut(&[u8])) -> Result<
     if !(STATUS_INFORMATIONAL_FIRST..STATUS_LIMIT).contains(&status) {
         return Err(HttpError::Status);
     }
-    // No request this client sends asks for an interim response; 101 is
+    // Interim responses are read past before this (`is_interim`); 101 is
     // the WebSocket upgrade.
     if status < STATUS_SUCCESS_FIRST && status != STATUS_SWITCHING_PROTOCOLS {
         return Err(HttpError::Status);

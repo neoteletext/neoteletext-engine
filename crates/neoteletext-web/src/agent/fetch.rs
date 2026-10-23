@@ -89,7 +89,11 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
                 match self.fetch.head.feed(buffer, input) {
                     Ok((used, complete)) => {
                         input = input.get(used..).unwrap_or(&[]);
-                        if complete && !self.fetch_head_complete(now, sink) {
+                        let head = self.buffers.fetch_head.get(..self.fetch.head.len()).unwrap_or(&[]);
+                        if complete && http::is_interim(head) {
+                            // RFC 9110 section 15.2: the final head follows.
+                            self.fetch.head.reset();
+                        } else if complete && !self.fetch_head_complete(now, sink) {
                             return;
                         }
                     }

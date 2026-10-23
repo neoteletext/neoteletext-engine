@@ -16,7 +16,7 @@ mod head;
 mod response;
 
 pub use body::{BodyDecoder, BodyStep};
-pub use response::{HeadCollector, ResponseHead, each_field, parse_head};
+pub use response::{HeadCollector, ResponseHead, each_field, is_interim, parse_head};
 
 use crate::bytes::{Overflow, Writer, split_once, trim_ows};
 use crate::consts::{CRLF, HTTP_VERSION, header, media};
