@@ -10,6 +10,20 @@
 )]
 
 use super::*;
+#[cfg(all(
+    feature = "transport",
+    feature = "sliced",
+    feature = "tti",
+    feature = "ep1",
+    feature = "edittf",
+    feature = "dump"
+))]
+use crate::consts::DUMP_BYTES_25;
+#[cfg(feature = "sliced")]
+use crate::consts::{SLICED_HEADER_BYTES, SLICED_RECORD_BYTES, SLICED_TELETEXT_B};
+#[cfg(feature = "tti")]
+use crate::encode::encode_page;
+use crate::item::{Diagnostic, DiagnosticKind};
 use crate::testing::{Owned, diagnostics, packets, pages, same_in_any_chunks};
 use neoteletext_core::consts::PACKET_BYTES;
 use neoteletext_core::ecc::reverse_bits;
