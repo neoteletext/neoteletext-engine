@@ -59,8 +59,8 @@ pub fn sound(options: &SoundOptions, input: &Path, output: &Path, no_sandbox: bo
             Codec::ImaAdpcm => neoteletext_audio::IMA_BLOCK_SMALL,
             Codec::Pcm16 => block,
         };
-        let sound = Sound::live(options.handle, 1, codec, wave.rate_hz, block).map_err(refused)?;
-        let packets = live_packets(&sound, &command, &wave.samples, options.repeat, options.pace)
+        let sound = Sound::live(options.handle, 1, codec, wave.rate_hz(), block).map_err(refused)?;
+        let packets = live_packets(&sound, &command, wave.samples(), options.repeat, options.pace)
             .map_err(|message| (exit::INPUT, format!("{}: {message}", input.display())))?;
         for packet in &packets {
             out.write_all(&packet.bytes).map_err(|error| io_failure(output, error))?;
@@ -69,15 +69,15 @@ pub fn sound(options: &SoundOptions, input: &Path, output: &Path, no_sandbox: bo
         eprintln!(
             "{}: {} samples at {} Hz sent live {} times, {} packets at {} a second for page {page:03X}",
             output.display(),
-            wave.samples.len(),
-            wave.rate_hz,
+            wave.samples().len(),
+            wave.rate_hz(),
             options.repeat,
             packets.len(),
             options.pace
         );
         return Ok(());
     }
-    let sound = Sound::new(options.handle, 1, codec, wave.rate_hz, block, &wave.samples).map_err(refused)?;
+    let sound = Sound::new(options.handle, 1, codec, wave.rate_hz(), block, wave.samples()).map_err(refused)?;
     let mut records = vec![sound.object_record().map_err(|error| (exit::INPUT, format!("{error:?}")))?];
     records.extend(sound.data_records());
     records.push(command.record());
@@ -86,8 +86,8 @@ pub fn sound(options: &SoundOptions, input: &Path, output: &Path, no_sandbox: bo
     eprintln!(
         "{}: {} samples at {} Hz, {} bytes of {}, {written} packets for page {page:03X}",
         output.display(),
-        wave.samples.len(),
-        wave.rate_hz,
+        wave.samples().len(),
+        wave.rate_hz(),
         sound.data.len(),
         options.codec
     );

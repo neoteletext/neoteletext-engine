@@ -6,8 +6,20 @@ const WAVE_PCM: u16 = 1;
 /// A WAVE file's samples, mixed down to mono.
 #[derive(Debug, PartialEq, Eq)]
 pub(super) struct Wave {
-    pub(super) rate_hz: u32,
-    pub(super) samples: Vec<i16>,
+    rate_hz: u32,
+    samples: Vec<i16>,
+}
+
+impl Wave {
+    /// The sample rate in hertz.
+    pub(super) fn rate_hz(&self) -> u32 {
+        self.rate_hz
+    }
+
+    /// The samples, mono.
+    pub(super) fn samples(&self) -> &[i16] {
+        &self.samples
+    }
 }
 
 /// Reads a RIFF WAVE file of 16-bit linear PCM, mono or stereo; stereo is
