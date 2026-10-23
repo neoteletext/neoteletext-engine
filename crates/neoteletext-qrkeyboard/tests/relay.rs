@@ -13,7 +13,6 @@ use neoteletext_qrkeyboard::config::{Layout, ScreenConfig};
 use neoteletext_qrkeyboard::phone::Phone;
 use neoteletext_qrkeyboard::screen::{Event, Join, Screen};
 
-const POLL: Duration = Duration::from_millis(50);
 const LIMIT: Duration = Duration::from_secs(30);
 
 fn relay() -> Option<String> {
@@ -33,8 +32,8 @@ fn screen(relay: String, config: ScreenConfig) -> (Join, mpsc::Receiver<Event>) 
         let mut screen = Screen::create(&relay, config, None).unwrap();
         join_sender.send(screen.join().clone()).unwrap();
         let started = Instant::now();
-        while started.elapsed() < LIMIT {
-            for event in screen.poll(POLL).unwrap() {
+        while let Some(left) = LIMIT.checked_sub(started.elapsed()) {
+            for event in screen.wait(Some(left)).unwrap() {
                 let finished = event == Event::Finished;
                 if events_sender.send(event).is_err() || finished {
                     return;

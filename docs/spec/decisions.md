@@ -1434,3 +1434,12 @@ Decided by the owner on 22 October 2026: "there should be level25-32colors level
 
 *Reason:* The owner's instruction. `neottx` is the engine's own viewer, and pages that use the non-spacing attributes and the Colour Map showed wrongly in it; the capabilities that change teletext's look most stay a choice.
 
+**E.106 — The qrkeyboard screen waits on its socket and a waker, never on a timer.**
+Taken on 23 October 2026 while the owner was away, as the owner had instructed, for NeoTeletext's keyboard process, which looked for its trusted core's "finish" between 50 ms waits on the relay because nothing could end a wait sooner.
+1. **Each WebSocket to the relay has a reader thread,** as the fetcher's connections have (decision E.97): it reads the socket, blocking, at most four 4 KB reads ahead of its owner, and TLS records are decrypted on the owner's side. Dropping or closing the socket shuts it down, which ends the thread.
+2. **`Screen::wait(limit)` replaces `Screen::poll(wait)`.** It returns when it has events, when a `Waker` wakes it, or at `limit` (`None`: no limit), and between those sleeps until its socket, a waker or its own next deadline: the keepalive while paired, a reconnection, a held key's release. The old `poll` slept `wait` whenever the socket was down; nothing sleeps now. `poll` is removed, not kept beside it, since nothing else used it.
+3. **`Screen::waker()` gives a `Waker`** that any thread may hold and wake. A `WebSocket` connected with one wakes it as its bytes arrive (`WebSocket::connect`'s third argument), so `neottx keyboard` waits once for the relay and its channel together.
+4. **A connection being made is not interrupted:** a reconnection that blocks in its connect or handshake (at most 10 and 15 seconds) delays a wake until it ends.
+
+*Reason:* The development process's rule on waiting (section 6), and REQ-INT-008's reason: a key or a "finish" goes at once. A readiness library would be one more dependency for one socket.
+

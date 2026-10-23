@@ -9,7 +9,7 @@ use crate::config::{self, CONFIG_HASH_BYTES};
 use crate::crypto::{Opener, Role, SECRET_BYTES, Sealer, constant_time_equal};
 use crate::json::Value;
 use crate::message::{self, from_base64url};
-use crate::net::{self, Incoming, WebSocket};
+use crate::net::{self, Incoming, WebSocket, later};
 use crate::pairing::{Outcome, Pairing, Secret};
 use crate::{Error, LEAVE};
 
@@ -17,14 +17,6 @@ use crate::{Error, LEAVE};
 const PAIRING_TIMEOUT: Duration = Duration::from_secs(15);
 /// How long an acknowledgement may take.
 const ACK_TIMEOUT: Duration = Duration::from_secs(10);
-/// One wait on the relay.
-const STEP: Duration = Duration::from_millis(100);
-
-/// The time `wait` from now.
-fn later(wait: Duration) -> Instant {
-    let now = Instant::now();
-    now.checked_add(wait).unwrap_or(now)
-}
 
 /// A paired phone.
 pub struct Phone {
@@ -69,12 +61,12 @@ impl Phone {
         };
         let relay =
             net::parse(resolved.get("relay").and_then(Value::as_str).ok_or(Error::Protocol("a relay address"))?)?;
-        let mut socket = WebSocket::connect(&relay, None)?;
+        let mut socket = WebSocket::connect(&relay, None, None)?;
         socket.send_text(&Value::object(&[("t", Value::string("join"))]).text())?;
         let deadline = later(PAIRING_TIMEOUT);
         let mut pairing: Option<Pairing> = None;
         while Instant::now() < deadline {
-            match socket.receive(STEP)? {
+            match socket.receive(deadline.saturating_duration_since(Instant::now()))? {
                 None => {}
                 Some(Incoming::Text(text)) => {
                     let message = Value::parse(text.as_bytes()).unwrap_or(Value::Null);
@@ -120,7 +112,8 @@ impl Phone {
         self.socket.send_binary(&frame)?;
         let deadline = later(ACK_TIMEOUT);
         while Instant::now() < deadline {
-            if let Some(Incoming::Binary(frame)) = self.socket.receive(STEP)?
+            if let Some(Incoming::Binary(frame)) =
+                self.socket.receive(deadline.saturating_duration_since(Instant::now()))?
                 && let Some(plaintext) = self.opener.open(&frame)
                 && let Some(json) = plaintext.get(1..)
                 && let Ok(ack) = Value::parse(json)

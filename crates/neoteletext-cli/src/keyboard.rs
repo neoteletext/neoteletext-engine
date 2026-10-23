@@ -36,8 +36,6 @@ const ESCAPE: char = '\x1b';
 const ESCAPE_OFFSET: u8 = 0x40;
 /// The last row a page's text may use; row 24 is the Fastext row.
 const LAST_ROW: usize = 23;
-/// One wait on the relay or the channel.
-const POLL: Duration = Duration::from_millis(50);
 /// A dropped phone keeps the channel's screen this long.
 const REJOIN_SECONDS: u32 = 30;
 
@@ -125,8 +123,9 @@ impl Channel {
         let length = neoteletext_input::event::write(&Item::Event(hello), &mut out)
             .map_err(|error| (exit::INPUT, format!("HELLO: {error:?}")))?;
         channel.write(&out[..length])?;
+        let deadline = Instant::now() + Duration::from_millis(u64::from(neoteletext_input::WELCOME_TIMEOUT_MS));
         while let State::Waiting(_) = channel.session.state() {
-            channel.receive(POLL)?;
+            channel.receive(deadline.saturating_duration_since(Instant::now()))?;
             channel.session.tick(channel.now_ms());
         }
         if !channel.session.welcomed() {
@@ -145,7 +144,8 @@ impl Channel {
 
     /// Takes what the channel pushed within `wait`: its control records; the
     /// rest is for its screen, not for this bridge.
-    fn receive(&mut self, wait: Duration) -> Result<(), Failure> {
+    /// Whether a message came.
+    fn receive(&mut self, wait: Duration) -> Result<bool, Failure> {
         match self.socket.receive(wait).map_err(|error| (exit::INPUT, error.to_string()))? {
             Some(Incoming::Closed(_)) => Err((exit::INPUT, "the channel closed its socket".to_owned())),
             Some(Incoming::Binary(bytes)) => {
@@ -157,10 +157,17 @@ impl Channel {
                         let _ = self.session.control(&control);
                     }
                 }
-                Ok(())
+                Ok(true)
             }
-            _ => Ok(()),
+            Some(_) => Ok(true),
+            None => Ok(false),
         }
+    }
+
+    /// Takes everything the channel has pushed, without waiting.
+    fn drain(&mut self) -> Result<(), Failure> {
+        while self.receive(Duration::ZERO)? {}
+        Ok(())
     }
 
     fn send(&mut self, item: &Item<'_>) -> Result<(), Failure> {
@@ -267,12 +274,14 @@ pub fn keyboard(options: &KeyboardOptions) -> Result<(), Failure> {
         qr(&join.url, page, 2, 0, output)?;
         println!("The QR is on page {page} in {}.", output.display());
     }
-    let socket = WebSocket::connect(&url, proxy.as_ref())
+    // The channel's bytes end the screen's wait as the relay's do, so one
+    // wait serves both sockets (decision E.106).
+    let socket = WebSocket::connect(&url, proxy.as_ref(), Some(screen.waker()))
         .map_err(|error| (exit::INPUT, format!("{}: {error}", options.channel)))?;
     let mut channel = Channel::open(socket)?;
     loop {
-        channel.receive(Duration::ZERO)?;
-        for event in screen.poll(POLL).map_err(|error| (exit::INPUT, error.to_string()))? {
+        channel.drain()?;
+        for event in screen.wait(None).map_err(|error| (exit::INPUT, error.to_string()))? {
             match event {
                 ScreenEvent::Connected => println!("Phone connected."),
                 ScreenEvent::Disconnected(_) => println!("Phone gone; it may scan again."),

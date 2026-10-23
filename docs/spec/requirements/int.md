@@ -33,6 +33,10 @@ A fetcher process shall send an input message the moment it arrives and pass on 
 *Amended 21 October 2026:* the viewer too; it looked at its source only between 40 ms waits for the terminal.
 *Verification:* A test types 20 keys through the fetcher to a local channel that answers each with a page, and holds the round trip's median to 2 ms; tests that the fetcher's pipe reader wakes the viewer for each frame, and that a wake ends the viewer's wait at once.
 
+**REQ-INT-009 — The phone keyboard's wait ends at once.**
+The qrkeyboard screen of `neoteletext-qrkeyboard` shall wait only on its relay socket, on a waker that another thread may hold, and on its own next deadline (the keepalive, a reconnection, a held key's release), never by sleeping a fixed interval and looking again (decision E.106). A wake shall end the wait at once, so that a port's "finish" or another socket's bytes are acted on the moment they come, and bytes from the relay shall be acted on the moment they arrive.
+*Verification:* Tests against a relay played in the test: a waker ends a wait within 40 ms, the relay's message is reported within 40 ms of being sent, and a wait nothing ends lasts its limit and reports nothing; the pairing tests through a running relay, plain and over TLS.
+
 **REQ-INT-101 — The input stream.**
 As `neoteletext-common/INPUT.md` section 12, which holds its text, its reason and its verification.
 

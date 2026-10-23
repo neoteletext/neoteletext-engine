@@ -213,3 +213,7 @@ The browser lives only in `~/devel/neoteletext-browser`. Left over:
 
 - The `iterate` profile is in place (an interface edit rebuilds in 2.7 seconds, a core edit in 3.6, against 76 for release) and described in CLAUDE.md; it still belongs in the development-process document and README.
 - **The fast gate took over 10 minutes** after a core change (whole-workspace rebuild plus the window and end-to-end tests); the window and its tests left the workspace on 16 October 2026 (decision E.76), so remeasure it. Commits are batched rather than hooks skipped; making the gate faster is open.
+
+## GitHub issues not opened (23 October 2026)
+
+The round of 23 October 2026 (decisions E.106 onward) could not open GitHub issues: the permission system refused writes to GitHub while the owner was away. Each piece of work is recorded in its decision and in `IMPLEMENTATION-LOG.md`; issues are owed for: the qrkeyboard waker (E.106), the proxy's CONNECT reply, flash rendering, channel log records, Device Bound Session Credentials, channel-named fonts, row 24 and the keys' destinations, and the exported sub-page bound.
