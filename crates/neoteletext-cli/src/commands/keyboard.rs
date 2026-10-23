@@ -2,11 +2,8 @@
 //! E.94): a QR code as a page's mosaics, and a phone as the keyboard of a
 //! channel that takes input, through qrkeyboard's relay.
 
-use std::fmt::Write as _;
-use std::path::Path;
-use std::time::{Duration, Instant};
-
-use neoteletext_app::exit;
+use super::qr::qr;
+use neoteletext_app::{Failure, exit};
 use neoteletext_core::consts::PACKET_BYTES;
 use neoteletext_core::packet::Packet;
 use neoteletext_input::event::{Action, Event, Item, Key, KeyCode};
@@ -17,73 +14,13 @@ use neoteletext_qrkeyboard::config::{Layout, ScreenConfig};
 use neoteletext_qrkeyboard::net::{self, Incoming, WebSocket};
 use neoteletext_qrkeyboard::qr::{Correction, Matrix};
 use neoteletext_qrkeyboard::screen::{Event as ScreenEvent, Screen};
-
-// The engine's three names for the input system's largest message agree.
-const _: () = assert!(
-    neoteletext_web::consts::INPUT_MESSAGE_MAX == MAX_MESSAGE
-        && neoteletext_app::pipe::MAX_INPUT_MESSAGE == MAX_MESSAGE
-);
-
-// A page's `IM` line takes exactly the modes the input system defines.
-const _: () = assert!(neoteletext_formats::page::INPUT_MODE_BITS == neoteletext_input::modes::ALL_MODES);
+use std::time::{Duration, Instant};
 
 /// What the bridge offers in HELLO: it draws no page, so only the key
 /// modes a phone can give (INPUT.md section 6.2).
 const OFFERED: u32 = ALL_KEYS | KEY_RELEASE;
-
-/// TTI writes a code below 0x20 as Escape and the code plus 0x40.
-const ESCAPE: char = '\x1b';
-const ESCAPE_OFFSET: u8 = 0x40;
-/// The last row a page's text may use; row 24 is the Fastext row.
-const LAST_ROW: usize = 23;
 /// A dropped phone keeps the channel's screen this long.
 const REJOIN_SECONDS: u32 = 30;
-
-type Failure = (u8, String);
-
-fn page_number(text: &str) -> Result<u16, Failure> {
-    u16::from_str_radix(text, 16)
-        .ok()
-        .filter(|page| (0x100..=0x8FF).contains(page))
-        .ok_or_else(|| (exit::USAGE, format!("{text}: a page is 100 to 8FF")))
-}
-
-/// A page whose rows from `row` hold the QR of `text` in mosaics, from
-/// `column`, as TTI.
-fn qr_page(text: &str, page: u16, row: usize, column: usize) -> Result<String, Failure> {
-    let matrix = Matrix::new(text, Correction::Low).map_err(|error| (exit::USAGE, error.to_string()))?;
-    let rows = matrix.mosaic_rows();
-    let width = rows.first().map_or(0, Vec::len);
-    if row.saturating_add(rows.len()).saturating_sub(1) > LAST_ROW
-        || column.saturating_add(width) > neoteletext_core::consts::COLUMNS
-    {
-        return Err((
-            exit::USAGE,
-            format!("the code is {width} columns by {} rows: it does not fit there", rows.len()),
-        ));
-    }
-    let mut tti = format!("PN,{page:03X}00\r\nSC,0000\r\nPS,8000\r\n");
-    for (index, line) in rows.iter().enumerate() {
-        let _ = write!(tti, "OL,{},", row + index);
-        tti.push_str(&" ".repeat(column));
-        for &code in line {
-            if code < 0x20 {
-                tti.push(ESCAPE);
-                tti.push(char::from(code + ESCAPE_OFFSET));
-            } else {
-                tti.push(char::from(code));
-            }
-        }
-        tti.push_str("\r\n");
-    }
-    Ok(tti)
-}
-
-/// `neottx qr`: writes the QR of `text` as a TTI page.
-pub fn qr(text: &str, page: &str, row: usize, column: usize, output: &Path) -> Result<(), Failure> {
-    let tti = qr_page(text, page_number(page)?, row, column)?;
-    std::fs::write(output, tti).map_err(|error| (exit::INPUT, format!("{}: {error}", output.display())))
-}
 
 /// The options of `neottx keyboard`.
 pub struct KeyboardOptions {
@@ -304,32 +241,5 @@ pub fn keyboard(options: &KeyboardOptions) -> Result<(), Failure> {
                 ScreenEvent::Scan => {}
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_join_address_is_written_as_a_page() {
-        let join = "https://qrkeyboard.com/app#c=ABCDEFGHIJKLMNOP&k=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&h=AAAAAAAAAAAAAAAAAAAAAA";
-        let tti = qr_page(join, 0x600, 2, 0).unwrap();
-        assert!(tti.starts_with("PN,60000\r\n"));
-        // The engine's own reader takes the page back.
-        let mut pages = Vec::new();
-        let mut reader = neoteletext_formats::tti::TtiReader::new();
-        neoteletext_formats::Reader::feed(&mut reader, tti.as_bytes(), &mut |item| {
-            if let neoteletext_formats::Item::Page(page) = item {
-                pages.push(page.address.mpp());
-            }
-        });
-        neoteletext_formats::Reader::finish(&mut reader, &mut |item| {
-            if let neoteletext_formats::Item::Page(page) = item {
-                pages.push(page.address.mpp());
-            }
-        });
-        assert_eq!(pages, [0x600]);
-        assert!(qr_page(join, 0x600, 20, 0).is_err(), "too low on the page");
     }
 }

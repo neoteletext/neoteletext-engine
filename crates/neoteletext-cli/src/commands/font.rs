@@ -3,6 +3,7 @@
 //! sandboxed, only where the conversion is exact. `neottx font sets`
 //! (REQ-FNT-011, decision E.75): the character sets a font conforms for.
 
+use crate::bounded_file::read_bounded;
 use neoteletext_app::sandbox::{self, Policy};
 use neoteletext_app::{Failure, exit};
 use neoteletext_core::consts::{FONT_MAX_CHARACTERS, FONT_MAX_FILE_BYTES};
@@ -16,20 +17,8 @@ use neoteletext_formats::bdf::source::{SourceGlyph, read_source};
 use neoteletext_formats::consts::{FONT_MAP_MAX_FILE_BYTES, SOURCE_FONT_MAX_CHARACTERS, SOURCE_FONT_MAX_FILE_BYTES};
 use neoteletext_formats::write::{FontText, write_font};
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::Path;
-
-/// Reads a whole file of at most `limit` bytes.
-pub(crate) fn read_bounded(path: &Path, limit: usize) -> Result<Vec<u8>, Failure> {
-    let file = File::open(path).map_err(|error| (exit::INPUT, format!("{}: {error}", path.display())))?;
-    let mut bytes = Vec::new();
-    let cap = u64::try_from(limit).unwrap_or(u64::MAX).saturating_add(1);
-    file.take(cap).read_to_end(&mut bytes).map_err(|error| (exit::INPUT, format!("{}: {error}", path.display())))?;
-    if bytes.len() > limit {
-        return Err((exit::INPUT, format!("{}: larger than {limit} bytes", path.display())));
-    }
-    Ok(bytes)
-}
 
 /// `neottx font convert INPUT OUTPUT [--map FILE]`.
 pub fn convert_font(input: &Path, output: &Path, map: Option<&Path>, no_sandbox: bool) -> Result<(), Failure> {
@@ -75,7 +64,7 @@ pub fn convert_font(input: &Path, output: &Path, map: Option<&Path>, no_sandbox:
 /// Reads a loaded font for drawing pages (`--font`, REQ-FNT-008): its glyph
 /// table, checked by the reader of REQ-FNT-002 and for shape. Called before
 /// the sandbox closes the file system.
-pub fn read_table(path: &Path) -> Result<Vec<FontGlyph>, Failure> {
+pub(super) fn read_table(path: &Path) -> Result<Vec<FontGlyph>, Failure> {
     let bytes = read_bounded(path, FONT_MAX_FILE_BYTES)?;
     let name = path.display();
     let mut glyphs = vec![FontGlyph::EMPTY; FONT_MAX_CHARACTERS];

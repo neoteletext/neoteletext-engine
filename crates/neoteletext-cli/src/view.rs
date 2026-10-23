@@ -3,14 +3,16 @@
 //! with forms (Appendix C, REQ-NAV-009), the TTI Link Extension (Appendix
 //! E, REQ-NAV-011 and 012) and the security confirmations of area SEC.
 
-use crate::output::image::{Frame, Scale, iterm2_inline, png, raster};
-use crate::output::text::{ColourDepth, MosaicStyle, ansi};
+use crate::ansi::{ColourDepth, MosaicStyle, ansi};
+use crate::frame::Frame;
+use crate::image::{Scale, iterm2_inline, png, raster};
 use crate::terminal::Display;
 use crossterm::event::{
-    self, DisableBracketedPaste, DisableFocusChange, EnableBracketedPaste, EnableFocusChange, Event, KeyCode, KeyEvent,
-    KeyEventKind, KeyModifiers, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
+    self, EnableBracketedPaste, EnableFocusChange, Event, KeyCode, KeyEventKind, KeyModifiers,
+    KeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
 };
 use crossterm::{cursor, execute, queue, terminal};
+use keys::{LEAVE_TYPING, map_form_key, map_key};
 use neoteletext_app::extras::{self, PageExtras};
 use neoteletext_app::interact::{ActiveForm, message_row, origin_of, submission};
 use neoteletext_app::pipe::Notice;
@@ -18,342 +20,35 @@ use neoteletext_app::session::Session;
 use neoteletext_app::source::Source;
 use neoteletext_core::acq::EnhancementReport;
 use neoteletext_core::config::Config;
-use neoteletext_core::consts::{ALPHA_YELLOW, COLUMNS, SPACE, STATUS_COLUMNS};
-use neoteletext_core::forms::{FormAction, FormKey, FormModel};
+use neoteletext_core::consts::COLUMNS;
+use neoteletext_core::forms::{FormAction, FormModel};
 use neoteletext_core::fsm::PageState;
 use neoteletext_core::level1::Grid;
 use neoteletext_core::nav::PageLinks;
-use neoteletext_core::packet::Packet;
 use neoteletext_core::service::initial_page;
 use neoteletext_core::types::{Instant, PageAddress, SubCode};
 use neoteletext_core::viewer::{
-    Action, ComposeContext, Composed, Key, KeyContext, SecurityIndicator, Viewer, ViewerEvent, ViewerState,
+    Action, ComposeContext, Composed, KeyContext, SecurityIndicator, Viewer, ViewerEvent, ViewerState,
 };
 use neoteletext_image::palette::Rgba;
 use std::collections::HashSet;
 use std::io::Write;
 use std::sync::Arc;
-use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
-use std::time::{Duration, Instant as StdInstant};
+use std::sync::mpsc;
+use std::time::Instant as StdInstant;
+use terminal_io::{RawGuard, TICK, Wakened, next_event};
+use ticker::origin_ticker;
+use typing::{Typing, input_of};
 
-/// What ends the viewer's wait.
-enum Wakened {
-    /// The terminal reported an event.
-    Terminal(Event),
-    /// The source has something for its next poll.
-    Source,
-}
-
-/// Waits up to `wait` for the terminal or the source, and returns the
-/// terminal's event if one ended the wait; the source only ends it early.
-fn next_event(wakes: &Receiver<Wakened>, wait: Duration) -> Option<Event> {
-    match wakes.recv_timeout(wait) {
-        Ok(Wakened::Terminal(event)) => Some(event),
-        Ok(Wakened::Source) | Err(RecvTimeoutError::Timeout | RecvTimeoutError::Disconnected) => None,
-    }
-}
-
-/// The longest the viewer waits before it looks at the source again and
-/// draws flash and the ticker; a key or a page wakes it at once.
-const TICK: Duration = Duration::from_millis(40);
-/// Microseconds per step of the scrolling form origin (REQ-SEC-009).
-const TICKER_STEP_US: u64 = 300_000;
-
-fn map_key(key: KeyEvent) -> Option<Key> {
-    let alt = key.modifiers.contains(KeyModifiers::ALT);
-    Some(match key.code {
-        KeyCode::Char(c @ '0'..='9') => Key::Digit(c as u8 - b'0'),
-        KeyCode::Char('r') | KeyCode::F(1) => Key::Red,
-        KeyCode::Char('g') | KeyCode::F(2) => Key::Green,
-        KeyCode::Char('y') | KeyCode::F(3) => Key::Yellow,
-        KeyCode::Char('c') | KeyCode::F(4) => Key::Cyan,
-        KeyCode::Char('i') => Key::Index,
-        KeyCode::Char('h') | KeyCode::Home => Key::Home,
-        KeyCode::Up | KeyCode::Char('+') => Key::NextPage,
-        KeyCode::Down | KeyCode::Char('-') => Key::PreviousPage,
-        KeyCode::Left if alt => Key::Back,
-        KeyCode::Right if alt => Key::Forward,
-        KeyCode::Right => Key::NextSubPage,
-        KeyCode::Left => Key::PreviousSubPage,
-        KeyCode::Char('?') => Key::Reveal,
-        KeyCode::Char('H') => Key::Hold,
-        KeyCode::Char('m') => Key::Mix,
-        KeyCode::Char('z') => Key::Zoom,
-        KeyCode::Backspace => Key::Back,
-        _ => return None,
-    })
-}
-
-/// Keys while a form has focus (REQ-NAV-009): typing enters text; the
-/// coloured keys are F1 to F4; Esc leaves the form.
-fn map_form_key(key: KeyEvent) -> Option<FormKey> {
-    Some(match key.code {
-        KeyCode::Tab => FormKey::Tab,
-        KeyCode::BackTab => FormKey::BackTab,
-        KeyCode::Enter => FormKey::Enter,
-        KeyCode::Backspace => FormKey::Backspace,
-        KeyCode::Left => FormKey::Left,
-        KeyCode::Right => FormKey::Right,
-        KeyCode::Up => FormKey::Up,
-        KeyCode::Down => FormKey::Down,
-        KeyCode::Char(' ') => FormKey::Space,
-        KeyCode::Char(c) => FormKey::Char(c),
-        KeyCode::F(1) => FormKey::Red,
-        KeyCode::F(2) => FormKey::Green,
-        KeyCode::F(3) => FormKey::Yellow,
-        KeyCode::F(4) => FormKey::Cyan,
-        KeyCode::Esc => FormKey::Index,
-        _ => return None,
-    })
-}
-
-/// The key that leaves a channel's keys, as telnet's escape character
-/// leaves its host's: Control and the right square bracket.
-const LEAVE_TYPING: char = ']';
-
-/// What `neottx view` offers in HELLO (INPUT.md section 6.2): it shows
-/// pages and can send every key as KEY; a terminal reports no physical
-/// keys, and the viewer draws no cursor. Releases are offered as well
-/// where the terminal reports them (the Kitty keyboard protocol).
-const OFFERED: u32 = neoteletext_input::modes::PAGE_CAP | neoteletext_input::modes::ALL_KEYS;
-
-/// A terminal key as the input stream has it (INPUT.md sections 5.3 and
-/// 5.5): printable text as text, or in `ALL_KEYS` a KEY carrying it; a
-/// Control or Alt combination and every other key as KEY. `None` for keys
-/// a terminal cannot name.
-fn input_of(key: KeyEvent, all_keys: bool, buffer: &mut [u8; 4]) -> Option<neoteletext_input::event::Item<'_>> {
-    use neoteletext_input::event::{ALT, Action, CONTROL, Event, Item, Key, KeyCode as InputKey, SHIFT, printable};
-    // A terminal with the Kitty keyboard protocol reports repeats and
-    // releases; any other reports every key once, as a press.
-    let action = match key.kind {
-        KeyEventKind::Press => Action::Press,
-        KeyEventKind::Repeat => Action::Repeat,
-        KeyEventKind::Release => Action::Release,
-    };
-    let bit = |set: bool, value: u8| if set { value } else { 0 };
-    let mut control = key.modifiers.contains(KeyModifiers::CONTROL);
-    let mut alt = key.modifiers.contains(KeyModifiers::ALT);
-    // AltGr is a level shift, not a modifier (INPUT.md section 5.7 rule 5,
-    // REQ-INT-116): a terminal on Windows reports it as Control and Alt
-    // held, and a character typed so is text.
-    if control && alt && matches!(key.code, KeyCode::Char(character) if printable(character)) {
-        (control, alt) = (false, false);
-    }
-    let mut mods = bit(key.modifiers.contains(KeyModifiers::SHIFT), SHIFT) | bit(control, CONTROL) | bit(alt, ALT);
-    let functional = |name: &str| neoteletext_input::keys::code(name).map(InputKey::Functional);
-    let (code, text) = match key.code {
-        KeyCode::Char(character) if !printable(character) => return None,
-        KeyCode::Char(character) => {
-            let text: &str = character.encode_utf8(buffer);
-            if !control && !alt && !all_keys && action != Action::Release {
-                return Some(Item::Text(text));
-            }
-            // A terminal gives the character typed; Shift is in `mods`.
-            let unshifted = character.to_lowercase().next().unwrap_or(character);
-            (InputKey::Character(unshifted), (!control && !alt && action != Action::Release).then_some(text))
-        }
-        KeyCode::BackTab => {
-            mods |= SHIFT;
-            (functional("Tab")?, None)
-        }
-        KeyCode::F(number) => (functional(&format!("F{number}"))?, None),
-        KeyCode::Enter => (functional("Enter")?, None),
-        KeyCode::Backspace => (functional("Backspace")?, None),
-        KeyCode::Tab => (functional("Tab")?, None),
-        KeyCode::Esc => (functional("Escape")?, None),
-        KeyCode::Left => (functional("ArrowLeft")?, None),
-        KeyCode::Right => (functional("ArrowRight")?, None),
-        KeyCode::Up => (functional("ArrowUp")?, None),
-        KeyCode::Down => (functional("ArrowDown")?, None),
-        KeyCode::Home => (functional("Home")?, None),
-        KeyCode::End => (functional("End")?, None),
-        KeyCode::PageUp => (functional("PageUp")?, None),
-        KeyCode::PageDown => (functional("PageDown")?, None),
-        KeyCode::Delete => (functional("Delete")?, None),
-        KeyCode::Insert => (functional("Insert")?, None),
-        _ => return None,
-    };
-    Some(Item::Event(Event::Key(Key { action, key: code, mods, text, base: None })))
-}
-
-/// Typing into a channel that takes input (area INT): the viewer's keys
-/// go to it as a terminal's go to its host, in one input session.
-// Each flag is a separate fact: the socket, the viewer's choice, the
-// terminal's focus and the session's start.
-#[allow(clippy::struct_excessive_bools)]
-struct Typing {
-    /// The channel's WebSocket is open and its descriptor declares input.
-    open: bool,
-    /// The viewer left the keys with Control-].
-    left: bool,
-    /// The terminal lost the focus, where it reports that.
-    unfocused: bool,
-    /// The focus the channel was last told.
-    focus_told: Option<bool>,
-    /// The input session (INPUT.md section 6).
-    input: neoteletext_input::session::Session,
-    /// The session was welcomed and told the size and focus.
-    started: bool,
-    /// The page the channel was last told is open.
-    told: Option<u16>,
-    /// A page the channel's cursor record named, to open (REQ-INT-113).
-    go_to: Option<u16>,
-}
-
-/// The page a cursor record for `cursor_page` opens while `open` is open
-/// and keys go to the channel: another page of the channel, as a terminal
-/// shows what its host sends (INPUT.md section 8 rule 8, REQ-INT-113).
-fn host_page(cursor_page: u16, open: u16, keys_go: bool) -> Option<u16> {
-    (keys_go && cursor_page != open).then_some(cursor_page)
-}
-
-impl Typing {
-    /// Offering releases when the terminal reports them.
-    fn new(releases: bool) -> Self {
-        let releases = if releases { neoteletext_input::modes::KEY_RELEASE } else { 0 };
-        Self {
-            open: false,
-            left: false,
-            unfocused: false,
-            focus_told: None,
-            input: neoteletext_input::session::Session::new(OFFERED | releases),
-            started: false,
-            told: None,
-            go_to: None,
-        }
-    }
-
-    /// Tells the channel the focus when it changed: away when the viewer
-    /// left with Control-] or the terminal lost the focus, so the channel
-    /// lets go of what is held (REQ-INT-108).
-    fn tell_focus(&mut self, source: &mut dyn Source, clock_ms: u32) {
-        use neoteletext_input::event::{Event, Item};
-        let focus = !(self.left || self.unfocused);
-        if self.started && self.focus_told != Some(focus) {
-            self.focus_told = Some(focus);
-            let event = if focus { Event::FocusIn } else { Event::FocusOut };
-            self.send(source, &Item::Event(event), None, clock_ms);
-        }
-    }
-
-    fn on(&self) -> bool {
-        self.open && !self.left && self.input.welcomed()
-    }
-
-    /// The push connection opened or closed: a new session (REQ-INT-106).
-    fn connection(&mut self, source: &mut dyn Source, open: bool, clock_ms: u32) {
-        self.open = open;
-        self.started = false;
-        self.told = None;
-        self.focus_told = None;
-        if open {
-            let hello = self.input.open(clock_ms, None);
-            let mut out = [0_u8; neoteletext_input::MAX_MESSAGE];
-            if let Ok(length) = neoteletext_input::event::write(&neoteletext_input::event::Item::Event(hello), &mut out)
-            {
-                source.send_input(&out[..length]);
-            }
-        } else {
-            self.input.close();
-        }
-    }
-
-    /// Takes the channel's records; once welcomed, says the size and the
-    /// focus (section 6.1). Returns whether the channel refused input.
-    fn records(&mut self, source: &mut dyn Source, packets: impl Iterator<Item = Packet>, clock_ms: u32) -> bool {
-        use neoteletext_input::event::{Event, Item};
-        let waiting = matches!(self.input.state(), neoteletext_input::session::State::Waiting(_));
-        for packet in packets {
-            let mut buffer = [0; neoteletext_input::control::FRAGMENT_DATA];
-            if let Some(Ok(control)) = neoteletext_input::control::from_packet(&packet, &mut buffer) {
-                // A refused WELCOME leaves the session refused, said below.
-                let _ = self.input.control(&control);
-            } else if let Some(Ok(cursor)) = neoteletext_input::cursor::from_packet(&packet) {
-                self.input.acknowledged(cursor.acked, clock_ms);
-                if let Some(open) = self.told {
-                    self.go_to = host_page(cursor.page, open, self.on()).or(self.go_to);
-                }
-            }
-        }
-        self.input.tick(clock_ms);
-        if self.input.welcomed() && !self.started {
-            self.started = true;
-            let columns = u32::try_from(COLUMNS).unwrap_or(0);
-            let rows = neoteletext_input::MAX_ROWS;
-            self.send(source, &Item::Event(Event::Resize { columns, rows, width: 0, height: 0 }), None, clock_ms);
-            self.tell_focus(source, clock_ms);
-        }
-        waiting && self.input.state() == neoteletext_input::session::State::Refused
-    }
-
-    /// Writes `item` at once, one message an item (REQ-INT-112).
-    fn send(
-        &mut self,
-        source: &mut dyn Source,
-        item: &neoteletext_input::event::Item<'_>,
-        open: Option<u16>,
-        clock_ms: u32,
-    ) {
-        let mut out = [0_u8; neoteletext_input::MAX_MESSAGE];
-        let sent = crate::nfc::with_nfc(item, |item| self.input.send(item, open, clock_ms, &mut out));
-        if let Ok(length @ 1..) = sent {
-            source.send_input(&out[..length]);
-        }
-    }
-}
-
-/// Restores the terminal however the viewer exits; `enhanced` when the
-/// Kitty keyboard protocol's flags were pushed.
-struct RawGuard {
-    enhanced: bool,
-}
-
-impl Drop for RawGuard {
-    fn drop(&mut self) {
-        let mut out = std::io::stdout();
-        if self.enhanced {
-            let _ = execute!(out, PopKeyboardEnhancementFlags);
-        }
-        let _ = execute!(out, DisableFocusChange, DisableBracketedPaste, cursor::Show, terminal::LeaveAlternateScreen);
-        let _ = terminal::disable_raw_mode();
-    }
-}
+mod keys;
+mod terminal_io;
+mod ticker;
+mod typing;
 
 /// What the viewer is waiting for the user to confirm.
 enum Pending {
     /// A form submission (REQ-SEC-008 and REQ-SEC-009).
     Submission,
-}
-
-/// Writes the form's origin into the status area as a ticker (REQ-SEC-009:
-/// while a form has focus, the origin it submits to is shown there).
-fn origin_ticker(grid: &mut Grid, origin: &str, now: Instant) {
-    let text: Vec<u8> = format!("> {origin}   ").bytes().filter(|b| b.is_ascii_graphic() || *b == b' ').collect();
-    if text.is_empty() {
-        return;
-    }
-    let offset = usize::try_from(now.0 / TICKER_STEP_US).unwrap_or(0) % text.len();
-    let reference = grid.cells[0][STATUS_COLUMNS];
-    let g0 = grid.designation.g0;
-    for column in 0..STATUS_COLUMNS {
-        let byte = text[(offset + column) % text.len()];
-        if let Some(cell) = grid.cell_mut(0, column) {
-            *cell = neoteletext_core::level1::Cell {
-                glyph: if byte == SPACE {
-                    neoteletext_core::level1::Glyph::Space
-                } else {
-                    neoteletext_core::level1::Glyph::Char(neoteletext_core::charset::CharRef::new(
-                        neoteletext_core::charset::CharSet::G0(g0),
-                        byte,
-                    ))
-                },
-                foreground: neoteletext_core::consts::COLOUR_BLACK,
-                // The colour of the Alpha Yellow attribute.
-                background: ALPHA_YELLOW & neoteletext_core::consts::COLOUR_ATTRIBUTE_MASK,
-                ..reference
-            };
-        }
-    }
 }
 
 /// Runs the viewer until the user quits.
@@ -770,97 +465,4 @@ fn draw(
 }
 
 #[cfg(test)]
-mod tests {
-    #![allow(clippy::unwrap_used, reason = "a test")]
-    use super::*;
-
-    #[test]
-    fn a_page_from_the_source_ends_the_wait_at_once() {
-        // The viewer looked at the source only between 40 ms waits for the
-        // terminal, so a page the fetcher had in 0.3 ms waited up to 40 ms
-        // more to be drawn (REQ-INT-008).
-        const LONG: Duration = Duration::from_secs(5);
-        let (woken, wakes) = mpsc::channel();
-        std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(5));
-            let _ = woken.send(Wakened::Source);
-        });
-        let started = StdInstant::now();
-        assert!(next_event(&wakes, LONG).is_none());
-        assert!(started.elapsed() < LONG / 10, "waited {:?}", started.elapsed());
-    }
-
-    fn sent(code: KeyCode, modifiers: KeyModifiers, all_keys: bool) -> Option<Vec<u8>> {
-        let mut buffer = [0_u8; 4];
-        let item = input_of(KeyEvent::new(code, modifiers), all_keys, &mut buffer)?;
-        let mut out = [0_u8; neoteletext_input::MAX_MESSAGE];
-        let length = neoteletext_input::event::write(&item, &mut out).unwrap();
-        Some(out[..length].to_vec())
-    }
-
-    /// REQ-INT-104: printable text as text, a Control combination and a
-    /// named key as KEY; REQ-INT-116: a non-United-States layout's letters
-    /// as the characters typed, in any script, and AltGr as text.
-    #[test]
-    fn a_terminal_key_is_sent_as_the_input_stream_has_it() {
-        let none = KeyModifiers::NONE;
-        assert_eq!(sent(KeyCode::Char('a'), none, false), Some(b"a".to_vec()));
-        assert_eq!(sent(KeyCode::Char('A'), KeyModifiers::SHIFT, false), Some(b"A".to_vec()));
-        assert_eq!(sent(KeyCode::Char('c'), KeyModifiers::CONTROL, false), Some(vec![0xFF, 0x01, 0x08, b'c', 0x04]));
-        assert_eq!(sent(KeyCode::Enter, none, false), Some(vec![0xFF, 0x01, 0x04, 0x02]));
-        assert_eq!(sent(KeyCode::Up, KeyModifiers::SHIFT, false), Some(vec![0xFF, 0x01, 0x0C, 0x09, 0x01]));
-        assert_eq!(sent(KeyCode::BackTab, none, false), Some(vec![0xFF, 0x01, 0x0C, 0x03, 0x01]), "Shift-Tab");
-        assert_eq!(sent(KeyCode::Char('й'), none, false), Some("й".as_bytes().to_vec()), "Russian");
-        assert_eq!(sent(KeyCode::Char('ש'), none, false), Some("ש".as_bytes().to_vec()), "Hebrew");
-        assert_eq!(
-            sent(KeyCode::Char('é'), none, false),
-            Some("é".as_bytes().to_vec()),
-            "French, composed by the terminal"
-        );
-        let alt_gr = KeyModifiers::CONTROL | KeyModifiers::ALT;
-        assert_eq!(
-            sent(KeyCode::Char('@'), alt_gr, false),
-            Some(b"@".to_vec()),
-            "German AltGr-Q, as Windows reports it"
-        );
-        assert_eq!(sent(KeyCode::Char('\u{1b}'), none, false), None, "a control character is not text");
-    }
-
-    /// In `ALL_KEYS` every key is KEY, a character key's text with it.
-    #[test]
-    fn in_all_keys_a_character_is_a_key_with_its_text() {
-        assert_eq!(sent(KeyCode::Char('a'), KeyModifiers::NONE, true), Some(vec![0xFF, 0x01, 0x10, b'a', 1, b'a']));
-        assert_eq!(
-            sent(KeyCode::Char('A'), KeyModifiers::SHIFT, true),
-            Some(vec![0xFF, 0x01, 0x18, b'a', 0x01, 1, b'A']),
-            "the key unshifted, Shift in mods, the text as typed"
-        );
-    }
-
-    /// INPUT.md section 9.6: with the Kitty keyboard protocol a key's
-    /// repeat types its text again and its release is a KEY with no text.
-    #[test]
-    fn repeats_and_releases_where_the_terminal_reports_them() {
-        let event = |kind| KeyEvent::new_with_kind(KeyCode::Char('a'), KeyModifiers::NONE, kind);
-        let encode = |key: KeyEvent| {
-            let mut buffer = [0_u8; 4];
-            let item = input_of(key, false, &mut buffer).unwrap();
-            let mut out = [0_u8; neoteletext_input::MAX_MESSAGE];
-            let length = neoteletext_input::event::write(&item, &mut out).unwrap();
-            out[..length].to_vec()
-        };
-        assert_eq!(encode(event(KeyEventKind::Repeat)), b"a");
-        assert_eq!(encode(event(KeyEventKind::Release)), vec![0xFF, 0x01, 0x02, b'a'], "a release, no text");
-        let up = KeyEvent::new_with_kind(KeyCode::Up, KeyModifiers::NONE, KeyEventKind::Release);
-        assert_eq!(encode(up), vec![0xFF, 0x01, 0x06, 0x09]);
-    }
-
-    /// REQ-INT-113: a cursor record naming another page opens it, only
-    /// while keys go to the channel.
-    #[test]
-    fn a_host_goes_to_a_page_by_naming_it() {
-        assert_eq!(host_page(0x301, 0x300, true), Some(0x301));
-        assert_eq!(host_page(0x300, 0x300, true), None, "the page already open");
-        assert_eq!(host_page(0x301, 0x300, false), None, "keys do not go to the channel");
-    }
-}
+mod tests;

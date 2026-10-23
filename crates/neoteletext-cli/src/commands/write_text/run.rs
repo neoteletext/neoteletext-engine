@@ -1,27 +1,18 @@
-//! `neottx write-text --set SET --page MPP INPUT OUTPUT` (REQ-CLI-010):
-//! a TTI page from a UTF-8 text file in one of neoteletext's own sets.
+//! `neottx write-text` in a build with it.
 
-#[cfg(feature = "write-text")]
-use crate::font::read_bounded;
-use neoteletext_app::Failure;
-#[cfg(feature = "write-text")]
-use neoteletext_app::exit;
-#[cfg(feature = "write-text")]
+use crate::bounded_file::read_bounded;
 use neoteletext_app::sandbox::{self, Policy};
-#[cfg(feature = "write-text")]
+use neoteletext_app::{Failure, exit};
 use std::fs::File;
-#[cfg(feature = "write-text")]
 use std::io::Write;
 use std::path::Path;
 
 /// The largest text file read. A page holds 23 rows of 40 cells, at most
 /// four UTF-8 bytes a character with a mark of two more: 23 x 40 x 6 is
 /// 5,520 bytes, so this leaves room for long lines that are refused.
-#[cfg(feature = "write-text")]
 const TEXT_MAX_FILE_BYTES: usize = 16 * 1024;
 
 /// `neottx write-text`.
-#[cfg(feature = "write-text")]
 pub fn write_text(set: &str, page: &str, input: &Path, output: &Path, no_sandbox: bool) -> Result<(), Failure> {
     let mpp = u16::from_str_radix(page, 16)
         .ok()
@@ -40,10 +31,4 @@ pub fn write_text(set: &str, page: &str, input: &Path, output: &Path, no_sandbox
         .map_err(|error| (exit::INPUT, format!("{}: {error}", output.display())))?;
     eprintln!("{}: {} rows, {} X/26 triplets", output.display(), written.rows, written.triplets);
     Ok(())
-}
-
-/// `neottx write-text` in a build without it.
-#[cfg(not(feature = "write-text"))]
-pub fn write_text(_: &str, _: &str, _: &Path, _: &Path, _: bool) -> Result<(), Failure> {
-    Err(neoteletext_app::not_in_build("writing pages from text", "write-text"))
 }

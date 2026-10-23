@@ -6,7 +6,7 @@
 //! titles are taken from the decoded pages. Nothing is written but
 //! standard output and standard error.
 
-use crate::output::text::{MosaicStyle, plain};
+use crate::ansi::{MosaicStyle, plain};
 use neoteletext_app::input::{self, Options};
 use neoteletext_app::sandbox::{self, Policy};
 use neoteletext_app::session::Session;
