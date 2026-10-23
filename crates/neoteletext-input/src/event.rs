@@ -2,7 +2,7 @@
 //! section 5, REQ-INT-101 to REQ-INT-104): raw UTF-8 text, and events that
 //! begin with `0xFF`, which never occurs in UTF-8.
 //!
-//! [`write`] encodes one item and checks it with the reader, so a sender can
+//! [`write()`] encodes one item and checks it with the reader, so a sender can
 //! never write what a channel refuses; [`read`] decodes one item from bytes
 //! that may end early, which [`read_message`] and [`StreamDecoder`] build on.
 

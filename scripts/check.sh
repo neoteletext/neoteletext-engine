@@ -64,6 +64,9 @@ cargo xtask check-constants
 cargo xtask check-io
 cargo xtask check-deps
 
+step "documentation, warnings as errors (REQ-DOC-001)"
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --quiet
+
 step "the no-panic lint list is the same in every crate root (REQ-SEC-003, DEVELOPMENT.md section 6)"
 check_no_panic_lists
 

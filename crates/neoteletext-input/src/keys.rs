@@ -3,7 +3,7 @@
 //! never changes. Codes 1 to 127 take one byte and hold the commonest keys,
 //! teletext's colour, Teletext and channel keys among them; codes from
 //! [`FIRST_NAMED`] are the W3C `KeyboardEvent.key` names of
-//! [`KEY_NAMES`](crate::names::KEY_NAMES) not given a code below, in that
+//! [`KEY_NAMES`] not given a code below, in that
 //! table's fixed order. Both only ever grow.
 //!
 //! The `base` field (section 5.7) gives the character a physical key has on

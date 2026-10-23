@@ -130,7 +130,7 @@ pub enum Failure {
     /// More than five redirects (REQ-WEB-003).
     TooManyRedirects,
     /// A redirect that leaves the channel, refused under
-    /// [`Config::redirects_within_channel`].
+    /// [`Config::redirects_within_channel`](super::Config::redirects_within_channel).
     RedirectToOtherChannel,
     /// A channel's file did not pass the check for the format its name
     /// says (REQ-WEB-027).
@@ -300,7 +300,7 @@ pub enum Event<'a> {
     /// null (Appendix E.2 rule 2).
     LinkUnknown,
     /// A request was redirected out of the channel and, under
-    /// [`Config::redirects_within_channel`], not followed. The viewer
+    /// [`Config::redirects_within_channel`](super::Config::redirects_within_channel), not followed. The viewer
     /// confirms the new channel before going there.
     RedirectToOtherChannel {
         /// The address the redirect leads to.

@@ -33,7 +33,7 @@ pub struct Statistics {
     /// enhancement store belonged to a sub-page being received.
     pub enhancement_dropped: u32,
     /// Faults met while building pages at Levels 2.5 and 3.5 (REQ-L25-051),
-    /// added by [`Decoder::record_enhancement`].
+    /// added by [`Decoder::record_enhancement`](crate::acq::Decoder::record_enhancement).
     pub enhancement: EnhancementFaults,
 }
 
@@ -122,7 +122,7 @@ impl EnhancementReport {
 /// Which build of a page an enhancement report belongs to: the page, the
 /// reception it was built from, and the presentation level asked for. The
 /// decoder uses it so that redrawing a page does not count its faults
-/// again ([`Decoder::record_enhancement`]).
+/// again ([`Decoder::record_enhancement`](crate::acq::Decoder::record_enhancement)).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct PageBuild {
     /// The page and sub-page.

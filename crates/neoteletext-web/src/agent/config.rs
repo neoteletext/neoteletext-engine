@@ -46,7 +46,7 @@ pub struct Config {
     /// The port saves cookies between runs (REQ-SEC-013). Off by default.
     pub persist_cookies: bool,
     /// Refuse redirects of descriptor, page, bundle and contents requests
-    /// that leave the channel, reporting [`Event::RedirectToOtherChannel`]
+    /// that leave the channel, reporting [`Event::RedirectToOtherChannel`](super::Event::RedirectToOtherChannel)
     /// instead, so that the viewer can confirm another channel before
     /// showing its content (REQ-WEB-021). An upgrade from `http` to `https`
     /// on the same host and folder, between the default ports, keeps the
