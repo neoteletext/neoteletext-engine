@@ -4,11 +4,14 @@
 //! applied by the object layer (REQ-OBJ-030, decision E.52).
 
 use crate::consts::{
-    LINK_FUNCTION_MASK, LINK_MAGAZINE_SHIFT, LINK_MARKER_FIRST_SHIFT, LINK_MARKER_SECOND_MASK, LINK_NULL_PAGE,
-    LINK_SUBPAGES_MASK, LINK_SUBPAGES_SHIFT, LINK_TENS_SHIFT, LINK_UNITS_SHIFT, LINK_VALIDITY_MASK,
+    COMPOSITIONAL_LINKS, LINK_FUNCTION_MASK, LINK_MAGAZINE_SHIFT, LINK_MARKER_FIRST_SHIFT, LINK_MARKER_SECOND_MASK,
+    LINK_NULL_PAGE, LINK_SUBPAGES_MASK, LINK_SUBPAGES_SHIFT, LINK_TENS_SHIFT, LINK_UNITS_SHIFT, LINK_VALIDITY_MASK,
     LINK_VALIDITY_SHIFT, MAGAZINE_MASK, NIBBLE_MASK,
 };
 use crate::types::{Magazine, PageNumber};
+
+use super::Packet;
+use super::triplets::triplet_values;
 
 /// One link of X/27/4 or X/27/5 (Table 15).
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
@@ -80,5 +83,45 @@ impl CompositionalLink {
             | (self.page.tens() as u32) << LINK_TENS_SHIFT;
         let second = (self.marker_second as u32) | (self.subpages as u32) << LINK_SUBPAGES_SHIFT;
         (first, second)
+    }
+}
+
+/// The six links of X/27/4 or X/27/5: link k in triplets 2k + 1 and
+/// 2k + 2 (Figure 14).
+pub(super) fn compositional_links(
+    packet: &Packet,
+    magazine: Magazine,
+) -> [Option<CompositionalLink>; COMPOSITIONAL_LINKS] {
+    let values = triplet_values(packet);
+    let mut links = [None; COMPOSITIONAL_LINKS];
+    for (link, pair) in links.iter_mut().zip(values.as_chunks::<2>().0) {
+        if let [Some(first), Some(second)] = *pair {
+            *link = Some(CompositionalLink::from_values(magazine, first, second));
+        }
+    }
+    links
+}
+
+/// The encoder of X/27/4 and X/27/5: the inverse of [`compositional_links`].
+pub(super) mod encode {
+    use super::super::triplets::encode::value_packet;
+    use super::{CompositionalLink, Packet};
+    use crate::consts::{COMPOSITIONAL_LINKS, TRIPLETS_PER_PACKET};
+
+    use crate::types::Magazine;
+
+    /// Packet X/27/4 or X/27/5 (Table 15); triplet 13 is reserved and 0.
+    #[must_use]
+    pub fn compositional_links(
+        magazine: Magazine,
+        designation: u8,
+        links: &[CompositionalLink; COMPOSITIONAL_LINKS],
+    ) -> Packet {
+        let mut values = [0u32; TRIPLETS_PER_PACKET];
+        for (pair, link) in values.as_chunks_mut::<2>().0.iter_mut().zip(links) {
+            let (first, second) = link.to_values(magazine);
+            *pair = [first, second];
+        }
+        value_packet(magazine, crate::consts::PACKET_LINKS, designation, &values)
     }
 }

@@ -5,14 +5,17 @@
 //! glyphs. The test fonts are patterns made here, not typefaces.
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 
-// The module is compiled for tests only (see `render.rs`); the attribute
+// The module is compiled for tests only (see `render/tests.rs`); the attribute
 // also marks this file as test code for `cargo xtask check-layers`.
 #[cfg(test)]
 use super::*;
+
 use crate::charset::{CharRef, CharSet, G0, G0Set, G2Set, NationalOption};
+use crate::config::CellMode;
+use crate::consts::CELL_HEIGHT;
 use crate::glyphs::conformance::{FONT_SET_COUNT, font_set_index};
-use crate::glyphs::{FontTableError, LoadedFont};
-use crate::level1::CellAttributes;
+use crate::glyphs::{FontTableError, GlyphSet, LoadedFont};
+use crate::level1::{Cell, CellAttributes, Glyph, Grid, Size, Width};
 use crate::types::FontGlyph;
 use std::vec::Vec;
 

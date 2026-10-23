@@ -28,14 +28,13 @@ mod bedstead;
 #[rustfmt::skip]
 mod g3;
 pub mod conformance;
+mod loaded_font;
 
 use crate::charset::{CharRef, CharSet, compose, to_unicode};
-use crate::consts::{
-    CELL_FIELD_LINES, CELL_HEIGHT, CELL_WIDTH, DIACRITIC_NONE, FONT_MAX_CHARACTERS, G3_CODES, G3_FIRST_CODE,
-    GLYPH_LINES,
-};
-use crate::types::FontGlyph;
+use crate::consts::{CELL_FIELD_LINES, CELL_HEIGHT, DIACRITIC_NONE, G3_CODES, G3_FIRST_CODE, GLYPH_LINES};
 use conformance::{FONT_SET_COUNT, font_set_of};
+
+pub use loaded_font::{FontTableError, LoadedFont, LoadedGlyph};
 
 /// One G3 glyph (REQ-RND-037): each line of the cell as 12 half-dots, bit
 /// 11 the leftmost, top line first.
@@ -93,121 +92,6 @@ pub struct GlyphSet<'a> {
     pub g3_provenance: &'static str,
     in_use: Option<LoadedFont<'a>>,
     by_set: [Option<LoadedFont<'a>>; FONT_SET_COUNT],
-}
-
-/// Why a glyph table cannot be a loaded font (REQ-FNT-003, REQ-FNT-008).
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum FontTableError {
-    /// More than 1,024 glyphs.
-    TooMany,
-    /// The code points are not in strictly increasing order: unsorted or
-    /// repeated.
-    Order,
-    /// A code point is not a Unicode scalar value.
-    Code,
-    /// A line has a dot beyond the 12 of the cell.
-    Width,
-    /// The glyphs are not all of one height, or a 12 by 10 glyph has lines
-    /// beyond its tenth (decision E.77).
-    Height,
-}
-
-/// A font loaded at run time (REQ-FNT-008): a table of 12 by 10 or 12 by 20
-/// glyphs, all of one height (decision E.77), sorted by code point. The table comes from outside the library, so it is
-/// checked for shape when the font is made
-/// (`docs/spec/design/font-security.md` section 3.1).
-#[derive(Clone, Copy, Debug)]
-pub struct LoadedFont<'a> {
-    glyphs: &'a [FontGlyph],
-    dot_matrix: bool,
-    tall: bool,
-}
-
-/// The right-hand pixel of each of a 12-pixel row's six pairs.
-const PAIR_RIGHT_PIXELS: u16 = 0b0101_0101_0101;
-
-/// A glyph of a loaded font, and whether the font is a doubled dot matrix,
-/// which is rounded as Bedstead is (REQ-FNT-008, issue #209).
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct LoadedGlyph {
-    /// The lines of 12 pixels, bit 11 the leftmost: the first ten of a 12
-    /// by 10 glyph, or all twenty of a 12 by 20 glyph.
-    pub rows: [u16; CELL_HEIGHT],
-    /// The glyph is 12 by 20 and is drawn line for line (decision E.77).
-    pub tall: bool,
-    /// Every row of every glyph of its font is made of identical pixel
-    /// pairs. Never true of a 12 by 20 font.
-    pub dot_matrix: bool,
-}
-
-impl<'a> LoadedFont<'a> {
-    /// The font of a table, after checking its shape.
-    pub fn new(glyphs: &'a [FontGlyph]) -> Result<Self, FontTableError> {
-        if glyphs.len() > FONT_MAX_CHARACTERS {
-            return Err(FontTableError::TooMany);
-        }
-        if !glyphs.windows(2).all(|pair| matches!(pair, [a, b] if a.code_point < b.code_point)) {
-            return Err(FontTableError::Order);
-        }
-        let tall = glyphs.first().is_some_and(|glyph| glyph.tall);
-        for glyph in glyphs {
-            if char::from_u32(glyph.code_point).is_none() {
-                return Err(FontTableError::Code);
-            }
-            if glyph.rows.iter().any(|row| row >> CELL_WIDTH != 0) {
-                return Err(FontTableError::Width);
-            }
-            let beyond = glyph.rows.get(glyph.lines().len()..).unwrap_or(&[]);
-            if glyph.tall != tall || beyond.iter().any(|&row| row != 0) {
-                return Err(FontTableError::Height);
-            }
-        }
-        // A font converted from a 5- or 6-dot matrix (REQ-FNT-010) has
-        // every pixel doubled; one drawn at half-dot resolution does not. A
-        // 12 by 20 font is never rounded (decision E.77).
-        let dot_matrix = !tall
-            && !glyphs.is_empty()
-            && glyphs.iter().all(|glyph| glyph.rows.iter().all(|row| (row ^ (row >> 1)) & PAIR_RIGHT_PIXELS == 0));
-        Ok(Self { glyphs, dot_matrix, tall })
-    }
-
-    /// True when every row of every glyph is made of identical pixel
-    /// pairs: a 5- or 6-dot matrix with each dot drawn two pixels wide,
-    /// which the renderer rounds as the SAA5050 rounded its matrix
-    /// (REQ-FNT-008, decision E.13).
-    #[must_use]
-    pub const fn is_dot_matrix(&self) -> bool {
-        self.dot_matrix
-    }
-
-    /// Number of glyphs.
-    #[must_use]
-    pub const fn len(&self) -> usize {
-        self.glyphs.len()
-    }
-
-    /// True when the font has no glyphs.
-    #[must_use]
-    pub const fn is_empty(&self) -> bool {
-        self.glyphs.is_empty()
-    }
-
-    /// True when the font's glyphs are 12 by 20 (decision E.77).
-    #[must_use]
-    pub const fn is_tall(&self) -> bool {
-        self.tall
-    }
-
-    /// The glyph of a code point.
-    #[must_use]
-    pub fn lookup(&self, character: char) -> Option<FontGlyph> {
-        let code_point = u32::from(character);
-        self.glyphs
-            .binary_search_by_key(&code_point, |glyph| glyph.code_point)
-            .ok()
-            .and_then(|index| self.glyphs.get(index))
-            .copied()
-    }
 }
 
 /// A visible placeholder for characters with no glyph (REQ-CHR-004): a
@@ -303,7 +187,7 @@ impl<'a> GlyphSet<'a> {
             font.lookup(wanted).map(|glyph| LoadedGlyph {
                 rows: glyph.rows,
                 tall: glyph.tall,
-                dot_matrix: font.dot_matrix,
+                dot_matrix: font.is_dot_matrix(),
             })
         })
     }
@@ -404,84 +288,4 @@ fn spacing_mark(combining: char) -> Option<char> {
 
 // The tests draw with the shipped glyph set.
 #[cfg(all(test, feature = "bedstead"))]
-#[allow(clippy::indexing_slicing, clippy::unwrap_used)]
-mod tests {
-    use super::*;
-    use crate::charset::{CharSet, G0, G0Set};
-
-    #[test]
-    fn glyphs_are_sorted_and_unique() {
-        let set = GlyphSet::bedstead();
-        assert!(set.entries.windows(2).all(|pair| matches!(pair, [a, b] if a.code_point < b.code_point)));
-    }
-
-    /// REQ-RND-020: the glyph set is data; an empty set is allowed and
-    /// finds nothing.
-    #[test]
-    fn set_size_and_empty_set() {
-        static NONE: [GlyphEntry; 0] = [];
-        let set = GlyphSet::bedstead();
-        assert_eq!(set.len(), set.entries.len());
-        assert!(!set.is_empty());
-        let empty = GlyphSet::from_entries(&NONE, "empty");
-        assert_eq!((empty.len(), empty.is_empty(), empty.provenance), (0, true, "empty"));
-        assert_eq!(empty.lookup('A'), None);
-        let latin = CharSet::G0(G0 { set: G0Set::Latin, national: None });
-        assert_eq!(empty.glyph(CharRef::new(latin, b'A')), PLACEHOLDER, "REQ-CHR-004: a missing glyph is visible");
-    }
-
-    /// REQ-RND-014, decision E.26: every one of the fifteen G2 column 4
-    /// marks (Table 28, modes 10001 to 11111) has a spacing form that
-    /// Bedstead draws, and with no precomposed letter the mark is overlaid.
-    #[test]
-    fn every_diacritic_overlays_its_spacing_form() {
-        // The spacing form Unicode pairs with each combining mark, in mark
-        // order 4/1 to 4/F: grave, acute, circumflex, tilde, macron, breve,
-        // dot above, diaeresis, dot below, ring, cedilla, low line, double
-        // acute, ogonek and caron.
-        const SPACING: [char; 15] = [
-            '`', '\u{B4}', '\u{2C6}', '\u{2DC}', '\u{AF}', '\u{2D8}', '\u{2D9}', '\u{A8}', '.', '\u{2DA}', '\u{B8}',
-            '_', '\u{2DD}', '\u{2DB}', '\u{2C7}',
-        ];
-        let set = GlyphSet::bedstead();
-        let latin = CharSet::G0(G0 { set: G0Set::Latin, national: None });
-        // "q" has no precomposed form with any of the marks.
-        let base = set.lookup('q').unwrap();
-        for (mark, &spacing) in (1u8..).zip(&SPACING) {
-            let character = CharRef { diacritic: mark, ..CharRef::new(latin, b'q') };
-            let combining = to_unicode(character).combining.unwrap();
-            assert_eq!(spacing_mark(combining), Some(spacing), "mark {mark}");
-            assert_eq!(compose('q', combining), None);
-            let mark_rows = set.lookup(spacing).unwrap();
-            assert_ne!(mark_rows, [0; GLYPH_LINES], "mark {mark} draws something");
-            let overlay: [u8; GLYPH_LINES] = core::array::from_fn(|row| base[row] | mark_rows[row]);
-            assert_eq!(set.glyph(character), overlay, "mark {mark}");
-        }
-        // A combining character outside the fifteen has no spacing form.
-        assert_eq!(spacing_mark('\u{0305}'), None);
-        assert_eq!(spacing_mark('a'), None);
-    }
-
-    /// REQ-RND-014, decision E.26: a precomposed glyph when the set has
-    /// one, otherwise the spacing mark's glyph overlaid on the base.
-    #[test]
-    fn diacritics_use_the_precomposed_glyph_or_an_overlay() {
-        const BASE: [u8; GLYPH_LINES] = [0, 0, 0x0E, 0x11, 0x1F, 0x10, 0x0E, 0, 0];
-        const MARK: [u8; GLYPH_LINES] = [0x02, 0x04, 0, 0, 0, 0, 0, 0, 0];
-        // Deliberately unlike the overlay, so the test tells them apart.
-        const PRECOMPOSED: [u8; GLYPH_LINES] = [0x04, 0x08, 0x0E, 0x11, 0x1F, 0x10, 0x0F, 0, 0];
-        static WITH_PRECOMPOSED: [GlyphEntry; 3] = [
-            GlyphEntry { code_point: 'e' as u32, rows: BASE },
-            GlyphEntry { code_point: '\u{B4}' as u32, rows: MARK },
-            GlyphEntry { code_point: '\u{E9}' as u32, rows: PRECOMPOSED },
-        ];
-        static OVERLAY_ONLY: [GlyphEntry; 2] =
-            [GlyphEntry { code_point: 'e' as u32, rows: BASE }, GlyphEntry { code_point: '\u{B4}' as u32, rows: MARK }];
-        let latin = CharSet::G0(G0 { set: G0Set::Latin, national: None });
-        // Diacritic 2 is the acute accent (Table 28, mode 10010).
-        let character = CharRef { diacritic: 2, ..CharRef::new(latin, b'e') };
-        assert_eq!(GlyphSet::from_entries(&WITH_PRECOMPOSED, "test").glyph(character), PRECOMPOSED);
-        let overlay: [u8; GLYPH_LINES] = core::array::from_fn(|row| BASE[row] | MARK[row]);
-        assert_eq!(GlyphSet::from_entries(&OVERLAY_ONLY, "test").glyph(character), overlay);
-    }
-}
+mod tests;
