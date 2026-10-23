@@ -68,10 +68,10 @@ pub(super) fn shape(code: u8) -> Option<Shape> {
         // the disc's outline about 2 half-dots thick.
         0x4D => union(vec![Part::Ellipse { cx: CENTRE, cy: MIDDLE, rx: 6, ry: 4 }]),
         0x4E => union(vec![Part::Ellipse { cx: CENTRE, cy: MIDDLE, rx: 12, ry: 8 }]),
-        0x4F => Shape {
-            set: vec![Part::Ellipse { cx: CENTRE, cy: MIDDLE, rx: 12, ry: 8 }],
-            clear: vec![Part::Ellipse { cx: CENTRE, cy: MIDDLE, rx: 8, ry: 5 }],
-        },
+        0x4F => Shape::new(
+            vec![Part::Ellipse { cx: CENTRE, cy: MIDDLE, rx: 12, ry: 8 }],
+            vec![Part::Ellipse { cx: CENTRE, cy: MIDDLE, rx: 8, ry: 5 }],
+        ),
         // Column 5: light box drawing, arms meeting at half-dots 5 and 6
         // and rows 4 and 5.
         0x50 => union(vec![light_vertical(0, FULL_HEIGHT)]),
