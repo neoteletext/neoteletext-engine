@@ -3,6 +3,7 @@
 //! channel that takes input, through qrkeyboard's relay.
 
 use super::qr::qr;
+use crate::clock::now_ms;
 use neoteletext_app::{Failure, exit};
 use neoteletext_core::consts::PACKET_BYTES;
 use neoteletext_core::packet::Packet;
@@ -48,7 +49,7 @@ struct Channel {
 
 impl Channel {
     fn now_ms(&self) -> u32 {
-        u32::try_from(self.started.elapsed().as_millis() & u128::from(u32::MAX)).unwrap_or(0)
+        now_ms(self.started)
     }
 
     /// Sends HELLO and waits for WELCOME, then says the bridge's size and

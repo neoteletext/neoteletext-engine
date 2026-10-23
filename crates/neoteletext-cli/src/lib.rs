@@ -10,6 +10,8 @@ mod ansi;
 mod args;
 mod bounded_file;
 mod cells;
+#[cfg(any(feature = "view", feature = "keyboard"))]
+mod clock;
 mod commands;
 mod frame;
 mod image;

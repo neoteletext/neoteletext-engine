@@ -4,6 +4,7 @@
 //! E, REQ-NAV-011 and 012) and the security confirmations of area SEC.
 
 use crate::ansi::{ColourDepth, MosaicStyle, ansi};
+use crate::clock::now_ms;
 use crate::frame::Frame;
 use crate::image::{Scale, iterm2_inline, png, raster};
 use crate::terminal::Display;
@@ -159,7 +160,7 @@ pub fn run(
                 }
                 Notice::Service(_) => confirmed_services.clear(),
                 Notice::Input(open) => {
-                    let clock_ms = u32::try_from(start.elapsed().as_millis() & u128::from(u32::MAX)).unwrap_or(0);
+                    let clock_ms = now_ms(start);
                     typing.connection(source, open, clock_ms);
                 }
                 Notice::Message(text) => messages.push(text),
@@ -201,7 +202,7 @@ pub fn run(
         }
         action = Action::None;
         let (requested, subcode) = viewer.requested();
-        let clock_ms = u32::try_from(start.elapsed().as_millis() & u128::from(u32::MAX)).unwrap_or(0);
+        let clock_ms = now_ms(start);
         let was_on = typing.on();
         if typing.records(source, session.take_kept().into_iter(), clock_ms) {
             prompt = Some(message_row("This channel did not welcome input"));
@@ -309,7 +310,7 @@ pub fn run(
             last_drawn = Some(state);
         }
         let woke = next_event(&wakes, TICK);
-        let clock_ms = u32::try_from(start.elapsed().as_millis() & u128::from(u32::MAX)).unwrap_or(0);
+        let clock_ms = now_ms(start);
         match &woke {
             // A paste goes as one PASTE while keys go (INPUT.md section 9.6).
             Some(Event::Paste(text)) if typing.on() => {
