@@ -99,6 +99,19 @@ pub fn write<S: Sink>(
     }
     let (previous, current) =
         scratch.get_mut(..stream_row.saturating_mul(2)).ok_or(PngError::ScratchTooSmall)?.split_at_mut(stream_row);
+    write_header(sink, width, height, palette)?;
+    compress_rows(sink, height, stream_row, row, previous, current)?;
+    chunk(sink, *b"IEND", &[])
+}
+
+/// The signature, `IHDR`, `PLTE` and `tRNS` (PNG specification sections 5.2,
+/// 11.2.2 to 11.2.4 and 11.3.2).
+fn write_header<S: Sink>(
+    sink: &mut S,
+    width: usize,
+    height: usize,
+    palette: &[Rgba],
+) -> Result<(), PngError<S::Error>> {
     sink.write_all(&SIGNATURE).map_err(PngError::Sink)?;
     let mut header = [0u8; 13];
     let width_bytes = u32::try_from(width).map_err(|_| PngError::BadSize)?.to_be_bytes();
@@ -118,7 +131,20 @@ pub fn write<S: Sink>(
     }
     chunk(sink, *b"PLTE", plte.get(..palette.len().saturating_mul(3)).unwrap_or(&plte))?;
     chunk(sink, *b"tRNS", trns.get(..palette.len()).unwrap_or(&trns))?;
+    Ok(())
+}
 
+/// The zlib stream of the image rows (RFC 1950): one fixed-Huffman block
+/// whose matches are a run of the previous byte or the bytes one row above,
+/// then the Adler-32 check, written into IDAT chunks.
+fn compress_rows<S: Sink>(
+    sink: &mut S,
+    height: usize,
+    stream_row: usize,
+    row: &mut dyn FnMut(usize, &mut [u8]),
+    previous: &mut [u8],
+    current: &mut [u8],
+) -> Result<(), PngError<S::Error>> {
     let mut writer = BitWriter::new();
     for byte in ZLIB_HEADER {
         writer.byte(sink, byte)?;
@@ -186,7 +212,7 @@ pub fn write<S: Sink>(
         writer.byte(sink, byte)?;
     }
     writer.flush(sink)?;
-    chunk(sink, *b"IEND", &[])
+    Ok(())
 }
 
 #[cfg(test)]
