@@ -516,8 +516,10 @@ pub enum Composed {
     Built(Option<EnhancementReport>),
 }
 
-/// Sub-pages listed for stepping and numbering.
-const MAX_LISTED_SUBPAGES: usize = 64;
+/// The most sub-pages of one page the viewer lists for stepping and
+/// numbering ("2/5"); a page with more steps through the first this many.
+/// Public so that a port showing the same list names the same bound.
+pub const MAX_LISTED_SUBPAGES: usize = 64;
 
 fn colour_index(key: Key) -> Option<u8> {
     match key {
