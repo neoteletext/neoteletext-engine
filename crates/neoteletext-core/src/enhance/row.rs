@@ -182,9 +182,26 @@ struct Overlay {
 /// What resolving one cell gives, before sizes are applied.
 #[derive(Clone, Copy)]
 pub(super) struct Resolved {
-    pub(super) cell: Cell,
-    pub(super) double_height: bool,
-    pub(super) double_width: bool,
+    cell: Cell,
+    double_height: bool,
+    double_width: bool,
+}
+
+impl Resolved {
+    /// The cell, at normal size.
+    pub(super) fn cell(&self) -> Cell {
+        self.cell
+    }
+
+    /// Whether the attributes ask for double height.
+    pub(super) fn double_height(&self) -> bool {
+        self.double_height
+    }
+
+    /// Whether the attributes ask for double width.
+    pub(super) fn double_width(&self) -> bool {
+        self.double_width
+    }
 }
 
 /// Builds a cell from a glyph and the attributes it is drawn with.
