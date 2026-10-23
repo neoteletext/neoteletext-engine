@@ -138,3 +138,48 @@ fn packet_28_function_wins_in_any_line_order() {
     assert_eq!(page(&[x28_3, x28_0, pf]), Some(basic));
     assert_eq!(page(&[pf, x28_0, x28_3]), Some(basic));
 }
+
+/// REQ-INP-023 and F-102: an X/28 line on a page that already holds
+/// `RAW_PACKETS` packets is dropped, and sets no page function, since the
+/// function would be written without the packet that carried it. The
+/// `tti_enhancement` fuzz reproducer, hand-reduced: X/28/3 and fifteen X/27
+/// lines fill the page, and the X/28/0 that follows used to set function
+/// 0, which the written copy lost to the X/28/3 it kept.
+#[test]
+fn a_dropped_packet_28_sets_no_page_function() {
+    use crate::item::Capacity;
+    use crate::page::RAW_PACKETS;
+    let mut text = b"PN,1FE00\nOL,28,Co\n".to_vec();
+    for letter in b'A'..=b'O' {
+        text.extend_from_slice(b"OL,27,");
+        text.push(letter);
+        text.push(b'\n');
+    }
+    text.extend_from_slice(b"OL,28,\n");
+    let (pages, diagnostics) = read(&text);
+    let page = &pages[0];
+    assert_eq!(page.raw_packets.len(), RAW_PACKETS);
+    assert!(!page.raw_packets.as_slice().iter().any(|raw| raw.number == 28 && raw.designation == 0));
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.kind == DiagnosticKind::CapacityExceeded { what: Capacity::RawPackets })
+    );
+    let carried = page.raw_packets.as_slice().iter().find(|raw| raw.number == 28 && raw.designation == 3).unwrap();
+    let packet = crate::encode::raw_packet(page.address.magazine, carried);
+    let Ok(Decoded::PageData { packet: PagePacket::PageFunction(Some(format)), .. }) = decode(&packet) else {
+        panic!("X/28/3 carries a page function");
+    };
+    assert_eq!(page.function, Some(PageFunction { function: format.function, coding: format.coding }));
+    #[cfg(feature = "std")]
+    {
+        let write = |pages: &[PageFile]| {
+            let references: Vec<&PageFile> = pages.iter().collect();
+            let mut written = Vec::new();
+            crate::write::write_tti(&references, &mut written).unwrap();
+            written
+        };
+        let written = write(&pages);
+        assert_eq!(write(&read(&written).0), written, "writing what was read back changes nothing");
+    }
+}

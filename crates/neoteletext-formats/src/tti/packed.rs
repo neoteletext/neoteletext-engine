@@ -57,6 +57,18 @@ impl TtiReader {
             }
             return;
         }
+        // The packet is stored first: one the page cannot hold sets no
+        // function either, since the function would be written without the
+        // packet that carried it and lost on reading back (F-102).
+        let packets = self.page.raw_packets.as_mut_slice();
+        if let Some(existing) =
+            packets.iter_mut().find(|packet| packet.number == number && packet.designation == designation)
+        {
+            *existing = raw;
+        } else if !self.page.raw_packets.push(raw) {
+            self.diagnostic(DiagnosticKind::CapacityExceeded { what: Capacity::RawPackets }, out);
+            return;
+        }
         // REQ-INP-023: X/28/0, X/28/3 and X/28/4 also set the page function
         // and coding, since they are what a decoder receives. They win over a
         // `PF` line, and the lowest designation code wins among them, before
@@ -75,14 +87,6 @@ impl TtiReader {
                 self.page.function = Some(PageFunction { function: format.function, coding: format.coding });
                 self.function_designation = Some(designation);
             }
-        }
-        let packets = self.page.raw_packets.as_mut_slice();
-        if let Some(existing) =
-            packets.iter_mut().find(|packet| packet.number == number && packet.designation == designation)
-        {
-            *existing = raw;
-        } else if !self.page.raw_packets.push(raw) {
-            self.diagnostic(DiagnosticKind::CapacityExceeded { what: Capacity::RawPackets }, out);
         }
     }
 }
