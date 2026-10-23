@@ -1,8 +1,8 @@
 //! Thai and Lao pages in the Philips SAA5246AP/S scheme (decision E.80):
 //! letter rows with their marks on the rows above and below.
 
-use super::WriteError;
-use super::sets::{Cell, LAST_CODE, Sets, encode};
+use super::sets::{Cell, LAST_CODE, encode};
+use super::{Sets, WriteError};
 use neoteletext_core::charset::{CharRef, CharSet, to_unicode};
 use neoteletext_core::consts::{COLUMNS, ESC, SPACE};
 

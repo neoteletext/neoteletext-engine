@@ -7,7 +7,7 @@
 )]
 
 use super::rtl::break_line_rtl;
-use super::sets::{Cell, Sets, encode, page_sets};
+use super::sets::{Cell, encode, page_sets};
 use super::thai_lao::{marked_lines, marked_rows};
 use super::*;
 use neoteletext_core::charset::{CharRef, G2Set, compose, default_second_g0, page_mark, to_unicode};

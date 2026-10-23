@@ -2,10 +2,8 @@
 //! the row's G0 sets, X/26 marks and G2 characters (REQ-CHR-012,
 //! REQ-CHR-014), and the breaking of a left-to-right line into rows.
 
-use super::WriteError;
-use neoteletext_core::charset::{
-    CharRef, CharSet, G0, G2Set, compose, default_second_g0, designation, page_mark, to_unicode,
-};
+use super::{Sets, WriteError};
+use neoteletext_core::charset::{CharRef, CharSet, G0, compose, default_second_g0, designation, page_mark, to_unicode};
 use neoteletext_core::consts::{COLUMNS, DESIGNATION_GROUP_SHIFT, ESC, MODE_DIACRITIC_MASK, SPACE};
 
 /// The sets the writer names, with their Table 32 groups and options: the
@@ -72,16 +70,6 @@ pub(super) enum Cell {
     Code(u8),
     Marked { code: u8, mark: u8 },
     G2 { stand_in: u8, code: u8 },
-}
-
-/// What the page's sets can write.
-pub(super) struct Sets {
-    pub(super) default: CharSet,
-    pub(super) second: Option<CharSet>,
-    /// The G0 set without national option, whose base forms X/26 marks
-    /// are placed on (REQ-CHR-002).
-    pub(super) base: CharSet,
-    pub(super) g2: G2Set,
 }
 
 impl Sets {

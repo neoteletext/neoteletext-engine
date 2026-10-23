@@ -25,7 +25,7 @@
 //! needs both. A vowel with a tone is one G2 glyph placed by X/26 over the
 //! vowel alone; ำ is written as ํ over the consonant and า beside it.
 
-use neoteletext_core::charset::{CharSet, G0, G0Set};
+use neoteletext_core::charset::{CharSet, G0, G0Set, G2Set};
 use neoteletext_core::consts::{COLUMNS, NATIONAL_INDEX_MASK, SPACE};
 use neoteletext_core::types::Designations;
 use neoteletext_core::types::SubCode;
@@ -45,6 +45,16 @@ const FIRST_ROW: u8 = 1;
 /// The last display row the writer fills: row 24 is left for Fastext
 /// prompts (clause 9.3.1).
 const LAST_ROW: u8 = 23;
+
+/// What the page's sets can write.
+struct Sets {
+    default: CharSet,
+    second: Option<CharSet>,
+    /// The G0 set without national option, whose base forms X/26 marks
+    /// are placed on (REQ-CHR-002).
+    base: CharSet,
+    g2: G2Set,
+}
 
 /// Why a page could not be written.
 #[derive(Clone, PartialEq, Eq, Debug)]
