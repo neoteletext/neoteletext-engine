@@ -4,20 +4,9 @@
 #![cfg(feature = "write-text")]
 #![allow(missing_docs)]
 
-use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+mod common;
 
-fn neottx(arguments: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_neottx")).args(arguments).output().expect("run neottx")
-}
-
-/// A fresh folder of the test's own: tests run in parallel.
-fn folder(name: &str) -> PathBuf {
-    let folder = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
-    let _ = std::fs::remove_dir_all(&folder);
-    std::fs::create_dir_all(&folder).expect("make the test folder");
-    folder
-}
+use common::{folder, neottx};
 
 /// Writes `text` in `set` as page 100 and reads rows 1 onwards back at
 /// `level`, trailing spaces removed.

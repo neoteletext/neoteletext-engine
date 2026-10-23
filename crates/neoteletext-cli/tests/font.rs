@@ -3,23 +3,12 @@
 //! usable, and a font outside ISO10646 needs the map.
 #![allow(missing_docs)]
 
+mod common;
+
+use common::{folder, neottx};
 use neoteletext_core::consts::FONT_MAX_CHARACTERS;
 use neoteletext_core::types::FontGlyph;
 use std::fmt::Write as _;
-use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
-
-fn neottx(arguments: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_neottx")).args(arguments).output().expect("run neottx")
-}
-
-/// A fresh folder of the test's own: tests run in parallel.
-fn folder(name: &str) -> PathBuf {
-    let folder = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
-    let _ = std::fs::remove_dir_all(&folder);
-    std::fs::create_dir_all(&folder).expect("make the test folder");
-    folder
-}
 
 /// A 6 by 10 source font with characters 65 and 66, both a block in the
 /// middle of the cell, in the given registry.

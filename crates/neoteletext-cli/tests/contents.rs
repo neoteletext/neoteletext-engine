@@ -2,12 +2,10 @@
 //! folder of page files, which the contents reader of REQ-WEB-025 accepts.
 #![allow(missing_docs)]
 
-use std::path::Path;
-use std::process::{Command, Output};
+mod common;
 
-fn neottx(arguments: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_neottx")).args(arguments).output().expect("run neottx")
-}
+use common::neottx;
+use std::path::Path;
 
 fn write(folder: &Path, name: &str, text: &str) {
     std::fs::write(folder.join(name), text.replace('\n', "\r\n")).expect("write a test file");

@@ -116,13 +116,7 @@ impl Session {
             Some(stamp) if stamp >= self.clock => stamp,
             _ => self.clock.saturating_add(LINE_PERIOD_US),
         };
-        let tracing = self.tracing;
-        let trace = &mut self.trace;
-        self.decoder.push(packet, meta, Instant(self.clock), &mut |event| {
-            if tracing {
-                trace.push(event);
-            }
-        });
+        self.decoder.push(packet, meta, Instant(self.clock), &mut Self::trace_sink(self.tracing, &mut self.trace));
     }
 
     /// Feeds one packet received now, on the session's real clock (live
@@ -130,38 +124,20 @@ impl Session {
     pub fn push_at(&mut self, packet: &Packet, meta: &PacketMeta, now: Instant) {
         self.maybe_keep(packet);
         self.clock = self.clock.max(now.0);
-        let tracing = self.tracing;
-        let trace = &mut self.trace;
-        self.decoder.push(packet, meta, Instant(self.clock), &mut |event| {
-            if tracing {
-                trace.push(event);
-            }
-        });
+        self.decoder.push(packet, meta, Instant(self.clock), &mut Self::trace_sink(self.tracing, &mut self.trace));
     }
 
     /// Lets time pass: completes pages whose packets stopped (decision
     /// E.19).
     pub fn tick(&mut self, now: Instant) {
         self.clock = self.clock.max(now.0);
-        let tracing = self.tracing;
-        let trace = &mut self.trace;
-        self.decoder.tick(Instant(self.clock), &mut |event| {
-            if tracing {
-                trace.push(event);
-            }
-        });
+        self.decoder.tick(Instant(self.clock), &mut Self::trace_sink(self.tracing, &mut self.trace));
     }
 
     /// Ends the input: completes every page still being received.
     pub fn finish(&mut self) {
         self.clock = self.clock.saturating_add(PAGE_COMPLETION_TIMEOUT_US.saturating_mul(2));
-        let tracing = self.tracing;
-        let trace = &mut self.trace;
-        self.decoder.tick(Instant(self.clock), &mut |event| {
-            if tracing {
-                trace.push(event);
-            }
-        });
+        self.decoder.tick(Instant(self.clock), &mut Self::trace_sink(self.tracing, &mut self.trace));
     }
 
     /// Every stored page, sorted by address and sub-code.
@@ -234,5 +210,16 @@ impl Session {
         out[..rolling.len()].copy_from_slice(rolling);
         out[rolling.len()..].copy_from_slice(clock);
         out
+    }
+
+    /// The decoder's event sink: each event kept for tracing when tracing is
+    /// on (`-vv`, REQ-FSM-010), dropped otherwise. It takes the two fields
+    /// rather than the session, so that the decoder may be borrowed beside it.
+    fn trace_sink(tracing: bool, trace: &mut Vec<Event>) -> impl FnMut(Event) + '_ {
+        move |event| {
+            if tracing {
+                trace.push(event);
+            }
+        }
     }
 }

@@ -71,6 +71,53 @@ impl Layout {
         }
         caps
     }
+
+    /// Whether the layout has a text box (`controls.ts` `PRESETS`).
+    pub(crate) fn has_text(&self) -> bool {
+        matches!(self, Self::Terminal | Self::Preset("keyboard"))
+    }
+
+    /// Whether `key` is a key of the layout (`controls.ts` `PRESETS`).
+    pub(crate) fn has_key(&self, key: &str) -> bool {
+        const DPAD: [&str; 5] = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Enter"];
+        const TELETEXT: [&str; 16] = [
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9",
+            "0",
+            "Teletext",
+            "Exit",
+            "ArrowLeft",
+            "ChannelDown",
+            "ChannelUp",
+            "ArrowRight",
+        ];
+        const REMOTE: [&str; 9] = [
+            "BrowserBack",
+            "BrowserHome",
+            "ContextMenu",
+            "AudioVolumeDown",
+            "AudioVolumeMute",
+            "AudioVolumeUp",
+            "ChannelDown",
+            "MediaPlayPause",
+            "ChannelUp",
+        ];
+        const GAMEPAD: [&str; 2] = ["a", "b"];
+        match self {
+            Self::Terminal => DPAD.contains(&key) || COLOUR_KEYS.contains(&key),
+            Self::Preset("teletext") => COLOUR_KEYS.contains(&key) || TELETEXT.contains(&key),
+            Self::Preset("remote") => DPAD.contains(&key) || REMOTE.contains(&key) || COLOUR_KEYS.contains(&key),
+            Self::Preset("gamepad") => DPAD.contains(&key) || GAMEPAD.contains(&key),
+            Self::Preset(_) => false,
+        }
+    }
 }
 
 /// What the screen asks the relay for.

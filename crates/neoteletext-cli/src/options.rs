@@ -1,47 +1,13 @@
 //! The options every command accepts, turned into the application layer's
 //! plain options (REQ-CLI-002).
 
-use crate::{Common, LevelChoice, ParityChoice};
-use clap::ValueEnum;
+use crate::args::{Common, FormatChoice, LevelChoice, ParityChoice};
 use neoteletext_app::input::Options;
 use neoteletext_core::config::{ParityPolicy, PresentationLevel};
 use neoteletext_formats::detect::Format;
 use neoteletext_formats::sliced::ByteOrder;
 use neoteletext_formats::t42::T42Variant;
 use neoteletext_formats::transport::TsPacketSize;
-
-/// Formats that can be named with `--format` (REQ-INP-005).
-#[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
-pub enum FormatChoice {
-    /// 42-byte packets.
-    T42,
-    /// 42-byte packets, bit-reversed.
-    T42Reversed,
-    /// 43-byte packets with the framing code.
-    T42Framed,
-    /// 45-byte packets with run-in and framing code.
-    T42RunIn,
-    /// MPEG transport stream, 188-byte packets.
-    Ts,
-    /// 192-byte transport stream packets.
-    M2ts,
-    /// 204-byte transport stream packets.
-    Ts204,
-    /// Raw PES packets.
-    Pes,
-    /// Linux sliced VBI records, little-endian.
-    Sliced,
-    /// Linux sliced VBI records, big-endian.
-    SlicedBe,
-    /// TTI page files.
-    Tti,
-    /// EP1 page files.
-    Ep1,
-    /// edit.tf or zxnet page addresses.
-    Edittf,
-    /// Raw screen dumps.
-    Dump,
-}
 
 impl FormatChoice {
     const fn format(self) -> Format {

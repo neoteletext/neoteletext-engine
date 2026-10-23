@@ -3,18 +3,18 @@
 //! command, and plays a page's sounds while that page is open and the user
 //! allows page sounds (REQ-AUD-009 to REQ-AUD-013).
 
-#[cfg(feature = "idl")]
-use neoteletext_core::packet::Packet;
-
+use crate::CHANNELS;
 use crate::control::{Channel, Play, fade};
 #[cfg(feature = "idl")]
-use crate::idl::{Reassembler, fragment};
-use crate::port::{SoundFormat, SoundId, Start, VoiceSink};
-#[cfg(feature = "idl")]
-use crate::record::is_input_type;
+use crate::idl::Reassembler;
+use crate::port::{SoundId, VoiceSink};
 use crate::record::{Control, Operation, Record, parse};
 use crate::store::{Defined, Entry, Store, Stored};
-use crate::{CHANNELS, Codec, MAX_BLOCK_SAMPLES, PROGRESSIVE_BUFFER_MS};
+
+#[cfg(feature = "idl")]
+mod carriage;
+mod play;
+mod send;
 
 /// Counts of what the receiver met, for diagnostics (REQ-AUD-021).
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -156,34 +156,6 @@ impl<'a, const OBJECTS: usize, const SLOTS: usize> Receiver<'a, OBJECTS, SLOTS> 
         }
     }
 
-    /// Reads one packet. Returns whether it was an audio packet, so the
-    /// port can leave the rest to the teletext decoder.
-    #[cfg(feature = "idl")]
-    pub fn push_packet(&mut self, packet: &Packet, sink: &mut dyn VoiceSink) -> bool {
-        let Some(result) = fragment(packet) else { return false };
-        match result {
-            // The input profile's records, the cursor and the control
-            // record, are one fragment each; they never enter reassembly,
-            // so their record ids cannot meet a sound's.
-            Ok(fragment)
-                if fragment.first && fragment.last && fragment.data.get(1).is_some_and(|&kind| is_input_type(kind)) => {
-            }
-            Ok(fragment) if fragment.service == self.service => {
-                if let Some((_, record)) = self.reassembler.push(&fragment) {
-                    let mut copy = [0_u8; crate::MAX_RECORD];
-                    let length = record.len().min(copy.len());
-                    if let (Some(target), Some(source)) = (copy.get_mut(..length), record.get(..length)) {
-                        target.copy_from_slice(source);
-                    }
-                    self.push_record(copy.get(..length).unwrap_or(&[]), sink);
-                }
-            }
-            Ok(_) => {}
-            Err(_) => bump(&mut self.statistics.packets_dropped),
-        }
-        true
-    }
-
     /// Reads one whole record, from any carriage.
     pub fn push_record(&mut self, bytes: &[u8], sink: &mut dyn VoiceSink) {
         let Ok(record) = parse(bytes) else {
@@ -304,152 +276,6 @@ impl<'a, const OBJECTS: usize, const SLOTS: usize> Receiver<'a, OBJECTS, SLOTS> 
             }
             Operation::Gain => sink.gain(index, control.gain, fade(control.fade_ms)),
         }
-    }
-
-    /// Starts a play now if its sound is ready, or keeps it waiting.
-    fn try_start(&mut self, index: u8, play: Play, sink: &mut dyn VoiceSink) {
-        let ready = self
-            .store
-            .entry(play.sound.handle)
-            .copied()
-            .filter(|entry| entry.sound == play.sound && !entry.conflict)
-            .filter(|entry| {
-                if entry.live {
-                    // A live sound plays while its blocks keep coming.
-                    return entry.newest.is_some()
-                        && self.now_ms.saturating_sub(entry.arrived_ms) < crate::LIVE_STALL_MS;
-                }
-                entry.complete()
-                    || (play.progressive && self.buffered_ms(entry) >= PROGRESSIVE_BUFFER_MS.min(duration_ms(entry)))
-            });
-        let Some(channel) = self.channels.get_mut(usize::from(index)) else { return };
-        let Some(entry) = ready else {
-            channel.waiting = Some(play);
-            return;
-        };
-        channel.waiting = None;
-        channel.playing_page = play.page;
-        channel.playing = Some(play);
-        if entry.live {
-            if !entry.at_sink {
-                // Join at the newest block: a live sound is heard as it is now.
-                sink.stream(entry.sound, entry.rate_hz);
-                self.store.set_at_sink(entry.sound, true);
-                self.store.set_live_cursor(entry.sound, entry.newest.unwrap_or(0), entry.arrived_ms);
-                self.send_live(entry.sound, sink);
-            }
-        } else if !entry.at_sink {
-            self.send_sound(&entry, sink);
-        }
-        sink.start(
-            index,
-            Start {
-                sound: play.sound,
-                gain: play.gain,
-                fade_ms: play.fade_ms,
-                looped: play.looped,
-                duck_percent: play.duck_percent,
-                after_current: play.after_current,
-            },
-        );
-    }
-
-    fn start_waiting(&mut self, sink: &mut dyn VoiceSink) {
-        for index in 0..CHANNELS {
-            if let Some(play) = self.channels.get(usize::from(index)).and_then(|channel| channel.waiting) {
-                self.try_start(index, play, sink);
-            }
-        }
-    }
-
-    fn start_armed(&mut self, sink: &mut dyn VoiceSink) {
-        let Some(opened) = self.opened else { return };
-        for index in 0..CHANNELS.min(sink.channels()) {
-            if let Some(play) = self.channels.get(usize::from(index)).and_then(|channel| channel.armed)
-                && play.page == Some(opened)
-            {
-                self.try_start(index, play, sink);
-            }
-        }
-    }
-
-    /// Milliseconds of sound received contiguously from the start.
-    fn buffered_ms(&self, entry: &Entry) -> u32 {
-        let blocks = self.store.contiguous(entry.sound);
-        let samples = (0..blocks).map(|index| entry.block_samples(index)).fold(0_u32, u32::saturating_add);
-        samples.saturating_mul(1000).checked_div(entry.rate_hz).unwrap_or(0)
-    }
-
-    /// Defines a sound at the sink and sends every block received so far.
-    fn send_sound(&mut self, entry: &Entry, sink: &mut dyn VoiceSink) {
-        sink.define(entry.sound, SoundFormat { rate_hz: entry.rate_hz, samples: entry.samples });
-        self.store.set_at_sink(entry.sound, true);
-        for index in 0..entry.blocks {
-            self.send_block(entry, index, sink);
-        }
-    }
-
-    /// Sends a live sound's blocks in index order from its cursor. A block
-    /// still missing [`crate::LIVE_LOOKAHEAD_BLOCKS`] behind the newest is
-    /// sent as silence, so a lost block never stops the sound.
-    fn send_live(&mut self, sound: SoundId, sink: &mut dyn VoiceSink) {
-        let Some(entry) = self.store.entries().find(|entry| entry.sound == sound).copied() else { return };
-        let Some(newest) = entry.newest else { return };
-        let mut next = entry.next;
-        let silence = [0_i16; MAX_BLOCK_SAMPLES];
-        // At most a ring's worth a call: the cursor never laps the ring.
-        for _ in 0..entry.blocks {
-            if crate::serial_newer(next, newest) {
-                break;
-            }
-            let mut pcm = [0_i16; MAX_BLOCK_SAMPLES];
-            let decoded = self.store.live_block(sound, next).and_then(|block| decode(entry.codec, block, &mut pcm));
-            if let Some(count) = decoded {
-                sink.stream_samples(sound, pcm.get(..count).unwrap_or(&[]));
-            } else if newest.wrapping_sub(next) >= crate::LIVE_LOOKAHEAD_BLOCKS {
-                let count = usize::try_from(entry.samples_per_block()).unwrap_or(0);
-                sink.stream_samples(sound, silence.get(..count).unwrap_or(&[]));
-                bump(&mut self.statistics.concealed);
-            } else {
-                break;
-            }
-            next = next.wrapping_add(1);
-        }
-        self.store.set_live_cursor(sound, next, entry.arrived_ms);
-    }
-
-    /// Decodes block `index` and sends its samples, if it has arrived.
-    fn send_block(&mut self, entry: &Entry, index: u16, sink: &mut dyn VoiceSink) {
-        let Some(block) = self.store.block(entry.sound, index) else { return };
-        let mut pcm = [0_i16; MAX_BLOCK_SAMPLES];
-        let decoded = decode(entry.codec, block, &mut pcm);
-        let Some(count) = decoded else {
-            bump(&mut self.statistics.decode_failures);
-            return;
-        };
-        // The final block's last code may carry a padding sample.
-        let samples = usize::try_from(entry.block_samples(index)).unwrap_or(0).min(count);
-        let first = u32::from(index).saturating_mul(entry.samples_per_block());
-        sink.samples(entry.sound, first, pcm.get(..samples).unwrap_or(&[]));
-    }
-}
-
-/// Decodes one block into `pcm`; the samples it held, or `None` if it
-/// could not be decoded.
-fn decode(codec: Codec, block: &[u8], pcm: &mut [i16; MAX_BLOCK_SAMPLES]) -> Option<usize> {
-    match codec {
-        Codec::Pcm16 => {
-            let mut count: usize = 0;
-            for (sample, bytes) in pcm.iter_mut().zip(block.as_chunks::<2>().0) {
-                *sample = i16::from_le_bytes(*bytes);
-                count = count.saturating_add(1);
-            }
-            Some(count)
-        }
-        #[cfg(feature = "ima")]
-        Codec::ImaAdpcm => crate::ima::decode_block(block, pcm).ok(),
-        #[cfg(not(feature = "ima"))]
-        Codec::ImaAdpcm => None,
     }
 }
 

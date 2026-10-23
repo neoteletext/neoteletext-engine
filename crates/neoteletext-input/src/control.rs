@@ -7,11 +7,12 @@
 //! its events: `0xFF`, a type, its fields.
 
 pub use neoteletext_audio::idl::FRAGMENT_DATA;
-use neoteletext_audio::idl::{fragment, packet};
+use neoteletext_audio::idl::packet;
 pub use neoteletext_audio::record::TYPE_INPUT_CONTROL;
 use neoteletext_audio::record::{RecordError, framed_length, record_length, split, write};
 use neoteletext_core::packet::Packet;
 
+use crate::carriage::input_record;
 use crate::event::{EVENT, FIRST_EXTENSION, LAST_EXTENSION};
 use crate::is_page;
 use crate::modes::{ALL_CAPS, ALL_MODES, MODE_BITS};
@@ -213,10 +214,7 @@ pub fn from_packet<'b>(
     packet: &Packet,
     buffer: &'b mut [u8; FRAGMENT_DATA],
 ) -> Option<Result<Control<'b>, ControlError>> {
-    let fragment = fragment(packet)?.ok()?;
-    if !(fragment.first && fragment.last && fragment.data.get(1) == Some(&TYPE_INPUT_CONTROL)) {
-        return None;
-    }
+    let fragment = input_record(packet, |kind| kind == TYPE_INPUT_CONTROL)?;
     *buffer = fragment.data;
     let length = framed_length(buffer).ok()?;
     Some(read(buffer.get(..length).unwrap_or(&[])))

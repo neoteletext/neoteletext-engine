@@ -1,30 +1,59 @@
 //! The `neottx` commands (REQ-CLI-001).
 
-use crate::output::image::{Frame, Scale, iterm2_inline, png, ppm, raster, raster_in};
-use crate::output::text::{ColourDepth, MosaicStyle, ansi, plain};
+use crate::ansi::MosaicStyle;
+use crate::args::{GraphicsChoice, RasterArgs};
+use crate::image::Scale;
 use crate::terminal::{self, Display, TextArea};
-use crate::{GraphicsChoice, RasterArgs};
 use clap::ValueEnum;
 pub use neoteletext_app::Failure;
-use neoteletext_app::input::{self, Options};
+use neoteletext_app::exit;
 use neoteletext_app::sandbox::{self, Policy};
 use neoteletext_app::session::Session;
-use neoteletext_app::{convert as conversion, exit};
-use neoteletext_core::acq::StoredPage;
-use neoteletext_core::consts::ROWS;
 use neoteletext_core::fsm::PageKey;
-use neoteletext_core::glyphs::conformance::FONT_SET_COUNT;
-use neoteletext_core::glyphs::{GlyphSet, LoadedFont};
 use neoteletext_core::level1::Grid;
 use neoteletext_core::policy::is_safe_file_name_byte;
-use neoteletext_core::render::row_width;
 use neoteletext_core::types::{PageAddress, SubCode};
-use neoteletext_formats::Item;
-use neoteletext_image::palette::Rgba;
-use std::fs::File;
-use std::io::{IsTerminal, Write};
-use std::net::IpAddr;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+
+mod check;
+mod contents;
+mod convert;
+mod fetch;
+mod font;
+#[cfg(feature = "keyboard")]
+mod keyboard;
+mod list;
+#[cfg(feature = "keyboard")]
+mod qr;
+mod render;
+mod service_info;
+mod services;
+mod show;
+mod slice;
+mod sound;
+mod text;
+mod view;
+mod write_text;
+
+pub use check::check;
+pub use contents::contents;
+pub use convert::convert;
+pub use fetch::fetch;
+pub use font::{convert_font, font_sets};
+#[cfg(feature = "keyboard")]
+pub use keyboard::{KeyboardOptions, keyboard};
+pub use list::list;
+#[cfg(feature = "keyboard")]
+pub use qr::qr;
+pub use render::render;
+pub use service_info::service_info;
+pub use services::services;
+pub use show::show;
+pub use slice::slice;
+pub use sound::{PLAYER_PACKETS_PER_SECOND, SoundOptions, sound};
+pub use text::text;
+pub use view::view;
+pub use write_text::write_text;
 
 /// Image file formats (REQ-RND-007).
 #[derive(ValueEnum, Clone, Copy, Debug)]
@@ -110,94 +139,21 @@ fn grid_of(session: &mut Session, key: PageKey) -> Result<Grid, Failure> {
         .ok_or_else(|| (exit::NOT_FOUND, format!("page {} not found", String::from_utf8_lossy(&key.address.ascii()))))
 }
 
-fn sandbox(options: &Options, writable: Option<&Path>) -> Result<(), Failure> {
-    sandbox::apply(Policy { writable_directory: writable, network: false, readable: &[] }, options.no_sandbox)
+/// Applies the sandbox (REQ-SEC-017) with `writable` the one directory the
+/// command may still write in; `no_sandbox` is `--no-sandbox`.
+fn sandbox_writable(writable: Option<&Path>, no_sandbox: bool) -> Result<(), Failure> {
+    sandbox::apply(Policy { writable_directory: writable, network: false, readable: &[] }, no_sandbox)
         .map_err(|message| (exit::INPUT, message))
 }
 
-/// `neottx list`.
-pub fn list(options: &Options) -> Result<(), Failure> {
-    let mut session = input::load(options)?;
-    sandbox(options, None)?;
-    let mut out = std::io::stdout().lock();
-    let pages = session.pages();
-    let page_count = pages.len();
-    let keys: Vec<PageKey> = pages.iter().map(|page| page.key).collect();
-    let mut index = 0;
-    while index < pages.len() {
-        let address = pages[index].key.address;
-        let subpages: Vec<&&StoredPage> =
-            pages[index..].iter().take_while(|page| page.key.address == address).collect();
-        let receptions: u32 = subpages.iter().map(|page| page.receptions).sum();
-        let errors: u32 = subpages.iter().map(|page| page.errors).sum();
-        let codes: Vec<String> = subpages.iter().map(|page| format!("{:04X}", page.key.subcode.value())).collect();
-        let _ = writeln!(
-            out,
-            "{}  sub-pages {:>3}  receptions {:>5}  errors {:>5}  [{}]",
-            String::from_utf8_lossy(&address.ascii()),
-            subpages.len(),
-            receptions,
-            errors,
-            codes.join(" ")
-        );
-        index += subpages.len();
-    }
-    // REQ-L25-051: enhancement faults are met only when a page is built, so
-    // every page is built once to count them.
-    let enhanced = session.decoder().config().level.is_enhanced();
-    if enhanced {
-        for key in keys {
-            let _ = session.grid(key, None);
-        }
-    }
-    let stats = session.decoder().statistics();
-    let _ = writeln!(
-        out,
-        "\n{} page(s); packets per magazine 1-8: {:?}; address failures {}; parity failures {}; triplet failures {}; discarded {}",
-        page_count,
-        [1, 2, 3, 4, 5, 6, 7, 0].map(|m| stats.per_magazine[m]),
-        stats.address_failures,
-        stats.parity_failures,
-        stats.triplet_failures,
-        stats.discarded
-    );
-    if enhanced {
-        let faults = &stats.enhancement;
-        let _ = writeln!(
-            out,
-            "enhancement faults: damaged triplets {}; forbidden invocations {}; absent objects {}; limited invocations {}; discarded writes {}; ignored designations {}; undefined characters {}",
-            faults.damaged_triplets,
-            faults.forbidden_invocations,
-            faults.absent_objects,
-            faults.limited_invocations,
-            faults.discarded_writes,
-            faults.ignored_designations,
-            faults.undefined_characters
-        );
-    }
-    Ok(())
+/// Applies the sandbox with nothing left to write and no network: every
+/// file the command needs is already open (REQ-SEC-017).
+pub(crate) fn sandbox_closed(no_sandbox: bool) -> Result<(), Failure> {
+    sandbox_writable(None, no_sandbox)
 }
 
 fn mosaic_style(legacy: bool) -> MosaicStyle {
     if legacy { MosaicStyle::Legacy } else { MosaicStyle::Unicode16 }
-}
-
-/// `neottx text`.
-pub fn text(options: &Options, page: &str, reveal: bool, legacy_mosaics: bool, cells: bool) -> Result<(), Failure> {
-    let selection = parse_selection(page)?;
-    let mut session = input::load_for(options, selection.page())?;
-    sandbox(options, None)?;
-    let mut out = std::io::stdout().lock();
-    for key in selected(&session, selection)? {
-        let grid = grid_of(&mut session, key)?;
-        if selection == Selection::All {
-            let _ = writeln!(out, "=== {}:{:04X}", String::from_utf8_lossy(&key.address.ascii()), key.subcode.value());
-        }
-        let written =
-            if cells { crate::output::cells::cells(&grid) } else { plain(&grid, reveal, mosaic_style(legacy_mosaics)) };
-        let _ = out.write_all(written.as_bytes());
-    }
-    Ok(())
 }
 
 fn display(choice: GraphicsChoice) -> Option<Display> {
@@ -219,88 +175,10 @@ fn scale_for(raster_args: &RasterArgs, area: Option<TextArea>, (width, height): 
     Scale { x: factor, y: factor, aspect: raster_args.aspect }
 }
 
-/// `neottx show`.
-pub fn show(
-    options: &Options,
-    page: &str,
-    raster_args: &RasterArgs,
-    graphics: GraphicsChoice,
-    legacy_mosaics: bool,
-    colours8: bool,
-) -> Result<(), Failure> {
-    let selection = parse_selection(page)?;
-    if selection == Selection::All {
-        return Err((exit::USAGE, "show displays one page; use text or render for all".into()));
-    }
-    let mut session = input::load_for(options, selection.page())?;
-    let is_terminal = std::io::stdout().is_terminal();
-    let (display, reason) = terminal::detect(display(graphics), is_terminal);
-    if let (Some(reason), true) = (reason, options.verbose > 0) {
-        eprintln!("neottx: using text output: {reason}");
-    }
-    let frame = Frame::still(session.decoder().config(), raster_args.reveal);
-    // Measure the terminal before the sandbox closes /dev/tty.
-    let area = if display == Display::Iterm2 { terminal::text_area() } else { None };
-    sandbox(options, None)?;
-    let key = selected(&session, selection)?[0];
-    let grid = grid_of(&mut session, key)?;
-    let mut out = std::io::stdout().lock();
-    match display {
-        Display::Iterm2 => {
-            // A page with side panels is wider (REQ-RND-033).
-            let scale = scale_for(raster_args, area, (row_width(&grid), ROWS * frame.options.row_height()));
-            let image = raster(&grid, frame, scale, Rgba::opaque(0, 0, 0));
-            let encoded = png(&image).map_err(|error| (exit::INPUT, error.to_string()))?;
-            let _ = out.write_all(iterm2_inline(&encoded, image.width, image.height).as_bytes());
-            let _ = out.write_all(b"\n");
-        }
-        Display::Text => {
-            let depth = if colours8 { ColourDepth::Eight } else { ColourDepth::TrueColour };
-            let text = if is_terminal || graphics == GraphicsChoice::Text {
-                ansi(&grid, raster_args.reveal, mosaic_style(legacy_mosaics), depth)
-            } else {
-                plain(&grid, raster_args.reveal, mosaic_style(legacy_mosaics))
-            };
-            let _ = out.write_all(text.as_bytes());
-        }
-    }
-    Ok(())
-}
-
-/// `neottx view`.
-#[cfg(feature = "view")]
-pub fn view(
-    options: &Options,
-    raster_args: &RasterArgs,
-    graphics: GraphicsChoice,
-    legacy_mosaics: bool,
-    colours8: bool,
-) -> Result<(), Failure> {
-    use neoteletext_core::consts::{CELL_WIDTH, COLUMNS, SIDE_PANEL_MAX_COLUMNS};
-    let (mut session, mut source) = input::open_live(options)?;
-    let (display, _) = terminal::detect(display(graphics), std::io::stdout().is_terminal());
-    let area = if display == Display::Iterm2 { terminal::text_area() } else { None };
-    // Fit the widest page, 56 columns with side panels (decision E.49).
-    let widest = (COLUMNS + usize::from(SIDE_PANEL_MAX_COLUMNS)) * CELL_WIDTH;
-    let height = ROWS * Frame::still(session.decoder().config(), false).options.row_height();
-    let scale = scale_for(raster_args, area, (widest, height));
-    sandbox::apply(Policy { writable_directory: None, network: false, readable: &[] }, options.no_sandbox)
-        .map_err(|message| (exit::INPUT, message))?;
-    let depth = if colours8 { ColourDepth::Eight } else { ColourDepth::TrueColour };
-    crate::view::run(&mut session, source.as_mut(), display, scale, depth, mosaic_style(legacy_mosaics))
-        .map_err(|error| (exit::INPUT, error.to_string()))
-}
-
-/// `neottx view` in a build without the viewer.
-#[cfg(not(feature = "view"))]
-pub fn view(
-    _options: &Options,
-    _raster_args: &RasterArgs,
-    _graphics: GraphicsChoice,
-    _legacy_mosaics: bool,
-    _colours8: bool,
-) -> Result<(), Failure> {
-    Err(neoteletext_app::not_in_build("the interactive viewer", "view"))
+/// The failure to read or write `path`: the input exit status and the
+/// path with the error, as every command words it (REQ-CLI-005).
+pub(crate) fn io_failure(path: &Path, error: impl std::fmt::Display) -> Failure {
+    (exit::INPUT, format!("{}: {error}", path.display()))
 }
 
 /// A file name for a page, from validated parts only (REQ-SEC-010).
@@ -309,216 +187,14 @@ fn page_file_name(key: PageKey, extension: &str) -> String {
     name.bytes().filter(|&byte| is_safe_file_name_byte(byte)).map(char::from).collect()
 }
 
-/// `neottx render`.
-pub fn render(
-    options: &Options,
-    page: &str,
-    output: &Path,
-    raster_args: &RasterArgs,
-    image: ImageFormat,
-) -> Result<(), Failure> {
-    let selection = parse_selection(page)?;
-    let mut session = input::load_for(options, selection.page())?;
-    let frame = Frame::still(session.decoder().config(), raster_args.reveal);
-    let scale = scale_for(raster_args, None, (0, 0));
-    let table = raster_args.font.as_deref().map(crate::font::read_table).transpose()?;
-    let loaded =
-        table.as_deref().map(LoadedFont::new).transpose().map_err(|error| (exit::INPUT, format!("{error:?}")))?;
-    let glyphs = GlyphSet::bedstead().with_fonts(loaded, [None; FONT_SET_COUNT]);
-    let pages = selected(&session, selection)?;
-    let directory: PathBuf = if selection == Selection::All {
-        std::fs::create_dir_all(output).map_err(|error| (exit::INPUT, format!("{}: {error}", output.display())))?;
-        output.to_path_buf()
-    } else {
-        output
-            .parent()
-            .filter(|parent| !parent.as_os_str().is_empty())
-            .map_or_else(|| PathBuf::from("."), Path::to_path_buf)
-    };
-    sandbox(options, Some(&directory))?;
-    let extension = match image {
-        ImageFormat::Png => "png",
-        ImageFormat::Ppm => "ppm",
-    };
-    for key in pages {
-        let grid = grid_of(&mut session, key)?;
-        let picture = match image {
-            ImageFormat::Png => Rgba::TRANSPARENT,
-            ImageFormat::Ppm => Rgba::opaque(0, 0, 0),
-        };
-        let image_data = raster_in(&grid, frame, scale, picture, &glyphs);
-        let bytes = match image {
-            ImageFormat::Png => png(&image_data),
-            ImageFormat::Ppm => ppm(&image_data, Rgba::opaque(0, 0, 0)),
-        }
-        .map_err(|error| (exit::INPUT, error.to_string()))?;
-        let target = if selection == Selection::All {
-            directory.join(page_file_name(key, extension))
-        } else {
-            output.to_path_buf()
-        };
-        std::fs::write(&target, bytes).map_err(|error| (exit::INPUT, format!("{}: {error}", target.display())))?;
-    }
-    Ok(())
-}
-
-/// `neottx service-info`.
-pub fn service_info(options: &Options) -> Result<(), Failure> {
-    let session = input::load(options)?;
-    sandbox(options, None)?;
-    let Some(info) = session.service() else {
-        return Err((exit::NOT_FOUND, "no packet 8/30 in the input".into()));
-    };
-    println!("format: {}", if info.format2 { 2 } else { 1 });
-    if let Some((address, subcode)) = info.initial_page {
-        println!("initial page: {} sub-code {:04X}", String::from_utf8_lossy(&address.ascii()), subcode.value());
-    }
-    if let Some(network) = info.network_id {
-        println!("network identification: {network:04X}");
-    }
-    if let Some(time) = info.utc {
-        println!(
-            "date and time (UTC): {:04}-{:02}-{:02} {:02}:{:02}:{:02} (refers to the next second boundary)",
-            time.year, time.month, time.day, time.hour, time.minute, time.second
-        );
-    }
-    if let Some(offset) = info.offset_half_hours {
-        println!(
-            "local offset: {}{}:{:02}",
-            if offset < 0 { '-' } else { '+' },
-            offset.unsigned_abs() / 2,
-            (offset.unsigned_abs() % 2) * 30
-        );
-    }
-    // REQ-SVC-005: the core decodes the message with the Latin G0 set.
-    let status: String = neoteletext_core::charset::latin_text(&info.status)
-        .iter()
-        .map(|&c| if neoteletext_core::policy::is_safe_output_char(c) { c } else { ' ' })
-        .collect();
-    println!("status: {}", status.trim_end());
-    Ok(())
-}
-
-/// `neottx services`: the teletext streams of a transport stream (REQ-INP-007).
-pub fn services(options: &Options) -> Result<(), Failure> {
-    let mut input = input::open(options)?;
-    let mut reader = input::reader(options, false);
-    let mut found = 0u32;
-    let mut out = std::io::stdout().lock();
-    input::pump(input.as_mut(), reader.as_mut(), &mut |item| match item {
-        Item::TeletextEntry { program, pid, entry } => {
-            found += 1;
-            let _ = writeln!(
-                out,
-                "program {program:>5}  PID {pid:#06x}  language {}  {:?}  page {}",
-                String::from_utf8_lossy(&entry.language),
-                entry.kind,
-                String::from_utf8_lossy(&entry.page.ascii())
-            );
-        }
-        Item::SubtitlePage(page) => {
-            let _ = writeln!(out, "default subtitle page: {}", String::from_utf8_lossy(&page.ascii()));
-        }
-        _ => {}
-    })?;
-    if found == 0 {
-        return Err((exit::NOT_FOUND, "no teletext descriptors found".into()));
-    }
-    Ok(())
-}
-
-/// `neottx convert`.
-pub fn convert(options: &Options, output: &Path, to: ConvertTarget, page: Option<&str>) -> Result<(), Failure> {
-    let filter = match page {
-        Some(text) => match parse_selection(text)? {
-            Selection::Page(address, _) => Some(address),
-            Selection::All => None,
-        },
-        None => None,
-    };
-    let target = match to {
-        ConvertTarget::T42 => conversion::Target::T42,
-        ConvertTarget::Tti => conversion::Target::Tti,
-    };
-    conversion::convert(options, output, target, filter)
-}
-
-/// `neottx slice`.
-#[cfg(feature = "slice")]
-pub fn slice(options: &Options, output: &Path, preset: &str) -> Result<(), Failure> {
-    let counters = neoteletext_app::slice::slice(options, output, preset)?;
-    eprintln!("{counters:?}");
-    Ok(())
-}
-
-/// `neottx slice` in a build without the slicer.
-#[cfg(not(feature = "slice"))]
-pub fn slice(_options: &Options, _output: &Path, _preset: &str) -> Result<(), Failure> {
-    Err(neoteletext_app::not_in_build("raw video slicing", "slice"))
-}
-
-/// `neottx fetch`, the fetcher process of live mode (REQ-SEC-018), which
-/// `neottx` starts by running itself again.
-#[cfg(feature = "live")]
-pub fn fetch(address: &str, no_sandbox: bool, allow_local: &[IpAddr], proxy: Option<&str>) -> Result<(), Failure> {
-    neoteletext_app::fetch::run(address, no_sandbox, allow_local, proxy)
-}
-
-/// `neottx fetch` in a build without live feeds.
-#[cfg(not(feature = "live"))]
-pub fn fetch(_address: &str, _no_sandbox: bool, _allow_local: &[IpAddr], _proxy: Option<&str>) -> Result<(), Failure> {
-    Err(neoteletext_app::not_in_build("the fetcher process of live mode", "live"))
-}
-
-/// The short names of the services a descriptor lists, for `--descriptor`.
-#[cfg(feature = "live")]
-fn descriptor_service_names(path: &Path) -> Result<Vec<Vec<u8>>, Failure> {
-    neoteletext_app::live::descriptor_service_names(path)
-}
-
-/// Service descriptors are read by the web module, which a build without
-/// live feeds leaves out.
-#[cfg(not(feature = "live"))]
-fn descriptor_service_names(_path: &Path) -> Result<Vec<Vec<u8>>, Failure> {
-    Err(neoteletext_app::not_in_build("service descriptors (--descriptor)", "live"))
-}
-
-/// `neottx check`: the page checker (REQ-CLI-006). Exit status 4 on errors.
-pub fn check(files: &[PathBuf], descriptor: Option<&Path>) -> Result<(), Failure> {
-    use neoteletext_formats::check::{CheckOptions, Severity, check_page};
-    let services: Vec<Vec<u8>> = match descriptor {
-        Some(path) => descriptor_service_names(path)?,
-        None => Vec::new(),
-    };
-    let names: Vec<&[u8]> = services.iter().map(Vec::as_slice).collect();
-    let options = CheckOptions { services: descriptor.map(|_| names.as_slice()) };
-    let mut errors = 0u32;
-    for file in files {
-        let mut input = File::open(file).map_err(|error| (exit::INPUT, format!("{}: {error}", file.display())))?;
-        let mut reader = neoteletext_formats::tti::TtiReader::default();
-        input::pump(&mut input, &mut reader, &mut |item| {
-            if let Item::Page(page) = item {
-                check_page(page, &options, &mut |finding| {
-                    let severity = match finding.severity {
-                        Severity::Error => {
-                            errors += 1;
-                            "error"
-                        }
-                        Severity::Warning => "warning",
-                    };
-                    println!(
-                        "{}:{}: page {} sub-page {}: {severity}: {:?}",
-                        file.display(),
-                        finding.line,
-                        String::from_utf8_lossy(&finding.page.ascii()),
-                        finding.subpage,
-                        finding.problem
-                    );
-                });
-            }
-        })?;
-    }
-    if errors > 0 { Err((exit::CHECK_ERRORS, format!("{errors} error(s)"))) } else { Ok(()) }
+/// A page number 100 to 8FF, as `--page` gives it to the commands that
+/// write a page or its sound.
+#[cfg(any(feature = "keyboard", feature = "sound", feature = "write-text"))]
+fn page_number(text: &str) -> Result<u16, Failure> {
+    u16::from_str_radix(text, 16)
+        .ok()
+        .filter(|&mpp| PageAddress::from_mpp(mpp).is_some())
+        .ok_or_else(|| (exit::USAGE, format!("{text}: not a page number 100 to 8FF")))
 }
 
 #[cfg(test)]

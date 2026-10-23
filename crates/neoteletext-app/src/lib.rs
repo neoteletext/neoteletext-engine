@@ -12,6 +12,8 @@
 //! out is refused with [`not_in_build`].
 
 pub mod convert;
+#[cfg(feature = "live")]
+pub mod descriptor;
 pub mod extras;
 #[cfg(feature = "live")]
 pub mod fetch;

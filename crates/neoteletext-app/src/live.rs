@@ -5,7 +5,7 @@ use crate::extras::{self, PageExtras};
 use crate::pipe::{self, Frame, Notice, Origin, PageData, Submission};
 use crate::session::Session;
 use crate::source::{Source, Wake};
-use crate::{Failure, exit};
+use fill::Fill;
 use neoteletext_core::consts::{PACKET_HEADER, PACKET_MAGAZINE_ENHANCEMENT};
 use neoteletext_core::packet::{Decoded, Packet, PacketMeta, decode, decode_address};
 use neoteletext_core::types::{Instant, PageAddress, SubCode};
@@ -15,10 +15,14 @@ use neoteletext_formats::item::Reader;
 use neoteletext_formats::t42::T42Variant;
 use std::collections::HashMap;
 use std::io::Write;
-use std::path::Path;
-use std::process::{Child, Command, Stdio};
+use std::process::Child;
 use std::sync::mpsc::{self, Receiver};
 use std::sync::{Arc, OnceLock};
+
+mod fill;
+mod spawn;
+
+pub use spawn::open;
 
 /// A live source: the fetcher and the frames it sends.
 pub struct Live {
@@ -54,33 +58,6 @@ pub struct Live {
     wake: Arc<OnceLock<Wake>>,
 }
 
-/// Which pages the bytes of one response may fill (REQ-WEB-019).
-#[derive(Clone, Copy)]
-enum Fill<'a> {
-    /// Any page: a front door, a push message, a form's answer, a file.
-    Any,
-    /// A page's own file: the pages asked for, and enhancement pages,
-    /// whose numbers are not decimal and which a page's file may carry
-    /// (item 6).
-    Asked(&'a std::collections::HashSet<u16>),
-}
-
-impl Fill<'_> {
-    fn allows(self, page: PageAddress) -> bool {
-        match self {
-            Self::Any => true,
-            Self::Asked(asked) => {
-                asked.contains(&page.mpp())
-                    || page.page.tens() > DECIMAL_DIGIT_LAST
-                    || page.page.units() > DECIMAL_DIGIT_LAST
-            }
-        }
-    }
-}
-
-/// The highest digit of a page number a viewer can type.
-const DECIMAL_DIGIT_LAST: u8 = 9;
-
 /// Bounds of a service's refresh interval, in seconds (concept decision 13).
 const MIN_REFRESH_SECONDS: u32 = neoteletext_web::descriptor::MIN_REFRESH_SECONDS;
 const MAX_REFRESH_SECONDS: u32 = neoteletext_web::descriptor::MAX_REFRESH_SECONDS;
@@ -90,61 +67,6 @@ const MICROSECONDS_PER_SECOND: u64 = 1_000_000;
 /// that it is the first page checked when the network returns
 /// (REQ-WEB-009).
 const OFFLINE_RETRY_US: u64 = 10_000_000;
-
-/// Starts the fetcher process for `address`. Must run before sandboxing:
-/// starting a program is blocked afterwards.
-pub fn open(
-    address: &str,
-    no_sandbox: bool,
-    allow_local: &[std::net::IpAddr],
-    proxy: Option<&str>,
-) -> Result<Box<dyn Source>, Failure> {
-    let program = std::env::current_exe().map_err(|error| (exit::INPUT, error.to_string()))?;
-    let mut command = Command::new(program);
-    command.arg("fetch").arg(address).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::inherit());
-    if no_sandbox {
-        command.arg("--no-sandbox");
-    }
-    for address in allow_local {
-        command.arg("--allow-local").arg(address.to_string());
-    }
-    if let Some(proxy) = proxy {
-        command.arg("--proxy").arg(proxy);
-    }
-    let mut child = command.spawn().map_err(|error| (exit::INPUT, format!("cannot start the fetcher: {error}")))?;
-    let requests = child.stdin.take().ok_or((exit::INPUT, "no pipe to the fetcher".to_string()))?;
-    let mut output = child.stdout.take().ok_or((exit::INPUT, "no pipe from the fetcher".to_string()))?;
-    let (sender, frames) = mpsc::channel();
-    let live = Live::new(Some(child), Box::new(requests), frames);
-    let wake = live.wake.clone();
-    std::thread::spawn(move || read_frames(&mut output, &sender, &wake));
-    Ok(Box::new(live))
-}
-
-/// Reads the fetcher's frames until its pipe ends, passing each on and
-/// waking the viewer, if it asked to be woken, as it comes.
-fn read_frames(output: &mut dyn std::io::Read, sender: &mpsc::Sender<Frame>, wake: &OnceLock<Wake>) {
-    // Every frame is validated by pipe::read; a bad one ends the link.
-    while let Ok(Some(frame)) = pipe::read(output) {
-        if sender.send(frame).is_err() {
-            return;
-        }
-        if let Some(wake) = wake.get() {
-            wake();
-        }
-    }
-    // The end is news too: the viewer sees the fetcher gone.
-    if let Some(wake) = wake.get() {
-        wake();
-    }
-}
-
-/// A live source fed `frames` from a channel, writing its requests to
-/// `requests`, for the tests.
-#[cfg(test)]
-fn routed(frames: Receiver<Frame>, requests: Box<dyn Write + Send>) -> Live {
-    Live::new(None, requests, frames)
-}
 
 impl Live {
     fn new(child: Option<Child>, requests: Box<dyn Write + Send>, frames: Receiver<Frame>) -> Self {
@@ -167,9 +89,7 @@ impl Live {
             wake: Arc::default(),
         }
     }
-}
 
-impl Live {
     /// Decodes page bytes into the session, keeping each page's extension
     /// data. Returns the first page the bytes held.
     fn feed_page(
@@ -222,6 +142,28 @@ impl Live {
 
     fn send(&mut self, frame: &Frame) {
         let _ = pipe::write(&mut self.requests, frame);
+    }
+
+    fn receive(&mut self, session: &mut Session, format: Format, page: &PageData, now: Instant) {
+        if !page.secure && page.origin != Origin::Push {
+            self.notices.push(Notice::Unencrypted);
+        }
+        self.offline_since = None;
+        let first = self.feed_page(session, format, page, now);
+        if let Some(address) = first
+            && page.origin == Origin::Page
+        {
+            self.last_bytes.insert(address.mpp(), (format, page.clone()));
+        }
+        if page.origin == Origin::Form {
+            // A form response carrying a page is shown (REQ-WEB-011).
+            self.shown_form_page = first;
+        }
+        if page.origin == Origin::FrontDoor
+            && let Some(first) = first
+        {
+            self.notices.push(Notice::Bundle(first.mpp()));
+        }
     }
 }
 
@@ -359,30 +301,6 @@ impl Source for Live {
     }
 }
 
-impl Live {
-    fn receive(&mut self, session: &mut Session, format: Format, page: &PageData, now: Instant) {
-        if !page.secure && page.origin != Origin::Push {
-            self.notices.push(Notice::Unencrypted);
-        }
-        self.offline_since = None;
-        let first = self.feed_page(session, format, page, now);
-        if let Some(address) = first
-            && page.origin == Origin::Page
-        {
-            self.last_bytes.insert(address.mpp(), (format, page.clone()));
-        }
-        if page.origin == Origin::Form {
-            // A form response carrying a page is shown (REQ-WEB-011).
-            self.shown_form_page = first;
-        }
-        if page.origin == Origin::FrontDoor
-            && let Some(first) = first
-        {
-            self.notices.push(Notice::Bundle(first.mpp()));
-        }
-    }
-}
-
 impl Drop for Live {
     fn drop(&mut self) {
         if let Some(child) = &mut self.child {
@@ -392,110 +310,5 @@ impl Drop for Live {
     }
 }
 
-/// The short names of the services a descriptor file lists, for
-/// `neottx check --descriptor` (REQ-CLI-006).
-pub fn descriptor_service_names(path: &Path) -> Result<Vec<Vec<u8>>, Failure> {
-    let json = std::fs::read(path).map_err(|error| (exit::INPUT, format!("{}: {error}", path.display())))?;
-    let base = neoteletext_web::url::Url::parse("https://localhost/descriptor.json")
-        .map_err(|error| (exit::INPUT, format!("{error:?}")))?;
-    let descriptor = neoteletext_web::descriptor::Descriptor::parse(&json, &base)
-        .map_err(|error| (exit::INPUT, format!("{}: {error:?}", path.display())))?;
-    Ok(descriptor.services().map(|service| service.short_name.as_bytes().to_vec()).collect())
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn the_pipe_reader_wakes_the_viewer_for_each_frame_and_at_the_end() {
-        // The viewer took a page only at its next 40 ms look; it is woken
-        // as each frame arrives instead (REQ-INT-008).
-        let mut bytes = Vec::new();
-        for _ in 0..2 {
-            pipe::write(&mut bytes, &Frame::Notice(Notice::Unencrypted)).unwrap();
-        }
-        let woken = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let count = woken.clone();
-        let wake: OnceLock<Wake> = OnceLock::new();
-        let _ = wake.set(Arc::new(move || {
-            count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        }));
-        let (sender, frames) = mpsc::channel();
-        read_frames(&mut bytes.as_slice(), &sender, &wake);
-        assert_eq!(frames.try_iter().count(), 2);
-        assert_eq!(woken.load(std::sync::atomic::Ordering::Relaxed), 3, "each frame, then the end");
-    }
-    use std::sync::{Arc, Mutex};
-
-    /// A pipe end that keeps what is written.
-    #[derive(Clone, Default)]
-    struct Kept(Arc<Mutex<Vec<u8>>>);
-
-    impl Write for Kept {
-        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-            self.0.lock().map_err(|_| std::io::Error::other("poisoned"))?.extend_from_slice(bytes);
-            Ok(bytes.len())
-        }
-
-        fn flush(&mut self) -> std::io::Result<()> {
-            Ok(())
-        }
-    }
-
-    impl Kept {
-        fn requests(&self) -> usize {
-            let bytes = self.0.lock().map(|bytes| bytes.clone()).unwrap_or_default();
-            let mut reader = bytes.as_slice();
-            std::iter::from_fn(|| pipe::read(&mut reader).ok().flatten())
-                .filter(|frame| matches!(frame, Frame::Request(..)))
-                .count()
-        }
-    }
-
-    const SECOND: u64 = 1_000_000;
-
-    /// REQ-WEB-020, concept decision 13: a service's refresh interval
-    /// brings the page on screen again sooner than the stale timeout would.
-    #[test]
-    fn the_refresh_interval_asks_for_the_page_again() {
-        let (sender, frames) = mpsc::channel();
-        let kept = Kept::default();
-        let mut live = routed(frames, Box::new(kept.clone()));
-        let mut session = Session::new(neoteletext_core::config::Config::default(), 8);
-        let page = PageAddress::from_mpp(0x100).unwrap_or_else(|| unreachable!());
-        live.poll(&mut session, Instant(0));
-        live.request(page, SubCode::ANY);
-        assert_eq!(kept.requests(), 1);
-        live.poll(&mut session, Instant(6 * SECOND));
-        assert_eq!(kept.requests(), 1, "without a refresh interval, not yet");
-        sender.send(Frame::Notice(Notice::Refresh(5))).unwrap_or_else(|_| unreachable!());
-        live.poll(&mut session, Instant(7 * SECOND));
-        assert_eq!(kept.requests(), 2, "five seconds have passed since the request");
-        live.poll(&mut session, Instant(9 * SECOND));
-        assert_eq!(kept.requests(), 2);
-        live.poll(&mut session, Instant(13 * SECOND));
-        assert_eq!(kept.requests(), 3);
-    }
-
-    /// REQ-WEB-019, concept section 2 item 4: a page's own file fills only
-    /// that page, while a front door fills every page it holds.
-    #[test]
-    fn a_page_file_fills_only_its_page() {
-        let two_pages = b"PN,10000\nOL,1,ONE\nPN,20000\nOL,1,TWO\nPN,1A000\nOL,1,HEX\n".to_vec();
-        let address = |mpp| PageAddress::from_mpp(mpp).unwrap_or_else(|| unreachable!());
-        for (origin, stored) in [(Origin::Page, [true, false, true]), (Origin::FrontDoor, [true, true, true])] {
-            let (sender, frames) = mpsc::channel();
-            let mut live = routed(frames, Box::new(Kept::default()));
-            let mut session = Session::new(neoteletext_core::config::Config::default(), 8);
-            live.request(address(0x100), SubCode::ANY);
-            let page =
-                PageData { secure: true, origin, url: "https://a.example/100.t42".into(), bytes: two_pages.clone() };
-            sender.send(Frame::Tti(page)).unwrap_or_else(|_| unreachable!());
-            live.poll(&mut session, Instant(SECOND));
-            let present: Vec<bool> =
-                [0x100, 0x200, 0x1A0].iter().map(|&mpp| session.page(address(mpp), SubCode::ANY).is_some()).collect();
-            assert_eq!(present, stored, "{origin:?}");
-        }
-    }
-}
+mod tests;
