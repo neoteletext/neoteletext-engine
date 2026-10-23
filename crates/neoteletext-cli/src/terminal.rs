@@ -64,11 +64,12 @@ pub const fn text_area() -> Option<TextArea> {
 #[must_use]
 pub fn fit_scale(area: Option<TextArea>, page_width: usize, page_height: usize, aspect: bool) -> usize {
     let Some(area) = area else { return 1 };
-    let row_height = area.height / area.rows;
+    // A terminal that reports no rows keeps no row free.
+    let row_height = area.height.checked_div(area.rows).unwrap_or(0);
     let usable_height = area.height.saturating_sub(row_height);
     let (page_width, page_height) = neoteletext_image::scale::scaled_size(page_width, page_height, 1, 1, aspect);
-    let by_width = area.width / page_width.max(1);
-    let by_height = usable_height / page_height.max(1);
+    let by_width = area.width.checked_div(page_width).unwrap_or(area.width);
+    let by_height = usable_height.checked_div(page_height).unwrap_or(usable_height);
     by_width.min(by_height).max(1)
 }
 

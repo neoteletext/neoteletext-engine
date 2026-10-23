@@ -28,7 +28,7 @@ Other manufacturers' ICs were not individually audited. The software's named beh
 | Level 1 | `core/src/level1.rs` | Careful set-at/set-after sequencing, conceal/flash, stored held-mosaic form, blast-through text, boxing and lower halves of double-height rows. Tests include Annex G examples. |
 | Level 1.5 | `core/src/level15.rs` | Separate X/26 overwrite pass with G2/G3/diacritics, row/column positioning and profile-dependent designation handling. Explicit handling of the Annex A.3 versus clause 12.3.2 interpretation. |
 | Levels 2.5/3.5 | `core/src/enhance.rs`, `objects.rs`, `drcs.rs`, `packet/page_data.rs`, `packet/links.rs` | Substantial implementation of colors, panels, objects, DRCS and level gating. Advanced interoperability confidence is lower than basic-page confidence. |
-| Rendering and IC profiles | `core/src/render.rs`, `config.rs`, `glyphs/mod.rs` | Useful behavioral profiles, replaceable glyph data and explicit mosaic geometry. Pixel-perfect chip fidelity is not established. |
+| Rendering and IC profiles | `core/src/render.rs`, `config.rs`, `glyphs.rs` | Useful behavioral profiles, replaceable glyph data and explicit mosaic geometry. Pixel-perfect chip fidelity is not established. |
 | Broadcast ingress | `formats/src/pes.rs`, `transport.rs`, `t42.rs` | Streaming parsers and DVB bit-order normalization are present. This review is not a complete EN 300 472 transport conformance audit. |
 
 Paths in this table are relative to `crates/tellytxt-` plus the named crate; for example `core/src/ecc.rs` means `crates/tellytxt-core/src/ecc.rs`.

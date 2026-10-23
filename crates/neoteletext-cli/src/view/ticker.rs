@@ -14,11 +14,12 @@ pub(super) fn origin_ticker(grid: &mut Grid, origin: &str, now: Instant) {
     if text.is_empty() {
         return;
     }
-    let offset = usize::try_from(now.0 / TICKER_STEP_US).unwrap_or(0) % text.len();
+    let offset = usize::try_from(now.0 / TICKER_STEP_US).unwrap_or(0).checked_rem(text.len()).unwrap_or(0);
     let reference = grid.cells[0][STATUS_COLUMNS];
     let g0 = grid.designation.g0;
     for column in 0..STATUS_COLUMNS {
-        let byte = text[(offset + column) % text.len()];
+        let byte =
+            offset.saturating_add(column).checked_rem(text.len()).and_then(|at| text.get(at)).copied().unwrap_or(SPACE);
         if let Some(cell) = grid.cell_mut(0, column) {
             *cell = neoteletext_core::level1::Cell {
                 glyph: if byte == SPACE {

@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, reason = "a test")]
 use super::*;
 
 #[test]

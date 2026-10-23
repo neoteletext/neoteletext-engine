@@ -78,8 +78,8 @@ impl Value {
     /// Reads one document.
     ///
     /// # Errors
-    /// Malformed JSON, nesting past the reader's limit, or more than
-    /// [`MAX_ITEMS`] values.
+    /// Malformed JSON, nesting past the reader's limit, or more
+    /// values than the reader's item limit (`MAX_ITEMS`).
     pub fn parse(bytes: &[u8]) -> Result<Self, &'static str> {
         let mut reader = JsonReader::new(bytes).map_err(|_| "JSON")?;
         let mut items = 0_usize;

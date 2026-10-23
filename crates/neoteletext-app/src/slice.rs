@@ -34,7 +34,11 @@ pub fn slice(options: &Options, output: &Path, preset: &str) -> Result<Counters,
         if read == 0 {
             break;
         }
-        raw.feed(&buffer[..read], |packet, _meta| {
+        // A reader that reports more than the buffer holds is broken.
+        let chunk = buffer
+            .get(..read)
+            .ok_or((exit::INPUT, "the input reported more bytes than it was given room for".to_string()))?;
+        raw.feed(chunk, |packet, _meta| {
             if let Err(error) = writer.write_packet(&packet) {
                 failure = Some(error);
             }

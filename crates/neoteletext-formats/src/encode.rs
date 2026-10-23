@@ -1,5 +1,5 @@
 //! The page encoder (REQ-ARCH-004, REQ-INP-019 and REQ-INP-024): turns a
-//! [`PageFile`] into correctly coded packets in the order of Annex B.2,
+//! [`PageFile`](crate::page::PageFile) into correctly coded packets in the order of Annex B.2,
 //! so that page files take the same decoding path as broadcasts.
 //!
 //! The rows of a page are coded as its page coding says (Table 3,

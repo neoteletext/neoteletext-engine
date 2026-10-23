@@ -9,9 +9,9 @@
 //! the format readers, and events for the viewer. Data in an output is
 //! borrowed from the agent's buffers and is valid only during the call.
 //!
-//! Two connections are used: [`ConnectionId::Fetch`] carries the
+//! Two connections are used: [`ConnectionId::Fetch`](crate::port::ConnectionId::Fetch) carries the
 //! descriptor, page and form requests one at a time (REQ-WEB-014), and
-//! [`ConnectionId::Push`] carries the push stream (REQ-WEB-005).
+//! [`ConnectionId::Push`](crate::port::ConnectionId::Push) carries the push stream (REQ-WEB-005).
 //!
 //! Push, form submission and cookies are compile-time features (decision
 //! E.61). The agent's types are the same in every build. A build without a

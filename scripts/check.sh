@@ -15,6 +15,40 @@ mode="${1:-fast}"
 
 step() { printf '\n== %s\n' "$*"; }
 
+# DEVELOPMENT.md section 6 (REQ-SEC-003): every crate root reads input from
+# outside its process, and each carries one no-panic lint list, the same
+# in all of them.
+readonly NO_PANIC_ROOTS=(crates/neoteletext-core/src/lib.rs crates/neoteletext-formats/src/lib.rs
+    crates/neoteletext-slicer/src/lib.rs crates/neoteletext-web/src/lib.rs crates/neoteletext-image/src/lib.rs
+    crates/neoteletext-audio/src/lib.rs crates/neoteletext-audio-mix/src/lib.rs crates/neoteletext-input/src/lib.rs
+    crates/neoteletext-qrkeyboard/src/lib.rs crates/neoteletext-app/src/lib.rs crates/neoteletext-cli/src/lib.rs
+    crates/neoteletext-cli/src/main.rs)
+
+check_no_panic_lists() {
+    local first="" root list listed
+    for root in "${NO_PANIC_ROOTS[@]}"; do
+        [[ -f "$root" ]] || { echo "$root is listed in NO_PANIC_ROOTS but does not exist" >&2; return 1; }
+        list="$(sed -n '/^#!\[deny(/,/^)\]/p' "$root")"
+        [[ -n "$list" ]] || { echo "$root has no #![deny(...)] list" >&2; return 1; }
+        if [[ -z "$first" ]]; then
+            first="$list"
+        elif [[ "$list" != "$first" ]]; then
+            echo "$root's #![deny(...)] list differs from ${NO_PANIC_ROOTS[0]}'s" >&2
+            return 1
+        fi
+    done
+    # A new crate root must be listed, so that none escapes the check.
+    for root in crates/*/src/lib.rs crates/*/src/main.rs crates/*/src/bin/*.rs; do
+        [[ -f "$root" ]] || continue
+        listed=no
+        for named in "${NO_PANIC_ROOTS[@]}"; do
+            [[ "$named" == "$root" ]] && listed=yes
+        done
+        [[ "$listed" == yes ]] || { echo "$root is a crate root missing from NO_PANIC_ROOTS" >&2; return 1; }
+    done
+    echo "ok: ${#NO_PANIC_ROOTS[@]} crate roots carry the same list"
+}
+
 step "rustfmt (REQ-GEN-006)"
 cargo fmt --all --check
 
@@ -29,6 +63,12 @@ cargo xtask check-layers
 cargo xtask check-constants
 cargo xtask check-io
 cargo xtask check-deps
+
+step "documentation, warnings as errors (REQ-DOC-001)"
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --quiet
+
+step "the no-panic lint list is the same in every crate root (REQ-SEC-003, DEVELOPMENT.md section 6)"
+check_no_panic_lists
 
 step "the bundled font: Bedstead's export matches its recorded SHA-256 (REQ-FNT-001)"
 cargo xtask check-bedstead

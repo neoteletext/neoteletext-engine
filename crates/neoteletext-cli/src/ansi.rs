@@ -128,6 +128,7 @@ pub fn ansi(grid: &Grid, reveal: bool, mosaics: MosaicStyle, depth: ColourDepth)
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing, reason = "a test")]
 mod tests {
     use super::*;
     use neoteletext_core::charset::{CharRef, CharSet, G0, G0Set, NationalOption};

@@ -38,6 +38,7 @@ impl Frame {
 }
 
 #[cfg(all(test, feature = "view"))]
+#[allow(clippy::indexing_slicing, reason = "a test")]
 mod tests {
     use super::*;
     use crate::image::{Scale, raster};

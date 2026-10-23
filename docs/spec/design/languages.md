@@ -169,7 +169,7 @@ The prototype found every in-scope script legible at 12 × 20.
 
 ### The change
 
-- **`LoadedGlyph`** holds 20 lines as well as 10. Today it is ten rows, at `crates/neoteletext-core/src/glyphs/mod.rs:140`. The G3 glyphs already have a 20-line form, `G3Glyph.large`.
+- **`LoadedGlyph`** holds 20 lines as well as 10. Today it is ten rows, at `crates/neoteletext-core/src/glyphs/loaded_font.rs:42`. The G3 glyphs already have a 20-line form, `G3Glyph.large`.
 - **A 12 × 20 glyph** is drawn line for line in a normal cell. Each line is drawn twice in double height and double size, as a 12 × 10 glyph's lines are today.
 - **A 12 × 10 font** is drawn exactly as now, rounding included (REQ-FNT-008).
 - **The font form (REQ-FNT-002)** also accepts `FONTBOUNDINGBOX 12 20 0 0`, with `BBX 12 20 0 0` and 20 bitmap rows in every character. One font has one height.

@@ -84,7 +84,7 @@ pub fn form_spec(form: &page::Form) -> Option<FormSpec> {
             });
         }
         spec_field.first_option = u8::try_from(first).unwrap_or(0);
-        spec_field.option_count = u8::try_from(spec.options.len() - first).unwrap_or(0);
+        spec_field.option_count = u8::try_from(spec.options.len().saturating_sub(first)).unwrap_or(0);
         if !spec.fields.push(spec_field) {
             break;
         }

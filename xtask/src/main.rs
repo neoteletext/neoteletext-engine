@@ -35,6 +35,7 @@ mod glyphs;
 mod level25;
 mod noto;
 mod size;
+mod test_code;
 mod trace;
 
 use std::path::PathBuf;

@@ -139,18 +139,14 @@ pub fn generate(root: &Path) -> Result<(), String> {
     let mut code: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     let mut tests: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     for path in &paths {
-        let text = fs::read_to_string(path).unwrap_or_default();
         let relative = path.strip_prefix(root).unwrap_or(path).to_string_lossy().to_string();
-        let (body, test_part) = match text.find("#[cfg(test)]") {
-            Some(index) => text.split_at(index),
-            None => (text.as_str(), ""),
-        };
+        let (body, test_part) = crate::test_code::production_and_tests(path);
         let is_test_file = relative.contains("/tests/") || relative.starts_with("tests/");
-        for id in identifiers(body) {
+        for id in identifiers(&body) {
             if is_test_file { tests.entry(id).or_default() } else { code.entry(id).or_default() }
                 .insert(relative.clone());
         }
-        for id in identifiers(test_part) {
+        for id in identifiers(&test_part) {
             tests.entry(id).or_default().insert(format!("{relative} (unit tests)"));
         }
     }

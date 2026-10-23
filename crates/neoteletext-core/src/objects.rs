@@ -19,7 +19,7 @@
 //!
 //! It reads stored pages only through the read-only lookup of the
 //! acquisition layer (REQ-ACQ-020), and decodes their bytes only with the
-//! packet layer's decoders and [`TripletFunction`] (REQ-PKT-010,
+//! packet layer's decoders and [`TripletFunction`](crate::packet::TripletFunction) (REQ-PKT-010,
 //! REQ-PKT-017, REQ-PKT-018). Nothing here allocates; every loop is bounded
 //! by the 507 triplets of an object page or the 208 of a page's X/26.
 

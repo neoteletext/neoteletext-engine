@@ -81,7 +81,8 @@ impl PageExtras {
             .iter()
             .find(|link| {
                 usize::from(link.row) == row
-                    && (usize::from(link.column)..usize::from(link.column) + usize::from(link.length)).contains(&column)
+                    && (usize::from(link.column)..usize::from(link.column).saturating_add(usize::from(link.length)))
+                        .contains(&column)
             })
             .map(|link| &link.destination)
     }

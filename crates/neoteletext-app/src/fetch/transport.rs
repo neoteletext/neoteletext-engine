@@ -272,25 +272,32 @@ impl Transport for StdTransport {
         security: Security,
     ) -> Result<(), Self::Error> {
         let index = slot(connection);
-        match self.open(host, port, security) {
-            Ok((stream, peer)) => {
-                self.streams[index] = Some(stream);
-                self.states[index] = LinkState::Open(web_address(peer));
-            }
+        let (state, stream) = match self.open(host, port, security) {
+            Ok((stream, peer)) => (LinkState::Open(web_address(peer)), Some(stream)),
             Err(message) => {
                 let _ = send(&Frame::Notice(Notice::Message(message)));
-                self.states[index] = LinkState::Failed;
+                (LinkState::Failed, None)
+            }
+        };
+        if let (Some(slot_state), Some(slot_stream)) = (self.states.get_mut(index), self.streams.get_mut(index)) {
+            *slot_state = state;
+            if stream.is_some() {
+                *slot_stream = stream;
             }
         }
         Ok(())
     }
 
     fn state(&mut self, connection: ConnectionId) -> LinkState {
-        self.states[slot(connection)]
+        self.states.get(slot(connection)).copied().unwrap_or(LinkState::Closed)
     }
 
     fn send(&mut self, connection: ConnectionId, bytes: &[u8]) -> Result<(), Self::Error> {
-        let open = self.streams[slot(connection)].as_mut().ok_or(embedded_io::ErrorKind::NotConnected)?;
+        let open = self
+            .streams
+            .get_mut(slot(connection))
+            .and_then(Option::as_mut)
+            .ok_or(embedded_io::ErrorKind::NotConnected)?;
         // Written whole, blocking, within the write limit: a request or a
         // input message is small, and the socket drains it at once.
         let mut socket = &open.socket;
@@ -302,17 +309,20 @@ impl Transport for StdTransport {
     }
 
     fn receive(&mut self, connection: ConnectionId, buffer: &mut [u8]) -> Result<Received, Self::Error> {
-        Ok(self.streams[slot(connection)].as_mut().map_or(Received::Closed, |open| open.receive(buffer)))
+        let open = self.streams.get_mut(slot(connection)).and_then(Option::as_mut);
+        Ok(open.map_or(Received::Closed, |open| open.receive(buffer)))
     }
 
     fn close(&mut self, connection: ConnectionId) {
         let index = slot(connection);
         // Ends the reader thread's wait; the bytes it still holds are
         // dropped with the channel.
-        if let Some(open) = self.streams[index].take() {
+        if let Some(open) = self.streams.get_mut(index).and_then(Option::take) {
             let _ = open.socket.shutdown(std::net::Shutdown::Both);
         }
-        self.states[index] = LinkState::Closed;
+        if let Some(state) = self.states.get_mut(index) {
+            *state = LinkState::Closed;
+        }
     }
 }
 

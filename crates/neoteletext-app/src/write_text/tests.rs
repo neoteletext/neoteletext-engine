@@ -1,4 +1,10 @@
-#![allow(clippy::unwrap_used, clippy::indexing_slicing)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::arithmetic_side_effects,
+    reason = "a test"
+)]
 
 use super::rtl::break_line_rtl;
 use super::sets::{Cell, Sets, encode, page_sets};

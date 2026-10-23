@@ -1,3 +1,4 @@
+#![allow(clippy::indexing_slicing, reason = "a test")]
 use super::*;
 use neoteletext_core::charset::{CharRef, CharSet, G0, G0Set, NationalOption};
 use neoteletext_core::consts::{ALPHA_YELLOW, COLUMNS, ROWS, SPACE, STATUS_COLUMNS};

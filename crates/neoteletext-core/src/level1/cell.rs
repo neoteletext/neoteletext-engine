@@ -265,7 +265,7 @@ impl CellAttributes {
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub struct Cell {
     /// What the cell shows. G3 characters are characters of the set
-    /// [`CharSet::G3`].
+    /// [`CharSet::G3`](crate::charset::CharSet::G3).
     pub glyph: Glyph,
     /// Foreground colour: a Colour Map index 0 to 31; the Level 1 colours
     /// 0 to 7 are CLUT 0 (decision E.43).

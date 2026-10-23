@@ -10,7 +10,7 @@ use super::socks::{
 use super::{ProxyError, ProxyKind, parse_proxy};
 use crate::http::HeadCollector;
 
-/// A proxy a port keeps: [`ProxyAddress`] owned.
+/// A proxy a port keeps: [`ProxyAddress`](super::ProxyAddress) owned.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Proxy {
     /// HTTP or SOCKS5.

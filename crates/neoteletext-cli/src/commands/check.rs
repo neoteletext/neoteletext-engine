@@ -39,7 +39,7 @@ pub fn check(files: &[PathBuf], descriptor: Option<&Path>) -> Result<(), Failure
                 check_page(page, &options, &mut |finding| {
                     let severity = match finding.severity {
                         Severity::Error => {
-                            errors += 1;
+                            errors = errors.saturating_add(1);
                             "error"
                         }
                         Severity::Warning => "warning",

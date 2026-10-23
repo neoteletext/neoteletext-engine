@@ -198,6 +198,7 @@ fn page_number(text: &str) -> Result<u16, Failure> {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, reason = "a test")]
 mod tests {
     use super::*;
 

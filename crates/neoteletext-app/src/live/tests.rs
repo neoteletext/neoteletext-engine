@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::unreachable, reason = "a test")]
 use super::spawn::read_frames;
 use super::*;
 

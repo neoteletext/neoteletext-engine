@@ -105,7 +105,11 @@ pub fn pump(input: &mut dyn Read, reader: &mut dyn Reader, out: &mut dyn FnMut(I
         if read == 0 {
             break;
         }
-        reader.feed(&buffer[..read], out);
+        // A reader that reports more than the buffer holds is broken.
+        let chunk = buffer
+            .get(..read)
+            .ok_or((exit::INPUT, "the input reported more bytes than it was given room for".to_string()))?;
+        reader.feed(chunk, out);
     }
     reader.finish(out);
     Ok(())
@@ -145,7 +149,7 @@ pub fn load_for(options: &Options, wanted: Option<PageAddress>) -> Result<Sessio
     let verbose = options.verbose;
     pump(input.as_mut(), reader.as_mut(), &mut |item| match item {
         Item::Packet { packet, meta } => {
-            packets += 1;
+            packets = packets.saturating_add(1);
             session.push(&packet, &meta);
         }
         Item::Detected(format) => {
@@ -206,5 +210,34 @@ fn region_for_language(language: [u8; 3]) -> u8 {
         b"ara" => 8,
         b"heb" => 10,
         _ => 0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A reader of bytes that says it read more than the buffer holds.
+    struct Overreporting;
+
+    impl Read for Overreporting {
+        fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+            Ok(buffer.len().saturating_add(1))
+        }
+    }
+
+    /// A format reader that is never reached.
+    struct Unfed;
+
+    impl Reader for Unfed {
+        fn feed(&mut self, _bytes: &[u8], _out: &mut dyn FnMut(Item<'_>)) {}
+        fn finish(&mut self, _out: &mut dyn FnMut(Item<'_>)) {}
+    }
+
+    /// REQ-SEC-003: a broken input is refused, not a panic.
+    #[test]
+    fn an_input_reporting_more_than_it_was_given_is_refused() {
+        let result = pump(&mut Overreporting, &mut Unfed, &mut |_| {});
+        assert!(matches!(result, Err((exit::INPUT, _))), "{result:?}");
     }
 }

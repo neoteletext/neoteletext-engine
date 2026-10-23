@@ -1,5 +1,11 @@
 //! Font converter tests: the map file, the cell conversions and the round trip through the writer.
-#![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects, clippy::panic)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    clippy::string_slice,
+    clippy::arithmetic_side_effects,
+    clippy::panic
+)]
 
 use super::super::FontErrorKind;
 use super::super::source::read_source;

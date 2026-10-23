@@ -12,7 +12,7 @@ pub(super) const LEAVE_TYPING: char = ']';
 pub(super) fn map_key(key: KeyEvent) -> Option<Key> {
     let alt = key.modifiers.contains(KeyModifiers::ALT);
     Some(match key.code {
-        KeyCode::Char(c @ '0'..='9') => Key::Digit(c as u8 - b'0'),
+        KeyCode::Char(c @ '0'..='9') => Key::Digit((c as u8).saturating_sub(b'0')),
         KeyCode::Char('r') | KeyCode::F(1) => Key::Red,
         KeyCode::Char('g') | KeyCode::F(2) => Key::Green,
         KeyCode::Char('y') | KeyCode::F(3) => Key::Yellow,
