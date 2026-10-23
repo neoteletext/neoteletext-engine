@@ -20,12 +20,13 @@
 //! byte 7     flags: 1 echo, 2 masked, 4 block
 //! ```
 
-use neoteletext_audio::idl::{FRAGMENT_DATA, fragment, packet};
+use neoteletext_audio::idl::{FRAGMENT_DATA, packet};
 pub use neoteletext_audio::record::TYPE_CURSOR;
 use neoteletext_audio::record::{RecordError, record_length, split, write};
 use neoteletext_core::consts::{COLUMNS, PACKET_FIRST_ROW};
 use neoteletext_core::packet::Packet;
 
+use crate::carriage::input_record;
 use crate::is_page;
 
 /// Flag: echo printable keys at the cursor until the channel answers.
@@ -178,10 +179,7 @@ pub fn from_body(body: [u8; BODY]) -> Result<Cursor, CursorError> {
 /// A cursor record that is damaged or out of range.
 #[must_use]
 pub fn from_packet(packet: &Packet) -> Option<Result<Cursor, CursorError>> {
-    let fragment = fragment(packet)?.ok()?;
-    if !(fragment.first && fragment.last && fragment.data.get(1) == Some(&TYPE_CURSOR)) {
-        return None;
-    }
+    let fragment = input_record(packet, |kind| kind == TYPE_CURSOR)?;
     Some(read(fragment.data.get(..RECORD).unwrap_or(&[])))
 }
 
