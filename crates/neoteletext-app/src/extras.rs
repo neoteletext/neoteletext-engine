@@ -189,7 +189,10 @@ pub fn from_page(page: &PageFile, url: &str, services: &[String]) -> PageExtras 
                     column += 1;
                 }
                 for &byte in line.label.as_bytes().iter().take(start + 1 + LABEL_CHARACTERS - column) {
-                    row[column] = byte & 0x7F;
+                    let code = byte & 0x7F;
+                    // REQ-NAV-011: no attribute from the page in the
+                    // receiver's row.
+                    row[column] = if code < SPACE { SPACE } else { code };
                     column += 1;
                 }
             } else {
@@ -321,4 +324,34 @@ pub fn form_spec(form: &page::Form) -> Option<FormSpec> {
 #[must_use]
 pub const fn key(page: &PageFile) -> (PageAddress, SubCode) {
     (page.address, page.subcode)
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing, reason = "a test")]
+mod tests {
+    use super::*;
+
+    fn page_file(tti: &[u8]) -> PageFile {
+        let mut pages = Vec::new();
+        let mut reader = neoteletext_formats::tti::TtiReader::new();
+        let mut keep = |item: neoteletext_formats::Item<'_>| {
+            if let neoteletext_formats::Item::Page(page) = item {
+                pages.push(*page);
+            }
+        };
+        neoteletext_formats::Reader::feed(&mut reader, tti, &mut keep);
+        neoteletext_formats::Reader::finish(&mut reader, &mut keep);
+        pages.remove(0)
+    }
+
+    /// REQ-NAV-011: no attribute from the page reaches the receiver's row:
+    /// a label's control codes are drawn as spaces.
+    #[test]
+    fn a_labels_control_codes_never_reach_row_24() {
+        let page = page_file(b"PN,10000\r\nOL,1,TEXT\r\nLN,R,101,Fl\x08ash\r\nLN,G,140,Big\x0dTall\r\n");
+        let (row, _) = from_page(&page, "https://example.org/100.tti", &[]).row24.unwrap();
+        assert!(row.iter().enumerate().all(|(column, &code)| code >= SPACE || column % PROMPT_COLUMNS == 0), "{row:?}");
+        assert_eq!(&row[1..7], b"Fl ash");
+        assert_eq!(&row[11..19], b"Big Tall");
+    }
 }
