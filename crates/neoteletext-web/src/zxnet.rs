@@ -17,6 +17,7 @@
 //!   ignored. Everything received is untrusted (REQ-SEC-003).
 
 mod channel;
+mod conversation;
 mod events;
 mod feed;
 mod message;
