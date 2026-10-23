@@ -188,6 +188,85 @@ fn considered_warnings_are_kept() {
     assert_eq!(diagnostics[0].kind, DiagnosticKind::BadArgument { command: *b"CK" });
 }
 
+/// F-103: reads `text`, whose one page has a value cut to its capacity
+/// just after a carriage return, and returns the page; writing it and
+/// reading it back must change nothing, since the reader takes a carriage
+/// return before the line feed as line ending (REQ-INP-013).
+fn cut_value_page(text: &[u8]) -> PageFile {
+    let (pages, _) = read(text);
+    #[cfg(feature = "std")]
+    {
+        let write = |pages: &[PageFile]| {
+            let references: Vec<&PageFile> = pages.iter().collect();
+            let mut written = Vec::new();
+            crate::write::write_tti(&references, &mut written).unwrap();
+            written
+        };
+        let written = write(&pages);
+        assert_eq!(write(&read(&written).0), written, "writing what was read back changes nothing");
+    }
+    pages.into_iter().next().unwrap()
+}
+
+/// F-103: the cut is reported.
+fn assert_cut_reported(text: &[u8]) {
+    let (_, diagnostics) = read(text);
+    let cut = DiagnosticKind::CapacityExceeded { what: crate::item::Capacity::Text };
+    assert!(diagnostics.iter().any(|diagnostic| diagnostic.kind == cut));
+}
+
+/// F-103: 63 bytes and a carriage return fill a description of
+/// `DESCRIPTION_BYTES`; the carriage return is not kept, in the file's
+/// description, the page's, or its source.
+#[test]
+fn a_description_cut_to_capacity_ends_in_no_carriage_return() {
+    use crate::page::DESCRIPTION_BYTES;
+    let value = [&[b'a'; DESCRIPTION_BYTES - 1][..], b"\rxyz"].concat();
+    let kept = [b'a'; DESCRIPTION_BYTES - 1];
+    let file_text = [b"DE,", &value[..], b"\nPN,10000\n"].concat();
+    assert_cut_reported(&file_text);
+    let file = cut_value_page(&file_text);
+    assert_eq!(file.description.as_bytes(), kept);
+    let page = cut_value_page(&[b"PN,10000\nDE,", &value[..], b"\nDS,", &value[..], b"\n"].concat());
+    assert_eq!(page.description.as_bytes(), kept);
+    assert_eq!(page.source.as_bytes(), kept);
+}
+
+/// F-103: the same for a form token of `FORM_TOKEN_BYTES` (`FT`).
+#[test]
+fn a_form_token_cut_to_capacity_ends_in_no_carriage_return() {
+    use crate::page::FORM_TOKEN_BYTES;
+    let value = [&[b'a'; FORM_TOKEN_BYTES - 1][..], b"\rxyz"].concat();
+    let text = [b"PN,10000\nFT,", &value[..], b"\n"].concat();
+    assert_cut_reported(&text);
+    let page = cut_value_page(&text);
+    assert_eq!(page.form.token.as_bytes(), [b'a'; FORM_TOKEN_BYTES - 1]);
+}
+
+/// F-103: the same for a field's default text of `FIELD_TEXT_BYTES`, the
+/// last value of an `FD` line.
+#[test]
+fn a_field_value_cut_to_capacity_ends_in_no_carriage_return() {
+    use crate::page::FIELD_TEXT_BYTES;
+    let value = [&[b'a'; FIELD_TEXT_BYTES - 1][..], b"\rxyz"].concat();
+    let text = [b"PN,40001\nOL,3,Name:\nFD,TEXT,name,7,31,50,Y,,", &value[..], b"\n"].concat();
+    assert_cut_reported(&text);
+    let page = cut_value_page(&text);
+    assert_eq!(page.form.fields.as_slice()[0].default.as_bytes(), [b'a'; FIELD_TEXT_BYTES - 1]);
+}
+
+/// F-103: the same for a link label of `LINK_LABEL_BYTES`, the last value
+/// of an `LN` line, which the link records as cut.
+#[test]
+fn a_link_label_cut_to_capacity_ends_in_no_carriage_return() {
+    use crate::page::LINK_LABEL_BYTES;
+    let value = [&[b'a'; LINK_LABEL_BYTES - 1][..], b"\rxyz"].concat();
+    let page = cut_value_page(&[b"PN,10000\nLN,R,101,", &value[..], b"\n"].concat());
+    let link = &page.links.as_slice()[0];
+    assert!(link.label_truncated);
+    assert_eq!(link.label.as_bytes(), [b'a'; LINK_LABEL_BYTES - 1]);
+}
+
 #[test]
 fn content_before_any_page_number_is_reported() {
     let (pages, diagnostics) = read(b"OL,1,orphan\n");

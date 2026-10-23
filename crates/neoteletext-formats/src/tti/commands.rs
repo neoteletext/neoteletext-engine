@@ -9,7 +9,7 @@ use crate::consts::TTI_COMMAND_BYTES;
 use crate::item::{Capacity, Diagnostic, DiagnosticKind, Item};
 use crate::page::{INPUT_MODE_BITS, IssueKind, ModesLine, PageFunction, Warning};
 
-use super::fields::{Args, CODING_LAST, REGION_LAST, decimal, hex, page_address, result_page};
+use super::fields::{Args, CODING_LAST, REGION_LAST, decimal, hex, page_address, result_page, set_value};
 use super::row_text::decode_text;
 use super::{PAGE_COMMANDS, TtiReader};
 
@@ -138,7 +138,7 @@ impl TtiReader {
                 }
             }
             b"FT" => {
-                if !self.page.form.token.set(args) {
+                if !set_value(&mut self.page.form.token, args) {
                     self.diagnostic(DiagnosticKind::CapacityExceeded { what: Capacity::Text }, out);
                 }
             }
@@ -201,7 +201,7 @@ impl TtiReader {
             (_, false) => &mut self.file_source,
             (_, true) => &mut self.page.source,
         };
-        if !target.set(args) {
+        if !set_value(target, args) {
             self.diagnostic(DiagnosticKind::CapacityExceeded { what: Capacity::Text }, out);
         }
     }

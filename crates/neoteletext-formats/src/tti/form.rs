@@ -8,11 +8,11 @@ use crate::page::{FieldKind, FormField, FormMethod, FormOption, IssueKind};
 use crate::text::Text;
 
 use super::TtiReader;
-use super::fields::{Args, decimal, flag};
+use super::fields::{Args, decimal, flag, set_value};
 
 impl TtiReader {
     fn set_text<const N: usize>(&self, target: &mut Text<N>, value: &[u8], out: &mut dyn FnMut(Item<'_>)) {
-        if !target.set(value) {
+        if !set_value(target, value) {
             self.diagnostic(DiagnosticKind::CapacityExceeded { what: Capacity::Text }, out);
         }
     }

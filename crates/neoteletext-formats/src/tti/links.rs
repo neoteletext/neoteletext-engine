@@ -10,7 +10,7 @@ use crate::page::{CursorLine, FastextLink, IssueKind, LinkDestination, LinkKey, 
 use crate::text::Text;
 
 use super::TtiReader;
-use super::fields::{Args, decimal, hex, page_address};
+use super::fields::{Args, decimal, hex, page_address, set_value};
 use super::targets::link_destination;
 
 /// The last row a text link may be on: rows 1 to 23 are the page's text.
@@ -61,8 +61,10 @@ impl TtiReader {
             self.page.links_valid = false;
             self.issue(IssueKind::TooManyLinks, out);
         }
-        let (label, label_truncated) = Text::from_bytes(label);
-        let link = LinkLine { key, service, address, subcode, url, label, label_truncated, line: self.line_number };
+        let mut kept = Text::new();
+        let label_truncated = !set_value(&mut kept, label);
+        let link =
+            LinkLine { key, service, address, subcode, url, label: kept, label_truncated, line: self.line_number };
         if !self.page.links.push(link) {
             self.page.links_valid = false;
             self.diagnostic(DiagnosticKind::CapacityExceeded { what: Capacity::Links }, out);
