@@ -70,7 +70,7 @@ const LOCAL_NAME_SUFFIXES: [&str; 9] =
 /// computer or the local network (REQ-SEC-006 through a proxy): an address
 /// in a blocked range, `localhost`, a name of one label, which a local
 /// resolver completes with its own domain, or a name under one of
-/// [`LOCAL_NAME_SUFFIXES`] (decision E.113, finding F-17). Through a proxy
+/// `LOCAL_NAME_SUFFIXES` (decision E.113, finding F-17). Through a proxy
 /// the rule is by name: a public name that resolves to a local address is
 /// not seen.
 #[must_use]
