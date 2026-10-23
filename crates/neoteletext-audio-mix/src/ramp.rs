@@ -10,8 +10,8 @@ pub(crate) const MIN_RAMP_MS: u32 = 5;
 /// sample.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Ramp {
-    pub(crate) level: i32,
-    pub(crate) target: i32,
+    level: i32,
+    target: i32,
     step: i32,
 }
 
@@ -35,6 +35,16 @@ impl Ramp {
             self.level = self.level.saturating_sub(self.step).max(self.target);
         }
         self.level
+    }
+
+    /// The current level.
+    pub(crate) fn level(&self) -> i32 {
+        self.level
+    }
+
+    /// The level it ramps to.
+    pub(crate) fn target(&self) -> i32 {
+        self.target
     }
 
     pub(crate) fn settled_at_zero(&self) -> bool {

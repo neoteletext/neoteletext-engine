@@ -173,7 +173,7 @@ impl Mixer {
     fn voice_sample(&mut self, index: usize) -> i32 {
         let rate = self.rate_hz;
         let Some(voice) = self.voices.get(index).copied() else { return 0 };
-        let duck = voice.duck.map_or(UNITY, |ramp| ramp.level);
+        let duck = voice.duck.map_or(UNITY, |ramp| ramp.level());
         let mut total: i32 = 0;
         let mut voice = voice;
         for slot in [&mut voice.playing, &mut voice.outgoing] {
@@ -259,7 +259,7 @@ impl Mixer {
             let (target, fade) =
                 strongest.map_or((UNITY, MIN_RAMP_MS), |(percent, fade)| (level(percent), u32::from(fade)));
             let mut ramp = voice.duck.unwrap_or(Ramp::at(UNITY));
-            if ramp.target != target {
+            if ramp.target() != target {
                 ramp.to(target, fade, rate);
             }
             ramp.advance();
