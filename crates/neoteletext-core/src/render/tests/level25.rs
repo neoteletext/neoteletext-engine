@@ -9,14 +9,21 @@
     allow(dead_code, unused_imports, reason = "helpers of the tests whose capability is compiled out (decision E.71)")
 )]
 
-// The module is compiled for tests only (see `render.rs`); the attribute
+// The module is compiled for tests only (see `render/tests.rs`); the attribute
 // also marks this file as test code for `cargo xtask check-layers`.
 #[cfg(test)]
 use super::*;
+
 use crate::charset::{CharRef, CharSet, G0, G0Set, NationalOption};
 use crate::colour::SidePanels;
-use crate::consts::{G3_CODES, G3_FIRST_CODE, PAGE_WIDTH};
-use crate::level1::CellAttributes;
+use crate::config::CellMode;
+use crate::consts::{
+    ADJACENT_CLUT_FLIP, CELL_HEIGHT, CELL_WIDTH, COLOUR_TRANSPARENT, COLUMNS, FLASH_UNITS, G3_CODES, G3_FIRST_CODE,
+    PAGE_WIDTH, PALETTE_SIZE, RECEIVER_COLUMNS, SIDE_PANEL_FIRST_COLUMN,
+};
+use crate::glyphs::GlyphSet;
+use crate::level1::{Cell, CellAttributes, FlashMode, FlashRate, Glyph, Grid, Size, Width, Zoom};
+use crate::types::Instant;
 use std::vec;
 use std::vec::Vec;
 
