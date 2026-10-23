@@ -24,7 +24,7 @@ mod path;
 
 pub use host::ip_literal;
 
-use host::{check_host, parse_ipv6};
+use host::{check_host, parse_ipv6, write_ipv6};
 use lexical::{check_characters, scheme_end, split_parts};
 use neoteletext_core::policy::{self, OriginParts};
 use path::{check_path, remove_dot_segments};
@@ -199,8 +199,13 @@ impl Url {
             writer.byte(b'[').map_err(too_long)?;
         }
         let host_start = writer.len();
-        for &byte in parts.host {
-            writer.byte(byte.to_ascii_lowercase()).map_err(too_long)?;
+        match host_ip {
+            Some(IpAddress::V6(groups)) => write_ipv6(&groups, &mut writer).map_err(too_long)?,
+            _ => {
+                for &byte in parts.host {
+                    writer.byte(byte.to_ascii_lowercase()).map_err(too_long)?;
+                }
+            }
         }
         let host_end = writer.len();
         if parts.bracketed {

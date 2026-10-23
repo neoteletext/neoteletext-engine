@@ -51,21 +51,40 @@ pub enum ProxyError {
     NeedsAuthentication,
 }
 
+/// The name of this computer (RFC 6761 section 6.3).
+const LOCALHOST: &str = "localhost";
+
+/// Name suffixes that name this computer or a local network, compared
+/// without regard to case (decision E.113):
+/// - `.localhost`: this computer (RFC 6761 section 6.3);
+/// - `.local`: multicast DNS on the local link (RFC 6762 section 3);
+/// - `.internal`: reserved for private use (ICANN, 2024);
+/// - `.home.arpa`: residential networks (RFC 8375);
+/// - `.lan`, `.corp`, `.intranet`, `.private`: in common private use,
+///   never delegated (RFC 6762 appendix G);
+/// - `.localdomain`: the local domain many systems give themselves.
+const LOCAL_NAME_SUFFIXES: [&str; 9] =
+    [".localhost", ".local", ".internal", ".home.arpa", ".lan", ".corp", ".intranet", ".private", ".localdomain"];
+
 /// Whether `host`, as a client sees it before asking a proxy, is on this
 /// computer or the local network (REQ-SEC-006 through a proxy): an address
-/// in a blocked range, `localhost`, or a name under `.localhost`, `.local`
-/// or `.internal`.
+/// in a blocked range, `localhost`, a name of one label, which a local
+/// resolver completes with its own domain, or a name under one of
+/// [`LOCAL_NAME_SUFFIXES`] (decision E.113, finding F-17). Through a proxy
+/// the rule is by name: a public name that resolves to a local address is
+/// not seen.
 #[must_use]
 pub fn hidden_local(host: &str) -> bool {
     if let Some(address) = ip_literal(host) {
         return address.is_blocked();
     }
     let name = host.strip_suffix('.').unwrap_or(host);
-    let lower = |suffix: &str| {
+    let ends_with = |suffix: &str| {
         name.len() >= suffix.len()
             && name.get(name.len().saturating_sub(suffix.len())..).is_some_and(|end| end.eq_ignore_ascii_case(suffix))
     };
-    name.eq_ignore_ascii_case("localhost") || lower(".localhost") || lower(".local") || lower(".internal")
+    let single_label = !name.contains('.');
+    name.eq_ignore_ascii_case(LOCALHOST) || single_label || LOCAL_NAME_SUFFIXES.iter().any(|suffix| ends_with(suffix))
 }
 
 /// A proxy's kind and address, as a port's setting writes it.

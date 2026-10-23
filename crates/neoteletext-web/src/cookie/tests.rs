@@ -347,3 +347,51 @@ fn secure_history_for_downgrade() {
     assert!(!jar.reached_securely("a.example", NOW + 61));
     assert!(!jar.reached_securely("b.example", NOW));
 }
+
+/// Finding F-13 (decision E.114 item 1): an expired record is read past,
+/// and the live record after it is restored. The first expired record
+/// ended the whole import, and every later cookie was lost.
+#[test]
+fn an_import_skips_an_expired_record_and_goes_on() {
+    let mut jar = Jar::new();
+    jar.store(b"old=1; Path=/; Max-Age=10", "a.example", "/", true, NOW, true).unwrap();
+    jar.store(b"live=1; Path=/; Max-Age=3600", "a.example", "/", true, NOW, true).unwrap();
+    let mut buffer = [0u8; 512];
+    let mut writer = Writer::new(&mut buffer);
+    assert_eq!(jar.export(NOW, &mut writer).unwrap(), 2);
+    let saved = writer.written().to_vec();
+    let mut restored = Jar::new();
+    assert_eq!(restored.import(&saved, NOW + 20), 1, "the expired record is skipped, the live one restored");
+    assert_eq!(header(&mut restored, "a.example", "/", true, Site::SameService), "live=1");
+}
+
+/// Finding F-13 (decision E.114 item 1): a cookie whose path is longer
+/// than the attribute limit comes back with that path. The path was
+/// rebuilt into a `Path=` attribute, which the 1024-byte limit dropped,
+/// so the cookie came back as `Path=/` and was sent everywhere on the host.
+#[test]
+fn an_imported_path_longer_than_an_attribute_keeps_its_folder() {
+    let folder = std::format!("/{}", "f".repeat(1100));
+    let mut jar = Jar::new();
+    jar.store(b"deep=1; Max-Age=3600", "a.example", &std::format!("{folder}/page"), true, NOW, true).unwrap();
+    assert_eq!(header(&mut jar, "a.example", &std::format!("{folder}/x"), true, Site::SameService), "deep=1");
+    let mut buffer = [0u8; 2048];
+    let mut writer = Writer::new(&mut buffer);
+    assert_eq!(jar.export(NOW, &mut writer).unwrap(), 1);
+    let saved = writer.written().to_vec();
+    let mut restored = Jar::new();
+    assert_eq!(restored.import(&saved, NOW), 1);
+    assert_eq!(header(&mut restored, "a.example", &std::format!("{folder}/x"), true, Site::SameService), "deep=1");
+    assert_eq!(header(&mut restored, "a.example", "/", true, Site::SameService), "", "not widened to the host");
+    assert_eq!(header(&mut restored, "a.example", "/elsewhere", true, Site::SameService), "");
+}
+
+/// Finding F-13: a saved path is checked as the header it came from was,
+/// and a refused record is read past.
+#[test]
+fn an_imported_path_with_a_control_character_is_refused() {
+    let mut jar = Jar::new();
+    let data = b"neoteletext-cookies 2\n9999999999 1 1 9 3 1 1 3 a.bx1/\r\n\n9999999999 1 1 9 3 1 1 1 a.by2/\n";
+    assert_eq!(jar.import(data, NOW), 1, "the second record is restored");
+    assert_eq!(header(&mut jar, "a.b", "/", true, Site::SameService), "y=2");
+}

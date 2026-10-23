@@ -426,14 +426,71 @@ fn redirects_are_followed_up_to_five() {
     let Rec::Page { url, .. } = pages(&records)[0] else { unreachable!() };
     assert_eq!(url, "http://tt.example/c");
 
-    for _ in 0..6 {
-        harness.replay().reply("tt.example:80", Reply::Bytes(response("302 Found", &["Location: /loop"], b"")));
+    for hop in 0..6 {
+        let location = format!("Location: /loop{hop}");
+        harness.replay().reply("tt.example:80", Reply::Bytes(response("302 Found", &[&location], b"")));
     }
     harness.advance(SECOND);
     assert!(has_event(
         &harness.fetch(0x101),
         "FetchFailed { page: PageAddress { magazine: Magazine(1), page: PageNumber(1) }, subcode: None, failure: TooManyRedirects"
     ));
+}
+
+/// Finding F-44 (decision E.114 item 4; the review's probe B): a
+/// `Location` that is empty, is not UTF-8, or names the request's own
+/// address with the method unchanged leads nowhere, and is a fault after
+/// one request. It resolved to the request's own address and spent six
+/// requests, outside the fetch interval.
+#[test]
+fn a_redirect_to_nowhere_is_a_fault_after_one_request() {
+    let empty = b"HTTP/1.1 302 Found\r\nLocation: \r\nContent-Length: 0\r\n\r\n".to_vec();
+    let not_utf8 = b"HTTP/1.1 302 Found\r\nLocation: /p/\xff\r\nContent-Length: 0\r\n\r\n".to_vec();
+    let itself = response("302 Found", &["Location: http://tt.example/p/100"], b"");
+    let relative_itself = response("307 Temporary Redirect", &["Location: /p/100"], b"");
+    let see_itself = response("303 See Other", &["Location: /p/100"], b"");
+    for reply in [empty, not_utf8, itself, relative_itself, see_itself] {
+        let mut harness = plain_service();
+        for _ in 0..6 {
+            harness.replay().reply("tt.example:80", Reply::Bytes(reply.clone()));
+        }
+        let records = harness.fetch(0x100);
+        let shown = String::from_utf8_lossy(&reply).into_owned();
+        assert!(has_event(&records, "FetchFailed {"), "{shown}: {records:?}");
+        assert!(
+            records.iter().any(|record| format!("{record:?}").contains("failure: BadRedirect")),
+            "{shown}: {records:?}"
+        );
+        assert_eq!(harness.replay().requests_to("tt.example:80").len(), 2, "{shown}: the descriptor and one request");
+    }
+}
+
+/// Finding F-75 (RFC 9110 section 15.2; the review's probe D): interim
+/// 1xx heads before the final one are read past, on the fetch and the
+/// push connections. Every 1xx but 101 failed the exchange, so a server
+/// sending `103 Early Hints` was unusable.
+#[test]
+fn interim_responses_before_the_final_one_are_read_past() {
+    let mut harness = plain_service();
+    let mut reply =
+        b"HTTP/1.1 103 Early Hints\r\nLink: </style>; rel=preload\r\n\r\nHTTP/1.1 100 Continue\r\n\r\n".to_vec();
+    reply.extend(response("200 OK", &["Content-Type: text/x-teletext-tti"], TTI));
+    harness.replay().reply("tt.example:80", Reply::Bytes(reply));
+    let records = harness.fetch(0x100);
+    assert_eq!(pages(&records).len(), 1, "{records:?}");
+    assert!(!has_event(&records, "FetchFailed"), "{records:?}");
+}
+
+/// Finding F-75: the same on a push connection's handshake.
+#[test]
+#[cfg(feature = "push")]
+fn interim_responses_before_a_push_handshake_are_read_past() {
+    let mut harness = push_service("sse", "http://tt.example/events");
+    let stream = b"HTTP/1.1 103 Early Hints\r\n\r\nHTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\
+                   Transfer-Encoding: chunked\r\n\r\n";
+    harness.replay().reply("tt.example:80", Reply::Bytes(stream.to_vec()));
+    let records = harness.open("http://tt.example/service.json");
+    assert!(has_event(&records, "PushConnected(ServerSentEvents)"), "{records:?}");
 }
 
 #[test]
@@ -513,6 +570,33 @@ fn no_downgrade_after_https() {
     assert!(has_event(&records, "DowngradeRefused { host: \"secure.example\" }"));
     assert!(has_event(&records, "DescriptorFailed(Downgrade)"));
     assert!(!harness.replay().connects.iter().any(|(_, _, port, _)| *port == 80));
+}
+
+/// Finding F-43 (decision E.114 item 3): when the memory of hosts reached
+/// over HTTPS is full, the host least recently seen is forgotten, so the
+/// rule against downgrade holds for the hosts in use. The memory filled
+/// silently, and the 33rd host was never remembered.
+#[test]
+fn the_secure_host_memory_forgets_the_host_least_recently_seen() {
+    let hosts: Vec<String> =
+        (0..=neoteletext_web::consts::SECURE_HOSTS).map(|index| format!("h{index}.example")).collect();
+    let resolve: Vec<(&str, IpAddress)> = hosts.iter().map(|host| (host.as_str(), PUBLIC)).collect();
+    let mut harness = Harness::new(Config::default(), Replay::new(&resolve));
+    let json = br#"{"name":"S","initial_page":"100","page_template":"/p/{mpp}"}"#;
+    for host in &hosts {
+        harness.replay().reply(&format!("{host}:443"), json_response(json));
+        let records = harness.open(&format!("https://{host}/d.json"));
+        assert!(has_event(&records, "ServiceReady"), "{host}: {records:?}");
+        harness.advance(SECOND);
+    }
+    let newest = hosts.last().unwrap();
+    let records = harness.open(&format!("http://{newest}/d.json"));
+    assert!(has_event(&records, "DowngradeRefused"), "the newest host is remembered: {records:?}");
+    harness.advance(SECOND);
+    let oldest = &hosts[0];
+    harness.replay().reply(&format!("{oldest}:80"), json_response(json));
+    let records = harness.open(&format!("http://{oldest}/d.json"));
+    assert!(!has_event(&records, "DowngradeRefused"), "the oldest host is forgotten: {records:?}");
 }
 
 #[test]
@@ -611,6 +695,39 @@ fn form_destinations_are_restricted() {
     harness.input(Input::Submit(submission("http://tt.example/p/400", "http://forms.example/in", &fields)));
     harness.input(Input::ConfirmSubmission(true));
     assert!(has_event(&harness.take(), "SubmissionSucceeded { status: 204 }"));
+}
+
+/// Finding F-16 (decision E.112; the review's probe E): a form sent to a
+/// permitted origin that answers 307 or 308 is not sent again to a third
+/// origin, which would get the viewer's values and the token with no check
+/// and no confirmation. A 307 within the target's origin is followed.
+#[test]
+#[cfg(feature = "forms")]
+fn a_form_redirected_with_its_method_kept_stays_on_its_target_origin() {
+    for status in ["307 Temporary Redirect", "308 Permanent Redirect"] {
+        let mut harness = plain_service();
+        harness.replay().resolve.insert("third.example".to_string(), PUBLIC);
+        let away = response(status, &["Location: http://third.example/collect"], b"");
+        harness.replay().reply("forms.example:80", Reply::Bytes(away));
+        harness.replay().reply("third.example:80", Reply::Bytes(response("204 No Content", &[], b"")));
+        let fields = [("a", "1")];
+        harness.input(Input::Submit(submission("http://tt.example/p/400", "http://forms.example/in", &fields)));
+        harness.input(Input::ConfirmSubmission(true));
+        let records = harness.take();
+        assert!(has_event(&records, "SubmissionRefused(Origin)"), "{status}: {records:?}");
+        assert!(harness.replay().requests_to("third.example:80").is_empty(), "{status}: nothing to the third origin");
+    }
+    // Within the target's origin, the method and body are kept.
+    let mut harness = plain_service();
+    let along = response("307 Temporary Redirect", &["Location: /in/again"], b"");
+    harness.replay().reply("forms.example:80", Reply::Bytes(along));
+    harness.replay().reply("forms.example:80", Reply::Bytes(response("204 No Content", &[], b"")));
+    let fields = [("a", "1")];
+    harness.input(Input::Submit(submission("http://tt.example/p/400", "http://forms.example/in", &fields)));
+    harness.input(Input::ConfirmSubmission(true));
+    assert!(has_event(&harness.take(), "SubmissionSucceeded { status: 204 }"));
+    let last = harness.replay().requests_to("forms.example:80").last().unwrap().clone();
+    assert!(String::from_utf8_lossy(&last).starts_with("POST /in/again HTTP/1.1"));
 }
 
 #[test]
@@ -866,6 +983,26 @@ fn server_sent_events_push_and_resumption() {
     assert_profile_headers(harness.replay());
 }
 
+/// Finding F-77 (the review's probe G): with `Content-Length` framing, the
+/// final body step's data reaches the event parser before the stream ends,
+/// so its last event is delivered and its id kept for resumption. The
+/// final step's data was dropped.
+#[test]
+#[cfg(feature = "push")]
+fn the_last_bytes_of_a_sized_event_stream_are_read() {
+    let mut harness = push_service("sse", "http://tt.example/events");
+    let body = "id: 6\nevent: page\ndata: PN,10000\n\n";
+    let head = format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\n\r\n", body.len());
+    harness.replay().chunk = 4096;
+    harness.replay().reply("tt.example:80", Reply::Bytes(format!("{head}{body}").into_bytes()));
+    harness.replay().reply("tt.example:80", Reply::Silent);
+    let records = harness.open("http://tt.example/service.json");
+    assert_eq!(pages(&records).len(), 1, "the last event is delivered: {records:?}");
+    harness.advance(SECOND);
+    let again = harness.replay().requests_to("tt.example:80").pop().unwrap();
+    assert_eq!(header_value(&again, "Last-Event-ID").as_deref(), Some("6"), "its id is kept");
+}
+
 #[test]
 #[cfg(feature = "push")]
 fn push_to_blocked_peer_is_refused() {
@@ -1086,6 +1223,14 @@ fn through_a_proxy_local_names_are_refused_and_the_proxy_may_be_local() {
     let records = harness.open("http://printer.local/service.json");
     assert!(has_event(&records, "Blocked"), "{records:?}");
     assert!(harness.replay().connects.is_empty(), "nothing was sent to the proxy");
+    // Finding F-17 (decision E.113): a name of one label and a private-use
+    // suffix are local names too.
+    for local in ["router", "nas.lan", "x.home.arpa"] {
+        let mut harness = Harness::new(proxied, Replay::new(&[(local, PUBLIC)]));
+        let records = harness.open(&format!("http://{local}/service.json"));
+        assert!(has_event(&records, "Blocked"), "{local}: {records:?}");
+        assert!(harness.replay().connects.is_empty(), "{local}: nothing was sent to the proxy");
+    }
     // The proxy on this network: the peer the transport reports.
     let mut replay = Replay::new(&[("tt.example", PRIVATE)]);
     replay.reply("tt.example:80", json_response(&descriptor("")));
@@ -1520,6 +1665,61 @@ fn a_channel_cookie_set_for_the_whole_host_stays_in_its_folder() {
     let mut writer = Writer::new(out);
     let (count, _) = store.header_for("h.example", "/two/100.tti", false, Site::SameService, 0, &mut writer);
     assert_eq!(count, 0, "never sent to another folder");
+}
+
+/// Finding F-15 (REQ-WEB-026; the review's probe A): a cookie a channel's
+/// push handshake sets for the whole host stays in the channel's folder,
+/// as one a page sets does. It was stored with no scope, so `Path=/`
+/// reached every other channel on the host.
+#[test]
+#[cfg(all(feature = "push", feature = "cookies"))]
+fn a_push_handshake_cookie_stays_in_its_channel_folder() {
+    let mut harness = site_harness(Config::default());
+    let settings = br#"{"push":{"address":"http://site.example/a/events","method":"sse"}}"#;
+    harness.replay().reply("site.example:80", json_response(settings));
+    let head = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nSet-Cookie: s=1; Path=/\r\n\
+                Transfer-Encoding: chunked\r\n\r\n";
+    harness.replay().reply("site.example:80", not_found());
+    harness.replay().reply("site.example:80", Reply::Bytes(head.as_bytes().to_vec()));
+    let records = harness.open_channel("http://site.example/a/");
+    assert!(has_event(&records, "PushConnected(ServerSentEvents)"), "{records:?}");
+    harness.replay().reply("site.example:80", not_found());
+    harness.replay().reply("site.example:80", not_found());
+    harness.open_channel("http://site.example/b/");
+    harness.replay().reply("site.example:80", tti_response(&[]));
+    harness.fetch(0x100);
+    let last = harness.replay().requests_to("site.example:80").last().unwrap().clone();
+    assert_eq!(request_path(&last), "/b/100.tti");
+    assert_eq!(header_value(&last, "Cookie"), None, "not sent to another channel's folder");
+}
+
+/// Finding F-42 (decision E.114 item 2): a response from outside the
+/// channel's folder, here a permitted form target on another origin,
+/// stores no cookies; it was stored under the channel's folder on that
+/// origin. A response after an upgrade to `https` on the channel's host
+/// and folder is inside the channel, and stores its cookies.
+#[test]
+#[cfg(all(feature = "forms", feature = "cookies"))]
+fn a_response_from_outside_the_channel_stores_no_cookies() {
+    let mut harness = site_harness(Config::default());
+    harness.replay().reply("site.example:80", json_response(br#"{"form_origins":["http://other.example"]}"#));
+    harness.replay().reply("site.example:80", not_found());
+    harness.open_channel("http://site.example/one/");
+    let set = response("204 No Content", &["Set-Cookie: t=1; Path=/"], b"");
+    harness.replay().reply("other.example:80", Reply::Bytes(set));
+    let fields = [("a", "1")];
+    harness.input(Input::Submit(submission("http://site.example/one/100.tti", "http://other.example/in", &fields)));
+    harness.input(Input::ConfirmSubmission(true));
+    assert!(has_event(&harness.take(), "SubmissionSucceeded { status: 204 }"));
+    assert!(
+        harness.agent.cookies().cookies().all(|cookie| cookie.host != b"other.example"),
+        "nothing stored from outside the channel"
+    );
+    let upgrade = response("301 Moved", &["Location: https://site.example/one/100.tti"], b"");
+    harness.replay().reply("site.example:80", Reply::Bytes(upgrade));
+    harness.replay().reply("site.example:443", tti_response(&["Set-Cookie: u=1; Path=/"]));
+    harness.fetch(0x100);
+    assert!(harness.agent.cookies().cookies().any(|cookie| cookie.host == b"site.example"), "the upgrade stores");
 }
 
 #[cfg(feature = "push")]

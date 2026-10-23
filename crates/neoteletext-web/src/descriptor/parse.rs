@@ -129,8 +129,14 @@ impl Descriptor {
                 let (url, method, input) = Self::parse_push(&mut reader, base)?;
                 // A channel's push is on its own origin, in any folder
                 // (REQ-WEB-024); ws and wss count as http and https.
-                if channel && !url.origin().same(&base.origin()) {
+                let own_origin = url.origin().same(&base.origin());
+                if channel && !own_origin {
                     return Err(DescriptorError::Invalid(Member::PushAddress));
+                }
+                // Keys go back only to the descriptor's own origin, for a
+                // service as for a channel (INPUT.md section 4, finding F-90).
+                if input && !own_origin {
+                    return Err(DescriptorError::Invalid(Member::PushInput));
                 }
                 descriptor.push = Some((url, method));
                 descriptor.input = input;

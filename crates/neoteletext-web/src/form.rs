@@ -10,6 +10,12 @@ use crate::bytes::{Overflow, Writer};
 use crate::consts::{FIELD_ACTION, FIELD_TOKEN};
 use crate::url::{Origin, Url, UrlError};
 
+/// The hexadecimal digits after `%` in a percent-encoded byte (RFC 3986
+/// section 2.1).
+const PERCENT_DIGITS: u32 = 2;
+// `Writer::hex` writes at most this many (finding F-92).
+const _: () = assert!(PERCENT_DIGITS <= crate::bytes::U32_HEX_DIGITS);
+
 /// The method of the `FS` command.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum FormMethod {
@@ -94,7 +100,7 @@ pub fn encode_component(text: &[u8], out: &mut Writer<'_>) -> Result<(), Overflo
             out.byte(b'+')?;
         } else {
             out.byte(b'%')?;
-            out.hex(u32::from(byte), 2)?;
+            out.hex(u32::from(byte), PERCENT_DIGITS)?;
         }
     }
     Ok(())

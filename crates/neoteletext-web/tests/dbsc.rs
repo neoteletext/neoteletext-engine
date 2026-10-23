@@ -327,3 +327,55 @@ fn plain_http_and_other_origins_never_register() {
     assert_eq!(harness.requests().len(), 1, "no registration at another origin");
     assert_eq!(harness.keys.borrow().made, 0);
 }
+
+/// Finding F-91 (decision E.114 item 6): a session scoped to the whole
+/// site is refused, so a session covers its own host alone; it was kept,
+/// without the public suffix list it would need.
+#[test]
+fn a_session_for_the_whole_site_is_refused() {
+    let mut harness = Harness::new();
+    harness.reply(response(
+        "200 OK",
+        &["Content-Type: application/json", r#"Secure-Session-Registration: (ES256);path="/dbsc/start""#],
+        br#"{"name":"News","initial_page":"100","page_template":"/p/{mpp}"}"#,
+    ));
+    let site =
+        br#"{"session_identifier":"s1","scope":{"include_site":true},"credentials":[{"type":"cookie","name":"auth"}]}"#;
+    harness.reply(response("200 OK", &["Content-Type: application/json"], site));
+    harness.input(Input::OpenService("https://news.example/d.json"));
+    assert_eq!(harness.changes(), [change("", BoundChange::RegistrationFailed)]);
+    assert_eq!(harness.keys.borrow().deleted, [KeyHandle(1)]);
+    assert!(harness.agent.bound_sessions().iter().next().is_none());
+}
+
+/// Finding F-91 (decision E.114 item 6): an origin may have the agent
+/// register at most `MAX_REGISTRATIONS_PER_HOUR` times in an hour, so a
+/// server cannot make it create and delete keys without bound.
+#[test]
+fn registrations_are_bounded_for_each_origin_in_each_hour() {
+    use neoteletext_web::dbsc::MAX_REGISTRATIONS_PER_HOUR;
+    const HOUR: u64 = 3600 * SECOND;
+    let mut harness = Harness::new();
+    harness.reply(response(
+        "200 OK",
+        &["Content-Type: application/json"],
+        br#"{"name":"News","initial_page":"100","page_template":"/p/{mpp}"}"#,
+    ));
+    harness.input(Input::OpenService("https://news.example/d.json"));
+    let asking = || {
+        let ask = r#"Secure-Session-Registration: (ES256);path="/dbsc/start""#;
+        response("200 OK", &["Content-Type: text/x-teletext-tti", ask], TTI)
+    };
+    let tries = usize::from(MAX_REGISTRATIONS_PER_HOUR) + 2;
+    for page in 0..tries {
+        harness.reply(asking());
+        harness.reply(response("400 Bad Request", &[], b""));
+        harness.fetch(0x100 + u16::try_from(page).unwrap());
+    }
+    assert_eq!(harness.keys.borrow().made, u32::from(MAX_REGISTRATIONS_PER_HOUR), "no more in the hour");
+    harness.advance(HOUR);
+    harness.reply(asking());
+    harness.reply(response("400 Bad Request", &[], b""));
+    harness.fetch(0x1FF);
+    assert_eq!(harness.keys.borrow().made, u32::from(MAX_REGISTRATIONS_PER_HOUR) + 1, "a new hour");
+}

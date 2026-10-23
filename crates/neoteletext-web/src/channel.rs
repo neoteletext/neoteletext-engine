@@ -204,11 +204,28 @@ pub fn parse_address(text: &str) -> Result<ChannelAddress, ChannelError> {
     Ok(ChannelAddress { folder, file })
 }
 
+/// The percent-encoded separators a server may decode into a path: `.`,
+/// `/` and `\` (RFC 3986 section 2.1; hexadecimal digits in either case).
+const ENCODED_SEPARATORS: [&[u8; PERCENT_ENCODED_LENGTH]; 3] = [b"%2E", b"%2F", b"%5C"];
+/// A percent sign and two hexadecimal digits (RFC 3986 section 2.1).
+const PERCENT_ENCODED_LENGTH: usize = 3;
+
 /// True when `url` lies inside the channel whose folder is `folder`: the
-/// same origin, and a path that starts with the folder's (REQ-WEB-026).
+/// same origin, and a path below the folder's (REQ-WEB-026).
 #[must_use]
 pub fn is_inside(folder: &Url, url: &Url) -> bool {
-    folder.origin().same(&url.origin()) && url.path().starts_with(folder.path())
+    folder.origin().same(&url.origin()) && below_folder(folder, url)
+}
+
+/// True when `url`'s path starts with the folder's and holds no encoded
+/// separator after it, which a server that decodes them could follow out
+/// of the folder (decision E.114 item 5, finding F-45).
+fn below_folder(folder: &Url, url: &Url) -> bool {
+    let Some(rest) = url.path().strip_prefix(folder.path()) else { return false };
+    !rest
+        .as_bytes()
+        .windows(PERCENT_ENCODED_LENGTH)
+        .any(|window| ENCODED_SEPARATORS.iter().any(|separator| window.eq_ignore_ascii_case(*separator)))
 }
 
 /// True when `url` is a redirect target that keeps the channel
@@ -224,7 +241,7 @@ pub fn redirect_keeps_channel(folder: &Url, url: &Url) -> bool {
         && url.host_text() == folder.host_text()
         && folder.port() == Scheme::Http.default_port()
         && url.port() == Scheme::Https.default_port()
-        && url.path().starts_with(folder.path())
+        && below_folder(folder, url)
 }
 
 /// The address of a file of the channel.

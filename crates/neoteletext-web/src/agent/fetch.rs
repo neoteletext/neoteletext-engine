@@ -10,7 +10,7 @@ use super::{
 };
 use crate::bytes::copy_prefix;
 use crate::consts::STATUS_SUCCESS_FIRST;
-use crate::http::{BodyDecoder, HttpError};
+use crate::http::{self, BodyDecoder, HttpError};
 use crate::port::{ConnectionId, RandomSource};
 use crate::url::{IpAddress, Url};
 
@@ -89,7 +89,11 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
                 match self.fetch.head.feed(buffer, input) {
                     Ok((used, complete)) => {
                         input = input.get(used..).unwrap_or(&[]);
-                        if complete && !self.fetch_head_complete(now, sink) {
+                        let head = self.buffers.fetch_head.get(..self.fetch.head.len()).unwrap_or(&[]);
+                        if complete && http::is_interim(head) {
+                            // RFC 9110 section 15.2: the final head follows.
+                            self.fetch.head.reset();
+                        } else if complete && !self.fetch_head_complete(now, sink) {
                             return;
                         }
                     }
@@ -145,10 +149,19 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
         let host = exchange.url.host_text();
         let path = exchange.url.path();
         let secure = exchange.url.is_secure();
-        // A channel's cookies stay in its folder (REQ-WEB-026).
+        // A channel's cookies stay in its folder (REQ-WEB-026), and only a
+        // response from inside it, or from its upgrade to `https`, sets or
+        // clears any: a permitted form target or a redirect elsewhere
+        // touches none (decision E.114 item 2, finding F-42).
+        let inside =
+            channel.as_ref().is_none_or(|folder| crate::channel::redirect_keeps_channel(folder, &exchange.url));
         let scope = channel.as_ref().map(Url::path);
-        let store = cookie_store(jar, port_cookies);
-        let parsed = store_response_cookies(store, head_bytes, host, path, scope, secure, seconds, calendar, sink);
+        let parsed = if inside {
+            let store = cookie_store(jar, port_cookies);
+            store_response_cookies(store, head_bytes, host, path, scope, secure, seconds, calendar, sink)
+        } else {
+            http::parse_head(head_bytes, &mut |_| {})
+        };
         let head = match parsed {
             Ok(head) => head,
             Err(error) => {

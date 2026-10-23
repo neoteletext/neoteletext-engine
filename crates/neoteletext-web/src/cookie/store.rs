@@ -10,6 +10,32 @@ use crate::consts::{
 };
 use neoteletext_core::policy;
 
+/// Where a stored cookie's path comes from.
+#[derive(Clone, Copy)]
+pub(super) enum PathRule<'a> {
+    /// RFC 6265bis section 5.6.4: the `Path` attribute, or the default
+    /// path of `request_path`, kept inside `scope` when it is given.
+    Request { request_path: &'a str, scope: Option<&'a str> },
+    /// The path a saved record names, used as it was saved.
+    Saved(&'a [u8]),
+}
+
+impl<'a> PathRule<'a> {
+    /// The path the cookie is stored with, given its `Path` attribute.
+    fn path(self, attribute: Option<&'a [u8]>) -> &'a [u8] {
+        match self {
+            PathRule::Request { request_path, scope } => {
+                let path = attribute.unwrap_or_else(|| default_cookie_path(request_path.as_bytes()));
+                match scope {
+                    Some(scope) if !path.starts_with(scope.as_bytes()) => scope.as_bytes(),
+                    _ => path,
+                }
+            }
+            PathRule::Saved(saved) => saved,
+        }
+    }
+}
+
 /// The attributes parsed from one `Set-Cookie` header.
 #[allow(clippy::struct_excessive_bools)] // Each flag is one cookie attribute of REQ-WEB-006.
 struct Attributes<'a> {
@@ -56,8 +82,30 @@ impl<const SLOTS: usize, const BYTES: usize> CookieJar<SLOTS, BYTES> {
         now: u64,
         wall_clock: bool,
     ) -> Result<(), CookieRejected> {
-        // Section 5.6 step 1: control characters other than tab.
-        if header.iter().any(|&b| (b < 0x20 && b != b'\t') || b == 0x7F) {
+        self.store_with_path(header, host, PathRule::Request { request_path, scope }, secure, now, wall_clock)
+    }
+
+    /// The `Set-Cookie` algorithm, with the cookie's path chosen by
+    /// `rule`: from the header and the request, or the path a saved record
+    /// names, which an import passes here rather than rebuilding it into a
+    /// `Path=` attribute that the attribute limit would drop (finding F-13,
+    /// decision E.114 item 1).
+    pub(super) fn store_with_path(
+        &mut self,
+        header: &[u8],
+        host: &str,
+        rule: PathRule<'_>,
+        secure: bool,
+        now: u64,
+        wall_clock: bool,
+    ) -> Result<(), CookieRejected> {
+        // Section 5.6 step 1: control characters other than tab, in a saved
+        // path as in the header it once came from.
+        let saved_path = match rule {
+            PathRule::Saved(saved) => saved,
+            PathRule::Request { .. } => &[],
+        };
+        if header.iter().chain(saved_path).any(|&b| (b < 0x20 && b != b'\t') || b == 0x7F) {
             return Err(CookieRejected::ControlCharacter);
         }
         let (pair, attributes_text) = match header.iter().position(|&b| b == b';') {
@@ -77,7 +125,12 @@ impl<const SLOTS: usize, const BYTES: usize> CookieJar<SLOTS, BYTES> {
         if name.len().saturating_add(value.len()) > MAX_COOKIE_NAME_VALUE {
             return Err(CookieRejected::TooLarge);
         }
-        let attributes = parse_attributes(attributes_text, now, wall_clock);
+        let mut attributes = parse_attributes(attributes_text, now, wall_clock);
+        if let PathRule::Saved(saved) = rule {
+            // The saved path stands as the attribute, so the prefix rules
+            // see it as they did when the cookie was first stored.
+            attributes.path = Some(saved);
+        }
 
         if !policy::may_send_cookie(attributes.secure, secure) {
             return Err(CookieRejected::SecureOverPlain);
@@ -87,11 +140,7 @@ impl<const SLOTS: usize, const BYTES: usize> CookieJar<SLOTS, BYTES> {
             return Err(CookieRejected::SameSiteNoneNotSecure);
         }
 
-        let path = attributes.path.unwrap_or_else(|| default_cookie_path(request_path.as_bytes()));
-        let path = match scope {
-            Some(scope) if !path.starts_with(scope.as_bytes()) => scope.as_bytes(),
-            _ => path,
-        };
+        let path = rule.path(attributes.path);
         let host = host.as_bytes();
 
         // Section 5.7 step 16: plain HTTP cannot touch a Secure cookie of

@@ -4,7 +4,7 @@
 //! refused.
 
 use super::{IpAddress, UrlError};
-use crate::bytes::{hex_value, parse_decimal};
+use crate::bytes::{Overflow, Writer, hex_value, parse_decimal};
 use crate::consts::{
     IPV4_OCTETS, IPV6_GROUPS, MAX_HOST_NAME_LENGTH, MAX_IPV4_OCTET_DIGITS, MAX_IPV6_GROUP_DIGITS, MAX_LABEL_LENGTH,
 };
@@ -142,4 +142,80 @@ pub(super) fn check_host(host: &[u8]) -> Result<Option<IpAddress>, UrlError> {
         }
     }
     Ok(None)
+}
+
+/// The groups of an IPv4-mapped address's prefix, `::ffff:0:0/96` (RFC
+/// 4291 section 2.5.5.2): five zero groups, then `ffff`.
+const IPV4_MAPPED_PREFIX: [u16; IPV6_GROUPS - IPV4_GROUPS] = [0, 0, 0, 0, 0, 0xFFFF];
+/// The IPv6 groups an IPv4 address fills.
+const IPV4_GROUPS: usize = 2;
+/// The bits of one hexadecimal digit, and of one IPv6 group.
+const NIBBLE_BITS: u32 = 4;
+const NIBBLE_MASK: u16 = 0xF;
+const GROUP_NIBBLES: u32 = u16::BITS / NIBBLE_BITS;
+
+/// Writes `groups` in RFC 5952's text form (section 4): lower-case digits
+/// without leading zeros, the longest run of two or more zero groups (the
+/// first, when runs tie) as `::`, and an IPv4-mapped address in its mixed
+/// form `::ffff:a.b.c.d` (section 5). One address then has one spelling,
+/// so hosts compare as text (decision E.114 item 9, finding F-96).
+pub(super) fn write_ipv6(groups: &[u16; IPV6_GROUPS], writer: &mut Writer<'_>) -> Result<(), Overflow> {
+    if groups.starts_with(&IPV4_MAPPED_PREFIX) {
+        writer.put(b"::ffff:")?;
+        let [high, low] = groups
+            .get(IPV4_MAPPED_PREFIX.len()..)
+            .map_or([0, 0], |tail| [tail.first().copied().unwrap_or(0), tail.get(1).copied().unwrap_or(0)]);
+        let [a, b] = high.to_be_bytes();
+        let [c, d] = low.to_be_bytes();
+        for (index, octet) in [a, b, c, d].into_iter().enumerate() {
+            if index > 0 {
+                writer.byte(b'.')?;
+            }
+            writer.decimal(u64::from(octet))?;
+        }
+        return Ok(());
+    }
+    // The longest run of zero groups, if it is two or more long.
+    let (mut best_start, mut best_len, mut run_start, mut run_len) = (0usize, 0usize, 0usize, 0usize);
+    for (index, &group) in groups.iter().enumerate() {
+        if group == 0 {
+            if run_len == 0 {
+                run_start = index;
+            }
+            run_len = run_len.saturating_add(1);
+            if run_len > best_len {
+                (best_start, best_len) = (run_start, run_len);
+            }
+        } else {
+            run_len = 0;
+        }
+    }
+    let compressed = (best_len >= IPV4_GROUPS).then_some(best_start..best_start.saturating_add(best_len));
+    let mut index = 0usize;
+    while let Some(&group) = groups.get(index) {
+        if let Some(run) = compressed.as_ref().filter(|run| run.start == index) {
+            writer.put(b"::")?;
+            index = run.end;
+            continue;
+        }
+        if index > 0 && compressed.as_ref().is_none_or(|run| run.end != index) {
+            writer.byte(b':')?;
+        }
+        write_group(group, writer)?;
+        index = index.saturating_add(1);
+    }
+    Ok(())
+}
+
+/// One group in lower-case hexadecimal without leading zeros.
+fn write_group(group: u16, writer: &mut Writer<'_>) -> Result<(), Overflow> {
+    let mut started = false;
+    for nibble in (0..GROUP_NIBBLES).rev() {
+        let digit = u8::try_from((group >> nibble.saturating_mul(NIBBLE_BITS)) & NIBBLE_MASK).unwrap_or(0);
+        started |= digit != 0 || nibble == 0;
+        if started {
+            writer.byte(neoteletext_core::types::hex_digit(digit).to_ascii_lowercase())?;
+        }
+    }
+    Ok(())
 }

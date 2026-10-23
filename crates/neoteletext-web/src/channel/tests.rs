@@ -78,3 +78,28 @@ fn content_must_match_the_name() {
     packet[0] = 0x15 ^ 0b11;
     assert!(!is_t42(&packet), "an address that is not Hamming 8/4");
 }
+
+/// Finding F-45 (decision E.114 item 5): a path with an encoded dot,
+/// slash or backslash after the folder is outside it, in either case, so
+/// a server that decodes them cannot be led out of the folder. The
+/// prefix test let them through.
+#[test]
+fn an_encoded_separator_after_the_folder_is_outside_it() {
+    let at = |text: &str| Url::parse(text).unwrap();
+    let one = at("http://h.example/one/");
+    for outside in [
+        "http://h.example/one/%2e%2e/two/100.tti",
+        "http://h.example/one/%2E%2E/two/",
+        "http://h.example/one/x%2Fy",
+        "http://h.example/one/x%2fy",
+        "http://h.example/one/..%5Ctwo",
+        "http://h.example/one/..%5ctwo",
+    ] {
+        assert!(!is_inside(&one, &at(outside)), "{outside}");
+        assert!(!redirect_keeps_channel(&one, &at(outside)), "{outside}");
+        let upgraded = outside.replacen("http:", "https:", 1);
+        assert!(!redirect_keeps_channel(&one, &at(&upgraded)), "{upgraded}");
+    }
+    assert!(is_inside(&one, &at("http://h.example/one/100.tti?x=%2F")), "a query is not the path");
+    assert!(is_inside(&one, &at("http://h.example/one/a%20b")), "other encodings are not separators");
+}

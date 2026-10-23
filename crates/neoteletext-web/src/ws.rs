@@ -6,11 +6,11 @@
 use crate::base64;
 use crate::bytes::{Overflow, Writer, copy_prefix};
 use crate::consts::{
-    CLOSE_CODE_BYTES, CLOSE_INVALID_DATA, CLOSE_PROTOCOL_ERROR, CLOSE_TOO_BIG, OPCODE_BINARY, OPCODE_CLOSE,
-    OPCODE_CONTINUATION, OPCODE_CONTROL_FIRST, OPCODE_PING, OPCODE_PONG, OPCODE_TEXT, STATUS_SWITCHING_PROTOCOLS,
-    UPGRADE_WEBSOCKET, WEBSOCKET_ACCEPT_TEXT, WEBSOCKET_GUID, WEBSOCKET_KEY_BYTES, WEBSOCKET_KEY_TEXT,
-    WEBSOCKET_VERSION, WS_CONTROL_MAX, WS_FIN, WS_LENGTH_7_MAX, WS_LENGTH_16, WS_LENGTH_64, WS_LENGTH_MASK,
-    WS_MASK_BIT, WS_MASK_BYTES, WS_MAX_HEADER, WS_OPCODE_MASK, WS_RSV_MASK, header,
+    CLOSE_CODE_BYTES, CLOSE_INVALID_DATA, CLOSE_PROTOCOL_ERROR, CLOSE_RESERVED, CLOSE_TOO_BIG, OPCODE_BINARY,
+    OPCODE_CLOSE, OPCODE_CONTINUATION, OPCODE_CONTROL_FIRST, OPCODE_PING, OPCODE_PONG, OPCODE_TEXT,
+    STATUS_SWITCHING_PROTOCOLS, UPGRADE_WEBSOCKET, WEBSOCKET_ACCEPT_TEXT, WEBSOCKET_GUID, WEBSOCKET_KEY_BYTES,
+    WEBSOCKET_KEY_TEXT, WEBSOCKET_VERSION, WS_CONTROL_MAX, WS_FIN, WS_LENGTH_7_MAX, WS_LENGTH_16, WS_LENGTH_64,
+    WS_LENGTH_MASK, WS_MASK_BIT, WS_MASK_BYTES, WS_MAX_HEADER, WS_OPCODE_MASK, WS_RSV_MASK, header,
 };
 use crate::http::{self, Method, ResponseHead};
 use crate::port::RandomSource;
@@ -398,6 +398,12 @@ impl FrameReader {
                         payload.get(1).copied().unwrap_or(0),
                     ])),
                 };
+                // RFC 6455 section 7.4.1: these are for use outside frames,
+                // so one in a frame is the server's protocol error, and is
+                // never echoed (decision E.114 item 8, finding F-92).
+                if code.is_some_and(|code| CLOSE_RESERVED.contains(&code)) {
+                    return Err(WsError::Protocol);
+                }
                 if core::str::from_utf8(payload.get(CLOSE_CODE_BYTES..).unwrap_or(&[])).is_err() {
                     return Err(WsError::InvalidText);
                 }

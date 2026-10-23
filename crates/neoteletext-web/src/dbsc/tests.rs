@@ -104,6 +104,22 @@ fn instructions_outside_the_profile_are_refused() {
     assert_eq!(read_instructions(long.as_bytes()), Err(InstructionsError::TooLarge));
 }
 
+/// Finding F-14 (decision E.114 item 6): a session identifier is written
+/// into `Sec-Secure-Session-Id`, so one holding CR, LF, NUL or any byte
+/// outside `0x21..=0x7E`, or none at all, is refused.
+#[test]
+fn a_session_identifier_outside_visible_ascii_is_refused() {
+    let with_id = |id: &str| {
+        std::format!(
+            r#"{{"session_identifier":"{id}","scope":{{"include_site":false}},"credentials":[{{"type":"cookie","name":"a"}}]}}"#
+        )
+    };
+    assert!(matches!(read_instructions(with_id("a-1").as_bytes()), Ok(Answer::Continue(_))));
+    for id in [r"a\r\nX: y", r"a\u0000", "", "a b", r"\u007f", "\u{e9}"] {
+        assert_eq!(read_instructions(with_id(id).as_bytes()), Err(InstructionsError::Malformed), "{id:?}");
+    }
+}
+
 /// A key store that signs with a stand-in signature and records what
 /// it signed.
 #[derive(Debug)]
@@ -247,4 +263,28 @@ fn the_store_is_bounded_and_replaces_by_identifier() {
     sessions.expire(100, |session| ended.push(session.key));
     assert_eq!(ended.len(), MAX_SESSIONS);
     assert!(sessions.iter().next().is_none());
+}
+
+/// Finding F-92 (decision E.114 item 6): instructions naming a member
+/// twice, at any level, are refused; the later one overwrote the earlier.
+#[test]
+fn instructions_naming_a_member_twice_are_refused() {
+    let credentials = r#""credentials":[{"type":"cookie","name":"a"}]"#;
+    let scope = r#""scope":{"include_site":false}"#;
+    for body in [
+        std::format!(r#"{{"session_identifier":"s","session_identifier":"t",{scope},{credentials}}}"#),
+        std::format!(r#"{{"session_identifier":"s",{scope},{scope},{credentials}}}"#),
+        std::format!(r#"{{"session_identifier":"s","continue":true,"continue":false,{scope},{credentials}}}"#),
+        std::format!(
+            r#"{{"session_identifier":"s","scope":{{"include_site":false,"include_site":true}},{credentials}}}"#
+        ),
+        std::format!(
+            r#"{{"session_identifier":"s","scope":{{"include_site":false,"scope_specification":[{{"type":"include","path":"/a","path":"/"}}]}},{credentials}}}"#
+        ),
+        std::format!(
+            r#"{{"session_identifier":"s",{scope},"credentials":[{{"type":"cookie","name":"a","name":"b"}}]}}"#
+        ),
+    ] {
+        assert_eq!(read_instructions(body.as_bytes()), Err(InstructionsError::Malformed), "{body}");
+    }
 }

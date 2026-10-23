@@ -71,12 +71,14 @@ The check shall be applied:
 - again after every redirect.
 
 This covers descriptors, pages, push connections and form submissions. Local-network services can be allowed only by naming them explicitly in the configuration.
+
+**Through a proxy** (REQ-WEB-032) the proxy resolves names, so the transport reports only the proxy's address, and the rule is applied by name before anything is sent (decision E.113): an address in a range above, `localhost`, a name of one label (with no dot once a trailing dot is removed), and a name ending in `.localhost`, `.local`, `.internal`, `.home.arpa`, `.lan`, `.corp`, `.intranet`, `.private` or `.localdomain`, compared without regard to case, shall be refused. A public name that resolves to a local address is not seen through a proxy; that residual is the price of the name privacy a proxy gives.
 *Reason:* A web-native client on a home network is a classic target for requests forged to reach routers and other devices behind it ("server-side request forgery").
-*Verification:* Test against a list of blocked addresses and encodings, including redirects and names that resolve to blocked addresses. The ranges added by decision E.115 are tested by `policy::tests::ranges_from_the_security_review_are_blocked` in `neoteletext-core`.
+*Verification:* Test against a list of blocked addresses and encodings, including redirects and names that resolve to blocked addresses. The ranges added by decision E.115 are tested by `policy::tests::ranges_from_the_security_review_are_blocked` in `neoteletext-core`. Through a proxy, `single_label_and_private_use_names_are_local_through_a_proxy` and `through_a_proxy_local_names_are_refused_and_the_proxy_may_be_local`, which refuse `router`, `nas.lan` and `x.home.arpa` and fail on the code before 24 October 2026 (finding F-17 of NeoTeletext's security review).
 
 **REQ-SEC-007 — No downgrade.**
-Once a service has been reached over HTTPS, every later connection for that service shall use encryption, for the rest of the session and for as long as its cookies last. This covers pages, push, redirects and form submissions. A redirect from HTTPS to plain HTTP shall be refused. A descriptor fetched over HTTPS shall not name plain `http://` or `ws://` addresses; if it does, the descriptor shall be rejected.
-*Verification:* Test.
+Once a service has been reached over HTTPS, every later connection for that service shall use encryption, for the rest of the session and for as long as its cookies last. This covers pages, push, redirects and form submissions. A redirect from HTTPS to plain HTTP shall be refused. A descriptor fetched over HTTPS shall not name plain `http://` or `ws://` addresses; if it does, the descriptor shall be rejected. The memory of hosts reached over HTTPS is bounded (`SECURE_HOSTS`); when it is full, the host least recently reached is forgotten, so the rule keeps holding for the hosts in use (decision E.114 item 3).
+*Verification:* Test; the bounded memory by `the_secure_host_memory_forgets_the_host_least_recently_seen`, which fails on the code before 24 October 2026 (finding F-43 of NeoTeletext's security review).
 
 **REQ-SEC-008 — Plain HTTP, as decided.**
 Plain HTTP is allowed for reading, cookies and forms (decision E.32). The following safeguards are mandatory:
@@ -91,9 +93,10 @@ Plain HTTP is allowed for reading, cookies and forms (decision E.32). The follow
 - **Confirm the first submission.** The first submission to any origin shall require explicit confirmation showing that origin.
 - **No password fields.** Forms shall offer no field type for passwords or secrets (Appendix C has none).
 - **Restricted destinations.** Forms may submit only to the origins of REQ-WEB-008.
+- **Redirected submissions keep their origin.** A submission answered by a 307 or 308 redirect, which keeps the method and the body, shall be refused, with nothing sent, when the new address is not on the submission's own target origin; a 307 or 308 within that origin is followed, and a 303, and a 301 or 302 answering a POST, become a GET with no body (decision E.112).
 
 *Reason:* Any page can draw "enter your password". The user must always be able to see where their input will go.
-*Verification:* Test.
+*Verification:* Test. The redirect rule by `a_form_redirected_with_its_method_kept_stays_on_its_target_origin`, which fails on the code before 24 October 2026 (finding F-16 of NeoTeletext's security review).
 
 **REQ-SEC-010 — Safe text and terminal output.**
 - **Allow-list only.** The text and terminal renderers (REQ-RND-008 and REQ-RND-009) shall emit only an allow-list of printable characters. The terminal graphics renderer (REQ-RND-029) writes no page text at all, only image data it encodes itself.

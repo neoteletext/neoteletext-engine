@@ -9,6 +9,8 @@ use neoteletext_core::types::{PageAddress, SubCode};
 
 /// Characters of `{sub}`: four hexadecimal digits.
 const SUBCODE_DIGITS: u32 = 4;
+// `Writer::hex` writes at most this many (finding F-92).
+const _: () = assert!(SUBCODE_DIGITS <= crate::bytes::U32_HEX_DIGITS);
 
 /// Checks a template's placeholders: only `{m}`, `{pp}`, `{mpp}` and
 /// `{sub}`, no other brace, and none before the path. Placeholders become

@@ -12,11 +12,11 @@ use super::{
 use crate::bytes::{Overflow, TextBuf, Writer};
 use crate::dbsc::{
     self, Answer, CHALLENGE_HEADER, DeviceKeys, Instructions, KeyHandle, MAX_AUTHORIZATION, MAX_CHALLENGE,
-    MAX_SESSION_URL, MAX_SESSIONS, PublicKey, REGISTRATION_HEADER, RESPONSE_HEADER, SESSION_ID_HEADER,
-    SESSION_LIFETIME_SECONDS, Session, Sessions,
+    MAX_REGISTRATIONS_PER_HOUR, MAX_SESSION_URL, MAX_SESSIONS, PublicKey, REGISTRATION_HEADER,
+    REGISTRATION_WINDOW_SECONDS, RESPONSE_HEADER, SESSION_ID_HEADER, SESSION_LIFETIME_SECONDS, Session, Sessions,
 };
 use crate::http;
-use crate::url::Url;
+use crate::url::{Origin, Url};
 use neoteletext_core::types::Instant;
 
 /// HTTP statuses the refresh table of section 8.8 names.
@@ -56,10 +56,22 @@ struct Deferred {
     handled: u8,
 }
 
+/// The registrations one origin has had the agent make in the current
+/// window (finding F-91).
+#[derive(Clone, Copy, Debug)]
+struct Registrations {
+    origin: Origin,
+    /// When the window began, in seconds of the agent's clock.
+    since: u64,
+    made: u8,
+}
+
 /// The agent's device-bound sessions and the exchanges they wait for.
 #[derive(Debug)]
 pub(super) struct Bound {
     sessions: Sessions,
+    /// The registrations of the origins seen most recently, one a slot.
+    registrations: [Option<Registrations>; MAX_SESSIONS],
     asked: Option<Asked>,
     registering: Option<Registering>,
     refresh: Option<(u8, bool)>,
@@ -73,7 +85,41 @@ const _: () = assert!(MAX_SESSIONS <= u8::BITS as usize);
 
 impl Bound {
     pub(super) const fn new() -> Self {
-        Self { sessions: Sessions::new(), asked: None, registering: None, refresh: None, deferred: None, handled: 0 }
+        Self {
+            sessions: Sessions::new(),
+            registrations: [None; MAX_SESSIONS],
+            asked: None,
+            registering: None,
+            refresh: None,
+            deferred: None,
+            handled: 0,
+        }
+    }
+
+    /// Counts a registration `origin` asks for at `seconds`, and says
+    /// whether it may be made: at most [`MAX_REGISTRATIONS_PER_HOUR`] in
+    /// each [`REGISTRATION_WINDOW_SECONDS`] (decision E.114 item 6, finding
+    /// F-91). An origin not yet counted takes a free slot, or the slot whose
+    /// window began first.
+    fn may_register(&mut self, origin: &Origin, seconds: u64) -> bool {
+        let slots = &mut self.registrations;
+        let index = slots
+            .iter()
+            .position(|slot| slot.is_some_and(|counted| counted.origin == *origin))
+            .or_else(|| slots.iter().position(Option::is_none))
+            .or_else(|| {
+                slots.iter().enumerate().min_by_key(|(_, slot)| slot.map_or(0, |counted| counted.since)).map(|(i, _)| i)
+            });
+        let Some(slot) = index.and_then(|index| slots.get_mut(index)) else { return false };
+        let current = slot.filter(|counted| {
+            counted.origin == *origin && seconds.saturating_sub(counted.since) < REGISTRATION_WINDOW_SECONDS
+        });
+        let counted = current.unwrap_or(Registrations { origin: *origin, since: seconds, made: 0 });
+        if counted.made >= MAX_REGISTRATIONS_PER_HOUR {
+            return false;
+        }
+        *slot = Some(Registrations { made: counted.made.saturating_add(1), ..counted });
+        true
     }
 }
 
@@ -82,8 +128,14 @@ fn bit(slot: usize) -> u8 {
     u32::try_from(slot).ok().and_then(|slot| 1_u8.checked_shl(slot)).unwrap_or(0)
 }
 
-/// Writes `text` as an sf-string (RFC 9651 section 4.1.6).
+/// Writes `text` as an sf-string (RFC 9651 section 4.1.6). An sf-string
+/// holds printable ASCII alone, `0x20..=0x7E` (section 3.3.3), so any
+/// other byte fails rather than reaching the header (finding F-14,
+/// decision E.114 item 6).
 fn sf_string(text: &[u8], out: &mut Writer<'_>) -> Result<(), Overflow> {
+    if !text.iter().all(|&byte| byte == b' ' || byte.is_ascii_graphic()) {
+        return Err(Overflow);
+    }
     out.byte(b'"')?;
     for &byte in text {
         if byte == b'"' || byte == b'\\' {
@@ -161,7 +213,9 @@ pub(super) fn write_headers<'k>(
 /// origin must be the responding origin's, over HTTPS (a narrowing of
 /// section 9.6's same-site rule, which needs the public suffix list).
 fn session_of(instructions: &Instructions, key: KeyHandle, url: &Url, seconds: u64) -> Option<Session> {
-    if !url.is_secure() {
+    // Site scope is refused, so a session covers its own host alone,
+    // with no public suffix list (decision E.114 item 6, finding F-91).
+    if !url.is_secure() || instructions.include_site {
         return None;
     }
     let origin = url.origin();
@@ -285,11 +339,12 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
     /// challenges it gives (section 8.3), a registration it asks for
     /// (section 8.2), and `Clear-Site-Data`, which ends its origin's
     /// sessions (section 10.2).
-    pub(super) fn bound_head(&mut self, _now: Instant, exchange: &Exchange, head: &ResponseHead, sink: &mut Sink<'_>) {
+    pub(super) fn bound_head(&mut self, now: Instant, exchange: &Exchange, head: &ResponseHead, sink: &mut Sink<'_>) {
         let url = &exchange.url;
         if self.device_keys.is_none() || !url.is_secure() {
             return;
         }
+        let (seconds, _) = self.seconds(now);
         let origin = url.origin();
         let head_bytes = self.buffers.fetch_head.get(..self.fetch.head.len()).unwrap_or(&[]);
         let Self { bound, device_keys, .. } = self;
@@ -332,7 +387,9 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             asked =
                 Some(Asked { url: text, challenge: registration.challenge, authorization: registration.authorization });
         });
-        bound.asked = asked;
+        if asked.is_some() && bound.may_register(&origin, seconds) {
+            bound.asked = asked;
+        }
     }
 
     /// Acts on a bound session's response (sections 8.8 and 8.9).
@@ -449,6 +506,27 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
                 event(sink, Event::BoundSession { session: id, change: BoundChange::RefreshFailed });
             }
             _ => {}
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, reason = "tests")]
+    use super::*;
+
+    /// Finding F-14 (decision E.114 item 6): an sf-string holds only
+    /// `0x20..=0x7E` (RFC 9651 section 3.3.3), so a line break or a
+    /// control byte can never reach a header the agent writes.
+    #[test]
+    fn an_sf_string_refuses_bytes_outside_printable_ascii() {
+        let mut buffer = [0_u8; 32];
+        let mut out = Writer::new(&mut buffer);
+        sf_string(br#"a "b"\"#, &mut out).unwrap();
+        assert_eq!(out.written(), br#""a \"b\"\\""#);
+        for text in [&b"a\nb"[..], b"a\r", b"\0", b"\x7f", b"\xc3\xa9"] {
+            let mut buffer = [0_u8; 32];
+            assert_eq!(sf_string(text, &mut Writer::new(&mut buffer)), Err(Overflow), "{text:?}");
         }
     }
 }

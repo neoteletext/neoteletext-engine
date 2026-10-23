@@ -68,10 +68,8 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
                 return None;
             }
         };
-        if step.done {
-            self.push_lost(now, None, true, sink);
-            return None;
-        }
+        // The final step can carry data too: it is read before the stream
+        // ends (finding F-77).
         let mut data = step.data;
         while !data.is_empty() {
             let limit = self.config.push_limit.min(self.buffers.push_message.len());
@@ -85,6 +83,10 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
             };
             data = data.get(used..).unwrap_or(&[]);
             self.deliver_event(dispatched, sink);
+        }
+        if step.done {
+            self.push_lost(now, None, true, sink);
+            return None;
         }
         Some(step.consumed)
     }
