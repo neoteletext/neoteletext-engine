@@ -81,8 +81,10 @@ pub struct PublicKey {
 /// the platform interface a port with protected key storage supplies
 /// (REQ-ARCH-009). Each key is a P-256 key pair whose private half the
 /// port keeps where it cannot be read: a secure element, a trusted
-/// platform module, the operating system's key store.
-pub trait DeviceKeys: core::fmt::Debug {
+/// platform module, the operating system's key store. It has no `Debug`
+/// supertrait: a trait object's table would carry `core::fmt` into every
+/// build (REQ-GEN-016).
+pub trait DeviceKeys {
     /// Makes a new key pair and gives its handle and public half, or `None`
     /// when no key can be made.
     fn create(&mut self) -> Option<(KeyHandle, PublicKey)>;

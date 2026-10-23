@@ -756,7 +756,10 @@ struct PushConnection {
     clippy::struct_excessive_bools,
     reason = "each flag belongs to a different part of the agent: navigation, the fetch connection, push, the channel"
 )]
-#[derive(Debug)]
+// Not `Debug`: the derive would need `dyn Cookies` and `dyn DeviceKeys` to be
+// `Debug`, and a trait object's table then carries `core::fmt` into every
+// build, which REQ-GEN-016 keeps out of a small one (the size check found
+// its panic paths).
 pub struct UserAgent<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> {
     config: Config,
     /// The `User-Agent` sent on every request and upgrade, composed once

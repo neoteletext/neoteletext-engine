@@ -156,8 +156,9 @@ pub struct CookieInfo<'a> {
 /// holds them in a more trusted process than the one that speaks to the
 /// network does, and give the agent this interface instead
 /// (`UserAgent::with_cookies`). Each method is the jar's method of the
-/// same name.
-pub trait Cookies: core::fmt::Debug {
+/// same name. It has no `Debug` supertrait: a trait object's table would
+/// carry `core::fmt` into every build (REQ-GEN-016).
+pub trait Cookies {
     /// Writes the `Cookie` header value for a request: see
     /// [`CookieJar::header_for`].
     fn header_for(
