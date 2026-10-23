@@ -1,7 +1,8 @@
 //! REQ-GEN-014: teletext constants restated outside the core's constants
 //! module.
 
-use super::{non_test_source, report, rust_files};
+use super::{report, rust_files};
+use crate::test_code::production_source;
 use std::path::Path;
 
 /// The core's source directory, which [`DATA_FILES`] is relative to.
@@ -32,17 +33,25 @@ pub fn constants(root: &Path) -> Result<(), String> {
         if under_core.is_some_and(|path| is_data_file(&path)) {
             continue;
         }
-        let source = non_test_source(&file);
-        for (number, line) in source.lines().enumerate() {
-            let code = line.split("//").next().unwrap_or_default();
-            for literal in WATCHED_LITERALS {
-                if contains_literal(code, literal) {
-                    violations.push(format!("{display}:{}: literal {literal}", number + 1));
-                }
-            }
+        for (number, literal) in watched_literals(&production_source(&file)) {
+            violations.push(format!("{display}:{number}: literal {literal}"));
         }
     }
     report(&violations)
+}
+
+/// Each watched literal in a production source, with its line number.
+fn watched_literals(source: &str) -> Vec<(usize, &'static str)> {
+    let mut found = Vec::new();
+    for (number, line) in source.lines().enumerate() {
+        let code = line.split("//").next().unwrap_or_default();
+        for literal in WATCHED_LITERALS {
+            if contains_literal(code, literal) {
+                found.push((number + 1, *literal));
+            }
+        }
+    }
+    found
 }
 
 fn contains_literal(code: &str, literal: &str) -> bool {
@@ -63,6 +72,15 @@ fn contains_literal(code: &str, literal: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_code::production_text;
+
+    /// A test-only item above production code does not hide the code from
+    /// the check, as cutting the file at its first `#[cfg(test)]` did.
+    #[test]
+    fn a_file_with_an_early_test_item_is_still_scanned() {
+        let source = "#[cfg(test)]\nuse super::*;\n\nconst PARITY: u8 = 0x27;\n\n#[cfg(test)]\nmod tests {\n    const X: u8 = 0x55;\n}\n";
+        assert_eq!(watched_literals(&production_text(source)), vec![(4, "0x27")]);
+    }
 
     /// REQ-GEN-014: the constants module and the character and glyph
     /// tables are exempt wherever their files live under `src/`; a module

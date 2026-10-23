@@ -1,7 +1,8 @@
 //! REQ-ARCH-011: the core's module dependency table (ARCHITECTURE.md
 //! section 9), enforced on every non-test source file of the core.
 
-use super::{non_test_source, report, rust_files};
+use super::{report, rust_files};
+use crate::test_code::production_source;
 use std::collections::BTreeSet;
 use std::path::Path;
 
@@ -59,7 +60,7 @@ pub fn layers(root: &Path) -> Result<(), String> {
             violations.push(format!("{}: module `{module}` is not in the layer table", file.display()));
             continue;
         };
-        let source = non_test_source(&file);
+        let source = production_source(&file);
         for used in uses(&source) {
             let ok = used == module
                 || FOUNDATION.contains(&used.as_str())
@@ -87,4 +88,18 @@ fn uses(source: &str) -> BTreeSet<String> {
         }
     }
     found
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_code::production_text;
+
+    /// A test-only item above production code does not hide the code from
+    /// the check, as cutting the file at its first `#[cfg(test)]` did.
+    #[test]
+    fn a_file_with_an_early_test_item_is_still_scanned() {
+        let source = "#[cfg(test)]\nuse crate::render::Grid;\n\nuse crate::viewer::Viewer;\n\n#[cfg(test)]\nmod tests {\n    use crate::forms::FormModel;\n}\n";
+        assert_eq!(uses(&production_text(source)), BTreeSet::from(["viewer".to_string()]));
+    }
 }
