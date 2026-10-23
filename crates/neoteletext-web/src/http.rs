@@ -159,5 +159,4 @@ pub enum Framing {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects, clippy::panic)]
 mod tests;

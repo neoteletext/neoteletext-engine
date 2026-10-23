@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::indexing_slicing, reason = "a test")]
 //! The tests of the proxy handshakes and the proxy setting's syntax.
 
 use super::*;

@@ -104,5 +104,4 @@ pub fn parse_proxy(text: &str) -> Option<ProxyAddress<'_>> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::indexing_slicing, reason = "a test")]
 mod tests;

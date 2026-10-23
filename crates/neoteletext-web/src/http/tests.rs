@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects, clippy::panic)]
 //! The tests of HTTP/1.1 as the profile reads and writes it, and of the
 //! response-head parser (`super::head`), with its property tests.
 
