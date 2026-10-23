@@ -1119,6 +1119,14 @@ fn through_a_proxy_local_names_are_refused_and_the_proxy_may_be_local() {
     let records = harness.open("http://printer.local/service.json");
     assert!(has_event(&records, "Blocked"), "{records:?}");
     assert!(harness.replay().connects.is_empty(), "nothing was sent to the proxy");
+    // Finding F-17 (decision E.113): a name of one label and a private-use
+    // suffix are local names too.
+    for local in ["router", "nas.lan", "x.home.arpa"] {
+        let mut harness = Harness::new(proxied, Replay::new(&[(local, PUBLIC)]));
+        let records = harness.open(&format!("http://{local}/service.json"));
+        assert!(has_event(&records, "Blocked"), "{local}: {records:?}");
+        assert!(harness.replay().connects.is_empty(), "{local}: nothing was sent to the proxy");
+    }
     // The proxy on this network: the peer the transport reports.
     let mut replay = Replay::new(&[("tt.example", PRIVATE)]);
     replay.reply("tt.example:80", json_response(&descriptor("")));

@@ -99,7 +99,7 @@ A live input runs in two processes (REQ-SEC-018). A fetcher process does the net
 
 - `--duration SECONDS` sets how long the non-interactive commands collect pages from a live feed before acting. The default is 20 seconds. `show` and `text` stop as soon as the requested page is complete.
 - Web services on local-network addresses are refused (REQ-SEC-006). `--allow-local 127.0.0.1` allows one address, for example a test server.
-- `--proxy http://host:port` or `--proxy socks5://host:port` sends every connection through that proxy, TLS still end to end (REQ-WEB-032); with a proxy, `localhost` and names under `.local` and `.internal` are refused too, since the proxy resolves the rest. A proxy that needs a password is not supported.
+- `--proxy http://host:port` or `--proxy socks5://host:port` sends every connection through that proxy, TLS still end to end (REQ-WEB-032); with a proxy, `localhost`, names of one label such as `router`, and names under `.local`, `.internal`, `.home.arpa`, `.lan`, `.corp`, `.intranet`, `.private` and `.localdomain` are refused too, since the proxy resolves the rest and only the name can be checked. A proxy that needs a password is not supported.
 - Plain `http://` works, by the owner's decision E.32. The viewer marks pages that arrived unencrypted.
 - `--no-sandbox` turns the operating-system sandbox off, for debugging.
 - Offline (REQ-WEB-009): when the network goes, pages already received stay viewable. A page that has not been received or confirmed current for 60 seconds shows "?" in the status area. Asking for a page that was never received shows "Page not available offline". The page on screen is asked for again every 10 seconds, so it is the first one updated when the network returns.

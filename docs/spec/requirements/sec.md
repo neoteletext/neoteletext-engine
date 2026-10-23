@@ -69,8 +69,10 @@ The check shall be applied:
 - again after every redirect.
 
 This covers descriptors, pages, push connections and form submissions. Local-network services can be allowed only by naming them explicitly in the configuration.
+
+**Through a proxy** (REQ-WEB-032) the proxy resolves names, so the transport reports only the proxy's address, and the rule is applied by name before anything is sent (decision E.113): an address in a range above, `localhost`, a name of one label (with no dot once a trailing dot is removed), and a name ending in `.localhost`, `.local`, `.internal`, `.home.arpa`, `.lan`, `.corp`, `.intranet`, `.private` or `.localdomain`, compared without regard to case, shall be refused. A public name that resolves to a local address is not seen through a proxy; that residual is the price of the name privacy a proxy gives.
 *Reason:* A web-native client on a home network is a classic target for requests forged to reach routers and other devices behind it ("server-side request forgery").
-*Verification:* Test against a list of blocked addresses and encodings, including redirects and names that resolve to blocked addresses.
+*Verification:* Test against a list of blocked addresses and encodings, including redirects and names that resolve to blocked addresses. Through a proxy, `single_label_and_private_use_names_are_local_through_a_proxy` and `through_a_proxy_local_names_are_refused_and_the_proxy_may_be_local`, which refuse `router`, `nas.lan` and `x.home.arpa` and fail on the code before 24 October 2026 (finding F-17 of NeoTeletext's security review).
 
 **REQ-SEC-007 — No downgrade.**
 Once a service has been reached over HTTPS, every later connection for that service shall use encryption, for the rest of the session and for as long as its cookies last. This covers pages, push, redirects and form submissions. A redirect from HTTPS to plain HTTP shall be refused. A descriptor fetched over HTTPS shall not name plain `http://` or `ws://` addresses; if it does, the descriptor shall be rejected.

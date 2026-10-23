@@ -126,3 +126,27 @@ fn local_hosts_are_seen_before_the_proxy() {
         assert!(!hidden_local(public), "{public}");
     }
 }
+
+/// Finding F-17 (decision E.113): through a proxy, the names a home or
+/// office network gives its devices are local too: a name of one label,
+/// and names under the private-use suffixes. They reached the local
+/// network through a proxy on it.
+#[test]
+fn single_label_and_private_use_names_are_local_through_a_proxy() {
+    for local in [
+        "router",
+        "ROUTER.",
+        "nas.lan",
+        "x.home.arpa",
+        "X.Home.Arpa.",
+        "files.corp",
+        "wiki.intranet",
+        "box.private",
+        "host.localdomain",
+    ] {
+        assert!(hidden_local(local), "{local}");
+    }
+    for public in ["example.com", "lan.example", "home.arpa.example", "corp.example.com", "arpa.example"] {
+        assert!(!hidden_local(public), "{public}");
+    }
+}
