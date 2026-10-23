@@ -83,6 +83,20 @@ fn string<const N: usize>(reader: &mut JsonReader<'_>) -> Read<TextBuf<N>> {
     }
 }
 
+/// Reads a session identifier, which the agent writes back into
+/// `Sec-Secure-Session-Id`: refused unless it is non-empty and every byte
+/// is visible ASCII, `0x21..=0x7E` (RFC 9110 section 5.6.2's `VCHAR`), so
+/// it can never carry a line break, a control byte or a space into a
+/// header (finding F-14, decision E.114 item 6).
+fn identifier(reader: &mut JsonReader<'_>) -> Read<TextBuf<MAX_SESSION_ID>> {
+    let id: TextBuf<MAX_SESSION_ID> = string(reader)?;
+    let bytes = id.as_bytes();
+    if bytes.is_empty() || !bytes.iter().all(u8::is_ascii_graphic) {
+        return Err(InstructionsError::Malformed);
+    }
+    Ok(id)
+}
+
 fn boolean(reader: &mut JsonReader<'_>) -> Read<bool> {
     match next(reader)? {
         Token::Bool(value) => Ok(value),
@@ -155,7 +169,7 @@ pub fn read_instructions(body: &[u8]) -> Read<Answer> {
     let first = next(&mut reader)?;
     object(first, &mut reader, |name, reader| {
         if name.equals(b"session_identifier") {
-            id = Some(string(reader)?);
+            id = Some(identifier(reader)?);
         } else if name.equals(b"refresh_url") {
             refresh_url = Some(string(reader)?);
         } else if name.equals(b"continue") {

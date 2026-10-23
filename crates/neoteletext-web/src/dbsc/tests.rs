@@ -104,6 +104,22 @@ fn instructions_outside_the_profile_are_refused() {
     assert_eq!(read_instructions(long.as_bytes()), Err(InstructionsError::TooLarge));
 }
 
+/// Finding F-14 (decision E.114 item 6): a session identifier is written
+/// into `Sec-Secure-Session-Id`, so one holding CR, LF, NUL or any byte
+/// outside `0x21..=0x7E`, or none at all, is refused.
+#[test]
+fn a_session_identifier_outside_visible_ascii_is_refused() {
+    let with_id = |id: &str| {
+        std::format!(
+            r#"{{"session_identifier":"{id}","scope":{{"include_site":false}},"credentials":[{{"type":"cookie","name":"a"}}]}}"#
+        )
+    };
+    assert!(matches!(read_instructions(with_id("a-1").as_bytes()), Ok(Answer::Continue(_))));
+    for id in [r"a\r\nX: y", r"a\u0000", "", "a b", r"\u007f", "\u{e9}"] {
+        assert_eq!(read_instructions(with_id(id).as_bytes()), Err(InstructionsError::Malformed), "{id:?}");
+    }
+}
+
 /// A key store that signs with a stand-in signature and records what
 /// it signed.
 #[derive(Debug)]

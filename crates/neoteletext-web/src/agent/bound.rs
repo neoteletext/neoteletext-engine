@@ -82,8 +82,14 @@ fn bit(slot: usize) -> u8 {
     u32::try_from(slot).ok().and_then(|slot| 1_u8.checked_shl(slot)).unwrap_or(0)
 }
 
-/// Writes `text` as an sf-string (RFC 9651 section 4.1.6).
+/// Writes `text` as an sf-string (RFC 9651 section 4.1.6). An sf-string
+/// holds printable ASCII alone, `0x20..=0x7E` (section 3.3.3), so any
+/// other byte fails rather than reaching the header (finding F-14,
+/// decision E.114 item 6).
 fn sf_string(text: &[u8], out: &mut Writer<'_>) -> Result<(), Overflow> {
+    if !text.iter().all(|&byte| byte == b' ' || byte.is_ascii_graphic()) {
+        return Err(Overflow);
+    }
     out.byte(b'"')?;
     for &byte in text {
         if byte == b'"' || byte == b'\\' {
@@ -449,6 +455,27 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
                 event(sink, Event::BoundSession { session: id, change: BoundChange::RefreshFailed });
             }
             _ => {}
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, reason = "tests")]
+    use super::*;
+
+    /// Finding F-14 (decision E.114 item 6): an sf-string holds only
+    /// `0x20..=0x7E` (RFC 9651 section 3.3.3), so a line break or a
+    /// control byte can never reach a header the agent writes.
+    #[test]
+    fn an_sf_string_refuses_bytes_outside_printable_ascii() {
+        let mut buffer = [0_u8; 32];
+        let mut out = Writer::new(&mut buffer);
+        sf_string(br#"a "b"\"#, &mut out).unwrap();
+        assert_eq!(out.written(), br#""a \"b\"\\""#);
+        for text in [&b"a\nb"[..], b"a\r", b"\0", b"\x7f", b"\xc3\xa9"] {
+            let mut buffer = [0_u8; 32];
+            assert_eq!(sf_string(text, &mut Writer::new(&mut buffer)), Err(Overflow), "{text:?}");
         }
     }
 }
