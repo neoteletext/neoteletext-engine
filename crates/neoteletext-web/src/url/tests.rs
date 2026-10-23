@@ -1,0 +1,167 @@
+#![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects, clippy::panic)]
+//! The tests of the strict address parser, relative resolution and
+//! origins.
+
+use super::*;
+
+#[test]
+fn valid_addresses_normalise() {
+    let cases = [
+        ("http://example.org", "http://example.org/"),
+        ("HTTPS://Example.ORG/Pages/100?x=1", "https://example.org/Pages/100?x=1"),
+        ("ws://a.b:8080/ws", "ws://a.b:8080/ws"),
+        ("wss://zxnet.co.uk/ws/teefax", "wss://zxnet.co.uk/ws/teefax"),
+        ("http://8.8.8.8/", "http://8.8.8.8/"),
+        ("http://[2001:db8::1]:81/x", "http://[2001:db8::1]:81/x"),
+        ("http://[::FFFF:8.8.8.8]/", "http://[::ffff:8.8.8.8]/"),
+        ("http://xn--bcher-kva.example/", "http://xn--bcher-kva.example/"),
+        ("http://a.b/x/./y/../z", "http://a.b/x/z"),
+        ("http://a.b/%7Euser?q=%20", "http://a.b/%7Euser?q=%20"),
+        ("http://a.b?", "http://a.b/?"),
+    ];
+    for (input, normal) in cases {
+        assert_eq!(Url::parse(input).map(|u| u.as_str() == normal), Ok(true), "{input}");
+    }
+}
+
+#[test]
+fn components() {
+    let url = Url::parse("https://Example.org:8443/a/b?c=d").unwrap();
+    assert_eq!(url.scheme(), Scheme::Https);
+    assert_eq!(url.host_text(), "example.org");
+    assert_eq!(url.port(), 8443);
+    assert_eq!(url.path(), "/a/b");
+    assert_eq!(url.query(), Some("c=d"));
+    assert_eq!(url.target(), "/a/b?c=d");
+    assert_eq!(url.authority(), b"example.org:8443");
+    let v6 = Url::parse("http://[::1]/").unwrap();
+    assert_eq!(v6.host(), Host::Ipv6([0, 0, 0, 0, 0, 0, 0, 1]));
+    assert_eq!(v6.host_text(), "::1");
+    assert_eq!(v6.authority(), b"[::1]");
+    assert_eq!(Url::parse("http://a.b").unwrap().port(), 80);
+    assert_eq!(Url::parse("wss://a.b").unwrap().port(), 443);
+}
+
+#[test]
+fn invalid_and_deceptive_addresses() {
+    let long = {
+        let mut text = [b'a'; 2100];
+        text[..11].copy_from_slice(b"http://a.b/");
+        text
+    };
+    let long = core::str::from_utf8(&long).unwrap();
+    let cases: [(&str, UrlError); 35] = [
+        ("ftp://a.b/", UrlError::Scheme),
+        ("javascript:alert(1)", UrlError::Scheme),
+        ("file:///etc/passwd", UrlError::Scheme),
+        ("data:text/plain,x", UrlError::Scheme),
+        ("http:a.b", UrlError::Scheme),
+        ("http//a.b", UrlError::Scheme),
+        ("http://user:pass@a.b/", UrlError::UserInfo),
+        ("http://good.example@evil.example/", UrlError::UserInfo),
+        ("http://a.b/#frag", UrlError::Fragment),
+        ("http://a.b/x y", UrlError::BadCharacter),
+        ("http://a.b/\t", UrlError::BadCharacter),
+        ("http://a.b/\u{0}", UrlError::BadCharacter),
+        ("http://a.b\\@evil.c/", UrlError::Backslash),
+        ("http:\\\\a.b/", UrlError::Backslash),
+        ("http://0177.0.0.1/", UrlError::Ipv4),
+        ("http://0x7f.0.0.1/", UrlError::Ipv4),
+        ("http://0x7f000001/", UrlError::Ipv4),
+        ("http://2130706433/", UrlError::Ipv4),
+        ("http://127.1/", UrlError::Ipv4),
+        ("http://256.0.0.1/", UrlError::Ipv4),
+        ("http://1.2.3.4.5/", UrlError::Ipv4),
+        ("http://b\u{fc}cher.example/", UrlError::BadCharacter),
+        ("http://a..b/", UrlError::Host),
+        ("http://.a.b/", UrlError::Host),
+        ("http://a.b./", UrlError::Host),
+        ("http://-a.b/", UrlError::Host),
+        ("http://a_b.c/", UrlError::Host),
+        ("http:///x", UrlError::Host),
+        ("http://a.b:/", UrlError::Port),
+        ("http://a.b:0/", UrlError::Port),
+        ("http://a.b:65536/", UrlError::Port),
+        ("http://a.b:080/", UrlError::Port),
+        ("http://[::1%25eth0]/", UrlError::Ipv6),
+        ("http://a.b/%zz", UrlError::Path),
+        ("http://a.b/<script>", UrlError::Path),
+    ];
+    for (input, error) in cases {
+        assert_eq!(Url::parse(input).map(|u| u.as_str().len()), Err(error), "{input}");
+    }
+    assert_eq!(Url::parse(long).map(|_| ()), Err(UrlError::TooLong));
+    let label = "http://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.b/";
+    assert_eq!(Url::parse(label).map(|_| ()), Err(UrlError::Host));
+    for bad in ["http://[1:2:3:4:5:6:7:8:9]/", "http://[1::2::3]/", "http://[12345::]/", "http://[::1/"] {
+        assert_eq!(Url::parse(bad).map(|_| ()), Err(UrlError::Ipv6), "{bad}");
+    }
+}
+
+/// RFC 3986 section 5.4.1 normal examples, adapted to the schemes and
+/// syntax the strict parser accepts.
+#[test]
+fn relative_resolution() {
+    let base = Url::parse("http://a.b/b/c/d;p?q").unwrap();
+    let cases = [
+        ("g", "http://a.b/b/c/g"),
+        ("./g", "http://a.b/b/c/g"),
+        ("g/", "http://a.b/b/c/g/"),
+        ("/g", "http://a.b/g"),
+        ("//g.h", "http://g.h/"),
+        ("?y", "http://a.b/b/c/d;p?y"),
+        ("g?y", "http://a.b/b/c/g?y"),
+        (";x", "http://a.b/b/c/;x"),
+        ("g;x", "http://a.b/b/c/g;x"),
+        ("", "http://a.b/b/c/d;p?q"),
+        (".", "http://a.b/b/c/"),
+        ("./", "http://a.b/b/c/"),
+        ("..", "http://a.b/b/"),
+        ("../", "http://a.b/b/"),
+        ("../g", "http://a.b/b/g"),
+        ("../..", "http://a.b/"),
+        ("../../", "http://a.b/"),
+        ("../../g", "http://a.b/g"),
+        ("../../../g", "http://a.b/g"),
+        ("/./g", "http://a.b/g"),
+        ("/../g", "http://a.b/g"),
+        ("g.", "http://a.b/b/c/g."),
+        ("..g", "http://a.b/b/c/..g"),
+        ("https://other.example/x", "https://other.example/x"),
+    ];
+    for (reference, expected) in cases {
+        assert_eq!(base.join(reference).map(|u| u.as_str() == expected), Ok(true), "{reference}");
+    }
+    assert_eq!(base.join("#f").map(|_| ()), Err(UrlError::Fragment));
+    assert_eq!(base.join("\\\\evil").map(|_| ()), Err(UrlError::Backslash));
+    assert_eq!(base.join("//user@evil.example/").map(|_| ()), Err(UrlError::UserInfo));
+}
+
+#[test]
+fn origins() {
+    let origin = |text: &str| Url::parse(text).unwrap().origin();
+    let pairs = [
+        ("http://a.b/", "http://A.B/x", true),
+        ("http://a.b/", "http://a.b:80/", true),
+        ("https://a.b/", "https://a.b:443/", true),
+        ("http://a.b/", "https://a.b/", false),
+        ("http://a.b/", "http://a.b:8080/", false),
+        ("http://a.b/", "ws://a.b/", true),
+        ("https://a.b/", "wss://a.b:443/", true),
+        ("https://a.b/", "ws://a.b/", false),
+        ("http://a.b/", "http://c.a.b/", false),
+        ("http://xn--bcher-kva.example/", "http://XN--BCHER-KVA.example/", true),
+        ("http://[::1]/", "http://[0:0:0:0:0:0:0:1]/", false),
+    ];
+    for (a, b, same) in pairs {
+        assert_eq!(origin(a).same(&origin(b)), same, "{a} {b}");
+    }
+}
+
+#[test]
+fn blocked_literals() {
+    for blocked in ["http://127.0.0.1/", "http://10.0.0.1/", "http://[::1]/", "http://[::ffff:192.168.0.1]/"] {
+        assert!(Url::parse(blocked).unwrap().ip().unwrap().is_blocked(), "{blocked}");
+    }
+    assert!(!Url::parse("http://8.8.8.8/").unwrap().ip().unwrap().is_blocked());
+}
