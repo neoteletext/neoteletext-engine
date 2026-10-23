@@ -756,8 +756,22 @@ impl<'m, R: RandomSource> ZxnetFeed<'m, R> {
 
     /// Sends one client message as a text frame.
     fn send_text(&mut self, message: &[u8], sink: &mut LiveSink<'_>) {
+        self.send_frame(OPCODE_TEXT, message, sink);
+    }
+
+    /// Writes one frame with `opcode` and sends it.
+    fn send_frame(&mut self, opcode: u8, payload: &[u8], sink: &mut LiveSink<'_>) {
         let mut writer = Writer::new(self.buffers.request);
-        if ws::write_frame(&mut writer, OPCODE_TEXT, message, &mut self.random).is_ok() {
+        if ws::write_frame(&mut writer, opcode, payload, &mut self.random).is_ok() {
+            let len = writer.len();
+            sink(LiveOutput::Send(self.buffers.request.get(..len).unwrap_or(&[])));
+        }
+    }
+
+    /// Writes a close frame with `code` and sends it.
+    fn send_close(&mut self, code: u16, sink: &mut LiveSink<'_>) {
+        let mut writer = Writer::new(self.buffers.request);
+        if ws::write_close(&mut writer, code, &mut self.random).is_ok() {
             let len = writer.len();
             sink(LiveOutput::Send(self.buffers.request.get(..len).unwrap_or(&[])));
         }
@@ -829,11 +843,7 @@ impl<'m, R: RandomSource> ZxnetFeed<'m, R> {
                     let (used, done) = match self.frames.feed(self.buffers.message, input) {
                         Ok(result) => result,
                         Err(error) => {
-                            let mut writer = Writer::new(self.buffers.request);
-                            if ws::write_close(&mut writer, error.close_code(), &mut self.random).is_ok() {
-                                let len = writer.len();
-                                sink(LiveOutput::Send(self.buffers.request.get(..len).unwrap_or(&[])));
-                            }
+                            self.send_close(error.close_code(), sink);
                             self.dropped(now, true, sink);
                             return;
                         }
@@ -849,26 +859,10 @@ impl<'m, R: RandomSource> ZxnetFeed<'m, R> {
                             let ping = self.frames.control_payload();
                             let len = ping.len().min(payload.len());
                             payload.get_mut(..len).unwrap_or(&mut []).copy_from_slice(ping.get(..len).unwrap_or(&[]));
-                            let mut writer = Writer::new(self.buffers.request);
-                            if ws::write_frame(
-                                &mut writer,
-                                OPCODE_PONG,
-                                payload.get(..len).unwrap_or(&[]),
-                                &mut self.random,
-                            )
-                            .is_ok()
-                            {
-                                let len = writer.len();
-                                sink(LiveOutput::Send(self.buffers.request.get(..len).unwrap_or(&[])));
-                            }
+                            self.send_frame(OPCODE_PONG, payload.get(..len).unwrap_or(&[]), sink);
                         }
                         Some(WsMessage::Close(code)) => {
-                            let mut writer = Writer::new(self.buffers.request);
-                            let reply = code.unwrap_or(crate::consts::CLOSE_NORMAL);
-                            if ws::write_close(&mut writer, reply, &mut self.random).is_ok() {
-                                let len = writer.len();
-                                sink(LiveOutput::Send(self.buffers.request.get(..len).unwrap_or(&[])));
-                            }
+                            self.send_close(code.unwrap_or(crate::consts::CLOSE_NORMAL), sink);
                             self.dropped(now, true, sink);
                             return;
                         }
@@ -1019,13 +1013,17 @@ impl<'m, R: RandomSource> ZxnetFeed<'m, R> {
             Phase::Connecting { deadline } | Phase::Handshake { deadline } => Some(deadline),
             Phase::Open => {
                 let inactive = Instant(self.last_activity.0.saturating_add(ZXNET_INACTIVITY_US));
-                let walk = self.walk.and_then(|walk| {
-                    walk.last_row
-                        .map(|last| Instant(last.0.saturating_add(ZXNET_WALK_SETTLE_US)))
-                        .or(Some(Instant(walk.started.0.saturating_add(ZXNET_WALK_TIMEOUT_US))))
-                });
-                [Some(inactive), Some(self.next_keepalive), walk].into_iter().flatten().min()
+                [Some(inactive), Some(self.next_keepalive), self.walk_deadline()].into_iter().flatten().min()
             }
         }
+    }
+
+    /// When the walk next acts: its page settled, or its time limit.
+    fn walk_deadline(&self) -> Option<Instant> {
+        self.walk.and_then(|walk| {
+            walk.last_row
+                .map(|last| Instant(last.0.saturating_add(ZXNET_WALK_SETTLE_US)))
+                .or(Some(Instant(walk.started.0.saturating_add(ZXNET_WALK_TIMEOUT_US))))
+        })
     }
 }
