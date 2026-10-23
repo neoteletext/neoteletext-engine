@@ -3,6 +3,7 @@
 
 use super::*;
 use core::fmt::Write as _;
+use neoteletext_core::consts::{FONT_MAX_CHARACTERS, FONT_MAX_FILE_BYTES, FONT_MAX_LINE_BYTES};
 use std::string::String;
 use std::vec::Vec;
 use std::{format, vec};
