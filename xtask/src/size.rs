@@ -108,19 +108,19 @@ pub fn run(root: &Path, args: &[String]) -> Result<(), String> {
     for build in BUILDS {
         let image = link(&image_dir, &target, build.features)?;
         let budget = build.budget.map_or_else(String::new, |budget| format!("{budget}"));
-        println!("{:<14} {:>10} {:>10}  {budget}", build.name, image.flash, image.ram);
+        println!("{:<14} {:>10} {:>10}  {budget}", build.name, image.flash(), image.ram());
         if let Some(budget) = build.budget
-            && image.flash > budget
+            && image.flash() > budget
         {
-            failures.push(format!("{}: flash {} bytes is over the budget of {budget}", build.name, image.flash));
+            failures.push(format!("{}: flash {} bytes is over the budget of {budget}", build.name, image.flash()));
         }
-        for found in forbidden(&image.symbols) {
+        for found in forbidden(image.symbols()) {
             failures.push(format!("{}: {found}", build.name));
         }
     }
     if SOFT_FLOAT_TARGETS.contains(&target.as_str()) {
         let probe = link(&image_dir, &target, "float-probe")?;
-        if forbidden(&probe.symbols).iter().any(|found| found.starts_with("floating point")) {
+        if forbidden(probe.symbols()).iter().any(|found| found.starts_with("floating point")) {
             println!("float probe: found, as it must be");
         } else {
             failures.push("the deliberate floating-point operation was not found: the symbol check is broken".into());
