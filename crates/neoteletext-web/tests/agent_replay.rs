@@ -1589,6 +1589,35 @@ fn a_push_handshake_cookie_stays_in_its_channel_folder() {
     assert_eq!(header_value(&last, "Cookie"), None, "not sent to another channel's folder");
 }
 
+/// Finding F-42 (decision E.114 item 2): a response from outside the
+/// channel's folder, here a permitted form target on another origin,
+/// stores no cookies; it was stored under the channel's folder on that
+/// origin. A response after an upgrade to `https` on the channel's host
+/// and folder is inside the channel, and stores its cookies.
+#[test]
+#[cfg(all(feature = "forms", feature = "cookies"))]
+fn a_response_from_outside_the_channel_stores_no_cookies() {
+    let mut harness = site_harness(Config::default());
+    harness.replay().reply("site.example:80", json_response(br#"{"form_origins":["http://other.example"]}"#));
+    harness.replay().reply("site.example:80", not_found());
+    harness.open_channel("http://site.example/one/");
+    let set = response("204 No Content", &["Set-Cookie: t=1; Path=/"], b"");
+    harness.replay().reply("other.example:80", Reply::Bytes(set));
+    let fields = [("a", "1")];
+    harness.input(Input::Submit(submission("http://site.example/one/100.tti", "http://other.example/in", &fields)));
+    harness.input(Input::ConfirmSubmission(true));
+    assert!(has_event(&harness.take(), "SubmissionSucceeded { status: 204 }"));
+    assert!(
+        harness.agent.cookies().cookies().all(|cookie| cookie.host != b"other.example"),
+        "nothing stored from outside the channel"
+    );
+    let upgrade = response("301 Moved", &["Location: https://site.example/one/100.tti"], b"");
+    harness.replay().reply("site.example:80", Reply::Bytes(upgrade));
+    harness.replay().reply("site.example:443", tti_response(&["Set-Cookie: u=1; Path=/"]));
+    harness.fetch(0x100);
+    assert!(harness.agent.cookies().cookies().any(|cookie| cookie.host == b"site.example"), "the upgrade stores");
+}
+
 #[cfg(feature = "push")]
 fn input_service(input: bool) -> Harness {
     let mut replay = Replay::new(&[("tt.example", PUBLIC)]);
