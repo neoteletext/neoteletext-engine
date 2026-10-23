@@ -430,7 +430,7 @@ Unknown members shall be refused, as REQ-WEB-002 requires of every descriptor.
 
 Nothing in `contents.txt` is checked against the channel's files: a listed page that does not exist is "not found" when chosen, as a typed number would be.
 *Reason:* One small text format that a person can write by hand, a server can generate, and the author's tool can write (REQ-CLI-008), is the whole of a channel's map.
-*Verification:* Tests of each kind of entry, of every fault listed, of comments and both line ends, of the size and count limits, and of a duplicate page.
+*Verification:* Tests of each kind of entry, of every fault listed, of comments and both line ends, of the size and count limits, and of a duplicate page; the fuzz target `contents`.
 
 **REQ-WEB-026 — The channel is the boundary.**
 When a service is opened as a channel, the channel shall be the boundary for these rules (decision E.70 item 12). Each is stricter than the origin-based rule of the same name, which still applies.

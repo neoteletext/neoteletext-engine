@@ -64,10 +64,12 @@ fn a_phone_pairs_by_key_and_types() {
     let (join, events) = screen(relay, config);
     assert!(join.url.contains("&k=") && join.pin.is_none());
     let mut phone = Phone::join(&join.url, None).unwrap();
-    until(&events, &Event::Connected);
+    // In no-PIN mode the phone is connected by its first sealed frame
+    // (decision E.116 item 3), so it presses before the screen says so.
     assert!(phone.press("ColorF0Red").unwrap());
+    let mut seen = until(&events, &Event::Connected);
     assert!(phone.type_text("hé").unwrap());
-    let seen = until(&events, &Event::Text("hé".into()));
+    seen.extend(until(&events, &Event::Text("hé".into())));
     assert!(
         seen.contains(&Event::Down("ColorF0Red".into())) && seen.contains(&Event::Up("ColorF0Red".into())),
         "{seen:?}"

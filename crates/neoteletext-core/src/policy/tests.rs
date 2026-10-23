@@ -55,3 +55,46 @@ fn output_sanitising() {
     }
     assert!(!is_safe_file_name_byte(b'/') && !is_safe_file_name_byte(b'\\'));
 }
+
+/// Finding F-46, decision E.115: the ranges the review found open, and
+/// private IPv4 addresses written inside NAT64 and 6to4 addresses.
+#[test]
+fn ranges_from_the_security_review_are_blocked() {
+    for blocked in [[192, 0, 0, 1], [192, 0, 0, 170], [198, 18, 0, 1], [198, 19, 255, 255]] {
+        assert!(ipv4_blocked(blocked), "{blocked:?}");
+    }
+    for allowed in [[192, 0, 1, 1], [198, 17, 255, 255], [198, 20, 0, 1]] {
+        assert!(!ipv4_blocked(allowed), "{allowed:?}");
+    }
+    for blocked in [
+        // ::10.0.0.1 and ::8.8.8.8, IPv4-compatible (RFC 4291 section 2.5.5.1).
+        [0, 0, 0, 0, 0, 0, 0x0A00, 0x0001],
+        [0, 0, 0, 0, 0, 0, 0x0808, 0x0808],
+        // fec0::1, site-local (RFC 3879).
+        [0xFEC0, 0, 0, 0, 0, 0, 0, 1],
+        [0xFEFF, 0, 0, 0, 0, 0, 0, 1],
+        // 64:ff9b::127.0.0.1 and 64:ff9b::192.168.1.1 (RFC 6052).
+        [0x0064, 0xFF9B, 0, 0, 0, 0, 0x7F00, 0x0001],
+        [0x0064, 0xFF9B, 0, 0, 0, 0, 0xC0A8, 0x0101],
+        // 64:ff9b:1::10.0.0.1 with a /96 prefix, and 10.0.0.1 with the
+        // /48 prefix itself (RFC 8215, RFC 6052 section 2.2).
+        [0x0064, 0xFF9B, 0x0001, 0, 0, 0, 0x0A00, 0x0001],
+        [0x0064, 0xFF9B, 0x0001, 0x0A00, 0x0001, 0, 0, 0],
+        // 2002:c0a8:0101::1, 6to4 of 192.168.1.1 (RFC 3056).
+        [0x2002, 0xC0A8, 0x0101, 0, 0, 0, 0, 1],
+        [0x2002, 0x7F00, 0x0001, 0, 0, 0, 0, 1],
+    ] {
+        assert!(ipv6_blocked(blocked), "{blocked:x?}");
+    }
+    for allowed in [
+        // 64:ff9b::8.8.8.8 and 2002:0808:0808::1 embed a public address.
+        [0x0064, 0xFF9B, 0, 0, 0, 0, 0x0808, 0x0808],
+        [0x0064, 0xFF9B, 0x0001, 0, 0, 0, 0x0808, 0x0808],
+        [0x2002, 0x0808, 0x0808, 0, 0, 0, 0, 1],
+        // Global unicast next to the site-local range.
+        [0xFE00, 0, 0, 0, 0, 0, 0, 1],
+        [0x2001, 0x0DB9, 0, 0, 0, 0, 0, 1],
+    ] {
+        assert!(!ipv6_blocked(allowed), "{allowed:x?}");
+    }
+}

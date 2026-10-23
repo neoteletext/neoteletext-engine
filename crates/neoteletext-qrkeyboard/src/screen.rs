@@ -103,6 +103,9 @@ pub struct Screen {
     socket: Option<WebSocket>,
     pairing: Option<Pairing>,
     channel: Option<(Sealer, Opener)>,
+    /// A frame from the phone has proved it holds the pairing secret: a
+    /// PIN run's confirmation, or a sealed frame that opened.
+    authenticated: bool,
     pin_attempts: u32,
     locked: bool,
     finished: bool,
@@ -120,6 +123,14 @@ pub struct Screen {
 
 fn is_code(code: &str) -> bool {
     code.len() == CODE_LENGTH && code.bytes().all(|byte| byte.is_ascii_uppercase() || (b'2'..=b'7').contains(&byte))
+}
+
+/// Whether the relay's owner token may be sent: it goes into an
+/// `Authorization: Bearer` header, so it is held to the message id
+/// alphabet, which the relay's 32 random bytes in base64url are written in
+/// (decision E.116 item 2).
+fn is_owner_token(token: &str) -> bool {
+    !token.is_empty() && token.len() <= MAX_TOKEN && token.bytes().all(message::is_id_byte)
 }
 
 impl Screen {
@@ -156,7 +167,7 @@ impl Screen {
         let owner = answer
             .get("ownerToken")
             .and_then(Value::as_str)
-            .filter(|token| !token.is_empty() && token.len() <= MAX_TOKEN)
+            .filter(|token| is_owner_token(token))
             .ok_or(Error::Protocol("an owner token"))?;
         let socket_address =
             net::parse(answer.get("relay").and_then(Value::as_str).ok_or(Error::Protocol("a relay address"))?)?;
@@ -189,6 +200,7 @@ impl Screen {
             socket: None,
             pairing: None,
             channel: None,
+            authenticated: false,
             pin_attempts: 0,
             locked: false,
             finished: false,
@@ -221,10 +233,10 @@ impl Screen {
         &self.join
     }
 
-    /// Whether a phone is paired now.
+    /// Whether a phone is paired now, and has proved it.
     #[must_use]
     pub const fn connected(&self) -> bool {
-        self.channel.is_some()
+        self.channel.is_some() && self.authenticated
     }
 
     /// A waker that ends this screen's [`wait`](Self::wait) from another
@@ -261,6 +273,7 @@ impl Screen {
             socket.close();
         }
         self.channel = None;
+        self.authenticated = false;
         self.pairing = None;
         let origin = self.relay.as_str().trim_end_matches('/');
         let end = net::parse(&format!("{origin}/i/{}/end", self.join.code))?;
@@ -283,14 +296,4 @@ impl Screen {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn join_codes_are_the_relays() {
-        assert!(is_code("ABCDEFGHIJKLMN27"));
-        assert!(!is_code("ABCDEFGHIJKLMN28"), "8 is not base-32");
-        assert!(!is_code("abcdefghijklmn27"));
-        assert!(!is_code("ABC"));
-    }
-}
+mod tests;

@@ -44,7 +44,7 @@ It shall find the sync byte 0x47 and regain synchronisation after corruption. It
 - It shall report continuity-counter breaks.
 
 The 192-byte variant is not only theoretical: off-air recordings in the public test corpus (REQ-TST-022) use it.
-*Verification:* Test with generated streams and with the off-air recordings of the real-broadcast corpus (REQ-TST-022).
+*Verification:* Test with generated streams and with the off-air recordings of the real-broadcast corpus (REQ-TST-022); the fuzz targets `formats` and `ts_packets`.
 
 **REQ-INP-007 — Finding teletext in a transport stream.**
 The reader shall decode the Program Association Table (packet identifier 0) and each Program Map Table. It shall find the elementary streams whose stream type is 0x06 and which carry one of these:
@@ -273,7 +273,7 @@ When tested on 10 October 2026, only slot 0 returned rows. A page then needed to
 
 **Build.** This reader is part of the `neoteletext-web` crate. It uses that crate's sans-IO WebSocket code and the transport supplied by the port (REQ-WEB-001), including the port's encryption. The core library remains free of networking (REQ-GEN-002).
 *Reason:* This is the only live source of teletext with raw packet bytes found on the internet. It gives continuous real-time test data (REQ-TST-063).
-*Verification:* Test against a recorded session replayed from a file; demonstration against the live servers.
+*Verification:* Test against a recorded session replayed from a file; demonstration against the live servers; the fuzz target `zxnet_message`, which reads each line of its input as a server message after the handshake.
 
 **REQ-INP-023 — Enhancement data and enhancement pages in TTI files.**
 The TTI reader (REQ-INP-013) and writer (REQ-INP-014) shall carry every packet of Levels 2.5 and 3.5, in the form of the vbit2 extensions (`research/notes-formats.md` section 5.2):
