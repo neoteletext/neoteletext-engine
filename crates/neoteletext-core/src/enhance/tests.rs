@@ -20,21 +20,23 @@ use std::vec::Vec;
 
 use crate::acq::{Decoder, EnhancementPacket, EnhancementStore, EnhancementSubPage};
 use crate::charset::{CharRef, CharSet, to_unicode};
+use crate::config::Row24Policy;
 use crate::consts::{
-    ALPHA_BLACK, ALPHA_RED, ALPHA_YELLOW, BLACK_BACKGROUND, C6_SUBTITLE, COLOUR_BLACK, COLOUR_WHITE, CONCEAL,
-    CONTIGUOUS_MOSAICS, DATA_BYTES, DATA_START, DESIGNATION_GROUP_SHIFT, DOUBLE_HEIGHT, DOUBLE_WIDTH, END_BOX, ESC,
-    FLASH, FLASH_MODE_ADJACENT_CLUT, FLASH_MODE_INVERT_PHASE, FLASH_MODE_NORMAL, FLASH_RATE_DECREMENTAL,
-    FLASH_RATE_INCREMENTAL, FLASH_RATE_PHASE_2, FLASH_RATE_PHASE_3, FLASH_RATE_SLOW, G3_UNDEFINED,
-    HEADER_DISPLAY_BYTES, HOLD_MOSAICS, LATIN_G2_UNDEFINED, MAGAZINES, MOSAIC_RED, MOSAIC_WHITE, NEW_BACKGROUND,
-    NORMAL_SIZE, PACKET_ENHANCEMENT, PAGE_CODING_PARITY, PAGE_FUNCTION_BASIC, PAGE_TIME_FILLING, RELEASE_MOSAICS,
-    ROW_ADDRESS_BASE, ROW_ADDRESS_LAST, ROW_ADDRESS_ROW_24, SEPARATED_MOSAICS, START_BOX, STEADY, TRIPLET_BYTES,
-    TRIPLETS_PER_PACKET,
+    ALPHA_BLACK, ALPHA_RED, ALPHA_YELLOW, BLACK_BACKGROUND, C6_SUBTITLE, C7_SUPPRESS_HEADER, C10_INHIBIT_DISPLAY,
+    COLOUR_BLACK, COLOUR_WHITE, COMPOSITIONAL_LINKS, CONCEAL, CONTIGUOUS_MOSAICS, DATA_BYTES, DATA_START,
+    DESIGNATION_GROUP_SHIFT, DOUBLE_HEIGHT, DOUBLE_WIDTH, END_BOX, ESC, FLASH, FLASH_MODE_ADJACENT_CLUT,
+    FLASH_MODE_INVERT_PHASE, FLASH_MODE_NORMAL, FLASH_RATE_DECREMENTAL, FLASH_RATE_INCREMENTAL, FLASH_RATE_PHASE_2,
+    FLASH_RATE_PHASE_3, FLASH_RATE_SLOW, G3_UNDEFINED, HEADER_DISPLAY_BYTES, HOLD_MOSAICS, LATIN_G2_UNDEFINED,
+    MAGAZINES, MOSAIC_RED, MOSAIC_WHITE, NEW_BACKGROUND, NORMAL_SIZE, PACKET_ENHANCEMENT, PAGE_CODING_PARITY,
+    PAGE_FUNCTION_BASIC, PAGE_FUNCTION_POP, PAGE_MOT, PAGE_TIME_FILLING, RELEASE_MOSAICS, ROW_ADDRESS_BASE,
+    ROW_ADDRESS_LAST, ROW_ADDRESS_ROW_24, ROW_COLOUR_DOWN_TO_BOTTOM, ROW_COLOUR_THIS_ROW, SEPARATED_MOSAICS, START_BOX,
+    STEADY, TRIPLET_BYTES, TRIPLETS_PER_PACKET,
 };
 use crate::ecc::with_odd_parity;
 use crate::level1::{CharSource, FlashMode, FlashRate, Glyph, Grid, Size, Width, build_grid};
 use crate::packet::{
-    ColourData, DisplayAttributes, ObjectKind, ObjectNumber, ObjectSource, Packet, PacketMeta, PageFormat,
-    TripletFunction, encode,
+    ColourData, CompositionalLink, DisplayAttributes, ObjectKind, ObjectNumber, ObjectSource, Packet, PacketMeta,
+    PageFormat, TripletFunction, encode,
 };
 use crate::types::{
     ControlBits, DefaultColourFields, Designations, Instant, Magazine, PageAddress, PresentationFields, SubCode,
@@ -805,4 +807,123 @@ fn non_spacing_double_height_keeps_the_row_below() {
     assert_eq!(cells[9][1].attributes.width(), Width::Normal, "rule 3: the lower half wins");
     assert_eq!(text(&grid, 9, 0..=0), "a", "the row below non-spacing double height is shown");
     assert_eq!(grid.double_height_rows, 1 << 8);
+}
+
+/// REQ-L25-032, REQ-L25-033, decision E.45: Full Screen Colour, Full Row
+/// Colour "this row" and "down to the bottom" in transmission order,
+/// reserved row selections and reserved screen data ignored, Address
+/// Display Row 0 for row 0; the fill reaches row 24 only when it is shown.
+#[test]
+fn screen_and_row_colours() {
+    let row_colour = |row: u8, index: u8, high: u8| TripletFunction::FullRowColour {
+        address: ROW_ADDRESS_BASE + row,
+        colour: ColourData { index, high },
+    };
+    let local = [
+        TripletFunction::FullScreenColour(colour(5)),
+        TripletFunction::FullScreenColour(ColourData { index: 9, high: 0b01 }),
+        row_colour(3, 6, ROW_COLOUR_DOWN_TO_BOTTOM),
+        row_colour(5, 7, ROW_COLOUR_THIS_ROW),
+        row_colour(7, 1, 0b01),
+        TripletFunction::AddressDisplayRow0 { address: ROW_ADDRESS_LAST, colour: colour(2) },
+    ];
+    let mut config = level(PresentationLevel::Level25);
+    for (row24, row_24_colour) in [(Row24Policy::AnnexH, 5), (Row24Policy::WhenPresent, 6)] {
+        config.row24 = row24;
+        let (grid, _) = build(&page(0, &[(1, b"ROW 1"), (24, b"ROW 24")], local_data(&local)), &config);
+        assert_eq!(grid.screen_colour, 5);
+        let mut expected = [6; ROWS];
+        expected[..3].copy_from_slice(&[2, 5, 5]);
+        expected[5] = 7;
+        expected[ROWS - 1] = row_24_colour;
+        assert_eq!(grid.row_colours, expected, "{row24:?}");
+    }
+}
+
+/// REQ-OBJ-041: an enhancement page shows no rows of text: the Magazine
+/// Organization Table, and a page whose X/28/0 names an object page
+/// function; row 0 stays.
+#[test]
+fn enhancement_pages_show_no_text() {
+    let config = Config { store_hexadecimal_pages: true, ..level(PresentationLevel::Level25) };
+    let pop = PageFormat { function: PAGE_FUNCTION_POP, coding: PAGE_CODING_PARITY };
+    let x28 = encode::page_enhancement(magazine_1(), 0, pop, &PresentationFields::default());
+    // The first reception makes the page an enhancement page; a decimal
+    // page is then stored in both stores (REQ-ACQ-016).
+    let pop_page = [page(0, &[(1, b"OBJECTS")], std::vec![x28]), page(0, &[(1, b"OBJECTS")], std::vec![x28])].concat();
+    let mot = PageAddress { magazine: magazine_1(), page: crate::types::PageNumber(PAGE_MOT) }.mpp();
+    let mot_page = std::vec![header(mot, 0), display_row(1, b"TABLE")];
+    for (mpp, packets) in [(PAGE, pop_page), (mot, mot_page)] {
+        let (grid, report) = build_page(mpp, &packets, &config);
+        assert!(grid.cells[1..].iter().flatten().all(|cell| *cell == Cell::BLANK), "{mpp:X}");
+        assert_eq!((grid.double_height_rows, report.steps), (0, 0));
+    }
+}
+
+/// REQ-OBJ-041: a page that a link names, and that is therefore also kept
+/// as an enhancement page, is still shown when its own X/28/0 gives the
+/// page function of a basic page, so that a wrong link never hides it.
+#[test]
+fn a_display_page_named_by_a_link_is_still_shown() {
+    let config = level(PresentationLevel::Level25);
+    let address = PageAddress::from_mpp(PAGE).unwrap();
+    let to_itself = CompositionalLink {
+        function: 0b00,
+        validity: 0b11,
+        magazine: address.magazine,
+        page: address.page,
+        subpages: 0xFFFF,
+        marker_first: true,
+        marker_second: false,
+    };
+    let reception = || {
+        let links = encode::compositional_links(magazine_1(), 4, &[to_itself; COMPOSITIONAL_LINKS]);
+        page(0, &[(1, b"SHOWN")], std::vec![links, x28_0(&PresentationFields::default())])
+    };
+    // The first reception names the page; the second is kept in both stores.
+    let packets = [reception(), reception()].concat();
+    with_page(PAGE, &packets, &config, |_, _, lookup| {
+        assert!(lookup.sub_page(address.magazine, address.page, 0).is_some(), "kept as an enhancement page");
+    });
+    let (grid, _) = build(&packets, &config);
+    assert_eq!(text(&grid, 1, 0..=4), "SHOWN");
+}
+
+/// REQ-L25-001: rows the Level 1 grid does not show keep their Level 1
+/// cells: row 0 of a page with C7 set, and rows 1 to 24 of a page with C10
+/// set; the other rows are still enhanced.
+#[test]
+fn rows_the_page_hides_keep_their_level_1_cells() {
+    let row_0 =
+        TripletFunction::AddressDisplayRow0 { address: ROW_ADDRESS_LAST, colour: ColourData { index: 1, high: 0b01 } };
+    let local = [row_0, g0_at(10, b'Y'), position(2, 0), g0_at(1, b'Z')];
+    let config = level(PresentationLevel::Level25);
+    for (control, hidden, enhanced) in [(C7_SUPPRESS_HEADER, 0..1, (2, 1)), (C10_INHIBIT_DISPLAY, 1..ROWS, (0, 10))] {
+        let packets = page(control, &[(2, b"ROW 2")], local_data(&local));
+        with_page(PAGE, &packets, &config, |page, magazine, lookup| {
+            let options = DisplayOptions::default();
+            let mut grid = Box::new(Grid::EMPTY);
+            build_grid(&mut grid, Some(page), magazine, &config, &options);
+            let level_1 = grid.clone();
+            let _ = apply(&mut grid, page, magazine, lookup, &config, &options);
+            assert_eq!(grid.cells[hidden.clone()], level_1.cells[hidden], "{control:#X}");
+            assert_eq!(grid.cells[enhanced.0][enhanced.1].attributes.source(), CharSource::Local, "{control:#X}");
+        });
+    }
+}
+
+/// REQ-L25-001: at Level 1.5 the processor does nothing.
+#[test]
+fn the_processor_runs_only_at_levels_2_5_and_3_5() {
+    let config = level(PresentationLevel::Level15);
+    let packets = page(0, &[(1, b"ROW 1")], local_data(&[position(1, 0), g0_at(1, b'Z')]));
+    with_page(PAGE, &packets, &config, |page, magazine, lookup| {
+        let options = DisplayOptions::default();
+        let mut grid = Box::new(Grid::EMPTY);
+        build_grid(&mut grid, Some(page), magazine, &config, &options);
+        let level_1 = grid.clone();
+        let report = apply(&mut grid, page, magazine, lookup, &config, &options);
+        assert_eq!(grid.cells, level_1.cells);
+        assert_eq!((report.steps, report.faults), (0, crate::acq::EnhancementFaults::NONE));
+    });
 }
