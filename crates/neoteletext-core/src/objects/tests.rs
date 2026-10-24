@@ -522,6 +522,8 @@ fn object_page_bodies_cross_into_x26_and_stop_at_missing_packets() {
         received(&object_page(with_x26), |lookup| {
             let object = find_public(lookup, Some(page_link(0x1A0)), &page, ObjectKind::Adaptive, number, L25).unwrap();
             assert_eq!(object.body.capacity(), 507);
+            // Absolute triplets are numbered 0 to 506: there is no 507th.
+            assert_eq!(object.body.fetch(&page, 507), Fetch::Missing);
             prescan(&object, &page)
         })
     };
