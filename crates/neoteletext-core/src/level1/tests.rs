@@ -204,3 +204,141 @@ fn double_height_fills_the_row_below() {
     assert_eq!(grid.cells[2][0].glyph, Glyph::Space, "row 2's own X is ignored");
     assert_eq!(grid.cells[2][3].glyph, Glyph::Space);
 }
+
+/// A complete page whose rows are `rows`, every byte with odd parity
+/// and recorded as passed.
+fn page_with_rows(rows: &[(usize, &[u8])]) -> StoredPage {
+    let mut page = StoredPage::EMPTY;
+    page.state = crate::fsm::PageState::Complete;
+    page.cells = [[crate::ecc::with_odd_parity(b' '); 40]; 26];
+    for &(row, text) in rows {
+        for (cell, &byte) in page.cells[row].iter_mut().zip(text) {
+            *cell = crate::ecc::with_odd_parity(byte);
+        }
+        page.rows_received |= 1 << row;
+    }
+    page.parity_ok = [u64::MAX; 26];
+    page.ever_good = [u64::MAX; 26];
+    page
+}
+
+/// REQ-L1-014, decision E.10: row 0 is the receiver's status area in
+/// columns 0 to 6, a colour attribute in column 7 (white when found,
+/// green when searching), then header bytes 14 to 45: the rolling
+/// header's while searching, where a byte failing parity is a space,
+/// and otherwise the displayed page's, whose failures count from column
+/// 8 only. With neither, columns 8 to 39 are spaces.
+#[test]
+fn row_0_is_the_status_area_and_a_header() {
+    use crate::consts::{COLOUR_GREEN, COLOUR_WHITE, SPACE};
+    let config = Config::default();
+    let mut header = [b' '; 40];
+    header[8..14].copy_from_slice(b"SHOWN!");
+    let mut page = page_with_rows(&[(0, &header)]);
+    page.parity_ok[0] &= !(1 << 9 | 1 << 3);
+    page.ever_good[0] &= !(1 << 9 | 1 << 3);
+    let mut options = DisplayOptions { status: *b"P100\xC1  ", ..DisplayOptions::default() };
+    let (codes, failed) = row_codes(0, Some(&page), &config, &options, config.parity_policy);
+    assert_eq!(&codes[..7], b"P100A  ", "7-bit codes of the status area");
+    assert_eq!(codes[7], COLOUR_WHITE);
+    assert_eq!((&codes[8..14], codes[9]), (&b"S OWN!"[..], SPACE), "column 9 failed parity");
+    assert_eq!(failed, 1 << 9, "the receiver's own columns report no failure");
+    let mut rolling = [crate::ecc::with_odd_parity(b' '); 32];
+    // The X has even parity, a failure.
+    let failed = crate::ecc::with_odd_parity(b'X') ^ 0x80;
+    rolling[..3].copy_from_slice(&[crate::ecc::with_odd_parity(b'R'), failed, crate::ecc::with_odd_parity(b'L')]);
+    options.searching = true;
+    options.rolling_header = Some(rolling);
+    let (codes, failed) = row_codes(0, Some(&page), &config, &options, config.parity_policy);
+    assert_eq!((codes[7], &codes[8..12], failed), (COLOUR_GREEN, &b"R L "[..], 0));
+    options.rolling_header = None;
+    let (codes, _) = row_codes(0, None, &config, &options, config.parity_policy);
+    assert_eq!(codes[8..], [SPACE; 32]);
+}
+
+/// REQ-L1-014, REQ-SEC-005: a page with C7 set has no row 0, except the
+/// status area when the configuration asks for it or a security
+/// indicator is active. REQ-L1-016: with C10 set rows 1 to 24 are not
+/// displayed and row 0 is.
+#[test]
+fn c7_hides_row_0_and_c10_rows_1_to_24() {
+    use crate::consts::{C7_SUPPRESS_HEADER, C10_INHIBIT_DISPLAY};
+    use crate::types::ControlBits;
+    let mut header = [b' '; 40];
+    header[8..12].copy_from_slice(b"HEAD");
+    let mut page = page_with_rows(&[(0, &header), (1, b"ROW ONE"), (24, b"ROW 24")]);
+    let options = DisplayOptions { status: *b"P100   ", ..DisplayOptions::default() };
+    let build = |page: &StoredPage, config: &Config, options: &DisplayOptions| {
+        let mut grid = Grid::EMPTY;
+        build_grid(&mut grid, Some(page), &MagazineData::default(), config, options);
+        grid
+    };
+    let shown = |grid: &Grid, row: usize, column: usize| grid.cells[row][column].glyph != Glyph::Space;
+    page.control = ControlBits(C7_SUPPRESS_HEADER);
+    let grid = build(&page, &Config::default(), &options);
+    assert_eq!(grid.cells[0], [Cell::BLANK; 40]);
+    assert!(shown(&grid, 1, 0));
+    for (config, options) in [
+        (Config { status_on_suppressed_header: true, ..Config::default() }, options),
+        (Config::default(), DisplayOptions { security_indicator: true, ..options }),
+    ] {
+        let grid = build(&page, &config, &options);
+        assert!(shown(&grid, 0, 0) && shown(&grid, 0, 3), "the status area is kept");
+        assert_eq!(grid.cells[0][8..], [Cell::BLANK; 32], "the header is not");
+    }
+    page.control = ControlBits(C10_INHIBIT_DISPLAY);
+    let config = Config { row24: crate::config::Row24Policy::WhenPresent, ..Config::default() };
+    let grid = build(&page, &config, &options);
+    assert!(shown(&grid, 0, 0) && shown(&grid, 0, 8));
+    for row in 1..25 {
+        assert_eq!(grid.cells[row], [Cell::BLANK; 40], "row {row}");
+    }
+}
+
+/// REQ-L1-015, decision E.23, REQ-NAV-011: row 24 is the receiver's own
+/// when it draws one, the page's when the configured rule shows it, and
+/// blank otherwise. REQ-L1-017: with no page a row is 40 spaces.
+#[test]
+fn row_24_follows_decision_e23() {
+    use crate::config::Row24Policy;
+    use crate::consts::SPACE;
+    let page = page_with_rows(&[(1, b"ONE"), (24, b"PAGE ROW 24")]);
+    let codes = |policy: Row24Policy, options: &DisplayOptions, page: Option<&StoredPage>| {
+        let config = Config { row24: policy, ..Config::default() };
+        row_codes(24, page, &config, options, config.parity_policy).0
+    };
+    let plain = DisplayOptions::default();
+    assert_eq!(&codes(Row24Policy::WhenPresent, &plain, Some(&page))[..11], b"PAGE ROW 24");
+    assert_eq!(codes(Row24Policy::Never, &plain, Some(&page)), [SPACE; 40]);
+    assert_eq!(codes(Row24Policy::AnnexH, &plain, Some(&page)), [SPACE; 40], "no X/27/0 asking for it");
+    let mut drawn = [b' '; 40];
+    drawn[..4].copy_from_slice(b"\x81RED");
+    let receiver = DisplayOptions { row24: Some(drawn), ..DisplayOptions::default() };
+    assert_eq!(&codes(Row24Policy::WhenPresent, &receiver, Some(&page))[..4], b"\x01RED", "7-bit codes");
+    let config = Config::default();
+    assert_eq!(row_codes(5, None, &config, &plain, config.parity_policy), ([SPACE; 40], 0));
+}
+
+/// REQ-L1-018, decision E.8: a character that failed parity and never
+/// passed is a space, or under the diagnostic policy the solid block
+/// 7/F of Table 35, and its column is reported as failed.
+#[test]
+fn failed_characters_follow_the_parity_policy() {
+    use crate::config::ParityPolicy;
+    use crate::consts::SPACE;
+    // Table 35: position 7/F of the G0 sets, a solid block.
+    const SOLID_BLOCK: u8 = 0x7F;
+    let mut page = page_with_rows(&[(2, b"ABC")]);
+    page.parity_ok[2] &= !(1 << 1);
+    page.ever_good[2] &= !(1 << 1);
+    let config = Config::default();
+    let options = DisplayOptions::default();
+    for (policy, shown) in [
+        (ParityPolicy::KeepLastGood, SPACE),
+        (ParityPolicy::AlwaysSpace, SPACE),
+        (ParityPolicy::ErrorMarker, SOLID_BLOCK),
+    ] {
+        let (codes, failed) = row_codes(2, Some(&page), &config, &options, policy);
+        assert_eq!((&codes[..3], failed), (&[b'A', shown, b'C'][..], 1 << 1), "{policy:?}");
+    }
+}
