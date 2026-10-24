@@ -1092,3 +1092,47 @@ fn faults_are_named_in_place_of_the_action() {
         "none: the default objects left are absent or over a limit"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Objects (area OBJ), compiled in with the feature `objects`.
+// ---------------------------------------------------------------------------
+
+/// A local object's number: the designation code of its packet X/26 and
+/// its triplet there (Table 28, REQ-OBJ-003).
+#[cfg(feature = "objects")]
+const fn local_number(designation: u8, triplet: u8) -> ObjectNumber {
+    ObjectNumber((designation as u16) << 4 | triplet as u16)
+}
+
+/// The definition of a local object of type `kind` for both levels.
+#[cfg(feature = "objects")]
+fn define(kind: ObjectKind, number: ObjectNumber) -> TripletFunction {
+    TripletFunction::ObjectDefinition { usage: crate::packet::ObjectUsage(0b11), kind, number }
+}
+
+#[cfg(feature = "objects")]
+fn invoke_local(kind: ObjectKind, number: ObjectNumber) -> TripletFunction {
+    TripletFunction::ObjectInvocation { source: ObjectSource::Local, kind, number }
+}
+
+/// REQ-OBJ-014, decision E.49: an element of an object that falls outside
+/// every enabled display area, in panel columns that are not enabled or
+/// beyond column 71, is discarded and counted, as one that crosses from
+/// the main page is.
+#[cfg(feature = "objects")]
+#[test]
+fn object_writes_outside_every_display_area_are_discarded() {
+    let number = local_number(1, 0);
+    let objects = x26(1, &[define(ObjectKind::Passive, number), g0_at(0, b'P'), g0_at(30, b'Q'), END]);
+    let at = |column_offset: u8| {
+        [TripletFunction::OriginModifier { row_offset: 0, column_offset }, invoke_local(ObjectKind::Passive, number)]
+    };
+    let local = [[position(2, 0)].as_slice(), &at(10), &at(45), &at(71)].concat();
+    let mut others = local_data(&local);
+    others.push(objects);
+    let (grid, report) = build_25(&page(0, &[(2, b"ROW 2")], others));
+    assert_eq!((shown(&grid.cells[2][10]), grid.cells[2][10].attributes.source()), ('P', CharSource::Passive));
+    // Column 40 from the main page; columns 45, 75, 71 and 101 with no
+    // side panel enabled.
+    assert_eq!(report.faults.discarded_writes, 5);
+}

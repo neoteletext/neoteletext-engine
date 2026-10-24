@@ -19,7 +19,11 @@ impl<'s> Walker<'_, 's> {
         let area = area_of(column, self.inputs.panels);
         let receiver = row == 0 && column < RECEIVER_COLUMNS;
         let panel_row_0 = row == 0 && area != Area::Main;
-        if row >= ROWS || area != frame.area || receiver || panel_row_0 {
+        // Decision E.49: panel columns that are not enabled, and columns
+        // beyond 71, are no display area, even for an object whose origin
+        // lies there.
+        let outside = area == Area::Outside;
+        if row >= ROWS || area != frame.area || outside || receiver || panel_row_0 {
             self.report.faults.discarded_writes = self.report.faults.discarded_writes.saturating_add(1);
             return None;
         }
