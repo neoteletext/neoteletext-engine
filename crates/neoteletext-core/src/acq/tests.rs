@@ -9,7 +9,7 @@ extern crate std;
 #[cfg(test)]
 use super::*;
 
-use crate::config::PresentationLevel;
+use crate::config::{ParityPolicy, PresentationLevel};
 use crate::consts::{
     C4_ERASE, C9_INTERRUPTED, C11_SERIAL, CODE_MASK_7BIT, DATA_BYTES, HEADER_DISPLAY_BYTES, TRIPLETS_PER_PACKET,
 };
@@ -986,4 +986,27 @@ fn the_list_of_named_pages_drops_the_oldest() {
     assert!(!decoder.named.as_slice().contains(&address(0)) && decoder.named.as_slice().contains(&address(last)));
     assert!(!decoder.route(address(0)).enhancement);
     assert!(decoder.route(address(last)).enhancement);
+}
+
+/// Decision E.8, REQ-ACQ-008: a byte that fails parity after one that
+/// passed is kept out under "keep last good", and stored but reported
+/// as failed under "always space" and "error marker"; a position never
+/// received reads as a space that did not pass. A row beyond the stored
+/// rows takes nothing.
+#[test]
+fn parity_policies_decide_what_a_failed_byte_replaces() {
+    let failed = with_odd_parity(b'B') ^ 0x80;
+    for (policy, expected) in [
+        (ParityPolicy::KeepLastGood, (with_odd_parity(b'A'), true)),
+        (ParityPolicy::AlwaysSpace, (failed, false)),
+        (ParityPolicy::ErrorMarker, (failed, false)),
+    ] {
+        let mut page = StoredPage::EMPTY;
+        assert_eq!(page.merge(1, 0, &[with_odd_parity(b'A')], policy), 0);
+        assert_eq!(page.merge(1, 0, &[failed], policy), 1, "{policy:?}");
+        assert_eq!(page.byte(1, 0, policy), expected, "{policy:?}");
+        assert_eq!(page.byte(1, 1, policy), (SPACE, false), "never received");
+        assert_eq!(page.merge(page.cells.len(), 0, &[failed], policy), 0);
+        assert_eq!(page.rows_received, 1 << 1, "only row 1");
+    }
 }
