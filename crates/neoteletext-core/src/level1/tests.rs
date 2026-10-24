@@ -342,3 +342,14 @@ fn failed_characters_follow_the_parity_policy() {
         assert_eq!((&codes[..3], failed), (&[b'A', shown, b'C'][..], 1 << 1), "{policy:?}");
     }
 }
+
+/// REQ-CHR-003, REQ-CHR-012: a receiver region whose group is reserved
+/// in Table 32 falls back to group 0000 with the same national option,
+/// and names no second G0 set.
+#[test]
+fn a_reserved_receiver_region_falls_back_with_no_second_set() {
+    let config = Config { default_region: 0b1101, ..Config::default() };
+    let report = designation_report(None, &MagazineData::default(), &config);
+    assert_eq!((report.source, report.group, report.fallback), (DesignationSource::Receiver, 0b1101, true));
+    assert_eq!((report.designation, report.second), (charset::designation(0).unwrap(), None));
+}
