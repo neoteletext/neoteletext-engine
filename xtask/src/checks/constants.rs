@@ -1,7 +1,7 @@
 //! REQ-GEN-014: teletext constants restated outside the core's constants
 //! module.
 
-use super::{report, rust_files};
+use super::{report, source_files};
 use crate::test_code::production_source;
 use std::path::Path;
 
@@ -24,7 +24,7 @@ fn is_data_file(path: &str) -> bool {
 /// REQ-GEN-014: literal teletext values outside the constants module.
 pub fn constants(root: &Path) -> Result<(), String> {
     let mut files = Vec::new();
-    rust_files(&root.join("crates"), &mut files);
+    source_files(&root.join("crates"), &["rs"], &mut files);
     let core_src = root.join(CORE_SRC);
     let mut violations = Vec::new();
     for file in files {

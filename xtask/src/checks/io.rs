@@ -1,7 +1,7 @@
 //! REQ-SEC-016: no operating-system access in the library crates, and every
 //! crate classed as a library or an application crate.
 
-use super::{APPLICATION_CRATES, LIBRARY_CRATES, report, rust_files};
+use super::{APPLICATION_CRATES, LIBRARY_CRATES, report, source_files};
 use crate::test_code::production_source;
 use std::fs;
 use std::path::Path;
@@ -32,7 +32,7 @@ pub fn io(root: &Path) -> Result<(), String> {
 /// Every use of a forbidden item in the non-test Rust files under `source`.
 fn forbid(source: &Path, items: &[&str], violations: &mut Vec<String>) {
     let mut files = Vec::new();
-    rust_files(source, &mut files);
+    source_files(source, &["rs"], &mut files);
     for file in files {
         for (number, item) in forbidden_items(&production_source(&file), items) {
             violations.push(format!("{}:{number}: {item}", file.display()));

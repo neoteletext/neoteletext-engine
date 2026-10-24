@@ -1,7 +1,7 @@
 //! REQ-ARCH-011: the core's module dependency table (ARCHITECTURE.md
 //! section 9), enforced on every non-test source file of the core.
 
-use super::{report, rust_files};
+use super::{report, source_files};
 use crate::test_code::production_source;
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -49,7 +49,7 @@ fn module_of(src: &Path, file: &Path) -> Option<String> {
 pub fn layers(root: &Path) -> Result<(), String> {
     let src = root.join("crates/neoteletext-core/src");
     let mut files = Vec::new();
-    rust_files(&src, &mut files);
+    source_files(&src, &["rs"], &mut files);
     let mut violations = Vec::new();
     for file in files {
         let Some(module) = module_of(&src, &file) else { continue };

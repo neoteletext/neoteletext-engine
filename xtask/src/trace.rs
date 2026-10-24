@@ -7,19 +7,9 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-fn files(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(entries) = fs::read_dir(dir) else { return };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        let name = path.file_name().map(|name| name.to_string_lossy().to_string()).unwrap_or_default();
-        if path.is_dir() && name != "target" && !name.starts_with('.') {
-            files(&path, out);
-        } else if path.extension().is_some_and(|ext| ["rs", "py", "toml", "sh"].iter().any(|wanted| ext == *wanted)) {
-            out.push(path);
-        }
-    }
-}
-
+/// The extensions of the files that can name a requirement: source,
+/// scripts and configuration.
+const SOURCE_EXTENSIONS: [&str; 4] = ["rs", "py", "toml", "sh"];
 /// Configuration files at the top of the repository that can carry a
 /// requirement, such as a lint that enforces it.
 const ROOT_FILES: [&str; 3] = ["Cargo.toml", "clippy.toml", "rust-toolchain.toml"];
@@ -151,8 +141,19 @@ fn requirements(root: &Path) -> Result<Vec<(String, String, bool, bool)>, String
 fn source_paths(root: &Path) -> Vec<PathBuf> {
     let mut paths = Vec::new();
     for dir in ["crates", "xtask", "tests", "scripts"] {
-        files(&root.join(dir), &mut paths);
+        crate::checks::source_files(&root.join(dir), &SOURCE_EXTENSIONS, &mut paths);
     }
+    // Build output and hidden directories, such as an oracle's tool cache,
+    // hold no sources.
+    paths.retain(|path| {
+        let relative = path.strip_prefix(root).unwrap_or(path);
+        !relative.parent().is_some_and(|parent| {
+            parent.components().any(|part| {
+                let name = part.as_os_str().to_string_lossy();
+                name == "target" || name.starts_with('.')
+            })
+        })
+    });
     for name in ROOT_FILES {
         let path = root.join(name);
         if path.is_file() {
