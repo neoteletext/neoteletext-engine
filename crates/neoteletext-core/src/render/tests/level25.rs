@@ -788,6 +788,24 @@ fn four_bit_format_in_the_resolved_mode() {
     assert!(render_line(&grid, 2 * CELL_HEIGHT, Zoom::Off, &glyphs, palette, IndexFormat::Bits4, &mut out).is_ok());
 }
 
+/// REQ-RND-032: a flash phase change reports a row only for a flashing
+/// cell that can show dots: a mosaic with at least one block set, and any
+/// G3 character, whose shapes are drawn whatever the code; a mosaic with
+/// no block set looks the same in both phases.
+#[test]
+fn flash_changes_follow_what_a_cell_can_show() {
+    let mut grid = Grid::EMPTY;
+    let flashing = Cell { foreground: RED, background: BLUE, flash: true, ..Cell::BLANK };
+    grid.cells[3][0] = Cell { glyph: Glyph::Mosaic { pattern: 0x15, separated: false }, ..flashing };
+    grid.cells[5][0] = Cell { glyph: Glyph::Mosaic { pattern: 0, separated: true }, ..flashing };
+    grid.cells[7][0] = Cell { glyph: g3(0x20), ..flashing };
+    let mut tracker = ChangeTracker::new();
+    tracker.changed_rows(&grid, large(8));
+    // Slow flash is on in unit 8 and off in unit 9 (decision E.48).
+    assert!(flash_on(FlashRate::Slow, 8) && !flash_on(FlashRate::Slow, 9));
+    assert_eq!(tracker.changed_rows(&grid, large(9)), 1 << 3 | 1 << 7);
+}
+
 /// REQ-RND-032 (REQ-TST-018 for the counting): moving from each unit to
 /// the next reports exactly the rows whose flashing cells change; a reveal
 /// change reports the rows with concealed cells; a changed cell or a

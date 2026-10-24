@@ -155,6 +155,108 @@ fn flash_timing_is_three_to_one() {
     assert!(flash_visible(Instant(959_999), &config));
     assert!(!flash_visible(Instant(960_000), &config));
     assert!(flash_visible(Instant(1_280_000), &config));
+    // REQ-GEN-006: a configuration with no flash period has nothing to
+    // divide by, and shows flashing characters steadily.
+    let steady = Config { flash_shown_us: 0, flash_hidden_us: 0, ..Config::default() };
+    assert!([0, 1, 960_000, u64::MAX].iter().all(|&time| flash_visible(Instant(time), &steady)));
+}
+
+/// Decision E.55, REQ-RND-002, REQ-RND-003, REQ-RND-035: the options take
+/// the cell size and rounding from the configuration; Levels 1 and 1.5
+/// draw in the palette mode and Levels 2.5 and 3.5 in the resolved mode at
+/// the flash phase given; the underline is drawn unless turned off.
+#[test]
+fn render_options_follow_the_configuration_and_level() {
+    let phase = FlashPhase::at_unit(9);
+    let enhanced = RenderOptions::for_level(&Config::default(), true, phase);
+    assert_eq!(
+        enhanced,
+        RenderOptions {
+            mode: CellMode::Saa5050,
+            rounding: true,
+            reveal: true,
+            colour: ColourMode::Resolved(phase),
+            underline: true
+        }
+    );
+    assert_eq!(enhanced.row_height(), crate::consts::CELL_HEIGHT);
+    let level_15 = RenderOptions::for_level(&Config::saa5246a(), false, phase);
+    assert_eq!(
+        level_15,
+        RenderOptions {
+            mode: CellMode::Saa5246a,
+            rounding: false,
+            reveal: false,
+            colour: ColourMode::Palette,
+            underline: true
+        }
+    );
+    assert_eq!(level_15.row_height(), crate::consts::CELL_HEIGHT_SMALL);
+    assert_eq!(RenderOptions::for_level(&Config::saa5050(), false, phase).colour, ColourMode::Palette);
+    assert!(!level_15.with_underline(false).underline);
+}
+
+/// REQ-RND-019: a new tracker, however made, reports every row; after an
+/// invalidation every row is reported once more.
+#[test]
+fn change_tracking_starts_and_restarts_with_every_row() {
+    assert_eq!(ChangeTracker::default(), ChangeTracker::new());
+    let grid = Grid::EMPTY;
+    let mut tracker = ChangeTracker::default();
+    assert_eq!(tracker.changed_rows(&grid, options()), ALL_ROWS);
+    assert_eq!(tracker.changed_rows(&grid, options()), 0);
+    tracker.invalidate();
+    assert_eq!(tracker.changed_rows(&grid, options()), ALL_ROWS);
+    assert_eq!(tracker.changed_rows(&grid, options()), 0);
+}
+
+/// REQ-RND-017, REQ-L1-020: one field draws the even or the odd lines of
+/// a row; zoom doubles each source line of rows 0 to 11 or 12 to 23; a
+/// line beyond the last row, directly or through zoom, is out of range; a
+/// framebuffer too small for the rows asked for is refused.
+#[test]
+fn fields_zoom_and_bounds_of_the_row_renderer() {
+    let mut grid = Grid::EMPTY;
+    let g0 = CharSet::G0(G0 { set: G0Set::Latin, national: Some(NationalOption::English) });
+    for row in [0, 5, 12] {
+        grid.cells[row][1].glyph = Glyph::Char(CharRef::new(g0, b'A' + row as u8));
+        grid.cells[row][2].glyph = Glyph::Mosaic { pattern: 0x2A, separated: false };
+    }
+    let glyphs = GlyphSet::bedstead();
+    let lines = 20;
+    let row = |field| {
+        let mut out = vec![0u8; PAGE_WIDTH * lines];
+        let mut buffer = IndexBuffer { format: IndexFormat::Bits8, data: &mut out, stride: PAGE_WIDTH };
+        render_row(&grid, 5, field, &glyphs, options(), &mut buffer).unwrap();
+        out
+    };
+    let both = row(Field::Both);
+    let (first, second) = (row(Field::First), row(Field::Second));
+    for line in 0..lines / 2 {
+        let line_of = |pixels: &[u8], line: usize| pixels[line * PAGE_WIDTH..(line + 1) * PAGE_WIDTH].to_vec();
+        assert_eq!(line_of(&first, line), line_of(&both, 2 * line), "first field, line {line}");
+        assert_eq!(line_of(&second, line), line_of(&both, 2 * line + 1), "second field, line {line}");
+    }
+    let line = |y, zoom| {
+        let mut out = vec![0u8; PAGE_WIDTH];
+        render_line(&grid, y, zoom, &glyphs, options(), IndexFormat::Bits8, &mut out).map(|()| out)
+    };
+    for y in [0, 7, 39, 105] {
+        assert_eq!(line(2 * y, Zoom::Top), line(y, Zoom::Off), "top, line {y}");
+        assert_eq!(line(2 * y + 1, Zoom::Top), line(y, Zoom::Off), "top, line {y} doubled");
+        assert_eq!(line(2 * y, Zoom::Bottom), line(12 * lines + y, Zoom::Off), "bottom, line {y}");
+    }
+    // A line beyond the last row, zoomed or not.
+    assert_eq!(line(2 * (ROWS - 12) * lines, Zoom::Bottom), Err(RenderError::OutOfRange));
+    assert_eq!(line(ROWS * lines, Zoom::Off), Err(RenderError::OutOfRange));
+    let mut out = vec![0u8; PAGE_WIDTH * lines];
+    let mut buffer = IndexBuffer { format: IndexFormat::Bits8, data: &mut out, stride: PAGE_WIDTH };
+    assert_eq!(render_row(&grid, ROWS, Field::Both, &glyphs, options(), &mut buffer), Err(RenderError::OutOfRange));
+    // Room for rows 0 and 1 only: drawing row 2 is refused.
+    let mut small = vec![0u8; PAGE_WIDTH * lines * 2];
+    let mut framebuffer = IndexBuffer { format: IndexFormat::Bits8, data: &mut small, stride: PAGE_WIDTH };
+    assert_eq!(render_screen(&grid, 0b11, &glyphs, options(), &mut framebuffer), Ok(()));
+    assert_eq!(render_screen(&grid, 0b111, &glyphs, options(), &mut framebuffer), Err(RenderError::BufferTooSmall));
 }
 
 // The tests draw with the shipped glyph set.
