@@ -82,8 +82,9 @@ The receiver shall drive a voice sink the port supplies, through `neoteletext_au
 *Verification:* The receiver's tests run through a recording sink.
 
 **REQ-AUD-019 — The software mixer.**
-A port with an operating system's audio output shall be able to use `neoteletext-audio-mix`: four voices mixed in integers, every change ramped (REQ-AUD-015), ducking, a clamp after the sum, a master volume and mute, and each voice resampled to the output rate by a windowed-sinc filter. Its rendering shall never allocate or free.
-*Verification:* Mixer tests of ramps, stops, clamping, ducking, queueing, mute, and a resampled tone's pitch and amplitude.
+A port with an operating system's audio output shall be able to use `neoteletext-audio-mix`: four voices mixed in integers, every change ramped (REQ-AUD-015), ducking, a clamp after the sum, a master volume and mute, and each voice resampled to the output rate by a windowed-sinc filter. Its rendering shall never allocate or free. A port that holds a lock its audio callback also takes shall be able to allocate a sound's samples, or a live sound's ring, before taking the lock and give the buffer to the mixer, which keeps it uncopied (`Mixer::define_with`, `Mixer::stream_with`, and `Mixer::stream_ring` for a ring's length); a ring of any other length is handed back.
+*Amended 24 October 2026 (finding F-55 of NeoTeletext's security review):* the buffer-taking forms are added, so that NeoTeletext's sound helper no longer allocates a sound under the lock its device's audio thread takes.
+*Verification:* Mixer tests of ramps, stops, clamping, ducking, queueing, mute, and a resampled tone's pitch and amplitude; that a sound given its buffer, and a live sound given its ring, mix exactly as ones the mixer allocated, that a given buffer is held uncopied, and that a ring of the wrong length is handed back with the mixer unchanged.
 
 **REQ-AUD-020 — Writing sounds.**
 The `encode` feature shall write sounds for publishing tools: IMA ADPCM blocks whose headers carry the encoder's state, OBJECT, DATA and CONTROL records, and records cut into the packets of REQ-AUD-007. `neottx sound` uses it (REQ-CLI-011).

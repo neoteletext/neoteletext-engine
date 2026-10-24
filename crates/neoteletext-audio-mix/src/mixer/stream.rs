@@ -3,18 +3,53 @@
 
 use super::{Mixer, set_step};
 use crate::sound::{PPM, STREAM_RING_MS, STREAM_TRIM_PPM, Sound, SoundKey};
+use alloc::vec::Vec;
 
 impl Mixer {
     /// Makes room for a live sound (REQ-AUD-014): its samples arrive in
     /// order through [`Mixer::stream_samples`], without end. A voice playing
     /// it waits until [`STREAM_TARGET_MS`](crate::STREAM_TARGET_MS) are buffered, then trims its rate
-    /// to keep that much buffered, following the sender's clock.
+    /// to keep that much buffered, following the sender's clock. It
+    /// allocates the ring; a caller that holds a lock the audio callback
+    /// takes allocates it beforehand and calls [`Mixer::stream_with`].
     pub fn stream(&mut self, key: SoundKey, rate_hz: u32) {
+        let ring = alloc::vec![0; Self::stream_ring(rate_hz)];
+        // The ring has the length it must have, so it is never refused.
+        let made = self.stream_with(key, rate_hz, ring);
+        debug_assert!(made.is_ok(), "a ring of stream_ring's length is taken");
+    }
+
+    /// Makes room for a live sound, as [`Mixer::stream`] does, whose ring is
+    /// `ring`, the buffer as given and never copied; what it holds before
+    /// samples arrive is never played. A ring whose length is not
+    /// [`Mixer::stream_ring`] of `rate_hz` is refused and handed back, and
+    /// the mixer is unchanged.
+    ///
+    /// It exists so that a port whose audio callback takes a lock around the
+    /// mixer can allocate the ring before taking that lock: allocating under
+    /// it would hold the callback up for as long as the allocator takes.
+    /// What it may still allocate is a slot in the mixer's small table of
+    /// sounds, and only when the table grows.
+    ///
+    /// # Errors
+    ///
+    /// The ring, when its length is not [`Mixer::stream_ring`] of `rate_hz`.
+    pub fn stream_with(&mut self, key: SoundKey, rate_hz: u32, ring: Vec<i16>) -> Result<(), Vec<i16>> {
+        if ring.len() != Self::stream_ring(rate_hz) {
+            return Err(ring);
+        }
         self.collect();
-        let rate_hz = rate_hz.max(1);
-        let ring = usize::try_from(rate_hz.saturating_mul(STREAM_RING_MS) / 1000).unwrap_or(0).max(1);
         self.sounds.retain(|sound| sound.key() != key);
-        self.sounds.push(Sound::live(key, rate_hz, ring));
+        self.sounds.push(Sound::live(key, rate_hz.max(1), ring));
+        Ok(())
+    }
+
+    /// The samples a live sound's ring holds at `rate_hz`: the samples of
+    /// [`STREAM_RING_MS`](crate::STREAM_RING_MS), and at least one. A rate of
+    /// zero is taken as one, as [`Mixer::stream`] takes it.
+    #[must_use]
+    pub fn stream_ring(rate_hz: u32) -> usize {
+        usize::try_from(rate_hz.max(1).saturating_mul(STREAM_RING_MS) / 1000).unwrap_or(0).max(1)
     }
 
     /// The next samples of a live sound. If a voice has fallen so far behind

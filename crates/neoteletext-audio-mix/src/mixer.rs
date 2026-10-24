@@ -100,8 +100,24 @@ impl Mixer {
     }
 
     /// Makes room for a sound's samples, silent until they arrive. A sound
-    /// of the same key is replaced.
+    /// of the same key is replaced. It allocates the samples' buffer; a
+    /// caller that holds a lock the audio callback takes allocates it
+    /// beforehand and calls [`Mixer::define_with`].
     pub fn define(&mut self, key: SoundKey, rate_hz: u32, samples: usize) {
+        self.define_with(key, rate_hz, alloc::vec![0; samples]);
+    }
+
+    /// Defines a sound holding `samples`, the buffer as given and never
+    /// copied: its length is the sound's, and what it holds plays until
+    /// [`Mixer::samples`] overwrites it (zeros for the silence
+    /// [`Mixer::define`] makes). A sound of the same key is replaced.
+    ///
+    /// It exists so that a port whose audio callback takes a lock around the
+    /// mixer can allocate a sound, up to minutes of samples, before taking
+    /// that lock: allocating under it would hold the callback up for as long
+    /// as the allocator takes. What it may still allocate is a slot in the
+    /// mixer's small table of sounds, and only when the table grows.
+    pub fn define_with(&mut self, key: SoundKey, rate_hz: u32, samples: Vec<i16>) {
         self.collect();
         self.sounds.retain(|sound| sound.key() != key);
         self.sounds.push(Sound::new(key, rate_hz.max(1), samples));

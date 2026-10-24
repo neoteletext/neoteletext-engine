@@ -179,3 +179,93 @@ fn a_voice_that_falls_a_ring_behind_skips_to_the_target() {
     mixer.stream_samples((1, 1), &vec![10_000; 16_000]);
     assert_eq!(buffered(&mixer), 3_200);
 }
+
+/// A tone of eight samples a period.
+fn tone(samples: usize) -> Vec<i16> {
+    (0..samples).map(|n| [0, 7071, 10_000, 7071, 0, -7071, -10_000, -7071][n % 8]).collect()
+}
+
+#[test]
+fn a_sound_defined_with_its_buffer_mixes_as_one_defined_by_length() {
+    // Not the output rate, so the voice resamples it.
+    const SOURCE_RATE: u32 = 11_025;
+    let pcm = tone(4_000);
+    let mut by_length = Mixer::new(RATE);
+    by_length.define((1, 1), SOURCE_RATE, pcm.len());
+    by_length.samples((1, 1), 0, &pcm);
+    // A silent buffer filled afterwards, and one given filled.
+    let mut silent = Mixer::new(RATE);
+    silent.define_with((1, 1), SOURCE_RATE, vec![0; pcm.len()]);
+    silent.samples((1, 1), 0, &pcm);
+    let mut filled = Mixer::new(RATE);
+    filled.define_with((1, 1), SOURCE_RATE, pcm.clone());
+    by_length.start(0, start((1, 1), 80));
+    let expected = render(&mut by_length, 3_000);
+    assert!(expected.iter().any(|&value| value != 0), "the tone sounds");
+    for mut mixer in [silent, filled] {
+        mixer.start(0, start((1, 1), 80));
+        assert_eq!(render(&mut mixer, 3_000), expected);
+    }
+}
+
+#[test]
+fn a_defined_buffer_is_held_as_given() {
+    let buffer = vec![0; 1_000];
+    let place = buffer.as_ptr();
+    let mut mixer = Mixer::new(RATE);
+    mixer.define_with((1, 1), RATE, buffer);
+    assert!(mixer.sounds.iter().any(|sound| sound.holds(place)), "not copied");
+}
+
+/// Two seconds of a tone given a live sound in pieces of 160 samples, each
+/// followed by 20 ms of rendering.
+fn stream_tone(mixer: &mut Mixer) -> Vec<i16> {
+    let pcm = tone(16_000);
+    mixer.start(0, start((1, 1), 90));
+    pcm.chunks(160)
+        .flat_map(|piece| {
+            mixer.stream_samples((1, 1), piece);
+            render(mixer, 160)
+        })
+        .collect()
+}
+
+#[test]
+fn a_live_sound_given_its_ring_mixes_as_one_made_by_rate() {
+    let mut by_rate = Mixer::new(RATE);
+    by_rate.stream((1, 1), RATE);
+    let expected = stream_tone(&mut by_rate);
+    assert!(expected.iter().any(|&value| value != 0), "the tone sounds");
+    let mut given = Mixer::new(RATE);
+    assert_eq!(given.stream_with((1, 1), RATE, vec![0; Mixer::stream_ring(RATE)]), Ok(()));
+    assert_eq!(stream_tone(&mut given), expected);
+}
+
+#[test]
+fn a_ring_of_the_wrong_length_is_handed_back_and_changes_nothing() {
+    let mut mixer = Mixer::new(RATE);
+    mixer.stream((1, 1), RATE);
+    for length in [0, Mixer::stream_ring(RATE) - 1, Mixer::stream_ring(RATE) + 1] {
+        let ring: Vec<i16> = Vec::with_capacity(length + 7);
+        let (place, capacity) = (ring.as_ptr(), ring.capacity());
+        let mut ring = ring;
+        ring.resize(length, 0);
+        let refused = mixer.stream_with((1, 1), RATE, ring).unwrap_err();
+        assert_eq!((refused.as_ptr(), refused.len(), refused.capacity()), (place, length, capacity), "the same buffer");
+        assert!(!mixer.sounds.iter().any(|sound| sound.holds(place)), "not kept");
+    }
+    // The live sound it would have replaced is still there and plays.
+    let out = stream_tone(&mut mixer);
+    assert!(out.iter().any(|&value| value != 0));
+    // A refused ring for a new key makes no sound.
+    assert!(mixer.stream_with((2, 1), RATE, vec![0; 3]).is_err());
+    assert_eq!(mixer.sounds.iter().map(Sound::key).collect::<Vec<_>>(), [(1, 1)]);
+}
+
+#[test]
+fn a_ring_is_four_times_the_target() {
+    assert_eq!(Mixer::stream_ring(RATE), 12_800);
+    assert_eq!(Mixer::stream_ring(48_000), 76_800);
+    // A rate of zero is taken as one, as `stream` takes it.
+    assert_eq!(Mixer::stream_ring(0), 1);
+}
