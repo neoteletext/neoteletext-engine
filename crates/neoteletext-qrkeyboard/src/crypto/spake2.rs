@@ -4,8 +4,8 @@ use super::{CONFIRM_BYTES, Role, SECRET_BYTES, hkdf};
 use crate::Error;
 use hmac::{Hmac, Mac};
 use p256::elliptic_curve::ops::Reduce;
-use p256::elliptic_curve::sec1::{FromEncodedPoint, ToEncodedPoint};
-use p256::{AffinePoint, EncodedPoint, FieldBytes, ProjectivePoint, Scalar, U256};
+use p256::elliptic_curve::sec1::{FromSec1Point, ToSec1Point};
+use p256::{AffinePoint, FieldBytes, ProjectivePoint, Scalar, Sec1Point};
 use sha2::{Digest, Sha256};
 
 /// A P-256 scalar's bytes.
@@ -24,19 +24,19 @@ fn point(hex: &str) -> Option<ProjectivePoint> {
 }
 
 fn decode_point(bytes: &[u8]) -> Option<ProjectivePoint> {
-    let encoded = EncodedPoint::from_bytes(bytes).ok()?;
-    let affine: Option<AffinePoint> = AffinePoint::from_encoded_point(&encoded).into();
+    let encoded = Sec1Point::from_bytes(bytes).ok()?;
+    let affine: Option<AffinePoint> = AffinePoint::from_sec1_point(&encoded).into();
     let projective = ProjectivePoint::from(affine?);
     // The identity is no share.
     (projective != ProjectivePoint::IDENTITY).then_some(projective)
 }
 
 fn encode(point: &ProjectivePoint) -> Vec<u8> {
-    point.to_affine().to_encoded_point(false).as_bytes().to_vec()
+    point.to_affine().to_sec1_point(false).as_bytes().to_vec()
 }
 
 pub(super) fn reduce(bytes: &[u8; SCALAR_BYTES]) -> Scalar {
-    <Scalar as Reduce<U256>>::reduce_bytes(FieldBytes::from_slice(bytes))
+    <Scalar as Reduce<FieldBytes>>::reduce(&FieldBytes::from(*bytes))
 }
 
 /// The password scalar of a code and a PIN: SHA-256 of

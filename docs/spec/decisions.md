@@ -1553,3 +1553,11 @@ Taken on 24 October 2026 while the owner was away, after a coverage test found t
 3. **The cost, measured:** `core::mem::size_of::<StoredPage>()` is 2688 bytes before and after on `aarch64-apple-darwin`, `x86_64-unknown-none` and `wasm32-unknown-unknown`, because the field's three bytes fit in the structure's tail padding. The Level 1.5 test image for `x86_64-unknown-none` grows by 192 bytes of code, from 64 397 to 64 589 bytes of flash, under its budget of 65 536 (REQ-GEN-009).
 
 *Reason:* A page that must never be shown as text (REQ-OBJ-041) outweighs a few bytes of memory for each stored page under REQ-GEN-009, and here it costs none.
+
+**E.118 — `p256` moves to 0.14 for RUSTSEC-2026-0387.**
+Taken on 24 October 2026 while the owner was away, when the full gate's `cargo deny` found advisory RUSTSEC-2026-0387 against `crypto-bigint` 0.5.5, which `p256` 0.13 brings in: several operations meant to be constant-time (subtraction, division, Montgomery multiplication, limb comparison) could branch on secret values. The only fixed release is `crypto-bigint` 0.7.6, which only `p256` 0.14 uses.
+1. **`p256` 0.13.2 becomes 0.14.0**, the same library from the same project, approved as the browser's decision 44 item 8. No library is added; the lockfile gains the 0.14 line's own parts (`hybrid-array`, `primefield`, `ctutils`, `wnaf`, `rand_core` 0.10), all MIT or Apache-2.0.
+2. **The SPAKE2 code follows the renamed interface:** `Sec1Point`, `FromSec1Point` and `ToSec1Point` in place of `EncodedPoint`, `FromEncodedPoint` and `ToEncodedPoint`, and the scalar reduced through `Reduce<FieldBytes>`. The arithmetic is unchanged: `spake2_agrees_with_qrkeyboard` still matches qrkeyboard's own transcript and keys.
+3. **The minimum Rust version is unaffected:** the new parts need 1.87 at most, under the workspace's 1.96.
+
+*Reason:* The pairing's password and ephemeral scalars are secrets that pass through the affected reduction; a known timing leak in the pairing's cryptography outweighs a version bump with a two-line interface change.

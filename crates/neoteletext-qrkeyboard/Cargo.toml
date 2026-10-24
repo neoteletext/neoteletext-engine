@@ -22,7 +22,7 @@ aes-gcm = "0.10.3"
 hkdf = "0.12.4"
 hmac = "0.12.1"
 sha2 = "0.10.9"
-p256 = { version = "0.13.2", default-features = false, features = ["arithmetic"] }
+p256 = { version = "0.14.0", default-features = false, features = ["arithmetic"] }
 # The operating system's random numbers: salts, keys and SPAKE2 scalars.
 getrandom = "0.2.16"
 # Project Nayuki's QR Code generator (MIT): the join address as a QR.
