@@ -114,7 +114,7 @@ fn mute_silences_and_a_forgotten_sound_waits_for_its_voice() {
 /// Samples voice 0's live sound has buffered ahead of it.
 fn buffered(mixer: &Mixer) -> i64 {
     let playing = mixer.voices[0].playing.unwrap();
-    let sound = mixer.sounds.iter().find(|sound| sound.key == playing.key).unwrap();
+    let sound = mixer.sounds.iter().find(|sound| sound.key() == playing.key).unwrap();
     sound.ahead(playing.whole)
 }
 
@@ -167,7 +167,7 @@ fn a_forgotten_live_sound_plays_what_it_holds_then_ends() {
     assert!(!mixer.active() && out[2_999] == 0, "then ended");
     // Rendering never frees: the next call that may allocate collects it.
     mixer.stream((2, 1), RATE);
-    assert_eq!(mixer.sounds.iter().map(|sound| sound.key).collect::<Vec<_>>(), [(2, 1)], "and gone");
+    assert_eq!(mixer.sounds.iter().map(Sound::key).collect::<Vec<_>>(), [(2, 1)], "and gone");
 }
 
 #[test]

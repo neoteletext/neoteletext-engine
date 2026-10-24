@@ -103,32 +103,21 @@ impl Mixer {
     /// of the same key is replaced.
     pub fn define(&mut self, key: SoundKey, rate_hz: u32, samples: usize) {
         self.collect();
-        self.sounds.retain(|sound| sound.key != key);
-        self.sounds.push(Sound {
-            key,
-            rate_hz: rate_hz.max(1),
-            samples: alloc::vec![0; samples],
-            forgotten: false,
-            stream: false,
-            written: 0,
-        });
+        self.sounds.retain(|sound| sound.key() != key);
+        self.sounds.push(Sound::new(key, rate_hz.max(1), samples));
     }
 
     /// Copies samples into a sound from sample `first`; samples beyond its
     /// end are dropped.
     pub fn samples(&mut self, key: SoundKey, first: usize, pcm: &[i16]) {
-        let Some(sound) = self.sounds.iter_mut().find(|sound| sound.key == key) else { return };
-        let end = first.saturating_add(pcm.len()).min(sound.samples.len());
-        if let (Some(target), Some(source)) = (sound.samples.get_mut(first..end), pcm.get(..end.saturating_sub(first)))
-        {
-            target.copy_from_slice(source);
-        }
+        let Some(sound) = self.sounds.iter_mut().find(|sound| sound.key() == key) else { return };
+        sound.copy_in(first, pcm);
     }
 
     /// Forgets a sound once no voice plays it.
     pub fn forget(&mut self, key: SoundKey) {
-        for sound in self.sounds.iter_mut().filter(|sound| sound.key == key) {
-            sound.forgotten = true;
+        for sound in self.sounds.iter_mut().filter(|sound| sound.key() == key) {
+            sound.forget();
         }
         self.collect();
     }
@@ -143,8 +132,8 @@ impl Mixer {
     /// `after_current`, queues it for when the current sound ends.
     pub fn start(&mut self, voice: usize, start: Start) {
         let rate = self.rate_hz;
-        let Some(sound) = self.sounds.iter().find(|sound| sound.key == start.key) else { return };
-        let source = (sound.rate_hz, sound.stream.then_some(sound.written));
+        let Some(sound) = self.sounds.iter().find(|sound| sound.key() == start.key) else { return };
+        let source = sound.source();
         let Some(slot) = self.voices.get_mut(voice) else { return };
         if start.after_current && slot.playing.is_some_and(|playing| !playing.stopping) {
             slot.pending = Some(start);
@@ -220,14 +209,14 @@ impl Mixer {
         for slot in [&mut voice.playing, &mut voice.outgoing] {
             let Some(mut playing) = *slot else { continue };
             let gain = playing.gain.advance();
-            let Some(sound) = self.sounds.iter().find(|sound| sound.key == playing.key) else {
+            let Some(sound) = self.sounds.iter().find(|sound| sound.key() == playing.key) else {
                 *slot = None;
                 continue;
             };
-            if sound.stream {
+            if sound.is_live() {
                 if !playing.primed {
                     playing.primed = sound.ahead(playing.whole) >= sound.target();
-                    if sound.forgotten {
+                    if sound.is_forgotten() {
                         // It will get no more samples: what it has plays out.
                         playing.primed = true;
                     }
@@ -237,7 +226,7 @@ impl Mixer {
                     total = total.saturating_add(scale(scale(value, gain), duck));
                     advance(&mut playing);
                     if sound.ahead(playing.whole) <= 0 {
-                        if sound.forgotten {
+                        if sound.is_forgotten() {
                             playing.stopping = true;
                             playing.gain = Ramp::at(0);
                         } else {
@@ -251,7 +240,7 @@ impl Mixer {
             }
             let value = interpolate(sound, playing.whole, playing.fraction);
             total = total.saturating_add(scale(scale(value, gain), duck));
-            let length = i64::try_from(sound.samples.len()).unwrap_or(i64::MAX);
+            let length = sound.length();
             advance(&mut playing);
             if playing.whole >= length {
                 if playing.looped && length > 0 {
@@ -265,11 +254,7 @@ impl Mixer {
         }
         if voice.playing.is_none()
             && let Some(next) = voice.pending.take()
-            && let Some(source) = self
-                .sounds
-                .iter()
-                .find(|sound| sound.key == next.key)
-                .map(|sound| (sound.rate_hz, sound.stream.then_some(sound.written)))
+            && let Some(source) = self.sounds.iter().find(|sound| sound.key() == next.key).map(Sound::source)
         {
             voice.playing = Some(begin(&next, source, rate));
         }
@@ -312,10 +297,10 @@ impl Mixer {
     fn collect(&mut self) {
         let voices = self.voices;
         self.sounds.retain(|sound| {
-            !sound.forgotten
+            !sound.is_forgotten()
                 || voices.iter().any(|voice| {
-                    [voice.playing, voice.outgoing].iter().flatten().any(|playing| playing.key == sound.key)
-                        || voice.pending.is_some_and(|start| start.key == sound.key)
+                    [voice.playing, voice.outgoing].iter().flatten().any(|playing| playing.key == sound.key())
+                        || voice.pending.is_some_and(|start| start.key == sound.key())
                 })
         });
     }
