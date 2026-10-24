@@ -221,6 +221,29 @@ fn latin_text_has_no_national_option() {
     assert_eq!(text, ['B', 'B', 'C', '1', ' ', '#', '\u{A4}', ' ']);
 }
 
+/// REQ-CHR-016: a Thai or Lao G2 glyph of two marks gives its marks as a
+/// combining sequence, vowel sign first, and a font draws it by its
+/// private-use key: the requirement's example is Thai G2 5/C, which gives
+/// U+0E35 U+0E48. Every sequence is reached from one of the two G2 sets,
+/// and only from columns 5 and 6.
+#[test]
+fn thai_and_lao_mark_pairs_give_combining_sequences() {
+    let thai = |code| CharRef::new(CharSet::G2(G2Set::Thai), code);
+    assert_eq!(to_unicode(thai(0x5C)), Unicode { base: '\u{0E35}', combining: Some('\u{0E48}') });
+    let sequences = mark_sequences();
+    assert_eq!(sequences.len(), 53);
+    for &(key, first, second) in sequences {
+        let found: std::vec::Vec<CharRef> = [G2Set::Thai, G2Set::Lao]
+            .into_iter()
+            .flat_map(|set| (0x20u8..=0x7F).map(move |code| CharRef::new(CharSet::G2(set), code)))
+            .filter(|&character| glyph_key(character) == key)
+            .collect();
+        let [position] = found[..] else { panic!("{key:?} is at {found:?}, not one position") };
+        assert!((0x50..=0x6F).contains(&position.code), "{key:?} in columns 5 and 6");
+        assert_eq!(to_unicode(position), Unicode { base: first, combining: Some(second) }, "{key:?}");
+    }
+}
+
 // The table tests keep the layout of the tables they check.
 #[rustfmt::skip]
 mod tables;
