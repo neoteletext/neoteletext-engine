@@ -18,6 +18,8 @@ use crate::consts::{
     MODE_SET_ACTIVE_POSITION, MODE_TERMINATION, MOSAIC_FULL,
 };
 use crate::level1::Cell;
+use crate::trace::{TraceEntry, TraceSink};
+use crate::types::Instant;
 
 fn context(strict: bool) -> WalkContext {
     WalkContext {
@@ -227,4 +229,71 @@ fn overwrites_obey_decision_e5_glyph_rules() {
     ]);
     apply(&mut grid, &packets, 1, &Config::default(), true);
     assert_eq!(grid.cells[5][4].glyph, Glyph::Char(second));
+}
+
+/// REQ-FSM-010, REQ-FSM-007, REQ-L15-009: a known walk gives the expected
+/// trace, one entry per triplet up to and including the Termination
+/// Marker, naming the states, the triplet's function or a damaged triplet,
+/// and the action, including a write the strict option ignores. With
+/// tracing off nothing is reported; after the Termination Marker the walk
+/// stays terminated.
+#[test]
+fn the_walk_reports_every_transition_when_tracing() {
+    let write = |column: u8, data: u8| t(column, MODE_G0_NO_DIACRITIC, data);
+    let mut packets: EnhancementPackets = [[None; crate::consts::TRIPLETS_PER_PACKET]; DESIGNATION_CODES];
+    packets[0][..6].copy_from_slice(&[
+        t(ROW_ADDRESS_BASE + 3, MODE_SET_ACTIVE_POSITION, 0),
+        write(6, b'B'),
+        None,
+        write(4, b'A'),
+        t(ROW_ADDRESS_LAST, MODE_TERMINATION, 0),
+        write(8, b'C'),
+    ]);
+    let strict = Config { trace: true, ignore_out_of_order_triplets: true, ..Config::default() };
+    let mut entries = std::vec::Vec::new();
+    let mut grid = Grid::EMPTY;
+    let mut record = |entry: TraceEntry| entries.push(entry);
+    let mut sink = TraceSink { time: Instant(7), entries: &mut record };
+    apply_traced(&mut grid, &packets, 1, &strict, true, &mut sink);
+    let character = walk_event_name(write(6, b'B'));
+    let expected = [
+        ("Start", "Set Active Position", "none", "Walking"),
+        ("Walking", character, "write character", "Walking"),
+        ("Walking", "damaged triplet", "none", "Walking"),
+        ("Walking", character, "ignore out-of-order write", "Walking"),
+        ("Walking", "Termination Marker", "none", "Terminated"),
+    ];
+    let got: std::vec::Vec<_> = entries.iter().map(|entry| (entry.from, entry.event, entry.action, entry.to)).collect();
+    assert_eq!(got, expected);
+    assert!(entries.iter().all(|entry| entry.machine == Machine::TripletWalk && entry.time == Instant(7)));
+    let code = |column: usize| match grid.cells[3][column].glyph {
+        Glyph::Char(character) => Some(character.code),
+        _ => None,
+    };
+    assert_eq!([code(4), code(6), code(8)], [None, Some(b'B'), None]);
+    // Tracing off: the same walk reports nothing.
+    let mut count = 0;
+    let mut counting = |_: TraceEntry| count += 1;
+    let mut sink = TraceSink { time: Instant(0), entries: &mut counting };
+    let mut untraced = Grid::EMPTY;
+    apply_traced(&mut untraced, &packets, 1, &Config::default(), true, &mut sink);
+    assert_eq!(count, 0);
+    assert_eq!(walk_state_name(WalkState::Terminated), "Terminated");
+    for triplet in [write(8, b'C'), t(ROW_ADDRESS_BASE + 2, MODE_SET_ACTIVE_POSITION, 0), None] {
+        assert_eq!(
+            walk_transition(WalkState::Terminated, triplet, context(false)),
+            (WalkState::Terminated, WalkAction::None)
+        );
+    }
+}
+
+/// REQ-L15-008, clause 12.3.4: a Level 1.5 overwrite has the 40 columns of
+/// the page; a column beyond them writes nothing, not even into a grid's
+/// side-panel cells, which belong to Level 2.5.
+#[test]
+fn overwrites_beyond_column_39_write_nothing() {
+    let mut grid = Grid::EMPTY;
+    write(&mut grid, 5, COLUMNS as u8, CharRef::new(CharSet::G3, 0x51), true);
+    write(&mut grid, 5, 60, CharRef::new(CharSet::G3, 0x51), true);
+    assert_eq!(grid, Grid::EMPTY);
 }
