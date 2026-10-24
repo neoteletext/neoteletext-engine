@@ -82,21 +82,21 @@ pub(super) fn input_of(
 #[allow(clippy::struct_excessive_bools)]
 pub(super) struct Typing {
     /// The channel's WebSocket is open and its descriptor declares input.
-    pub(super) open: bool,
+    open: bool,
     /// The viewer left the keys with Control-].
-    pub(super) left: bool,
+    left: bool,
     /// The terminal lost the focus, where it reports that.
-    pub(super) unfocused: bool,
+    unfocused: bool,
     /// The focus the channel was last told.
     focus_told: Option<bool>,
     /// The input session (INPUT.md section 6).
-    pub(super) input: neoteletext_input::session::Session,
+    input: neoteletext_input::session::Session,
     /// The session was welcomed and told the size and focus.
     started: bool,
     /// The page the channel was last told is open.
-    pub(super) told: Option<u16>,
+    told: Option<u16>,
     /// A page the channel's cursor record named, to open (REQ-INT-113).
-    pub(super) go_to: Option<u16>,
+    go_to: Option<u16>,
 }
 
 /// The page a cursor record for `cursor_page` opens while `open` is open
@@ -137,6 +137,54 @@ impl Typing {
 
     pub(super) fn on(&self) -> bool {
         self.open && !self.left && self.input.welcomed()
+    }
+
+    /// Whether Control-] may leave the keys, or take them back: the
+    /// channel's connection is open and its session welcomed.
+    pub(super) fn may_leave(&self) -> bool {
+        self.open && self.input.welcomed()
+    }
+
+    /// Leaves the keys with Control-], or takes them back, and tells the
+    /// channel the focus; the open page is told again on return. Returns
+    /// whether the keys are now left.
+    pub(super) fn leave_or_return(&mut self, source: &mut dyn Source, clock_ms: u32) -> bool {
+        self.left = !self.left;
+        self.tell_focus(source, clock_ms);
+        self.told = None;
+        self.left
+    }
+
+    /// The terminal gained or lost the focus.
+    pub(super) fn focus_changed(&mut self, unfocused: bool, source: &mut dyn Source, clock_ms: u32) {
+        self.unfocused = unfocused;
+        self.tell_focus(source, clock_ms);
+    }
+
+    /// Whether every key goes as KEY on the page `open` (the `ALL_KEYS`
+    /// mode).
+    pub(super) fn all_keys(&self, open: Option<u16>) -> bool {
+        self.input.modes_on(open) & neoteletext_input::modes::ALL_KEYS != 0
+    }
+
+    /// The modes the open page's `IM` line asks for (REQ-INT-114).
+    pub(super) fn set_page_modes(&mut self, page: u16, modes: u32) {
+        self.input.modes.set_page_modes(page, modes);
+    }
+
+    /// The page the channel's cursor record named, to open, once.
+    pub(super) fn take_go_to(&mut self) -> Option<u16> {
+        self.go_to.take()
+    }
+
+    /// The channel is told which of its pages is open (INPUT.md section
+    /// 5.4), when the keys go to it and the page changed.
+    pub(super) fn tell_open_page(&mut self, source: &mut dyn Source, page: u16, clock_ms: u32) {
+        if self.on() && self.told != Some(page) {
+            self.told = Some(page);
+            let item = neoteletext_input::event::Item::Event(neoteletext_input::event::Event::Page(page));
+            self.send(source, &item, Some(page), clock_ms);
+        }
     }
 
     /// The push connection opened or closed: a new session (REQ-INT-106).

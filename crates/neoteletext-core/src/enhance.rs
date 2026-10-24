@@ -38,6 +38,7 @@ use crate::consts::{
 };
 use crate::level1::{Cell, DisplayOptions};
 use crate::objects::{Body, EnhancementLinks};
+use crate::packet::DisplayAttributes;
 use crate::types::FixedVec;
 
 #[cfg(feature = "additional-flash-functions")]
@@ -51,7 +52,7 @@ mod row;
 mod sizes;
 mod walk;
 
-use attributes::{AttrChange, Attrs};
+use attributes::Flash;
 use characters::EnhChar;
 use planes::{Area, Plane};
 use row::Resolved;
@@ -73,6 +74,38 @@ const MAX_RUN_STEPS: u32 =
 /// The bound on the triplets read to build one grid (REQ-OBJ-020,
 /// REQ-SEC-012, REQ-TST-019).
 pub const MAX_WALK_STEPS: u32 = WALK_RUNS * MAX_RUN_STEPS;
+
+/// The attributes a cell is drawn with (REQ-L25-006), each attribute type
+/// of decision E.47 a field.
+// Each flag is one attribute type of Annex A.7.1 and decision E.47.
+#[allow(clippy::struct_excessive_bools)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+struct Attrs {
+    foreground: ColourIndex,
+    background: ColourIndex,
+    flash: Flash,
+    conceal: bool,
+    boxed: bool,
+    double_height: bool,
+    double_width: bool,
+    /// The non-spacing underline or separated mosaics attribute.
+    underline: bool,
+    invert: bool,
+}
+
+/// Non-spacing attributes placed at one cell, each attribute type the
+/// latest placed there (Annex C.2 rule 3), and the Modified G0 and G2
+/// designation of local enhancement data and Active objects.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+struct AttrChange {
+    foreground: Option<ColourIndex>,
+    background: Option<ColourIndex>,
+    flash: Option<Flash>,
+    /// The six display attributes, which one triplet sets together; each
+    /// is still its own type (decision E.47), and a 0 bit cancels.
+    display: Option<DisplayAttributes>,
+    designation: Option<(G0Set, G2Set)>,
+}
 
 /// A walk record of REQ-FSM-011: one for the local enhancement data and one
 /// for each object being run.

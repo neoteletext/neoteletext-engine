@@ -1,9 +1,8 @@
 //! Live sounds in the mixer (REQ-AUD-014): their rings filled as samples
 //! arrive, and each voice's rate trimmed to keep the target buffered.
 
-use super::Mixer;
+use super::{Mixer, set_step};
 use crate::sound::{PPM, STREAM_RING_MS, STREAM_TRIM_PPM, Sound, SoundKey};
-use crate::voice::set_step;
 
 impl Mixer {
     /// Makes room for a live sound (REQ-AUD-014): its samples arrive in
@@ -14,31 +13,18 @@ impl Mixer {
         self.collect();
         let rate_hz = rate_hz.max(1);
         let ring = usize::try_from(rate_hz.saturating_mul(STREAM_RING_MS) / 1000).unwrap_or(0).max(1);
-        self.sounds.retain(|sound| sound.key != key);
-        self.sounds.push(Sound {
-            key,
-            rate_hz,
-            samples: alloc::vec![0; ring],
-            forgotten: false,
-            stream: true,
-            written: 0,
-        });
+        self.sounds.retain(|sound| sound.key() != key);
+        self.sounds.push(Sound::live(key, rate_hz, ring));
     }
 
     /// The next samples of a live sound. If a voice has fallen so far behind
     /// that the ring would overwrite what it has yet to play, it skips ahead
     /// to the target.
     pub fn stream_samples(&mut self, key: SoundKey, pcm: &[i16]) {
-        let Some(sound) = self.sounds.iter_mut().find(|sound| sound.key == key && sound.stream) else { return };
-        let length = i64::try_from(sound.samples.len()).unwrap_or(i64::MAX);
-        for &value in pcm {
-            let slot = usize::try_from(sound.written.checked_rem(length).unwrap_or(0)).unwrap_or(0);
-            if let Some(place) = sound.samples.get_mut(slot) {
-                *place = value;
-            }
-            sound.written = sound.written.saturating_add(1);
-        }
-        let (written, target) = (sound.written, sound.target());
+        let Some(sound) = self.sounds.iter_mut().find(|sound| sound.key() == key && sound.is_live()) else { return };
+        let length = sound.length();
+        sound.write_live(pcm);
+        let (written, target) = (sound.written(), sound.target());
         for voice in &mut self.voices {
             for playing in [&mut voice.playing, &mut voice.outgoing].into_iter().flatten() {
                 if playing.key == key && written.saturating_sub(playing.whole) > length.saturating_sub(target) {
@@ -56,7 +42,7 @@ impl Mixer {
         let sounds = &self.sounds;
         for voice in &mut self.voices {
             for playing in [&mut voice.playing, &mut voice.outgoing].into_iter().flatten() {
-                let Some(sound) = sounds.iter().find(|sound| sound.key == playing.key && sound.stream) else {
+                let Some(sound) = sounds.iter().find(|sound| sound.key() == playing.key && sound.is_live()) else {
                     continue;
                 };
                 let target = sound.target().max(1);

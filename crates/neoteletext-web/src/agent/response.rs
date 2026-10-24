@@ -103,21 +103,10 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
             self.finish_purpose(exchange.purpose, Err(Failure::TooManyRedirects), sink);
             return;
         }
-        // An empty or non-UTF-8 `Location` leads nowhere: it would resolve
-        // to the request's own address (decision E.114 item 4, F-44).
-        let location = head.location.as_ref().and_then(|location| core::str::from_utf8(location.as_bytes()).ok());
-        let Some(location) = location.filter(|location| !location.is_empty()) else {
-            self.finish_purpose(exchange.purpose, Err(Failure::BadRedirect), sink);
-            return;
-        };
-        let next = match exchange.url.join(location) {
-            Ok(url) if !url.scheme().is_websocket() => url,
-            Ok(_) => {
-                self.finish_purpose(exchange.purpose, Err(Failure::Address(UrlError::Scheme)), sink);
-                return;
-            }
-            Err(error) => {
-                self.finish_purpose(exchange.purpose, Err(Failure::Address(error)), sink);
+        let next = match redirect_location(&exchange.url, head) {
+            Ok(next) => next,
+            Err(failure) => {
+                self.finish_purpose(exchange.purpose, Err(failure), sink);
                 return;
             }
         };
@@ -195,5 +184,21 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
             && from.port() == crate::url::Scheme::Http.default_port()
             && next.port() == crate::url::Scheme::Https.default_port();
         next.origin().same(&from.origin()) || upgrade
+    }
+}
+
+/// The address a redirect from `from` leads to: its `Location` resolved
+/// against `from`, which must not be a WebSocket address.
+fn redirect_location(from: &Url, head: &ResponseHead) -> Result<Url, Failure> {
+    // An empty or non-UTF-8 `Location` leads nowhere: it would resolve
+    // to the request's own address (decision E.114 item 4, F-44).
+    let location = head.location.as_ref().and_then(|location| core::str::from_utf8(location.as_bytes()).ok());
+    let Some(location) = location.filter(|location| !location.is_empty()) else {
+        return Err(Failure::BadRedirect);
+    };
+    match from.join(location) {
+        Ok(url) if !url.scheme().is_websocket() => Ok(url),
+        Ok(_) => Err(Failure::Address(UrlError::Scheme)),
+        Err(error) => Err(Failure::Address(error)),
     }
 }

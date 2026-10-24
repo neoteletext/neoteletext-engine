@@ -3,8 +3,8 @@
 use super::decode::read;
 use super::{
     Action, COMPOSE, EVENT, Event, FIRST_EXTENSION, FOCUS_IN, FOCUS_OUT, FUNCTIONAL, HAS_BASE, HAS_MODS, HAS_PIXELS,
-    HAS_TEXT, HELLO, InputError, Item, KEY, KeyCode, LAST_EXTENSION, MOUSE, MouseAction, PAGE, PASTE, Point, RESIZE,
-    WHEEL, check_text,
+    HAS_TEXT, HELLO, InputError, Item, KEY, Key, KeyCode, LAST_EXTENSION, MOUSE, MouseAction, PAGE, PASTE, Point,
+    RESIZE, WHEEL, check_text,
 };
 use crate::modes::AGENT;
 use crate::wire::Writer;
@@ -53,35 +53,40 @@ fn point_flags(point: &Point) -> u8 {
     (if point.pixels.is_some() { HAS_PIXELS } else { 0 }) | (if point.mods == 0 { 0 } else { HAS_MODS })
 }
 
+/// A key event: its flags, its code, then the modifiers, text and base
+/// key it carries.
+fn write_key(key: &Key<'_>, writer: &mut Writer<'_>) -> Result<(), InputError> {
+    let action = match key.action {
+        Action::Press => 0,
+        Action::Repeat => 1,
+        Action::Release => 2,
+    };
+    let (functional, value) = match key.key {
+        KeyCode::Character(character) => (0, u32::from(character)),
+        KeyCode::Functional(code) => (FUNCTIONAL, code),
+    };
+    let flags = action
+        | functional
+        | (if key.mods == 0 { 0 } else { HAS_MODS })
+        | (if key.text.is_some() { HAS_TEXT } else { 0 })
+        | (if key.base.is_some() { HAS_BASE } else { 0 });
+    writer.bytes(&[KEY, flags])?;
+    writer.uv(value)?;
+    if key.mods != 0 {
+        writer.byte(key.mods)?;
+    }
+    if let Some(text) = key.text {
+        writer.str(text, MAX_KEY_TEXT)?;
+    }
+    if let Some(base) = key.base {
+        writer.uv(u32::from(base))?;
+    }
+    Ok(())
+}
+
 fn write_event(event: &Event<'_>, writer: &mut Writer<'_>) -> Result<(), InputError> {
     match event {
-        Event::Key(key) => {
-            let action = match key.action {
-                Action::Press => 0,
-                Action::Repeat => 1,
-                Action::Release => 2,
-            };
-            let (functional, value) = match key.key {
-                KeyCode::Character(character) => (0, u32::from(character)),
-                KeyCode::Functional(code) => (FUNCTIONAL, code),
-            };
-            let flags = action
-                | functional
-                | (if key.mods == 0 { 0 } else { HAS_MODS })
-                | (if key.text.is_some() { HAS_TEXT } else { 0 })
-                | (if key.base.is_some() { HAS_BASE } else { 0 });
-            writer.bytes(&[KEY, flags])?;
-            writer.uv(value)?;
-            if key.mods != 0 {
-                writer.byte(key.mods)?;
-            }
-            if let Some(text) = key.text {
-                writer.str(text, MAX_KEY_TEXT)?;
-            }
-            if let Some(base) = key.base {
-                writer.uv(u32::from(base))?;
-            }
-        }
+        Event::Key(key) => write_key(key, writer)?,
         Event::Mouse(mouse) => {
             let action = match mouse.action {
                 MouseAction::Press => 0,

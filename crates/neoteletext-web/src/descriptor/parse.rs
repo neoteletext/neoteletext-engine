@@ -74,12 +74,7 @@ impl Descriptor {
         if reader.next_token()? != Some(Token::BeginObject) {
             return Err(DescriptorError::Invalid(Member::Document));
         }
-        let mut descriptor = if channel {
-            let folder = base.join(".").map_err(|error| DescriptorError::Address(Member::Document, error))?;
-            Self::channel_defaults(&folder)
-        } else {
-            Self::empty(base, false, TextBuf::new())
-        };
+        let mut descriptor = Self::defaults(base, channel)?;
         descriptor.base = *base;
         let mut seen = [false; 9];
         let [
@@ -112,34 +107,10 @@ impl Descriptor {
                     return Err(DescriptorError::NotForChannels(Member::PageTemplate));
                 }
                 first(seen_template, Member::PageTemplate)?;
-                let value: TextBuf<MAX_URL_LENGTH> =
-                    text(expect_string(reader.next_token()?, Member::PageTemplate)?, Member::PageTemplate)?;
-                check_template(value.as_bytes())?;
-                descriptor.template = value;
-                // One expansion that parses proves every expansion does (see
-                // `check_template`).
-                let sample = descriptor
-                    .page_url(descriptor.initial_page, None)
-                    .map_err(|error| DescriptorError::Address(Member::PageTemplate, error))?;
-                if base.is_secure() && !sample.is_secure() {
-                    return Err(DescriptorError::Downgrade(Member::PageTemplate));
-                }
+                descriptor.read_template(&mut reader, base)?;
             } else if key.equals(b"push") {
                 first(seen_push, Member::Push)?;
-                let (url, method, input) = Self::parse_push(&mut reader, base)?;
-                // A channel's push is on its own origin, in any folder
-                // (REQ-WEB-024); ws and wss count as http and https.
-                let own_origin = url.origin().same(&base.origin());
-                if channel && !own_origin {
-                    return Err(DescriptorError::Invalid(Member::PushAddress));
-                }
-                // Keys go back only to the descriptor's own origin, for a
-                // service as for a channel (INPUT.md section 4, finding F-90).
-                if input && !own_origin {
-                    return Err(DescriptorError::Invalid(Member::PushInput));
-                }
-                descriptor.push = Some((url, method));
-                descriptor.input = input;
+                descriptor.read_push(&mut reader, base, channel)?;
             } else if key.equals(b"form_origins") {
                 first(seen_origins, Member::FormOrigins)?;
                 descriptor.parse_origins(&mut reader, base)?;
@@ -175,6 +146,54 @@ impl Descriptor {
             return Err(DescriptorError::Missing(Member::PageTemplate));
         }
         Ok(descriptor)
+    }
+
+    /// The descriptor before any member is read: a channel's defaults for
+    /// its folder, or an empty service.
+    fn defaults(base: &Url, channel: bool) -> Result<Self, DescriptorError> {
+        Ok(if channel {
+            let folder = base.join(".").map_err(|error| DescriptorError::Address(Member::Document, error))?;
+            Self::channel_defaults(&folder)
+        } else {
+            Self::empty(base, false, TextBuf::new())
+        })
+    }
+
+    /// Reads the `page_template` member and checks that it expands to an
+    /// address no less secure than the descriptor's.
+    fn read_template(&mut self, reader: &mut JsonReader<'_>, base: &Url) -> Result<(), DescriptorError> {
+        let value: TextBuf<MAX_URL_LENGTH> =
+            text(expect_string(reader.next_token()?, Member::PageTemplate)?, Member::PageTemplate)?;
+        check_template(value.as_bytes())?;
+        self.template = value;
+        // One expansion that parses proves every expansion does (see
+        // `check_template`).
+        let sample = self
+            .page_url(self.initial_page, None)
+            .map_err(|error| DescriptorError::Address(Member::PageTemplate, error))?;
+        if base.is_secure() && !sample.is_secure() {
+            return Err(DescriptorError::Downgrade(Member::PageTemplate));
+        }
+        Ok(())
+    }
+
+    /// Reads the `push` member and checks its origin.
+    fn read_push(&mut self, reader: &mut JsonReader<'_>, base: &Url, channel: bool) -> Result<(), DescriptorError> {
+        let (url, method, input) = Self::parse_push(reader, base)?;
+        // A channel's push is on its own origin, in any folder
+        // (REQ-WEB-024); ws and wss count as http and https.
+        let own_origin = url.origin().same(&base.origin());
+        if channel && !own_origin {
+            return Err(DescriptorError::Invalid(Member::PushAddress));
+        }
+        // Keys go back only to the descriptor's own origin, for a
+        // service as for a channel (INPUT.md section 4, finding F-90).
+        if input && !own_origin {
+            return Err(DescriptorError::Invalid(Member::PushInput));
+        }
+        self.push = Some((url, method));
+        self.input = input;
+        Ok(())
     }
 
     fn parse_push(reader: &mut JsonReader<'_>, base: &Url) -> Result<(Url, PushMethod, bool), DescriptorError> {

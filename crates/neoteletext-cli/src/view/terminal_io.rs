@@ -30,7 +30,15 @@ pub(super) const TICK: Duration = Duration::from_millis(40);
 /// Restores the terminal however the viewer exits; `enhanced` when the
 /// Kitty keyboard protocol's flags were pushed.
 pub(super) struct RawGuard {
-    pub(super) enhanced: bool,
+    enhanced: bool,
+}
+
+impl RawGuard {
+    /// The guard of a terminal in raw mode, `enhanced` when the Kitty
+    /// keyboard protocol's flags are pushed.
+    pub(super) fn new(enhanced: bool) -> Self {
+        Self { enhanced }
+    }
 }
 
 impl Drop for RawGuard {

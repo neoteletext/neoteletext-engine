@@ -8,33 +8,8 @@ use std::time::Instant;
 
 impl Screen {
     pub(super) fn binary(&mut self, frame: &[u8], events: &mut Vec<Event>) {
-        if let Some(pairing) = &mut self.pairing {
-            let by_pin = pairing.uses_pin();
-            let (out, outcome) = pairing.receive(frame);
-            for frame in out {
-                self.send_binary(&frame);
-            }
-            match outcome {
-                None => {}
-                Some(Outcome::WrongPin) => {
-                    self.pairing = None;
-                    self.pin_failed(events);
-                }
-                Some(Outcome::Paired(channel)) => {
-                    self.pairing = None;
-                    self.channel = Some(*channel);
-                    self.pin_attempts = 0;
-                    self.keepalive = Instant::now();
-                    // A PIN run's confirmation has authenticated the phone;
-                    // a salt alone has not, and anyone on the relay can
-                    // send one, so in no-PIN mode the first sealed frame
-                    // that opens does it (decision E.116 item 3).
-                    self.authenticated = by_pin;
-                    if by_pin {
-                        events.push(Event::Connected);
-                    }
-                }
-            }
+        if self.pairing.is_some() {
+            self.pairing_frame(frame, events);
             return;
         }
         let Some(plaintext) = self.channel.as_mut().and_then(|(_, opener)| opener.open(frame)) else { return };
@@ -87,6 +62,38 @@ impl Screen {
             self.acknowledged.pop_front();
         }
         self.acknowledge(&message.id, ok);
+    }
+
+    /// A frame of the pairing run: its answers
+    /// sent, and the channel kept once the phone has paired.
+    fn pairing_frame(&mut self, frame: &[u8], events: &mut Vec<Event>) {
+        let Some(pairing) = &mut self.pairing else { return };
+        let by_pin = pairing.uses_pin();
+        let (out, outcome) = pairing.receive(frame);
+        for frame in out {
+            self.send_binary(&frame);
+        }
+        match outcome {
+            None => {}
+            Some(Outcome::WrongPin) => {
+                self.pairing = None;
+                self.pin_failed(events);
+            }
+            Some(Outcome::Paired(channel)) => {
+                self.pairing = None;
+                self.channel = Some(*channel);
+                self.pin_attempts = 0;
+                self.keepalive = Instant::now();
+                // A PIN run's confirmation has authenticated the phone;
+                // a salt alone has not, and anyone on the relay can
+                // send one, so in no-PIN mode the first sealed frame
+                // that opens does it (decision E.116 item 3).
+                self.authenticated = by_pin;
+                if by_pin {
+                    events.push(Event::Connected);
+                }
+            }
+        }
     }
 
     fn acknowledge(&mut self, id: &str, ok: bool) {

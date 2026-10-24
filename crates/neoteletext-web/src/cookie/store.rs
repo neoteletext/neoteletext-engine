@@ -49,6 +49,14 @@ struct Attributes<'a> {
     same_site: SameSite,
 }
 
+/// A `Set-Cookie` header split into its name, its value and the text of
+/// its attributes.
+struct SplitHeader<'a> {
+    name: &'a [u8],
+    value: &'a [u8],
+    attributes: &'a [u8],
+}
+
 impl<const SLOTS: usize, const BYTES: usize> CookieJar<SLOTS, BYTES> {
     /// Processes one `Set-Cookie` header value received from `host` for a
     /// request to `request_path` (RFC 6265bis sections 5.6 and 5.7).
@@ -108,23 +116,7 @@ impl<const SLOTS: usize, const BYTES: usize> CookieJar<SLOTS, BYTES> {
         if header.iter().chain(saved_path).any(|&b| (b < 0x20 && b != b'\t') || b == 0x7F) {
             return Err(CookieRejected::ControlCharacter);
         }
-        let (pair, attributes_text) = match header.iter().position(|&b| b == b';') {
-            Some(index) => (header.get(..index).unwrap_or(&[]), header.get(index..).unwrap_or(&[])),
-            None => (header, &[][..]),
-        };
-        let (name, value) = match pair.iter().position(|&b| b == b'=') {
-            Some(index) => (
-                trim_ows(pair.get(..index).unwrap_or(&[])),
-                trim_ows(pair.get(index.saturating_add(1)..).unwrap_or(&[])),
-            ),
-            None => (&[][..], trim_ows(pair)),
-        };
-        if name.is_empty() && value.is_empty() {
-            return Err(CookieRejected::Empty);
-        }
-        if name.len().saturating_add(value.len()) > MAX_COOKIE_NAME_VALUE {
-            return Err(CookieRejected::TooLarge);
-        }
+        let SplitHeader { name, value, attributes: attributes_text } = split_header(header)?;
         let mut attributes = parse_attributes(attributes_text, now, wall_clock);
         if let PathRule::Saved(saved) = rule {
             // The saved path stands as the attribute, so the prefix rules
@@ -145,49 +137,17 @@ impl<const SLOTS: usize, const BYTES: usize> CookieJar<SLOTS, BYTES> {
 
         // Section 5.7 step 16: plain HTTP cannot touch a Secure cookie of
         // the same name whose path covers this one.
-        if !secure {
-            let shadowed = self.records.iter().flatten().any(|record| {
-                let parts = self.parts(record);
-                record.secure && parts.name == name && parts.host == host && path_matches(path, parts.path)
-            });
-            if shadowed {
-                return Err(CookieRejected::WouldReplaceSecure);
-            }
+        if !secure && self.shadows_secure(host, name, path) {
+            return Err(CookieRejected::WouldReplaceSecure);
         }
 
-        // Max-Age takes precedence over Expires; both are capped at 400 days.
-        let expires = match (attributes.max_age, attributes.expires) {
-            (Some(seconds), _) => Some(if seconds <= 0 {
-                0
-            } else {
-                now.saturating_add(u64::try_from(seconds).unwrap_or(u64::MAX).min(MAX_AGE_SECONDS))
-            }),
-            (None, Some(date)) => Some(date.min(now.saturating_add(MAX_AGE_SECONDS))),
-            (None, None) => None,
-        };
-
-        let existing = self.find(host, name, path);
-        let created = match existing {
-            Some(index) => {
-                let created =
-                    self.records.get(index).copied().flatten().map(|record| (record.created, record.created_at));
-                self.remove(index);
-                created
-            }
-            None => None,
-        };
+        let expires = expiry(&attributes, now);
+        let created = self.take_replaced(host, name, path);
         if expires.is_some_and(|expires| expires <= now) {
             return Err(CookieRejected::Expired);
         }
 
-        let needed = host.len().saturating_add(name.len()).saturating_add(value.len()).saturating_add(path.len());
-        self.make_room(host, needed, now)?;
-        let start = self.used;
-        for part in [host, name, value, path] {
-            let end = self.used.saturating_add(part.len());
-            copy_prefix(self.arena.get_mut(self.used..end).ok_or(CookieRejected::NoRoom)?, part);
-            self.used = end;
-        }
+        let start = self.append([host, name, value, path], now)?;
         let tick = self.next_tick();
         let narrow = |len: usize| u16::try_from(len).map_err(|_| CookieRejected::TooLarge);
         let record = Record {
@@ -210,6 +170,82 @@ impl<const SLOTS: usize, const BYTES: usize> CookieJar<SLOTS, BYTES> {
         let slot = self.records.iter_mut().find(|slot| slot.is_none()).ok_or(CookieRejected::NoRoom)?;
         *slot = Some(record);
         Ok(())
+    }
+
+    /// Whether a Secure cookie of the same host and name has a path that
+    /// covers `path` (section 5.7 step 16).
+    fn shadows_secure(&self, host: &[u8], name: &[u8], path: &[u8]) -> bool {
+        self.records.iter().flatten().any(|record| {
+            let parts = self.parts(record);
+            record.secure && parts.name == name && parts.host == host && path_matches(path, parts.path)
+        })
+    }
+
+    /// Removes the cookie this one replaces, if there is one, and returns
+    /// its creation tick and time, which the new cookie keeps.
+    fn take_replaced(&mut self, host: &[u8], name: &[u8], path: &[u8]) -> Option<(u64, u64)> {
+        let existing = self.find(host, name, path);
+        match existing {
+            Some(index) => {
+                let created =
+                    self.records.get(index).copied().flatten().map(|record| (record.created, record.created_at));
+                self.remove(index);
+                created
+            }
+            None => None,
+        }
+    }
+
+    /// Makes room for the cookie's host, name, value and path and copies
+    /// them, in that order, to the end of the arena; returns where they
+    /// start.
+    fn append(&mut self, parts: [&[u8]; 4], now: u64) -> Result<usize, CookieRejected> {
+        let [host, name, value, path] = parts;
+        let needed = host.len().saturating_add(name.len()).saturating_add(value.len()).saturating_add(path.len());
+        self.make_room(host, needed, now)?;
+        let start = self.used;
+        for part in [host, name, value, path] {
+            let end = self.used.saturating_add(part.len());
+            copy_prefix(self.arena.get_mut(self.used..end).ok_or(CookieRejected::NoRoom)?, part);
+            self.used = end;
+        }
+        Ok(start)
+    }
+}
+
+/// Splits a `Set-Cookie` header into its name, its value and the text of
+/// its attributes, refusing an empty or oversized pair (section 5.6).
+fn split_header(header: &[u8]) -> Result<SplitHeader<'_>, CookieRejected> {
+    let (pair, attributes_text) = match header.iter().position(|&b| b == b';') {
+        Some(index) => (header.get(..index).unwrap_or(&[]), header.get(index..).unwrap_or(&[])),
+        None => (header, &[][..]),
+    };
+    let (name, value) = match pair.iter().position(|&b| b == b'=') {
+        Some(index) => {
+            (trim_ows(pair.get(..index).unwrap_or(&[])), trim_ows(pair.get(index.saturating_add(1)..).unwrap_or(&[])))
+        }
+        None => (&[][..], trim_ows(pair)),
+    };
+    if name.is_empty() && value.is_empty() {
+        return Err(CookieRejected::Empty);
+    }
+    if name.len().saturating_add(value.len()) > MAX_COOKIE_NAME_VALUE {
+        return Err(CookieRejected::TooLarge);
+    }
+    Ok(SplitHeader { name, value, attributes: attributes_text })
+}
+
+/// When the cookie expires, in seconds: Max-Age takes precedence over
+/// Expires; both are capped at 400 days.
+fn expiry(attributes: &Attributes<'_>, now: u64) -> Option<u64> {
+    match (attributes.max_age, attributes.expires) {
+        (Some(seconds), _) => Some(if seconds <= 0 {
+            0
+        } else {
+            now.saturating_add(u64::try_from(seconds).unwrap_or(u64::MAX).min(MAX_AGE_SECONDS))
+        }),
+        (None, Some(date)) => Some(date.min(now.saturating_add(MAX_AGE_SECONDS))),
+        (None, None) => None,
     }
 }
 

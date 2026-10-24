@@ -52,30 +52,13 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
         let encoded_len = writer.len();
         let (url, method, body_len) = match submission.method {
             FormMethod::Post => (target, Method::Post, encoded_len),
-            FormMethod::Get => {
-                // The values replace the target's query.
-                let mut buffer = [0u8; MAX_URL_LENGTH];
-                let mut address = Writer::new(&mut buffer);
-                let built = (|| -> Result<(), Overflow> {
-                    address.put(target.scheme().name())?;
-                    address.put(b"://")?;
-                    address.put(target.authority())?;
-                    address.put(target.path().as_bytes())?;
-                    address.byte(b'?')?;
-                    address.put(self.buffers.form.get(..encoded_len).unwrap_or(&[]))
-                })();
-                let parsed = built
-                    .map_err(|_| FormRefused::TooLarge)
-                    .and_then(|()| core::str::from_utf8(address.written()).map_err(|_| FormRefused::TooLarge))
-                    .and_then(|text| Url::parse(text).map_err(FormRefused::Address));
-                match parsed {
-                    Ok(url) => (url, Method::Get, 0),
-                    Err(refused) => {
-                        event(sink, Event::SubmissionRefused(refused));
-                        return;
-                    }
+            FormMethod::Get => match query_address(&target, self.buffers.form.get(..encoded_len).unwrap_or(&[])) {
+                Ok(url) => (url, Method::Get, 0),
+                Err(refused) => {
+                    event(sink, Event::SubmissionRefused(refused));
+                    return;
                 }
-            }
+            },
         };
         let target_origin = url.origin();
         let site = if target_origin.same(&page.origin()) { Site::SameService } else { Site::CrossOriginForm };
@@ -160,4 +143,23 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
             event(sink, Event::SubmissionFailed { status: Some(status), failure: None });
         }
     }
+}
+
+/// The address of a `GET` submission: the values replace the target's
+/// query.
+fn query_address(target: &Url, encoded: &[u8]) -> Result<Url, FormRefused> {
+    let mut buffer = [0u8; MAX_URL_LENGTH];
+    let mut address = Writer::new(&mut buffer);
+    let built = (|| -> Result<(), Overflow> {
+        address.put(target.scheme().name())?;
+        address.put(b"://")?;
+        address.put(target.authority())?;
+        address.put(target.path().as_bytes())?;
+        address.byte(b'?')?;
+        address.put(encoded)
+    })();
+    built
+        .map_err(|_| FormRefused::TooLarge)
+        .and_then(|()| core::str::from_utf8(address.written()).map_err(|_| FormRefused::TooLarge))
+        .and_then(|text| Url::parse(text).map_err(FormRefused::Address))
 }

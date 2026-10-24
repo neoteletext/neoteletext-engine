@@ -3,7 +3,7 @@
 
 use super::super::{Frame, Walker};
 
-use super::super::attributes::Attrs;
+use super::super::Attrs;
 use super::super::planes::{Plane, area_of, scan_index, type_index};
 use crate::consts::{
     OBJECT_BODY_TRIPLETS, OBJECT_INVOCATIONS_PER_TYPE, OBJECTS_OPEN_AT_ONCE, OBJECTS_OPENED_IN_SUCCESSION,

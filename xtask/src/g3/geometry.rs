@@ -51,8 +51,15 @@ pub(super) enum Part {
 /// of 4/F).
 #[derive(Clone, Default)]
 pub(super) struct Shape {
-    pub(super) set: Vec<Part>,
-    pub(super) clear: Vec<Part>,
+    set: Vec<Part>,
+    clear: Vec<Part>,
+}
+
+impl Shape {
+    /// The parts in `set`, minus the parts in `clear`.
+    pub(super) fn new(set: Vec<Part>, clear: Vec<Part>) -> Self {
+        Self { set, clear }
+    }
 }
 
 impl X {

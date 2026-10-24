@@ -44,6 +44,7 @@ mod input;
 mod page;
 mod push;
 mod push_data;
+mod push_messages;
 mod request;
 mod response;
 mod service;

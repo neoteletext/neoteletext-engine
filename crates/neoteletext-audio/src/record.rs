@@ -156,7 +156,7 @@ pub enum Record<'a> {
 /// or any field.
 pub fn parse(bytes: &[u8]) -> Result<Record<'_>, RecordError> {
     let (kind, body) = split(bytes)?;
-    let mut fields = Fields { bytes: body };
+    let mut fields = Fields::new(body);
     match kind {
         TYPE_OBJECT => object(&mut fields).map(Record::Object),
         TYPE_DATA => {
@@ -202,7 +202,7 @@ fn object<'a>(fields: &mut Fields<'a>) -> Result<Object<'a>, RecordError> {
         }
     }
     // Extensions: tag, length, value. Unknown tags are skipped.
-    while !fields.bytes.is_empty() {
+    while !fields.is_empty() {
         let tag = fields.u8()?;
         let length = usize::from(fields.u8()?);
         let value = fields.take(length)?;

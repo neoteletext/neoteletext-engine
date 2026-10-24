@@ -4,12 +4,29 @@
 /// What one image contains.
 pub(super) struct Image {
     /// Code and constant data: allocated sections with contents.
-    pub(super) flash: u64,
+    flash: u64,
     /// Static memory: writable allocated sections, with or without
     /// contents.
-    pub(super) ram: u64,
+    ram: u64,
     /// Every symbol name.
-    pub(super) symbols: Vec<String>,
+    symbols: Vec<String>,
+}
+
+impl Image {
+    /// Bytes of code and constant data.
+    pub(super) fn flash(&self) -> u64 {
+        self.flash
+    }
+
+    /// Bytes of static memory.
+    pub(super) fn ram(&self) -> u64 {
+        self.ram
+    }
+
+    /// Every symbol name.
+    pub(super) fn symbols(&self) -> &[String] {
+        &self.symbols
+    }
 }
 
 /// Reads the section sizes and symbol names of a little-endian ELF image,

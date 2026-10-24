@@ -2,8 +2,9 @@
 //! Algorithm, brackets mirrored and lam-alef joined, broken into rows
 //! (REQ-CHR-015).
 
+use super::Sets;
 use super::WriteError;
-use super::sets::{Cell, Sets, encode};
+use super::sets::{Cell, encode};
 use neoteletext_core::consts::COLUMNS;
 
 /// Lam followed by alef, written as the sets' one lam-alef code.

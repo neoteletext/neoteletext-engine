@@ -1,11 +1,11 @@
 //! The attributes a cell is drawn with (Tables 27 and 29, Annex A.7.1;
-//! decisions E.47 and E.48): flash, the attribute record and its changes.
+//! decisions E.47 and E.48): flash, and the behaviour of the attribute
+//! record and its changes, which `enhance.rs` declares for every part of
+//! the processor that reads them.
 
-use crate::charset::{G0Set, G2Set};
-use crate::colour::ColourIndex;
+use super::{AttrChange, Attrs};
 use crate::consts::{COLOUR_BLACK, COLOUR_WHITE};
 use crate::level1::{FlashMode, FlashRate};
-use crate::packet::DisplayAttributes;
 
 /// The rate part of a flash attribute, before incremental and decremental
 /// flash are resolved into a phase for each cell (decision E.48).
@@ -51,24 +51,6 @@ pub(super) const ATTRIBUTES: bool = cfg!(feature = "nonspacing-attributes");
 pub(super) const LEVEL_1_FLASH: Flash =
     Flash::On { mode: FlashMode::Normal, rate: Rate::Fixed(FlashRate::Slow), start: 0 };
 
-/// The attributes a cell is drawn with (REQ-L25-006), each attribute type
-/// of decision E.47 a field.
-// Each flag is one attribute type of Annex A.7.1 and decision E.47.
-#[allow(clippy::struct_excessive_bools)]
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(super) struct Attrs {
-    pub(super) foreground: ColourIndex,
-    pub(super) background: ColourIndex,
-    pub(super) flash: Flash,
-    pub(super) conceal: bool,
-    pub(super) boxed: bool,
-    pub(super) double_height: bool,
-    pub(super) double_width: bool,
-    /// The non-spacing underline or separated mosaics attribute.
-    pub(super) underline: bool,
-    pub(super) invert: bool,
-}
-
 impl Attrs {
     /// The start of every Passive object: white (CLUT 0 entry 7), black
     /// (CLUT 0 entry 0), normal size, steady, boxing off, not concealed,
@@ -105,20 +87,6 @@ impl Attrs {
             self.underline = display.underline;
         }
     }
-}
-
-/// Non-spacing attributes placed at one cell, each attribute type the
-/// latest placed there (Annex C.2 rule 3), and the Modified G0 and G2
-/// designation of local enhancement data and Active objects.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
-pub(super) struct AttrChange {
-    pub(super) foreground: Option<ColourIndex>,
-    pub(super) background: Option<ColourIndex>,
-    pub(super) flash: Option<Flash>,
-    /// The six display attributes, which one triplet sets together; each
-    /// is still its own type (decision E.47), and a 0 bit cancels.
-    pub(super) display: Option<DisplayAttributes>,
-    pub(super) designation: Option<(G0Set, G2Set)>,
 }
 
 impl AttrChange {

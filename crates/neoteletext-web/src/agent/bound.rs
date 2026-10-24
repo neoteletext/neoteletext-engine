@@ -83,6 +83,16 @@ pub(super) struct Bound {
 // The slots fit the bits of `Deferred::handled`.
 const _: () = assert!(MAX_SESSIONS <= u8::BITS as usize);
 
+/// A bound session's response, as its completion reads it: the status, the
+/// body, the address answered and the time in seconds.
+#[derive(Clone, Copy)]
+struct Answered<'a> {
+    status: u16,
+    body: &'a [u8],
+    url: &'a Url,
+    seconds: u64,
+}
+
 impl Bound {
     pub(super) const fn new() -> Self {
         Self {
@@ -120,6 +130,88 @@ impl Bound {
         }
         *slot = Some(Registrations { made: counted.made.saturating_add(1), ..counted });
         true
+    }
+
+    /// Acts on the answer to a registration (section 8.8): the session it
+    /// makes is kept, or the registration's key is deleted.
+    fn registered(&mut self, answered: &Answered<'_>, delete: &mut dyn FnMut(KeyHandle), sink: &mut Sink<'_>) {
+        let Answered { status, body, url, seconds } = *answered;
+        let Some(registering) = self.registering.take() else { return };
+        let answer = STATUS_SUCCESS.contains(&status).then(|| dbsc::read_instructions(body));
+        let made = match answer {
+            Some(Ok(Answer::Continue(instructions))) => session_of(&instructions, registering.key, url, seconds),
+            _ => None,
+        };
+        let Some(session) = made else {
+            delete(registering.key);
+            event(sink, Event::BoundSession { session: "", change: BoundChange::RegistrationFailed });
+            return;
+        };
+        match self.sessions.insert(session) {
+            Ok(replaced) => {
+                if let Some(old) = replaced {
+                    delete(old);
+                }
+                event(sink, Event::BoundSession { session: session.id.as_str(), change: BoundChange::Registered });
+            }
+            Err(key) => {
+                delete(key);
+                event(sink, Event::BoundSession { session: "", change: BoundChange::RegistrationFailed });
+            }
+        }
+    }
+
+    /// Acts on the answer to a refresh of the session in `slot` (section
+    /// 8.9): the session is kept, updated, retried once with a challenge,
+    /// or ended.
+    fn refreshed(
+        &mut self,
+        slot: u8,
+        retried: bool,
+        answered: &Answered<'_>,
+        delete: &mut dyn FnMut(KeyHandle),
+        sink: &mut Sink<'_>,
+    ) {
+        let Answered { status, body, url, seconds } = *answered;
+        let slot = usize::from(slot);
+        let Some(session) = self.sessions.get(slot).copied() else { return };
+        let id = session.id;
+        let end = |bound: &mut Self, delete: &mut dyn FnMut(KeyHandle), sink: &mut Sink<'_>| {
+            if let Some(ended) = bound.sessions.remove(slot) {
+                delete(ended.key);
+            }
+            event(sink, Event::BoundSession { session: id.as_str(), change: BoundChange::Ended });
+        };
+        if STATUS_SUCCESS.contains(&status) {
+            if body.is_empty() {
+                event(sink, Event::BoundSession { session: id.as_str(), change: BoundChange::Refreshed });
+                return;
+            }
+            match dbsc::read_instructions(body) {
+                Ok(Answer::Continue(instructions)) if instructions.id == id => {
+                    match session_of(&instructions, session.key, url, seconds) {
+                        Some(updated) => {
+                            if let Some(kept) = self.sessions.get_mut(slot) {
+                                *kept = updated;
+                            }
+                            event(sink, Event::BoundSession { session: id.as_str(), change: BoundChange::Refreshed });
+                        }
+                        None => end(self, delete, sink),
+                    }
+                }
+                _ => end(self, delete, sink),
+            }
+        } else if status == STATUS_FORBIDDEN && !retried && session.challenge.is_some() {
+            // Section 8.8: once more, with the challenge this
+            // answer gave; a second 403 ends the attempt.
+            self.refresh = Some((u8::try_from(slot).unwrap_or(0), true));
+        } else if (STATUS_CLIENT_FIRST..STATUS_SERVER_FIRST).contains(&status)
+            && !matches!(status, STATUS_FORBIDDEN | STATUS_PROXY_AUTHENTICATION | STATUS_TOO_MANY)
+        {
+            end(self, delete, sink);
+        } else {
+            event(sink, Event::BoundSession { session: id.as_str(), change: BoundChange::RefreshFailed });
+        }
     }
 }
 
@@ -409,81 +501,10 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
                 keys.delete(key);
             }
         };
+        let answered = Answered { status, body, url: &exchange.url, seconds };
         match exchange.purpose {
-            Purpose::Register => {
-                let Some(registering) = bound.registering.take() else { return };
-                let answer = STATUS_SUCCESS.contains(&status).then(|| dbsc::read_instructions(body));
-                let made = match answer {
-                    Some(Ok(Answer::Continue(instructions))) => {
-                        session_of(&instructions, registering.key, &exchange.url, seconds)
-                    }
-                    _ => None,
-                };
-                let Some(session) = made else {
-                    delete(registering.key);
-                    event(sink, Event::BoundSession { session: "", change: BoundChange::RegistrationFailed });
-                    return;
-                };
-                match bound.sessions.insert(session) {
-                    Ok(replaced) => {
-                        if let Some(old) = replaced {
-                            delete(old);
-                        }
-                        event(
-                            sink,
-                            Event::BoundSession { session: session.id.as_str(), change: BoundChange::Registered },
-                        );
-                    }
-                    Err(key) => {
-                        delete(key);
-                        event(sink, Event::BoundSession { session: "", change: BoundChange::RegistrationFailed });
-                    }
-                }
-            }
-            Purpose::Refresh { slot, retried } => {
-                let slot = usize::from(slot);
-                let Some(session) = bound.sessions.get(slot).copied() else { return };
-                let id = session.id;
-                let end = |bound: &mut Bound, delete: &mut dyn FnMut(KeyHandle), sink: &mut Sink<'_>| {
-                    if let Some(ended) = bound.sessions.remove(slot) {
-                        delete(ended.key);
-                    }
-                    event(sink, Event::BoundSession { session: id.as_str(), change: BoundChange::Ended });
-                };
-                if STATUS_SUCCESS.contains(&status) {
-                    if body.is_empty() {
-                        event(sink, Event::BoundSession { session: id.as_str(), change: BoundChange::Refreshed });
-                        return;
-                    }
-                    match dbsc::read_instructions(body) {
-                        Ok(Answer::Continue(instructions)) if instructions.id == id => {
-                            match session_of(&instructions, session.key, &exchange.url, seconds) {
-                                Some(updated) => {
-                                    if let Some(kept) = bound.sessions.get_mut(slot) {
-                                        *kept = updated;
-                                    }
-                                    event(
-                                        sink,
-                                        Event::BoundSession { session: id.as_str(), change: BoundChange::Refreshed },
-                                    );
-                                }
-                                None => end(bound, &mut delete, sink),
-                            }
-                        }
-                        _ => end(bound, &mut delete, sink),
-                    }
-                } else if status == STATUS_FORBIDDEN && !retried && session.challenge.is_some() {
-                    // Section 8.8: once more, with the challenge this
-                    // answer gave; a second 403 ends the attempt.
-                    bound.refresh = Some((u8::try_from(slot).unwrap_or(0), true));
-                } else if (STATUS_CLIENT_FIRST..STATUS_SERVER_FIRST).contains(&status)
-                    && !matches!(status, STATUS_FORBIDDEN | STATUS_PROXY_AUTHENTICATION | STATUS_TOO_MANY)
-                {
-                    end(bound, &mut delete, sink);
-                } else {
-                    event(sink, Event::BoundSession { session: id.as_str(), change: BoundChange::RefreshFailed });
-                }
-            }
+            Purpose::Register => bound.registered(&answered, &mut delete, sink),
+            Purpose::Refresh { slot, retried } => bound.refreshed(slot, retried, &answered, &mut delete, sink),
             _ => {}
         }
     }

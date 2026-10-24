@@ -13,13 +13,16 @@ pub use deps::dependencies;
 pub use io::io;
 pub use layers::layers;
 
-fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
+/// Every file under `dir` whose extension is one of `extensions`, in the
+/// order the directories list them; the source checks and the
+/// traceability table share it.
+pub(crate) fn source_files(dir: &Path, extensions: &[&str], out: &mut Vec<PathBuf>) {
     let Ok(entries) = fs::read_dir(dir) else { return };
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            rust_files(&path, out);
-        } else if path.extension().is_some_and(|ext| ext == "rs") {
+            source_files(&path, extensions, out);
+        } else if path.extension().is_some_and(|ext| extensions.iter().any(|wanted| ext == *wanted)) {
             out.push(path);
         }
     }

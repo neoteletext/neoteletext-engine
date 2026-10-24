@@ -3,7 +3,8 @@
 
 use super::super::{Collector, Frame, Walker};
 
-use super::super::attributes::{ATTRIBUTES, AttrChange, Flash, flash_of};
+use super::super::AttrChange;
+use super::super::attributes::{ATTRIBUTES, Flash, flash_of};
 use super::super::characters::EnhChar;
 use super::super::planes::{Area, Plane, area_of};
 use crate::charset::{self, G0Set, G2Set};

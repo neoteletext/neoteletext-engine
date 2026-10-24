@@ -54,9 +54,9 @@ impl RowCells {
             // Rule 1: no doubling where it cannot be shown: rows 0, 23 and
             // 24, the last column of an area, or over a lower half. Rule 3:
             // a double size character keeps whichever doubling fits.
-            let height = resolved.double_height && double_allowed;
-            let width = resolved.double_width && right < end && !self.claimed.get(right).copied().unwrap_or(true);
-            let mut cell = resolved.cell;
+            let height = resolved.double_height() && double_allowed;
+            let width = resolved.double_width() && right < end && !self.claimed.get(right).copied().unwrap_or(true);
+            let mut cell = resolved.cell();
             cell.size = if height { Size::DoubleTop } else { Size::Normal };
             if width {
                 cell.attributes = cell.attributes.with_width(Width::LeftHalf);

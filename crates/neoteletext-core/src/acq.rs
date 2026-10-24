@@ -18,6 +18,8 @@ use crate::packet::ServicePacket;
 mod enhancement;
 mod enhancement_pages;
 mod events;
+mod header;
+mod machines;
 mod page;
 mod reception;
 mod statistics;

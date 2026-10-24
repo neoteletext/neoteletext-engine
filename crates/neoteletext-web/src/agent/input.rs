@@ -16,35 +16,7 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
         let ticked = matches!(input, Input::Tick);
         match input {
             Input::Tick => self.tick(now, sink),
-            Input::Net(net) => match net {
-                NetInput::Connected(ConnectionId::Fetch, peer) => self.fetch_connected(now, peer, sink),
-                NetInput::ConnectFailed(ConnectionId::Fetch) => self.fetch_lost(now, Failure::Network, sink),
-                NetInput::Received(ConnectionId::Fetch, bytes) => self.fetch_received(now, bytes, sink),
-                NetInput::Closed(ConnectionId::Fetch) => self.fetch_closed(now, sink),
-                NetInput::Connected(ConnectionId::Push, peer) if cfg!(feature = "push") => {
-                    self.push_connected(now, peer, sink);
-                }
-                NetInput::ConnectFailed(ConnectionId::Push) | NetInput::Closed(ConnectionId::Push)
-                    if cfg!(feature = "push") =>
-                {
-                    let live = matches!(
-                        self.push.phase,
-                        PushPhase::Connecting { .. } | PushPhase::Handshake { .. } | PushPhase::Open { .. }
-                    );
-                    if live {
-                        self.push_lost(now, None, false, sink);
-                    }
-                }
-                NetInput::Received(ConnectionId::Push, bytes) if cfg!(feature = "push") => {
-                    self.push_received(now, bytes, sink);
-                }
-                // The live feed has its own machine, and a build without
-                // push never opens a push connection.
-                NetInput::Connected(ConnectionId::Push | ConnectionId::Live, _)
-                | NetInput::ConnectFailed(ConnectionId::Push | ConnectionId::Live)
-                | NetInput::Received(ConnectionId::Push | ConnectionId::Live, _)
-                | NetInput::Closed(ConnectionId::Push | ConnectionId::Live) => {}
-            },
+            Input::Net(net) => self.net(now, net, sink),
             Input::OpenService(address) => match Url::parse(address) {
                 Ok(url) if !url.scheme().is_websocket() => {
                     self.leave_channel();
@@ -91,6 +63,39 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
             if let Some(at) = deadline {
                 sink(Output::Timer { at });
             }
+        }
+    }
+
+    /// Gives a connection's input to the connection it concerns.
+    fn net(&mut self, now: Instant, net: NetInput<'_>, sink: &mut Sink<'_>) {
+        match net {
+            NetInput::Connected(ConnectionId::Fetch, peer) => self.fetch_connected(now, peer, sink),
+            NetInput::ConnectFailed(ConnectionId::Fetch) => self.fetch_lost(now, Failure::Network, sink),
+            NetInput::Received(ConnectionId::Fetch, bytes) => self.fetch_received(now, bytes, sink),
+            NetInput::Closed(ConnectionId::Fetch) => self.fetch_closed(now, sink),
+            NetInput::Connected(ConnectionId::Push, peer) if cfg!(feature = "push") => {
+                self.push_connected(now, peer, sink);
+            }
+            NetInput::ConnectFailed(ConnectionId::Push) | NetInput::Closed(ConnectionId::Push)
+                if cfg!(feature = "push") =>
+            {
+                let live = matches!(
+                    self.push.phase,
+                    PushPhase::Connecting { .. } | PushPhase::Handshake { .. } | PushPhase::Open { .. }
+                );
+                if live {
+                    self.push_lost(now, None, false, sink);
+                }
+            }
+            NetInput::Received(ConnectionId::Push, bytes) if cfg!(feature = "push") => {
+                self.push_received(now, bytes, sink);
+            }
+            // The live feed has its own machine, and a build without
+            // push never opens a push connection.
+            NetInput::Connected(ConnectionId::Push | ConnectionId::Live, _)
+            | NetInput::ConnectFailed(ConnectionId::Push | ConnectionId::Live)
+            | NetInput::Received(ConnectionId::Push | ConnectionId::Live, _)
+            | NetInput::Closed(ConnectionId::Push | ConnectionId::Live) => {}
         }
     }
 

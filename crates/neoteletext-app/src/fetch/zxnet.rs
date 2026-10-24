@@ -9,12 +9,14 @@ use crate::pipe::{Frame, Notice};
 use neoteletext_core::types::Instant;
 use neoteletext_web::port::{ConnectionId, Pump, Transport};
 use neoteletext_web::proxy::Proxy;
+use neoteletext_web::zxnet::{Channel, LiveEvent, LiveInput, LiveOutput, LiveStorage, ZxnetFeed};
+use std::cell::Cell;
 use std::net::IpAddr;
 use std::sync::mpsc::Sender;
 use std::time::Instant as StdInstant;
 
 pub(super) fn run_zxnet(
-    channel: &neoteletext_web::zxnet::Channel,
+    channel: &Channel,
     wakes: &mut Wakes,
     wake: Sender<Wake>,
     allow_local: &[IpAddr],
@@ -28,53 +30,28 @@ pub(super) fn run_zxnet(
 /// The live feed's loop over any transport, sending what it receives
 /// through `emit` until that fails or the decoder process goes.
 pub(super) fn live_loop<T: Transport>(
-    channel: &neoteletext_web::zxnet::Channel,
+    channel: &Channel,
     wakes: &mut Wakes,
     transport: T,
     allow_local: &[IpAddr],
     proxied: bool,
     emit: &mut dyn FnMut(&Frame) -> std::io::Result<()>,
 ) {
-    use neoteletext_web::zxnet::{LiveEvent, LiveInput, LiveOutput, LiveStorage, ZxnetFeed};
     let mut storage = Box::new(LiveStorage::default());
-    let mut feed = ZxnetFeed::new(*channel, storage.buffers(), SystemRandom);
-    feed.name_product(neottx().as_ref());
-    if proxied {
-        feed.through_proxy();
-    }
-    if let Some(&address) = allow_local.first() {
-        feed.allow_local(web_address(address));
-    }
+    let mut feed = new_feed(channel, &mut storage, allow_local, proxied);
     let mut pump = Pump::new(transport);
     let start = StdInstant::now();
     let mut buffer = vec![0u8; READ_CHUNK];
-    let broken = std::cell::Cell::new(false);
+    let broken = Cell::new(false);
     // The feed says, after every input, when it next needs a tick, and
     // says nothing once it has stopped: the latest it said is the deadline.
-    let deadline: std::cell::Cell<Option<Instant>> = std::cell::Cell::new(None);
+    let deadline: Cell<Option<Instant>> = Cell::new(None);
     let mut sink = |output: LiveOutput<'_>, pump: &mut Pump<T>| {
         if let Some(net) = output.net() {
             pump.execute(net);
             return;
         }
-        let result = match output {
-            LiveOutput::Timer(at) => {
-                deadline.set(Some(at));
-                Ok(())
-            }
-            LiveOutput::Packet(packet) => emit(&Frame::Packet(packet.bytes)),
-            LiveOutput::Event(LiveEvent::InitialPage { page, .. }) => {
-                emit(&Frame::Notice(Notice::InitialPage(page.mpp())))
-            }
-            LiveOutput::Event(LiveEvent::GaveUp) => {
-                emit(&Frame::Notice(Notice::Message("live feed: gave up reconnecting".into())))
-            }
-            LiveOutput::Event(LiveEvent::WrongName) => {
-                emit(&Frame::Notice(Notice::Message("live feed: wrong service name".into())))
-            }
-            _ => Ok(()),
-        };
-        if result.is_err() {
+        if forward(output, &deadline, emit).is_err() {
             broken.set(true);
         }
     };
@@ -108,5 +85,49 @@ pub(super) fn live_loop<T: Transport>(
         if !busy {
             wakes.wait(clock(start), next_tick);
         }
+    }
+}
+
+/// The live feed for `channel`, named, told whether it goes through a
+/// proxy, and given the local address it may reach.
+fn new_feed<'a>(
+    channel: &Channel,
+    storage: &'a mut LiveStorage,
+    allow_local: &[IpAddr],
+    proxied: bool,
+) -> ZxnetFeed<'a, SystemRandom> {
+    let mut feed = ZxnetFeed::new(*channel, storage.buffers(), SystemRandom);
+    feed.name_product(neottx().as_ref());
+    if proxied {
+        feed.through_proxy();
+    }
+    if let Some(&address) = allow_local.first() {
+        feed.allow_local(web_address(address));
+    }
+    feed
+}
+
+/// Acts on one of the feed's outputs that is not for the network: a timer
+/// sets the deadline, and packets and the events the decoder shows go to
+/// `emit`.
+fn forward(
+    output: LiveOutput<'_>,
+    deadline: &Cell<Option<Instant>>,
+    emit: &mut dyn FnMut(&Frame) -> std::io::Result<()>,
+) -> std::io::Result<()> {
+    match output {
+        LiveOutput::Timer(at) => {
+            deadline.set(Some(at));
+            Ok(())
+        }
+        LiveOutput::Packet(packet) => emit(&Frame::Packet(packet.bytes)),
+        LiveOutput::Event(LiveEvent::InitialPage { page, .. }) => emit(&Frame::Notice(Notice::InitialPage(page.mpp()))),
+        LiveOutput::Event(LiveEvent::GaveUp) => {
+            emit(&Frame::Notice(Notice::Message("live feed: gave up reconnecting".into())))
+        }
+        LiveOutput::Event(LiveEvent::WrongName) => {
+            emit(&Frame::Notice(Notice::Message("live feed: wrong service name".into())))
+        }
+        _ => Ok(()),
     }
 }
