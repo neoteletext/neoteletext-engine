@@ -1,4 +1,5 @@
-//! Tests of the bundled glyph set: order, size, and the diacritics drawn over their bases.
+//! Tests of the bundled glyph set: order, size, the diacritics drawn over their bases, loaded
+//! fonts and replaced G3 glyphs.
 #![allow(clippy::indexing_slicing, clippy::unwrap_used)]
 
 // The module is compiled for tests only (see the parent file); the
@@ -6,6 +7,8 @@
 #[cfg(test)]
 use super::*;
 use crate::charset::{CharSet, G0, G0Set};
+use crate::glyphs::conformance::font_set_of;
+use crate::types::FontGlyph;
 
 #[test]
 fn glyphs_are_sorted_and_unique() {
@@ -81,4 +84,44 @@ fn diacritics_use_the_precomposed_glyph_or_an_overlay() {
     assert_eq!(GlyphSet::from_entries(&WITH_PRECOMPOSED, "test").glyph(character), PRECOMPOSED);
     let overlay: [u8; GLYPH_LINES] = core::array::from_fn(|row| BASE[row] | MARK[row]);
     assert_eq!(GlyphSet::from_entries(&OVERLAY_ONLY, "test").glyph(character), overlay);
+}
+
+/// REQ-FNT-005, decision E.26: a loaded font draws a character with a
+/// diacritical mark only by its precomposed form; with none, as for "q"
+/// with an acute, the font is not asked and the set's own glyphs overlay
+/// the mark. G3 characters never come from a font, and G3 has no place
+/// among the sets fonts draw (REQ-FNT-011).
+#[test]
+fn loaded_fonts_draw_precomposed_marks_only() {
+    const DOTS: [u16; CELL_FIELD_LINES] = [0xFFF; CELL_FIELD_LINES];
+    static FONT: [FontGlyph; 3] = [
+        FontGlyph::small('q' as u32, DOTS),
+        FontGlyph::small('\u{B4}' as u32, DOTS),
+        FontGlyph::small('\u{E9}' as u32, DOTS),
+    ];
+    let glyphs = GlyphSet::bedstead().with_fonts(Some(LoadedFont::new(&FONT).unwrap()), [None; FONT_SET_COUNT]);
+    let latin = CharSet::G0(G0 { set: G0Set::Latin, national: None });
+    // Diacritic 2 is the acute accent (Table 28, mode 10010).
+    let acute = |code| CharRef { diacritic: 2, ..CharRef::new(latin, code) };
+    assert_eq!(glyphs.loaded(acute(b'e')).map(|glyph| glyph.rows[0]), Some(0xFFF), "é, precomposed");
+    assert_eq!(glyphs.loaded(acute(b'q')), None, "no precomposed form");
+    assert!(glyphs.loaded(CharRef::new(latin, b'q')).is_some());
+    assert_eq!(glyphs.loaded(CharRef::new(CharSet::G3, 0x20)), None);
+    assert_eq!(font_set_of(CharSet::G3), None);
+}
+
+/// REQ-RND-020, decision E.50: the G3 glyphs are data that a set can
+/// replace, named by their provenance; a code outside 2/0 to 7/F is blank.
+#[test]
+fn g3_glyphs_can_be_replaced() {
+    const FULL: G3Glyph = G3Glyph { small: [0xFFF; CELL_FIELD_LINES], large: [0xFFF; CELL_HEIGHT] };
+    static ALL_FULL: [G3Glyph; G3_CODES] = [FULL; G3_CODES];
+    let bedstead = GlyphSet::bedstead();
+    let replaced = bedstead.with_g3(&ALL_FULL, "test");
+    assert_eq!(replaced.g3_provenance, "test");
+    assert_eq!(*replaced.g3(0x20), FULL);
+    assert_ne!(*bedstead.g3(0x20), FULL, "the shipped 2/0 differs");
+    assert_eq!(*replaced.g3(0x1F), G3Glyph::BLANK);
+    assert_eq!(*replaced.g3(0x80), G3Glyph::BLANK);
+    assert_eq!(replaced.lookup('A'), bedstead.lookup('A'), "the text glyphs are kept");
 }
