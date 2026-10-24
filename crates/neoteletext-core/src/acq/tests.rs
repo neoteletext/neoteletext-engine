@@ -752,3 +752,50 @@ fn the_latest_service_packet_is_kept() {
     assert_eq!(events, [Event::ServiceData]);
     assert_eq!(decoder.service().map(|service| (service.designation, service.network_id)), Some((0, 0xFD01)));
 }
+
+/// Clause 9.6.1, clause 9.4, REQ-ACQ-004, REQ-ACQ-016: X/27/1 to X/27/3
+/// are kept with their page as received, X/28/4 as its Level 3.5 page
+/// data, and C4 clears both. X/28/4's page function does not make a page
+/// an enhancement page (REQ-ACQ-016 names X/28/0 and X/28/3), X/28/3's
+/// does, and an X/28/3 whose triplet 1 is uncorrectable names no
+/// function and leaves the page where it is.
+#[test]
+fn page_related_packets_are_kept_with_their_page() {
+    use crate::consts::{PAGE_FUNCTION_GDRCS, PAGE_FUNCTION_POP};
+    let mut slots = std::vec![StoredPage::EMPTY; 8];
+    let mut memory = EnhancementMemory::new(8, 100);
+    let mut decoder = Decoder::with_enhancement_store(&mut slots, memory.store(), Config::default());
+    let mut events = Vec::new();
+    let mut body = [0u8; DATA_BYTES - 1];
+    for (index, byte) in body.iter_mut().enumerate() {
+        *byte = index as u8;
+    }
+    let raw_links = encode::raw(mag(1), 27, 2, &body);
+    let pop = PageFormat { function: PAGE_FUNCTION_POP, coding: 0 };
+    let level35 = encode::page_enhancement(mag(1), 4, pop, &PresentationFields::default());
+    feed(&mut decoder, &[header(1, 0x50, 0, 0), raw_links, level35, header(1, 0x51, 0, 0)], &mut events);
+    let address = PageAddress::from_mpp(0x150).unwrap();
+    let page = decoder.store().get(address, SubCode::ANY).unwrap();
+    assert_eq!((page.links_raw[1], page.links_raw_present), (raw_links.data(), 0b010));
+    assert_eq!((page.page_data, page.page_data_level35.map(|data| data.format)), (None, Some(Some(pop))));
+    assert!(!decoder.enhancement_store().contains_address(address), "X/28/4 names no enhancement page");
+    feed(&mut decoder, &[header(1, 0x50, 0, C4_ERASE), header(1, 0x51, 0, 0)], &mut events);
+    let page = decoder.store().get(address, SubCode::ANY).unwrap();
+    assert_eq!((page.links_raw_present, page.page_data_level35), (0, None), "REQ-ACQ-004");
+    // X/28/3 with a page function: an enhancement page from here on.
+    let drcs = PageFormat { function: PAGE_FUNCTION_GDRCS, coding: 0 };
+    feed(
+        &mut decoder,
+        &[header(2, 0x60, 0, 0), encode::page_function(mag(2), drcs), header(2, 0x61, 0, 0)],
+        &mut events,
+    );
+    let stored = decoder.enhancement_lookup().sub_page(mag(2), PageNumber(0x60), 0).unwrap();
+    assert_eq!(stored.format(), Some(drcs));
+    assert!(!decoder.store().contains(PageAddress::from_mpp(0x260).unwrap()), "REQ-OBJ-041: never a text page");
+    // The same packet with two bit errors in triplet 1.
+    let mut damaged = encode::page_function(mag(2), drcs);
+    damaged.bytes[crate::consts::DATA_START + 1] ^= 0b11;
+    feed(&mut decoder, &[header(2, 0x70, 0, 0), damaged, header(2, 0x71, 0, 0)], &mut events);
+    assert!(decoder.store().contains(PageAddress::from_mpp(0x270).unwrap()));
+    assert!(!decoder.enhancement_store().contains_address(PageAddress::from_mpp(0x270).unwrap()));
+}
