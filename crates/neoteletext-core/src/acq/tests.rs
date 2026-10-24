@@ -665,3 +665,90 @@ fn a_known_input_gives_the_expected_trace() {
     feed(&mut decoder, &packets, &mut events);
     assert!(!events.iter().any(|event| matches!(event, Event::Trace(_))));
 }
+
+/// REQ-ACQ-012, REQ-FSM-004: the requested page is "searching" until a
+/// header of it arrives, "found" while it is received and once complete,
+/// "found but not in the most recent cycle" when it has not been
+/// received for the configured time, and "found" again with its next
+/// reception, which keeps the stored rows.
+#[test]
+fn search_status_follows_the_page_lifecycle() {
+    let mut slots = std::vec![StoredPage::EMPTY; 4];
+    let mut decoder = Decoder::new(&mut slots, Config::default());
+    let stale_after = decoder.config().stale_after_us;
+    let mut events = Vec::new();
+    let address = PageAddress::from_mpp(0x100).unwrap();
+    assert_eq!(decoder.search_status(address), SearchStatus::Searching);
+    feed(&mut decoder, &[header(1, 0x00, 0, 0), encode::row(mag(1), 1, &text(b"KEPT"))], &mut events);
+    assert_eq!(decoder.store().latest(address).unwrap().state, PageState::Partial);
+    assert_eq!(decoder.search_status(address), SearchStatus::Found);
+    feed(&mut decoder, &[header(1, 0x01, 0, 0)], &mut events);
+    assert_eq!(decoder.search_status(address), SearchStatus::Found);
+    events.clear();
+    decoder.tick(Instant(stale_after), &mut |event| events.push(event));
+    assert_eq!(decoder.search_status(address), SearchStatus::Found, "not yet past the configured time");
+    decoder.tick(Instant(stale_after + 1001), &mut |event| events.push(event));
+    assert_eq!(decoder.search_status(address), SearchStatus::FoundNotRecent);
+    assert!(events.contains(&Event::PageStale(key(0x100, 0))));
+    let now = Instant(stale_after + 2000);
+    decoder.push(&header(1, 0x00, 0, 0), &PacketMeta::default(), now, &mut |event| events.push(event));
+    assert_eq!(decoder.search_status(address), SearchStatus::Found);
+    assert_eq!(decoder.store().latest(address).unwrap().cells[1][..4], text(b"KEPT")[..4], "merged, not erased");
+}
+
+/// REQ-ACQ-010: a header with C8 (update indicator) set raises the
+/// update indicator event for its page; one without C8 does not.
+#[test]
+fn c8_raises_the_update_indicator() {
+    let mut slots = std::vec![StoredPage::EMPTY; 4];
+    let mut decoder = Decoder::new(&mut slots, Config::default());
+    let mut events = Vec::new();
+    feed(&mut decoder, &[header(1, 0x00, 0, 0), header(1, 0x01, 0, crate::consts::C8_UPDATE)], &mut events);
+    let raised: Vec<&Event> = events.iter().filter(|event| matches!(event, Event::UpdateIndicator(_))).collect();
+    assert_eq!(raised, [&Event::UpdateIndicator(key(0x101, 0))]);
+    assert!(
+        decoder
+            .store()
+            .get(PageAddress::from_mpp(0x101).unwrap(), SubCode::ANY)
+            .unwrap()
+            .control
+            .has(crate::consts::C8_UPDATE)
+    );
+}
+
+/// REQ-ARCH-008: replacing the configuration keeps the stored pages.
+#[test]
+fn a_new_configuration_keeps_the_stored_pages() {
+    let mut slots = std::vec![StoredPage::EMPTY; 4];
+    let mut decoder = Decoder::new(&mut slots, Config::default());
+    let mut events = Vec::new();
+    feed(
+        &mut decoder,
+        &[header(1, 0x00, 0, 0), encode::row(mag(1), 1, &text(b"A")), header(1, 0x01, 0, 0)],
+        &mut events,
+    );
+    let saa5050 = Config::saa5050();
+    decoder.set_config(saa5050);
+    assert_eq!(*decoder.config(), saa5050);
+    let page = decoder.store().get(PageAddress::from_mpp(0x100).unwrap(), SubCode::ANY).unwrap();
+    assert_eq!((page.state, page.cells[1][0]), (PageState::Complete, with_odd_parity(b'A')));
+}
+
+/// Clause 9.8.1, REQ-ACQ-018: the latest packet 8/30 is kept for the
+/// caller and its arrival is an event.
+#[test]
+fn the_latest_service_packet_is_kept() {
+    let mut slots = std::vec![StoredPage::EMPTY; 1];
+    let mut decoder = Decoder::new(&mut slots, Config::default());
+    assert!(decoder.service().is_none());
+    let mut events = Vec::new();
+    let mut packet = encode::address(mag(8), 30);
+    packet.bytes[crate::consts::DATA_START] = crate::ecc::hamming84_encode(0);
+    // Table 18: the network identification in bytes 13 and 14, sent
+    // most significant bit first.
+    packet.bytes[9] = 0xFD_u8.reverse_bits();
+    packet.bytes[10] = 0x01_u8.reverse_bits();
+    feed(&mut decoder, &[packet], &mut events);
+    assert_eq!(events, [Event::ServiceData]);
+    assert_eq!(decoder.service().map(|service| (service.designation, service.network_id)), Some((0, 0xFD01)));
+}
