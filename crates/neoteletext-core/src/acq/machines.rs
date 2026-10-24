@@ -111,7 +111,9 @@ impl Decoder<'_> {
         let state = page.state;
         let (next, action) = page_transition(state, event);
         page.state = next;
-        if self.config.trace && next != state {
+        // REQ-FSM-010: a transition is a change of state or an action
+        // performed, as for the magazine machine.
+        if self.config.trace && (next != state || action != PageAction::None) {
             events(Event::Trace(TraceEntry {
                 machine: Machine::Page(key.address.mpp()),
                 time: now,

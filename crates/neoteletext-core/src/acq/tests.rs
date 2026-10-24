@@ -623,3 +623,45 @@ fn enhancement_faults_are_counted_once_per_build() {
     total.add(&faults);
     assert_eq!((total.damaged_triplets, total.undefined_characters), (u32::MAX, 7));
 }
+
+/// REQ-FSM-010: with tracing on, a known input gives the expected trace
+/// of both machines, each entry naming the machine and instance, the
+/// time, the state before, the event, the action and the state after.
+/// A transition is a change of state or an action performed: a row
+/// stored on a page being received keeps it Partial and raises "page
+/// updated", and a row without a header keeps magazine 2 Idle and is
+/// discarded; both are traced. With tracing off nothing is.
+#[test]
+fn a_known_input_gives_the_expected_trace() {
+    use crate::trace::{Machine, TraceEntry};
+    let packets = [
+        header(1, 0x00, 0, 0),
+        encode::row(mag(1), 1, &text(b"ROW")),
+        header(1, 0x01, 0, 0),
+        encode::row(mag(2), 1, &text(b"X")),
+    ];
+    let entry =
+        |machine, time, from, event, action, to| TraceEntry { machine, time: Instant(time), from, event, action, to };
+    let expected = [
+        entry(Machine::Magazine(1), 0, "Idle", "storable header", "start page", "Receiving"),
+        entry(Machine::Page(0x100), 0, "Empty", "reception started", "raise page started", "Partial"),
+        entry(Machine::Magazine(1), 1000, "Receiving", "row", "store row", "Receiving"),
+        entry(Machine::Page(0x100), 1000, "Partial", "row stored", "raise page updated", "Partial"),
+        entry(Machine::Magazine(1), 2000, "Receiving", "storable header", "end page and start another", "Receiving"),
+        entry(Machine::Page(0x100), 2000, "Partial", "reception ended", "raise page completed", "Complete"),
+        entry(Machine::Page(0x101), 2000, "Empty", "reception started", "raise page started", "Partial"),
+        entry(Machine::Magazine(2), 3000, "Idle", "row", "discard: row without header", "Idle"),
+    ];
+    let mut slots = std::vec![StoredPage::EMPTY; 4];
+    let mut decoder = Decoder::new(&mut slots, Config { trace: true, ..Config::default() });
+    let mut events = Vec::new();
+    feed(&mut decoder, &packets, &mut events);
+    let trace: Vec<TraceEntry> =
+        events.iter().filter_map(|event| if let Event::Trace(entry) = event { Some(*entry) } else { None }).collect();
+    assert_eq!(trace, expected);
+    let mut slots = std::vec![StoredPage::EMPTY; 4];
+    let mut decoder = Decoder::new(&mut slots, Config::default());
+    let mut events = Vec::new();
+    feed(&mut decoder, &packets, &mut events);
+    assert!(!events.iter().any(|event| matches!(event, Event::Trace(_))));
+}
