@@ -860,3 +860,130 @@ fn pages_being_received_are_never_evicted() {
     assert_eq!(decoder.store().pages(), []);
     assert!(!events.iter().any(|event| matches!(event, Event::PageStarted(_) | Event::PageUpdated { .. })));
 }
+
+/// Annex A.1, Annex B.6, REQ-ACQ-016, REQ-ACQ-020: a stored enhancement
+/// sub-page reports the sub-code and control bits of its latest header
+/// (C13 is "partial page" on these pages), the time of its latest packet,
+/// and its X/26 packets by designation code, as received, each at index
+/// 25 + d.
+#[test]
+fn an_enhancement_sub_page_reports_its_header_and_packets() {
+    let mut slots = std::vec![StoredPage::EMPTY; 4];
+    let mut memory = EnhancementMemory::new(4, 50);
+    let mut decoder = Decoder::with_enhancement_store(&mut slots, memory.store(), Config::default());
+    assert_eq!(decoder.enhancement_store().capacity(), (4, 50));
+    let mut events = Vec::new();
+    // S4 S3 = 29, the last packet X/26/3; S2 = 1; S1 = 0.
+    let subcode = (29 << 8) | (1 << 4);
+    let triplets = [Triplet { address: 41, mode: 0x1F, data: 0x07 }; TRIPLETS_PER_PACKET];
+    let x26 = encode::triplet_packet(mag(1), 26, 3, &triplets);
+    feed(&mut decoder, &[header(1, 0xFE, subcode, crate::consts::C13), x26], &mut events);
+    let lookup = decoder.enhancement_lookup();
+    let page = lookup.magazine_organization_table(mag(1)).unwrap();
+    assert_eq!(page.key(), EnhancementKey { address: PageAddress::from_mpp(0x1FE).unwrap(), s1: 0 });
+    assert_eq!((page.subcode(), page.last_packet()), (SubCode::new(subcode), 29));
+    assert!(page.control().has(crate::consts::C13));
+    assert_eq!(page.last_received(), Instant(1000), "the X/26 packet's time");
+    assert_eq!(page.enhancement(3), Some(&x26.data()));
+    assert_eq!((page.enhancement(2), page.enhancement(16)), (None, None));
+    assert_eq!(page.received(), 1 << enhancement_index(3).unwrap());
+    assert_eq!((enhancement_index(3), enhancement_index(16)), (Some(28), None));
+    assert_eq!((row_index(0), row_index(1), row_index(25), row_index(26)), (None, Some(0), Some(24), None));
+    let keys: Vec<EnhancementKey> = decoder.enhancement_store().sub_pages().map(|page| page.key()).collect();
+    assert_eq!(keys, [page.key()]);
+}
+
+/// REQ-ACQ-019: when the directory of enhancement sub-pages is full, the
+/// least recently received sub-page that is not being received is
+/// replaced; when every one is being received, the new one is not kept.
+#[test]
+fn a_full_enhancement_directory_replaces_the_least_recent_sub_page() {
+    let mut slots = std::vec![StoredPage::EMPTY; 4];
+    let mut memory = EnhancementMemory::new(2, 50);
+    let mut decoder = Decoder::with_enhancement_store(&mut slots, memory.store(), Config::default());
+    let mut events = Vec::new();
+    let table = |m: u8| [header(m, 0xFE, 0, 0), object_row(m, 1, m), header(m, 0x00, 0, 0)];
+    feed(&mut decoder, &table(1), &mut events);
+    feed(&mut decoder, &table(2), &mut events);
+    feed(&mut decoder, &table(3), &mut events);
+    let lookup = decoder.enhancement_lookup();
+    assert!(lookup.magazine_organization_table(mag(1)).is_none(), "received first");
+    assert!(
+        lookup.magazine_organization_table(mag(2)).is_some() && lookup.magazine_organization_table(mag(3)).is_some()
+    );
+    // Magazines 2 and 3 receiving their tables, in parallel: no room for 4.
+    feed(&mut decoder, &[header(2, 0xFE, 0, 0), header(3, 0xFE, 0, 0), header(4, 0xFE, 0, 0)], &mut events);
+    feed(&mut decoder, &[object_row(4, 1, 4)], &mut events);
+    let lookup = decoder.enhancement_lookup();
+    assert!(lookup.magazine_organization_table(mag(4)).is_none());
+    assert_eq!(lookup.magazine_organization_table(mag(2)).unwrap().row(1), Some(&object_bytes(2)));
+    assert_eq!(lookup.magazine_organization_table(mag(3)).unwrap().row(1), Some(&object_bytes(3)));
+}
+
+/// REQ-ACQ-016, REQ-ACQ-014: the X/28/0 page function of a page already
+/// received as an enhancement page is recorded with it; without an
+/// enhancement store a page whose X/28/0 names an object page stays in
+/// the page store, flagged as no text page; with a page store of no
+/// slots, an object page is still kept in the enhancement store.
+#[test]
+fn the_page_function_follows_the_stores_there_are() {
+    use crate::consts::{PAGE_FUNCTION_MOT, PAGE_FUNCTION_POP};
+    let mot = PageFormat { function: PAGE_FUNCTION_MOT, coding: 0 };
+    let pop = PageFormat { function: PAGE_FUNCTION_POP, coding: 0 };
+    let page_data = |m: u8, format| encode::page_enhancement(mag(m), 0, format, &PresentationFields::default());
+    let mut slots = std::vec![StoredPage::EMPTY; 4];
+    let mut memory = EnhancementMemory::new(4, 50);
+    let mut decoder = Decoder::with_enhancement_store(&mut slots, memory.store(), Config::default());
+    let mut events = Vec::new();
+    feed(&mut decoder, &[header(1, 0xFE, 0, 0), page_data(1, mot), header(1, 0x00, 0, 0)], &mut events);
+    assert_eq!(decoder.enhancement_lookup().magazine_organization_table(mag(1)).unwrap().format(), Some(mot));
+    // No enhancement store.
+    let mut slots = std::vec![StoredPage::EMPTY; 4];
+    let mut decoder = Decoder::new(&mut slots, Config::default());
+    feed(&mut decoder, &[header(1, 0xC0, 0, 0), page_data(1, pop), header(1, 0x00, 0, 0)], &mut events);
+    let page = decoder.store().get(PageAddress::from_mpp(0x1C0).unwrap(), SubCode::ANY).unwrap();
+    assert!(!page.is_text_page());
+    // No page slots.
+    let mut memory = EnhancementMemory::new(4, 50);
+    let mut decoder = Decoder::with_enhancement_store(&mut [], memory.store(), Config::default());
+    feed(
+        &mut decoder,
+        &[header(3, 0xC0, 0, 0), page_data(3, pop), object_row(3, 1, 9), header(3, 0x00, 0, 0)],
+        &mut events,
+    );
+    let page = decoder.enhancement_lookup().sub_page(mag(3), PageNumber(0xC0), 0).unwrap();
+    assert_eq!((page.format(), page.row(1)), (Some(pop), Some(&object_bytes(9))));
+}
+
+/// The list of pages named by links holds every object link of eight
+/// Magazine Organization Tables; past that the oldest address is dropped
+/// (it returns with the next table or link packet that names it), so it
+/// is no longer routed to the enhancement store, while the newest is.
+#[test]
+fn the_list_of_named_pages_drops_the_oldest() {
+    let mut slots = std::vec![StoredPage::EMPTY; 4];
+    let mut memory = EnhancementMemory::new(4, 50);
+    let mut decoder = Decoder::with_enhancement_store(&mut slots, memory.store(), Config::default());
+    let mut events = Vec::new();
+    let named = NAMED_ENHANCEMENT_PAGES + 4;
+    let link = |page: usize| CompositionalLink {
+        function: crate::consts::LINK_FUNCTION_POP,
+        validity: 0b11,
+        magazine: mag(5),
+        page: PageNumber(page as u8),
+        subpages: 1,
+        marker_first: true,
+        marker_second: false,
+    };
+    let packets: Vec<Packet> = (0..named)
+        .step_by(6)
+        .map(|first| encode::compositional_links(mag(5), 4, &core::array::from_fn(|offset| link(first + offset))))
+        .collect();
+    feed(&mut decoder, &packets, &mut events);
+    let address = |page: usize| PageAddress { magazine: mag(5), page: PageNumber(page as u8) };
+    assert_eq!(decoder.named.len(), NAMED_ENHANCEMENT_PAGES);
+    let last = packets.len() * 6 - 1;
+    assert!(!decoder.named.as_slice().contains(&address(0)) && decoder.named.as_slice().contains(&address(last)));
+    assert!(!decoder.route(address(0)).enhancement);
+    assert!(decoder.route(address(last)).enhancement);
+}
