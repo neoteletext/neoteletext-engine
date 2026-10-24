@@ -955,6 +955,31 @@ fn the_page_function_follows_the_stores_there_are() {
     assert_eq!((page.format(), page.row(1)), (Some(pop), Some(&object_bytes(9))));
 }
 
+/// REQ-ACQ-014, REQ-OBJ-041 (decision E.117): without an enhancement
+/// store, a page whose only page-function signal is an X/28/3 naming a
+/// DRCS page stays in the page store, flagged as no text page; an X/28/3
+/// naming a basic Level 1 page leaves it a text page, and C4 clears the
+/// flag with the rest of the page.
+#[test]
+fn an_x28_3_page_function_alone_makes_no_text_page() {
+    use crate::consts::{PAGE_FUNCTION_BASIC, PAGE_FUNCTION_DRCS};
+    let drcs = PageFormat { function: PAGE_FUNCTION_DRCS, coding: 0 };
+    let basic = PageFormat { function: PAGE_FUNCTION_BASIC, coding: 0 };
+    let mut slots = std::vec![StoredPage::EMPTY; 4];
+    let mut decoder = Decoder::new(&mut slots, Config::default());
+    let mut events = Vec::new();
+    let address = PageAddress::from_mpp(0x150).unwrap();
+    let x28_3 = |format| encode::page_function(mag(1), format);
+    feed(&mut decoder, &[header(1, 0x50, 0, 0), x28_3(drcs), header(1, 0x51, 0, 0)], &mut events);
+    let page = decoder.store().get(address, SubCode::ANY).unwrap();
+    assert_eq!(page.page_data, None, "no X/28/0");
+    assert!(!page.is_text_page());
+    feed(&mut decoder, &[header(1, 0x50, 0, C4_ERASE), header(1, 0x51, 0, 0)], &mut events);
+    assert!(decoder.store().get(address, SubCode::ANY).unwrap().is_text_page(), "REQ-ACQ-004");
+    feed(&mut decoder, &[header(1, 0x60, 0, 0), x28_3(basic), header(1, 0x61, 0, 0)], &mut events);
+    assert!(decoder.store().get(PageAddress::from_mpp(0x160).unwrap(), SubCode::ANY).unwrap().is_text_page());
+}
+
 /// The list of pages named by links holds every object link of eight
 /// Magazine Organization Tables; past that the oldest address is dropped
 /// (it returns with the next table or link packet that names it), so it

@@ -8,7 +8,7 @@ use crate::consts::{
 };
 use crate::ecc::has_odd_parity;
 use crate::fsm::{PageKey, PageState};
-use crate::packet::{CompositionalLink, Links, PageEnhancement, Triplet};
+use crate::packet::{CompositionalLink, Links, PageEnhancement, PageFormat, Triplet};
 use crate::types::{ControlBits, Instant, Magazine, PageAddress, PageNumber, SubCode};
 
 /// One stored page or sub-page (REQ-ACQ-007).
@@ -48,6 +48,10 @@ pub struct StoredPage {
     pub page_data: Option<PageEnhancement>,
     /// Packet X/28/4: the Level 3.5 page data (REQ-PKT-015).
     pub page_data_level35: Option<PageEnhancement>,
+    /// Packet X/28/3: its page function and coding, the only part of it
+    /// decoded (REQ-PKT-014, decision E.95), kept so that a page known only
+    /// by it is not shown as text (decision E.117).
+    pub download_function: Option<PageFormat>,
     /// Time of the first reception.
     pub first_received: Instant,
     /// Time of the most recent packet.
@@ -82,20 +86,22 @@ impl StoredPage {
         compositional_links: [None; 2],
         page_data: None,
         page_data_level35: None,
+        download_function: None,
         first_received: Instant(0),
         last_received: Instant(0),
         receptions: 0,
         errors: 0,
     };
 
-    /// False when packet X/28/0 format 1 says the page is not a basic Level 1
-    /// page coded as 7 bits with odd parity: such pages are not displayed as
-    /// text (REQ-ACQ-014).
+    /// False when packet X/28/0 format 1 or packet X/28/3 says the page is
+    /// not a basic Level 1 page coded as 7 bits with odd parity: such pages
+    /// are not displayed as text (REQ-ACQ-014, decision E.117).
     #[must_use]
     pub fn is_text_page(&self) -> bool {
-        self.page_data
-            .and_then(|data| data.format)
-            .is_none_or(|format| format.function == PAGE_FUNCTION_BASIC && format.coding == PAGE_CODING_PARITY)
+        let is_text = |format: Option<PageFormat>| {
+            format.is_none_or(|format| format.function == PAGE_FUNCTION_BASIC && format.coding == PAGE_CODING_PARITY)
+        };
+        is_text(self.page_data.and_then(|data| data.format)) && is_text(self.download_function)
     }
 
     /// True when row `row` has been received.
@@ -140,6 +146,7 @@ impl StoredPage {
         self.compositional_links = [None; 2];
         self.page_data = None;
         self.page_data_level35 = None;
+        self.download_function = None;
     }
 
     /// Merges received bytes into `row` starting at `column` (decision E.8,
