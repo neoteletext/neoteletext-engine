@@ -84,8 +84,9 @@ Headers with hexadecimal page digits (A to F) shall be processed for page termin
 *Verification:* Test.
 
 **REQ-ACQ-014 — Non-text pages.**
-If a page carries packet X/28/0 format 1 whose page function is not "basic Level 1 page" (0000), or whose page coding is not "7 bits plus odd parity" (000), the page shall be flagged as not displayable as text and shall not be rendered as a text page.
-*Verification:* Test.
+If a page carries packet X/28/0 format 1 or packet X/28/3 whose page function is not "basic Level 1 page" (0000), or whose page coding is not "7 bits plus odd parity" (000), the page shall be flagged as not displayable as text and shall not be rendered as a text page.
+*Amended 24 October 2026 (decision E.117):* packet X/28/3 is named as well as X/28/0, so that a DRCS page known only by its X/28/3 is not shown as text when there is no store for enhancement pages (REQ-OBJ-041).
+*Verification:* Test, with a page whose only page function is in X/28/3 and a decoder that has no store for enhancement pages.
 
 **REQ-ACQ-015 — Subtitle and newsflash pages.**
 Pages with C5 or C6 set shall be stored and displayed like other pages. Their display shall use the boxed mode of decision E.22. Each reception replaces the previous content (normally with C4 set), so that subtitles update as they are transmitted.

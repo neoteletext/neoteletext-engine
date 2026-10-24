@@ -1545,3 +1545,11 @@ Taken on 24 October 2026 while the owner was away, as the owner had instructed, 
 4. **The constant-time comparison:** the review proposes `subtle`'s `ConstantTimeEq` (`subtle` 2.6.1, BSD-3-Clause), since the compiler does not promise to keep `constant_time_equal`'s fold constant in time. `subtle` is already in the lockfile, through `aes-gcm`, `p256` and `rustls`, but a direct dependency is a library added, which needs the owner's approval by name (`DEVELOPMENT.md` section 7). It is proposed here and not added until the owner approves it; the fold stays until then.
 
 *Reason:* The phone and the relay are outside the user's computer; what they send is held to what the screen expects of them.
+
+**E.117 — A stored page keeps the page function of its X/28/3.**
+Taken on 24 October 2026 while the owner was away, after a coverage test found that a decoder with no enhancement store (`Decoder::new`) kept a page whose only page-function signal was packet X/28/3, a DRCS page for example, in the page store as a text page: `StoredPage` kept no part of X/28/3, so `is_text_page` read X/28/0 alone and returned true. With an enhancement store the page goes there and is not shown (REQ-ACQ-016).
+1. **`StoredPage` keeps X/28/3's page function and coding** (`download_function`), the only part of the packet decoded (REQ-PKT-014, decision E.95). Each reception of X/28/3 replaces it, as each X/28/0 replaces `page_data`, and C4 clears it with the page's other packets (REQ-ACQ-004).
+2. **A page is a text page only when neither its X/28/0 nor its X/28/3 says otherwise:** each that is present must name a basic Level 1 page coded as 7 bits with odd parity (REQ-ACQ-014, amended).
+3. **The cost, measured:** `core::mem::size_of::<StoredPage>()` is 2688 bytes before and after on `aarch64-apple-darwin`, `x86_64-unknown-none` and `wasm32-unknown-unknown`, because the field's three bytes fit in the structure's tail padding. The Level 1.5 test image for `x86_64-unknown-none` grows by 192 bytes of code, from 64 397 to 64 589 bytes of flash, under its budget of 65 536 (REQ-GEN-009).
+
+*Reason:* A page that must never be shown as text (REQ-OBJ-041) outweighs a few bytes of memory for each stored page under REQ-GEN-009, and here it costs none.

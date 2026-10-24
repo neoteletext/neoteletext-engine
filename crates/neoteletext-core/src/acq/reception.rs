@@ -150,8 +150,8 @@ impl Decoder<'_> {
                         PagePacket::Format1(data) => page.page_data = Some(data),
                         PagePacket::Level35(data) => page.page_data_level35 = Some(data),
                         // X/28/3 belongs to pattern download pages, which
-                        // are not text pages (REQ-OBJ-041).
-                        PagePacket::PageFunction(_) => {}
+                        // are not text pages (REQ-OBJ-041, decision E.117).
+                        PagePacket::PageFunction(format) => page.download_function = format,
                     }
                     (crate::consts::PACKET_PAGE_ENHANCEMENT, 0)
                 });
