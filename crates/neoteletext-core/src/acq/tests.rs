@@ -9,7 +9,7 @@ extern crate std;
 #[cfg(test)]
 use super::*;
 
-use crate::config::PresentationLevel;
+use crate::config::{ParityPolicy, PresentationLevel};
 use crate::consts::{
     C4_ERASE, C9_INTERRUPTED, C11_SERIAL, CODE_MASK_7BIT, DATA_BYTES, HEADER_DISPLAY_BYTES, TRIPLETS_PER_PACKET,
 };
@@ -536,4 +536,477 @@ fn rolling_header_and_clock_follow_decision_e11() {
     feed(&mut decoder, &[with_text(2, C11_SERIAL, b"SERIAL", b"10:00:04")], &mut events);
     assert_eq!(shown(&decoder.rolling_header()[..6]), "SERIAL", "serial: every magazine");
     assert_eq!(shown(decoder.clock()), "10:00:04");
+}
+
+/// Decisions E.7 and E.9, REQ-ARCH-007: a packet whose address byte
+/// fails Hamming 8/4 is discarded and counted as an address failure, one
+/// whose designation code fails as a designation failure; packets that
+/// carry nothing the decoder keeps (X/27/6 and above, packet 30 outside
+/// magazine 8, packet 31) are counted per magazine and packet number and
+/// as ignored (REQ-PKT-005, REQ-PKT-008). The caller resets the counts.
+#[test]
+fn failures_and_ignored_packets_are_counted() {
+    let mut slots = std::vec![StoredPage::EMPTY; 4];
+    let mut decoder = Decoder::new(&mut slots, Config::default());
+    let mut events = Vec::new();
+    let mut bad_address = encode::row(mag(1), 1, &text(b"ROW"));
+    // Two bit errors are detected and not corrected by Hamming 8/4.
+    bad_address.bytes[crate::consts::ADDRESS_BYTE_0] ^= 0b11;
+    let mut bad_designation = encode::triplet_packet(mag(2), 26, 0, &[Triplet::default(); TRIPLETS_PER_PACKET]);
+    bad_designation.bytes[crate::consts::DATA_START] ^= 0b11;
+    feed(&mut decoder, &[bad_address, bad_designation], &mut events);
+    assert_eq!(
+        events,
+        [
+            Event::Discarded(Discard::Packet(crate::packet::PacketError::BadAddress)),
+            Event::Discarded(Discard::Packet(crate::packet::PacketError::BadDesignation)),
+        ]
+    );
+    let statistics = *decoder.statistics();
+    assert_eq!((statistics.address_failures, statistics.designation_failures), (1, 1));
+    assert_eq!(statistics.per_magazine, [0; MAGAZINES], "a failed packet has no trustworthy address to count");
+    events.clear();
+    let ignored =
+        [encode::raw(mag(3), 27, 6, &[0; DATA_BYTES - 1]), encode::address(mag(4), 30), encode::address(mag(8), 31)];
+    feed(&mut decoder, &ignored, &mut events);
+    assert!(events.is_empty(), "{events:?}");
+    let statistics = *decoder.statistics();
+    assert_eq!(statistics.ignored, 3);
+    assert_eq!((statistics.per_magazine[mag(3).index()], statistics.per_magazine[mag(4).index()]), (1, 1));
+    assert_eq!(statistics.per_magazine[0], 1, "index 0 is magazine 8");
+    assert_eq!(
+        (statistics.per_packet_number[27], statistics.per_packet_number[30], statistics.per_packet_number[31]),
+        (1, 1, 1)
+    );
+    decoder.reset_statistics();
+    assert_eq!(*decoder.statistics(), Statistics::default());
+}
+
+/// REQ-L25-051, REQ-ARCH-007: the faults that building a page met are
+/// added to the statistics once for each build, kind by kind, however
+/// often the same build is reported; a new reception is a new build.
+#[test]
+fn enhancement_faults_are_counted_once_per_build() {
+    let mut slots = std::vec![StoredPage::EMPTY; 1];
+    let mut decoder = Decoder::new(&mut slots, Config::default());
+    let faults = EnhancementFaults {
+        damaged_triplets: 1,
+        forbidden_invocations: 2,
+        absent_objects: 3,
+        limited_invocations: 4,
+        discarded_writes: 5,
+        ignored_designations: 6,
+        undefined_characters: 7,
+    };
+    let mut page = StoredPage::EMPTY;
+    page.key = key(0x100, 0);
+    page.receptions = 1;
+    let build = PageBuild::of(&page, PresentationLevel::Level25);
+    assert_eq!((build.key, build.receptions, build.level), (key(0x100, 0), 1, PresentationLevel::Level25));
+    assert!(decoder.record_enhancement(build, &faults));
+    assert!(!decoder.record_enhancement(build, &faults), "a redraw of the same build");
+    assert_eq!(decoder.statistics().enhancement, faults);
+    page.receptions = 2;
+    assert!(decoder.record_enhancement(PageBuild::of(&page, PresentationLevel::Level25), &faults));
+    let twice = EnhancementFaults {
+        damaged_triplets: 2,
+        forbidden_invocations: 4,
+        absent_objects: 6,
+        limited_invocations: 8,
+        discarded_writes: 10,
+        ignored_designations: 12,
+        undefined_characters: 14,
+    };
+    assert_eq!(decoder.statistics().enhancement, twice);
+    // The counts saturate rather than wrap.
+    let mut total = EnhancementFaults { damaged_triplets: u32::MAX, ..EnhancementFaults::NONE };
+    total.add(&faults);
+    assert_eq!((total.damaged_triplets, total.undefined_characters), (u32::MAX, 7));
+}
+
+/// REQ-FSM-010: with tracing on, a known input gives the expected trace
+/// of both machines, each entry naming the machine and instance, the
+/// time, the state before, the event, the action and the state after.
+/// A transition is a change of state or an action performed: a row
+/// stored on a page being received keeps it Partial and raises "page
+/// updated", and a row without a header keeps magazine 2 Idle and is
+/// discarded; both are traced. With tracing off nothing is.
+#[test]
+fn a_known_input_gives_the_expected_trace() {
+    use crate::trace::{Machine, TraceEntry};
+    let packets = [
+        header(1, 0x00, 0, 0),
+        encode::row(mag(1), 1, &text(b"ROW")),
+        header(1, 0x01, 0, 0),
+        encode::row(mag(2), 1, &text(b"X")),
+    ];
+    let entry =
+        |machine, time, from, event, action, to| TraceEntry { machine, time: Instant(time), from, event, action, to };
+    let expected = [
+        entry(Machine::Magazine(1), 0, "Idle", "storable header", "start page", "Receiving"),
+        entry(Machine::Page(0x100), 0, "Empty", "reception started", "raise page started", "Partial"),
+        entry(Machine::Magazine(1), 1000, "Receiving", "row", "store row", "Receiving"),
+        entry(Machine::Page(0x100), 1000, "Partial", "row stored", "raise page updated", "Partial"),
+        entry(Machine::Magazine(1), 2000, "Receiving", "storable header", "end page and start another", "Receiving"),
+        entry(Machine::Page(0x100), 2000, "Partial", "reception ended", "raise page completed", "Complete"),
+        entry(Machine::Page(0x101), 2000, "Empty", "reception started", "raise page started", "Partial"),
+        entry(Machine::Magazine(2), 3000, "Idle", "row", "discard: row without header", "Idle"),
+    ];
+    let mut slots = std::vec![StoredPage::EMPTY; 4];
+    let mut decoder = Decoder::new(&mut slots, Config { trace: true, ..Config::default() });
+    let mut events = Vec::new();
+    feed(&mut decoder, &packets, &mut events);
+    let trace: Vec<TraceEntry> =
+        events.iter().filter_map(|event| if let Event::Trace(entry) = event { Some(*entry) } else { None }).collect();
+    assert_eq!(trace, expected);
+    let mut slots = std::vec![StoredPage::EMPTY; 4];
+    let mut decoder = Decoder::new(&mut slots, Config::default());
+    let mut events = Vec::new();
+    feed(&mut decoder, &packets, &mut events);
+    assert!(!events.iter().any(|event| matches!(event, Event::Trace(_))));
+}
+
+/// REQ-ACQ-012, REQ-FSM-004: the requested page is "searching" until a
+/// header of it arrives, "found" while it is received and once complete,
+/// "found but not in the most recent cycle" when it has not been
+/// received for the configured time, and "found" again with its next
+/// reception, which keeps the stored rows.
+#[test]
+fn search_status_follows_the_page_lifecycle() {
+    let mut slots = std::vec![StoredPage::EMPTY; 4];
+    let mut decoder = Decoder::new(&mut slots, Config::default());
+    let stale_after = decoder.config().stale_after_us;
+    let mut events = Vec::new();
+    let address = PageAddress::from_mpp(0x100).unwrap();
+    assert_eq!(decoder.search_status(address), SearchStatus::Searching);
+    feed(&mut decoder, &[header(1, 0x00, 0, 0), encode::row(mag(1), 1, &text(b"KEPT"))], &mut events);
+    assert_eq!(decoder.store().latest(address).unwrap().state, PageState::Partial);
+    assert_eq!(decoder.search_status(address), SearchStatus::Found);
+    feed(&mut decoder, &[header(1, 0x01, 0, 0)], &mut events);
+    assert_eq!(decoder.search_status(address), SearchStatus::Found);
+    events.clear();
+    decoder.tick(Instant(stale_after), &mut |event| events.push(event));
+    assert_eq!(decoder.search_status(address), SearchStatus::Found, "not yet past the configured time");
+    decoder.tick(Instant(stale_after + 1001), &mut |event| events.push(event));
+    assert_eq!(decoder.search_status(address), SearchStatus::FoundNotRecent);
+    assert!(events.contains(&Event::PageStale(key(0x100, 0))));
+    let now = Instant(stale_after + 2000);
+    decoder.push(&header(1, 0x00, 0, 0), &PacketMeta::default(), now, &mut |event| events.push(event));
+    assert_eq!(decoder.search_status(address), SearchStatus::Found);
+    assert_eq!(decoder.store().latest(address).unwrap().cells[1][..4], text(b"KEPT")[..4], "merged, not erased");
+}
+
+/// REQ-ACQ-010: a header with C8 (update indicator) set raises the
+/// update indicator event for its page; one without C8 does not.
+#[test]
+fn c8_raises_the_update_indicator() {
+    let mut slots = std::vec![StoredPage::EMPTY; 4];
+    let mut decoder = Decoder::new(&mut slots, Config::default());
+    let mut events = Vec::new();
+    feed(&mut decoder, &[header(1, 0x00, 0, 0), header(1, 0x01, 0, crate::consts::C8_UPDATE)], &mut events);
+    let raised: Vec<&Event> = events.iter().filter(|event| matches!(event, Event::UpdateIndicator(_))).collect();
+    assert_eq!(raised, [&Event::UpdateIndicator(key(0x101, 0))]);
+    assert!(
+        decoder
+            .store()
+            .get(PageAddress::from_mpp(0x101).unwrap(), SubCode::ANY)
+            .unwrap()
+            .control
+            .has(crate::consts::C8_UPDATE)
+    );
+}
+
+/// REQ-ARCH-008: replacing the configuration keeps the stored pages.
+#[test]
+fn a_new_configuration_keeps_the_stored_pages() {
+    let mut slots = std::vec![StoredPage::EMPTY; 4];
+    let mut decoder = Decoder::new(&mut slots, Config::default());
+    let mut events = Vec::new();
+    feed(
+        &mut decoder,
+        &[header(1, 0x00, 0, 0), encode::row(mag(1), 1, &text(b"A")), header(1, 0x01, 0, 0)],
+        &mut events,
+    );
+    let saa5050 = Config::saa5050();
+    decoder.set_config(saa5050);
+    assert_eq!(*decoder.config(), saa5050);
+    let page = decoder.store().get(PageAddress::from_mpp(0x100).unwrap(), SubCode::ANY).unwrap();
+    assert_eq!((page.state, page.cells[1][0]), (PageState::Complete, with_odd_parity(b'A')));
+}
+
+/// Clause 9.8.1, REQ-ACQ-018: the latest packet 8/30 is kept for the
+/// caller and its arrival is an event.
+#[test]
+fn the_latest_service_packet_is_kept() {
+    let mut slots = std::vec![StoredPage::EMPTY; 1];
+    let mut decoder = Decoder::new(&mut slots, Config::default());
+    assert!(decoder.service().is_none());
+    let mut events = Vec::new();
+    let mut packet = encode::address(mag(8), 30);
+    packet.bytes[crate::consts::DATA_START] = crate::ecc::hamming84_encode(0);
+    // Table 18: the network identification in bytes 13 and 14, sent
+    // most significant bit first.
+    packet.bytes[9] = 0xFD_u8.reverse_bits();
+    packet.bytes[10] = 0x01_u8.reverse_bits();
+    feed(&mut decoder, &[packet], &mut events);
+    assert_eq!(events, [Event::ServiceData]);
+    assert_eq!(decoder.service().map(|service| (service.designation, service.network_id)), Some((0, 0xFD01)));
+}
+
+/// Clause 9.6.1, clause 9.4, REQ-ACQ-004, REQ-ACQ-016: X/27/1 to X/27/3
+/// are kept with their page as received, X/28/4 as its Level 3.5 page
+/// data, and C4 clears both. X/28/4's page function does not make a page
+/// an enhancement page (REQ-ACQ-016 names X/28/0 and X/28/3), X/28/3's
+/// does, and an X/28/3 whose triplet 1 is uncorrectable names no
+/// function and leaves the page where it is.
+#[test]
+fn page_related_packets_are_kept_with_their_page() {
+    use crate::consts::{PAGE_FUNCTION_GDRCS, PAGE_FUNCTION_POP};
+    let mut slots = std::vec![StoredPage::EMPTY; 8];
+    let mut memory = EnhancementMemory::new(8, 100);
+    let mut decoder = Decoder::with_enhancement_store(&mut slots, memory.store(), Config::default());
+    let mut events = Vec::new();
+    let mut body = [0u8; DATA_BYTES - 1];
+    for (index, byte) in body.iter_mut().enumerate() {
+        *byte = index as u8;
+    }
+    let raw_links = encode::raw(mag(1), 27, 2, &body);
+    let pop = PageFormat { function: PAGE_FUNCTION_POP, coding: 0 };
+    let level35 = encode::page_enhancement(mag(1), 4, pop, &PresentationFields::default());
+    feed(&mut decoder, &[header(1, 0x50, 0, 0), raw_links, level35, header(1, 0x51, 0, 0)], &mut events);
+    let address = PageAddress::from_mpp(0x150).unwrap();
+    let page = decoder.store().get(address, SubCode::ANY).unwrap();
+    assert_eq!((page.links_raw[1], page.links_raw_present), (raw_links.data(), 0b010));
+    assert_eq!((page.page_data, page.page_data_level35.map(|data| data.format)), (None, Some(Some(pop))));
+    assert!(!decoder.enhancement_store().contains_address(address), "X/28/4 names no enhancement page");
+    feed(&mut decoder, &[header(1, 0x50, 0, C4_ERASE), header(1, 0x51, 0, 0)], &mut events);
+    let page = decoder.store().get(address, SubCode::ANY).unwrap();
+    assert_eq!((page.links_raw_present, page.page_data_level35), (0, None), "REQ-ACQ-004");
+    // X/28/3 with a page function: an enhancement page from here on.
+    let drcs = PageFormat { function: PAGE_FUNCTION_GDRCS, coding: 0 };
+    feed(
+        &mut decoder,
+        &[header(2, 0x60, 0, 0), encode::page_function(mag(2), drcs), header(2, 0x61, 0, 0)],
+        &mut events,
+    );
+    let stored = decoder.enhancement_lookup().sub_page(mag(2), PageNumber(0x60), 0).unwrap();
+    assert_eq!(stored.format(), Some(drcs));
+    assert!(!decoder.store().contains(PageAddress::from_mpp(0x260).unwrap()), "REQ-OBJ-041: never a text page");
+    // The same packet with two bit errors in triplet 1.
+    let mut damaged = encode::page_function(mag(2), drcs);
+    damaged.bytes[crate::consts::DATA_START + 1] ^= 0b11;
+    feed(&mut decoder, &[header(2, 0x70, 0, 0), damaged, header(2, 0x71, 0, 0)], &mut events);
+    assert!(decoder.store().contains(PageAddress::from_mpp(0x270).unwrap()));
+    assert!(!decoder.enhancement_store().contains_address(PageAddress::from_mpp(0x270).unwrap()));
+}
+
+/// Decision E.20: a request for one sub-code gets that sub-page, or
+/// nothing when it is not stored; a request for any gets the latest.
+#[test]
+fn a_sub_code_request_gets_that_sub_page() {
+    let mut slots = std::vec![StoredPage::EMPTY; 4];
+    let mut decoder = Decoder::new(&mut slots, Config::default());
+    let mut events = Vec::new();
+    feed(&mut decoder, &[header(1, 0x00, 1, 0), header(1, 0x00, 2, 0), header(1, 0x01, 0, 0)], &mut events);
+    let address = PageAddress::from_mpp(0x100).unwrap();
+    assert_eq!(decoder.store().get(address, SubCode::new(1)).unwrap().key, key(0x100, 1));
+    assert_eq!(decoder.store().get(address, SubCode::ANY).unwrap().key, key(0x100, 2), "received last");
+    assert!(decoder.store().get(address, SubCode::new(3)).is_none());
+}
+
+/// REQ-GEN-006: a full listing buffer keeps the lowest sub-codes when a
+/// lower one than those listed comes later in the store.
+#[test]
+fn subcode_listing_into_a_full_buffer_takes_a_later_lower_sub_code() {
+    let mut slots = std::vec![StoredPage::EMPTY; 8];
+    let mut decoder = Decoder::new(&mut slots, Config::default());
+    let mut events = Vec::new();
+    feed(
+        &mut decoder,
+        &[header(1, 0x00, 2, 0), header(1, 0x00, 3, 0), header(1, 0x00, 1, 0), header(1, 0x01, 0, 0)],
+        &mut events,
+    );
+    let mut subcodes = [SubCode::default(); 2];
+    let count = decoder.store().subcodes(PageAddress::from_mpp(0x100).unwrap(), &mut subcodes);
+    assert_eq!(&subcodes[..count], &[SubCode::new(1), SubCode::new(2)]);
+}
+
+/// REQ-ACQ-005: the store uses only the slots the caller gives. When
+/// every slot holds a page being received, a new page is not stored and
+/// the pages in progress keep their slots; with no slots nothing is
+/// stored.
+#[test]
+fn pages_being_received_are_never_evicted() {
+    let mut slots = std::vec![StoredPage::EMPTY; 1];
+    let mut decoder = Decoder::new(&mut slots, Config::default());
+    let mut events = Vec::new();
+    feed(
+        &mut decoder,
+        &[
+            header(1, 0x00, 0, 0),
+            header(2, 0x00, 0, 0),
+            encode::row(mag(2), 1, &text(b"TWO")),
+            encode::row(mag(1), 1, &text(b"ONE")),
+        ],
+        &mut events,
+    );
+    assert_eq!(events.iter().filter(|event| matches!(event, Event::PageStarted(_))).count(), 1);
+    assert!(!decoder.store().contains(PageAddress::from_mpp(0x200).unwrap()));
+    let page = decoder.store().get(PageAddress::from_mpp(0x100).unwrap(), SubCode::ANY).unwrap();
+    assert_eq!((page.state, page.cells[1][0]), (PageState::Partial, with_odd_parity(b'O')));
+    let mut decoder = Decoder::new(&mut [], Config::default());
+    events.clear();
+    feed(&mut decoder, &[header(1, 0x00, 0, 0), encode::row(mag(1), 1, &text(b"ONE"))], &mut events);
+    assert_eq!(decoder.store().pages(), []);
+    assert!(!events.iter().any(|event| matches!(event, Event::PageStarted(_) | Event::PageUpdated { .. })));
+}
+
+/// Annex A.1, Annex B.6, REQ-ACQ-016, REQ-ACQ-020: a stored enhancement
+/// sub-page reports the sub-code and control bits of its latest header
+/// (C13 is "partial page" on these pages), the time of its latest packet,
+/// and its X/26 packets by designation code, as received, each at index
+/// 25 + d.
+#[test]
+fn an_enhancement_sub_page_reports_its_header_and_packets() {
+    let mut slots = std::vec![StoredPage::EMPTY; 4];
+    let mut memory = EnhancementMemory::new(4, 50);
+    let mut decoder = Decoder::with_enhancement_store(&mut slots, memory.store(), Config::default());
+    assert_eq!(decoder.enhancement_store().capacity(), (4, 50));
+    let mut events = Vec::new();
+    // S4 S3 = 29, the last packet X/26/3; S2 = 1; S1 = 0.
+    let subcode = (29 << 8) | (1 << 4);
+    let triplets = [Triplet { address: 41, mode: 0x1F, data: 0x07 }; TRIPLETS_PER_PACKET];
+    let x26 = encode::triplet_packet(mag(1), 26, 3, &triplets);
+    feed(&mut decoder, &[header(1, 0xFE, subcode, crate::consts::C13), x26], &mut events);
+    let lookup = decoder.enhancement_lookup();
+    let page = lookup.magazine_organization_table(mag(1)).unwrap();
+    assert_eq!(page.key(), EnhancementKey { address: PageAddress::from_mpp(0x1FE).unwrap(), s1: 0 });
+    assert_eq!((page.subcode(), page.last_packet()), (SubCode::new(subcode), 29));
+    assert!(page.control().has(crate::consts::C13));
+    assert_eq!(page.last_received(), Instant(1000), "the X/26 packet's time");
+    assert_eq!(page.enhancement(3), Some(&x26.data()));
+    assert_eq!((page.enhancement(2), page.enhancement(16)), (None, None));
+    assert_eq!(page.received(), 1 << enhancement_index(3).unwrap());
+    assert_eq!((enhancement_index(3), enhancement_index(16)), (Some(28), None));
+    assert_eq!((row_index(0), row_index(1), row_index(25), row_index(26)), (None, Some(0), Some(24), None));
+    let keys: Vec<EnhancementKey> = decoder.enhancement_store().sub_pages().map(|page| page.key()).collect();
+    assert_eq!(keys, [page.key()]);
+}
+
+/// REQ-ACQ-019: when the directory of enhancement sub-pages is full, the
+/// least recently received sub-page that is not being received is
+/// replaced; when every one is being received, the new one is not kept.
+#[test]
+fn a_full_enhancement_directory_replaces_the_least_recent_sub_page() {
+    let mut slots = std::vec![StoredPage::EMPTY; 4];
+    let mut memory = EnhancementMemory::new(2, 50);
+    let mut decoder = Decoder::with_enhancement_store(&mut slots, memory.store(), Config::default());
+    let mut events = Vec::new();
+    let table = |m: u8| [header(m, 0xFE, 0, 0), object_row(m, 1, m), header(m, 0x00, 0, 0)];
+    feed(&mut decoder, &table(1), &mut events);
+    feed(&mut decoder, &table(2), &mut events);
+    feed(&mut decoder, &table(3), &mut events);
+    let lookup = decoder.enhancement_lookup();
+    assert!(lookup.magazine_organization_table(mag(1)).is_none(), "received first");
+    assert!(
+        lookup.magazine_organization_table(mag(2)).is_some() && lookup.magazine_organization_table(mag(3)).is_some()
+    );
+    // Magazines 2 and 3 receiving their tables, in parallel: no room for 4.
+    feed(&mut decoder, &[header(2, 0xFE, 0, 0), header(3, 0xFE, 0, 0), header(4, 0xFE, 0, 0)], &mut events);
+    feed(&mut decoder, &[object_row(4, 1, 4)], &mut events);
+    let lookup = decoder.enhancement_lookup();
+    assert!(lookup.magazine_organization_table(mag(4)).is_none());
+    assert_eq!(lookup.magazine_organization_table(mag(2)).unwrap().row(1), Some(&object_bytes(2)));
+    assert_eq!(lookup.magazine_organization_table(mag(3)).unwrap().row(1), Some(&object_bytes(3)));
+}
+
+/// REQ-ACQ-016, REQ-ACQ-014: the X/28/0 page function of a page already
+/// received as an enhancement page is recorded with it; without an
+/// enhancement store a page whose X/28/0 names an object page stays in
+/// the page store, flagged as no text page; with a page store of no
+/// slots, an object page is still kept in the enhancement store.
+#[test]
+fn the_page_function_follows_the_stores_there_are() {
+    use crate::consts::{PAGE_FUNCTION_MOT, PAGE_FUNCTION_POP};
+    let mot = PageFormat { function: PAGE_FUNCTION_MOT, coding: 0 };
+    let pop = PageFormat { function: PAGE_FUNCTION_POP, coding: 0 };
+    let page_data = |m: u8, format| encode::page_enhancement(mag(m), 0, format, &PresentationFields::default());
+    let mut slots = std::vec![StoredPage::EMPTY; 4];
+    let mut memory = EnhancementMemory::new(4, 50);
+    let mut decoder = Decoder::with_enhancement_store(&mut slots, memory.store(), Config::default());
+    let mut events = Vec::new();
+    feed(&mut decoder, &[header(1, 0xFE, 0, 0), page_data(1, mot), header(1, 0x00, 0, 0)], &mut events);
+    assert_eq!(decoder.enhancement_lookup().magazine_organization_table(mag(1)).unwrap().format(), Some(mot));
+    // No enhancement store.
+    let mut slots = std::vec![StoredPage::EMPTY; 4];
+    let mut decoder = Decoder::new(&mut slots, Config::default());
+    feed(&mut decoder, &[header(1, 0xC0, 0, 0), page_data(1, pop), header(1, 0x00, 0, 0)], &mut events);
+    let page = decoder.store().get(PageAddress::from_mpp(0x1C0).unwrap(), SubCode::ANY).unwrap();
+    assert!(!page.is_text_page());
+    // No page slots.
+    let mut memory = EnhancementMemory::new(4, 50);
+    let mut decoder = Decoder::with_enhancement_store(&mut [], memory.store(), Config::default());
+    feed(
+        &mut decoder,
+        &[header(3, 0xC0, 0, 0), page_data(3, pop), object_row(3, 1, 9), header(3, 0x00, 0, 0)],
+        &mut events,
+    );
+    let page = decoder.enhancement_lookup().sub_page(mag(3), PageNumber(0xC0), 0).unwrap();
+    assert_eq!((page.format(), page.row(1)), (Some(pop), Some(&object_bytes(9))));
+}
+
+/// The list of pages named by links holds every object link of eight
+/// Magazine Organization Tables; past that the oldest address is dropped
+/// (it returns with the next table or link packet that names it), so it
+/// is no longer routed to the enhancement store, while the newest is.
+#[test]
+fn the_list_of_named_pages_drops_the_oldest() {
+    let mut slots = std::vec![StoredPage::EMPTY; 4];
+    let mut memory = EnhancementMemory::new(4, 50);
+    let mut decoder = Decoder::with_enhancement_store(&mut slots, memory.store(), Config::default());
+    let mut events = Vec::new();
+    let named = NAMED_ENHANCEMENT_PAGES + 4;
+    let link = |page: usize| CompositionalLink {
+        function: crate::consts::LINK_FUNCTION_POP,
+        validity: 0b11,
+        magazine: mag(5),
+        page: PageNumber(page as u8),
+        subpages: 1,
+        marker_first: true,
+        marker_second: false,
+    };
+    let packets: Vec<Packet> = (0..named)
+        .step_by(6)
+        .map(|first| encode::compositional_links(mag(5), 4, &core::array::from_fn(|offset| link(first + offset))))
+        .collect();
+    feed(&mut decoder, &packets, &mut events);
+    let address = |page: usize| PageAddress { magazine: mag(5), page: PageNumber(page as u8) };
+    assert_eq!(decoder.named.len(), NAMED_ENHANCEMENT_PAGES);
+    let last = packets.len() * 6 - 1;
+    assert!(!decoder.named.as_slice().contains(&address(0)) && decoder.named.as_slice().contains(&address(last)));
+    assert!(!decoder.route(address(0)).enhancement);
+    assert!(decoder.route(address(last)).enhancement);
+}
+
+/// Decision E.8, REQ-ACQ-008: a byte that fails parity after one that
+/// passed is kept out under "keep last good", and stored but reported
+/// as failed under "always space" and "error marker"; a position never
+/// received reads as a space that did not pass. A row beyond the stored
+/// rows takes nothing.
+#[test]
+fn parity_policies_decide_what_a_failed_byte_replaces() {
+    let failed = with_odd_parity(b'B') ^ 0x80;
+    for (policy, expected) in [
+        (ParityPolicy::KeepLastGood, (with_odd_parity(b'A'), true)),
+        (ParityPolicy::AlwaysSpace, (failed, false)),
+        (ParityPolicy::ErrorMarker, (failed, false)),
+    ] {
+        let mut page = StoredPage::EMPTY;
+        assert_eq!(page.merge(1, 0, &[with_odd_parity(b'A')], policy), 0);
+        assert_eq!(page.merge(1, 0, &[failed], policy), 1, "{policy:?}");
+        assert_eq!(page.byte(1, 0, policy), expected, "{policy:?}");
+        assert_eq!(page.byte(1, 1, policy), (SPACE, false), "never received");
+        assert_eq!(page.merge(page.cells.len(), 0, &[failed], policy), 0);
+        assert_eq!(page.rows_received, 1 << 1, "only row 1");
+    }
 }

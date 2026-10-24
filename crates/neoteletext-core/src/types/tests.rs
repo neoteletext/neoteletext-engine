@@ -45,3 +45,19 @@ fn fixed_vec_basics() {
     assert_eq!(vec.pop(), Some(3));
     assert_eq!(vec.len(), 1);
 }
+
+/// REQ-GEN-002: two vectors are equal when their items are, whatever the
+/// unused slots hold; an emptied vector is empty again.
+#[test]
+fn fixed_vec_equality_ignores_unused_slots() {
+    let mut zeros: FixedVec<u8, 3> = FixedVec::new(0);
+    let mut nines: FixedVec<u8, 3> = FixedVec::new(9);
+    assert!(zeros.is_empty());
+    assert_eq!(zeros, nines);
+    assert!(zeros.push(1) && nines.push(1));
+    assert_eq!(zeros, nines);
+    assert!(nines.push(2));
+    assert_ne!(zeros, nines);
+    nines.clear();
+    assert!(nines.is_empty() && !zeros.is_empty());
+}
