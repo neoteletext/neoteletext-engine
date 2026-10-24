@@ -34,14 +34,21 @@ pub(crate) struct Sound {
 }
 
 impl Sound {
-    /// A sound of `length` samples at `rate_hz`, silent until they arrive.
-    pub(crate) fn new(key: SoundKey, rate_hz: u32, length: usize) -> Self {
-        Self { key, rate_hz, samples: alloc::vec![0; length], forgotten: false, stream: false, written: 0 }
+    /// A sound at `rate_hz` holding `samples`, the buffer as given.
+    pub(crate) fn new(key: SoundKey, rate_hz: u32, samples: Vec<i16>) -> Self {
+        Self { key, rate_hz, samples, forgotten: false, stream: false, written: 0 }
     }
 
-    /// A live sound at `rate_hz` with a ring of `ring` samples.
-    pub(crate) fn live(key: SoundKey, rate_hz: u32, ring: usize) -> Self {
-        Self { key, rate_hz, samples: alloc::vec![0; ring], forgotten: false, stream: true, written: 0 }
+    /// A live sound at `rate_hz` whose ring is `ring`, the buffer as given:
+    /// what it holds before samples are written is never played.
+    pub(crate) fn live(key: SoundKey, rate_hz: u32, ring: Vec<i16>) -> Self {
+        Self { key, rate_hz, samples: ring, forgotten: false, stream: true, written: 0 }
+    }
+
+    /// Whether its samples are the buffer starting at `place`.
+    #[cfg(test)]
+    pub(crate) fn holds(&self, place: *const i16) -> bool {
+        core::ptr::eq(self.samples.as_ptr(), place)
     }
 
     /// The sound's identity.
