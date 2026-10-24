@@ -2,6 +2,12 @@
 //! The tests of the WebSocket handshake, frame writing and frame reader (RFC 6455).
 
 use super::*;
+use crate::base64;
+use crate::bytes::Writer;
+use crate::consts::{OPCODE_BINARY, OPCODE_CONTINUATION, OPCODE_PING, OPCODE_TEXT, WS_FIN};
+use crate::http;
+use crate::port::RandomSource;
+use crate::url::Url;
 
 struct Counter(u8);
 impl RandomSource for Counter {
