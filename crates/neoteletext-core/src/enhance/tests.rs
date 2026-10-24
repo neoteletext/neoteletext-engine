@@ -21,17 +21,26 @@ use std::vec::Vec;
 use crate::acq::{Decoder, EnhancementPacket, EnhancementStore, EnhancementSubPage};
 use crate::charset::{CharRef, CharSet, to_unicode};
 use crate::consts::{
-    DATA_BYTES, DATA_START, DESIGNATION_GROUP_SHIFT, FLASH_MODE_ADJACENT_CLUT, FLASH_MODE_INVERT_PHASE,
-    FLASH_MODE_NORMAL, FLASH_RATE_DECREMENTAL, FLASH_RATE_INCREMENTAL, FLASH_RATE_PHASE_2, FLASH_RATE_PHASE_3,
-    FLASH_RATE_SLOW, G3_UNDEFINED, HEADER_DISPLAY_BYTES, LATIN_G2_UNDEFINED, MAGAZINES, PACKET_ENHANCEMENT,
-    PAGE_TIME_FILLING, ROW_ADDRESS_BASE, ROW_ADDRESS_LAST, ROW_ADDRESS_ROW_24, TRIPLET_BYTES, TRIPLETS_PER_PACKET,
+    ALPHA_BLACK, ALPHA_RED, ALPHA_YELLOW, BLACK_BACKGROUND, C6_SUBTITLE, COLOUR_BLACK, COLOUR_WHITE, CONCEAL,
+    CONTIGUOUS_MOSAICS, DATA_BYTES, DATA_START, DESIGNATION_GROUP_SHIFT, DOUBLE_HEIGHT, DOUBLE_WIDTH, END_BOX, ESC,
+    FLASH, FLASH_MODE_ADJACENT_CLUT, FLASH_MODE_INVERT_PHASE, FLASH_MODE_NORMAL, FLASH_RATE_DECREMENTAL,
+    FLASH_RATE_INCREMENTAL, FLASH_RATE_PHASE_2, FLASH_RATE_PHASE_3, FLASH_RATE_SLOW, G3_UNDEFINED,
+    HEADER_DISPLAY_BYTES, HOLD_MOSAICS, LATIN_G2_UNDEFINED, MAGAZINES, MOSAIC_RED, MOSAIC_WHITE, NEW_BACKGROUND,
+    NORMAL_SIZE, PACKET_ENHANCEMENT, PAGE_CODING_PARITY, PAGE_FUNCTION_BASIC, PAGE_TIME_FILLING, RELEASE_MOSAICS,
+    ROW_ADDRESS_BASE, ROW_ADDRESS_LAST, ROW_ADDRESS_ROW_24, SEPARATED_MOSAICS, START_BOX, STEADY, TRIPLET_BYTES,
+    TRIPLETS_PER_PACKET,
 };
 use crate::ecc::with_odd_parity;
 use crate::level1::{CharSource, FlashMode, FlashRate, Glyph, Grid, Size, Width, build_grid};
-use crate::packet::{ColourData, ObjectKind, ObjectNumber, ObjectSource, Packet, PacketMeta, TripletFunction, encode};
-use crate::types::{ControlBits, Instant, Magazine, PageAddress, SubCode};
+use crate::packet::{
+    ColourData, DisplayAttributes, ObjectKind, ObjectNumber, ObjectSource, Packet, PacketMeta, PageFormat,
+    TripletFunction, encode,
+};
+use crate::types::{
+    ControlBits, DefaultColourFields, Designations, Instant, Magazine, PageAddress, PresentationFields, SubCode,
+};
 
-use super::attributes::{Flash, Rate, flash_of, flash_rate};
+use super::attributes::{ATTRIBUTES, Flash, Rate, flash_of, flash_rate};
 use super::characters::{enhancement_glyph, is_text};
 use super::planes::{area_of, scan_index};
 use super::row::cell_of;
@@ -530,4 +539,270 @@ fn modified_designations_and_the_level_2_5_limit() {
     let (grid, report) = build(&packets, &level(PresentationLevel::Level35));
     assert_eq!(set(&grid, 12, 5), G0Set::Cyrillic1);
     assert_eq!((report.designations, report.faults.ignored_designations), (4, 0));
+}
+
+/// X/28/0 format 1 of a basic page with these presentation fields.
+fn x28_0(fields: &PresentationFields) -> Packet {
+    let basic = PageFormat { function: PAGE_FUNCTION_BASIC, coding: PAGE_CODING_PARITY };
+    encode::page_enhancement(magazine_1(), 0, basic, fields)
+}
+
+/// The default colour fields of X/28/0 (Table 4 triplet 13).
+fn colour_fields(row: u8, substitution: bool, remapping: u8) -> PresentationFields {
+    PresentationFields {
+        colours: Some(DefaultColourFields { screen: 0, row, black_background_substitution: substitution, remapping }),
+        ..PresentationFields::default()
+    }
+}
+
+fn colour(index: u8) -> ColourData {
+    ColourData { index, high: 0 }
+}
+
+/// A Display Attributes triplet (Table 29 mode 01100).
+fn display_at(column: u8, attributes: DisplayAttributes) -> TripletFunction {
+    TripletFunction::DisplayAttributes { column, attributes }
+}
+
+/// REQ-L25-021, REQ-L25-020: Foreground and Background Colour triplets set
+/// a Colour Map index from their cell to the end of the row, until a later
+/// attribute of the same type; reserved data only sets the column; at one
+/// cell a triplet wins against a set-at Level 1 attribute of its type
+/// (decision E.47).
+// Needs its capability compiled in (decision E.105).
+#[cfg(feature = "nonspacing-attributes")]
+#[test]
+fn non_spacing_colours_last_to_the_next_attribute_of_their_type() {
+    let codes =
+        [ALPHA_RED, b'A', b'B', b'C', b'D', ALPHA_YELLOW, b'E', b'F', BLACK_BACKGROUND, b'G', NEW_BACKGROUND, b'H'];
+    let local = [
+        position(2, 0),
+        // CLUT 2 entry 4 and CLUT 1 entry 4 (Table 30).
+        TripletFunction::ForegroundColour { column: 2, colour: colour(20) },
+        TripletFunction::BackgroundColour { column: 3, colour: colour(12) },
+        TripletFunction::ForegroundColour { column: 7, colour: ColourData { index: 5, high: 0b01 } },
+        TripletFunction::BackgroundColour { column: 8, colour: colour(4) },
+    ];
+    let (grid, _) = build_25(&page(0, &[(2, &codes)], local_data(&local)));
+    let colours: Vec<(u8, u8)> = grid.cells[2][..12].iter().map(|cell| (cell.foreground, cell.background)).collect();
+    let red = ALPHA_RED;
+    let yellow = ALPHA_YELLOW;
+    let expected = [
+        (COLOUR_WHITE, COLOUR_BLACK),
+        (red, COLOUR_BLACK),
+        (20, COLOUR_BLACK),
+        (20, 12),
+        (20, 12),
+        (20, 12),
+        (yellow, 12),
+        (yellow, 12),
+        (yellow, 4),
+        (yellow, 4),
+        // 1/D: the background takes the Level 1 foreground's entry.
+        (yellow, yellow),
+        (yellow, yellow),
+    ];
+    assert_eq!(colours, expected);
+}
+
+/// REQ-L25-022: at Levels 2.5 and 3.5 the Level 1 colours come from the
+/// CLUTs Colour Table Re-mapping selects (Table 4), Alpha Black is entry 0
+/// of the foreground CLUT, and Black Background Colour Substitution replaces
+/// the default and the 1/C black background with the row colour, but not a
+/// black background from 0/0 then 1/D, nor one a triplet sets.
+#[test]
+fn level_1_colours_are_remapped_and_substituted() {
+    const ROW_COLOUR: u8 = 4;
+    // Re-mapping 101: foreground CLUT 2, background CLUT 1.
+    let fields = colour_fields(ROW_COLOUR, true, 0b101);
+    let codes =
+        [b'S', ALPHA_RED, b'A', NEW_BACKGROUND, b'B', BLACK_BACKGROUND, b'C', ALPHA_BLACK, NEW_BACKGROUND, b'D'];
+    let local = [position(3, 0), TripletFunction::BackgroundColour { column: 11, colour: colour(COLOUR_BLACK) }];
+    let mut others = std::vec![x28_0(&fields)];
+    others.extend(local_data(&local));
+    let (grid, _) = build_25(&page(0, &[(3, &codes)], others));
+    let cell = |column: usize| (grid.cells[3][column].foreground, grid.cells[3][column].background);
+    let clut = |clut: u8, entry: u8| clut * 8 + entry;
+    assert_eq!(cell(0), (clut(2, COLOUR_WHITE), ROW_COLOUR), "start of row");
+    assert_eq!(cell(2), (clut(2, ALPHA_RED), ROW_COLOUR));
+    assert_eq!(cell(4), (clut(2, ALPHA_RED), clut(1, ALPHA_RED)), "1/D");
+    assert_eq!(cell(6), (clut(2, ALPHA_RED), ROW_COLOUR), "1/C substituted");
+    assert_eq!(cell(9), (clut(2, COLOUR_BLACK), clut(1, COLOUR_BLACK)), "0/0 then 1/D: not substituted");
+    // Without the non-spacing attributes the triplet only sets the column.
+    let triplet_black = if ATTRIBUTES { COLOUR_BLACK } else { clut(1, COLOUR_BLACK) };
+    assert_eq!(cell(11).1, triplet_black, "a triplet's black is not substituted");
+}
+
+/// REQ-L25-023, decision E.47: a Level 1 colour code ends only the Level 1
+/// conceal; the triplet's conceal lasts until a triplet clears it, and a 0
+/// bit also ends a Level 1 conceal. Invert is recorded in the cell.
+// Needs its capability compiled in (decision E.105).
+#[cfg(feature = "nonspacing-attributes")]
+#[test]
+fn conceal_and_invert_of_the_display_attributes() {
+    let conceal = DisplayAttributes { conceal: true, ..DisplayAttributes::default() };
+    let invert = DisplayAttributes { invert: true, ..DisplayAttributes::default() };
+    let codes = [CONCEAL, b'A', ALPHA_YELLOW, b'B', b' ', b'C', ALPHA_RED, b'D', b' ', b'E', b' ', CONCEAL, b'F', b'G'];
+    let local = [
+        position(4, 0),
+        display_at(5, conceal),
+        display_at(9, DisplayAttributes::default()),
+        display_at(12, DisplayAttributes::default()),
+        display_at(13, invert),
+    ];
+    let (grid, _) = build_25(&page(0, &[(4, &codes)], local_data(&local)));
+    let concealed: Vec<bool> = grid.cells[4][..14].iter().map(|cell| cell.conceal).collect();
+    let expected = [true, true, true, false, false, true, true, true, true, false, false, true, false, false];
+    assert_eq!(concealed, expected);
+    assert!(!grid.cells[4][12].attributes.invert() && grid.cells[4][13].attributes.invert());
+}
+
+/// REQ-L25-023, REQ-L25-011, Table 26 notes 11 and 12: the underline bit
+/// separates Level 1 mosaics and 1/9 does not cancel it; clearing it also
+/// clears a Level 1 1/A; it separates G1 characters of triplets and
+/// underlines G0 and G2 characters, never G3 ones.
+// Needs its capability compiled in (decision E.105).
+#[cfg(feature = "nonspacing-attributes")]
+#[test]
+fn underline_and_separated_mosaics() {
+    let underline = DisplayAttributes { underline: true, ..DisplayAttributes::default() };
+    let full = 0x7F;
+    let mosaics = [MOSAIC_WHITE, SEPARATED_MOSAICS, full, full, b' ', full, CONTIGUOUS_MOSAICS, full];
+    let text = *b"AB C";
+    let local = [
+        position(5, 0),
+        display_at(3, DisplayAttributes::default()),
+        display_at(5, underline),
+        TripletFunction::G1Character { column: 9, code: full },
+        position(6, 0),
+        display_at(1, underline),
+        TripletFunction::G3Character { column: 2, code: 0x41, level_15_form: false },
+    ];
+    let (grid, _) = build_25(&page(0, &[(5, &mosaics), (6, &text)], local_data(&local)));
+    let separated = |column: usize| match grid.cells[5][column].glyph {
+        Glyph::Mosaic { separated, .. } => separated,
+        other => panic!("column {column}: {other:?}"),
+    };
+    assert_eq!([2, 3, 5, 7, 9].map(separated), [true, false, true, true, true]);
+    let underlined: Vec<bool> = grid.cells[6][..4].iter().map(|cell| cell.attributes.underline()).collect();
+    assert_eq!(underlined, [false, true, false, true]);
+}
+
+/// Decision E.48: Level 1 Flash is slow flash in normal mode at Levels 2.5
+/// and 3.5, until Steady.
+#[test]
+fn level_1_flash_is_slow_normal_flash() {
+    let codes = [FLASH, b'A', STEADY, b'B'];
+    let (grid, _) = build_25(&page(0, &[(7, &codes)], local_data(&[position(7, 0), g0_at(10, b'Z')])));
+    let cell = grid.cells[7][1];
+    assert!(cell.flash);
+    assert_eq!((cell.attributes.flash_mode(), cell.attributes.flash_rate()), (FlashMode::Normal, FlashRate::Slow));
+    assert!(!grid.cells[7][2].flash && !grid.cells[7][3].flash);
+}
+
+/// Decision E.47: the Level 1 box codes act only on a newsflash or subtitle
+/// page, Start Box doubled as the configuration asks (REQ-L1 decision E.17).
+#[test]
+fn level_1_boxes_only_on_boxed_pages() {
+    let codes = [START_BOX, START_BOX, b'A', END_BOX, b'B'];
+    let boxed: Vec<bool> = [C6_SUBTITLE, 0]
+        .into_iter()
+        .flat_map(|control| {
+            let (grid, _) = build_25(&page(control, &[(8, &codes)], local_data(&[position(8, 0), g0_at(20, b'Z')])));
+            [grid.cells[8][2].boxed, grid.cells[8][4].boxed]
+        })
+        .collect();
+    assert_eq!(boxed, [true, false, false, false]);
+}
+
+/// REQ-FSM-006 step 2, decision E.50: Hold Mosaics shows the held mosaic at
+/// attribute cells; a G3 character of a triplet does not change it, and it
+/// never replaces a character of a triplet; Release Mosaics ends it after
+/// its cell, and a change of size or of mosaic mode forgets the held one.
+#[test]
+fn hold_mosaics_beside_enhancement_characters() {
+    let full = 0x7F;
+    let codes =
+        [MOSAIC_RED, HOLD_MOSAICS, full, MOSAIC_WHITE, b'A', MOSAIC_WHITE, MOSAIC_RED, RELEASE_MOSAICS, MOSAIC_WHITE];
+    let resets = [MOSAIC_RED, HOLD_MOSAICS, full, ALPHA_RED, MOSAIC_RED, MOSAIC_RED, full, DOUBLE_WIDTH, MOSAIC_RED];
+    let local =
+        [position(9, 0), TripletFunction::G3Character { column: 4, code: 0x41, level_15_form: false }, g0_at(6, b'Z')];
+    let (grid, _) = build_25(&page(0, &[(9, &codes), (10, &resets)], local_data(&local)));
+    let held = Glyph::Mosaic { pattern: MOSAIC_FULL, separated: false };
+    let row = &grid.cells[9];
+    assert_eq!((row[1].glyph, row[3].glyph, row[5].glyph), (Glyph::Space, held, held), "nothing held yet at 1/E");
+    assert!(row[3].held && row[5].held);
+    assert_eq!(shown(&row[6]), 'Z');
+    assert_eq!((row[7].glyph, row[8].glyph), (held, Glyph::Space), "1/F is set-after");
+    let row = &grid.cells[10];
+    assert_eq!((row[3].glyph, row[5].glyph), (held, Glyph::Space), "alphanumerics forget the held mosaic");
+    assert_eq!((row[7].glyph, row[8].glyph), (held, Glyph::Space), "a size change forgets it");
+}
+
+/// Clause 15.4, REQ-L25-012: ESC switches the Level 1 page to the second G0
+/// set; the characters of triplets never take it.
+#[test]
+fn esc_selects_the_second_g0_set_for_level_1_only() {
+    let fields = PresentationFields {
+        designations: Some(Designations { default: 0, second: GREEK }),
+        ..PresentationFields::default()
+    };
+    let mut others = std::vec![x28_0(&fields)];
+    others.extend(local_data(&[position(11, 0), g0_at(3, b'b')]));
+    let (grid, _) = build_25(&page(0, &[(11, &[b'a', ESC, b'a', b' '])], others));
+    let set = |column: usize| match grid.cells[11][column].glyph {
+        Glyph::Char(character) => character.set,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(set(0), CharSet::G0(G0 { set: G0Set::Latin, national: Some(crate::charset::NationalOption::English) }));
+    assert!(matches!(set(2), CharSet::G0(G0 { set: G0Set::Greek, .. })));
+    assert_eq!(set(3), CharSet::G0(G0 { set: G0Set::Latin, national: None }));
+}
+
+/// REQ-L25-025, REQ-L25-026, Annex C.3: spacing double height shows lower
+/// halves in the row below, which elsewhere shows the background above and
+/// no foreground, ignores its Level 1 bytes, and still shows the characters
+/// of triplets; row 23 never doubles (rule 1).
+#[test]
+fn spacing_double_height_and_the_row_below() {
+    let rows: [(u8, &[u8]); 4] = [
+        (5, &[DOUBLE_HEIGHT, b'A', b'B', NORMAL_SIZE, ALPHA_RED, NEW_BACKGROUND]),
+        (6, b"xyzxyzxyzxyz"),
+        (21, &[DOUBLE_HEIGHT, b'X']),
+        (23, &[DOUBLE_HEIGHT, b'Y']),
+    ];
+    let (grid, _) = build_25(&page(0, &rows, local_data(&[position(6, 0), g0_at(10, b'E')])));
+    let cells = &grid.cells;
+    assert_eq!((cells[5][1].size, cells[6][1].size), (Size::DoubleTop, Size::DoubleBottom));
+    assert_eq!(cells[6][1].glyph, cells[5][1].glyph);
+    assert_eq!((cells[6][7].glyph, cells[6][7].background), (Glyph::Space, ALPHA_RED), "the fill");
+    assert_eq!((shown(&cells[6][10]), cells[6][10].attributes.source()), ('E', CharSource::Local));
+    assert_eq!((cells[22][1].size, cells[23][1].size), (Size::DoubleBottom, Size::Normal), "rule 1");
+    assert_eq!(grid.double_height_rows, 1 << 5 | 1 << 21);
+}
+
+/// REQ-L25-026, Annex C.3 rules 2 and 3: non-spacing double height does
+/// not suppress the row below, where its lower half wins against a later
+/// double width.
+// Needs its capability compiled in (decision E.105).
+#[cfg(feature = "nonspacing-attributes")]
+#[test]
+fn non_spacing_double_height_keeps_the_row_below() {
+    let double_height = DisplayAttributes { double_height: true, ..DisplayAttributes::default() };
+    let double_width = DisplayAttributes { double_width: true, ..DisplayAttributes::default() };
+    let local = [
+        position(8, 0),
+        display_at(2, double_height),
+        g0_at(2, b'H'),
+        display_at(3, DisplayAttributes::default()),
+        position(9, 0),
+        display_at(1, double_width),
+        g0_at(1, b'W'),
+    ];
+    let (grid, _) = build_25(&page(0, &[(8, b"........"), (9, b"abcdef")], local_data(&local)));
+    let cells = &grid.cells;
+    assert_eq!((cells[8][2].size, cells[9][2].size, shown(&cells[9][2])), (Size::DoubleTop, Size::DoubleBottom, 'H'));
+    assert_eq!(cells[9][1].attributes.width(), Width::Normal, "rule 3: the lower half wins");
+    assert_eq!(text(&grid, 9, 0..=0), "a", "the row below non-spacing double height is shown");
+    assert_eq!(grid.double_height_rows, 1 << 8);
 }
