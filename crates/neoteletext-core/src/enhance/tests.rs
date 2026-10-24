@@ -27,10 +27,11 @@ use crate::consts::{
     DESIGNATION_GROUP_SHIFT, DOUBLE_HEIGHT, DOUBLE_WIDTH, END_BOX, ESC, FLASH, FLASH_MODE_ADJACENT_CLUT,
     FLASH_MODE_INVERT_PHASE, FLASH_MODE_NORMAL, FLASH_RATE_DECREMENTAL, FLASH_RATE_INCREMENTAL, FLASH_RATE_PHASE_2,
     FLASH_RATE_PHASE_3, FLASH_RATE_SLOW, G3_UNDEFINED, HEADER_DISPLAY_BYTES, HOLD_MOSAICS, LATIN_G2_UNDEFINED,
-    MAGAZINES, MOSAIC_RED, MOSAIC_WHITE, NEW_BACKGROUND, NORMAL_SIZE, PACKET_ENHANCEMENT, PAGE_CODING_PARITY,
-    PAGE_FUNCTION_BASIC, PAGE_FUNCTION_POP, PAGE_MOT, PAGE_TIME_FILLING, RELEASE_MOSAICS, ROW_ADDRESS_BASE,
-    ROW_ADDRESS_LAST, ROW_ADDRESS_ROW_24, ROW_COLOUR_DOWN_TO_BOTTOM, ROW_COLOUR_THIS_ROW, SEPARATED_MOSAICS, START_BOX,
-    STEADY, TRIPLET_BYTES, TRIPLETS_PER_PACKET,
+    LINK_NULL_PAGE, MAGAZINES, MOSAIC_RED, MOSAIC_WHITE, MOT_OBJECT_LINK_BYTES, MOT_OBJECT_LINKS_LEVEL_25,
+    NEW_BACKGROUND, NORMAL_SIZE, PACKET_ENHANCEMENT, PAGE_CODING_PARITY, PAGE_FUNCTION_BASIC, PAGE_FUNCTION_POP,
+    PAGE_MOT, PAGE_TIME_FILLING, RELEASE_MOSAICS, ROW_ADDRESS_BASE, ROW_ADDRESS_LAST, ROW_ADDRESS_ROW_24,
+    ROW_COLOUR_DOWN_TO_BOTTOM, ROW_COLOUR_THIS_ROW, SEPARATED_MOSAICS, START_BOX, STEADY, TRIPLET_BYTES,
+    TRIPLETS_PER_PACKET,
 };
 use crate::ecc::with_odd_parity;
 use crate::level1::{CharSource, FlashMode, FlashRate, Glyph, Grid, Size, Width, build_grid};
@@ -1135,4 +1136,111 @@ fn object_writes_outside_every_display_area_are_discarded() {
     // Column 40 from the main page; columns 45, 75, 71 and 101 with no
     // side panel enabled.
     assert_eq!(report.faults.discarded_writes, 5);
+}
+
+/// REQ-L25-012, Annex C.4 rule 2: in an Adaptive or Passive object a
+/// Modified G0 and G2 designation lasts to the end of the object, across
+/// its rows, and not into the data that invoked it.
+#[cfg(feature = "objects")]
+#[test]
+fn a_designation_in_an_object_lasts_to_its_end() {
+    let greek = TripletFunction::ModifiedDesignation { column: 0, designation: GREEK };
+    let mut objects = Vec::new();
+    for (designation, kind) in [(1, ObjectKind::Passive), (2, ObjectKind::Adaptive)] {
+        let body =
+            [define(kind, local_number(designation, 0)), greek, g0_at(1, b'a'), position(1, 0), g0_at(2, b'b'), END];
+        objects.push(x26(designation, &body));
+    }
+    let local = [
+        position(2, 0),
+        invoke_local(ObjectKind::Passive, local_number(1, 0)),
+        g0_at(10, b'c'),
+        position(5, 0),
+        invoke_local(ObjectKind::Adaptive, local_number(2, 0)),
+        g0_at(10, b'c'),
+    ];
+    let mut others = local_data(&local);
+    others.extend(objects);
+    let (grid, _) = build_25(&page(0, &[], others));
+    let set = |row: usize, column: usize| match grid.cells[row][column].glyph {
+        Glyph::Char(CharRef { set: CharSet::G0(g0), .. }) => g0.set,
+        other => panic!("row {row} column {column}: {other:?}"),
+    };
+    let passive = [(2, 1), (3, 2), (2, 10)].map(|(row, column)| set(row, column));
+    let adaptive = [(5, 1), (6, 2), (5, 10)].map(|(row, column)| set(row, column));
+    for sets in [passive, adaptive] {
+        assert_eq!(sets, [G0Set::Greek, G0Set::Greek, G0Set::Latin]);
+    }
+}
+
+/// REQ-OBJ-006, decision E.51: an object whose body runs into a packet
+/// that was not received is absent: nothing of it is placed, and it is
+/// counted.
+#[cfg(feature = "objects")]
+#[test]
+fn an_object_with_a_missing_packet_is_absent() {
+    // Triplets 11 and 12 of designation code 1; code 2 is not sent, and no
+    // Termination Marker comes before it.
+    let number = local_number(1, 11);
+    let objects = x26(
+        1,
+        &[
+            FILLER,
+            FILLER,
+            FILLER,
+            FILLER,
+            FILLER,
+            FILLER,
+            FILLER,
+            FILLER,
+            FILLER,
+            FILLER,
+            FILLER,
+            define(ObjectKind::Passive, number),
+            g0_at(3, b'P'),
+        ],
+    );
+    let mut others = local_data(&[position(2, 0), invoke_local(ObjectKind::Passive, number)]);
+    others.push(objects);
+    let (grid, report) = build_25(&page(0, &[(2, b"ROW 2")], others));
+    assert_eq!(text(&grid, 2, 0..=4), "ROW 2");
+    assert_eq!((report.faults.absent_objects, report.objects), (1, 0));
+}
+
+/// REQ-OBJ-040, clause 13.8: a page with no display triplet places the
+/// default objects of its Magazine Organization Table; one whose object
+/// page is not received is absent, counted, and named in the trace.
+#[cfg(feature = "objects")]
+#[test]
+fn an_absent_default_object_is_counted() {
+    use crate::packet::{DefaultObject, MotObjectLink, MotPageEntry, mot_position};
+    let gpop = MotObjectLink {
+        magazine: magazine_1(),
+        x27_flag: false,
+        page: crate::types::PageNumber(0xA1),
+        subpage_count: 0,
+        fallback: crate::types::FallbackFields::default(),
+        default_objects: [Some(DefaultObject { kind: ObjectKind::Active, number: 0 }), None],
+    };
+    let unused = MotObjectLink { page: crate::types::PageNumber(LINK_NULL_PAGE), default_objects: [None; 2], ..gpop };
+    let mut links = [0; DATA_BYTES];
+    for (slot, link) in links.as_chunks_mut::<MOT_OBJECT_LINK_BYTES>().0.iter_mut().zip([gpop, unused, unused, unused])
+    {
+        slot.copy_from_slice(&encode::mot_object_link(&link));
+    }
+    let position = mot_position(PageAddress::from_mpp(PAGE).unwrap().page);
+    let mut entries = [0; DATA_BYTES];
+    let entry = MotPageEntry { global_objects: true, pop_link: 0 };
+    entries[position.index..position.index + 2].copy_from_slice(&encode::mot_page_entry(entry));
+    let mot = PageAddress { magazine: magazine_1(), page: crate::types::PageNumber(PAGE_MOT) }.mpp();
+    let mut packets = std::vec![
+        header(mot, 0),
+        encode::nibble_packet(magazine_1(), position.packet, &entries),
+        encode::nibble_packet(magazine_1(), MOT_OBJECT_LINKS_LEVEL_25[0], &links),
+    ];
+    packets.extend(page(0, &[(1, b"ROW 1")], Vec::new()));
+    let (_, report) = build_25(&packets);
+    assert_eq!((report.faults.absent_objects, report.objects), (1, 0));
+    let entries = traced(&packets, true);
+    assert_eq!(entries.last().unwrap().2, "none: the default objects left are absent or over a limit");
 }
