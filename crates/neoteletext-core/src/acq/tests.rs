@@ -799,3 +799,64 @@ fn page_related_packets_are_kept_with_their_page() {
     assert!(decoder.store().contains(PageAddress::from_mpp(0x270).unwrap()));
     assert!(!decoder.enhancement_store().contains_address(PageAddress::from_mpp(0x270).unwrap()));
 }
+
+/// Decision E.20: a request for one sub-code gets that sub-page, or
+/// nothing when it is not stored; a request for any gets the latest.
+#[test]
+fn a_sub_code_request_gets_that_sub_page() {
+    let mut slots = std::vec![StoredPage::EMPTY; 4];
+    let mut decoder = Decoder::new(&mut slots, Config::default());
+    let mut events = Vec::new();
+    feed(&mut decoder, &[header(1, 0x00, 1, 0), header(1, 0x00, 2, 0), header(1, 0x01, 0, 0)], &mut events);
+    let address = PageAddress::from_mpp(0x100).unwrap();
+    assert_eq!(decoder.store().get(address, SubCode::new(1)).unwrap().key, key(0x100, 1));
+    assert_eq!(decoder.store().get(address, SubCode::ANY).unwrap().key, key(0x100, 2), "received last");
+    assert!(decoder.store().get(address, SubCode::new(3)).is_none());
+}
+
+/// REQ-GEN-006: a full listing buffer keeps the lowest sub-codes when a
+/// lower one than those listed comes later in the store.
+#[test]
+fn subcode_listing_into_a_full_buffer_takes_a_later_lower_sub_code() {
+    let mut slots = std::vec![StoredPage::EMPTY; 8];
+    let mut decoder = Decoder::new(&mut slots, Config::default());
+    let mut events = Vec::new();
+    feed(
+        &mut decoder,
+        &[header(1, 0x00, 2, 0), header(1, 0x00, 3, 0), header(1, 0x00, 1, 0), header(1, 0x01, 0, 0)],
+        &mut events,
+    );
+    let mut subcodes = [SubCode::default(); 2];
+    let count = decoder.store().subcodes(PageAddress::from_mpp(0x100).unwrap(), &mut subcodes);
+    assert_eq!(&subcodes[..count], &[SubCode::new(1), SubCode::new(2)]);
+}
+
+/// REQ-ACQ-005: the store uses only the slots the caller gives. When
+/// every slot holds a page being received, a new page is not stored and
+/// the pages in progress keep their slots; with no slots nothing is
+/// stored.
+#[test]
+fn pages_being_received_are_never_evicted() {
+    let mut slots = std::vec![StoredPage::EMPTY; 1];
+    let mut decoder = Decoder::new(&mut slots, Config::default());
+    let mut events = Vec::new();
+    feed(
+        &mut decoder,
+        &[
+            header(1, 0x00, 0, 0),
+            header(2, 0x00, 0, 0),
+            encode::row(mag(2), 1, &text(b"TWO")),
+            encode::row(mag(1), 1, &text(b"ONE")),
+        ],
+        &mut events,
+    );
+    assert_eq!(events.iter().filter(|event| matches!(event, Event::PageStarted(_))).count(), 1);
+    assert!(!decoder.store().contains(PageAddress::from_mpp(0x200).unwrap()));
+    let page = decoder.store().get(PageAddress::from_mpp(0x100).unwrap(), SubCode::ANY).unwrap();
+    assert_eq!((page.state, page.cells[1][0]), (PageState::Partial, with_odd_parity(b'O')));
+    let mut decoder = Decoder::new(&mut [], Config::default());
+    events.clear();
+    feed(&mut decoder, &[header(1, 0x00, 0, 0), encode::row(mag(1), 1, &text(b"ONE"))], &mut events);
+    assert_eq!(decoder.store().pages(), []);
+    assert!(!events.iter().any(|event| matches!(event, Event::PageStarted(_) | Event::PageUpdated { .. })));
+}
