@@ -155,6 +155,10 @@ fn flash_timing_is_three_to_one() {
     assert!(flash_visible(Instant(959_999), &config));
     assert!(!flash_visible(Instant(960_000), &config));
     assert!(flash_visible(Instant(1_280_000), &config));
+    // REQ-GEN-006: a configuration with no flash period has nothing to
+    // divide by, and shows flashing characters steadily.
+    let steady = Config { flash_shown_us: 0, flash_hidden_us: 0, ..Config::default() };
+    assert!([0, 1, 960_000, u64::MAX].iter().all(|&time| flash_visible(Instant(time), &steady)));
 }
 
 /// Decision E.55, REQ-RND-002, REQ-RND-003, REQ-RND-035: the options take
