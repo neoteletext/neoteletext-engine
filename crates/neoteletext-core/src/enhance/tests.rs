@@ -44,6 +44,7 @@ use crate::types::{
 
 use super::attributes::{ATTRIBUTES, Flash, Rate, flash_of, flash_rate};
 use super::characters::{enhancement_glyph, is_text};
+use super::machine::traced_action;
 use super::planes::{area_of, scan_index};
 use super::row::cell_of;
 #[cfg(feature = "additional-flash-functions")]
@@ -926,4 +927,168 @@ fn the_processor_runs_only_at_levels_2_5_and_3_5() {
         assert_eq!(grid.cells, level_1.cells);
         assert_eq!((report.steps, report.faults), (0, crate::acq::EnhancementFaults::NONE));
     });
+}
+
+/// Group 1111, which Table 34 and neoteletext's own sets leave reserved.
+const RESERVED_DESIGNATION: u8 = designation(0b1111, 0b000);
+
+/// The transitions of the page-level run, as `apply_traced` reports them.
+fn traced(packets: &[Packet], trace: bool) -> Vec<(&'static str, &'static str, &'static str, &'static str)> {
+    let config = Config { trace, ..level(PresentationLevel::Level25) };
+    with_page(PAGE, packets, &config, |page, magazine, lookup| {
+        let options = DisplayOptions::default();
+        let mut grid = Box::new(Grid::EMPTY);
+        build_grid(&mut grid, Some(page), magazine, &config, &options);
+        let mut entries = Vec::new();
+        let mut receive = |entry: crate::trace::TraceEntry| {
+            assert_eq!(entry.machine, crate::trace::Machine::EnhancementWalk);
+            entries.push((entry.from, entry.event, entry.action, entry.to));
+        };
+        let mut sink = crate::trace::TraceSink { time: Instant(0), entries: &mut receive };
+        let _ = apply_traced(&mut grid, page, magazine, lookup, &config, &options, &mut sink);
+        entries
+    })
+}
+
+/// REQ-FSM-010, REQ-FSM-011, REQ-L25-051: the walk reports every transition
+/// with the table's state names, and names a fault in place of the action
+/// that met it; without the configuration's trace it reports nothing.
+#[test]
+fn the_walk_is_traced() {
+    let row_0 =
+        TripletFunction::AddressDisplayRow0 { address: ROW_ADDRESS_LAST, colour: ColourData { index: 1, high: 0b01 } };
+    let reserved_designation = TripletFunction::ModifiedDesignation { column: 11, designation: RESERVED_DESIGNATION };
+    let first = damage(x26(0, &[g0_at(1, b'A'), row_0, g0_at(3, b'X'), g0_at(10, b'Y'), reserved_designation, END]), 0);
+    let packets = page(0, &[(1, b"ROW 1")], std::vec![first]);
+    let (walking, returning) = ("Walking", "Returning");
+    let expected = [
+        ("Start", "walk begins, with a display triplet", "begin the local enhancement data", walking),
+        (walking, "damaged triplet", "skip the damaged triplet", walking),
+        (walking, row_0.name(), "move to the row; row colour", walking),
+        (walking, "G0 character", "discard the write (REQ-OBJ-014, REQ-L25-050)", walking),
+        (walking, "G0 character", "set the column; place the character or attribute", walking),
+        (walking, reserved_designation.name(), "ignore the designation (REQ-L25-012)", walking),
+        (walking, END.name(), "end the source", returning),
+        (returning, "the local enhancement data ended", "none", "Finished"),
+    ];
+    assert_eq!(traced(&packets, true), expected);
+    assert_eq!(traced(&packets, false), []);
+    // REQ-OBJ-040, decision E.53: data with no display triplet places the
+    // default objects; with none, the walk ends.
+    let quiet = page(0, &[(1, b"ROW 1")], local_data(&[FILLER]));
+    let expected = [
+        ("Start", "walk begins, with no display triplet", "none", "Placing default objects"),
+        ("Placing default objects", "no more default objects", "none", "Finished"),
+    ];
+    assert_eq!(traced(&quiet, true), expected);
+    // Local data without a Termination Marker ends with its data.
+    let unended = page(0, &[(1, b"ROW 1")], std::vec![x26(0, &[g0_at(1, b'A')])]);
+    let entries = traced(&unended, true);
+    let expected = [
+        ("Walking", "end of the source's data", "end the source", "Returning"),
+        ("Returning", "the local enhancement data ended", "none", "Finished"),
+    ];
+    assert_eq!(entries[entries.len() - 2..], expected);
+}
+
+/// True when no two names are the same.
+fn distinct(names: &[&str]) -> bool {
+    let mut sorted = names.to_vec();
+    sorted.sort_unstable();
+    sorted.windows(2).all(|pair| pair[0] != pair[1])
+}
+
+/// REQ-FSM-010, REQ-FSM-011: the trace names the states as the table of
+/// REQ-FSM-011 does, a triplet by its function, and every other event and
+/// every action by a name of its own, so that no two transitions read
+/// alike.
+#[test]
+fn every_state_event_and_action_has_its_own_name() {
+    use WalkAction as A;
+    use WalkEvent as E;
+    use WalkState as S;
+    let states = [
+        S::Start,
+        S::Walking,
+        S::ModifierPending { row_offset: 1, column_offset: 2 },
+        S::Returning,
+        S::PlacingDefaults,
+        S::Finished,
+    ];
+    let table = ["Start", "Walking", "Modifier pending", "Returning", "Placing default objects", "Finished"];
+    assert_eq!(states.map(walk_state_name), table);
+    let events = [
+        E::Begin { display: true },
+        E::Begin { display: false },
+        E::Triplet(None),
+        E::EndOfData,
+        E::Returned(Ended::Local),
+        E::Returned(Ended::Object),
+        E::Returned(Ended::Default),
+        E::DefaultObject { found: true },
+        E::DefaultObject { found: false },
+    ];
+    assert!(distinct(&events.map(walk_event_name)));
+    assert_eq!(walk_event_name(E::Triplet(Some(END))), END.name());
+    let colour = colour(1);
+    let number = ObjectNumber(0);
+    let actions = [
+        A::None,
+        A::BeginLocal,
+        A::StartDefault,
+        A::Skip,
+        A::EndSource,
+        A::Pop,
+        A::ResetPosition,
+        A::ScreenColour(colour),
+        A::RowColour { row: 1, colour },
+        A::Position { row: 1, column: 1 },
+        A::Invoke { source: ObjectSource::Local, kind: ObjectKind::Active, number, row_offset: 0, column_offset: 0 },
+        A::Column(END),
+    ];
+    assert!(distinct(&actions.map(walk_action_name)));
+}
+
+/// REQ-L25-051: the trace names a fault the step met in place of the
+/// action, the first of them in the order of the report; in Placing
+/// default objects, finding the next default object may pass over several,
+/// which the trace says together.
+#[test]
+fn faults_are_named_in_place_of_the_action() {
+    use crate::acq::EnhancementFaults;
+    let none = EnhancementFaults::NONE;
+    let one = |set: fn(&mut EnhancementFaults)| {
+        let mut faults = none;
+        set(&mut faults);
+        faults
+    };
+    let faults = [
+        (one(|f| f.forbidden_invocations = 1), "skip the invocation: not permitted (REQ-OBJ-008)"),
+        (one(|f| f.limited_invocations = 1), "skip the invocation: a limit of Annex A.8 is reached"),
+        (one(|f| f.absent_objects = 1), "skip the invocation: the object is absent"),
+        (one(|f| f.discarded_writes = 1), "discard the write (REQ-OBJ-014, REQ-L25-050)"),
+        (one(|f| f.ignored_designations = 1), "ignore the designation (REQ-L25-012)"),
+    ];
+    let column = WalkAction::Column(g0_at(1, b'A'));
+    for (after, name) in faults {
+        assert_eq!(traced_action(WalkState::Walking, column, &none, &after), name);
+    }
+    let both = EnhancementFaults { forbidden_invocations: 1, absent_objects: 1, ..none };
+    assert_eq!(traced_action(WalkState::Walking, column, &none, &both), faults[0].1);
+    // Faults that are not the walk's own are not named.
+    let damaged = one(|f| f.damaged_triplets = 1);
+    assert_eq!(
+        traced_action(WalkState::Walking, WalkAction::Skip, &none, &damaged),
+        walk_action_name(WalkAction::Skip)
+    );
+    let absent = one(|f| f.absent_objects = 2);
+    let defaults = WalkState::PlacingDefaults;
+    assert_eq!(
+        traced_action(defaults, WalkAction::StartDefault, &none, &absent),
+        "start the default object, past default objects absent or over a limit"
+    );
+    assert_eq!(
+        traced_action(defaults, WalkAction::None, &none, &absent),
+        "none: the default objects left are absent or over a limit"
+    );
 }
