@@ -98,3 +98,38 @@ fn ranges_from_the_security_review_are_blocked() {
         assert!(!ipv6_blocked(allowed), "{allowed:x?}");
     }
 }
+
+/// REQ-SEC-005: row 0 columns 0 to 7 belong to the receiver alone; no
+/// other row's columns do.
+#[test]
+fn receiver_columns_are_row_0_columns_0_to_7() {
+    for column in 0..8 {
+        assert!(is_receiver_column(0, column), "column {column}");
+        assert!(!is_receiver_column(1, column), "row 1 column {column}");
+    }
+    assert!(!is_receiver_column(0, 8));
+    assert!(!is_receiver_column(24, 0));
+}
+
+/// RFC 6052 section 2.2: an address under `64:ff9b:1::/48` whose bits 64
+/// to 71 (the "u" octet) are not zero is not a well-formed /48, /56 or
+/// /64 translation, so only its /96 reading counts: a public IPv4
+/// address in its last 32 bits is allowed, whatever a shorter reading
+/// would have embedded.
+#[test]
+fn a_nat64_local_use_address_with_a_u_octet_is_read_as_96_only() {
+    // 64:ff9b:1:0:a::800:0 read as /64 embeds 10.0.0.8, as /96 8.0.0.0:
+    // blocked while u is zero, allowed once u is not.
+    assert!(ipv6_blocked([0x0064, 0xFF9B, 0x0001, 0, 0x000A, 0, 0x0800, 0]));
+    assert!(!ipv6_blocked([0x0064, 0xFF9B, 0x0001, 0, 0x010A, 0, 0x0800, 0]));
+    // 64:ff9b:1:a00:101::808:808: /48 would read 10.0.1.1, /96 8.8.8.8.
+    assert!(!ipv6_blocked([0x0064, 0xFF9B, 0x0001, 0x0A00, 0x0101, 0, 0x0808, 0x0808]));
+}
+
+/// REQ-SEC-008: every submission over plain HTTP needs the warning, and
+/// none over encryption does.
+#[test]
+fn plain_http_submission_needs_the_warning() {
+    assert!(needs_plain_http_warning(false));
+    assert!(!needs_plain_http_warning(true));
+}
