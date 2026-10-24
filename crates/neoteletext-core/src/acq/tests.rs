@@ -537,3 +537,89 @@ fn rolling_header_and_clock_follow_decision_e11() {
     assert_eq!(shown(&decoder.rolling_header()[..6]), "SERIAL", "serial: every magazine");
     assert_eq!(shown(decoder.clock()), "10:00:04");
 }
+
+/// Decisions E.7 and E.9, REQ-ARCH-007: a packet whose address byte
+/// fails Hamming 8/4 is discarded and counted as an address failure, one
+/// whose designation code fails as a designation failure; packets that
+/// carry nothing the decoder keeps (X/27/6 and above, packet 30 outside
+/// magazine 8, packet 31) are counted per magazine and packet number and
+/// as ignored (REQ-PKT-005, REQ-PKT-008). The caller resets the counts.
+#[test]
+fn failures_and_ignored_packets_are_counted() {
+    let mut slots = std::vec![StoredPage::EMPTY; 4];
+    let mut decoder = Decoder::new(&mut slots, Config::default());
+    let mut events = Vec::new();
+    let mut bad_address = encode::row(mag(1), 1, &text(b"ROW"));
+    // Two bit errors are detected and not corrected by Hamming 8/4.
+    bad_address.bytes[crate::consts::ADDRESS_BYTE_0] ^= 0b11;
+    let mut bad_designation = encode::triplet_packet(mag(2), 26, 0, &[Triplet::default(); TRIPLETS_PER_PACKET]);
+    bad_designation.bytes[crate::consts::DATA_START] ^= 0b11;
+    feed(&mut decoder, &[bad_address, bad_designation], &mut events);
+    assert_eq!(
+        events,
+        [
+            Event::Discarded(Discard::Packet(crate::packet::PacketError::BadAddress)),
+            Event::Discarded(Discard::Packet(crate::packet::PacketError::BadDesignation)),
+        ]
+    );
+    let statistics = *decoder.statistics();
+    assert_eq!((statistics.address_failures, statistics.designation_failures), (1, 1));
+    assert_eq!(statistics.per_magazine, [0; MAGAZINES], "a failed packet has no trustworthy address to count");
+    events.clear();
+    let ignored =
+        [encode::raw(mag(3), 27, 6, &[0; DATA_BYTES - 1]), encode::address(mag(4), 30), encode::address(mag(8), 31)];
+    feed(&mut decoder, &ignored, &mut events);
+    assert!(events.is_empty(), "{events:?}");
+    let statistics = *decoder.statistics();
+    assert_eq!(statistics.ignored, 3);
+    assert_eq!((statistics.per_magazine[mag(3).index()], statistics.per_magazine[mag(4).index()]), (1, 1));
+    assert_eq!(statistics.per_magazine[0], 1, "index 0 is magazine 8");
+    assert_eq!(
+        (statistics.per_packet_number[27], statistics.per_packet_number[30], statistics.per_packet_number[31]),
+        (1, 1, 1)
+    );
+    decoder.reset_statistics();
+    assert_eq!(*decoder.statistics(), Statistics::default());
+}
+
+/// REQ-L25-051, REQ-ARCH-007: the faults that building a page met are
+/// added to the statistics once for each build, kind by kind, however
+/// often the same build is reported; a new reception is a new build.
+#[test]
+fn enhancement_faults_are_counted_once_per_build() {
+    let mut slots = std::vec![StoredPage::EMPTY; 1];
+    let mut decoder = Decoder::new(&mut slots, Config::default());
+    let faults = EnhancementFaults {
+        damaged_triplets: 1,
+        forbidden_invocations: 2,
+        absent_objects: 3,
+        limited_invocations: 4,
+        discarded_writes: 5,
+        ignored_designations: 6,
+        undefined_characters: 7,
+    };
+    let mut page = StoredPage::EMPTY;
+    page.key = key(0x100, 0);
+    page.receptions = 1;
+    let build = PageBuild::of(&page, PresentationLevel::Level25);
+    assert_eq!((build.key, build.receptions, build.level), (key(0x100, 0), 1, PresentationLevel::Level25));
+    assert!(decoder.record_enhancement(build, &faults));
+    assert!(!decoder.record_enhancement(build, &faults), "a redraw of the same build");
+    assert_eq!(decoder.statistics().enhancement, faults);
+    page.receptions = 2;
+    assert!(decoder.record_enhancement(PageBuild::of(&page, PresentationLevel::Level25), &faults));
+    let twice = EnhancementFaults {
+        damaged_triplets: 2,
+        forbidden_invocations: 4,
+        absent_objects: 6,
+        limited_invocations: 8,
+        discarded_writes: 10,
+        ignored_designations: 12,
+        undefined_characters: 14,
+    };
+    assert_eq!(decoder.statistics().enhancement, twice);
+    // The counts saturate rather than wrap.
+    let mut total = EnhancementFaults { damaged_triplets: u32::MAX, ..EnhancementFaults::NONE };
+    total.add(&faults);
+    assert_eq!((total.damaged_triplets, total.undefined_characters), (u32::MAX, 7));
+}
