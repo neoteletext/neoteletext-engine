@@ -512,3 +512,110 @@ fn packets_30_outside_magazine_8_and_31_are_ignored() {
     assert!(matches!(decode(&encode::address(mag(1), 30)), Ok(Decoded::Ignored(_))));
     assert!(matches!(decode(&encode::address(mag(4), 31)), Ok(Decoded::Ignored(_))));
 }
+
+/// Clause 9.3.1, decision E.7: an uncorrectable sub-code byte leaves the
+/// header without a sub-code but with its control bits, an uncorrectable
+/// control byte the reverse; either makes the header incomplete.
+#[test]
+fn header_sub_code_and_control_bits_fail_separately() {
+    let control = ControlBits(C8_UPDATE | C11_SERIAL);
+    let good = encode::header(mag(2), PageNumber(0x34), SubCode::new(0x0005), control, &[0x20; 32]);
+    let decoded = |packet: &Packet| {
+        let Ok(Decoded::Header(header)) = decode(packet) else { panic!("not a header") };
+        header
+    };
+    let mut no_subcode = good;
+    // S1, Hamming 8/4 in header byte 8: two bit errors.
+    no_subcode.bytes[4] ^= 0b11;
+    let header = decoded(&no_subcode);
+    assert_eq!((header.page, header.subcode, header.control), (Some(PageNumber(0x34)), None, Some(control)));
+    assert!(!header.is_complete());
+    let mut no_control = good;
+    // C7 to C10, header byte 12.
+    no_control.bytes[8] ^= 0b11;
+    let header = decoded(&no_control);
+    assert_eq!((header.subcode, header.control), (Some(SubCode::new(0x0005)), None));
+    assert!(!header.is_complete());
+    assert_eq!(header.serial(), None, "C11 is unknown too");
+}
+
+/// Table 21: the side panels of a fallback, byte N+4 bits 2 and 3, for
+/// each of the four selections: none, left 16, right 16, and the 8 + 8
+/// split of both; each encodes to the byte it was decoded from.
+#[test]
+fn mot_fallback_side_panels_round_trip() {
+    use crate::consts::{MOT_FALLBACK_PANELS_SHIFT, SIDE_PANEL_HALF_COLUMNS};
+    let panels = |left, right, left_columns| SidePanelFields { left, right, status_flag: true, left_columns };
+    for (bits, expected) in [
+        (0b00, panels(false, false, 0)),
+        (0b01, panels(true, false, 0)),
+        (0b10, panels(false, true, 0)),
+        (0b11, panels(true, true, SIDE_PANEL_HALF_COLUMNS)),
+    ] {
+        let fallback = mot_fallback(bits << MOT_FALLBACK_PANELS_SHIFT);
+        assert_eq!(fallback.side_panels, expected, "{bits:#04b}");
+        let link = MotObjectLink {
+            magazine: mag(1),
+            x27_flag: false,
+            page: PageNumber(0x23),
+            subpage_count: 1,
+            fallback,
+            default_objects: [None; 2],
+        };
+        assert_eq!(encode::mot_object_link(&link)[4], bits << MOT_FALLBACK_PANELS_SHIFT, "{bits:#04b}");
+    }
+}
+
+/// Table 28, REQ-PKT-010: source bits S1 S0 = 00 are illegal. An Object
+/// Invocation written with them has address bit 5 clear, so it falls in
+/// the column address group (0 to 39) and does not read back as an
+/// invocation.
+#[test]
+fn an_illegal_object_source_leaves_the_row_address_group() {
+    assert_eq!(ObjectSource::from_bits(0b00), ObjectSource::Illegal);
+    let invocation = TripletFunction::ObjectInvocation {
+        source: ObjectSource::Illegal,
+        kind: ObjectKind::Active,
+        number: ObjectNumber(0),
+    };
+    let triplet = invocation.to_triplet();
+    assert!(!triplet.is_row_address(), "address {}", triplet.address);
+    assert!(!matches!(triplet.function(), TripletFunction::ObjectInvocation { .. }));
+}
+
+/// REQ-FSM-010, REQ-PKT-010: the trace names each function as Tables 28
+/// and 29 do.
+#[test]
+fn triplet_functions_are_named_as_tables_28_and_29() {
+    let t = |address: u8, mode: u8, data: u8| Triplet { address, mode, data }.function().name();
+    let named = [
+        (t(40, 0b00000, 0), "Full Screen Colour"),
+        (t(40, 0b00001, 0), "Full Row Colour"),
+        (t(40, 0b00100, 0), "Set Active Position"),
+        (t(63, 0b00111, 0), "Address Display Row 0"),
+        (t(40, 0b01000, 0), "Programme Delivery Control row triplet"),
+        (t(40, 0b10000, 0), "Origin Modifier"),
+        (t(0b11_1000, 0b10001, 0), "Object Invocation"),
+        (t(0b11_1000, 0b10101, 0), "Object Definition"),
+        (t(63, 0b11111, 0), "Termination Marker"),
+        (t(40, 0b00010, 0), "reserved row triplet"),
+        (t(0, 0b00000, 0), "Foreground Colour"),
+        (t(0, 0b00001, 0x21), "G1 character"),
+        (t(0, 0b00010, 0x21), "G3 character"),
+        (t(0, 0b01011, 0x21), "G3 character"),
+        (t(0, 0b00011, 0), "Background Colour"),
+        (t(0, 0b00110, 0), "Programme Delivery Control column triplet"),
+        (t(0, 0b00111, 0), "Additional Flash Functions"),
+        (t(0, 0b01000, 0), "Modified G0 and G2 Character Set Designation"),
+        (t(0, 0b01001, 0x41), "G0 character"),
+        (t(0, 0b01100, 0), "Display Attributes"),
+        (t(0, 0b01101, 0x41), "column triplet not acted on"),
+        (t(0, 0b01110, 0), "column triplet not acted on"),
+        (t(0, 0b01111, 0x41), "G2 character"),
+        (t(0, 0b10001, 0x41), "G0 character with diacritical mark"),
+        (t(0, 0b00100, 0), "reserved column triplet"),
+    ];
+    for (name, expected) in named {
+        assert_eq!(name, expected);
+    }
+}
