@@ -1,9 +1,8 @@
 //! Live sounds in the mixer (REQ-AUD-014): their rings filled as samples
 //! arrive, and each voice's rate trimmed to keep the target buffered.
 
-use super::Mixer;
+use super::{Mixer, set_step};
 use crate::sound::{PPM, STREAM_RING_MS, STREAM_TRIM_PPM, Sound, SoundKey};
-use crate::voice::set_step;
 
 impl Mixer {
     /// Makes room for a live sound (REQ-AUD-014): its samples arrive in

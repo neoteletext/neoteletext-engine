@@ -33,7 +33,6 @@ pub mod sinc;
 mod mixer;
 mod ramp;
 mod sound;
-mod voice;
 
 pub use mixer::{Mixer, Start, VOICES};
 pub use sound::{STREAM_RING_MS, STREAM_TARGET_MS, STREAM_TRIM_PPM, SoundKey};
