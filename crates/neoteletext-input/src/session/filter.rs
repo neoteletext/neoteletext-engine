@@ -54,10 +54,9 @@ impl Session {
                 }
                 Event::Mouse(mouse)
             }
+            // The wheel goes in any mode (INPUT.md section 6.5, decision
+            // E.119): the receiver sends it only over the page.
             Event::Wheel(mut wheel) => {
-                if !has(MOUSE_MODES) {
-                    return None;
-                }
                 if !has(MOUSE_PIXELS) {
                     wheel.at.pixels = None;
                 }

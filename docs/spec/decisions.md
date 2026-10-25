@@ -1561,3 +1561,10 @@ Taken on 24 October 2026 while the owner was away, when the full gate's `cargo d
 3. **The minimum Rust version is unaffected:** the new parts need 1.87 at most, under the workspace's 1.96.
 
 *Reason:* The pairing's password and ephemeral scalars are secrets that pass through the affected reduction; a known timing leak in the pairing's cryptography outweighs a version bump with a two-line interface change.
+
+**E.119 — The wheel goes to a channel over its page, in any mode.**
+Taken on 25 October 2026 on the owner's decision for the browser: "pass the mouse wheel through to the server when the mouse is over the teletext window, and when it is within that panel but outside the teletext display area, then wheel up/down does what it currently does", asked whether that is always or only when a page asks for the mouse, answered "Always, over any page". `neoteletext-common/INPUT.md` sections 5.6, 6.3, 6.5 and 9.1 and REQ-INT-115 and REQ-INT-136 are amended to say so.
+1. **The session's filter passes WHEEL whatever the modes,** where it had needed a mouse mode; MOUSE_PIXELS still decides whether it carries pixels. MOUSE, the buttons and the moves, still needs its modes.
+2. **Where the pointer is decides, and that is the receiver's:** the receiver sends a wheel turn only while the pointer is over the page, so the wheel over its own parts stays its own.
+
+*Reason:* a channel's page is what the viewer scrolls, as a web page is; a page that scrolls inside itself, as a long article does, needs the wheel, and a channel that does not use it lets it go. The cost is that a channel learns the pointer's cell while the viewer turns the wheel over its page, which section 6.5 records.

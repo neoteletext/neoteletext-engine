@@ -198,7 +198,7 @@ fn a_dead_key_and_a_modifier_alone_go_only_when_asked_for() {
     assert!(sent_item(&mut session, &functional("Dead"), None).is_some());
 }
 
-// REQ-INT-115.
+// REQ-INT-115, amended 25 October 2026 (decision E.119).
 #[test]
 fn the_mouse_goes_only_in_a_mouse_mode_or_on_its_page() {
     let mut session = welcomed(MOUSE_BUTTONS | MOUSE_DRAG | MOUSE_PIXELS);
@@ -208,7 +208,11 @@ fn the_mouse_goes_only_in_a_mouse_mode_or_on_its_page() {
     let drag = Item::Event(Event::Mouse(event::Mouse { action: MouseAction::Move, button: 1, at }));
     let hover = Item::Event(Event::Mouse(event::Mouse { action: MouseAction::Move, button: 0, at }));
     assert_eq!(sent_item(&mut session, &click, Some(0x300)), None, "REQ-INT-115: not asked for");
-    assert_eq!(sent_item(&mut session, &wheel, Some(0x300)), None);
+    assert_eq!(
+        sent_item(&mut session, &wheel, Some(0x300)).map(|bytes| bytes.len()),
+        Some(8),
+        "the wheel goes with no mode, its cell alone, without MOUSE_PIXELS"
+    );
     session.control(&Control::PageModes { page: 0x300, modes: MOUSE_BUTTONS }).unwrap();
     assert_eq!(sent_item(&mut session, &click, Some(0x301)), None, "another page did not ask");
     assert_eq!(
