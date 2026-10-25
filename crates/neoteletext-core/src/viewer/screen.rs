@@ -33,6 +33,7 @@ impl Viewer {
             status: self.status(store),
             searching,
             rolling_header: if page.is_none() { Some(*rolling_header) } else { None },
+            clock: clock_of(rolling_header, config),
             row24,
             security_indicator: self.indicator != SecurityIndicator::None,
             mix: self.mix,
@@ -51,4 +52,16 @@ pub enum Composed {
     /// The grid was built; at Levels 2.5 and 3.5, with the report of the
     /// faults the enhancement processor met, for the decoder's statistics.
     Built(Option<EnhancementReport>),
+}
+
+/// The clock a found page shows: the latest header's, once one has come
+/// and while rolling is on (decision E.11); none, and the page keeps its
+/// own, otherwise.
+fn clock_of(
+    header: &[u8; crate::consts::HEADER_DISPLAY_BYTES],
+    config: &crate::config::Config,
+) -> Option<[u8; crate::consts::CLOCK_BYTES]> {
+    let clock: [u8; crate::consts::CLOCK_BYTES] =
+        header.get(crate::consts::CLOCK_COLUMN - crate::consts::HEADER_DISPLAY_COLUMN..)?.try_into().ok()?;
+    (config.rolling_header && clock.iter().any(|&byte| byte != crate::consts::SPACE)).then_some(clock)
 }

@@ -1576,3 +1576,11 @@ Taken on 25 October 2026 on the owner's decision for the browser, whose page lis
 3. **The bound still bounds:** 120 characters a title and 800 entries are within the file's 64 KiB limit, which is unchanged.
 
 *Reason:* A headline is typically 40 to 90 characters; 120 keeps nearly every one whole while bounding the entry.
+
+**E.121 — A found page shows the latest clock.**
+Taken on 26 October 2026 for the browser, on the owner's word that row 0 "should behave exactly like teletext": decision E.11 says columns 32 to 39 are "updated from every valid header of any magazine, whether or not the page has been found", but a found page showed its own header's clock, frozen at the time it was sent. Now:
+1. **`DisplayOptions::clock`** carries the latest header's clock; on a found page `build_grid` puts it in columns 32 to 39, a byte failing parity a space, as the rolling header's are.
+2. **The viewer fills it** from the header bytes it composes with, once a header has come and while rolling is on (`Config::rolling_header`); otherwise the page keeps its own clock.
+3. **A channel keeps the time** by sending headers, of its pages or time-filling ones (page FF, clause 9.3.1.1), which end no stored page's display.
+
+*Reason:* E.11 and the SAA5246A's always rolling clock; a page that does not change still tells the time.

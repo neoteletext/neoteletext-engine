@@ -8,8 +8,8 @@ use crate::acq::{MagazineData, StoredPage};
 use crate::charset::{self, CharRef, CharSet, G0};
 use crate::config::{Config, ParityPolicy, Row24Policy};
 use crate::consts::{
-    C5_NEWSFLASH, C6_SUBTITLE, C7_SUPPRESS_HEADER, C10_INHIBIT_DISPLAY, CODE_MASK_7BIT, COLOUR_GREEN, COLOUR_WHITE,
-    COLUMNS, HEADER_DISPLAY_COLUMN, RECEIVER_COLUMNS, ROWS, SPACE, STATUS_ATTRIBUTE_COLUMN,
+    C5_NEWSFLASH, C6_SUBTITLE, C7_SUPPRESS_HEADER, C10_INHIBIT_DISPLAY, CLOCK_COLUMN, CODE_MASK_7BIT, COLOUR_GREEN,
+    COLOUR_WHITE, COLUMNS, HEADER_DISPLAY_COLUMN, RECEIVER_COLUMNS, ROWS, SPACE, STATUS_ATTRIBUTE_COLUMN,
 };
 
 /// The 7-bit codes and parity-failure mask of a stored row under the parity
@@ -137,6 +137,13 @@ pub fn row_codes(
                 for column in HEADER_DISPLAY_COLUMN..COLUMNS {
                     if let (Some(slot), Some(&code)) = (codes.get_mut(column), stored.get(column)) {
                         *slot = code;
+                    }
+                }
+                // The clock is the latest header's, of any magazine, as the
+                // SAA5246A's always rolling clock is (decision E.11).
+                if let Some(clock) = options.clock {
+                    for (slot, &byte) in codes.iter_mut().skip(CLOCK_COLUMN).zip(clock.iter()) {
+                        *slot = if crate::ecc::has_odd_parity(byte) { byte & CODE_MASK_7BIT } else { SPACE };
                     }
                 }
                 // Columns 0 to 7 are the receiver's; only header failures

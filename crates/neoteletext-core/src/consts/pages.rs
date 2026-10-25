@@ -22,6 +22,8 @@ pub const STATUS_ATTRIBUTE_COLUMN: usize = 7;
 pub const RECEIVER_COLUMNS: usize = 8;
 /// First clock column of row 0 (decision E.11).
 pub const CLOCK_COLUMN: usize = 32;
+/// The clock's bytes: header columns 32 to 39 (decision E.11).
+pub const CLOCK_BYTES: usize = COLUMNS - CLOCK_COLUMN;
 /// Page number of time-filling headers (clause 9.3.1.1).
 pub const PAGE_TIME_FILLING: u8 = 0xFF;
 /// Page number tens or units digits above 9 are hexadecimal (Table 1 note).

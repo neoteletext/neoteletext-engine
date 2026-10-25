@@ -5,7 +5,7 @@ use super::Cell;
 use crate::charset::{self, Designation, G0};
 use crate::colour::{ColourIndex, ColourMap, SidePanels};
 use crate::consts::{
-    COLOUR_BLACK, COLUMNS, HEADER_DISPLAY_BYTES, ROWS, SIDE_PANEL_AREA_COLUMNS, SIDE_PANEL_FIRST_COLUMN,
+    CLOCK_BYTES, COLOUR_BLACK, COLUMNS, HEADER_DISPLAY_BYTES, ROWS, SIDE_PANEL_AREA_COLUMNS, SIDE_PANEL_FIRST_COLUMN,
     SIDE_PANEL_FIRST_ROW, SIDE_PANEL_ROWS, SPACE, STATUS_COLUMNS,
 };
 
@@ -156,6 +156,9 @@ pub struct DisplayOptions {
     pub searching: bool,
     /// While searching, row 0 columns 8 to 39 from incoming headers, raw.
     pub rolling_header: Option<[u8; HEADER_DISPLAY_BYTES]>,
+    /// On a page found, row 0 columns 32 to 39 from the latest header of
+    /// any magazine, raw: the clock that keeps time (decision E.11).
+    pub clock: Option<[u8; CLOCK_BYTES]>,
     /// A row 24 drawn by the receiver (REQ-NAV-011), 7-bit codes.
     pub row24: Option<[u8; COLUMNS]>,
     /// A security indicator is active: the status area is shown even on
@@ -173,6 +176,7 @@ impl Default for DisplayOptions {
             status: [SPACE; STATUS_COLUMNS],
             searching: false,
             rolling_header: None,
+            clock: None,
             row24: None,
             security_indicator: false,
             mix: false,

@@ -256,6 +256,31 @@ fn row_0_is_the_status_area_and_a_header() {
     assert_eq!(codes[8..], [SPACE; 32]);
 }
 
+/// Decision E.11: on a page found, columns 32 to 39 are the latest
+/// header's clock, of any magazine, so the time keeps ticking on a page
+/// that does not change; a byte failing parity is a space. With no clock
+/// the page keeps its own.
+#[test]
+fn a_found_page_shows_the_latest_clock() {
+    let config = Config::default();
+    let mut header = [b' '; 40];
+    header[8..16].copy_from_slice(b"SERVICE ");
+    header[32..40].copy_from_slice(b"12:00/00");
+    let page = page_with_rows(&[(0, &header)]);
+    let options = DisplayOptions { status: *b"P100   ", ..DisplayOptions::default() };
+    let (codes, _) = row_codes(0, Some(&page), &config, &options, config.parity_policy);
+    assert_eq!(&codes[32..], b"12:00/00", "its own, with no clock received");
+    let mut clock = [0_u8; 8];
+    for (slot, &byte) in clock.iter_mut().zip(b"23:15/42") {
+        *slot = crate::ecc::with_odd_parity(byte);
+    }
+    clock[7] ^= 0x80;
+    let options = DisplayOptions { clock: Some(clock), ..options };
+    let (codes, _) = row_codes(0, Some(&page), &config, &options, config.parity_policy);
+    assert_eq!(&codes[8..16], b"SERVICE ", "the page's own header");
+    assert_eq!(&codes[32..], b"23:15/4 ", "the latest clock, its failed byte a space");
+}
+
 /// REQ-L1-014, REQ-SEC-005: a page with C7 set has no row 0, except the
 /// status area when the configuration asks for it or a security
 /// indicator is active. REQ-L1-016: with C10 set rows 1 to 24 are not
