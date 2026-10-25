@@ -47,7 +47,7 @@ fn faults_are_ignored_and_counted() {
 
 #[test]
 fn long_titles_are_cut() {
-    let long = "x".repeat(40);
+    let long = "x".repeat(MAX_TITLE + 8);
     let text = std::format!("s\t{long}\n");
     assert_eq!(all(&text)[0], Ok(Entry::Section { title: &long[..MAX_TITLE] }));
 }

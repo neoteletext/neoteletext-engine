@@ -26,8 +26,9 @@ pub const MAX_LINES: usize = 1000;
 /// The most page entries a file can list: one for each page number a
 /// viewer can type, 100 to 899, since a page listed twice is a fault.
 pub const MAX_PAGES: usize = 800;
-/// The longest title shown; longer titles are cut.
-pub const MAX_TITLE: usize = 32;
+/// The longest title kept; longer titles are cut (decision E.120: a whole
+/// headline, which a receiver fits to the room it has).
+pub const MAX_TITLE: usize = 120;
 /// Page numbers a viewer can type: 100 to 8FF, as bits from 100.
 const PAGE_SLOTS: usize = 0x800;
 /// The first page number, 100.

@@ -427,7 +427,7 @@ Unknown members shall be refused, as REQ-WEB-002 requires of every descriptor.
   - **The page** of a `p` entry is three decimal digits, the magazine 1 to 8 first: a page a viewer can type. Enhancement pages are not listed.
   - **The date** of a `p` entry, when present, is when the page last changed, as `YYYY-MM-DD` (ISO 8601).
   - **The target** of an `x` entry is `name:mpp`, a linked channel named in `channel.json`, or an address: a channel's folder, or a page file of a channel, as REQ-WEB-023 defines them.
-  - **A title** is 1 to 32 characters. A longer title shall be cut to 32.
+  - **A title** is 1 to 120 characters. A longer title shall be cut to 120 (decision E.120). A receiver fits a title to the room it has.
 - **Faults.** A line of an unknown kind shall be ignored, so that later versions may add kinds. A line of a known kind with the wrong number of fields, an invalid page, date or target, or an empty title shall be ignored. The second and later `p` entries for one page shall be ignored. The number of ignored lines shall be reported, and shown in the contents view's status line.
 - **At most 800 `p` entries** are kept; later ones shall be ignored and counted.
 

@@ -1568,3 +1568,11 @@ Taken on 25 October 2026 on the owner's decision for the browser: "pass the mous
 2. **Where the pointer is decides, and that is the receiver's:** the receiver sends a wheel turn only while the pointer is over the page, so the wheel over its own parts stays its own.
 
 *Reason:* a channel's page is what the viewer scrolls, as a web page is; a page that scrolls inside itself, as a long article does, needs the wheel, and a channel that does not use it lets it go. The cost is that a channel learns the pointer's cell while the viewer turns the wheel over its page, which section 6.5 records.
+
+**E.120 — A contents title may be a whole headline: 120 characters.**
+Taken on 25 October 2026 on the owner's decision for the browser, whose page list can be widened: "when i resize the pages list, the titles seem to have elipses even though there is more space visiuble available", answered "Raise the engine limit". A title in `contents.txt` was at most 32 characters, so a channel whose pages are stories cut each headline short, and a wider list could show no more.
+1. **A title or a section heading is 1 to 120 characters,** `contents::MAX_TITLE`; a longer one is cut to 120. REQ-WEB-025 is amended.
+2. **A receiver fits a title to the room it has,** as the browser's page list does with an ellipsis; the contents view drawn as a teletext index cuts it to its row.
+3. **The bound still bounds:** 120 characters a title and 800 entries are within the file's 64 KiB limit, which is unchanged.
+
+*Reason:* A headline is typically 40 to 90 characters; 120 keeps nearly every one whole while bounding the entry.

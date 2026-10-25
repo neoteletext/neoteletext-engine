@@ -230,7 +230,7 @@ mod tests {
     #[test]
     fn titles_are_printable_and_short() {
         assert_eq!(title_text("  NEWS \u{1fb00} INDEX  "), "NEWS INDEX");
-        assert_eq!(title_text(&"x".repeat(40)).len(), MAX_TITLE);
+        assert_eq!(title_text(&"x".repeat(MAX_TITLE + 8)).len(), MAX_TITLE);
         assert_eq!(description(b"DE,  Weather today \r\nPN,10000\r\n").as_deref(), Some("Weather today"));
     }
 }
