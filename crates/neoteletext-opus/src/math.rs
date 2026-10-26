@@ -13,6 +13,10 @@ use crate::fixed::{
 /// `isqrt32`: the integer square root, rounded down.
 #[must_use]
 pub fn isqrt32(mut val: u32) -> u32 {
+    // The first trial bit would sit at bit -1.
+    if val == 0 {
+        return 0;
+    }
     let mut g: u32 = 0;
     let mut bshift: i32 = ec_ilog(val).wrapping_sub(1) >> 1;
     let mut b: u32 = 1u32 << bshift;
@@ -199,5 +203,17 @@ pub fn celt_cos_norm(x: i32) -> i16 {
         -32767
     } else {
         32767
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::isqrt32;
+
+    /// The square root of 0 is 0; no caller passes it, but it must not shift by -1.
+    #[test]
+    fn the_square_root_of_zero_is_zero() {
+        assert_eq!(isqrt32(0), 0);
+        assert_eq!((isqrt32(1), isqrt32(15), isqrt32(16), isqrt32(u32::MAX)), (1, 3, 4, 65_535));
     }
 }

@@ -288,3 +288,30 @@ fn last_mut<T>(values: &mut [T], n: usize) -> &mut [T] {
     let from = values.len().saturating_sub(n);
     values.get_mut(from..).unwrap_or_default()
 }
+
+#[cfg(test)]
+#[allow(clippy::indexing_slicing, clippy::arithmetic_side_effects, reason = "tests may panic")]
+mod tests {
+    use super::{HISTORY, MAX_PERIOD};
+    use crate::celt::decoder::CeltDecoder;
+    use crate::celt::{FrameDuration, OVERLAP};
+    use crate::fixed::SIG_SHIFT;
+
+    /// A loud history whose windowed autocorrelation passes 2^31 at lag 0 and wraps negative;
+    /// the normalisation after it must not shift by a negative amount. No stream has been found
+    /// to reach it, but the concealment must survive any history (REQ-GEN-008).
+    #[test]
+    fn concealment_survives_an_autocorrelation_that_wraps() {
+        let mut decoder = CeltDecoder::new();
+        decoder.skip_plc = false;
+        decoder.loss_duration = 0;
+        decoder.start_band = 0;
+        // The excitation is the last MAX_PERIOD of the history, windowed at both ends: fill
+        // between the windows.
+        let base = HISTORY - MAX_PERIOD;
+        for (j, h) in decoder.history[base + OVERLAP..HISTORY - OVERLAP].iter_mut().enumerate() {
+            *h = (if j < 27 { 26_488 } else { 26_472 }) << SIG_SHIFT;
+        }
+        decoder.conceal(FrameDuration::TwentyMs);
+    }
+}

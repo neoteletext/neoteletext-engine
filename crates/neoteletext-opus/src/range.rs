@@ -146,6 +146,13 @@ impl<'a> EcDec<'a> {
     /// Bring the range back above `CODE_BOT`, reading bytes as it goes (RFC 6716 §4.1.2.1).
     #[inline]
     fn normalize(&mut self) {
+        // A range of 0 would never grow: only a symbol of zero width makes one, which no table
+        // or caller allows, so it is a malformed stream, and the range restarts at 1, which the
+        // loop brings above `CODE_BOT` in four steps.
+        if self.rng == 0 {
+            self.error = true;
+            self.rng = 1;
+        }
         while self.rng <= CODE_BOT {
             self.nbits_total = self.nbits_total.wrapping_add(SYM_BITS.cast_signed());
             self.rng <<= SYM_BITS;
@@ -168,9 +175,9 @@ impl<'a> EcDec<'a> {
     /// `decode` with `ft` = 2^`bits` (`ec_decode_bin`).
     #[inline]
     pub fn decode_bin(&mut self, bits: u32) -> u32 {
-        self.ext = self.rng >> bits;
+        self.ext = self.rng.checked_shr(bits).unwrap_or(0);
         let s = self.val.checked_div(self.ext).unwrap_or(u32::MAX);
-        let ft = 1u32 << bits;
+        let ft = 1u32.checked_shl(bits).unwrap_or(0);
         ft.saturating_sub(s.saturating_add(1))
     }
 
@@ -189,7 +196,7 @@ impl<'a> EcDec<'a> {
     pub fn dec_bit_logp(&mut self, logp: u32) -> bool {
         let r = self.rng;
         let d = self.val;
-        let s = r >> logp;
+        let s = r.checked_shr(logp).unwrap_or(0);
         let one = d < s;
         if !one {
             self.val = d.wrapping_sub(s);
@@ -210,7 +217,7 @@ impl<'a> EcDec<'a> {
     )]
     pub fn dec_icdf(&mut self, icdf: &[u8], ftb: u32) -> i32 {
         let d = self.val;
-        let r = self.rng >> ftb;
+        let r = self.rng.checked_shr(ftb).unwrap_or(0);
         let mut t = self.rng;
         for (symbol, &p) in icdf.iter().enumerate() {
             let s = r.wrapping_mul(u32::from(p));
@@ -272,5 +279,37 @@ impl<'a> EcDec<'a> {
         self.nend_bits = available;
         self.nbits_total = self.nbits_total.wrapping_add(bits.cast_signed());
         ret
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    extern crate std;
+    use super::EcDec;
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    /// Scales of 32 bits or more, which no caller passes, still return without panicking.
+    #[test]
+    fn scales_past_the_width_do_not_panic() {
+        let mut range = EcDec::new(&[0x12, 0x34, 0x56, 0x78]);
+        let _ = range.decode_bin(40);
+        let _ = range.dec_bit_logp(40);
+        let _ = range.dec_icdf(&[128, 0], 40);
+    }
+
+    /// A symbol of zero width leaves a range of 0, which no caller makes today; normalising it
+    /// must still end, and mark the stream malformed (REQ-GEN-008: no unbounded loop).
+    #[test]
+    fn a_range_of_zero_ends_and_is_an_error() {
+        let (done, finished) = mpsc::channel();
+        std::thread::spawn(move || {
+            let mut range = EcDec::new(&[0x12, 0x34, 0x56, 0x78]);
+            let _ = range.decode(256);
+            range.update(5, 5, 256);
+            let _ = done.send((range.rng(), range.error));
+        });
+        let (rng, error) = finished.recv_timeout(Duration::from_secs(2)).ok().unwrap_or((0, false));
+        assert!(rng != 0 && error, "normalising a range of 0 did not end, or was not an error");
     }
 }

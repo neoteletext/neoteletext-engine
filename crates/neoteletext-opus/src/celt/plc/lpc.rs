@@ -214,15 +214,18 @@ pub fn autocorr(x: &[i16], ac: &mut [i32], windowed: bool, scratch: &mut [i16]) 
         *ac0 = add32(*ac0, shl32(1, shift.unsigned_abs()));
     }
     let ac0 = *ac0;
-    if ac0 < 268_435_456 {
+    if (1..268_435_456).contains(&ac0) {
         // Under 2^28, the value has at most 28 bits: the shift is at least 1.
         let shift2 = 29i32.wrapping_sub(ec_ilog(ac0.cast_unsigned()));
         for v in ac.iter_mut() {
             *v = shl32(*v, shift2.cast_unsigned());
         }
         shift = shift.wrapping_sub(shift2);
-    } else if ac0 >= 536_870_912 {
-        let shift2: u8 = if ac0 >= 1_073_741_824 { 2 } else { 1 };
+    } else if ac0 <= 0 || ac0 >= 536_870_912 {
+        // A lag-0 sum that wrapped past 2^31 reads as negative or zero: it is the largest, and is
+        // scaled down as one at 2^30 or more. Only a history louder than any stream has been
+        // found to make reaches this; the C's arithmetic is undefined there.
+        let shift2: u8 = if ac0 <= 0 || ac0 >= 1_073_741_824 { 2 } else { 1 };
         for v in ac.iter_mut() {
             *v = shr32(*v, u32::from(shift2));
         }

@@ -87,25 +87,37 @@ pub const fn extract16(x: i32) -> i16 {
 #[inline]
 #[must_use]
 pub const fn shr32(a: i32, shift: u32) -> i32 {
-    a >> shift
+    // Past the width the C is undefined; every bit is shifted out, leaving the sign.
+    match a.checked_shr(shift) {
+        Some(shifted) => shifted,
+        None => a >> (i32::BITS - 1),
+    }
 }
 /// `SHL16`: through `opus_uint16`.
 #[inline]
 #[must_use]
 pub const fn shl16(a: i32, shift: u32) -> i16 {
-    (a as i16) << shift
+    // Past the width the C is undefined; every bit is shifted out.
+    match (a as i16).checked_shl(shift) {
+        Some(shifted) => shifted,
+        None => 0,
+    }
 }
 /// `SHL32`, `SHL`: through `opus_uint32`.
 #[inline]
 #[must_use]
 pub const fn shl32(a: i32, shift: u32) -> i32 {
-    a << shift
+    // Past the width the C is undefined; every bit is shifted out.
+    match a.checked_shl(shift) {
+        Some(shifted) => shifted,
+        None => 0,
+    }
 }
 /// `PSHR32`, `PSHR`: shift with rounding.
 #[inline]
 #[must_use]
 pub const fn pshr32(a: i32, shift: u32) -> i32 {
-    a.wrapping_add((1i32 << shift) >> 1) >> shift
+    shr32(a.wrapping_add(shl32(1, shift) >> 1), shift)
 }
 /// `VSHR32`: right for a positive shift, left for a negative.
 #[inline]
@@ -272,6 +284,22 @@ pub const fn ec_ilog(x: u32) -> i32 {
 )]
 mod tests {
     use super::*;
+
+    /// A shift by the type's width or more, which the C leaves undefined, gives what shifting
+    /// one place at a time would: 0 to the left, the sign to the right; it never panics.
+    #[test]
+    fn shifts_past_the_width_are_defined() {
+        assert_eq!(shl32(1, 40), 0);
+        assert_eq!(shl16(1, 16), 0);
+        assert_eq!(shr32(8, 33), 0);
+        assert_eq!(shr32(-8, 33), -1);
+        assert_eq!(pshr32(5, 40), 0);
+        assert_eq!(pshr32(-5, 40), -1);
+        assert_eq!(vshr32(1, -40), 0);
+        assert_eq!(vshr32(-1, 40), -1);
+        // Within the width, nothing changes.
+        assert_eq!((shl32(3, 4), shr32(-48, 4), pshr32(23, 3), shl16(3, 4)), (48, -3, 3, 48));
+    }
 
     /// The 32-bit forms equal the exact products, over edges and a dense sweep.
     #[test]
