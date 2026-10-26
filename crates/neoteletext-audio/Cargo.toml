@@ -8,18 +8,23 @@ license.workspace = true
 publish.workspace = true
 
 # REQ-GEN-017 and decision E.38: no dependencies outside `neoteletext-core`,
-# whose packet type and Hamming 8/4 decoder the broadcast carriage reads.
+# whose packet type and Hamming 8/4 decoder the broadcast carriage reads, and
+# `neoteletext-opus`, the workspace's own no_std decoder of codec 2 (decision E.124).
 [dependencies]
 neoteletext-core.workspace = true
+neoteletext-opus = { workspace = true, optional = true }
 
 [features]
 # Decision E.61: each optional area is a feature, all on by default.
-default = ["idl", "ima"]
+default = ["idl", "ima", "opus"]
 # Broadcast carriage on EN 300 708 independent data lines (REQ-AUD-007).
 idl = []
 # The IMA ADPCM decoder (REQ-AUD-001). A port whose voice sink decodes IMA
 # ADPCM itself leaves it out.
 ima = []
+# The Opus decoder (codec 2, decision E.124): one constant-rate packet a block,
+# decoded in order by a few decoders the receiver keeps, each about 28 KB.
+opus = ["dep:neoteletext-opus"]
 # Writing sounds: the IMA ADPCM encoder, records and broadcast packets, for
 # publishing tools (REQ-AUD-020). It allocates, so it is not a default.
 encode = ["ima", "idl"]

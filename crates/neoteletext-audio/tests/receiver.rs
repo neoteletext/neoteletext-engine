@@ -488,3 +488,139 @@ fn a_cursor_record_on_the_audio_channel_is_left_to_the_input_profile() {
     assert_eq!(receiver.statistics().records_refused, 0);
     assert_eq!(sink.starts(), [(1, SoundId { handle: 1, generation: 1 })]);
 }
+
+/// Decision E.124: Opus sounds reach the sink exactly as one decoder fed
+/// their packets in order writes them, however the blocks arrive.
+#[cfg(feature = "opus")]
+mod opus {
+    use super::*;
+    use neoteletext_audio::record::FLAG_PROGRESSIVE as PROGRESSIVE;
+    use neoteletext_opus::{Decoder, FRAME_SAMPLES};
+
+    /// A constant-rate packet's length: 16 kbit/s at 20 ms.
+    const PACKET: u16 = 40;
+    /// The table of contents of a CELT-only full-band 20 ms mono frame, one a
+    /// packet (RFC 6716 section 3.1: configuration 31, code 0).
+    const CELT_FULL_BAND_20_MS: u8 = 31 << 3;
+
+    /// `count` packets of `PACKET` bytes made from a seed: the engine holds no
+    /// sample stream, and a CELT frame decodes whatever its bytes.
+    fn packets(count: usize, seed: u32) -> Vec<u8> {
+        let mut state = seed | 1;
+        let mut out = Vec::new();
+        for _ in 0..count {
+            let mut packet = vec![CELT_FULL_BAND_20_MS];
+            packet.extend((1..PACKET).map(|_| {
+                // xorshift32 (Marsaglia 2003).
+                state ^= state << 13;
+                state ^= state >> 17;
+                state ^= state << 5;
+                state.to_le_bytes()[0]
+            }));
+            out.extend(packet);
+        }
+        out
+    }
+
+    /// What one decoder writes for `packets`, `None` a lost one concealed.
+    fn decoded(packets: &[Option<&[u8]>]) -> Vec<i16> {
+        let mut decoder = Decoder::new();
+        let mut out = Vec::new();
+        for packet in packets {
+            let mut pcm = [0_i16; FRAME_SAMPLES];
+            match packet {
+                Some(packet) => assert!(decoder.decode(packet, &mut pcm).is_ok(), "a made packet decodes"),
+                None => decoder.conceal(&mut pcm),
+            }
+            out.extend_from_slice(&pcm);
+        }
+        out
+    }
+
+    fn assembled(sink: &Recorder, sound: &Sound) -> Vec<i16> {
+        let id = SoundId { handle: sound.handle, generation: sound.generation };
+        sink.pcm.iter().rev().find(|(held, _)| *held == id).unwrap().1.clone()
+    }
+
+    #[test]
+    fn a_stored_opus_sound_arriving_out_of_order_is_decoded_in_order() {
+        let data = packets(30, 7);
+        let samples = 29 * 960 + 500;
+        let sound = Sound::opus(5, 1, PACKET, &data, samples).unwrap();
+        assert_eq!(sound.blocks(), 30);
+        let mut records = vec![sound.object_record().unwrap()];
+        let mut blocks = sound.data_records();
+        blocks.reverse();
+        records.extend(blocks);
+        records.push(play(0, 1, &sound, None).record());
+        let mut arena = vec![0; ARENA];
+        let mut receiver = Receiver::<8, 2>::new(&mut arena);
+        let mut sink = Recorder::new();
+        push(&mut receiver, &neoteletext_audio::encode::packets(0, 0, &records).0, &mut sink);
+        let expected: Vec<Option<&[u8]>> = data.chunks(usize::from(PACKET)).map(Some).collect();
+        let mut want = decoded(&expected);
+        want.truncate(samples as usize);
+        assert_eq!(assembled(&sink, &sound), want);
+        assert_eq!(receiver.statistics().decode_failures, 0);
+    }
+
+    #[test]
+    fn a_progressive_opus_sound_is_decoded_as_its_blocks_arrive() {
+        let data = packets(60, 11);
+        let samples = 60 * 960;
+        let sound = Sound::opus(5, 1, PACKET, &data, samples).unwrap();
+        let mut start = play(0, 1, &sound, None);
+        start.flags = PROGRESSIVE;
+        let mut arena = vec![0; ARENA];
+        let mut receiver = Receiver::<8, 2>::new(&mut arena);
+        let mut sink = Recorder::new();
+        let announce = [sound.object_record().unwrap(), start.record()];
+        push(&mut receiver, &neoteletext_audio::encode::packets(0, 0, &announce).0, &mut sink);
+        for record in sound.data_records() {
+            push(&mut receiver, &neoteletext_audio::encode::packets(0, 0, &[record]).0, &mut sink);
+        }
+        let expected: Vec<Option<&[u8]>> = data.chunks(usize::from(PACKET)).map(Some).collect();
+        assert_eq!(assembled(&sink, &sound), decoded(&expected));
+    }
+
+    #[test]
+    fn a_lost_live_opus_packet_is_concealed_by_the_decoder() {
+        let data = packets(10, 3);
+        let packet = |index: usize| &data[index * usize::from(PACKET)..(index + 1) * usize::from(PACKET)];
+        let sound = Sound::live(6, 1, Codec::Opus, 48_000, PACKET).unwrap();
+        let mut arena = vec![0; ARENA];
+        let mut receiver = Receiver::<8, 2>::new(&mut arena);
+        let mut sink = Recorder::new();
+        let announce = [sound.object_record().unwrap(), play(0, 1, &sound, None).record()];
+        push(&mut receiver, &neoteletext_audio::encode::packets(0, 0, &announce).0, &mut sink);
+        // Packet 4 is lost for good.
+        for index in (0..10).filter(|&index| index != 4) {
+            let records = sound.packet_records(u16::try_from(index).unwrap(), packet(index)).unwrap();
+            push(&mut receiver, &neoteletext_audio::encode::packets(0, 0, &records).0, &mut sink);
+        }
+        let expected: Vec<Option<&[u8]>> = (0..10).map(|index| (index != 4).then(|| packet(index))).collect();
+        assert_eq!(assembled(&sink, &sound), decoded(&expected));
+        assert_eq!(receiver.statistics().concealed, 1);
+    }
+
+    #[test]
+    fn opus_is_carried_as_packets_and_not_encoded_here() {
+        assert_eq!(
+            Sound::new(1, 1, Codec::Opus, 48_000, PACKET, &tone(960)),
+            Err(neoteletext_audio::encode::EncodeError::Encoder)
+        );
+        let uneven = vec![0_u8; usize::from(PACKET) * 3 + 1];
+        assert_eq!(Sound::opus(1, 1, PACKET, &uneven, 960), Err(neoteletext_audio::encode::EncodeError::PacketLength));
+        let data = packets(3, 1);
+        assert_eq!(
+            Sound::opus(1, 1, PACKET, &data, 4 * 960),
+            Err(neoteletext_audio::encode::EncodeError::Length),
+            "more samples than the packets hold"
+        );
+        assert_eq!(
+            Sound::opus(1, 1, PACKET, &data, 960),
+            Err(neoteletext_audio::encode::EncodeError::Length),
+            "a packet beyond the sound's end"
+        );
+    }
+}

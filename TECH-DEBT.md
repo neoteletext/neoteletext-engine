@@ -248,7 +248,7 @@ Built behind `neoteletext-web`'s feature `dbsc`; owed:
 ## The Opus decoder (decision E.123, 26 October 2026)
 
 Built and integrated; owed:
-- **Opus in the audio profile:** code 2 of REQ-AUD-001 (amended then), OBJECT and DATA records for Opus packets, the store and the voice sink, `neottx sound`, and the browser's playback (issue #223). PCM and IMA ADPCM do not change.
+- **Opus in the audio profile:** carried as code 2 on 26 October 2026 (decision E.124, issue #223): records, store, decoding in order. Still owed: Opus at receiver Level A (two decoders' state, about 56 KB, is not in the level's proposed budget, `audio.md` section 12, and tellyboy plays no Opus), and `neottx sound` reading an encoder's packets (it refuses Opus).
 - **Hardware:** the decoder has run only under QEMU; its cycles on a real Cortex-M0 and on the ESP32 (Xtensa, not yet built: REQ-GEN-015) are unmeasured.
 - **Fuzzing:** `opus_packets` has run 45 minutes with overflow checks (`cargo fuzz run -a`) on the engine's version, and the gate gives it 20 seconds; the gate's run is without `-a`, so overflow checks reach it only by hand (`docs/spec/design/opus-security.md`).
 - **The porting workspace** `tmp/opus-integer/` (ignored) holds the internal oracle tests; it is now behind this crate, which is the source.

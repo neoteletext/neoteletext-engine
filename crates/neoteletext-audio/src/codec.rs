@@ -9,6 +9,10 @@ pub enum Codec {
     Pcm16,
     /// IMA ADPCM in WAVE blocks (format tag 0x0011).
     ImaAdpcm,
+    /// Opus (RFC 6716) in the profile of decision E.123: mono, 48 kHz, 20 ms
+    /// frames. Each block is one constant-rate packet, so every block of a
+    /// sound has the same length (decision E.124).
+    Opus,
 }
 
 impl Codec {
@@ -19,6 +23,9 @@ impl Codec {
         match code {
             0 => Some(Self::Pcm16),
             1 => Some(Self::ImaAdpcm),
+            // A receiver built without the decoder ignores Opus objects, as
+            // it would any reserved code.
+            2 if cfg!(feature = "opus") => Some(Self::Opus),
             _ => None,
         }
     }
@@ -29,6 +36,17 @@ impl Codec {
         match self {
             Self::Pcm16 => 0,
             Self::ImaAdpcm => 1,
+            Self::Opus => 2,
+        }
+    }
+
+    /// Whether the codec carries sound at `hz`: Opus only at 48 kHz, the
+    /// rate its decoder writes; the others at every rate of the profile.
+    #[must_use]
+    pub const fn allows_rate(self, hz: u32) -> bool {
+        match self {
+            Self::Opus => hz == OPUS_RATE,
+            Self::Pcm16 | Self::ImaAdpcm => true,
         }
     }
 
@@ -38,6 +56,8 @@ impl Codec {
         match self {
             Self::ImaAdpcm => bytes == IMA_BLOCK_SMALL || bytes == IMA_BLOCK_LARGE,
             Self::Pcm16 => bytes >= 2 && bytes <= MAX_PCM_BLOCK && bytes.is_multiple_of(2),
+            // A packet the decoder takes: at least the table of contents.
+            Self::Opus => bytes >= 1 && bytes <= OPUS_MAX_PACKET,
         }
     }
 
@@ -49,16 +69,20 @@ impl Codec {
             // the 4-byte header holds two (IMA 1992; WAVE format 0x0011).
             Self::ImaAdpcm => (bytes as u32).saturating_sub(IMA_HEADER as u32).saturating_mul(2).saturating_add(1),
             Self::Pcm16 => bytes as u32 / 2,
+            Self::Opus => OPUS_FRAME_SAMPLES,
         }
     }
 
-    /// The bytes of a block holding `samples` samples, at most a whole block.
+    /// The bytes of a block holding `samples` samples, in a sound whose whole
+    /// blocks are `block_bytes`: a final block may be shorter, except an Opus
+    /// packet, which is whole however few of its samples the sound keeps.
     #[must_use]
-    pub const fn block_bytes_for(self, samples: u32) -> u32 {
+    pub const fn block_bytes_for(self, block_bytes: u16, samples: u32) -> u32 {
         match self {
             // The first sample is the header; the rest are packed two a byte.
             Self::ImaAdpcm => samples.saturating_sub(1).div_ceil(2).saturating_add(IMA_HEADER as u32),
             Self::Pcm16 => samples.saturating_mul(2),
+            Self::Opus => block_bytes as u32,
         }
     }
 }
@@ -74,6 +98,23 @@ pub const IMA_BLOCK_LARGE: u16 = 512;
 pub const MAX_PCM_BLOCK: u16 = 1000;
 /// The most samples in any block: a 512-byte IMA ADPCM block.
 pub const MAX_BLOCK_SAMPLES: usize = 1 + 2 * (IMA_BLOCK_LARGE as usize - IMA_HEADER);
+/// The samples of an Opus block: one 20 ms frame at 48 kHz (decision E.123).
+pub const OPUS_FRAME_SAMPLES: u32 = 960;
+/// The one rate Opus is carried at.
+pub const OPUS_RATE: u32 = 48_000;
+/// The longest Opus packet the profile carries: the decoder refuses longer
+/// ones (REQ-AUD-022). A 16 kbit/s constant-rate packet is 40 bytes.
+pub const OPUS_MAX_PACKET: u16 = 160;
+
+// The carriage's figures are the decoder's (decision E.124).
+#[cfg(feature = "opus")]
+const _: () = {
+    assert!(OPUS_FRAME_SAMPLES as usize == neoteletext_opus::FRAME_SAMPLES);
+    assert!(OPUS_RATE == neoteletext_opus::SAMPLE_RATE);
+    assert!(OPUS_MAX_PACKET as usize == neoteletext_opus::MAX_PACKET);
+};
+// An Opus frame fits the buffer every block is decoded into.
+const _: () = assert!(OPUS_FRAME_SAMPLES as usize <= MAX_BLOCK_SAMPLES);
 
 /// The sample rates, by code (REQ-AUD-002): the common rates from 8 to 48 kHz.
 pub const SAMPLE_RATES: [u32; 8] = [8_000, 11_025, 16_000, 22_050, 24_000, 32_000, 44_100, 48_000];

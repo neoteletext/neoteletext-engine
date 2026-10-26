@@ -1,5 +1,7 @@
 //! Writing sounds, for publishing tools (REQ-AUD-020): IMA ADPCM encoding,
-//! records, and records cut into broadcast packets. This module allocates.
+//! records, and records cut into broadcast packets. Opus is not encoded
+//! here: a publisher's encoder writes the packets, and they are carried as
+//! they are (decision E.124). This module allocates.
 
 use alloc::vec::Vec;
 
@@ -44,6 +46,12 @@ pub enum EncodeError {
     Length,
     /// A label longer than the bound.
     Label,
+    /// A codec this module does not encode: Opus comes as packets
+    /// ([`Sound::opus`], [`Sound::packet_records`]).
+    Encoder,
+    /// Opus packets that are not all one length: the profile carries
+    /// constant-rate packets, one a block (decision E.124).
+    PacketLength,
 }
 
 impl Sound {
@@ -72,6 +80,7 @@ impl Sound {
         let data = match codec {
             Codec::Pcm16 => pcm.iter().flat_map(|sample| sample.to_le_bytes()).collect(),
             Codec::ImaAdpcm => ima_blocks(pcm, usize::try_from(per_block).map_err(|_| EncodeError::Length)?),
+            Codec::Opus => return Err(EncodeError::Encoder),
         };
         Ok(Self { handle, generation, id: u32::from(handle), codec, rate_hz, block_bytes, samples, data, label: None })
     }
@@ -105,6 +114,68 @@ impl Sound {
         })
     }
 
+    /// An Opus sound from an encoder's packets, `packet_bytes` each, back to
+    /// back in `packets`, of which the sound keeps `samples` samples: the
+    /// last packet's frame may run past the sound's end (decision E.124).
+    ///
+    /// # Errors
+    /// Packets of a length the profile does not carry or not all one length,
+    /// none, more than a sound may have, or `samples` the packets do not hold.
+    pub fn opus(
+        handle: u8,
+        generation: u16,
+        packet_bytes: u16,
+        packets: &[u8],
+        samples: u32,
+    ) -> Result<Self, EncodeError> {
+        if !Codec::Opus.allows_block(packet_bytes) {
+            return Err(EncodeError::BlockSize(packet_bytes));
+        }
+        let count = packets.len().checked_div(usize::from(packet_bytes)).unwrap_or(0);
+        if !packets.len().is_multiple_of(usize::from(packet_bytes)) {
+            return Err(EncodeError::PacketLength);
+        }
+        let blocks = u32::try_from(count).map_err(|_| EncodeError::Length)?;
+        let held = blocks.saturating_mul(crate::OPUS_FRAME_SAMPLES);
+        if count == 0
+            || u16::try_from(count).is_err()
+            || samples == 0
+            || samples > held
+            || samples.div_ceil(crate::OPUS_FRAME_SAMPLES) != blocks
+        {
+            return Err(EncodeError::Length);
+        }
+        Ok(Self {
+            handle,
+            generation,
+            id: u32::from(handle),
+            codec: Codec::Opus,
+            rate_hz: crate::OPUS_RATE,
+            block_bytes: packet_bytes,
+            samples,
+            data: packets.to_vec(),
+            label: None,
+        })
+    }
+
+    /// The DATA records of a live Opus sound's next packets, `block_bytes`
+    /// each, back to back in `packets`, numbered from block `first` (counting
+    /// modulo 2¹⁶): as many to a record as fit, since a packet is small.
+    ///
+    /// # Errors
+    /// Not an Opus sound, or packets that are not all its length.
+    pub fn packet_records(&self, first: u16, packets: &[u8]) -> Result<Vec<Vec<u8>>, EncodeError> {
+        if self.codec != Codec::Opus {
+            return Err(EncodeError::Encoder);
+        }
+        if !packets.len().is_multiple_of(usize::from(self.block_bytes)) {
+            return Err(EncodeError::PacketLength);
+        }
+        let per_record =
+            MAX_BODY.saturating_sub(DATA_FIXED).checked_div(usize::from(self.block_bytes)).unwrap_or(1).max(1);
+        Ok(self.records_of(packets, first, per_record))
+    }
+
     /// Samples in each whole block.
     #[must_use]
     pub fn samples_per_block(&self) -> u32 {
@@ -114,6 +185,7 @@ impl Sound {
     /// The DATA records of a live sound's next whole blocks, numbered from
     /// block `first` (counting modulo 2¹⁶), one block a record so each is
     /// sent as soon as it exists. A final part block is padded with silence.
+    /// An Opus sound's packets go by [`Sound::packet_records`]: none here.
     #[must_use]
     pub fn live_records(&self, first: u16, pcm: &[i16]) -> Vec<Vec<u8>> {
         let per_block = usize::try_from(self.samples_per_block()).unwrap_or(1).max(1);
@@ -122,6 +194,7 @@ impl Sound {
         let data = match self.codec {
             Codec::Pcm16 => padded.iter().flat_map(|sample| sample.to_le_bytes()).collect(),
             Codec::ImaAdpcm => ima_blocks(&padded, per_block),
+            Codec::Opus => return Vec::new(),
         };
         self.records_of(&data, first, 1)
     }

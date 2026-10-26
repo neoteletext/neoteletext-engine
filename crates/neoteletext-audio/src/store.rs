@@ -75,7 +75,7 @@ impl Entry {
     /// Bytes in block `index`.
     #[must_use]
     pub fn block_length(&self, index: u16) -> usize {
-        usize::try_from(self.codec.block_bytes_for(self.block_samples(index))).unwrap_or(usize::MAX)
+        usize::try_from(self.codec.block_bytes_for(self.block_bytes, self.block_samples(index))).unwrap_or(usize::MAX)
     }
 
     fn data_bytes(&self) -> usize {

@@ -11,7 +11,21 @@ impl<const OBJECTS: usize, const SLOTS: usize> Receiver<'_, OBJECTS, SLOTS> {
     pub(super) fn send_sound(&mut self, entry: &Entry, sink: &mut dyn VoiceSink) {
         sink.define(entry.sound, SoundFormat { rate_hz: entry.rate_hz, samples: entry.samples });
         self.store.set_at_sink(entry.sound, true);
-        for index in 0..entry.blocks {
+        // Sent whole: an Opus sound is decoded again from its first block.
+        #[cfg(feature = "opus")]
+        self.opus.release(entry.sound);
+        self.send_blocks(entry, 0, entry.blocks, sink);
+    }
+
+    /// Sends `count` blocks from `first` that have just arrived: each decoded
+    /// alone, or an Opus sound's in order from where its decoder stands.
+    pub(super) fn send_blocks(&mut self, entry: &Entry, first: u16, count: u16, sink: &mut dyn VoiceSink) {
+        #[cfg(feature = "opus")]
+        if entry.codec == Codec::Opus {
+            self.opus.send_stored(&self.store, entry, &mut self.statistics, sink);
+            return;
+        }
+        for index in first..first.saturating_add(count) {
             self.send_block(entry, index, sink);
         }
     }
@@ -21,6 +35,12 @@ impl<const OBJECTS: usize, const SLOTS: usize> Receiver<'_, OBJECTS, SLOTS> {
     /// sent as silence, so a lost block never stops the sound.
     pub(super) fn send_live(&mut self, sound: SoundId, sink: &mut dyn VoiceSink) {
         let Some(entry) = self.store.entries().find(|entry| entry.sound == sound).copied() else { return };
+        #[cfg(feature = "opus")]
+        if entry.codec == Codec::Opus {
+            let next = self.opus.send_live(&self.store, &entry, &mut self.statistics, sink);
+            self.store.set_live_cursor(sound, next, entry.arrived_ms);
+            return;
+        }
         let Some(newest) = entry.newest else { return };
         let mut next = entry.next;
         let silence = [0_i16; MAX_BLOCK_SAMPLES];
@@ -77,5 +97,8 @@ fn decode(codec: Codec, block: &[u8], pcm: &mut [i16; MAX_BLOCK_SAMPLES]) -> Opt
         Codec::ImaAdpcm => crate::ima::decode_block(block, pcm).ok(),
         #[cfg(not(feature = "ima"))]
         Codec::ImaAdpcm => None,
+        // An Opus packet cannot be decoded alone: the decoders of
+        // `receiver::opus` take them in order.
+        Codec::Opus => None,
     }
 }

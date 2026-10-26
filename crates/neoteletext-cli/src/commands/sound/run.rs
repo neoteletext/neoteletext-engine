@@ -34,6 +34,14 @@ pub fn sound(options: &SoundOptions, input: &Path, output: &Path, no_sandbox: bo
     let block = match codec {
         Codec::ImaAdpcm => neoteletext_audio::IMA_BLOCK_LARGE,
         Codec::Pcm16 => neoteletext_audio::MAX_PCM_BLOCK,
+        // This command encodes a WAV file; Opus is carried from an encoder's
+        // packets (decision E.124), so it is never asked for here.
+        Codec::Opus => {
+            return Err((
+                exit::USAGE,
+                "Opus is carried from an encoder's packets, not encoded from a WAV file".to_owned(),
+            ));
+        }
     };
     let refused = |error| {
         (
@@ -57,7 +65,7 @@ pub fn sound(options: &SoundOptions, input: &Path, output: &Path, no_sandbox: bo
         // A live sound's blocks are small, so each goes as soon as it exists.
         let block = match codec {
             Codec::ImaAdpcm => neoteletext_audio::IMA_BLOCK_SMALL,
-            Codec::Pcm16 => block,
+            Codec::Pcm16 | Codec::Opus => block,
         };
         let sound = Sound::live(options.handle, 1, codec, wave.rate_hz(), block).map_err(refused)?;
         let packets = live_packets(&sound, &command, wave.samples(), options.repeat, options.pace)

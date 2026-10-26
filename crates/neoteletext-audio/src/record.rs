@@ -195,6 +195,9 @@ fn object<'a>(fields: &mut Fields<'a>) -> Result<Object<'a>, RecordError> {
         if !codec.allows_block(block_bytes) {
             return Err(RecordError::BadValue("block size"));
         }
+        if !codec.allows_rate(rate_hz) {
+            return Err(RecordError::BadValue("sample rate"));
+        }
         let per_block = codec.samples_per_block(block_bytes);
         let expected = samples.div_ceil(per_block);
         if u32::from(blocks) != expected {

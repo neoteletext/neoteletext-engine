@@ -70,7 +70,8 @@ The profile carries two formats, 16-bit linear PCM and IMA ADPCM, and nothing el
 |---:|---|---:|---|---|---|
 | 0 | Linear PCM, signed 16-bit little-endian | 16 | every receiver | WAVE format tag `0x0001`. Not in any teletext or videotex standard (§13). | native, `TB_AUDIO_FMT_S16LE` |
 | 1 | IMA ADPCM in WAVE blocks (format tag `0x0011`) | 4 | every receiver | IMA 1992. ADPCM at 32 kbit/s is ETS 300 149's default and mandatory encoding (§7.3 table 2, §9.1 table 3), but that ADPCM is G.721/G.726, not IMA (§13). | native, `TB_AUDIO_FMT_IMA_ADPCM`, assembly on every ISA |
-| 2–255 | reserved: a receiver ignores the object. Code 2 was held for a speech codec until the owner decided against one (E.89) | | | | |
+| 2 | Opus (RFC 6716), mono, 48 kHz, 20 ms frames: one constant-rate packet a block (§3.4) | 16 kbit/s on average | receivers built with the `opus` feature | RFC 6716, RFC 8251 | not yet |
+| 3–255 | reserved: a receiver ignores the object. Code 2 was held for a speech codec until the owner decided against one (E.89), then given to Opus (E.123, E.124) | | | | |
 
 Every object is one channel. The output of a microcontroller receiver is mono, and so is the broadcast budget (§6.3).
 
@@ -122,7 +123,13 @@ The IMA ADPCM figures include block headers: 505 samples per 256-byte block, 1 0
 
 ### 3.4 Opus: the decoder
 
-The owner chose Opus (RFC 6716, with RFC 8251's corrections) for sound beside PCM and IMA ADPCM, in one profile: mono, 16 kbit/s on average, 20 ms frames, 48 kHz out (decision E.123). It is not yet carried; it is to take code 2 (§3.1) when it is wired into records, the store and the mixer (issue #223). The decoder, `neoteletext-opus`, is ready for that:
+The owner chose Opus (RFC 6716, with RFC 8251's corrections) for sound beside PCM and IMA ADPCM, in one profile: mono, 16 kbit/s on average, 20 ms frames, 48 kHz out (decision E.123). It is carried as code 2 (§3.1, decision E.124):
+
+- **One packet a block, all one length.** The OBJECT's block bytes are the packet length, 1 to 160, the same for every block: a constant-rate encoder writes them so (`ffmpeg -c:a libopus -b:a 16k -vbr off -frame_duration 20`, 40 bytes a packet). A block holds 960 samples; the final block is whole. Rate code 7 only. A DATA record holds 25 packets of 40 bytes.
+- **Decoded in order** (REQ-AUD-025): the receiver keeps two decoders, each following one sound; a stored sound is decoded from its first block as far as its blocks have arrived without a gap; a live sound's lost packet is concealed by its decoder, not given as silence.
+- **Not encoded by the engine:** a publisher's encoder writes the packets, and the publishing tools carry them as they are.
+
+The decoder, `neoteletext-opus`:
 
 - **Packets.** One frame a packet: bare (TOC code 0), or padded in a code 3 packet of one frame, which is how libopus's encoder fills a constant-rate packet. At most 160 bytes: a 16 kbit/s frame averages 40, and variable-rate frames measured up to 79. Anything else is refused before the decoder changes (REQ-AUD-022). A frame of a byte or none is one the encoder left out in silence (discontinuous transmission), and is concealed.
 - **Modes.** At 16 kbit/s libopus's encoder writes Hybrid frames (SILK below 8 kHz, CELT above) and CELT-only frames; SILK-only frames come only if an encoder narrows the bandwidth, and are decoded too. A change of mode is smoothed as RFC 6716 §4.5 says: a redundant 5 ms CELT frame and a cross-fade when the encoder sent one, a concealed 5 ms bridge when it did not, and a 2.5 ms silent CELT frame to empty CELT's overlap when CELT stops.
@@ -420,7 +427,7 @@ These are tellyboy's constraints as built (`<tellyboy/audio.h>`; `components/AUD
 | | Level A: microcontroller | Level B: desktop |
 |---|---|---|
 | Channels | at least 2 | 4 |
-| Codecs | 16-bit PCM, IMA ADPCM | 16-bit PCM, IMA ADPCM |
+| Codecs | 16-bit PCM, IMA ADPCM | 16-bit PCM, IMA ADPCM, Opus (decision E.124) |
 | Sample rates | all of §3.2 | all of §3.2 |
 | Object store | at least 16 KB (4 s of IMA ADPCM at 8 kHz) | at least 4 MB |
 | Records being reassembled | 2 | 8 |

@@ -41,3 +41,8 @@ pub const LIVE_LOOKAHEAD_BLOCKS: u16 = 3;
 /// A progressive start waits for this many milliseconds of contiguous
 /// sound (REQ-AUD-013).
 pub const PROGRESSIVE_BUFFER_MS: u32 = 40;
+/// The Opus decoders a receiver keeps (decision E.124), about 28 KB each:
+/// one for a live sound and one for a stored sound arriving at once. A third
+/// Opus sound waits for one to free; a stored sound frees its decoder once
+/// every block is decoded.
+pub const OPUS_DECODERS: usize = 2;

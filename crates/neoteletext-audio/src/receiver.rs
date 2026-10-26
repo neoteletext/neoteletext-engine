@@ -13,6 +13,8 @@ use crate::store::{Defined, Entry, Store, Stored};
 
 #[cfg(feature = "idl")]
 mod carriage;
+#[cfg(feature = "opus")]
+mod opus;
 mod play;
 mod send;
 
@@ -49,6 +51,9 @@ pub struct Receiver<'a, const OBJECTS: usize, const SLOTS: usize> {
     statistics: Statistics,
     /// The port's time, in milliseconds (REQ-AUD-014).
     now_ms: u64,
+    /// Opus sounds' decoders (decision E.124).
+    #[cfg(feature = "opus")]
+    opus: opus::Lanes,
 }
 
 impl<'a, const OBJECTS: usize, const SLOTS: usize> Receiver<'a, OBJECTS, SLOTS> {
@@ -65,6 +70,8 @@ impl<'a, const OBJECTS: usize, const SLOTS: usize> Receiver<'a, OBJECTS, SLOTS> 
             page_sounds: true,
             statistics: Statistics::default(),
             now_ms: 0,
+            #[cfg(feature = "opus")]
+            opus: opus::Lanes::new(),
         }
     }
 
@@ -92,6 +99,8 @@ impl<'a, const OBJECTS: usize, const SLOTS: usize> Receiver<'a, OBJECTS, SLOTS> 
             }
             sink.forget(entry.sound);
             self.store.set_at_sink(entry.sound, false);
+            #[cfg(feature = "opus")]
+            self.opus.release(entry.sound);
         }
     }
 
@@ -142,6 +151,8 @@ impl<'a, const OBJECTS: usize, const SLOTS: usize> Receiver<'a, OBJECTS, SLOTS> 
         self.store.clear();
         #[cfg(feature = "idl")]
         self.reassembler.clear();
+        #[cfg(feature = "opus")]
+        self.opus.clear();
         self.channels = [Channel::default(); CHANNELS as usize];
     }
 
@@ -150,6 +161,8 @@ impl<'a, const OBJECTS: usize, const SLOTS: usize> Receiver<'a, OBJECTS, SLOTS> 
     /// next play.
     pub fn sink_lost(&mut self) {
         self.store.sink_lost();
+        #[cfg(feature = "opus")]
+        self.opus.clear();
         for channel in &mut self.channels {
             channel.playing_page = None;
             channel.playing = None;
@@ -168,7 +181,11 @@ impl<'a, const OBJECTS: usize, const SLOTS: usize> Receiver<'a, OBJECTS, SLOTS> 
                 let channels = self.channels;
                 let busy = |sound: SoundId| channels.iter().any(|channel| needs(channel, sound));
                 match self.store.define(&object, &busy) {
-                    Defined::New { replaced: Some(old), .. } if old.at_sink => sink.forget(old.sound),
+                    Defined::New { replaced: Some(old), .. } if old.at_sink => {
+                        sink.forget(old.sound);
+                        #[cfg(feature = "opus")]
+                        self.opus.release(old.sound);
+                    }
                     Defined::New { .. } | Defined::Repeat | Defined::Ignored => {}
                     Defined::Conflict => bump(&mut self.statistics.conflicts),
                     Defined::ResourceLimit => bump(&mut self.statistics.resource_limits),
@@ -185,9 +202,7 @@ impl<'a, const OBJECTS: usize, const SLOTS: usize> Receiver<'a, OBJECTS, SLOTS> 
                                 self.send_live(entry.sound, sink);
                             }
                         } else if entry.at_sink {
-                            for index in first..first.saturating_add(count) {
-                                self.send_block(&entry, index, sink);
-                            }
+                            self.send_blocks(&entry, first, count, sink);
                         }
                     }
                     self.start_waiting(sink);

@@ -4,8 +4,8 @@ This area is the teletext audio profile (decisions E.84 to E.86): sounds carried
 
 **REQ-AUD-001 — Formats.**
 *Phase:* Phase 2 (the whole area).
-The profile shall carry two formats, and only these: code 0, linear PCM, signed 16-bit little-endian; and code 1, IMA ADPCM in WAVE blocks (format tag 0x0011), whose blocks each begin with their own predictor and step index. Every sound is one channel. A receiver shall ignore an object of any other code; codes 2 to 255 are reserved. *Amended 20 October 2026 (decision E.89):* code 2 was reserved for a speech codec for live broadcast; the owner decided there will be none. The IMA ADPCM decoder shall follow the IMA's 1992 recommendation, saturate rather than wrap, and refuse a block whose step index exceeds 88.
-*Verification:* A worked decoding of a known block; tests of saturation and of a bad step index; PCM round-trips exactly through the whole receiver.
+The profile shall carry two formats, and only these: code 0, linear PCM, signed 16-bit little-endian; and code 1, IMA ADPCM in WAVE blocks (format tag 0x0011), whose blocks each begin with their own predictor and step index. Every sound is one channel. A receiver shall ignore an object of any other code; codes 2 to 255 are reserved. *Amended 20 October 2026 (decision E.89):* code 2 was reserved for a speech codec for live broadcast; the owner decided there will be none. The IMA ADPCM decoder shall follow the IMA's 1992 recommendation, saturate rather than wrap, and refuse a block whose step index exceeds 88. *Amended 26 October 2026 (decision E.124):* code 2 is Opus in the profile of decision E.123, at 48 kHz alone; an object of code 2 at another rate is refused, and a receiver built without the decoder ignores code 2.
+*Verification:* A worked decoding of a known block; tests of saturation and of a bad step index; PCM round-trips exactly through the whole receiver; Opus objects read at 48 kHz and refused at another rate (`opus_objects_are_read_at_48_khz_with_packets_the_decoder_takes`).
 
 **REQ-AUD-002 — Sample rates.**
 A sound's rate shall be one of 8 000, 11 025, 16 000, 22 050, 24 000, 32 000, 44 100 and 48 000 samples a second, named by the codes 0 to 7. Any other code makes the OBJECT record invalid.
@@ -20,8 +20,8 @@ An OBJECT record shall carry the sound's handle (0 to 255), its generation (16 b
 *Verification:* Tests of a labelled object, a wrong block count and a reserved codec.
 
 **REQ-AUD-005 — The DATA record and block geometry.**
-A DATA record shall carry a handle, a generation, the index of its first block, and one or more whole blocks. An IMA ADPCM block is 256 or 512 bytes and holds 1 + 2 × (bytes − 4) samples; a PCM block is an even number of bytes, at most 1 000. Only a sound's final block may be shorter, and then only as long as its samples need. Blocks of the wrong length or beyond the sound's end make the record discarded.
-*Verification:* Store tests of whole, final and malformed blocks.
+A DATA record shall carry a handle, a generation, the index of its first block, and one or more whole blocks. An IMA ADPCM block is 256 or 512 bytes and holds 1 + 2 × (bytes − 4) samples; a PCM block is an even number of bytes, at most 1 000. Only a sound's final block may be shorter, and then only as long as its samples need. Blocks of the wrong length or beyond the sound's end make the record discarded. *Amended 26 October 2026 (decision E.124):* an Opus block is one packet of the object's block size, 1 to 160 bytes, the same for every block of the sound, and holds 960 samples; its final block is whole.
+*Verification:* Store tests of whole, final and malformed blocks; Opus sounds carried end to end (`tests/receiver.rs`, module `opus`).
 
 **REQ-AUD-006 — The CONTROL record.**
 A CONTROL record shall carry, in 14 bytes: the channel (0 to 3), a sequence number, the operation (1 play, 2 stop, 3 set gain), the sound's handle and generation, a gain of 0 to 100 per cent, a fade of at most 10 000 milliseconds, flags (1 progressive, 2 loop, 4 after current; others zero), a duck code of 0 to 6, and a page number of 100 to 899 in EN 300 706 form, or 0xFFFF for the whole service.
@@ -55,10 +55,14 @@ A play naming a page shall be armed for that page. It shall start whenever that 
 A play shall start once its whole sound has arrived, or, with the *progressive* flag, once 40 milliseconds of it have arrived contiguously from the start (or all of it, if shorter); later blocks are passed to the sink as they arrive. Samples of blocks that have not arrived are silence at the sink, and the sound's timing is never shifted or stretched. *Not yet built:* the 5 ms fades at each edge of a missing block, and the `concealed` report.
 *Verification:* A receiver test of a progressive start and of later blocks reaching the sink.
 
+**REQ-AUD-025 — Opus decoded in order.**
+An Opus sound's packets shall be decoded in index order, by one decoder that follows the sound: a stored sound from its first block, as far as its blocks have arrived without a gap; a live sound from where it joined, a lost packet concealed. The receiver shall keep at most `OPUS_DECODERS` decoders; a stored sound frees its decoder when its last block is decoded. A packet the decoder refuses is concealed and counted as a decode failure. The engine carries an encoder's packets and encodes no Opus itself.
+*Verification:* The sink's samples equal one decoder's output for the same packets, for a stored sound arriving in reverse order, a progressive play and a live sound with a lost packet (`tests/receiver.rs`, module `opus`).
+
 **REQ-AUD-014 — Live sounds.**
 A sound with a sample count of 0 is live: its blocks arrive without end, each whole, their index counting modulo 2¹⁶ (RFC 1982). A receiver shall:
 - **Hold** the newest 32 blocks in a ring, dropping a block older than the ring;
-- **Join** at the newest block when a play can start, and give the sink each later block in index order; a block still missing once three newer ones have arrived is given as silence and counted as `concealed`;
+- **Join** at the newest block when a play can start, and give the sink each later block in index order; a block still missing once three newer ones have arrived is given as silence and counted as `concealed` (an Opus block is concealed by its decoder instead, decision E.124);
 - **Follow** the sender's clock: the sink buffers the stream and trims its playing rate to hold the buffer level, absorbing at least ±1 per cent of clock error (the mixer: 400 ms buffered, ±5 per cent);
 - **Fade out** over 100 ms when no new block has come for two seconds, as EN 300 708 clause 6.7.1.1 asks, forget the sound at the sink, and start the play again, at the newest block, when blocks return.
 The port tells the receiver the time (`Receiver::tick`), and the receiver says when it next needs it (`Receiver::next_tick_ms`): when a live sound at the sink would stall, or never while none plays.

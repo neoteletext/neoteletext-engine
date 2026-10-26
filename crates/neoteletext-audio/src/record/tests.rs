@@ -48,8 +48,52 @@ fn a_wrong_block_count_is_refused() {
 #[test]
 fn a_reserved_codec_is_read_and_left_for_the_receiver_to_ignore() {
     let mut body = object_body();
-    body[7] = 2;
+    body[7] = 3;
     let bytes = frame(TYPE_OBJECT, &body);
+    let Record::Object(object) = parse(&bytes).unwrap() else { panic!("not an object") };
+    assert_eq!(object.codec, None);
+}
+
+/// An Opus object: handle 3, generation 1, id 9, codec 2, rate code `rate`,
+/// packets of `packet` bytes, `samples` samples in `blocks` blocks.
+fn opus_body(rate: u8, packet: u16, samples: u32, blocks: u16) -> Vec<u8> {
+    let mut body = std::vec![3, 0, 1, 0, 0, 0, 9, 2, rate];
+    body.extend_from_slice(&packet.to_be_bytes());
+    body.extend_from_slice(&samples.to_be_bytes());
+    body.extend_from_slice(&blocks.to_be_bytes());
+    body
+}
+
+/// Decision E.124: code 2 is Opus, one 960-sample packet a block, at 48 kHz
+/// only, packets of 1 to 160 bytes.
+#[cfg(feature = "opus")]
+#[test]
+fn opus_objects_are_read_at_48_khz_with_packets_the_decoder_takes() {
+    const RATE_48_KHZ: u8 = 7;
+    const RATE_16_KHZ: u8 = 2;
+    let bytes = frame(TYPE_OBJECT, &opus_body(RATE_48_KHZ, 40, 2000, 3));
+    let Record::Object(object) = parse(&bytes).unwrap() else { panic!("not an object") };
+    assert_eq!(object.codec, Some(Codec::Opus));
+    assert_eq!((object.rate_hz, object.block_bytes, object.blocks), (48_000, 40, 3));
+    assert_eq!(
+        parse(&frame(TYPE_OBJECT, &opus_body(RATE_16_KHZ, 40, 2000, 3))),
+        Err(RecordError::BadValue("sample rate"))
+    );
+    assert_eq!(
+        parse(&frame(TYPE_OBJECT, &opus_body(RATE_48_KHZ, 161, 2000, 3))),
+        Err(RecordError::BadValue("block size"))
+    );
+    assert_eq!(
+        parse(&frame(TYPE_OBJECT, &opus_body(RATE_48_KHZ, 40, 2000, 2))),
+        Err(RecordError::BadValue("block count"))
+    );
+}
+
+/// Built without the decoder, a receiver ignores Opus as a reserved code.
+#[cfg(not(feature = "opus"))]
+#[test]
+fn without_the_decoder_opus_is_ignored() {
+    let bytes = frame(TYPE_OBJECT, &opus_body(7, 40, 2000, 3));
     let Record::Object(object) = parse(&bytes).unwrap() else { panic!("not an object") };
     assert_eq!(object.codec, None);
 }

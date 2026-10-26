@@ -647,6 +647,7 @@ name = "neoteletext-audio"
 version = "0.1.0"
 dependencies = [
  "neoteletext-core",
+ "neoteletext-opus",
 ]
 
 [[package]]
