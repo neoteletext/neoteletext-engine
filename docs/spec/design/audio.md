@@ -129,7 +129,8 @@ The owner chose Opus (RFC 6716, with RFC 8251's corrections) for sound beside PC
 - **Losses.** A lost packet is concealed by SILK, CELT or both, in the mode of the last frame (RFC 6716 §4.4). In-band FEC is never decoded, by the owner's decision: its data is read past.
 - **Arithmetic.** Integer only, exactly as libopus's fixed-point build computes, so the output is bit-exact with it on every processor (REQ-AUD-023). Every operation is in a form that cannot panic: the C's wrapping sums wrap, lengths saturate, and indexing is checked or by type.
 - **Resources.** About 80 KB of flash on the Cortex-M0, 27.9 KB of state, about 2.6 KB of stack, and 0.6 to 0.8 million instructions a 20 ms frame at full optimisation; decision E.123 has the measurements.
-- **Proof.** `tests/oracles/run_opus.sh` compares every sample and final range with libopus over streams encoded at every setting that changes the bitstream, as received and with losses.
+- **Proof.** `tests/oracles/run_opus.sh` compares every sample and final range with libopus over streams encoded at every setting that changes the bitstream, as received and with losses, and over random hostile streams.
+- **Security.** The decoder's security analysis is `opus-security.md`, beside this document.
 
 ## 4. Records
 

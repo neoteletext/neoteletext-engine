@@ -250,6 +250,6 @@ Built behind `neoteletext-web`'s feature `dbsc`; owed:
 Built and integrated; owed:
 - **Opus in the audio profile:** code 2 of REQ-AUD-001 (amended then), OBJECT and DATA records for Opus packets, the store and the voice sink, `neottx sound`, and the browser's playback (issue #223). PCM and IMA ADPCM do not change.
 - **Hardware:** the decoder has run only under QEMU; its cycles on a real Cortex-M0 and on the ESP32 (Xtensa, not yet built: REQ-GEN-015) are unmeasured.
-- **Fuzzing:** `opus_packets` has run only the gate's 20 seconds and, before the move, 25 minutes with overflow checks on the host; a longer run with `cargo fuzz run -a` is owed.
+- **Fuzzing:** `opus_packets` has run 45 minutes with overflow checks (`cargo fuzz run -a`) on the engine's version, and the gate gives it 20 seconds; the gate's run is without `-a`, so overflow checks reach it only by hand (`docs/spec/design/opus-security.md`).
 - **The porting workspace** `tmp/opus-integer/` (ignored) holds the internal oracle tests; it is now behind this crate, which is the source.
 

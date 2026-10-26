@@ -57,3 +57,4 @@ This is the threat model REQ-SEC-002 requires. Security overrides every other re
 |---|---|---|---|
 | 10 October 2026 | Implementation in progress | Initial model | Gaps listed in the status table above. |
 | 10 October 2026 | amd64 and iTerm2 implementation complete | Implementation review | REQ-SEC-018 and REQ-SEC-024 done. Open: fuzzing, `cargo-deny`, the bill of materials, release signing, and the macOS and Windows sandboxes. |
+| 26 October 2026 | The Opus decoder (decision E.123) | Three independent reviews (the Opus layer and tooling, CELT, SILK), fuzzing and the known Opus CVEs | No exploitable fault; three latent faults and the test gaps fixed (f5c6d9a, ce95ba6, f9d3cb6). `docs/spec/design/opus-security.md`. |
