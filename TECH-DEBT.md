@@ -244,3 +244,12 @@ Built behind `neoteletext-web`'s feature `dbsc`; owed:
 ## Timed tests under load (23 October 2026)
 
 `neoteletext-cli`'s `typing` test, whose median budget is 2 ms (REQ-INT-008), failed the commit gate once at 2.8 ms with the machine's load average near 20, and three times more when run alone, then passed five times in a row; nothing on its path had changed. A timed test that fails under load stops unrelated commits: consider measuring it against an unloaded baseline, or running it only in the full gate.
+
+## The Opus decoder (decision E.123, 26 October 2026)
+
+Built and integrated; owed:
+- **Opus in the audio profile:** code 2 of REQ-AUD-001 (amended then), OBJECT and DATA records for Opus packets, the store and the voice sink, `neottx sound`, and the browser's playback (issue #223). PCM and IMA ADPCM do not change.
+- **Hardware:** the decoder has run only under QEMU; its cycles on a real Cortex-M0 and on the ESP32 (Xtensa, not yet built: REQ-GEN-015) are unmeasured.
+- **Fuzzing:** `opus_packets` has run only the gate's 20 seconds and, before the move, 25 minutes with overflow checks on the host; a longer run with `cargo fuzz run -a` is owed.
+- **The porting workspace** `tmp/opus-integer/` (ignored) holds the internal oracle tests; it is now behind this crate, which is the source.
+

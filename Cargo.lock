@@ -704,6 +704,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "neoteletext-opus"
+version = "0.1.0"
+
+[[package]]
 name = "neoteletext-qrkeyboard"
 version = "0.1.0"
 dependencies = [

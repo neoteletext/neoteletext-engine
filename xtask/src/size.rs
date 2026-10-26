@@ -56,6 +56,9 @@ const BUILDS: &[Build] = &[
     // The web user agent without push, forms and cookies, then with them.
     Build { name: "web", features: "web", budget: None },
     Build { name: "web-all", features: "web-all", budget: None },
+    // The Opus decoder of the audio profile alone (decision E.123), over the core with no
+    // optional area.
+    Build { name: "opus", features: "opus", budget: None },
 ];
 
 /// Targets without a floating-point unit, where the float probe must be

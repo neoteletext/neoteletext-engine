@@ -20,7 +20,8 @@ step() { printf '\n== %s\n' "$*"; }
 # in all of them.
 readonly NO_PANIC_ROOTS=(crates/neoteletext-core/src/lib.rs crates/neoteletext-formats/src/lib.rs
     crates/neoteletext-slicer/src/lib.rs crates/neoteletext-web/src/lib.rs crates/neoteletext-image/src/lib.rs
-    crates/neoteletext-audio/src/lib.rs crates/neoteletext-audio-mix/src/lib.rs crates/neoteletext-input/src/lib.rs
+    crates/neoteletext-audio/src/lib.rs crates/neoteletext-audio-mix/src/lib.rs crates/neoteletext-opus/src/lib.rs
+    crates/neoteletext-input/src/lib.rs
     crates/neoteletext-qrkeyboard/src/lib.rs crates/neoteletext-app/src/lib.rs crates/neoteletext-cli/src/lib.rs
     crates/neoteletext-cli/src/main.rs)
 
@@ -78,13 +79,18 @@ if [ "$mode" = "full" ]; then
     step "no_std crates on the amd64 bare-metal target (REQ-GEN-002)"
     cargo build --quiet --target x86_64-unknown-none \
         -p neoteletext-core -p neoteletext-formats -p neoteletext-slicer -p neoteletext-web -p neoteletext-image \
-        -p neoteletext-audio -p neoteletext-audio-mix -p neoteletext-input
+        -p neoteletext-audio -p neoteletext-audio-mix -p neoteletext-opus -p neoteletext-input
 
     step "each crate with no optional area and with each area alone (decision E.61)"
     cargo xtask features
 
     step "linked test image on the amd64 bare-metal target: every build links (decision E.61)"
     cargo xtask size --target x86_64-unknown-none
+
+    # REQ-AUD-023: libopus is downloaded, pinned by checksum and built on first use, then
+    # cached in $NEOTELETEXT_CORPUS (or target/); a failed download or build fails the gate.
+    step "the Opus decoder against libopus 1.5.2 fixed point, every stream bit for bit (REQ-AUD-023)"
+    tests/oracles/run_opus.sh
 
     step "release tests, including the exhaustive error-code tests"
     cargo test --workspace --all-features --release --quiet

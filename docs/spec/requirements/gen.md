@@ -172,13 +172,16 @@ Code in the `no_std` crates shall follow these rules, because some targets lack 
 | **No formatting machinery on hot paths** | It adds several kilobytes to a small device. | The core shall not use `core::fmt` except in `Debug` implementations and behind an optional feature, so a small build can leave it out. |
 | **No deep recursion or large stack buffers** | Small devices have small stacks. | Everywhere. The largest stack frame of the core shall be documented. |
 
+*Amended 26 October 2026 (decision E.123):* the Opus decoder divides, and multiplies 32 by 32 bits into 64, in its per-packet path, where the reference does: bit-exactness with it (REQ-AUD-023) needs them, and their cost on the Cortex-M0 is measured and recorded in decision E.123. Its products of 16 by 32 bits use 32-bit forms proved equal to the 64-bit ones. Its one recursion, a band's split in CELT, is at most four calls deep.
+
 *Verification:* Inspection; the size check of REQ-GEN-009; the builds of REQ-GEN-015.
 
 **REQ-GEN-017 — Dependency policy.**
 Dependencies are judged by the microcontroller, as decision E.38 describes.
 
-- **Microcontroller crates.** These are the crates that run on bare-metal targets (REQ-GEN-015): `neoteletext-core`, `neoteletext-formats` without its `std` feature, `neoteletext-slicer`, `neoteletext-web` and the helpers of `neoteletext-image`.
-- **Crates with no dependencies.** `neoteletext-core`, `neoteletext-formats` and `neoteletext-slicer` shall have no dependencies outside the Rust distribution's `core` library. Fixed-capacity collections and bit flags shall be written in the Foundation layer.
+- **Microcontroller crates.** These are the crates that run on bare-metal targets (REQ-GEN-015): `neoteletext-core`, `neoteletext-formats` without its `std` feature, `neoteletext-slicer`, `neoteletext-web`, the helpers of `neoteletext-image`, and `neoteletext-opus`.
+- **Crates with no dependencies.** `neoteletext-core`, `neoteletext-formats`, `neoteletext-slicer` and `neoteletext-opus` shall have no dependencies outside the Rust distribution's `core` library. Fixed-capacity collections and bit flags shall be written in the Foundation layer.
+  *Amended 26 October 2026 (decision E.123):* `neoteletext-opus` is added to both lists.
 - **The web module.** `neoteletext-web` may depend only on `embedded-io`, with default features off. WebSocket framing, SHA-1, base64, the descriptor reader and the HTTP response-head parser shall be written in the project. Each shall be tested against the published test vectors of its standard, where the standard publishes them.
   *Amended 11 October 2026:* `httparse` was previously permitted as well. It was removed because of its linked panic paths (decision E.38, as amended).
 - **Rules for any new dependency.** A new dependency of a microcontroller crate, direct or indirect, needs a decision recorded in Part E. It shall:

@@ -8,6 +8,7 @@ members = [
     "crates/neoteletext-image",
     "crates/neoteletext-audio",
     "crates/neoteletext-audio-mix",
+    "crates/neoteletext-opus",
     "crates/neoteletext-input",
     "crates/neoteletext-qrkeyboard",
     "crates/neoteletext-app",
@@ -35,6 +36,7 @@ neoteletext-web = { path = "crates/neoteletext-web", default-features = false }
 neoteletext-image = { path = "crates/neoteletext-image" }
 neoteletext-audio = { path = "crates/neoteletext-audio", default-features = false }
 neoteletext-audio-mix = { path = "crates/neoteletext-audio-mix" }
+neoteletext-opus = { path = "crates/neoteletext-opus" }
 neoteletext-input = { path = "crates/neoteletext-input" }
 neoteletext-qrkeyboard = { path = "crates/neoteletext-qrkeyboard" }
 neoteletext-app = { path = "crates/neoteletext-app", default-features = false }

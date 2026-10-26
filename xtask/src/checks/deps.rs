@@ -16,6 +16,8 @@ const PERMITTED: &[(&str, &[&str])] = &[
     ("neoteletext-image", &["neoteletext-core"]),
     ("neoteletext-audio", &["neoteletext-core"]),
     ("neoteletext-audio-mix", &[]),
+    // Decision E.123: an integer Opus decoder written here, with no dependency.
+    ("neoteletext-opus", &[]),
     ("neoteletext-input", &["neoteletext-core", "neoteletext-audio"]),
 ];
 

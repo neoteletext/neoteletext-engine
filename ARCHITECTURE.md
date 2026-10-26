@@ -237,9 +237,11 @@ Each module named below is one concept. Since the reorganisation of 24 October 2
   - `neoteletext-app::write_text` (feature `write-text`) turns Unicode text into a page in any set: it encodes with the core's `charset` tables, reorders right-to-left text with the `unicode-bidi` crate, lays out Thai and Lao rows, and writes tones and rarer marks as X/26 triplets (decision E.82, REQ-CLI-010). `neottx write-text` is its command.
 - **Requirements:** CLI, SEC-017 to SEC-019, GEN-018.
 
-### Audio — `neoteletext-audio`, `neoteletext-audio-mix` (area AUD)
+### Audio — `neoteletext-audio`, `neoteletext-audio-mix`, `neoteletext-opus` (area AUD)
 
 Sound carried with teletext sits beside the page layers, as the web user agent does: it shares only the packet type and the Hamming 8/4 decoder of L1 and Foundation, and the EN 300 708 constants of `consts`. The port passes each packet to `neoteletext_audio::receiver::Receiver::push_packet` before the decoder; the decoder keeps ignoring packet 31 (REQ-PKT-008). The receiver reassembles records (`idl`), parses them (`record`), keeps sounds compressed (`store`), applies each channel's latest command (`control`), decodes IMA ADPCM (`ima`), and drives the port's voice sink (`port::VoiceSink`, the L8 contract for sound). It mixes nothing and touches no hardware. `neoteletext-audio-mix` is a mixer a desktop or phone port may use as its sink's engine; a microcontroller port maps the sink onto the tellyboy driver instead. The design is `docs/spec/design/audio.md` and `audio-platforms.md`.
+
+`neoteletext-opus` decodes Opus (RFC 6716) for one profile, mono, one 20 ms frame a packet, 48 kHz out (decision E.123): an integer-only port of libopus 1.5.2's fixed-point decoder, bit-exact with it, `no_std`, with no allocation and no dependency. A packet outside the profile is refused before the decoder changes; a lost packet is concealed; in-band FEC is read past, never decoded. Its interface is `Decoder::decode`, `Decoder::conceal` and `Decoder::final_range`; the decoder holds its own scratch, about 28 KB, and a decode needs about 2.5 KB of stack. It reads packets and writes samples, and is the audio profile's decoder for its code 2 once that is wired (issue #223).
 
 ### Cross-cutting modules — `neoteletext-core::{policy, config, trace}`
 
@@ -433,6 +435,7 @@ Each boundary is one narrow type. Nothing reaches past its neighbour.
 | `neoteletext-image` | L5 | Helpers `no_std`; writers `std` |
 | `neoteletext-audio` | Audio (area AUD, section 3, "Audio"): carriage, records, store, control, IMA ADPCM | `no_std`, no allocation; the `encode` feature allocates |
 | `neoteletext-audio-mix` | Audio: the software mixer for ports with an operating system's audio output | `no_std` with `alloc` |
+| `neoteletext-opus` | Audio: the Opus decoder of the audio profile (decision E.123) | `no_std`, no allocation, integer only |
 | `neoteletext-app` | L9: the application layer of `neottx` and any other viewer program: sessions, inputs, live mode's two processes, sandboxing | `std` |
 | `neoteletext-cli` | L9 (and text output of L5) | `std` |
 | `neoteletext-ffi` | L9: the C interface (Phase 2) | The only crate with `unsafe` |
@@ -494,6 +497,14 @@ Where each crate's code lives, one sentence per directory (the reorganisation of
 - `receiver/`: the broadcast carriage, starting plays and sending samples to the sink.
 - `mixer/` (`neoteletext-audio-mix`): live sounds in the mixer.
 
+**`neoteletext-opus`**
+- `packet`: the profile's packets (RFC 6716 §3.1), refused before anything changes.
+- `decoder`: the Opus layer (RFC 6716 §4.5): SILK, CELT or both, redundant frames, transitions and concealment.
+- `range`: the range decoder (RFC 6716 §4.1).
+- `silk/`: SILK (RFC 6716 §4.2): side information, excitation, synthesis, concealment, comfort noise and the resampler to 48 kHz.
+- `celt/`: CELT (RFC 6716 §4.3): energies, allocation, the pyramid vector quantiser, bands, the inverse MDCT and FFT, the post-filter and concealment.
+- `fixed`, `math`: the reference's fixed-point arithmetic and approximations, one function a macro.
+
 **`neoteletext-input`**
 - `event/`: encoding and decoding the input stream.
 - `keys/`: the one-byte key codes and the United States layout.
@@ -547,6 +558,7 @@ Decision E.61 makes each crate's optional areas Cargo features, all on by defaul
 | `neoteletext-web` | `push`, `forms`, `cookies`; not default: `dbsc` (REQ-WEB-017, decision E.110), `error-trait` and `std` |
 | `neoteletext-app` | `live`, `slice`, `write-text` (the text-to-page writer and its `unicode-bidi` dependency) |
 | `neoteletext-audio` | `idl`, `ima`, and `encode` (not default) |
+| `neoteletext-opus` | None: the profile is the whole decoder |
 | `neoteletext-cli` | `view`, `live`, `slice`, `write-text`, `sound` |
 
 **Two checks keep this true:**
@@ -598,6 +610,6 @@ A module may use the modules listed for it, and nothing else. The cross-cutting 
 | `viewer`, `nav`, `forms` | L6 | Foundation, `acq`, `level1`, `level15`, `enhance`, `colour`, `render` (change tracking), `service` |
 | `port` | L8 | Foundation |
 
-`neoteletext-formats` and `neoteletext-slicer` may use Foundation and `packet` only. `neoteletext-web` may use Foundation, `policy` and `config` only; it never uses the decoding layers. `neoteletext-image` may use Foundation, the `render` output types and the `colour` Colour Map type only. `neoteletext-audio` may use Foundation and `packet` only; `neoteletext-audio-mix` uses no other crate.
+`neoteletext-formats` and `neoteletext-slicer` may use Foundation and `packet` only. `neoteletext-web` may use Foundation, `policy` and `config` only; it never uses the decoding layers. `neoteletext-image` may use Foundation, the `render` output types and the `colour` Colour Map type only. `neoteletext-audio` may use Foundation and `packet` only; `neoteletext-audio-mix` and `neoteletext-opus` use no other crate.
 
 `level15` remains the Level 1.5 pass, used only at Level 1.5. The modules `colour`, `objects` and `enhance` serve Levels 2.5 and 3.5 (section 4.5); `drcs` was removed on 20 October 2026 (decision E.95). The G3 glyph data generated by `xtask` belongs to `glyphs`, whose dependencies do not change. The `xtask` layer check holds its own copy of this table, which shall be updated in the same change that adds these modules (REQ-ARCH-011). `joining` (decision E.79) is added to it in the change that creates the module.

@@ -1,0 +1,16 @@
+[package]
+name = "neoteletext-opus"
+description = "The audio profile's Opus decoder (decision E.123): mono, 20 ms frames, 48 kHz, integer only, bit-exact with libopus fixed point, no_std, no allocation"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+# Ported from libopus 1.5.2 (BSD-3-Clause, `LICENSE-libopus` beside this file); the port's own
+# work is the project's MIT.
+license = "MIT AND BSD-3-Clause"
+publish.workspace = true
+
+# REQ-GEN-017 and decision E.123: no dependencies, and no features; the profile is the whole
+# decoder.
+
+[lints]
+workspace = true

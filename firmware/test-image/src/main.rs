@@ -238,6 +238,27 @@ mod web {
     static HANDLE: fn(&mut Agent<'_>, Instant, Input<'_>) = handle;
 }
 
+/// The Opus decoder (decision E.123, REQ-AUD-024): a packet decoded, or a loss concealed, into a
+/// frame.
+#[cfg(feature = "opus")]
+mod opus {
+    use super::black_box;
+    use neoteletext_opus::{Decoder, FRAME_SAMPLES};
+
+    fn decode(decoder: &mut Decoder, packet: &[u8], pcm: &mut [i16; FRAME_SAMPLES]) {
+        black_box(decoder.decode(packet, pcm).is_ok());
+    }
+
+    fn conceal(decoder: &mut Decoder, pcm: &mut [i16; FRAME_SAMPLES]) {
+        decoder.conceal(pcm);
+    }
+
+    #[used]
+    static DECODE: fn(&mut Decoder, &[u8], &mut [i16; FRAME_SAMPLES]) = decode;
+    #[used]
+    static CONCEAL: fn(&mut Decoder, &mut [i16; FRAME_SAMPLES]) = conceal;
+}
+
 /// REQ-GEN-019: one floating-point operation, which the symbol check must
 /// find on targets without a floating-point unit.
 #[cfg(feature = "float-probe")]

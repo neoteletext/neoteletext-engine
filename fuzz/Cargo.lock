@@ -102,6 +102,7 @@ dependencies = [
  "neoteletext-core",
  "neoteletext-formats",
  "neoteletext-input",
+ "neoteletext-opus",
  "neoteletext-slicer",
  "neoteletext-web",
 ]
@@ -113,6 +114,10 @@ dependencies = [
  "neoteletext-audio",
  "neoteletext-core",
 ]
+
+[[package]]
+name = "neoteletext-opus"
+version = "0.1.0"
 
 [[package]]
 name = "neoteletext-slicer"

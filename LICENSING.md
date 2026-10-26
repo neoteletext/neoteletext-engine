@@ -42,5 +42,6 @@ The owner accepted LGPL system libraries on 19 October 2026: the system's `libas
 Measured on 20 October 2026 from `cargo metadata --all-features`.
 
 - **Crates:** about 110, all under the licences of section 2: MIT or Apache-2.0 for most; `ring` (Apache-2.0 and ISC), `rustls` and `rustls-webpki` (ISC among their choices), `subtle` (BSD-3-Clause), `unicode-ident` (adds Unicode-3.0), `webpki-roots` (CDLA-Permissive-2.0). The library crates that run on a microcontroller have no dependencies at all (REQ-GEN-017).
+- **Ported code:** `neoteletext-opus` is ported from libopus 1.5.2 (BSD-3-Clause; its notice kept beside the source as `LICENSE-libopus` and in each ported file), so the crate is licensed `MIT AND BSD-3-Clause`; CREDITS.md names it (decision E.123).
 - **Fonts:** Bedstead 3.261 (CC0-1.0, `third_party/bedstead/`), and fonts converted from Noto (SIL OFL 1.1, `third_party/noto/`).
 - **System libraries:** the C library of each platform. The engine itself plays no sound; `neoteletext-audio-mix` only mixes.

@@ -120,6 +120,17 @@ The IMA ADPCM figures include block headers: 505 samples per 256-byte block, 1 0
 
 ---
 
+### 3.4 Opus: the decoder
+
+The owner chose Opus (RFC 6716, with RFC 8251's corrections) for sound beside PCM and IMA ADPCM, in one profile: mono, 16 kbit/s on average, 20 ms frames, 48 kHz out (decision E.123). It is not yet carried; it is to take code 2 (§3.1) when it is wired into records, the store and the mixer (issue #223). The decoder, `neoteletext-opus`, is ready for that:
+
+- **Packets.** One frame a packet: bare (TOC code 0), or padded in a code 3 packet of one frame, which is how libopus's encoder fills a constant-rate packet. At most 160 bytes: a 16 kbit/s frame averages 40, and variable-rate frames measured up to 79. Anything else is refused before the decoder changes (REQ-AUD-022). A frame of a byte or none is one the encoder left out in silence (discontinuous transmission), and is concealed.
+- **Modes.** At 16 kbit/s libopus's encoder writes Hybrid frames (SILK below 8 kHz, CELT above) and CELT-only frames; SILK-only frames come only if an encoder narrows the bandwidth, and are decoded too. A change of mode is smoothed as RFC 6716 §4.5 says: a redundant 5 ms CELT frame and a cross-fade when the encoder sent one, a concealed 5 ms bridge when it did not, and a 2.5 ms silent CELT frame to empty CELT's overlap when CELT stops.
+- **Losses.** A lost packet is concealed by SILK, CELT or both, in the mode of the last frame (RFC 6716 §4.4). In-band FEC is never decoded, by the owner's decision: its data is read past.
+- **Arithmetic.** Integer only, exactly as libopus's fixed-point build computes, so the output is bit-exact with it on every processor (REQ-AUD-023). Every operation is in a form that cannot panic: the C's wrapping sums wrap, lengths saturate, and indexing is checked or by type.
+- **Resources.** About 80 KB of flash on the Cortex-M0, 27.9 KB of state, about 2.6 KB of stack, and 0.6 to 0.8 million instructions a 20 ms frame at full optimisation; decision E.123 has the measurements.
+- **Proof.** `tests/oracles/run_opus.sh` compares every sample and final range with libopus over streams encoded at every setting that changes the bitstream, as received and with losses.
+
 ## 4. Records
 
 Every carriage delivers the same records. Integers are unsigned and big-endian, except the PCM samples inside a DATA payload, which are little-endian as WAVE and tellyboy expect.

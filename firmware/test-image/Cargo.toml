@@ -12,6 +12,7 @@ publish = false
 neoteletext-core = { path = "../../crates/neoteletext-core", default-features = false }
 neoteletext-formats = { path = "../../crates/neoteletext-formats", default-features = false }
 neoteletext-web = { path = "../../crates/neoteletext-web", default-features = false }
+neoteletext-opus = { path = "../../crates/neoteletext-opus", optional = true }
 
 [features]
 # Each feature roots the entry points of one optional area, and enables it.
@@ -37,6 +38,8 @@ formats-all = ["formats", "neoteletext-formats/default"]
 # The web user agent; web-all adds push, forms and cookies.
 web = []
 web-all = ["web", "neoteletext-web/default"]
+# The Opus decoder of the audio profile (decision E.123).
+opus = ["dep:neoteletext-opus"]
 # REQ-GEN-019: a deliberate floating-point operation, so that the symbol
 # check can be shown to fail.
 float-probe = []

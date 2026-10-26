@@ -55,6 +55,7 @@ const BUILDS: &[Build] = &[
     Build { package: "neoteletext-audio", features: "idl" },
     Build { package: "neoteletext-audio", features: "ima" },
     Build { package: "neoteletext-audio", features: "encode" },
+    Build { package: "neoteletext-opus", features: "" },
     Build { package: "neoteletext-input", features: "" },
     Build { package: "neoteletext-app", features: "" },
     Build { package: "neoteletext-app", features: "live" },

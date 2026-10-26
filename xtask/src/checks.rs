@@ -68,6 +68,7 @@ const LIBRARY_CRATES: &[&str] = &[
     "neoteletext-image",
     "neoteletext-audio",
     "neoteletext-audio-mix",
+    "neoteletext-opus",
     "neoteletext-input",
 ];
 

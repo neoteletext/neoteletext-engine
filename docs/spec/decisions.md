@@ -1283,6 +1283,8 @@ Decided by the owner on 20 October 2026.
 
 *Reason:* A speech codec would be a library needing approval, with an unmeasured cost on the smallest part, for a use (live talk over broadcast) nobody has asked for; IMA ADPCM already carries live sound over the network. A simultaneous start needs state the profile was redesigned to avoid. The codec's sources were the one thing the decoder's tests could not be checked against.
 
+*Note of 26 October 2026:* item 1 no longer applies; the owner chose Opus, which is to take code 2 (decision E.123).
+
 **E.90 — Input: keys sent back to a channel, as a terminal sends them (area INT).**
 Decided by the owner on 20 October 2026, as NeoTeletext's decision 44 (its `docs/interaction.md`). The detail is `design/input.md`.
 1. **A channel that says `"input": true`** in its descriptor, allowed only with push over a WebSocket, takes the viewer's keys back on that socket, one binary message a key. There is no other way in: no request per key, no forms over this path.
@@ -1584,3 +1586,26 @@ Taken on 26 October 2026 for the browser, on the owner's word that row 0 "should
 3. **A channel keeps the time** by sending headers, of its pages or time-filling ones (page FF, clause 9.3.1.1), which end no stored page's display.
 
 *Reason:* E.11 and the SAA5246A's always rolling clock; a page that does not change still tells the time.
+
+**E.123 — Opus, decoded by an integer port of libopus, bit-exact, for one profile.**
+Decided by the owner on 26 October 2026: sounds may be Opus, mono, at 16 kbit/s in 20 ms frames, decoded only, to 48 kHz alone ("lock in to 48kHz"); the decoder is opus-decoder converted to integer arithmetic; in-band FEC is not decoded; packets outside the profile are refused; desktops come first and microcontrollers later; and "DO NOT TOUCH THE EXISTING PCM AND ADPCM capabilities". The owner approved the move into the engine on 26 October 2026. The design is `docs/spec/design/audio.md` section 3.4; issue #222.
+1. **The profile:** Opus mono, 16 kbit/s on average, 20 ms frames, 48 kHz out. A packet is one frame, bare (TOC code 0) or padded in a code 3 packet of one frame, as a constant-rate encoder writes it, mono and at most 160 bytes, four times a 16 kbit/s frame's 40; anything else is refused before the decoder changes (REQ-AUD-022). The average rate is checked when a sound is published, not by the decoder.
+2. **`neoteletext-opus`** is a port of libopus 1.5.2's fixed-point decoder (the range decoder, SILK, CELT and the Opus layer), bit-exact with it (REQ-AUD-023). It began from opus-decoder 0.1.1, the owner's choice, whose floating point could not be made bit-exact; each of its parts was replaced by a port of the reference (CREDITS.md).
+3. **Not decoded:** in-band FEC (its data is read past, to stay in step), stereo, other rates, frames other than 20 ms, several frames a packet, gain, DRED, deep concealment and OSCE.
+4. **An exception to REQ-GEN-016:** the per-packet path divides and multiplies 32 by 32 bits into 64 wherever the reference does, since bit-exactness needs them. Products of 16 by 32 bits use 32-bit forms proved equal. The one recursion, a band's split, is at most four calls deep.
+5. **Measured on 26 October 2026** with a bare-metal probe of the public interface, against the decoder before it was cut to the profile, by size difference to a stub (flash: text, read-only data and data) and under QEMU's `mps2-an385` with one instruction a nanosecond (`-icount shift=0`), the thumbv6m code run on its Cortex-M3, decoding 1,001 packets of a speech stream (the output identical to the host's):
+
+   | | Before the cut | Now |
+   |---|---|---|
+   | Flash, Cortex-M0 (`thumbv6m-none-eabi`, `opt-level = "s"`, LTO) | 98,591 bytes | 81,037 bytes |
+   | Flash, Cortex-M4, Cortex-M33, RV32IMC | 93,393, 93,875, 108,130 bytes | 79,073, 79,271, 87,924 bytes |
+   | State (one `Decoder`) | 26,632 bytes | 27,880 bytes |
+   | Stack of a decode, beyond the caller's | about 43,700 bytes | about 2,600 bytes |
+   | Instructions a 20 ms frame, `opt-level = "s"`, average and slowest | 1.53 and 1.85 million | 0.77 and 0.97 million |
+   | The same at `opt-level = 3` | 1.51 and 1.82 million | 0.61 and 0.79 million |
+
+   The `opus` build of the size check's image (`opt-level = "z"`) is 94,190 bytes on the Cortex-M0. Instructions are not cycles. A Cortex-M0 at about 1.3 cycles an instruction would need about 50 MHz for the slowest frame at `opt-level = 3`; this is an estimate, untested on hardware.
+6. **Codec code 2:** E.89 item 1 no longer applies. Opus is to take code 2 of REQ-AUD-001 when it is wired into the profile's records, store and mixer, which is separate work (issue #223).
+7. **The oracle** is `tests/oracles/run_opus.sh`, in the full gate: libopus downloaded and pinned by its SHA-256, run as separate programs, on sources generated at test time and any of the owner's in `$NEOTELETEXT_CORPUS/opus-sources/`. On 26 October 2026 it compared 234 streams, as received and with losses, 441,468 frames, with no difference. The tests that called libopus's internal functions side by side with the port's, during the porting, link libopus into tests and are kept outside the repository.
+
+*Reason:* A decoder proved equal to the reference implementation needs no tolerance and no listening test, and one integer decoder serves every target the owner named. The profile is what the owner chose, and anything outside it is input the receiver has no use for.

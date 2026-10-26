@@ -93,3 +93,18 @@ The `encode` feature shall write sounds for publishing tools: IMA ADPCM blocks w
 **REQ-AUD-021 — Security.**
 Every audio input is untrusted (area SEC). The parsers shall bound every length before using it, contain no panicking constructs, and be fuzzed. A label is shown only after the cleaning of page text. No sound starts without a command, and a page sound needs the user's setting (REQ-AUD-012).
 *Verification:* The crates' no-panic lints; the fuzz targets `audio_records` and `audio_packets`.
+
+**REQ-AUD-022 — Opus packets.**
+The Opus decoder (`neoteletext-opus`, decision E.123) shall take packets of one profile only: Opus mono, one 20 ms frame a packet, either bare (RFC 6716 §3.2.2, TOC code 0) or padded in a code 3 packet whose frame count is 1 (§3.2.5), at most 160 bytes. Any other packet (empty, longer, stereo, of several frames, of another duration, or with a frame count of 0 or padding beyond the packet) shall be refused with its reason before the decoder's state changes. A frame of one byte or none is one the encoder left out (§3.2.1) and shall be concealed.
+*Reason:* The owner's profile (decision E.123); refusing before any change keeps a hostile packet from disturbing what follows.
+*Verification:* Unit tests of each refusal and of the padded form; the fuzz target `opus_packets`.
+
+**REQ-AUD-023 — Opus decoding, bit-exact with the reference.**
+For every sequence of profile packets and losses, the decoder shall produce, frame for frame, the same 960 samples at 48 kHz and the same final range as libopus 1.5.2's fixed-point decoder given the same packets, a loss passed to it as no packet and in-band FEC not decoded (decision E.123). A frame shall never depend on what the caller's buffer held before.
+*Reason:* An integer decoder proved equal to the reference implementation of RFC 6716 needs no tolerance and no listening test to show it correct, on any processor.
+*Verification:* `tests/oracles/run_opus.sh` in the full gate: libopus, downloaded and pinned by checksum, encodes synthetic sources and any in `$NEOTELETEXT_CORPUS/opus-sources/` under every setting that changes the bitstream, and its decoder and this one decode every stream as received and with losses, compared byte for byte; the unit test that a frame does not depend on the buffer's old contents.
+
+**REQ-AUD-024 — The Opus decoder on a small processor.**
+The decoder shall be `no_std`, allocate nothing, depend on no crate and use no floating point; its state shall be one value of fixed size and its scratch held in that state; it shall link no panic path. Its flash, state, stack and instructions a frame on the Cortex-M0 shall be measured and recorded (decision E.123).
+*Reason:* The owner's order is desktops first and microcontrollers later, with one decoder for both; the tellyboy targets have tens of kilobytes of RAM and no floating-point unit.
+*Verification:* The `opus` build of `cargo xtask size` (flash and the symbol check of REQ-GEN-019); `cargo xtask check-deps`; the measurements of decision E.123.
