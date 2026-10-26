@@ -56,8 +56,10 @@ const _: () = assert!(8 * MAX_PACKET < i32::MAX as usize);
 pub enum DecodeError {
     /// The packet is outside the profile; nothing was decoded and the decoder is unchanged.
     Packet(PacketError),
-    /// The frame read past its end. The decoder has moved on as if it had been decoded, and the
-    /// output holds what was decoded up to the error.
+    /// CELT used more bits than the frame holds (RFC 6716 §4.3.3), or SILK could not decode a
+    /// frame it was given. The decoder has moved on as if the frame had been decoded, and the
+    /// output holds what was decoded. A frame that merely runs short of bits is not reported:
+    /// as in the reference, its missing bits read as zeros (RFC 6716 §4.1.2).
     Corrupt,
 }
 
@@ -262,6 +264,7 @@ impl Decoder {
             layers.conceal(previous, side);
         }
 
+        let mut silk_failed = false;
         if mode != Mode::Celt {
             // RFC 6716 §4.5.2: SILK is reset at every change from CELT-only.
             if previous.mode == Some(Mode::Celt) {
@@ -269,8 +272,11 @@ impl Decoder {
             }
             // SILK writes straight into the output, and CELT adds to it.
             let rate = silk_rate(mode, packet.bandwidth);
+            // A received frame always has its rate and room, so this cannot fail; if it ever did,
+            // its part is silence and the decoder still moves on.
             if layers.silk.decode(SilkFrame::Received { range: &mut range, rate }, pcm).is_err() {
-                return Err(DecodeError::Corrupt);
+                pcm.fill(0);
+                silk_failed = true;
             }
         }
 
@@ -361,7 +367,7 @@ impl Decoder {
 
         *final_range = if length <= 1 { 0 } else { range.rng() ^ redundant_range };
         *previous = Previous { mode: Some(mode), redundant_end: matches!(redundancy, Some((_, false))) };
-        result
+        if silk_failed { Err(DecodeError::Corrupt) } else { result }
     }
 }
 
