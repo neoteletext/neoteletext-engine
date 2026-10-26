@@ -120,6 +120,13 @@ if [ "$mode" = "full" ]; then
         step "x86_64 Linux tests on $NEOTELETEXT_REMOTE"
         rsync -a --delete --exclude target --exclude .git --exclude tmp --exclude tletxt.com \
             --exclude fuzz/corpus --exclude fuzz/artifacts ./ "$NEOTELETEXT_REMOTE:neoteletext-check/"
+        # The Opus oracle's streams seed the fuzzer, which reaches the decoder's deep paths only
+        # from real packets; the corpus itself is the host's and is never sent back.
+        opus_seeds="${NEOTELETEXT_CORPUS:-target}/opus-oracle/fuzz-seeds"
+        if [ -d "$opus_seeds" ]; then
+            ssh "$NEOTELETEXT_REMOTE" 'mkdir -p neoteletext-check/fuzz/corpus/opus_packets'
+            rsync -a "$opus_seeds/" "$NEOTELETEXT_REMOTE:neoteletext-check/fuzz/corpus/opus_packets/"
+        fi
         ssh "$NEOTELETEXT_REMOTE" 'cd neoteletext-check && . ~/.cargo/env && cargo test --workspace --all-features --quiet'
 
         step "every target of REQ-GEN-015 on $NEOTELETEXT_REMOTE"

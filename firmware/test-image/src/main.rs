@@ -245,6 +245,11 @@ mod opus {
     use super::black_box;
     use neoteletext_opus::{Decoder, FRAME_SAMPLES};
 
+    /// A decoder made in the caller's place, as a port that keeps it in a static would.
+    fn new(place: &mut Decoder) {
+        *place = Decoder::new();
+    }
+
     fn decode(decoder: &mut Decoder, packet: &[u8], pcm: &mut [i16; FRAME_SAMPLES]) {
         black_box(decoder.decode(packet, pcm).is_ok());
     }
@@ -253,10 +258,25 @@ mod opus {
         decoder.conceal(pcm);
     }
 
+    fn reset(decoder: &mut Decoder) {
+        decoder.reset();
+    }
+
+    fn final_range(decoder: &Decoder) -> u32 {
+        decoder.final_range()
+    }
+
+    // Every entry point, so that a panic path in any of them reaches the symbol check.
+    #[used]
+    static NEW: fn(&mut Decoder) = new;
     #[used]
     static DECODE: fn(&mut Decoder, &[u8], &mut [i16; FRAME_SAMPLES]) = decode;
     #[used]
     static CONCEAL: fn(&mut Decoder, &mut [i16; FRAME_SAMPLES]) = conceal;
+    #[used]
+    static RESET: fn(&mut Decoder) = reset;
+    #[used]
+    static FINAL_RANGE: fn(&Decoder) -> u32 = final_range;
 }
 
 /// REQ-GEN-019: one floating-point operation, which the symbol check must

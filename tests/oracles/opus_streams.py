@@ -5,6 +5,11 @@
   opus_streams.py lose IN.bit OUT.bit the stream with packets lost: single packets, runs of
                                       three, and every 700 packets a run of 60, which passes the
                                       point where concealment turns from pitch to noise
+  opus_streams.py hostile COUNT DIR   write COUNT streams of random profile packets: every 20 ms
+                                      mono configuration, bare or padded, 2 to 160 random bytes,
+                                      a tenth of them lost; the same streams on every run
+  opus_streams.py seeds DIR OUT       the streams of DIR as fuzzing inputs for `opus_packets`: a
+                                      length byte and the packet each, at most 4,096 bytes a file
   opus_streams.py differ A B          where two sample files first differ
 
 Every signal is generated from a fixed seed, so a run is repeatable; none is a recording.
@@ -113,18 +118,26 @@ def write_raw(path: Path, signal: list[float]) -> None:
 
 
 def wav(source: Path, target: Path) -> None:
+    """A local source's samples; every chunk is checked, since the file is outside the
+    repository's control."""
     data = source.read_bytes()
-    if data[:4] != b"RIFF" or data[8:12] != b"WAVE":
+    if len(data) < 12 or data[:4] != b"RIFF" or data[8:12] != b"WAVE":
         raise SystemExit(f"{source}: not a WAV file")
     at, fmt = 12, None
     while at + 8 <= len(data):
         chunk, size = data[at : at + 4], struct.unpack("<I", data[at + 4 : at + 8])[0]
+        if at + 8 + size > len(data):
+            raise SystemExit(f"{source}: chunk {chunk!r} runs past the end of the file")
         body = data[at + 8 : at + 8 + size]
         if chunk == b"fmt ":
+            if size < 16:
+                raise SystemExit(f"{source}: format chunk of {size} bytes, fewer than 16")
             fmt = struct.unpack("<HHIIHH", body[:16])
         elif chunk == b"data":
             if fmt is None or fmt[0] != 1 or fmt[1] != 1 or fmt[2] != RATE or fmt[5] != 16:
                 raise SystemExit(f"{source}: must be 16-bit PCM, mono, {RATE} Hz")
+            if size % 2:
+                raise SystemExit(f"{source}: data of {size} bytes is not whole 16-bit samples")
             target.write_bytes(body)
             return
         at += 8 + size + (size & 1)
@@ -147,6 +160,64 @@ def lose(source: Path, target: Path) -> None:
     target.write_bytes(bytes(out))
 
 
+# The TOC bytes of every 20 ms mono configuration (RFC 6716 §3.1, Table 2): SILK NB, MB, WB,
+# Hybrid SWB, FB and CELT NB, WB, SWB, FB.
+CONFIGURATIONS = (1, 5, 9, 13, 15, 19, 23, 27, 31)
+# The profile's largest packet (`neoteletext_opus::MAX_PACKET`).
+MAX_PACKET = 160
+# Random packets a hostile stream holds, and how many in ten are lost.
+HOSTILE_PACKETS = 300
+LOST_IN_TEN = 1
+# The fuzzer's largest input (`-max_len` in the gate).
+SEED_BYTES = 4096
+
+
+def hostile(count: int, directory: Path) -> None:
+    """Profile packets of random bytes: what a hostile carriage could send, decoded by libopus and
+    the port alike. Each packet's bytes are drawn in one of four styles, since random bytes alone
+    rarely exercise the long runs of ones or zeros that drive a decoder's limits."""
+    directory.mkdir(parents=True, exist_ok=True)
+    noise = Noise(2024)
+    pick = lambda n: int((noise.next() + 1) / 2 * n) % n
+    for stream in range(count):
+        out = bytearray()
+        for _ in range(HOSTILE_PACKETS):
+            if pick(10) < LOST_IN_TEN:
+                out += struct.pack(">II", 0, 0)
+                continue
+            toc = CONFIGURATIONS[pick(len(CONFIGURATIONS))] << 3
+            style = pick(4)
+            body = bytes(
+                (pick(256), 0xFF if pick(8) else pick(256), 0x00 if pick(8) else pick(256), (index * 37) & 0xFF)[style]
+                for index in range(1 + pick(MAX_PACKET - 1))
+            )
+            if pick(4) == 0 and len(body) + 2 < MAX_PACKET:
+                # Code 3, one frame, padded (RFC 6716 §3.2.5): count byte, padding length, padding.
+                padding = pick(MAX_PACKET - len(body) - 2)
+                packet = bytes([toc | 3, 0x41, padding]) + body + bytes(padding)
+            else:
+                packet = bytes([toc]) + body
+            packet = packet[:MAX_PACKET]
+            out += struct.pack(">II", len(packet), 0) + packet
+        (directory / f"hostile-{stream:03d}.bit").write_bytes(bytes(out))
+
+
+def seeds(directory: Path, target: Path) -> None:
+    target.mkdir(parents=True, exist_ok=True)
+    for stream in sorted(directory.glob("*.bit")):
+        data, at, record, part = stream.read_bytes(), 0, bytearray(), 0
+        while at + 8 <= len(data):
+            length = struct.unpack(">I", data[at : at + 4])[0]
+            packet = data[at + 8 : at + 8 + length]
+            at += 8 + length
+            if len(record) + 1 + len(packet) > SEED_BYTES:
+                (target / f"{stream.stem}-{part:03d}").write_bytes(bytes(record))
+                record, part = bytearray(), part + 1
+            record += bytes([len(packet)]) + packet
+        if record:
+            (target / f"{stream.stem}-{part:03d}").write_bytes(bytes(record))
+
+
 def differ(a: Path, b: Path) -> None:
     x, y = a.read_bytes(), b.read_bytes()
     for i in range(0, min(len(x), len(y)), 2):
@@ -167,6 +238,10 @@ def main() -> None:
         wav(Path(arguments[0]), Path(arguments[1]))
     elif command == "lose":
         lose(Path(arguments[0]), Path(arguments[1]))
+    elif command == "hostile":
+        hostile(int(arguments[0]), Path(arguments[1]))
+    elif command == "seeds":
+        seeds(Path(arguments[0]), Path(arguments[1]))
     elif command == "differ":
         differ(Path(arguments[0]), Path(arguments[1]))
     else:
