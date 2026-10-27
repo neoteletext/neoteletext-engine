@@ -22,13 +22,11 @@ impl ViewState {
                 while !text.is_char_boundary(end) {
                     end = end.saturating_sub(1);
                 }
-                let open = Some(self.viewer.requested().0.mpp());
                 self.typing.send(
                     source,
                     &neoteletext_input::event::Item::Event(neoteletext_input::event::Event::Paste(
                         text.get(..end).unwrap_or_default(),
                     )),
-                    open,
                     clock_ms,
                 );
             }
@@ -61,11 +59,9 @@ impl ViewState {
         // Every key is the channel's while it takes them, Control-C
         // included, as a terminal's are its host's.
         if self.typing.on() {
-            let open = Some(self.viewer.requested().0.mpp());
-            let all_keys = self.typing.all_keys(open);
             let mut buffer = [0_u8; 4];
-            if let Some(item) = input_of(key, all_keys, &mut buffer) {
-                self.typing.send(source, &item, open, clock_ms);
+            if let Some(item) = input_of(key, &mut buffer) {
+                self.typing.send(source, &item, clock_ms);
             }
             return ControlFlow::Continue(());
         }

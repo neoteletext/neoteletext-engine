@@ -1,6 +1,5 @@
 //! The input control record (`neoteletext-common/INPUT.md` section 7.2,
-//! REQ-INT-111): WELCOME, `PUSH_MODE`, `POP_MODE` and `PAGE_MODES`, a channel's
-//! answer to HELLO and its requests for input modes. It is a record of the
+//! REQ-INT-111): WELCOME, a channel's answer to HELLO. It is a record of the
 //! audio profile's frame (REQ-AUD-003) of type [`TYPE_INPUT_CONTROL`], one
 //! fragment on data channel 12 as the cursor record is (decision E.91),
 //! whose body is one control message encoded as the input stream encodes
@@ -12,20 +11,19 @@ pub use neoteletext_audio::record::TYPE_INPUT_CONTROL;
 use neoteletext_audio::record::{RecordError, framed_length, record_length, split, write};
 use neoteletext_core::packet::Packet;
 
+use crate::caps::{ALL_CAPS, RETIRED_MODE_BITS};
 use crate::carriage::input_record;
 use crate::event::{EVENT, FIRST_EXTENSION, LAST_EXTENSION};
-use crate::is_page;
-use crate::modes::{ALL_CAPS, ALL_MODES, MODE_BITS};
 use crate::wire::{Reader, WireError, Writer};
 
 /// WELCOME's type.
 pub const WELCOME: u8 = 0x01;
-/// `PUSH_MODE`'s type.
-pub const PUSH_MODE: u8 = 0x02;
-/// `POP_MODE`'s type.
-pub const POP_MODE: u8 = 0x03;
-/// `PAGE_MODES`'s type.
-pub const PAGE_MODES: u8 = 0x04;
+/// The first of the withdrawn types, once `PUSH_MODE`, `POP_MODE` and
+/// `PAGE_MODES` (decision E.125): reserved, and a record of one is read as
+/// [`Control::Withdrawn`] and ignored, so an older channel still works.
+pub const FIRST_WITHDRAWN: u8 = 0x02;
+/// The last withdrawn type.
+pub const LAST_WITHDRAWN: u8 = 0x04;
 
 /// The most a control message's body may take, so the record is one
 /// fragment.
@@ -41,17 +39,8 @@ pub enum Control<'a> {
         /// The capabilities it will use, a subset of the receiver's.
         caps: u32,
     },
-    /// Push a mode set.
-    PushMode(u32),
-    /// Pop this many entries.
-    PopMode(u32),
-    /// A page's own modes while it is open; 0 clears them.
-    PageModes {
-        /// The page.
-        page: u16,
-        /// Its modes.
-        modes: u32,
-    },
+    /// A withdrawn type, `0x02` to `0x04`: ignored, and never written.
+    Withdrawn(u8),
     /// An extension, skipped by a receiver that does not know it.
     Extension {
         /// `0x40` to `0x7F`.
@@ -99,31 +88,15 @@ pub fn read_body(body: &[u8]) -> Result<Control<'_>, ControlError> {
     let control = match kind {
         WELCOME => {
             let version = reader.uv()?;
-            let caps = reader.uv()?;
+            // An older channel may still agree the input modes' bits.
+            let caps = reader.uv()? & !RETIRED_MODE_BITS;
             if caps & !ALL_CAPS != 0 {
                 return Err(ControlError::BadValue("caps"));
             }
             Control::Welcome { version, caps }
         }
-        PUSH_MODE => {
-            let modes = reader.uv()?;
-            if modes & !MODE_BITS != 0 || modes & !ALL_MODES != 0 {
-                return Err(ControlError::BadValue("modes"));
-            }
-            Control::PushMode(modes)
-        }
-        POP_MODE => Control::PopMode(reader.uv()?),
-        PAGE_MODES => {
-            let page = u16::try_from(reader.uv()?).map_err(|_| ControlError::BadValue("page"))?;
-            if !is_page(page) {
-                return Err(ControlError::BadValue("page"));
-            }
-            let modes = reader.uv()?;
-            if modes & !ALL_MODES != 0 {
-                return Err(ControlError::BadValue("modes"));
-            }
-            Control::PageModes { page, modes }
-        }
+        // Its fields are not read: the record is ignored whatever it holds.
+        FIRST_WITHDRAWN..=LAST_WITHDRAWN => return Ok(Control::Withdrawn(kind)),
         FIRST_EXTENSION..=LAST_EXTENSION => {
             let length = usize::try_from(reader.uv()?).map_err(|_| ControlError::BadValue("length"))?;
             Control::Extension { kind, payload: reader.take(length)? }
@@ -149,19 +122,7 @@ pub fn write_body(control: &Control<'_>, out: &mut [u8]) -> Result<usize, Contro
             writer.uv(*version)?;
             writer.uv(*caps)?;
         }
-        Control::PushMode(modes) => {
-            writer.byte(PUSH_MODE)?;
-            writer.uv(*modes)?;
-        }
-        Control::PopMode(count) => {
-            writer.byte(POP_MODE)?;
-            writer.uv(*count)?;
-        }
-        Control::PageModes { page, modes } => {
-            writer.byte(PAGE_MODES)?;
-            writer.uv(u32::from(*page))?;
-            writer.uv(*modes)?;
-        }
+        Control::Withdrawn(_) => return Err(ControlError::BadValue("a withdrawn type")),
         Control::Extension { kind, payload } => {
             writer.byte(*kind)?;
             writer.uv(u32::try_from(payload.len()).map_err(|_| ControlError::BadValue("length"))?)?;
@@ -224,19 +185,14 @@ pub fn from_packet<'b>(
 #[allow(clippy::unwrap_used, reason = "a test")]
 mod tests {
     use super::*;
-    use crate::modes::{MOUSE_BUTTONS, PAGE_CAP};
+    use crate::caps::PAGE_CAP;
 
-    // REQ-INT-111 and REQ-INT-114.
+    // REQ-INT-111.
     #[test]
     fn every_control_message_round_trips_through_a_packet() {
-        for control in [
-            Control::Welcome { version: 2, caps: PAGE_CAP | MOUSE_BUTTONS },
-            Control::PushMode(MOUSE_BUTTONS),
-            Control::PopMode(1),
-            Control::PageModes { page: 0x300, modes: MOUSE_BUTTONS },
-            Control::PageModes { page: 0x300, modes: 0 },
-            Control::Extension { kind: 0x40, payload: &[9, 9] },
-        ] {
+        for control in
+            [Control::Welcome { version: 2, caps: PAGE_CAP }, Control::Extension { kind: 0x40, payload: &[9, 9] }]
+        {
             let packet = packet_of(&control, 3, 77).unwrap();
             let mut buffer = [0; FRAGMENT_DATA];
             assert_eq!(from_packet(&packet, &mut buffer), Some(Ok(control)), "{control:?}");
@@ -244,13 +200,27 @@ mod tests {
         }
     }
 
+    // REQ-INT-111, decision E.125: an older channel's mode records and mode
+    // bits are ignored, never refused, and never written.
+    #[test]
+    fn the_withdrawn_mode_records_and_bits_are_ignored() {
+        assert_eq!(read_body(&[0xFF, 0x02, 0x08]), Ok(Control::Withdrawn(0x02)), "PUSH_MODE");
+        assert_eq!(read_body(&[0xFF, 0x03, 0x01]), Ok(Control::Withdrawn(0x03)), "POP_MODE");
+        assert_eq!(read_body(&[0xFF, 0x04, 0x80, 0x06, 0x08]), Ok(Control::Withdrawn(0x04)), "PAGE_MODES");
+        // WELCOME agreeing PAGE and the old MOUSE_BUTTONS (8): the mode bit is dropped.
+        assert_eq!(
+            read_body(&[0xFF, WELCOME, 2, 0x88, 0x80, 0x04]),
+            Ok(Control::Welcome { version: 2, caps: PAGE_CAP })
+        );
+        assert!(write_body(&Control::Withdrawn(0x02), &mut [0; MAX_BODY]).is_err());
+    }
+
     // REQ-INT-111.
     #[test]
     fn what_section_7_2_refuses_is_refused() {
         assert_eq!(read_body(&[0xFF, 0x05]), Err(ControlError::Type(5)));
-        assert!(read_body(&[0xFF, PUSH_MODE, 0x80, 0x02]).is_err(), "a mode bit not defined");
-        assert!(read_body(&[0xFF, PAGE_MODES, 0x80, 0x01, 0x08]).is_err(), "page 0x080");
-        assert!(read_body(&[0xFF, POP_MODE, 0x01, 0x00]).is_err(), "bytes after");
+        assert!(read_body(&[0xFF, WELCOME, 2, 0x80, 0x80, 0x80, 0x01]).is_err(), "a capability not defined");
+        assert!(read_body(&[0xFF, WELCOME, 2, 0, 0]).is_err(), "bytes after");
         assert!(read_body(&[0x01, WELCOME, 2, 0]).is_err(), "no event byte");
     }
 

@@ -3,12 +3,12 @@
 
 use super::{
     ACTION, Action, COMPOSE, CORE_LAST_TYPE, EVENT, Event, FIRST_EXTENSION, FOCUS_IN, FOCUS_OUT, FUNCTIONAL, HAS_BASE,
-    HAS_MODS, HAS_PIXELS, HAS_TEXT, HELLO, InputError, Item, KEY, KEY_RESERVED, Key, KeyCode, LAST_CORE,
-    LAST_EXTENSION, MOUSE, Mouse, MouseAction, NEVER_UTF8, NEVER_UTF8_FROM, PAGE, PASTE, POINTER_RESERVED, Point,
-    RESIZE, WHEEL, Wheel, check_text, printable,
+    HAS_MODS, HAS_PIXELS, HAS_TEXT, HELLO, HOVER, HOVER_LEAVE, InputError, Item, KEY, KEY_RESERVED, Key, KeyCode,
+    LAST_CORE, LAST_EXTENSION, MOUSE, Mouse, MouseAction, NEVER_UTF8, NEVER_UTF8_FROM, PAGE, PASTE, POINTER_RESERVED,
+    Point, RESIZE, WHEEL, Wheel, check_text, printable,
 };
+use crate::caps::AGENT;
 use crate::keys::is_code;
-use crate::modes::AGENT;
 use crate::wire::{Reader, WireError};
 use crate::{MAX_AGENT, MAX_COLUMNS, MAX_COMPOSE, MAX_KEY_TEXT, MAX_MESSAGE, MAX_PASTE, MAX_ROWS, is_page};
 
@@ -129,11 +129,27 @@ fn read_event<'a>(reader: &mut Reader<'a>) -> Result<Event<'a>, InputError> {
             if length > MAX_MESSAGE {
                 return Err(InputError::Message);
             }
-            Event::Extension { kind, payload: reader.take(length)? }
+            let payload = reader.take(length)?;
+            if kind == HOVER { read_hover(payload)? } else { Event::Extension { kind, payload } }
         }
         other if other > LAST_CORE && other <= CORE_LAST_TYPE => return Err(InputError::Type(other)),
         other => return Err(InputError::Type(other)),
     })
+}
+
+/// HOVER's payload: `flags` u8, `col` uv and `row` uv, the control's first
+/// cell, and nothing after.
+fn read_hover(payload: &[u8]) -> Result<Event<'static>, InputError> {
+    let mut reader = Reader::new(payload);
+    let flags = reader.byte()?;
+    if flags & !HOVER_LEAVE != 0 {
+        return Err(InputError::BadValue("hover flags"));
+    }
+    let (column, row) = (reader.uv()?, reader.uv()?);
+    if column >= MAX_COLUMNS || row >= MAX_ROWS || reader.used() != payload.len() {
+        return Err(InputError::BadValue("hover"));
+    }
+    Ok(Event::Hover { leave: flags & HOVER_LEAVE != 0, column, row })
 }
 
 fn read_key<'a>(reader: &mut Reader<'a>) -> Result<Key<'a>, InputError> {

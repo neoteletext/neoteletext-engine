@@ -2,9 +2,9 @@
 
 use super::*;
 use crate::MAX_MESSAGE;
+use crate::caps::AGENT;
+use crate::caps::{ECHO_CAP, PAGE_CAP};
 use crate::keys::code;
-use crate::modes::AGENT;
-use crate::modes::{ECHO_CAP, PAGE_CAP};
 use std::vec::Vec;
 
 fn bytes(item: &Item<'_>) -> Vec<u8> {
@@ -148,4 +148,25 @@ fn the_input_count_counts_characters_and_events() {
     assert_eq!(units(&Item::Text("héllo")), 5);
     assert_eq!(units(&Item::Event(Event::Paste("a long paste"))), 1);
     assert_eq!(units(&Item::Event(Event::FocusIn)), 1);
+}
+
+/// Decision E.129: HOVER is the extension `0x43`, `flags`, `col` and `row`;
+/// it reads back, and a bad flag, a cell off the page or bytes after are
+/// refused. A receiver that does not know `0x43` skips it as any extension.
+#[test]
+fn hover_round_trips_and_is_checked() {
+    for event in [Event::Hover { leave: false, column: 2, row: 20 }, Event::Hover { leave: true, column: 39, row: 23 }]
+    {
+        let mut out = [0_u8; 32];
+        let length = write(&Item::Event(event), &mut out).unwrap();
+        let mut back = Vec::new();
+        read_message(&out[..length], &mut |item| back.push(item)).unwrap();
+        assert_eq!(back, [Item::Event(event)]);
+    }
+    let mut written = [0_u8; 32];
+    let length = write(&Item::Event(Event::Hover { leave: true, column: 2, row: 20 }), &mut written).unwrap();
+    assert_eq!(&written[..length], &[0xFF, 0x43, 3, 1, 2, 20], "the type, the length, then the payload");
+    for bad in [[0xFF, 0x43, 3, 2, 2, 20].as_slice(), &[0xFF, 0x43, 3, 0, 72, 20], &[0xFF, 0x43, 4, 0, 2, 20, 0]] {
+        assert!(read_message(bad, &mut |_| {}).is_err(), "{bad:?}");
+    }
 }

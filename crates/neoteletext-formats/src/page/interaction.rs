@@ -20,17 +20,3 @@ pub struct CursorLine {
     /// The line of the file.
     pub line: u32,
 }
-
-/// The input mode bits a page may ask for: INPUT.md section 6.3's eight.
-/// The command-line program asserts that `neoteletext-input` agrees.
-pub const INPUT_MODE_BITS: u32 = 0xFF;
-
-/// An `IM` line (REQ-INT-114): the input modes the page asks for while it
-/// is open, as written.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
-pub struct ModesLine {
-    /// The mode bits, within [`INPUT_MODE_BITS`]; 0 asks for none.
-    pub modes: u32,
-    /// The line of the file.
-    pub line: u32,
-}

@@ -1,12 +1,13 @@
 //! The input system (area INT, `neoteletext-common/INPUT.md`, protocol
 //! version 2): a receiver connected to a channel's push WebSocket sends the
 //! viewer's input as one stream of UTF-8 text and small events, and the
-//! channel answers in teletext, with records that place a cursor,
-//! acknowledge input and ask for input modes.
+//! channel answers in teletext, with records that place a cursor and
+//! acknowledge input. There are no input modes: everything is sent
+//! (section 6.3, decision E.125).
 //!
 //! - [`event`]: the input stream, receiver to channel, over [`wire`]'s
 //!   primitives, with [`keys`]' functional codes and [`names`]' W3C table.
-//! - [`modes`]: capabilities, modes and the mode stack.
+//! - [`caps`]: the capabilities a receiver offers and a channel agrees.
 //! - [`cursor`] and [`control`]: the channel's records, of the audio
 //!   profile's frame on the same independent data lines.
 //! - [`session`]: a receiver's side of one session, the rate limit with it.
@@ -32,6 +33,7 @@
 #[cfg(test)]
 extern crate std;
 
+pub mod caps;
 mod carriage;
 pub mod control;
 pub mod cursor;
@@ -40,7 +42,6 @@ pub mod event;
 pub mod held;
 pub mod keys;
 mod limits;
-pub mod modes;
 pub mod names;
 pub mod session;
 pub mod wire;

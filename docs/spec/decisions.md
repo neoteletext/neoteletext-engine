@@ -1643,6 +1643,15 @@ Decided on 26 October 2026 on the owner's instruction "add the Opus decoder to e
 
 *Reason:* Constant-rate packets fit the store's fixed slots, so Opus needed no change to the record frame, the store or its admission; decoding in order is what the codec requires, and a decoder's concealment is the better answer to a lost live packet.
 
+**E.125 — No input modes: everything is sent.**
+Decided on 27 October 2026 on the owner's words "whenever the mouse is over a teletext display then all mouse events go to it - ALWAYS" and then "simplify all this remove the config" (the browser's issue #4). Normative text: `neoteletext-common/INPUT.md` section 6.3, REQ-INT-104, REQ-INT-111 and REQ-INT-115, with REQ-INT-107 and REQ-INT-114 withdrawn.
+1. **Every event goes** while keys go to the channel, and the channel ignores what it does not use: every key press, repeat and release as KEY, with its text and its `base`, the modifier keys and the dead key included; every mouse press and release over the page and every move that changes the dot under the pointer, with the cell and the dot; the wheel; COMPOSE. Raw text carries only what does not come from a key.
+2. **Withdrawn:** the mode bits ALL_KEYS, KEY_RELEASE, BASE_KEY, MOUSE_BUTTONS, MOUSE_DRAG, MOUSE_ALL, MOUSE_PIXELS and COMPOSE; the mode stack; the control records PUSH_MODE, POP_MODE and PAGE_MODES (types `0x02` to `0x04`, now reserved and ignored when received, never written); and a page's `IM` line, now a withdrawn command, reported as `TF` is (E.111). Bits 0 to 15 of `caps` are reserved and ignored in a WELCOME that still sets them, so an older channel is not refused. `neoteletext_input::modes` is now `caps`, and `Session::send` no longer takes the open page.
+3. **Moves:** a move to the dot of the last one sent on the page is not sent again, and moves are not counted against the rate of REQ-INT-109, so a pointer can never cost a key.
+4. **`neottx view` and `neottx keyboard`** send every key as KEY with its text; the keyboard bridge offers no capability.
+
+*Reason:* A mode is configuration that every channel, page and receiver must get right, and a channel that forgot one silently lost input: a slider no one could drag because no one asked for MOUSE_DRAG. Sending everything costs a few bytes an event and removes a stack, three records, a page line and every mode check.
+
 **E.126 — The TTI Form Extension withdrawn.**
 Decided by the owner on 27 October 2026: "we must COMPLETELY REMOVE from the code/deprecate our custom forms handling that is built in to the neoteletext engine". The engine keeps no form of its own; a channel that asks for text does so over the input protocol.
 1. **Removed:** Appendix C, the TTI Form Extension (`requirements/tti-form-extension.md`, kept as history with a notice), and all that served it alone, with no feature, shim or stub left in its place:
@@ -1666,4 +1675,18 @@ Decided on 27 October 2026 on the owner's instruction to "fully document, spec a
 5. **Why not a line and a record:** a control triplet is part of the page, in the X/26 group a page frame already carries whole (`neoteletext-common/SERVER.md` section 5.2), so a page's controls are stored, coalesced, recorded and written to TTI (`OL,26`) with it and never disagree with its rows; a TTI line would need a control record beside it on the wire, and a page frame redefined.
 
 *Reason:* A reserved code point changes the meaning of nothing the standard defines, every decoder already skips it, and it gives a control exactly the shape of a page's `LT` link: a row, a column and a width.
+
+**E.128 — Moves go while a button is held, or in a pointer area a page declares.**
+Decided on 27 October 2026 on the owner's question "what if we used the same mechanism that we use for identifying hover cells, to identify which cells to send mouse over for? ... maybe we also need a 'entire page' option too", amending E.125. Normative text: `neoteletext-common/INPUT.md` sections 6.3 and 7.4, REQ-INT-115 and REQ-INT-120.
+1. **A move goes** when it changes the dot under the pointer and a button is held (a drag), as terminal programs mostly ask xterm for (mode 1002); a move with no button goes only within a pointer area of the open page. Presses, releases and the wheel always go.
+2. **The pointer-area triplet** is column mode 01010, reserved by Table 29 (`MODE_POINTER_AREA`), with the control triplet's fields (E.127); a width of 0 not joined makes the whole page one (`Controls::whole_page`). Areas may overlap each other and the controls; at most `MAX_POINTER_AREAS` (8). `controls::controls` reads them with the controls, and the author API writes them (`Triplets::pointer_area`, `Triplets::whole_page_pointer_area`).
+
+*Reason:* E.125 sent every move, a message for nearly every pointer event of the window; hover no longer needs moves, since the receiver draws it (E.127), so moves go only where a drag or a page asks for them, and the asking travels with the page.
+
+**E.129 — HOVER: the pointer entered or left a control.**
+Decided on 27 October 2026 on the owner's words "yes add enter and leave events too". Normative text: `neoteletext-common/INPUT.md` section 5.4 and REQ-INT-121.
+1. **An extension, not a core event:** type `0x43` (`event::HOVER`), so a channel or server that does not know it skips it, where an unknown core type would close the connection. Payload: `flags` (bit 0, `HOVER_LEAVE`), `col` and `row`, the control's first cell. `Event::Hover` reads and writes it; a bad flag, a cell off the page or bytes after are refused.
+2. **Not counted against the rate**, as a move is not (E.128): it goes only as the pointer crosses a control.
+
+*Reason:* a channel can change what a page shows as the pointer passes, at two messages a control crossed, where a pointer area sends every move; the receiver already knows each crossing, since it draws the hover look then (E.127).
 

@@ -39,6 +39,11 @@ const CORE_LAST_TYPE: u8 = 0x3F;
 pub const FIRST_EXTENSION: u8 = 0x40;
 /// The last extension type.
 pub const LAST_EXTENSION: u8 = 0x7F;
+/// HOVER's type, an extension (INPUT.md section 5.4, decision E.129): a
+/// channel that does not know it skips it.
+pub const HOVER: u8 = 0x43;
+/// HOVER's flag bit: the pointer left the control, rather than entered it.
+pub const HOVER_LEAVE: u8 = 1;
 
 /// KEY's flag bits (section 5.5).
 const ACTION: u8 = 0b11;
@@ -101,10 +106,10 @@ pub struct Key<'a> {
     pub key: KeyCode,
     /// The modifier bits held.
     pub mods: u8,
-    /// The text the press produced (`ALL_KEYS` only).
+    /// The text the press produced, if any.
     pub text: Option<&'a str>,
-    /// The United States layout's character for the same physical key
-    /// (`BASE_KEY` only).
+    /// The United States layout's character for the same physical key,
+    /// when it differs from `key`.
     pub base: Option<char>,
 }
 
@@ -126,7 +131,7 @@ pub struct Point {
     pub column: u32,
     /// The cell's row, 0 to [`MAX_ROWS`](crate::MAX_ROWS) − 1.
     pub row: u32,
-    /// Pixels of the page image, in `MOUSE_PIXELS`.
+    /// The dot of the page image, when the receiver knows it.
     pub pixels: Option<(u32, u32)>,
     /// The modifier bits held.
     pub mods: u8,
@@ -200,6 +205,16 @@ pub enum Event<'a> {
     },
     /// The page the viewer has open, or 0 for none.
     Page(u16),
+    /// The pointer entered or left a control of the open page (INPUT.md
+    /// section 7.3): the control's first cell, its top left.
+    Hover {
+        /// It left the control, rather than entered it.
+        leave: bool,
+        /// The control's first column.
+        column: u32,
+        /// The control's top row.
+        row: u32,
+    },
     /// An extension, skipped by a receiver that does not know it.
     Extension {
         /// `0x40` to `0x7F`.

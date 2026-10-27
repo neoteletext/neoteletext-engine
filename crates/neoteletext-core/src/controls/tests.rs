@@ -144,3 +144,34 @@ fn the_control_triplet_is_reserved_column_mode_00101() {
         TripletFunction::ReservedColumn { column: 3, mode: MODE_CONTROL, data: 9 }
     ));
 }
+
+fn pointer_area(column: u8, width: u8, joined: bool) -> Triplet {
+    Triplet { address: column, mode: MODE_POINTER_AREA, data: width | if joined { CONTROL_JOINED } else { 0 } }
+}
+
+/// Decision E.128: pointer areas are read as controls are, may overlap each
+/// other and the controls, and a width of 0 makes the whole page one.
+#[test]
+fn pointer_areas_are_read_and_may_overlap() {
+    let page = page_with(&[
+        row(5),
+        control(2, 10, false),
+        pointer_area(0, 40, false),
+        pointer_area(4, 4, false),
+        row(6),
+        pointer_area(0, 40, true),
+    ]);
+    let found = controls(&page);
+    assert_eq!(list(&found), [(5, 2, 10, 1)], "the control stays");
+    let areas: Vec<_> = found.pointer_areas.as_slice().iter().map(|c| (c.row, c.column, c.width, c.height)).collect();
+    assert_eq!(areas, [(5, 0, 40, 2), (5, 4, 4, 1)]);
+    assert!(!found.whole_page);
+    assert_eq!(found.dropped, 0);
+    let whole = controls(&page_with(&[row(9), pointer_area(0, 0, false)]));
+    assert!(whole.whole_page);
+    assert_eq!(
+        controls(&page_with(&[row(9), pointer_area(0, 0, true)])).dropped,
+        1,
+        "a joined run of no width is nothing"
+    );
+}

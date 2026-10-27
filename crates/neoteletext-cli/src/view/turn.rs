@@ -49,11 +49,6 @@ impl ViewState {
             let session: &Session = session;
             let page = self.page_shown(session, requested, subcode);
             let page_extras = page.and_then(|page| source.extras(page.key.address, page.key.subcode)).cloned();
-            // The modes the open page's `IM` line asks for, while it is open
-            // (REQ-INT-114); the session adds them to its stack's top.
-            if let Some(modes) = page_extras.as_ref().and_then(|extras| extras.input_modes) {
-                self.typing.set_page_modes(requested.mpp(), modes);
-            }
             let shown = Shown { page, extras: page_extras.as_ref(), config: &config, now };
             self.compose(session, requested, &shown);
             let reveal = self.viewer.reveal(now);

@@ -18,7 +18,7 @@ mod issues;
 mod links;
 mod packets;
 
-pub use interaction::{CursorLine, INPUT_MODE_BITS, ModesLine};
+pub use interaction::CursorLine;
 pub use issues::{IssueKind, PAGE_ISSUES, PageIssue, Warning};
 pub use links::{
     LINK_ADDRESS_BYTES, LINK_LABEL_BYTES, LINK_LINES, LinkDestination, LinkKey, LinkLine, NUMBER_LINKS, NumberLink,
@@ -81,8 +81,6 @@ pub struct PageFile {
     pub text_links: FixedVec<TextLink, TEXT_LINKS>,
     /// The last `CU` line (REQ-INT-006).
     pub cursor: Option<CursorLine>,
-    /// The last `IM` line (REQ-INT-114).
-    pub input_modes: Option<ModesLine>,
     /// Problems found while reading.
     pub issues: FixedVec<PageIssue, PAGE_ISSUES>,
     /// Bit w set when warning w was marked `CK,considered`.
@@ -134,7 +132,6 @@ impl PageFile {
             number_links: FixedVec::new(NumberLink { number: DEFAULT_ADDRESS, destination, line: 0 }),
             text_links: FixedVec::new(TextLink { row: 0, column: 0, length: 0, destination, line: 0 }),
             cursor: None,
-            input_modes: None,
             issues: FixedVec::new(PageIssue { kind: IssueKind::BadCursorLine, line: 0 }),
             considered: 0,
             line: 0,
@@ -163,7 +160,6 @@ impl PageFile {
         self.number_links.clear();
         self.text_links.clear();
         self.cursor = None;
-        self.input_modes = None;
         self.issues.clear();
         self.considered = 0;
         self.line = 0;
@@ -278,7 +274,6 @@ impl PartialEq for PageFile {
             && self.number_links.as_slice() == other.number_links.as_slice()
             && self.text_links.as_slice() == other.text_links.as_slice()
             && self.cursor == other.cursor
-            && self.input_modes == other.input_modes
             && self.issues.as_slice() == other.issues.as_slice()
             && self.considered == other.considered
             && self.line == other.line

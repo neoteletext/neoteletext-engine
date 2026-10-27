@@ -68,7 +68,7 @@ struct Shown<'a> {
 
 impl ViewState {
     /// The viewer at the start of `session`'s service, started at `start`.
-    fn new(session: &Session, start: StdInstant, enhanced: bool) -> Self {
+    fn new(session: &Session, start: StdInstant) -> Self {
         let initial = initial_page(session.service().as_ref());
         let mut viewer = Viewer::new(initial);
         let action = viewer.event(ViewerEvent::Started);
@@ -83,7 +83,7 @@ impl ViewState {
             action,
             prompt: None,
             confirmed_services: HashSet::new(),
-            typing: Typing::new(enhanced),
+            typing: Typing::new(),
             unrecorded: None,
         }
     }
@@ -116,7 +116,7 @@ pub fn run(
     }
 
     let start = StdInstant::now();
-    let mut state = ViewState::new(session, start, enhanced);
+    let mut state = ViewState::new(session, start);
     session.keep(neoteletext_input::is_input_packet);
     // The viewer waits for the terminal and the source together: a key,
     // and a page the source has for it, are taken at once; the tick is

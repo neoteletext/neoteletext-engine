@@ -47,8 +47,6 @@ pub enum Problem {
     WithdrawnCommand,
     /// A `CU` line that could not be read (REQ-INT-006).
     BadCursorLine,
-    /// An `IM` line that could not be read (REQ-INT-114).
-    BadModesLine,
     /// An `LG` line that was refused, and why (REQ-INP-026).
     BadLogLine(crate::log::LogRefused),
     /// More `LG` lines than a page may carry (REQ-INP-026).
@@ -166,7 +164,6 @@ pub fn check_page(page: &PageFile, options: &CheckOptions<'_>, out: &mut dyn FnM
             IssueKind::BadLinkTarget => Problem::BadLinkTarget,
             IssueKind::WithdrawnCommand => Problem::WithdrawnCommand,
             IssueKind::BadCursorLine => Problem::BadCursorLine,
-            IssueKind::BadModesLine => Problem::BadModesLine,
             IssueKind::BadLogLine(why) => Problem::BadLogLine(why),
             IssueKind::TooManyLogLines => Problem::TooManyLogLines,
         };

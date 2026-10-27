@@ -45,6 +45,3 @@ const _: () = assert!(
     neoteletext_web::consts::INPUT_MESSAGE_MAX == MAX_MESSAGE
         && neoteletext_app::pipe::MAX_INPUT_MESSAGE == MAX_MESSAGE
 );
-
-// A page's `IM` line takes exactly the modes the input system defines.
-const _: () = assert!(neoteletext_formats::page::INPUT_MODE_BITS == neoteletext_input::modes::ALL_MODES);

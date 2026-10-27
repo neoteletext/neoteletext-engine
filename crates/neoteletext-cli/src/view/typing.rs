@@ -7,20 +7,14 @@ use neoteletext_core::consts::COLUMNS;
 use neoteletext_core::packet::Packet;
 
 /// What `neottx view` offers in HELLO (INPUT.md section 6.2): it shows
-/// pages and can send every key as KEY; a terminal reports no physical
-/// keys, and the viewer draws no cursor. Releases are offered as well
-/// where the terminal reports them (the Kitty keyboard protocol).
-const OFFERED: u32 = neoteletext_input::modes::PAGE_CAP | neoteletext_input::modes::ALL_KEYS;
+/// pages; it draws no cursor and no echo.
+const OFFERED: u32 = neoteletext_input::caps::PAGE_CAP;
 
-/// A terminal key as the input stream has it (INPUT.md sections 5.3 and
-/// 5.5): printable text as text, or in `ALL_KEYS` a KEY carrying it; a
-/// Control or Alt combination and every other key as KEY. `None` for keys
-/// a terminal cannot name.
-pub(super) fn input_of(
-    key: KeyEvent,
-    all_keys: bool,
-    buffer: &mut [u8; 4],
-) -> Option<neoteletext_input::event::Item<'_>> {
+/// A terminal key as the input stream has it (INPUT.md sections 5.3, 5.5
+/// and 6.3): every key as KEY, a character key's text with it unless
+/// Control or Alt is held or it is a release. `None` for keys a terminal
+/// cannot name.
+pub(super) fn input_of(key: KeyEvent, buffer: &mut [u8; 4]) -> Option<neoteletext_input::event::Item<'_>> {
     use neoteletext_input::event::{ALT, Action, CONTROL, Event, Item, Key, KeyCode as InputKey, SHIFT, printable};
     // A terminal with the Kitty keyboard protocol reports repeats and
     // releases; any other reports every key once, as a press.
@@ -44,9 +38,6 @@ pub(super) fn input_of(
         KeyCode::Char(character) if !printable(character) => return None,
         KeyCode::Char(character) => {
             let text: &str = character.encode_utf8(buffer);
-            if !control && !alt && !all_keys && action != Action::Release {
-                return Some(Item::Text(text));
-            }
             // A terminal gives the character typed; Shift is in `mods`.
             let unshifted = character.to_lowercase().next().unwrap_or(character);
             (InputKey::Character(unshifted), (!control && !alt && action != Action::Release).then_some(text))
@@ -107,15 +98,14 @@ pub(super) fn host_page(cursor_page: u16, open: u16, keys_go: bool) -> Option<u1
 }
 
 impl Typing {
-    /// Offering releases when the terminal reports them.
-    pub(super) fn new(releases: bool) -> Self {
-        let releases = if releases { neoteletext_input::modes::KEY_RELEASE } else { 0 };
+    /// A session not yet open.
+    pub(super) fn new() -> Self {
         Self {
             open: false,
             left: false,
             unfocused: false,
             focus_told: None,
-            input: neoteletext_input::session::Session::new(OFFERED | releases),
+            input: neoteletext_input::session::Session::new(OFFERED),
             started: false,
             told: None,
             go_to: None,
@@ -131,7 +121,7 @@ impl Typing {
         if self.started && self.focus_told != Some(focus) {
             self.focus_told = Some(focus);
             let event = if focus { Event::FocusIn } else { Event::FocusOut };
-            self.send(source, &Item::Event(event), None, clock_ms);
+            self.send(source, &Item::Event(event), clock_ms);
         }
     }
 
@@ -161,17 +151,6 @@ impl Typing {
         self.tell_focus(source, clock_ms);
     }
 
-    /// Whether every key goes as KEY on the page `open` (the `ALL_KEYS`
-    /// mode).
-    pub(super) fn all_keys(&self, open: Option<u16>) -> bool {
-        self.input.modes_on(open) & neoteletext_input::modes::ALL_KEYS != 0
-    }
-
-    /// The modes the open page's `IM` line asks for (REQ-INT-114).
-    pub(super) fn set_page_modes(&mut self, page: u16, modes: u32) {
-        self.input.modes.set_page_modes(page, modes);
-    }
-
     /// The page the channel's cursor record named, to open, once.
     pub(super) fn take_go_to(&mut self) -> Option<u16> {
         self.go_to.take()
@@ -183,7 +162,7 @@ impl Typing {
         if self.on() && self.told != Some(page) {
             self.told = Some(page);
             let item = neoteletext_input::event::Item::Event(neoteletext_input::event::Event::Page(page));
-            self.send(source, &item, Some(page), clock_ms);
+            self.send(source, &item, clock_ms);
         }
     }
 
@@ -233,22 +212,16 @@ impl Typing {
             self.started = true;
             let columns = u32::try_from(COLUMNS).unwrap_or(0);
             let rows = neoteletext_input::MAX_ROWS;
-            self.send(source, &Item::Event(Event::Resize { columns, rows, width: 0, height: 0 }), None, clock_ms);
+            self.send(source, &Item::Event(Event::Resize { columns, rows, width: 0, height: 0 }), clock_ms);
             self.tell_focus(source, clock_ms);
         }
         waiting && self.input.state() == neoteletext_input::session::State::Refused
     }
 
     /// Writes `item` at once, one message an item (REQ-INT-112).
-    pub(super) fn send(
-        &mut self,
-        source: &mut dyn Source,
-        item: &neoteletext_input::event::Item<'_>,
-        open: Option<u16>,
-        clock_ms: u32,
-    ) {
+    pub(super) fn send(&mut self, source: &mut dyn Source, item: &neoteletext_input::event::Item<'_>, clock_ms: u32) {
         let mut out = [0_u8; neoteletext_input::MAX_MESSAGE];
-        let sent = crate::nfc::with_nfc(item, |item| self.input.send(item, open, clock_ms, &mut out));
+        let sent = crate::nfc::with_nfc(item, |item| self.input.send(item, clock_ms, &mut out));
         if let Ok(length @ 1..) = sent
             && let Some(message) = out.get(..length)
         {

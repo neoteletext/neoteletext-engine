@@ -1,12 +1,12 @@
 //! A receiver's side of one input session (`neoteletext-common/INPUT.md`
-//! sections 6 to 8): HELLO and WELCOME, the modes, the input count the
+//! sections 6 to 8): HELLO and WELCOME, the input count the
 //! channel acknowledges, the round trip it gives, and the rate limit.
 //! Every receiver uses it alike: NeoTeletext's trusted core, `neottx view`,
 //! `neottx keyboard`, a microcontroller.
 
+use crate::caps::{AGENT, ALL_CAPS};
 use crate::control::Control;
-use crate::event::{Event, InputError, Item, write};
-use crate::modes::{AGENT, ALL_CAPS, Modes};
+use crate::event::{Event, InputError, Item, Mouse, MouseAction, write};
 use crate::{VERSION, WELCOME_TIMEOUT_MS};
 mod count;
 mod filter;
@@ -63,8 +63,6 @@ impl From<InputError> for SendError {
 pub struct Session {
     state: State,
     offered: u32,
-    /// What the session's modes are.
-    pub modes: Modes,
     /// The input count sent so far, modulo 2¹⁶ as the cursor record carries
     /// it.
     count: u16,
@@ -76,6 +74,9 @@ pub struct Session {
     /// The last acknowledgement taken.
     acked: u16,
     limiter: Limiter,
+    /// The last move sent on the open page, as sent: a move to the same dot
+    /// tells the channel nothing (INPUT.md section 6.3).
+    last_move: Option<Mouse>,
 }
 
 impl Session {
@@ -85,13 +86,13 @@ impl Session {
         Self {
             state: State::Closed,
             offered: caps & ALL_CAPS,
-            modes: Modes::new(),
             count: 0,
             sent: [(0, 0); REMEMBERED],
             sent_first: 0,
             sent_length: 0,
             acked: 0,
             limiter: Limiter::new(),
+            last_move: None,
         }
     }
 
@@ -150,31 +151,18 @@ impl Session {
             return Err(WelcomeError::Caps);
         }
         self.state = State::Welcomed { caps };
-        self.modes.agree(caps);
         Ok(())
     }
 
-    /// Takes a control message: WELCOME, or a mode change, which applies
-    /// only once welcomed.
+    /// Takes a control message: WELCOME; a withdrawn mode record or an
+    /// extension changes nothing.
     ///
     /// # Errors
     /// As [`Session::welcome`].
     pub fn control(&mut self, control: &Control<'_>) -> Result<(), WelcomeError> {
         match *control {
             Control::Welcome { version, caps } => self.welcome(version, caps),
-            Control::PushMode(modes) if self.welcomed() => {
-                self.modes.push(modes);
-                Ok(())
-            }
-            Control::PopMode(count) if self.welcomed() => {
-                self.modes.pop(count);
-                Ok(())
-            }
-            Control::PageModes { page, modes } if self.welcomed() => {
-                self.modes.set_page_modes(page, modes);
-                Ok(())
-            }
-            _ => Ok(()),
+            Control::Withdrawn(_) | Control::Extension { .. } => Ok(()),
         }
     }
 
@@ -196,31 +184,26 @@ impl Session {
         }
     }
 
-    /// The modes in force while `open` is the page the viewer has open.
-    #[must_use]
-    pub fn modes_on(&self, open: Option<u16>) -> u32 {
-        self.modes.on(open)
-    }
-
-    /// Encodes `item` into `out` as section 6.3 and section 8 say, while
-    /// `open` is the page the viewer has open, at `now_ms`, and counts it:
-    /// what the modes in force do not ask for is not sent, nor is a field
-    /// they do not ask for, text over the rate limit is cut and an event
-    /// over it dropped. Returns how many bytes to write, 0 for none.
+    /// Encodes `item` into `out` as sections 6.3 and 8 say, at `now_ms`, and
+    /// counts it: everything goes, but a move to the dot of the last one sent
+    /// on the page, PAGE without the PAGE capability, and text or an event
+    /// over the rate limit, which is cut or dropped. Returns how many bytes
+    /// to write, 0 for none.
     ///
     /// # Errors
     /// Before WELCOME, or when the item cannot be encoded.
-    pub fn send(
-        &mut self,
-        item: &Item<'_>,
-        open: Option<u16>,
-        now_ms: u32,
-        out: &mut [u8],
-    ) -> Result<usize, SendError> {
+    pub fn send(&mut self, item: &Item<'_>, now_ms: u32, out: &mut [u8]) -> Result<usize, SendError> {
         if !self.welcomed() {
             return Err(SendError::NotWelcomed);
         }
-        let Some(item) = self.filter(item, open) else { return Ok(0) };
+        let Some(item) = self.filter(item) else { return Ok(0) };
+        let moved = match item {
+            Item::Event(Event::Mouse(mouse)) if mouse.action == MouseAction::Move => Some(mouse),
+            _ => None,
+        };
+        if moved.is_some() && moved == self.last_move {
+            return Ok(0);
+        }
         let allowed = self.allow(&item, now_ms);
         let item = match item {
             Item::Text(text) => {
@@ -237,6 +220,12 @@ impl Session {
             return Ok(0);
         }
         let length = write(&item, out)?;
+        if moved.is_some() {
+            self.last_move = moved;
+        } else if matches!(item, Item::Event(Event::Page(_))) {
+            // Another page: its first move goes, wherever the pointer is.
+            self.last_move = None;
+        }
         self.sent(&item, now_ms);
         Ok(length)
     }

@@ -26,9 +26,6 @@ pub struct PageExtras {
     pub number_links: Vec<(PageAddress, Destination)>,
     /// `LT` lines: runs of text that are links.
     pub text_links: Vec<TextLinkExtras>,
-    /// The `IM` line: the input modes the page asks for while it is open
-    /// (REQ-INT-114).
-    pub input_modes: Option<u32>,
 }
 
 /// The coloured keys and Index.
@@ -104,7 +101,6 @@ pub fn from_page(page: &PageFile, services: &[String]) -> PageExtras {
         key_addresses: Default::default(),
         number_links: Vec::new(),
         text_links: Vec::new(),
-        input_modes: page.input_modes.map(|line| line.modes),
     };
     if let Some(receiver) = links::receiver_links(page, services, false) {
         let mut page_links = PageLinks::default();

@@ -1,6 +1,6 @@
 # F.23 Input: keys sent back to a channel (INT)
 
-This area is the input system: a receiver sends the viewer's input to a channel over the channel's push WebSocket, as a terminal sends keys to its host, and the channel answers with pushed rows and records that place a cursor, acknowledge input and ask for input modes. The design and the normative text of REQ-INT-101 to REQ-INT-119 are `neoteletext-common/INPUT.md` (protocol version 2, adopted on 21 October 2026, decision E.100), which replaced `docs/spec/design/input.md` and decision E.90's key record. Requirements REQ-INT-130 to REQ-INT-139 of that document are the browser's. Everything is built in `neoteletext-input` (`no_std`, no allocation).
+This area is the input system: a receiver sends the viewer's input to a channel over the channel's push WebSocket, as a terminal sends keys to its host, and the channel answers with pushed rows and records that place a cursor, acknowledge input and ask for input modes. The design and the normative text of REQ-INT-101 to REQ-INT-121 are `neoteletext-common/INPUT.md` (protocol version 2, adopted on 21 October 2026, decision E.100), which replaced `docs/spec/design/input.md` and decision E.90's key record. Requirements REQ-INT-130 to REQ-INT-139 of that document are the browser's. Everything is built in `neoteletext-input` (`no_std`, no allocation).
 
 **REQ-INT-001 — Withdrawn (the key record).**
 *Phase:* Phase 2 (the whole area).

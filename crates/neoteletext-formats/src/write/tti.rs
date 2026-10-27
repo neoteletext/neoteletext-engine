@@ -208,9 +208,6 @@ fn write_interaction_lines(page: &PageFile, out: &mut dyn Write) -> io::Result<(
         writeln!(out, "CU,{},{},{},{},{}", cursor.row, cursor.column, cursor.width, cursor.flags, cursor.acked)?;
     }
     // REQ-INT-114: the input modes the page asks for.
-    if let Some(modes) = page.input_modes {
-        writeln!(out, "IM,{}", modes.modes)?;
-    }
     Ok(())
 }
 

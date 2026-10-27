@@ -57,10 +57,9 @@ pub fn unidentified() -> u32 {
     code("Unidentified").unwrap_or(FIRST_NAMED)
 }
 
-/// The keys that only modify others or lock a state (INPUT.md section 6.3):
-/// they go only in `ALL_KEYS` or `KEY_RELEASE`, as the Kitty keyboard
-/// protocol reports them only when asked. The located modifiers are codes
-/// 80 to 91 and the lock keys 15 to 17; the rest are W3C names.
+/// The keys that only modify others or lock a state, for a receiver that
+/// tells them by where they are on the keyboard. The located modifiers are
+/// codes 80 to 91 and the lock keys 15 to 17; the rest are W3C names.
 const MODIFIER_NAMES: [&str; 11] =
     ["Alt", "AltGraph", "Control", "Fn", "FnLock", "Hyper", "Meta", "Shift", "Super", "Symbol", "SymbolLock"];
 const LOCKS: core::ops::RangeInclusive<u32> = 15..=17;
@@ -72,13 +71,6 @@ pub fn is_modifier(code: u32) -> bool {
     LOCKS.contains(&code)
         || LOCATED_MODIFIERS.contains(&code)
         || name(code).is_some_and(|name| MODIFIER_NAMES.contains(&name))
-}
-
-/// Whether `code` is the dead key: an accent pressed before its letter
-/// (section 5.7 rule 4), which goes only in `ALL_KEYS`.
-#[must_use]
-pub fn is_dead(code: u32) -> bool {
-    name(code) == Some("Dead")
 }
 
 /// The W3C names given no code below 128, in their table's order.

@@ -8,7 +8,6 @@ use neoteletext_app::{Failure, exit};
 use neoteletext_core::consts::PACKET_BYTES;
 use neoteletext_core::packet::Packet;
 use neoteletext_input::event::{Action, Event, Item, Key, KeyCode};
-use neoteletext_input::modes::{ALL_KEYS, KEY_RELEASE};
 use neoteletext_input::session::{SendError, Session, State};
 use neoteletext_input::{MAX_MESSAGE, MAX_ROWS, control, keys};
 use neoteletext_qrkeyboard::config::{Layout, ScreenConfig};
@@ -17,9 +16,9 @@ use neoteletext_qrkeyboard::qr::{Correction, Matrix};
 use neoteletext_qrkeyboard::screen::{Event as ScreenEvent, Screen};
 use std::time::{Duration, Instant};
 
-/// What the bridge offers in HELLO: it draws no page, so only the key
-/// modes a phone can give (INPUT.md section 6.2).
-const OFFERED: u32 = ALL_KEYS | KEY_RELEASE;
+/// What the bridge offers in HELLO: it draws no page, no cursor and no
+/// echo, so no capability (INPUT.md section 6.2).
+const OFFERED: u32 = 0;
 /// A dropped phone keeps the channel's screen this long.
 const REJOIN_SECONDS: u32 = 30;
 
@@ -112,7 +111,7 @@ impl Channel {
     fn send(&mut self, item: &Item<'_>) -> Result<(), Failure> {
         let mut out = [0_u8; MAX_MESSAGE];
         let now_ms = self.now_ms();
-        match crate::nfc::with_nfc(item, |item| self.session.send(item, None, now_ms, &mut out)) {
+        match crate::nfc::with_nfc(item, |item| self.session.send(item, now_ms, &mut out)) {
             Ok(0) => Ok(()),
             Ok(length) => self.write(out.get(..length).ok_or((exit::INPUT, "input longer than a message".to_owned()))?),
             Err(SendError::NotWelcomed) => Err((exit::INPUT, "the channel does not take input".to_owned())),
@@ -121,8 +120,8 @@ impl Channel {
     }
 
     /// A key the phone pressed or let go, by its W3C name or its character
-    /// (section 5.3, 5.5): a character as text, or in `ALL_KEYS` a KEY with
-    /// it; any other key as KEY with its functional code.
+    /// (INPUT.md sections 5.5 and 6.3): a character as KEY with its text,
+    /// any other key as KEY with its functional code.
     fn key(&mut self, name: &str, down: bool) -> Result<(), Failure> {
         let mut characters = name.chars();
         let character = match (characters.next(), characters.next()) {
@@ -130,18 +129,14 @@ impl Channel {
             _ => None,
         };
         let action = if down { Action::Press } else { Action::Release };
-        let item = match character {
-            Some(_) if down && self.session.modes_on(None) & ALL_KEYS == 0 => Item::Text(name),
-            Some(character) => {
-                // The phone gives the character typed; its key unshifted.
-                let unshifted = character.to_lowercase().next().unwrap_or(character);
-                let text = down.then_some(name);
-                Item::Event(Event::Key(Key { action, key: KeyCode::Character(unshifted), mods: 0, text, base: None }))
-            }
-            None => {
-                let code = keys::code(name).unwrap_or_else(keys::unidentified);
-                Item::Event(Event::Key(Key { action, key: KeyCode::Functional(code), mods: 0, text: None, base: None }))
-            }
+        let item = if let Some(character) = character {
+            // The phone gives the character typed; its key unshifted.
+            let unshifted = character.to_lowercase().next().unwrap_or(character);
+            let text = down.then_some(name);
+            Item::Event(Event::Key(Key { action, key: KeyCode::Character(unshifted), mods: 0, text, base: None }))
+        } else {
+            let code = keys::code(name).unwrap_or_else(keys::unidentified);
+            Item::Event(Event::Key(Key { action, key: KeyCode::Functional(code), mods: 0, text: None, base: None }))
         };
         self.send(&item)
     }
@@ -150,13 +145,6 @@ impl Channel {
     /// in messages of whole characters.
     fn text(&mut self, text: &str) -> Result<(), Failure> {
         let clean: String = text.chars().filter(|&character| neoteletext_input::event::printable(character)).collect();
-        if self.session.modes_on(None) & ALL_KEYS != 0 {
-            let mut buffer = [0_u8; 4];
-            for character in clean.chars() {
-                self.key(character.encode_utf8(&mut buffer), true)?;
-            }
-            return Ok(());
-        }
         let mut start = 0;
         while start < clean.len() {
             let mut end = start.saturating_add(MAX_MESSAGE).min(clean.len());

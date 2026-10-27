@@ -48,8 +48,6 @@ fn modifiers_locks_and_the_dead_key_are_known() {
         assert!(!is_modifier(code(other).unwrap()), "{other}");
     }
     assert!(MODIFIER_NAMES.iter().all(|name| code(name).is_some()), "every name is in the table");
-    assert!(is_dead(code("Dead").unwrap()));
-    assert!(!is_dead(code("Escape").unwrap()));
 }
 
 // REQ-INT-104.

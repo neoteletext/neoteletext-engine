@@ -7,7 +7,7 @@ use neoteletext_core::types::SubCode;
 
 use crate::consts::TTI_COMMAND_BYTES;
 use crate::item::{Capacity, Diagnostic, DiagnosticKind, Item};
-use crate::page::{INPUT_MODE_BITS, IssueKind, ModesLine, PageFunction, Warning};
+use crate::page::{IssueKind, PageFunction, Warning};
 
 use super::fields::{Args, CODING_LAST, REGION_LAST, decimal, hex, page_address, set_value};
 use super::row_text::decode_text;
@@ -95,10 +95,6 @@ impl TtiReader {
             b"LK" => self.number_link_line(args, out),
             b"LT" => self.text_link_line(args, out),
             b"CU" => self.cursor_line(args, out),
-            b"IM" => match decimal(args.trim_ascii()).filter(|&modes| modes & !INPUT_MODE_BITS == 0) {
-                Some(modes) => self.page.input_modes = Some(ModesLine { modes, line: self.lines.number() }),
-                None => self.issue(IssueKind::BadModesLine, out),
-            },
             b"RE" => match hex(args).filter(|&value| value <= REGION_LAST) {
                 Some(value) => self.page.region = u8::try_from(value).ok(),
                 None => self.diagnostic(bad, out),
@@ -129,7 +125,9 @@ impl TtiReader {
             }
             // `TF` named a page's font, withdrawn on 23 October 2026
             // (decision E.111): reported, and nothing of it kept.
-            b"TF" => self.issue(IssueKind::WithdrawnCommand, out),
+            // `TF` was withdrawn by decision E.111, and `IM` with the input
+            // modes by decision E.125 (INPUT.md section 6.3).
+            b"TF" | b"IM" => self.issue(IssueKind::WithdrawnCommand, out),
             _ => self.diagnostic(DiagnosticKind::UnknownCommand { command: name }, out),
         }
     }

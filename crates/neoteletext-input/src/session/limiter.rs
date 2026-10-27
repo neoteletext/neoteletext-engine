@@ -3,17 +3,25 @@
 
 use super::Session;
 use crate::MAX_PER_SECOND;
-use crate::event::{Action, Event, Item, units};
+use crate::event::{Action, Event, Item, MouseAction, units};
 
 /// The window the rate limit counts over.
 const SECOND_MS: u32 = 1_000;
 
 impl Session {
     /// How many of `item`'s units may go at `now_ms` under the rate limit
-    /// (REQ-INT-109), counting those that may; a release always goes. Text
+    /// (REQ-INT-109), counting those that may; a release always goes, and a
+    /// move is never counted. Text
     /// that may only partly go is cut to that many characters by the
     /// caller.
     pub fn allow(&mut self, item: &Item<'_>, now_ms: u32) -> u32 {
+        // A move or a HOVER counts nothing against the limit (section 8 rule
+        // 4): each goes only as the pointer moves, and so can never cost a key.
+        if matches!(item, Item::Event(Event::Mouse(mouse)) if mouse.action == MouseAction::Move)
+            || matches!(item, Item::Event(Event::Hover { .. }))
+        {
+            return units(item);
+        }
         let release = matches!(item, Item::Event(Event::Key(key)) if key.action == Action::Release);
         let mut allowed: u32 = 0;
         for _ in 0..units(item) {

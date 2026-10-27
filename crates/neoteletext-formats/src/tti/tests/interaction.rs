@@ -1,4 +1,4 @@
-//! The interaction and author lines: `TF` (withdrawn), `IM` (REQ-INT-114),
+//! The interaction and author lines: `TF` and `IM` (withdrawn),
 //! `CU` (REQ-INT-006) and `LG` (REQ-INP-026).
 #![allow(
     clippy::unwrap_used,
@@ -27,30 +27,16 @@ fn a_font_line_is_a_withdrawn_command() {
     }
 }
 
-/// REQ-INT-114: `IM,modes` is the input modes the page asks for; the last
-/// line is kept, the writer writes it back, and a line that cannot be read
-/// or names a mode not defined is reported and dropped.
+/// Decision E.125: the input modes are withdrawn; an `IM` line is reported
+/// as a withdrawn command and changes nothing of the page.
 #[test]
-fn a_modes_line_is_read_kept_and_written_back() {
-    let (pages, _) = read(b"PN,30000\nIM,1\nIM,72\nPN,30100\nOL,1,None\n");
-    assert_eq!(pages[0].input_modes.map(|line| line.modes), Some(72), "the last line");
-    assert_eq!(pages[1].input_modes, None);
-    #[cfg(feature = "std")]
-    {
-        let mut written = Vec::new();
-        crate::write::write_tti(&[&pages[0]], &mut written).unwrap();
-        assert!(
-            written.windows(6).any(|line| line == b"IM,72\n"),
-            "{}",
-            std::string::String::from_utf8_lossy(&written)
-        );
-        let (again, _) = read(&written);
-        assert_eq!(again[0].input_modes.map(|line| line.modes), Some(72));
-    }
-    for line in [b"IM,256\n".as_slice(), b"IM,x\n", b"IM,\n", b"IM,-1\n", b"IM,1,2\n"] {
-        let text = [b"PN,30000\n".as_slice(), line].concat();
-        let (pages, _) = read(&text);
-        assert!(pages[0].input_modes.is_none() && pages[0].has_issue(IssueKind::BadModesLine), "{line:?}");
+fn a_modes_line_is_withdrawn() {
+    for line in ["IM,72", "IM,x", "IM"] {
+        let text = std::format!("PN,30000\n{line}\nOL,1,STILL SHOWN\n");
+        let (pages, _) = read(text.as_bytes());
+        assert!(pages[0].has_issue(IssueKind::WithdrawnCommand), "{line}");
+        let (without, _) = read(b"PN,30000\nOL,1,STILL SHOWN\n");
+        assert_eq!(pages[0].rows, without[0].rows, "{line}");
     }
 }
 

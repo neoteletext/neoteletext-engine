@@ -3,11 +3,14 @@
 use super::decode::read;
 use super::{
     Action, COMPOSE, EVENT, Event, FIRST_EXTENSION, FOCUS_IN, FOCUS_OUT, FUNCTIONAL, HAS_BASE, HAS_MODS, HAS_PIXELS,
-    HAS_TEXT, HELLO, InputError, Item, KEY, Key, KeyCode, LAST_EXTENSION, MOUSE, MouseAction, PAGE, PASTE, Point,
-    RESIZE, WHEEL, check_text,
+    HAS_TEXT, HELLO, HOVER, HOVER_LEAVE, InputError, Item, KEY, Key, KeyCode, LAST_EXTENSION, MOUSE, MouseAction, PAGE,
+    PASTE, Point, RESIZE, WHEEL, check_text,
 };
-use crate::modes::AGENT;
+use crate::caps::AGENT;
 use crate::wire::Writer;
+
+/// HOVER's payload at its longest: the flags and two varints of 5 bytes.
+const HOVER_PAYLOAD: usize = 11;
 use crate::{MAX_AGENT, MAX_COMPOSE, MAX_KEY_TEXT, MAX_PASTE};
 
 /// Writes one item, then reads it back: what does not read back as it was
@@ -133,6 +136,18 @@ fn write_event(event: &Event<'_>, writer: &mut Writer<'_>) -> Result<(), InputEr
         Event::Page(page) => {
             writer.byte(PAGE)?;
             writer.uv(u32::from(*page))?;
+        }
+        Event::Hover { leave, column, row } => {
+            // The payload, written first so its length can go before it.
+            let mut payload = [0_u8; HOVER_PAYLOAD];
+            let mut inner = Writer::new(&mut payload);
+            inner.byte(if *leave { HOVER_LEAVE } else { 0 })?;
+            inner.uv(*column)?;
+            inner.uv(*row)?;
+            let length = inner.len();
+            writer.byte(HOVER)?;
+            writer.uv(u32::try_from(length).map_err(|_| InputError::Message)?)?;
+            writer.bytes(payload.get(..length).unwrap_or(&[]))?;
         }
         Event::Extension { kind, payload } => {
             if !(FIRST_EXTENSION..=LAST_EXTENSION).contains(kind) {
