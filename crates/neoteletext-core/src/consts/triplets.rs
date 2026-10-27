@@ -34,6 +34,14 @@ pub const MODE_G3_LEVEL_15: u8 = 0x02;
 pub const MODE_COLUMN_RESERVED_1: u8 = 0x04;
 /// Column mode 00101: reserved.
 pub const MODE_COLUMN_RESERVED_2: u8 = 0x05;
+/// Column mode 00101, reserved in Table 29, is NeoTeletext's control
+/// triplet (decision E.127): cells a page answers itself.
+pub const MODE_CONTROL: u8 = MODE_COLUMN_RESERVED_2;
+/// A control triplet's data bits D5 to D0: its width, 1 to 40 cells.
+pub const CONTROL_WIDTH_MASK: u8 = 0x3F;
+/// A control triplet's data bit D6: the run joins the control on the row
+/// above, at the same column and width.
+pub const CONTROL_JOINED: u8 = 0x40;
 /// Column mode 00110: Programme Delivery Control.
 pub const MODE_COLUMN_PDC: u8 = 0x06;
 /// Column mode 01010: reserved.

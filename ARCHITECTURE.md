@@ -603,6 +603,7 @@ A module may use the modules listed for it, and nothing else. The cross-cutting 
 | `glyphs` | L4 | Foundation, `charset` (character references) |
 | `render` | L4 | Foundation, `glyphs`, `level1` (grid types), `colour` (Colour Map) |
 | `viewer`, `nav` | L6 | Foundation, `acq`, `level1`, `level15`, `enhance`, `colour`, `render` (change tracking), `service` |
+| `controls` | L6 | Foundation, `acq` (read-only stored page types), `objects` (the local enhancement data's triplets and row addresses), `packet` (triplet functions), `level1` (grid types, for the looks); decision E.127 |
 | `port` | L8 | Foundation |
 
 `neoteletext-formats` and `neoteletext-slicer` may use Foundation and `packet` only. `neoteletext-web` may use Foundation, `policy` and `config` only; it never uses the decoding layers. `neoteletext-image` may use Foundation, the `render` output types and the `colour` Colour Map type only. `neoteletext-audio` may use Foundation and `packet` only; `neoteletext-audio-mix` and `neoteletext-opus` use no other crate.

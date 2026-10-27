@@ -31,6 +31,8 @@ const LAYER_TABLE: &[(&str, &[&str])] = &[
     ("render", &["glyphs", "level1", "colour"]),
     ("viewer", &["acq", "level1", "compose", "colour", "render", "service", "nav", "charset"]),
     ("nav", &["acq", "level1", "level15", "enhance", "colour", "render", "service", "charset"]),
+    // Decision E.127: a page's controls and the looks drawn on them.
+    ("controls", &["acq", "level1", "objects", "packet"]),
     ("port", &[]),
     ("policy", &[]),
     ("config", &[]),

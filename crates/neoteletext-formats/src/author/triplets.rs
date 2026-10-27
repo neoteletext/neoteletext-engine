@@ -3,7 +3,9 @@
 
 use std::vec::Vec;
 
-use neoteletext_core::consts::{ROW_ADDRESS_BASE, ROW_ADDRESS_LAST, ROW_ADDRESS_ROW_24};
+use neoteletext_core::consts::{
+    COLUMNS, CONTROL_JOINED, CONTROL_WIDTH_MASK, MODE_CONTROL, ROW_ADDRESS_BASE, ROW_ADDRESS_LAST, ROW_ADDRESS_ROW_24,
+};
 use neoteletext_core::packet::{
     ColourData, DisplayAttributes, ObjectKind, ObjectNumber, ObjectSource, Triplet, TripletFunction,
 };
@@ -369,6 +371,22 @@ impl Triplets {
     /// A Programme Delivery Control column triplet (column mode 00110).
     pub fn pdc_column(&mut self, column: u8, data: u8) -> &mut Self {
         self.function(TripletFunction::ProgrammeDeliveryColumn { column, data })
+    }
+
+    /// NeoTeletext's control triplet (column mode 00101, decision E.127):
+    /// `width` cells from `column` on the active row are a control, joined
+    /// to the control above at the same column and width when `joined`.
+    ///
+    /// # Errors
+    /// [`AuthorError::BadPosition`] for a width of 0, or one that runs past
+    /// column 39.
+    pub fn control(&mut self, column: u8, width: u8, joined: bool) -> Result<&mut Self> {
+        if width == 0 || width > CONTROL_WIDTH_MASK || usize::from(column).saturating_add(usize::from(width)) > COLUMNS
+        {
+            return Err(AuthorError::BadPosition);
+        }
+        let data = width | if joined { CONTROL_JOINED } else { 0 };
+        Ok(self.raw(Triplet { address: column, mode: MODE_CONTROL, data }))
     }
 
     /// Appends every element of another list.

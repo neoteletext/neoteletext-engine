@@ -16,7 +16,7 @@
 //! - L3 presentation model: [`charset`], [`level1`], [`compose`], [`level15`], and for
 //!   Levels 2.5 and 3.5 [`colour`], [`objects`] and [`enhance`];
 //! - L4 rendering: [`glyphs`], [`render`];
-//! - L6 interaction: [`viewer`], [`nav`];
+//! - L6 interaction: [`viewer`], [`nav`], [`controls`];
 //! - L8 platform interface: [`port`];
 //! - cross-cutting: [`config`], [`policy`], [`trace`].
 #![no_std]
@@ -65,6 +65,7 @@ pub mod joining;
 #[cfg(feature = "render")]
 pub mod render;
 
+pub mod controls;
 #[cfg(feature = "viewer")]
 pub mod nav;
 #[cfg(feature = "viewer")]

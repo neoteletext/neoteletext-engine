@@ -345,3 +345,23 @@ fn drcs_and_character_triplets_match_the_worked_encodings() {
         assert_eq!(&crate::encode::pack_triplets(&triplets)[..3], &characters, "{expected:#x}");
     }
 }
+
+/// Decision E.127: the control triplet is written as INPUT.md section 7.3
+/// gives it, the bytes of its worked example, and a width that does not
+/// fit is refused.
+#[test]
+fn controls_are_written_as_input_md_gives_them() {
+    let mut page = DisplayPage::new(address(0x128).unwrap(), SubCode::new(0));
+    page.local().position(20, 0).unwrap();
+    for column in [1, 11, 21, 31] {
+        page.local().control(column, 9, false).unwrap();
+    }
+    let built = page.build().unwrap();
+    let triplets: Vec<Triplet> = built.enhancements.as_slice().iter().flat_map(|packet| packet.triplets).collect();
+    let values: Vec<u32> = triplets[..5].iter().map(|triplet| triplet.value()).collect();
+    assert_eq!(values, [0x0013C, 0x04941, 0x0494B, 0x04955, 0x0495F]);
+    assert_eq!(hamming2418_encode(0x04941), [0x8F, 0x94, 0x89]);
+    assert_eq!(hamming2418_encode(0x2A942), [0x98, 0x94, 0xD5], "column 2, width 21, joined");
+    assert_eq!(page.local().control(32, 9, false).err(), Some(AuthorError::BadPosition), "past column 39");
+    assert_eq!(page.local().control(0, 0, false).err(), Some(AuthorError::BadPosition), "no width");
+}
