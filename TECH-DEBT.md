@@ -245,6 +245,10 @@ Built behind `neoteletext-web`'s feature `dbsc`; owed:
 
 `neoteletext-cli`'s `typing` test, whose median budget is 2 ms (REQ-INT-008), failed the commit gate once at 2.8 ms with the machine's load average near 20, and three times more when run alone, then passed five times in a row; nothing on its path had changed. A timed test that fails under load stops unrelated commits: consider measuring it against an unloaded baseline, or running it only in the full gate.
 
+## The standard's maxima and sub-pages on the wire (26 October 2026)
+
+Owed by E.122: every item of `neoteletext-common/STANDARD-LIMITS.md` section 7 that names this repository, in its order; none is started. The owner's questions are its section 6.
+
 ## The Opus decoder (decision E.123, 26 October 2026)
 
 Built and integrated; owed:

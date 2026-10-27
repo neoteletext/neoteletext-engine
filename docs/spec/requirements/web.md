@@ -321,8 +321,10 @@ A channel's files shall have these fixed names, in the channel's folder, and no 
 | File | Holds |
 |---|---|
 | `NNN.tti` | Page `NNN` as a TTI file (REQ-INP-013), with its sub-pages |
-| `NNN.t42` | Page `NNN` as T42 packets (REQ-INP-002), with its sub-pages |
-| `index.t42` | Any number of pages, as T42 packets |
+| `NNN.t42` | Page `NNN` as T42 packets (REQ-INP-002), with its sub-pages; or, when `NNN.sub` exists, its first sub-page |
+| `NNN-SSSS.t42` | Sub-page `SSSS` of page `NNN`, four hexadecimal digits, when `NNN.sub` lists it |
+| `NNN.sub` | The sub-codes of page `NNN`, with each one's validator and title, for a page whose sub-pages are files of their own |
+| `index.t42` | Any number of pages, as T42 packets; first sub-pages only of a page that has `NNN.sub` |
 | `channel.json` | The channel's settings (REQ-WEB-024) |
 | `contents.txt` | The channel's contents (REQ-WEB-025) |
 
@@ -343,6 +345,7 @@ Within a channel, the extension that last answered 200 shall be tried first, and
 When the bundle or a file does not hold the page asked for, and the viewer has not chosen a page, the first page it holds shall be shown.
 *Reason:* A page's file cannot overwrite the rest of its channel, while a whole capture published as `index.t42` is a working channel. Fixed names mean one layout to learn and to build.
 *Amended 12 October 2026* (decision E.70): fixed file names in the channel's folder replace the page address template and the front door at the root.
+*Amended 26 October 2026 (decision E.122):* a page's sub-pages may be files of their own, `NNN-SSSS.t42`, listed by `NNN.sub`, so a page of up to 8,190 sub-pages stays within the page response limit of REQ-WEB-008 and a sub-page is fetched only when it is shown. Not built: the reader of `NNN.sub` (fuzzed, bounded at 8,190 entries) and the fetch of a sub-page's file.
 *Verification:* Tests that a page is found as `.tti`, as `.t42`, and not at all; that the order of the two requests changes after a success but the result does not; that a page file holding other pages fills only the pages asked for and enhancement pages; and that `index.t42` fills every page.
 *Amended 27 October 2026 (decision E.126):* a form response no longer fills pages, since forms are withdrawn.
 
