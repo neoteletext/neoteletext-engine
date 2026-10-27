@@ -154,7 +154,7 @@ pub fn stabilize(nlsf_q15: &mut [i16], delta_min_q15: &[i16]) {
         let mut min_diff_q15 = i32::from(first).wrapping_sub(first_delta);
         let mut ii = 0usize;
         // Middle elements
-        for (i, (&[low, high], delta)) in (1..).zip(nlsf_q15.array_windows::<2>().zip(inner_deltas())) {
+        for (i, ((&low, &high), delta)) in (1..).zip(nlsf_q15.iter().zip(nlsf_q15.iter().skip(1)).zip(inner_deltas())) {
             let diff_q15 = i32::from(high).wrapping_sub(i32::from(low).wrapping_add(delta));
             if diff_q15 < min_diff_q15 {
                 min_diff_q15 = diff_q15;
@@ -343,8 +343,11 @@ pub fn to_lpc(a_q12: &mut [i16; MAX_LPC_ORDER], nlsf: &[i16; MAX_LPC_ORDER], ord
     // values at this stage need to fit in int32
     let a32_qa1 = a32_qa1.get_mut(..d).unwrap_or_default();
     let (low, high) = a32_qa1.split_at_mut_checked(dd).unwrap_or_default();
-    for (((low, high), &[p0, p1]), &[q0, q1]) in
-        low.iter_mut().zip(high.iter_mut().rev()).zip(p.array_windows::<2>()).zip(q.array_windows::<2>())
+    for (((low, high), (&p0, &p1)), (&q0, &q1)) in low
+        .iter_mut()
+        .zip(high.iter_mut().rev())
+        .zip(p.iter().zip(p.iter().skip(1)))
+        .zip(q.iter().zip(q.iter().skip(1)))
     {
         let ptmp = p1.wrapping_add(p0);
         let qtmp = q1.wrapping_sub(q0);

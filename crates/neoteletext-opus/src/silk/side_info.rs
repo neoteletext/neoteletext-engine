@@ -69,7 +69,7 @@ impl SideInfo {
         // RFC 6716 §4.2.7.4: the first gain independently, in two stages: MSB bits followed by
         // 3 LSBs; the others as deltas
         let mut gains_indices = [0i8; MAX_SUBFRAMES];
-        gains_indices[0] = (range.dec_icdf(signal_type.select(&GAIN_ICDF), 8) << 3)
+        gains_indices[0] = (range.dec_icdf(signal_type.select(&GAIN_ICDF).as_slice(), 8) << 3)
             .wrapping_add(range.dec_icdf(&UNIFORM8_ICDF, 8)) as i8;
         for gain in &mut gains_indices[1..] {
             *gain = range.dec_icdf(&DELTA_GAIN_ICDF, 8) as i8;
@@ -78,7 +78,7 @@ impl SideInfo {
         // RFC 6716 §4.2.7.5.1 and §4.2.7.5.2: the NLSF indices
         let codebook = nlsf_codebook(rate);
         let mut nlsf_indices = [0i8; MAX_LPC_ORDER + 1];
-        let cb1_index = decode_index(range, signal_type.select_by_voicing(codebook.cb1_icdf));
+        let cb1_index = decode_index(range, signal_type.select_by_voicing(codebook.cb1_icdf).as_slice());
         nlsf_indices[0] = cb1_index as i8;
         let mut ec_icdf = [&codebook.ec_icdf[0]; MAX_LPC_ORDER];
         let mut pred_q8 = [0u8; MAX_LPC_ORDER];

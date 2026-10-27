@@ -184,7 +184,7 @@ pub fn bandwidth_expand_32(ar: &mut [i32], mut chirp_q16: i32) {
 pub fn analysis_filter<const ORDER: usize>(out: &mut [i16], input: &[i16], b: &[i16; ORDER]) {
     let (head, tail) = out.split_at_mut(ORDER.min(out.len()));
     head.fill(0);
-    for ((past, &current), out) in input.array_windows::<ORDER>().zip(input.iter().skip(ORDER)).zip(tail) {
+    for ((past, &current), out) in input.windows(ORDER).zip(input.iter().skip(ORDER)).zip(tail) {
         // Allowing wrap around so that two wraps can cancel each other. The rare cases where the
         // result wraps around can only be triggered by invalid streams
         let mut prediction_q12: i32 = 0;

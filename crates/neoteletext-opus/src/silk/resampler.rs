@@ -221,8 +221,7 @@ impl Resampler {
             let upsampled = batch.len().saturating_mul(2);
             let signal = buffer.get_mut(..FIR_ORDER.saturating_add(upsampled)).unwrap_or_default();
             up2(&mut self.iir, signal.get_mut(FIR_ORDER..).unwrap_or_default(), batch);
-            for (window, out) in signal.array_windows::<{ FIR_ORDER + 1 }>().step_by(2).zip(out.as_chunks_mut::<3>().0)
-            {
+            for (window, out) in signal.windows(FIR_ORDER + 1).step_by(2).zip(out.as_chunks_mut::<3>().0) {
                 let (Some(head), Some(tail)) = (window.first_chunk::<FIR_ORDER>(), window.last_chunk::<FIR_ORDER>())
                 else {
                     continue;
