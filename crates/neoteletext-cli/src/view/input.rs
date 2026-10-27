@@ -1,17 +1,15 @@
 //! The terminal's events in a turn: a paste and the focus, and each key,
-//! whether the channel's, a confirmation's, the active form's or the
-//! viewer's.
+//! whether the channel's or the viewer's.
 
-use super::keys::{LEAVE_TYPING, map_form_key, map_key};
+use super::keys::{LEAVE_TYPING, map_key};
 use super::typing::input_of;
-use super::{Pending, Shown, ViewState};
+use super::{Shown, ViewState};
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use neoteletext_app::interact::{message_row, submission};
+use neoteletext_app::interact::message_row;
 use neoteletext_app::session::Session;
 use neoteletext_app::source::Source;
-use neoteletext_core::forms::FormAction;
 use neoteletext_core::nav::PageLinks;
-use neoteletext_core::viewer::{Action, KeyContext, SecurityIndicator};
+use neoteletext_core::viewer::{Action, KeyContext};
 use std::ops::ControlFlow;
 
 impl ViewState {
@@ -41,8 +39,8 @@ impl ViewState {
         }
     }
 
-    /// A key: the channel's while it takes them, then a confirmation's, the
-    /// active form's, or the viewer's. Breaks when the user quits.
+    /// A key: the channel's while it takes them, or the viewer's. Breaks
+    /// when the user quits.
     pub(super) fn key(
         &mut self,
         key: KeyEvent,
@@ -79,35 +77,8 @@ impl ViewState {
             return ControlFlow::Break(());
         }
         self.last_drawn = None;
-        if let Some(Pending::Submission) = &self.pending {
-            self.answer_submission(key, source);
-            return ControlFlow::Continue(());
-        }
-        if let Some(active) = self.form.as_mut().filter(|form| form.focused) {
-            if let Some(form_key) = map_form_key(key) {
-                match active.model.key(form_key, shown.now) {
-                    FormAction::Submit(button) => {
-                        source.submit(submission(active, button));
-                        self.prompt = Some(message_row("Submitting..."));
-                    }
-                    FormAction::Invalid(_, reason) => {
-                        self.prompt = Some(message_row(&format!("Check the field: {reason:?}")));
-                    }
-                    FormAction::Leave => active.focused = false,
-                    FormAction::Refused => self.prompt = Some(message_row("That character cannot be shown here")),
-                    FormAction::None => {}
-                }
-            }
-            return ControlFlow::Continue(());
-        }
         if matches!(key.code, KeyCode::Char('q') | KeyCode::Esc) {
             return ControlFlow::Break(());
-        }
-        if key.code == KeyCode::Tab
-            && let Some(active) = self.form.as_mut()
-        {
-            active.focused = true;
-            return ControlFlow::Continue(());
         }
         self.viewer_key(key, session, shown);
         ControlFlow::Continue(())
@@ -123,15 +94,6 @@ impl ViewState {
             "Keys go to this channel. Ctrl-] leaves"
         }));
         self.last_drawn = None;
-    }
-
-    /// The answer to a submission's confirmation (REQ-SEC-008, REQ-SEC-009).
-    fn answer_submission(&mut self, key: KeyEvent, source: &mut dyn Source) {
-        let yes = matches!(key.code, KeyCode::Enter | KeyCode::F(4));
-        source.confirm(yes);
-        self.pending = None;
-        self.prompt = if yes { Some(message_row("Sending...")) } else { None };
-        self.viewer.set_indicator(SecurityIndicator::None);
     }
 
     /// A key for the viewer machine, with the links of the page shown.

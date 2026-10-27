@@ -36,9 +36,6 @@ pub struct Config {
     /// Local-network addresses explicitly allowed (REQ-SEC-006). None by
     /// default.
     pub allowed_local: [Option<IpAddress>; ALLOWED_LOCAL],
-    /// Ask before the first submission to each origin (REQ-SEC-009). The
-    /// plain-HTTP confirmation of REQ-SEC-008 cannot be switched off.
-    pub confirm_first_submission: bool,
     /// Cookies kept per host (REQ-WEB-006).
     pub cookies_per_host: usize,
     /// Cookies kept in total (REQ-WEB-006).
@@ -75,7 +72,6 @@ impl Default for Config {
             response_timeout_us: DEFAULT_RESPONSE_TIMEOUT_US,
             tls_available: true,
             allowed_local: [None; ALLOWED_LOCAL],
-            confirm_first_submission: true,
             cookies_per_host: DEFAULT_COOKIES_PER_HOST,
             cookies_total: DEFAULT_COOKIES_TOTAL,
             persist_cookies: false,
@@ -92,9 +88,9 @@ impl Default for Config {
 pub struct Buffers<'m> {
     /// Response heads on the fetch connection.
     pub fetch_head: &'m mut [u8],
-    /// Requests on the fetch connection, form bodies included.
+    /// Requests on the fetch connection.
     pub fetch_request: &'m mut [u8],
-    /// Page, descriptor and form response bodies.
+    /// Page, descriptor, bundle and contents response bodies.
     pub body: &'m mut [u8],
     /// The push connection's handshake response head.
     pub push_head: &'m mut [u8],
@@ -102,8 +98,6 @@ pub struct Buffers<'m> {
     pub push_request: &'m mut [u8],
     /// One push message.
     pub push_message: &'m mut [u8],
-    /// The encoded values of the form being submitted.
-    pub form: &'m mut [u8],
 }
 
 /// Buffers of the default sizes, for callers that do not need to choose.
@@ -115,7 +109,6 @@ pub struct Storage {
     push_head: [u8; DEFAULT_HEADER_LIMIT],
     push_request: [u8; crate::consts::DEFAULT_REQUEST_LIMIT],
     push_message: [u8; DEFAULT_PUSH_LIMIT],
-    form: [u8; crate::consts::DEFAULT_FORM_LIMIT],
 }
 
 impl Default for Storage {
@@ -138,7 +131,6 @@ impl Storage {
             push_head: [0; DEFAULT_HEADER_LIMIT],
             push_request: [0; crate::consts::DEFAULT_REQUEST_LIMIT],
             push_message: [0; DEFAULT_PUSH_LIMIT],
-            form: [0; crate::consts::DEFAULT_FORM_LIMIT],
         }
     }
 
@@ -151,7 +143,6 @@ impl Storage {
             push_head: &mut self.push_head,
             push_request: &mut self.push_request,
             push_message: &mut self.push_message,
-            form: &mut self.form,
         }
     }
 }

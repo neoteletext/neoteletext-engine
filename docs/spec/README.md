@@ -22,7 +22,7 @@ Each fact is written once, in the one document whose job it is, and every other 
 | How the requirements are organised: areas, delivery phases, milestones | `requirements/README.md` | Part F, sections F.0 to F.0.2 |
 | Security, which overrides every other requirement (decision E.32) | `requirements/sec.md` | Section F.0.3 |
 | What is deliberately out of scope | `requirements/out-of-scope.md` | Part G |
-| The normative TTI extensions | `requirements/tti-form-extension.md`, `requirements/tti-link-extension.md` | Appendices C and E |
+| The TTI extensions: the Link Extension (normative), and the Form Extension (withdrawn on 27 October 2026 by decision E.126, kept as history) | `requirements/tti-link-extension.md`, `requirements/tti-form-extension.md` | Appendices E and C |
 | **Why:** each decision where the standard is silent, contradicts itself, or differs from the reference chips, with its reason. A decision says what was chosen and points to the design for the detail. | `decisions.md` | Part E |
 | **How a feature works,** explained from the beginning: walkthroughs of the standard and the reference chips, and the design of larger features | `design/*.md` | Parts A to D, and documents formerly in `docs/` |
 | Terms and abbreviations | `glossary.md` | Appendix A |

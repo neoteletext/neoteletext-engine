@@ -65,7 +65,7 @@ def main():
         server, port = start_server(script, port)
         output.clear()
         send(b"300", 4)
-        results["back online"] = "CONTACT US" in screen()
+        results["back online"] = "TEST NEWS" in screen()
         try:
             send(b"q", 1)
         except OSError:

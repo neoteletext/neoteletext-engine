@@ -12,17 +12,14 @@ pub(super) fn send(frame: &Frame) -> std::io::Result<()> {
     pipe::write(&mut out, frame)
 }
 
-/// Reads the requests sent to the fetcher: page requests, submissions,
-/// confirmations, links to other services and keys. Anything else is
-/// dropped. The loop is woken by each, and by the pipe's end.
+/// Reads the requests sent to the fetcher: page requests, links to other
+/// services and keys. Anything else is dropped. The loop is woken by each,
+/// and by the pipe's end.
 pub(super) fn requests(wake: Sender<Wake>) {
     std::thread::spawn(move || {
         let mut input = std::io::stdin().lock();
         while let Ok(Some(frame)) = pipe::read(&mut input) {
-            let wanted = matches!(
-                frame,
-                Frame::Request(..) | Frame::Submit(_) | Frame::Confirm(_) | Frame::Follow(..) | Frame::Input(_)
-            );
+            let wanted = matches!(frame, Frame::Request(..) | Frame::Follow(..) | Frame::Input(_));
             if wanted && wake.send(Wake::Request(frame)).is_err() {
                 return;
             }

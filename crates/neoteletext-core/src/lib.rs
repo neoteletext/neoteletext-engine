@@ -16,7 +16,7 @@
 //! - L3 presentation model: [`charset`], [`level1`], [`compose`], [`level15`], and for
 //!   Levels 2.5 and 3.5 [`colour`], [`objects`] and [`enhance`];
 //! - L4 rendering: [`glyphs`], [`render`];
-//! - L6 interaction: [`viewer`], [`nav`], [`forms`];
+//! - L6 interaction: [`viewer`], [`nav`];
 //! - L8 platform interface: [`port`];
 //! - cross-cutting: [`config`], [`policy`], [`trace`].
 #![no_std]
@@ -65,8 +65,6 @@ pub mod joining;
 #[cfg(feature = "render")]
 pub mod render;
 
-#[cfg(feature = "forms")]
-pub mod forms;
 #[cfg(feature = "viewer")]
 pub mod nav;
 #[cfg(feature = "viewer")]
@@ -97,8 +95,6 @@ mod error_trait {
     error_trait!(crate::packet::PacketError);
     #[cfg(feature = "render")]
     error_trait!(crate::render::RenderError);
-    #[cfg(feature = "forms")]
-    error_trait!(crate::forms::FormError);
 
     #[cfg(test)]
     mod tests {
@@ -109,8 +105,6 @@ mod error_trait {
             is_error::<crate::packet::PacketError>();
             #[cfg(feature = "render")]
             is_error::<crate::render::RenderError>();
-            #[cfg(feature = "forms")]
-            is_error::<crate::forms::FormError>();
         }
     }
 }

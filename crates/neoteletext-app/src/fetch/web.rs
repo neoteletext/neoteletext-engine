@@ -9,7 +9,6 @@ use crate::pipe::{self, Frame, Notice};
 use neoteletext_core::types::Instant;
 use neoteletext_web::agent::{Config, Event, Failure, Input, Output, PageBytes, Source as Came, Storage, UserAgent};
 use neoteletext_web::descriptor::Descriptor;
-use neoteletext_web::form::{FormMethod, FormSubmission};
 use neoteletext_web::http::MediaType;
 use neoteletext_web::port::{ConnectionId, Pump};
 use neoteletext_web::proxy::Proxy;
@@ -145,15 +144,10 @@ fn forward(
             push_state.set(Some(false));
             Ok(())
         }
-        Output::Event(Event::ConfirmSubmission { host, plain_http, first_to_origin, .. }) => {
-            send(&Frame::Notice(Notice::Confirm(host.to_string(), plain_http, first_to_origin)))
-        }
         Output::Event(Event::PageCurrent { page, .. }) => send(&Frame::Notice(Notice::Current(page.mpp()))),
         Output::Event(Event::FetchFailed { page, failure: Failure::Network | Failure::Timeout, .. }) => {
             send(&Frame::Notice(Notice::Offline(page.mpp())))
         }
-        Output::Event(Event::SubmissionSucceeded { .. }) => send(&Frame::Notice(Notice::Submitted(true))),
-        Output::Event(Event::SubmissionFailed { .. }) => send(&Frame::Notice(Notice::Submitted(false))),
         Output::Event(Event::FetchFailed { page, failure, .. }) => send(&Frame::Notice(Notice::Message(format!(
             "Page {} not used: {failure:?}",
             String::from_utf8_lossy(&page.ascii())
@@ -163,7 +157,6 @@ fn forward(
             | Event::DescriptorFailed(_)
             | Event::Blocked { .. }
             | Event::DowngradeRefused { .. }
-            | Event::SubmissionRefused(_)
             | Event::LinkUnknown),
         ) => send(&Frame::Notice(Notice::Message(format!("{event:?}")))),
         _ => Ok(()),
@@ -178,10 +171,8 @@ fn send_page(page: &PageBytes<'_>) -> std::io::Result<()> {
         origin: match page.source {
             Came::Page { .. } => pipe::Origin::Page,
             Came::Push => pipe::Origin::Push,
-            Came::Form => pipe::Origin::Form,
             Came::FrontDoor => pipe::Origin::FrontDoor,
         },
-        url: page.url.to_string(),
         bytes: page.bytes.to_vec(),
     };
     match page.media {
@@ -216,8 +207,8 @@ fn announce_service(descriptor: Option<&Descriptor>) -> std::io::Result<()> {
     send(&Frame::Notice(Notice::Aliases(aliases)))
 }
 
-/// Gives the agent what the decoder asked for: a page, a form's
-/// submission or its confirmation, a key, or a link to another service.
+/// Gives the agent what the decoder asked for: a page, a key, or a link to
+/// another service.
 fn hand_frame(agent: &mut Agent<'_>, now: Instant, frame: Frame, out: &mut dyn FnMut(Output<'_>)) {
     match frame {
         Frame::Request(mpp, sub) => {
@@ -225,20 +216,6 @@ fn hand_frame(agent: &mut Agent<'_>, now: Instant, frame: Frame, out: &mut dyn F
                 agent.handle(now, Input::FetchPage { page, subcode }, out);
             }
         }
-        Frame::Submit(submission) => {
-            let fields: Vec<(&str, &str)> =
-                submission.fields.iter().map(|(name, value)| (name.as_str(), value.as_str())).collect();
-            let form = FormSubmission {
-                page_url: &submission.page_url,
-                method: if submission.post { FormMethod::Post } else { FormMethod::Get },
-                target: &submission.target,
-                fields: &fields,
-                token: submission.token.as_deref(),
-                action: submission.action.as_deref(),
-            };
-            agent.handle(now, Input::Submit(form), out);
-        }
-        Frame::Confirm(yes) => agent.handle(now, Input::ConfirmSubmission(yes), out),
         Frame::Input(message) => agent.handle(now, Input::Send(&message), out),
         Frame::Follow(service, mpp, sub) => {
             if let Some((page, subcode)) = page_request(mpp, sub) {

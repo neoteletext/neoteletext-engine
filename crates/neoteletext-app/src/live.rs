@@ -2,7 +2,7 @@
 //! (REQ-SEC-018, decision 26 of IMPLEMENTATION-LOG.md).
 
 use crate::extras::{self, PageExtras};
-use crate::pipe::{self, Frame, Notice, Origin, PageData, Submission};
+use crate::pipe::{self, Frame, Notice, Origin, PageData};
 use crate::session::Session;
 use crate::source::{Source, Wake};
 use fill::Fill;
@@ -34,7 +34,6 @@ pub struct Live {
     notices: Vec<Notice>,
     extras: HashMap<(PageAddress, SubCode), PageExtras>,
     services: Vec<String>,
-    shown_form_page: Option<PageAddress>,
     ended: bool,
     /// The bytes each page last arrived as, to take in again when the
     /// server confirms them current (REQ-WEB-009).
@@ -77,7 +76,6 @@ impl Live {
             notices: Vec::new(),
             extras: HashMap::new(),
             services: Vec::new(),
-            shown_form_page: None,
             ended: false,
             last_bytes: HashMap::new(),
             requested: None,
@@ -110,7 +108,7 @@ impl Live {
             Item::Packet { packet, meta } => packets.push((packet, meta)),
             Item::Page(file) if allowed.allows(file.address) => {
                 first.get_or_insert(file.address);
-                extras.insert(extras::key(file), extras::from_page(file, &page.url, &services));
+                extras.insert(extras::key(file), extras::from_page(file, &services));
             }
             _ => {}
         };
@@ -154,10 +152,6 @@ impl Live {
             && page.origin == Origin::Page
         {
             self.last_bytes.insert(address.mpp(), (format, page.clone()));
-        }
-        if page.origin == Origin::Form {
-            // A form response carrying a page is shown (REQ-WEB-011).
-            self.shown_form_page = first;
         }
         if page.origin == Origin::FrontDoor
             && let Some(first) = first
@@ -219,7 +213,7 @@ impl Source for Live {
                 Frame::Notice(notice) => self.notices.push(notice),
                 // The fetcher never sends these to a decoder; ignore rather
                 // than trust.
-                Frame::Request(..) | Frame::Submit(_) | Frame::Confirm(_) | Frame::Follow(..) | Frame::Input(_) => {}
+                Frame::Request(..) | Frame::Follow(..) | Frame::Input(_) => {}
             }
         }
         session.tick(now);
@@ -264,25 +258,13 @@ impl Source for Live {
     }
 
     fn notices(&mut self) -> Vec<Notice> {
-        let mut notices = std::mem::take(&mut self.notices);
-        if let Some(page) = self.shown_form_page.take() {
-            notices.push(Notice::ShowPage(page.mpp()));
-        }
-        notices
+        std::mem::take(&mut self.notices)
     }
 
     fn extras(&self, page: PageAddress, subcode: SubCode) -> Option<&PageExtras> {
         self.extras
             .get(&(page, subcode))
             .or_else(|| self.extras.iter().find(|((address, _), _)| *address == page).map(|(_, extras)| extras))
-    }
-
-    fn submit(&mut self, submission: Submission) {
-        self.send(&Frame::Submit(submission));
-    }
-
-    fn confirm(&mut self, yes: bool) {
-        self.send(&Frame::Confirm(yes));
     }
 
     fn send_input(&mut self, message: &[u8]) {

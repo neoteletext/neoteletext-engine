@@ -29,7 +29,7 @@ pub struct Grid<const PANEL_ROWS: usize = SIDE_PANEL_ROWS> {
     pub boxed_mode: bool,
     /// Mix mode: backgrounds transparent everywhere (REQ-L1-020).
     pub mix: bool,
-    /// The character sets the page uses, for Level 1.5 and form entry.
+    /// The character sets the page uses, for Level 1.5 and the port.
     pub designation: Designation,
     /// The side-panel area, columns 40 to 71 of rows 1 to 24 (clause
     /// 12.5.3, decision E.49): `panels[row − 1][column − 40]`. The right

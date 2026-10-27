@@ -1,14 +1,13 @@
-//! The source's notices to the viewer: the service's pages, a
-//! submission's confirmation and its outcome, the channel's input, and
-//! messages.
+//! The source's notices to the viewer: the service's pages, the channel's
+//! input, and messages.
 
-use super::{Pending, ViewState};
+use super::ViewState;
 use crate::clock::now_ms;
 use neoteletext_app::interact::message_row;
 use neoteletext_app::pipe::Notice;
 use neoteletext_app::source::Source;
-use neoteletext_core::types::{PageAddress, SubCode};
-use neoteletext_core::viewer::{Action, SecurityIndicator, Viewer, ViewerEvent};
+use neoteletext_core::types::PageAddress;
+use neoteletext_core::viewer::{SecurityIndicator, Viewer, ViewerEvent};
 
 impl ViewState {
     /// Acts on one of the source's notices.
@@ -24,33 +23,6 @@ impl ViewState {
                         self.action = self.viewer.event(ViewerEvent::Started);
                     }
                 }
-            }
-            Notice::ShowPage(mpp) => {
-                if let Some(address) = PageAddress::from_mpp(mpp) {
-                    self.viewer = Viewer::new(address);
-                    self.action = self.viewer.event(ViewerEvent::Started);
-                }
-            }
-            Notice::Confirm(host, plain, _first) => {
-                self.viewer.set_indicator(if plain {
-                    SecurityIndicator::PlainHttpWarning
-                } else {
-                    SecurityIndicator::ConfirmSubmission
-                });
-                let warning = if plain { "UNENCRYPTED " } else { "" };
-                self.prompt = Some(message_row(&format!("{warning}Send to {host}? Enter=yes Esc=no")));
-                self.pending = Some(Pending::Submission);
-            }
-            Notice::Submitted(ok) => {
-                let pages = self.form.as_ref().map(|form| (form.model.spec().success, form.model.spec().error));
-                if let Some((success, error)) = pages
-                    && let Some(page) = if ok { success } else { error }
-                {
-                    self.action = Action::Request(page, SubCode::ANY);
-                    self.viewer = Viewer::new(page);
-                    let _ = self.viewer.event(ViewerEvent::Started);
-                }
-                self.prompt = Some(message_row(if ok { "Sent." } else { "Not sent: the service refused it." }));
             }
             Notice::Service(_) => self.confirmed_services.clear(),
             Notice::Input(open) => {

@@ -25,7 +25,6 @@ default = [
     "render",
     "bedstead",
     "viewer",
-    "forms",
     "extended-sets",
 ]
 # neoteletext's own character sets at values Table 32 reserves
@@ -67,15 +66,13 @@ classic = ["level15", "render", "bedstead", "viewer"]
 # The modern-classic profile (decision E.71): Level 1.5, and of Levels 2.5
 # and 3.5 only the non-spacing attributes and objects. Used with the
 # default features off.
-modern-classic = ["level15", "level25", "nonspacing-attributes", "render", "bedstead", "viewer", "forms", "objects"]
+modern-classic = ["level15", "level25", "nonspacing-attributes", "render", "bedstead", "viewer", "objects"]
 # The row renderer and the generated G3 glyphs (area RND).
 render = []
 # Bedstead, the one bundled font (REQ-FNT-001, decision E.72).
 bedstead = ["render"]
 # The viewer state machine, navigation and history (area NAV).
 viewer = []
-# The forms model (Appendix C).
-forms = []
 # REQ-GEN-011 and REQ-GEN-016: `core::error::Error` for the error types,
 # which needs `core::fmt`.
 error-trait = []
@@ -92,7 +89,7 @@ workspace = true
 # when it is compiled in.
 [[test]]
 name = "behaviour"
-required-features = ["level15", "render", "viewer", "forms"]
+required-features = ["level15", "render", "viewer"]
 
 [[test]]
 name = "capabilities"

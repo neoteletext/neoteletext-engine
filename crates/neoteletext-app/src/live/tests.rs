@@ -90,7 +90,7 @@ fn a_page_file_fills_only_its_page() {
         let mut live = routed(frames, Box::new(Kept::default()));
         let mut session = Session::new(neoteletext_core::config::Config::default(), 8);
         live.request(address(0x100), SubCode::ANY);
-        let page = PageData { secure: true, origin, url: "https://a.example/100.t42".into(), bytes: two_pages.clone() };
+        let page = PageData { secure: true, origin, bytes: two_pages.clone() };
         sender.send(Frame::Tti(page)).unwrap_or_else(|_| unreachable!());
         live.poll(&mut session, Instant(SECOND));
         let present: Vec<bool> =

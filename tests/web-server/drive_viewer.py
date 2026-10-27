@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Drives `neottx view` through a pseudo-terminal against the test server:
-index, link row, form entry, plain-HTTP confirmation, submission and the
-response page (REQ-NAV-009, REQ-WEB-011, REQ-SEC-008). Test code.
+index, link row, a page keyed by number and a coloured link followed
+(REQ-NAV-001, REQ-NAV-011). Test code.
 
 Usage: drive_viewer.py TTX PORT. Exit status 0 when every step passed.
 """
@@ -43,22 +43,13 @@ def main():
     results = {}
     pump(4)
     results["index"] = "NEOTELETEXT TEST SERVICE" in screen()
-    results["link row"] = "Weather" in screen() and "Contact" in screen()
+    results["link row"] = "Weather" in screen() and "News" in screen()
     output.clear()
     send(b"300", 3)
-    results["form"] = "CONTACT US" in screen()
-    for key in b"Ann":
-        send(bytes([key]), 0.15)
-    send(b"\t", 0.3)
-    for key in b"ann@example.org":
-        send(bytes([key]), 0.1)
-    send(b"\t", 0.3)
+    results["keyed page"] = "TEST NEWS" in screen()
     output.clear()
-    send(b"\r", 2)
-    results["confirmation"] = "UNENCRYPTED" in screen()
-    output.clear()
-    send(b"\r", 4)
-    results["response page"] = "THANK YOU" in screen()
+    send(b"r", 3)
+    results["coloured link"] = "NEOTELETEXT TEST SERVICE" in screen()
     try:
         send(b"q", 1)
     except OSError:

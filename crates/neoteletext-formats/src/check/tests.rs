@@ -2,7 +2,7 @@
 #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
 
 use super::*;
-use crate::tti::tests::{FORM_EXAMPLE, read};
+use crate::tti::tests::read;
 use std::vec::Vec;
 
 fn findings(text: &[u8], options: &CheckOptions<'_>) -> Vec<(Severity, Problem, u32)> {
@@ -74,25 +74,6 @@ fn link_errors() {
 fn hidden_row_24_content() {
     let found = check(b"PN,10000\nOL,1,101\nOL,24,Old prompts\nLN,R,101,a\n");
     assert_eq!(found, [(Severity::Warning, Problem::Warning(Warning::HiddenContent), 1)]);
-}
-
-#[test]
-fn form_findings() {
-    // The Appendix C.7 example has no fallback for broadcast viewers.
-    assert_eq!(check(FORM_EXAMPLE), [(Severity::Warning, Problem::Warning(Warning::NoBroadcastFallback), 1)]);
-    let mut with_phone = FORM_EXAMPLE.to_vec();
-    with_phone.extend_from_slice(b"OL,20,Or call 0800 123 456\n");
-    assert_eq!(check(&with_phone), []);
-    // Placeholders on national option positions, a version 2.0 field, the
-    // withdrawn FH, and overlapping fields.
-    let text =
-        b"PN,40001\nOL,22,www.example.com\nOL,3,Name: [______]\nFD,TEXT,name,6,8,,N,,\nFD,TEXT,old,50,Y\nFH,a,b\n\
-FD,TEXT,clash,7,3,,N,,\n";
-    let found = check(text);
-    assert!(found.contains(&(Severity::Warning, Problem::Warning(Warning::UnreliablePlaceholders), 4)), "{found:?}");
-    assert!(found.contains(&(Severity::Error, Problem::FormVersion2, 5)));
-    assert!(found.contains(&(Severity::Error, Problem::WithdrawnCommand, 6)));
-    assert!(found.contains(&(Severity::Error, Problem::BadFormField, 7)));
 }
 
 #[test]

@@ -73,7 +73,7 @@ The toolchain is pinned in `rust-toolchain.toml`. `scripts/check.sh full` runs e
 - a file;
 - `-` for standard input;
 - `zxnet:NAME` for a live zxnet feed. The names are `teefax`, `nms-ceefax`, `chunkytext`, `spark`, `ch4` and `test`. A `wss://` channel address also works;
-- an `https://` or `http://` address of a web teletext service descriptor (REQUIREMENTS.md area WEB and Appendix C).
+- an `https://` or `http://` address of a web teletext service descriptor (REQUIREMENTS.md area WEB).
 
 The format of a file is detected from its content. `--format` overrides detection:
 
@@ -86,7 +86,7 @@ The format of a file is detected from its content. `--format` overrides detectio
 | `ts`, `m2ts`, `ts204` | MPEG transport streams with 188, 192 or 204-byte packets (EN 300 472). |
 | `pes` | Raw packetised elementary stream. |
 | `sliced`, `sliced-be` | Linux sliced VBI records, little or big-endian. |
-| `tti` | TTI page files, with the Form Extension (Appendix C) and Link Extension (Appendix E). |
+| `tti` | TTI page files, with the Link Extension (Appendix E). The lines of the withdrawn Form Extension are ignored, with a diagnostic. |
 | `ep1` | EP1 page files. |
 | `edittf` | edit.tf and zxnet page addresses (the page is in the URL fragment). |
 | `dump` | Raw 40 by 25 screen dumps. |
@@ -146,10 +146,9 @@ At the default level, 3.5, `neottx` also keeps the enhancement pages a service s
 | `m` | Mix: cell backgrounds become transparent, as when text is superimposed on the picture. |
 | `z` | Zoom: top half, bottom half, off. |
 | `G` | Glyphs: original, Bedstead, both side by side (images only). |
-| Tab | Enter the page's form, when it has one. |
 | `q`, Esc or Ctrl+C | Quit. |
 
-Inside a form, Tab and Shift+Tab move between fields, the arrow keys move within a field, Space ticks boxes and chooses options, Enter submits, and Esc leaves the form. Before a form is sent, the viewer shows where it is going and asks for confirmation; Enter or F4 confirms, any other key cancels (REQ-SEC-009). A link to another service asks for confirmation too: press the same key again.
+A link to another service asks for confirmation: press the same key again.
 
 On a channel that takes input (its descriptor's `push` says `"input": true`), the viewer greets the channel when its WebSocket opens, and once the channel answers, every key goes to it, as a terminal's keys go to its host: digits, Escape and Ctrl+C included. Printable keys go as text and the rest as key events, with Shift, Control and Alt. The channel decides what they mean; videotex channels take `*nnn#` for a page, `#` for the next and `*#` for the one before. A paste goes to the channel as one paste, and the terminal's focus as the channel's, where the terminal reports them; in a terminal with the Kitty keyboard protocol, releases and repeats go too when the channel asks for them. Ctrl+] leaves the keys to the viewer, telling the channel the focus went, and gives them back. A channel that does not answer within 10 seconds is said not to take input. See `neoteletext-common/INPUT.md`.
 

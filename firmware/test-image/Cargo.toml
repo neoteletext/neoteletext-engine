@@ -31,11 +31,10 @@ modern-classic = ["level25", "neoteletext-core/objects", "neoteletext-core/nonsp
 render = ["neoteletext-core/render"]
 bedstead = ["render", "neoteletext-core/bedstead"]
 viewer = ["neoteletext-core/viewer"]
-forms = ["neoteletext-core/forms"]
 # The format readers through detection; formats-all adds every reader.
 formats = []
 formats-all = ["formats", "neoteletext-formats/default"]
-# The web user agent; web-all adds push, forms and cookies.
+# The web user agent; web-all adds push and cookies.
 web = []
 web-all = ["web", "neoteletext-web/default"]
 # The Opus decoder of the audio profile (decision E.123).

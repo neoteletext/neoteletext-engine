@@ -6,7 +6,6 @@ use neoteletext_core::types::{Instant, PageAddress, SubCode};
 
 use crate::cookie::CookieRejected;
 use crate::descriptor::{DescriptorError, PushMethod};
-use crate::form::{FormRefused, FormSubmission};
 use crate::http::{HttpError, MediaType, Method};
 use crate::port::{ConnectionId, NetInput, NetOutput, Security};
 use crate::sse::SseError;
@@ -60,10 +59,6 @@ pub enum Input<'a> {
     },
     /// Change the push subscription.
     Subscribe(Subscription<'a>),
-    /// Submit a form (REQ-WEB-011).
-    Submit(FormSubmission<'a>),
-    /// The viewer's answer to [`Event::ConfirmSubmission`].
-    ConfirmSubmission(bool),
     /// Erase every cookie (REQ-SEC-013).
     WipeCookies,
     /// Calendar time now, in seconds since 1970, so cookie `Expires` dates
@@ -90,8 +85,6 @@ pub enum Source {
     },
     /// The push connection.
     Push,
-    /// The response to a form submission (REQ-WEB-011 item 3).
-    Form,
     /// A channel's bundle, `index.t42`: it may hold any number of the
     /// channel's pages (REQ-WEB-019).
     FrontDoor,
@@ -106,8 +99,7 @@ pub struct PageBytes<'a> {
     pub source: Source,
     /// The declared media type.
     pub media: MediaType,
-    /// The address they came from, after redirects: the base for a form
-    /// on the page, and its origin.
+    /// The address they came from, after redirects, and so their origin.
     pub url: &'a str,
     /// True when they came over an encrypted connection; false means the
     /// security indicator must show (REQ-SEC-008).
@@ -262,40 +254,6 @@ pub enum Event<'a> {
         /// What went wrong, if known.
         problem: Option<PushProblem>,
     },
-    /// The viewer must confirm a form submission (REQ-SEC-008, REQ-SEC-009)
-    /// and answer with [`Input::ConfirmSubmission`].
-    ConfirmSubmission {
-        /// The destination host.
-        host: &'a str,
-        /// The destination port.
-        port: u16,
-        /// The submission is encrypted.
-        secure: bool,
-        /// The values will travel unencrypted: the warning of REQ-SEC-008.
-        plain_http: bool,
-        /// The first submission to this origin (REQ-SEC-009).
-        first_to_origin: bool,
-    },
-    /// The form was not submitted.
-    SubmissionRefused(FormRefused),
-    /// The viewer declined to confirm.
-    SubmissionCancelled,
-    /// The server accepted the form (2xx without a page): show the `FP`
-    /// success page.
-    SubmissionSucceeded {
-        /// The status code.
-        status: u16,
-    },
-    /// The submission failed: show the `FP` error page and keep the values.
-    SubmissionFailed {
-        /// The status code, when the server answered.
-        status: Option<u16>,
-        /// The failure, when it did not.
-        failure: Option<Failure>,
-    },
-    /// The server answered the form with a TTI page, delivered as
-    /// [`PageBytes`] with [`Source::Form`].
-    SubmissionPage,
     /// A link named a service the descriptor does not list: the link is
     /// null (Appendix E.2 rule 2).
     LinkUnknown,

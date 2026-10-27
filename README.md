@@ -34,7 +34,7 @@ Each crate's optional parts are Cargo features, on by default, so a port or a sm
 | `neoteletext-core` | Error protection, packets, acquisition, the page and enhancement stores, character sets, Level 1.0 and 1.5 decoding, the Level 2.5 and 3.5 enhancement processor with objects and the Colour Map, the state machines, the row renderer and the viewer model. `no_std`, no allocation, no panics. |
 | `neoteletext-formats` | Readers and writers: T42, transport streams, PES, sliced VBI, TTI (with enhancement data and enhancement pages), EP1, edit.tf and screen dumps; and a builder for Level 2.5 and 3.5 test pages. |
 | `neoteletext-slicer` | A software data slicer for raw sampled video. |
-| `neoteletext-web` | The sans-IO web agent: service descriptors, HTTP, WebSockets, server-sent events, cookies, forms and the zxnet feed. |
+| `neoteletext-web` | The sans-IO web agent: service descriptors, HTTP, WebSockets, server-sent events, cookies and the zxnet feed. |
 | `neoteletext-image` | Palettes, pixel formats, scaling, PNG and PPM writers. |
 | `neoteletext-cli` | The `neottx` program. |
 | `xtask` | Project checks: layers, dependencies, constants, glyphs (including the generated G3 set), the test corpus and the traceability table; `cargo xtask level25-stream` writes the authored Level 2.5 and 3.5 test stream. |

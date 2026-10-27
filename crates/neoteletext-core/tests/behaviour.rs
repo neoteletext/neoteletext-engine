@@ -224,7 +224,6 @@ fn two_decoders_run_independently() {
         assert_send::<Grid>();
         assert_send::<neoteletext_core::viewer::Viewer>();
         assert_send::<neoteletext_core::render::ChangeTracker>();
-        assert_send::<neoteletext_core::forms::FormModel>();
     };
     let mut first = vec![header(0x00, 0)];
     first.extend(body());

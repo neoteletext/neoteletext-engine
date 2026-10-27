@@ -12,7 +12,7 @@ use neoteletext_core::types::{Magazine, PageNumber, SubCode};
 
 use crate::consts::{TTI_FL_NULL_LINK, TTI_PACKED_CHARACTER_BASE, TTI_PACKED_CHARACTERS};
 use crate::encode::pack_triplets;
-use crate::page::{FieldKind, FormField, FormMethod, LinkDestination, PageFile, RawBody, Warning};
+use crate::page::{LinkDestination, PageFile, RawBody, Warning};
 
 /// Writes row text in the escape form: control codes as ESC followed by the
 /// code plus 0x40, so that the file is plain text (REQ-INP-014). Trailing
@@ -36,74 +36,6 @@ fn write_triplets(triplets: &[Triplet; TRIPLETS_PER_PACKET], out: &mut dyn Write
 fn write_nibbles(values: &[u8; TTI_PACKED_CHARACTERS], out: &mut dyn Write) -> io::Result<()> {
     for &value in values {
         out.write_all(&[TTI_PACKED_CHARACTER_BASE | (value & NIBBLE_MASK)])?;
-    }
-    Ok(())
-}
-
-fn flag(value: bool) -> &'static [u8] {
-    if value { b"Y" } else { b"" }
-}
-
-fn write_field(field: &FormField, page: &PageFile, index: usize, out: &mut dyn Write) -> io::Result<()> {
-    out.write_all(b"FD,")?;
-    out.write_all(field.kind.keyword())?;
-    write!(out, ",")?;
-    out.write_all(field.name.as_bytes())?;
-    write!(out, ",{},{}", field.column, field.width)?;
-    let max_length = |out: &mut dyn Write| match field.max_length {
-        Some(length) => write!(out, ",{length}"),
-        None => write!(out, ","),
-    };
-    let text = |out: &mut dyn Write, bytes: &[u8]| -> io::Result<()> {
-        out.write_all(b",")?;
-        out.write_all(bytes)
-    };
-    match field.kind {
-        FieldKind::Text | FieldKind::Telephone | FieldKind::Email => {
-            max_length(out)?;
-            text(out, flag(field.required))?;
-            if field.kind != FieldKind::Email {
-                text(out, field.pattern.as_bytes())?;
-            }
-            text(out, field.default.as_bytes())?;
-        }
-        FieldKind::Number | FieldKind::Date | FieldKind::Time => {
-            text(out, field.minimum.as_bytes())?;
-            text(out, field.maximum.as_bytes())?;
-            if field.kind == FieldKind::Number {
-                text(out, field.step.as_bytes())?;
-            }
-            text(out, flag(field.required))?;
-            text(out, field.default.as_bytes())?;
-        }
-        FieldKind::Select | FieldKind::Radio => text(out, flag(field.required))?,
-        FieldKind::Checkbox => {
-            text(out, field.value.as_bytes())?;
-            text(out, flag(field.required))?;
-            text(out, flag(field.checked))?;
-        }
-        FieldKind::TextArea => {
-            write!(out, ",{}", field.rows)?;
-            max_length(out)?;
-            text(out, flag(field.required))?;
-            text(out, field.default.as_bytes())?;
-        }
-        FieldKind::Submit => {
-            text(out, field.label.as_bytes())?;
-            text(out, field.action.as_bytes())?;
-        }
-        FieldKind::Reset => text(out, field.label.as_bytes())?,
-    }
-    writeln!(out)?;
-    for option in page.form.options.as_slice().iter().filter(|option| usize::from(option.field) == index) {
-        out.write_all(b"OPTION,")?;
-        out.write_all(option.value.as_bytes())?;
-        text(out, option.display.as_bytes())?;
-        text(out, flag(option.selected))?;
-        if let Some(column) = option.column {
-            write!(out, ",{column}")?;
-        }
-        writeln!(out)?;
     }
     Ok(())
 }
@@ -165,11 +97,10 @@ fn write_fastext(page: &PageFile, out: &mut dyn Write) -> io::Result<()> {
 
 fn write_page(page: &PageFile, first: &PageFile, is_first: bool, out: &mut dyn Write) -> io::Result<()> {
     write_page_head(page, first, is_first, out)?;
-    write_rows_and_fields(page, out)?;
+    write_rows(page, out)?;
     write_packed_lines(page, out)?;
     write_links(page, out)?;
     write_interaction_lines(page, out)?;
-    write_form_lines(page, out)?;
     for warning in Warning::ALL {
         if page.considered & warning.bit() != 0 {
             out.write_all(b"CK,considered,")?;
@@ -207,8 +138,8 @@ fn write_page_head(page: &PageFile, first: &PageFile, is_first: bool, out: &mut 
     Ok(())
 }
 
-/// The `OL` rows, each followed by the `FD` lines of the fields on it.
-fn write_rows_and_fields(page: &PageFile, out: &mut dyn Write) -> io::Result<()> {
+/// The `OL` rows.
+fn write_rows(page: &PageFile, out: &mut dyn Write) -> io::Result<()> {
     for row in 0..STORED_ROWS {
         if !page.has_row(row) {
             continue;
@@ -216,11 +147,6 @@ fn write_rows_and_fields(page: &PageFile, out: &mut dyn Write) -> io::Result<()>
         write!(out, "OL,{row},")?;
         write_row_text(page.row(row).map_or(&[][..], |codes| &codes[..]), out)?;
         writeln!(out)?;
-        for (index, field) in page.form.fields.as_slice().iter().enumerate() {
-            if usize::from(field.row) == row {
-                write_field(field, page, index, out)?;
-            }
-        }
     }
     Ok(())
 }
@@ -284,30 +210,6 @@ fn write_interaction_lines(page: &PageFile, out: &mut dyn Write) -> io::Result<(
     // REQ-INT-114: the input modes the page asks for.
     if let Some(modes) = page.input_modes {
         writeln!(out, "IM,{}", modes.modes)?;
-    }
-    Ok(())
-}
-
-fn write_form_lines(page: &PageFile, out: &mut dyn Write) -> io::Result<()> {
-    if let Some((method, address)) = &page.form.submission {
-        out.write_all(match method {
-            FormMethod::Post => b"FS,POST,",
-            FormMethod::Get => b"FS,GET,",
-        })?;
-        out.write_all(address.as_bytes())?;
-        writeln!(out)?;
-    }
-    if let Some((success, error)) = page.form.result_pages {
-        out.write_all(b"FP,")?;
-        out.write_all(&success.ascii())?;
-        out.write_all(b",")?;
-        out.write_all(&error.ascii())?;
-        writeln!(out)?;
-    }
-    if !page.form.token.is_empty() {
-        out.write_all(b"FT,")?;
-        out.write_all(page.form.token.as_bytes())?;
-        writeln!(out)?;
     }
     Ok(())
 }

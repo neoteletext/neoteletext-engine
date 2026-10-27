@@ -48,12 +48,12 @@ const BUILDS: &[Build] = &[
     // (decision E.71, REQ-GEN-020).
     Build { name: "modern-classic", features: "level15 modern-classic render viewer", budget: None },
     // Every area of the core, with Bedstead.
-    Build { name: "core-all", features: "level15 capabilities render bedstead viewer forms", budget: None },
+    Build { name: "core-all", features: "level15 capabilities render bedstead viewer", budget: None },
     // Format detection reading T42 only, then every format; the core with
     // no optional area underneath.
     Build { name: "t42", features: "formats", budget: None },
     Build { name: "formats", features: "formats-all", budget: None },
-    // The web user agent without push, forms and cookies, then with them.
+    // The web user agent without push and cookies, then with them.
     Build { name: "web", features: "web", budget: None },
     Build { name: "web-all", features: "web-all", budget: None },
     // The Opus decoder of the audio profile alone (decision E.123), over the core with no

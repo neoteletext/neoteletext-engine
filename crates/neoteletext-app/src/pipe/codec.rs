@@ -1,7 +1,7 @@
 //! The wire form of the frames: the kind bytes, the strict payload reader,
 //! and writing and reading one frame (decision 26 of IMPLEMENTATION-LOG.md).
 
-use super::{Frame, MAX_FRAME, MAX_INPUT_MESSAGE, Notice, Origin, PageData, Submission};
+use super::{Frame, MAX_FRAME, MAX_INPUT_MESSAGE, Notice, Origin, PageData};
 use std::io::{self, Read, Write};
 
 const PACKET: u8 = b'P';
@@ -11,19 +11,16 @@ const INITIAL: u8 = b'I';
 const UNENCRYPTED: u8 = b'U';
 const MESSAGE: u8 = b'N';
 const SERVICE: u8 = b'S';
-const CONFIRM_ASK: u8 = b'A';
-const SUBMITTED: u8 = b'D';
-const SHOW: u8 = b'G';
 const CURRENT: u8 = b'K';
 const OFFLINE: u8 = b'O';
 const REQUEST: u8 = b'R';
-const SUBMIT: u8 = b'F';
-const CONFIRM: u8 = b'C';
 const FOLLOW: u8 = b'L';
-// b'Z' carried the glyph choice until decision E.72 removed it, and the
+// b'Z' carried the glyph choice until decision E.72 removed it; the
 // browser's frames used b'k', b'V', b'Q', b'Y', b'X', b'J', b'v', b'q',
 // b'o', b'f', b'g', b'h', b'i', b'j' and b'l' until it left the repository;
-// they are not reused.
+// and b'A', b'D', b'G', b'F' and b'C' carried form submissions, their
+// confirmation and their outcome until decision E.126 withdrew forms. They
+// are not reused.
 const REDIRECT: u8 = b'W';
 const SERVICE_NAME: u8 = b'M';
 const BUNDLE: u8 = b'b';
@@ -50,11 +47,6 @@ fn put_string(buffer: &mut Vec<u8>, text: &str) {
     let length = u32::try_from(bytes.len()).unwrap_or(0);
     buffer.extend_from_slice(&length.to_be_bytes());
     buffer.extend_from_slice(bytes.get(..length as usize).unwrap_or_default());
-}
-
-fn put_option(buffer: &mut Vec<u8>, text: Option<&String>) {
-    buffer.push(u8::from(text.is_some()));
-    put_string(buffer, text.map_or("", String::as_str));
 }
 
 /// A strict reader over a payload.
@@ -93,12 +85,6 @@ impl Cursor<'_> {
         String::from_utf8(bytes.to_vec()).map_err(|_| io::Error::other("malformed frame"))
     }
 
-    fn option(&mut self) -> io::Result<Option<String>> {
-        let present = self.byte()? != 0;
-        let text = self.string()?;
-        Ok(present.then_some(text))
-    }
-
     fn end(&self) -> io::Result<()> {
         if self.0.is_empty() { Ok(()) } else { Err(io::Error::other("malformed frame")) }
     }
@@ -110,11 +96,10 @@ fn page_payload(page: &PageData) -> Vec<u8> {
         match page.origin {
             Origin::Page => 0,
             Origin::Push => 1,
-            Origin::Form => 2,
+            // 2 was a form's response, until decision E.126.
             Origin::FrontDoor => 3,
         },
     ];
-    put_string(&mut buffer, &page.url);
     buffer.extend_from_slice(&page.bytes);
     buffer
 }
@@ -125,12 +110,10 @@ fn page_data(payload: &[u8]) -> io::Result<PageData> {
     let origin = match cursor.byte()? {
         0 => Origin::Page,
         1 => Origin::Push,
-        2 => Origin::Form,
         3 => Origin::FrontDoor,
         _ => return Err(io::Error::other("malformed frame")),
     };
-    let url = cursor.string()?;
-    Ok(PageData { secure, origin, url, bytes: cursor.0.to_vec() })
+    Ok(PageData { secure, origin, bytes: cursor.0.to_vec() })
 }
 
 /// Writes one frame.
@@ -150,31 +133,9 @@ pub fn write(out: &mut dyn Write, frame: &Frame) -> io::Result<()> {
             }
             put(out, SERVICE, &buffer)
         }
-        Frame::Notice(Notice::Confirm(host, plain, first)) => {
-            let mut buffer = vec![u8::from(*plain), u8::from(*first)];
-            put_string(&mut buffer, host);
-            put(out, CONFIRM_ASK, &buffer)
-        }
-        Frame::Notice(Notice::Submitted(ok)) => put(out, SUBMITTED, &[u8::from(*ok)]),
-        Frame::Notice(Notice::ShowPage(mpp)) => put(out, SHOW, &mpp.to_be_bytes()),
         Frame::Notice(Notice::Current(mpp)) => put(out, CURRENT, &mpp.to_be_bytes()),
         Frame::Notice(Notice::Offline(mpp)) => put(out, OFFLINE, &mpp.to_be_bytes()),
         Frame::Request(mpp, sub) => put(out, REQUEST, &[mpp.to_be_bytes(), sub.to_be_bytes()].concat()),
-        Frame::Submit(submission) => {
-            let mut buffer = vec![u8::from(submission.post)];
-            put_string(&mut buffer, &submission.page_url);
-            put_string(&mut buffer, &submission.target);
-            put_option(&mut buffer, submission.token.as_ref());
-            put_option(&mut buffer, submission.action.as_ref());
-            buffer
-                .extend_from_slice(&u16::try_from(submission.fields.len().min(MAX_STRINGS)).unwrap_or(0).to_be_bytes());
-            for (name, value) in submission.fields.iter().take(MAX_STRINGS) {
-                put_string(&mut buffer, name);
-                put_string(&mut buffer, value);
-            }
-            put(out, SUBMIT, &buffer)
-        }
-        Frame::Confirm(yes) => put(out, CONFIRM, &[u8::from(*yes)]),
         Frame::Input(record) => {
             if record.len() > MAX_INPUT_MESSAGE {
                 return Err(io::Error::other("an input message too long"));
@@ -234,17 +195,6 @@ pub fn read(input: &mut dyn Read) -> io::Result<Option<Frame>> {
             cursor.end()?;
             Frame::Notice(Notice::Service(names))
         }
-        CONFIRM_ASK => {
-            let plain = cursor.byte()? != 0;
-            let first = cursor.byte()? != 0;
-            let host = cursor.string()?;
-            cursor.end()?;
-            Frame::Notice(Notice::Confirm(host, plain, first))
-        }
-        SUBMITTED if payload.len() == 1 => Frame::Notice(Notice::Submitted(payload.first() != Some(&0))),
-        SHOW => {
-            Frame::Notice(Notice::ShowPage(u16::from_be_bytes(payload.as_slice().try_into().map_err(|_| invalid())?)))
-        }
         CURRENT => {
             Frame::Notice(Notice::Current(u16::from_be_bytes(payload.as_slice().try_into().map_err(|_| invalid())?)))
         }
@@ -255,20 +205,6 @@ pub fn read(input: &mut dyn Read) -> io::Result<Option<Frame>> {
             let [a, b, c, d]: [u8; 4] = payload.as_slice().try_into().map_err(|_| invalid())?;
             Frame::Request(u16::from_be_bytes([a, b]), u16::from_be_bytes([c, d]))
         }
-        SUBMIT => {
-            let post = cursor.byte()? != 0;
-            let page_url = cursor.string()?;
-            let target = cursor.string()?;
-            let token = cursor.option()?;
-            let action = cursor.option()?;
-            let count = usize::from(cursor.u16()?);
-            let fields = (0..count.min(MAX_STRINGS))
-                .map(|_| Ok((cursor.string()?, cursor.string()?)))
-                .collect::<io::Result<Vec<_>>>()?;
-            cursor.end()?;
-            Frame::Submit(Submission { page_url, post, target, token, action, fields })
-        }
-        CONFIRM if payload.len() == 1 => Frame::Confirm(payload.first() != Some(&0)),
         KEY if payload.len() <= MAX_INPUT_MESSAGE => Frame::Input(payload),
         INPUT if payload.len() == 1 => Frame::Notice(Notice::Input(payload.first() != Some(&0))),
         FOLLOW => {

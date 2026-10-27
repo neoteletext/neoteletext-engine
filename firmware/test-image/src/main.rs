@@ -82,8 +82,7 @@ mod level25 {
         now: Instant,
         report: &EnhancementReport,
     ) {
-        let mut decoder =
-            Decoder::with_enhancement_store(pages, EnhancementStore::new(sub_pages, packets), config);
+        let mut decoder = Decoder::with_enhancement_store(pages, EnhancementStore::new(sub_pages, packets), config);
         decoder.push(packet, &PacketMeta::default(), now, &mut |event| {
             black_box(event);
         });
@@ -161,29 +160,6 @@ mod viewer {
         Option<&StoredPage>,
         &mut Grid,
     ) = view;
-}
-
-/// Forms: building the model, keys, validation, the submitted pairs and
-/// drawing.
-#[cfg(feature = "forms")]
-mod forms {
-    use super::{Grid, Instant, black_box};
-    use neoteletext_core::charset::G0;
-    use neoteletext_core::forms::{FormKey, FormModel, FormSpec};
-
-    fn form(spec: FormSpec, g0: G0, key: FormKey, now: Instant, grid: &mut Grid) {
-        if let Ok(mut model) = FormModel::new(spec, g0) {
-            black_box(model.key(key, now));
-            let _ = black_box(model.validate());
-            model.pairs(&mut |name, value| {
-                black_box((name, value));
-            });
-            model.draw(grid);
-        }
-    }
-
-    #[used]
-    static FORM: fn(FormSpec, G0, FormKey, Instant, &mut Grid) = form;
 }
 
 /// Reading input: format detection and whichever readers are compiled in.

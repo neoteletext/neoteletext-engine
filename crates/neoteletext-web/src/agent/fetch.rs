@@ -5,9 +5,7 @@
 use neoteletext_core::types::Instant;
 
 use super::cookies::{cookie_store, store_response_cookies};
-use super::{
-    BOUND_INSTRUCTIONS_LIMIT, Event, Exchange, Failure, FormPhase, Link, Output, Purpose, Sink, UserAgent, event,
-};
+use super::{BOUND_INSTRUCTIONS_LIMIT, Event, Exchange, Failure, Link, Output, Purpose, Sink, UserAgent, event};
 use crate::bytes::copy_prefix;
 use crate::consts::STATUS_SUCCESS_FIRST;
 use crate::http::{self, BodyDecoder, HttpError};
@@ -53,9 +51,9 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
         }
         // A kept-alive connection the server closed before answering:
         // retry a GET once on a new connection (RFC 9112 section 9.3.1).
-        // A form submission is never repeated without the viewer (RFC 9110
-        // section 9.2.2).
-        let idempotent = !matches!(exchange.purpose, Purpose::Form | Purpose::Register | Purpose::Refresh { .. });
+        // A bound session's POST is never repeated (RFC 9110 section
+        // 9.2.2).
+        let idempotent = !matches!(exchange.purpose, Purpose::Register | Purpose::Refresh { .. });
         if idempotent && exchange.sent && exchange.reused && !exchange.retried && !self.fetch.started {
             if let Some(current) = &mut self.fetch.exchange {
                 current.retried = true;
@@ -151,8 +149,8 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
         let secure = exchange.url.is_secure();
         // A channel's cookies stay in its folder (REQ-WEB-026), and only a
         // response from inside it, or from its upgrade to `https`, sets or
-        // clears any: a permitted form target or a redirect elsewhere
-        // touches none (decision E.114 item 2, finding F-42).
+        // clears any: a redirect elsewhere touches none (decision E.114
+        // item 2, finding F-42).
         let inside =
             channel.as_ref().is_none_or(|folder| crate::channel::redirect_keeps_channel(folder, &exchange.url));
         let scope = channel.as_ref().map(Url::path);
@@ -177,7 +175,7 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
             Purpose::Descriptor { .. } => self.config.descriptor_limit,
             // A front door is bounded like a page: a bundled site larger
             // than the page limit publishes page files instead.
-            Purpose::Page { .. } | Purpose::Form | Purpose::FrontDoor => self.config.page_limit,
+            Purpose::Page { .. } | Purpose::FrontDoor => self.config.page_limit,
             Purpose::Contents => crate::contents::MAX_BYTES,
             Purpose::Register | Purpose::Refresh { .. } => BOUND_INSTRUCTIONS_LIMIT,
         }
@@ -219,10 +217,6 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
             Purpose::FrontDoor => event(sink, Event::BundleFailed(failure)),
             Purpose::Contents => event(sink, Event::ContentsFailed(failure)),
             Purpose::Page { page, subcode, .. } => event(sink, Event::FetchFailed { page, subcode, failure }),
-            Purpose::Form => {
-                self.form.phase = FormPhase::Idle;
-                event(sink, Event::SubmissionFailed { status: None, failure: Some(failure) });
-            }
             Purpose::Register | Purpose::Refresh { .. } => self.bound_failed(purpose, sink),
         }
     }

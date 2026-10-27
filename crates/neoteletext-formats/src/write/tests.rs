@@ -7,7 +7,7 @@ use crate::encode::encode_page;
 use crate::page::{FastextLink, PageFile};
 use crate::t42::{T42Reader, T42Variant};
 use crate::testing::{packets, run};
-use crate::tti::tests::{FORM_EXAMPLE, full_page, read};
+use crate::tti::tests::{full_page, read};
 use neoteletext_core::types::{PageAddress, SubCode};
 use std::string::String;
 use std::vec::Vec;
@@ -18,12 +18,6 @@ fn without_lines(mut page: PageFile) -> PageFile {
     page.line = 0;
     for link in page.links.as_mut_slice() {
         link.line = 0;
-    }
-    for field in page.form.fields.as_mut_slice() {
-        field.line = 0;
-    }
-    for option in page.form.options.as_mut_slice() {
-        option.line = 0;
     }
     for issue in page.issues.as_mut_slice() {
         issue.line = 0;
@@ -52,14 +46,6 @@ fn round_trip(text: &[u8]) {
         assert_eq!(a.raw_packets.as_slice(), b.raw_packets.as_slice(), "{text}");
         assert_eq!((a.fastext, a.fastext_row_24), (b.fastext, b.fastext_row_24), "{text}");
         assert_eq!((a.links.as_slice(), a.links_valid), (b.links.as_slice(), b.links_valid), "{text}");
-        assert_eq!(a.form.fields.as_slice(), b.form.fields.as_slice(), "{text}");
-        assert_eq!(a.form.options.as_slice(), b.form.options.as_slice(), "{text}");
-        assert_eq!(
-            (a.form.submission, a.form.result_pages, a.form.token, a.form.interactive),
-            (b.form.submission, b.form.result_pages, b.form.token, b.form.interactive),
-            "{text}"
-        );
-        assert_eq!(a.form, b.form, "{text}");
         assert_eq!((a.issues.as_slice(), a.considered), (b.issues.as_slice(), b.considered), "{text}");
     }
     assert_eq!(left, right);
@@ -75,10 +61,10 @@ fn tti_round_trips() {
         .collect::<Vec<_>>()
         .join(&b'\n');
     round_trip(&every);
-    round_trip(FORM_EXAMPLE);
-    round_trip(b"DE,Carousel\nPN,10001\nOL,1,One\nLN,R,101,a\nLN,Y,svc:2A0:0003,b\nCK,considered,no-other-route\n\
-PN,10002\nDE,Second\nOL,1,Two\nFD,CHECKBOX,c,1,1,yes,Y,Y\nFD,NUMBER,n,3,4,1,99,2,N,5\nFD,TEXTAREA,t,10,20,3,200,N,hi, there\n");
-    round_trip(b"PN,10000\nOL,1,x\nFD,SELECT,s,1,9,Y\nOPTION,a,Apple,Y\nOPTION,b,Banana,\nFS,GET,/search?q=1\n");
+    round_trip(
+        b"DE,Carousel\nPN,10001\nOL,1,One\nLN,R,101,a\nLN,Y,svc:2A0:0003,b\nCK,considered,no-other-route\n\
+PN,10002\nDE,Second\nOL,1,Two\n",
+    );
 }
 
 #[test]

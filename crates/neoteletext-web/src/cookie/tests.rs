@@ -156,7 +156,6 @@ fn same_site_rules() {
         "lax=1; none=1; default=1; absent=1",
         "default is enforced as Lax"
     );
-    assert_eq!(header(&mut jar, "a.example", "/", true, Site::CrossOriginForm), "none=1");
 }
 
 #[test]

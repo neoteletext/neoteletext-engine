@@ -109,13 +109,8 @@ pub enum SecurityIndicator {
     None,
     /// The page on screen came over plain HTTP (REQ-SEC-008).
     Unencrypted,
-    /// Waiting for confirmation before submitting over plain HTTP.
-    PlainHttpWarning,
     /// Waiting for confirmation of a link to another service.
     LeavingService,
-    /// Waiting for confirmation of the first submission to an origin
-    /// (REQ-SEC-009).
-    ConfirmSubmission,
 }
 
 /// What a key press needs to know about its surroundings.
@@ -258,7 +253,7 @@ impl Viewer {
         self.state = ViewerState::Searching;
         self.stale = false;
         if record {
-            self.history.visit(HistoryEntry { service: self.service, address, subcode, from_form: false });
+            self.history.visit(HistoryEntry { service: self.service, address, subcode });
         }
         Action::Request(address, subcode)
     }

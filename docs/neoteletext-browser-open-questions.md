@@ -127,7 +127,6 @@ NeoTeletext defines none of these values itself. It uses neoteletext's constants
 | Size of a push message | `DEFAULT_PUSH_LIMIT` | 64 kilobytes |
 | Size of a channel descriptor | `DEFAULT_DESCRIPTOR_LIMIT` | 16 kilobytes |
 | Size of response headers | `DEFAULT_HEADER_LIMIT` | 16 kilobytes |
-| Size of a form submission | `DEFAULT_FORM_LIMIT` | 4 kilobytes |
 | Interval between requests | `DEFAULT_FETCH_INTERVAL_US` | 0.2 seconds |
 | Time to connect | `DEFAULT_CONNECT_TIMEOUT_US` | 10 seconds |
 | Time to a response | `DEFAULT_RESPONSE_TIMEOUT_US` | 30 seconds |

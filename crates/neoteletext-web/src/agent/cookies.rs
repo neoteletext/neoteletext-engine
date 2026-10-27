@@ -66,7 +66,7 @@ pub(super) fn store_response_cookies(
 }
 
 /// Writes the `Cookie` header for a request to `url`, if any cookie
-/// matches, keeping room for the empty line and `body_len` bytes of body.
+/// matches, keeping room for the empty line.
 /// Returns true when some matching cookies did not fit.
 pub(super) fn write_cookie_header(
     jar: &mut dyn Cookies,
@@ -75,13 +75,12 @@ pub(super) fn write_cookie_header(
     path: &str,
     site: Site,
     seconds: u64,
-    body_len: usize,
 ) -> Result<bool, Overflow> {
     if !cfg!(feature = "cookies") {
         return Ok(false);
     }
-    // Room for this header's line end, the empty line and the body.
-    writer.set_reserve(CRLF.len().saturating_mul(2).saturating_add(body_len));
+    // Room for this header's line end and the empty line.
+    writer.set_reserve(CRLF.len().saturating_mul(2));
     let mark = writer.len();
     let started = writer.put(header::COOKIE).and_then(|()| writer.put(b": "));
     let (count, truncated) = match started {

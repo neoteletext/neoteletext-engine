@@ -95,7 +95,7 @@ proptest! {
     #[test]
     fn any_tti_lines(lines in proptest::collection::vec(proptest::collection::vec(prop_oneof![Just(b','), Just(b':'), Just(0x1B), 0x20u8..0x7F, any::<u8>()], 0..60), 0..40)) {
         let mut input = b"PN,10000\n".to_vec();
-        let commands: [&[u8]; 14] = [b"OL,", b"FD,", b"OPTION,", b"LN,", b"FL,", b"FS,", b"FP,", b"PS,", b"SC,", b"PF,", b"RE,", b"CK,", b"OL,26,", b"OL,27,"];
+        let commands: [&[u8]; 10] = [b"OL,", b"LN,", b"FL,", b"PS,", b"SC,", b"PF,", b"RE,", b"CK,", b"OL,26,", b"OL,27,"];
         for (index, line) in lines.iter().enumerate() {
             input.extend_from_slice(commands[index % commands.len()]);
             input.extend_from_slice(line);

@@ -153,20 +153,6 @@ pub fn is_downgrade(from_secure: bool, to: OriginParts<'_>, host: &str) -> bool 
     from_secure && !to.secure && to.host.eq_ignore_ascii_case(host)
 }
 
-/// True when a form on a page from `page` may submit to `target`
-/// (REQ-WEB-008, REQ-SEC-009): the same origin, or one the descriptor lists.
-#[must_use]
-pub fn may_submit(page: OriginParts<'_>, target: OriginParts<'_>, permitted: &[OriginParts<'_>]) -> bool {
-    same_origin(page, target) || permitted.iter().any(|&allowed| same_origin(allowed, target))
-}
-
-/// True when a submission needs the plain-HTTP warning and confirmation
-/// (REQ-SEC-008).
-#[must_use]
-pub const fn needs_plain_http_warning(target_secure: bool) -> bool {
-    !target_secure
-}
-
 /// True when a cookie may be sent over this connection (REQ-SEC-008,
 /// REQ-WEB-006): `Secure` cookies only over encryption.
 #[must_use]

@@ -1,4 +1,4 @@
-//! The TTI argument grammar: comma-separated arguments, numbers, flags,
+//! The TTI argument grammar: comma-separated arguments, numbers,
 //! page addresses, sub-codes and service names, used by every record
 //! family.
 
@@ -81,16 +81,6 @@ pub(super) fn decimal(text: &[u8]) -> Option<u32> {
     parse_number(text, 10)
 }
 
-/// A `Y`/`N` flag; `Some(false)` for empty, `None` for anything else.
-pub(super) fn flag(text: &[u8]) -> Option<bool> {
-    match text.trim_ascii() {
-        b"Y" | b"y" => Some(true),
-        b"" | b"N" | b"n" => Some(false),
-        other if other.eq_ignore_ascii_case(b"selected") => Some(true),
-        _ => None,
-    }
-}
-
 /// A three-digit `mpp` page address.
 pub(super) fn page_address(text: &[u8]) -> Option<PageAddress> {
     let text = text.trim_ascii();
@@ -98,17 +88,6 @@ pub(super) fn page_address(text: &[u8]) -> Option<PageAddress> {
         return None;
     }
     PageAddress::from_mpp(u16::try_from(hex(text)?).ok()?)
-}
-
-/// An `FP` page: `mpp`, or `mppss` as in the Appendix C.7 example, whose
-/// sub-page digits are not used.
-pub(super) fn result_page(text: &[u8]) -> Option<PageAddress> {
-    let text = text.trim_ascii();
-    match text.len() {
-        3 => page_address(text),
-        5 => text.get(..3).and_then(page_address).filter(|_| decimal(text.get(3..).unwrap_or(&[])).is_some()),
-        _ => None,
-    }
 }
 
 /// A four-digit sub-code.

@@ -1,6 +1,6 @@
 //! One turn of the viewer's loop, in the order a turn takes its steps:
 //! the source's notices, the action the viewer asked for, the channel's
-//! typing, the page shown and its form, the drawing, then the terminal's
+//! typing, the page shown, the drawing, then the terminal's
 //! event and the keys.
 
 use super::terminal_io::{TICK, Wakened, next_event};
@@ -55,7 +55,6 @@ impl ViewState {
                 self.typing.set_page_modes(requested.mpp(), modes);
             }
             let shown = Shown { page, extras: page_extras.as_ref(), config: &config, now };
-            self.activate_form(session, &shown);
             self.compose(session, requested, &shown);
             let reveal = self.viewer.reveal(now);
             // Images change with the flash phase; text flashes by itself.

@@ -1,4 +1,6 @@
-# Appendix C — TTI Form Extension, version 3 (normative)
+# Appendix C — TTI Form Extension, version 3 (withdrawn)
+
+**Withdrawn on 27 October 2026 (decision E.126).** The owner withdrew the TTI Form Extension, and the engine no longer implements any of it. This appendix is not normative and is kept only as history. A TTI page's form lines (`FD`, `OPTION`, `FS`, `FP`, `FT` and `FH`) are unknown commands, reported with a diagnostic and ignored as every unknown line is (REQ-INP-013), so a page that still carries them shows its rows alone. The requirements that cite this appendix (REQ-WEB-010, REQ-WEB-011, REQ-NAV-009, REQ-SEC-009) are withdrawn; a channel that wants a form draws it and takes the viewer's keys over the input protocol (area INT).
 
 This appendix defines interactive forms on teletext pages. It is version 3 of the TTI Form System written for the jellytext project. Version 2.0 is kept in `research/jellytext-tti-form-system-spec-v2.md`, and the changes are explained in decision E.31. Where this appendix and version 2.0 differ, this appendix applies.
 

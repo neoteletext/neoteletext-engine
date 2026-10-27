@@ -2,7 +2,7 @@
 //! keeps delivering pages and takes the viewer's requests.
 
 use crate::extras::PageExtras;
-use crate::pipe::{Notice, Submission};
+use crate::pipe::Notice;
 use crate::session::Session;
 use neoteletext_core::types::{Instant, PageAddress, SubCode};
 use std::sync::Arc;
@@ -33,16 +33,11 @@ pub trait Source {
         Vec::new()
     }
 
-    /// Extension data of a page: links, the drawn link row, a form.
+    /// Extension data of a page: links, the drawn link row, input modes.
     fn extras(&self, _page: PageAddress, _subcode: SubCode) -> Option<&PageExtras> {
         None
     }
 
-    /// Submits a form.
-    fn submit(&mut self, _submission: Submission) {}
-
-    /// Answers a confirmation request.
-    fn confirm(&mut self, _yes: bool) {}
     /// Sends an input message to the channel being typed into (area INT,
     /// REQ-INT-101).
     fn send_input(&mut self, _message: &[u8]) {}

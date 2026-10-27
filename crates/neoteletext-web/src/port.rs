@@ -20,7 +20,7 @@ use crate::url::IpAddress;
 /// identifier.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum ConnectionId {
-    /// Descriptor, page and form requests, one at a time.
+    /// Descriptor and page requests, one at a time.
     Fetch,
     /// The push connection (WebSocket or server-sent events).
     Push,

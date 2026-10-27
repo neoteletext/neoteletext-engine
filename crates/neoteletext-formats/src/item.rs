@@ -193,7 +193,7 @@ pub enum DiagnosticKind {
     /// Page content arrived before any page number; the page was given the
     /// default address.
     MissingPageNumber,
-    /// A page-level problem recorded on the page (Appendix C and E rules).
+    /// A page-level problem recorded on the page (Appendix E rules).
     Page(IssueKind),
     /// A file did not begin with its format's signature.
     BadSignature,
@@ -231,10 +231,6 @@ pub enum Capacity {
     RawPackets,
     /// Link Extension links.
     Links,
-    /// Form fields.
-    Fields,
-    /// Form options.
-    Options,
     /// Recorded page issues.
     Issues,
     /// A text field.

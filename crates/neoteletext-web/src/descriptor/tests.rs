@@ -3,14 +3,12 @@
 
 use super::*;
 use neoteletext_core::types::SubCode;
-use std::string::ToString;
 
 const VALID: &str = r#"{
         "name": "Example Teletext",
         "initial_page": "100",
         "page_template": "/ttx/pages/{mpp}/{sub}?m={m}&p={pp}",
         "push": { "address": "wss://example.org/ttx/push", "method": "websocket" },
-        "form_origins": ["https://forms.example.org", "https://example.org:8443"],
         "region": 2,
         "services": [
             { "name": "weather", "display_name": "Weather é", "descriptor": "https://weather.example/ttx.json" },
@@ -36,7 +34,6 @@ fn valid_descriptor() {
     assert_eq!(descriptor.page_url(page, None).unwrap().as_str(), "https://example.org/ttx/pages/8A5/0000?m=8&p=A5");
     let (push, method) = descriptor.push().unwrap();
     assert_eq!((push.as_str(), *method), ("wss://example.org/ttx/push", PushMethod::WebSocket));
-    assert_eq!(descriptor.form_origins().count(), 2);
     let weather = descriptor.service("weather").unwrap();
     assert_eq!(weather.display_name.as_str(), "Weather \u{e9}");
     assert_eq!(descriptor.service_address(weather), "https://weather.example/ttx.json");
@@ -158,15 +155,11 @@ fn input_goes_only_to_the_descriptors_own_origin() {
 
 #[test]
 fn https_descriptor_cannot_name_plain_addresses() {
-    let cases: [(&str, Member); 4] = [
+    let cases: [(&str, Member); 3] = [
         (r#"{"name":"S","initial_page":"100","page_template":"http://example.org/{mpp}"}"#, Member::PageTemplate),
         (
             r#"{"name":"S","initial_page":"100","page_template":"/{mpp}","push":{"address":"ws://example.org/p","method":"websocket"}}"#,
             Member::PushAddress,
-        ),
-        (
-            r#"{"name":"S","initial_page":"100","page_template":"/{mpp}","form_origins":["http://forms.example"]}"#,
-            Member::FormOrigins,
         ),
         (
             r#"{"name":"S","initial_page":"100","page_template":"/{mpp}","services":[{"name":"a","display_name":"A","descriptor":"http://a.example/"}]}"#,
@@ -180,25 +173,6 @@ fn https_descriptor_cannot_name_plain_addresses() {
             "{json}"
         );
     }
-}
-
-#[test]
-fn too_many_entries() {
-    let mut json =
-        std::string::String::from(r#"{"name":"S","initial_page":"100","page_template":"/{mpp}","form_origins":["#);
-    for i in 0..=MAX_FORM_ORIGINS {
-        if i > 0 {
-            json.push(',');
-        }
-        json.push_str("\"https://f");
-        json.push_str(&i.to_string());
-        json.push_str(".example\"");
-    }
-    json.push_str("]}");
-    assert_eq!(
-        Descriptor::parse(json.as_bytes(), &base()).map(|d| d.initial_page),
-        Err(DescriptorError::TooMany(Member::FormOrigins))
-    );
 }
 
 /// the web-native concept section 5 item 4: aliases lead a page

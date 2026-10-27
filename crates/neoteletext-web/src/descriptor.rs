@@ -10,7 +10,6 @@
 //!   "initial_page": "100",
 //!   "page_template": "https://example.org/ttx/pages/{mpp}",
 //!   "push": { "address": "wss://example.org/ttx/push", "method": "websocket" },
-//!   "form_origins": ["https://forms.example.org"],
 //!   "region": 0,
 //!   "services": [
 //!     { "name": "weather", "display_name": "Weather", "descriptor": "https://weather.example/ttx.json" }
@@ -42,9 +41,9 @@ pub use template::expand_template;
 use neoteletext_core::types::PageAddress;
 
 use crate::bytes::TextBuf;
-use crate::consts::{MAX_FORM_ORIGINS, MAX_LINKED_SERVICES, MAX_SERVICE_NAME, MAX_SHORT_NAME, MAX_URL_LENGTH};
+use crate::consts::{MAX_LINKED_SERVICES, MAX_SERVICE_NAME, MAX_SHORT_NAME, MAX_URL_LENGTH};
 use crate::json::JsonError;
-use crate::url::{Origin, Url, UrlError};
+use crate::url::{Url, UrlError};
 
 /// Room for the addresses of all linked services' descriptors together.
 const SERVICE_ADDRESS_BYTES: usize = 4096;
@@ -87,8 +86,6 @@ pub enum Member {
     PushMethod,
     /// `push.input`
     PushInput,
-    /// `form_origins`
-    FormOrigins,
     /// `region`
     Region,
     /// `services`
@@ -174,7 +171,6 @@ pub struct Descriptor {
     /// The channel takes the viewer's keys on its push WebSocket (area
     /// INT, decision E.90).
     input: bool,
-    form_origins: [Option<Origin>; MAX_FORM_ORIGINS],
     /// The default character set region (decision E.4), 0 to 15.
     pub region: Option<u8>,
     services: [Option<LinkedService>; MAX_LINKED_SERVICES],
@@ -237,7 +233,6 @@ impl Descriptor {
             base: *base,
             push: None,
             input: false,
-            form_origins: [None; MAX_FORM_ORIGINS],
             region: None,
             services: [None; MAX_LINKED_SERVICES],
             service_addresses: TextBuf::new(),
@@ -294,11 +289,6 @@ impl Descriptor {
     #[must_use]
     pub const fn input(&self) -> bool {
         self.input
-    }
-
-    /// The other origins forms may submit to (REQ-WEB-008).
-    pub fn form_origins(&self) -> impl Iterator<Item = &Origin> {
-        self.form_origins.iter().flatten()
     }
 
     /// A linked service by its short name (Appendix E.2 rule 2: an unknown

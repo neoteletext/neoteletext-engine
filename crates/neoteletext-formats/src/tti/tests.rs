@@ -1,6 +1,6 @@
-//! TTI reader tests, including the Link and Form Extension examples of
-//! Appendices C.7 and E.3, and the round trip through the page encoder and
-//! the core's packet decoder (REQ-TST-020).
+//! TTI reader tests, including the Link Extension examples of Appendix
+//! E.3, the lines of the withdrawn Form Extension, and the round trip
+//! through the page encoder and the core's packet decoder (REQ-TST-020).
 #![allow(
     clippy::unwrap_used,
     clippy::indexing_slicing,
@@ -12,7 +12,7 @@
 use super::*;
 use crate::encode::encode_page;
 use crate::item::{Diagnostic, DiagnosticKind, Item};
-use crate::page::{FieldKind, FormMethod, IssueKind, LinkKey, PageFile, PageFunction, Warning};
+use crate::page::{IssueKind, LinkKey, PageFile, PageFunction, Warning};
 use crate::testing::{diagnostics, pages, same_in_any_chunks};
 use neoteletext_core::consts::{
     ALPHA_BLACK, ALPHA_RED, C11_SERIAL, COLOUR_GREEN, DOUBLE_HEIGHT, MODE_G0_NO_DIACRITIC, MODE_SET_ACTIVE_POSITION,
@@ -24,7 +24,6 @@ use neoteletext_core::types::{PageAddress, SubCode};
 use std::vec::Vec;
 
 mod enhancement;
-mod forms;
 mod interaction;
 mod links;
 
@@ -160,8 +159,10 @@ fn reports_long_rows_and_lines_with_offsets() {
     assert_eq!(&pages[0].row(2).unwrap()[..2], b"ok");
 }
 
-/// The Appendix C.7 example.
-pub(crate) const FORM_EXAMPLE: &[u8] = b"PN,40001
+/// The example of the withdrawn Form Extension (formerly Appendix C.7),
+/// with its withdrawn `FH` line: a page as a channel wrote it before
+/// decision E.126.
+const WITHDRAWN_FORM_PAGE: &[u8] = b"PN,40001
 DE,Contact form
 PS,8000
 FT,5f2c9a17e0
@@ -179,7 +180,40 @@ OL,8,  < SEND MESSAGE >
 FD,SUBMIT,send,2,16,Send message,send_contact
 FS,POST,/contact
 FP,40101,40102
+FH,X-Test,1
 ";
+
+/// Decision E.126, REQ-INP-013: the lines of the withdrawn Form Extension
+/// are unknown commands, each reported and ignored as any other unknown
+/// line is, so a page that still carries them reads as its rows alone and
+/// encodes to the same packets.
+#[test]
+fn withdrawn_form_lines_are_unknown_and_the_page_is_its_rows() {
+    let form_commands: [&[u8]; 6] = [b"FT,", b"FD,", b"OPTION,", b"FS,", b"FP,", b"FH,"];
+    let rows_alone: Vec<u8> = WITHDRAWN_FORM_PAGE
+        .split_inclusive(|&byte| byte == b'\n')
+        .filter(|line| !form_commands.iter().any(|command| line.starts_with(command)))
+        .flatten()
+        .copied()
+        .collect();
+    let (pages, diagnostics) = read(WITHDRAWN_FORM_PAGE);
+    let (expected, none) = read(&rows_alone);
+    assert_eq!(none, []);
+    let unknown = |command: &[u8; 2]| DiagnosticKind::UnknownCommand { command: *command };
+    let kinds: Vec<DiagnosticKind> = diagnostics.iter().map(|diagnostic| diagnostic.kind).collect();
+    let expected_kinds: Vec<DiagnosticKind> =
+        [b"FT", b"FD", b"FD", b"FD", b"OP", b"OP", b"OP", b"FD", b"FS", b"FP", b"FH"].map(unknown).to_vec();
+    assert_eq!(kinds, expected_kinds);
+    assert_eq!(pages, expected);
+    assert_eq!(pages[0].issues.as_slice(), []);
+    assert_eq!(&pages[0].row(1).unwrap()[..10], b"CONTACT US");
+    let packets = |page: &PageFile| {
+        let mut out = Vec::new();
+        encode_page(page, &mut |packet| out.push(packet));
+        out
+    };
+    assert_eq!(packets(&pages[0]), packets(&expected[0]));
+}
 
 #[test]
 fn considered_warnings_are_kept() {
@@ -230,29 +264,6 @@ fn a_description_cut_to_capacity_ends_in_no_carriage_return() {
     let page = cut_value_page(&[b"PN,10000\nDE,", &value[..], b"\nDS,", &value[..], b"\n"].concat());
     assert_eq!(page.description.as_bytes(), kept);
     assert_eq!(page.source.as_bytes(), kept);
-}
-
-/// F-103: the same for a form token of `FORM_TOKEN_BYTES` (`FT`).
-#[test]
-fn a_form_token_cut_to_capacity_ends_in_no_carriage_return() {
-    use crate::page::FORM_TOKEN_BYTES;
-    let value = [&[b'a'; FORM_TOKEN_BYTES - 1][..], b"\rxyz"].concat();
-    let text = [b"PN,10000\nFT,", &value[..], b"\n"].concat();
-    assert_cut_reported(&text);
-    let page = cut_value_page(&text);
-    assert_eq!(page.form.token.as_bytes(), [b'a'; FORM_TOKEN_BYTES - 1]);
-}
-
-/// F-103: the same for a field's default text of `FIELD_TEXT_BYTES`, the
-/// last value of an `FD` line.
-#[test]
-fn a_field_value_cut_to_capacity_ends_in_no_carriage_return() {
-    use crate::page::FIELD_TEXT_BYTES;
-    let value = [&[b'a'; FIELD_TEXT_BYTES - 1][..], b"\rxyz"].concat();
-    let text = [b"PN,40001\nOL,3,Name:\nFD,TEXT,name,7,31,50,Y,,", &value[..], b"\n"].concat();
-    assert_cut_reported(&text);
-    let page = cut_value_page(&text);
-    assert_eq!(page.form.fields.as_slice()[0].default.as_bytes(), [b'a'; FIELD_TEXT_BYTES - 1]);
 }
 
 /// F-103: the same for a link label of `LINK_LABEL_BYTES`, the last value

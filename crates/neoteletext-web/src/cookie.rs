@@ -44,9 +44,6 @@ pub enum Site {
     /// A top-level GET to a different service, made by following a link:
     /// `Lax`, default and `None` cookies, not `Strict`.
     CrossServiceNavigation,
-    /// A form submission to a different origin: only cookies that are
-    /// `SameSite=None` and `Secure`.
-    CrossOriginForm,
 }
 
 /// Why a `Set-Cookie` header was not stored.

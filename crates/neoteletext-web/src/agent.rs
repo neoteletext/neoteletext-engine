@@ -1,6 +1,6 @@
 //! The user agent (ARCHITECTURE.md layer L7): one sans-IO state machine
 //! that ties the address parser, HTTP, WebSocket, server-sent events, the
-//! cookie store, the descriptor and form submission together.
+//! cookie store and the descriptor together.
 //!
 //! The application calls [`UserAgent::handle`] with an [`Input`]: a user
 //! request, a network event from the transport, or a timer tick. The agent
@@ -10,36 +10,35 @@
 //! borrowed from the agent's buffers and is valid only during the call.
 //!
 //! Two connections are used: [`ConnectionId::Fetch`](crate::port::ConnectionId::Fetch) carries the
-//! descriptor, page and form requests one at a time (REQ-WEB-014), and
+//! descriptor and page requests one at a time (REQ-WEB-014), and
 //! [`ConnectionId::Push`](crate::port::ConnectionId::Push) carries the push stream (REQ-WEB-005).
 //!
-//! Push, form submission and cookies are compile-time features (decision
-//! E.61). The agent's types are the same in every build. A build without a
-//! feature answers whatever needs it with a value that says so, and every
-//! branch that would reach the missing part tests a constant, so the
-//! optimiser and the linker drop that part's code.
+//! Push and cookies are compile-time features (decision E.61). The agent's
+//! types are the same in every build. A build without a feature answers
+//! whatever needs it with a value that says so, and every branch that would
+//! reach the missing part tests a constant, so the optimiser and the linker
+//! drop that part's code.
 
 use crate::user_agent::UserAgentString;
 use neoteletext_core::types::{Instant, PageAddress, SubCode};
 
 use crate::bytes::TextBuf;
 use crate::consts::{
-    CACHE_ENTRIES, CONFIRMED_ORIGINS, MAX_HOST_TEXT_LENGTH, MAX_SUBSCRIBED_PAGES, MAX_VALIDATOR_LENGTH,
-    MICROSECONDS_PER_SECOND, PAGE_QUEUE, PUSH_RETRY_FIRST_US, SECURE_HOSTS,
+    CACHE_ENTRIES, MAX_HOST_TEXT_LENGTH, MAX_SUBSCRIBED_PAGES, MAX_VALIDATOR_LENGTH, MICROSECONDS_PER_SECOND,
+    PAGE_QUEUE, PUSH_RETRY_FIRST_US, SECURE_HOSTS,
 };
 use crate::cookie::{CookieJar, Cookies, Site};
 use crate::descriptor::{Descriptor, PushMethod};
 use crate::http::{BodyDecoder, HeadCollector, Method, ResponseHead};
 use crate::port::RandomSource;
 use crate::sse::SseParser;
-use crate::url::{Origin, Url};
+use crate::url::Url;
 use crate::ws::{FrameReader, HandshakeKey};
 
 mod config;
 mod cookies;
 mod events;
 mod fetch;
-mod form;
 mod input;
 mod page;
 mod push;
@@ -84,7 +83,6 @@ enum Purpose {
         subcode: Option<SubCode>,
         file: PageFile,
     },
-    Form,
     Contents,
     /// Registers a device-bound session (REQ-WEB-017).
     #[cfg_attr(not(feature = "dbsc"), allow(dead_code, reason = "made only with the feature `dbsc`"))]
@@ -161,23 +159,6 @@ struct CacheEntry {
     used: u64,
     /// For a channel, the page file that answered is T42.
     t42: bool,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum FormPhase {
-    Idle,
-    Confirming { record_origin: bool },
-    Queued,
-    InFlight,
-}
-
-#[derive(Clone, Copy, Debug)]
-struct FormState {
-    phase: FormPhase,
-    target: Option<Url>,
-    method: Method,
-    body_len: usize,
-    site: Site,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -260,8 +241,6 @@ pub struct UserAgent<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES
     timer_told: Option<Instant>,
     cache: [Option<CacheEntry>; CACHE_ENTRIES],
     cache_tick: u64,
-    form: FormState,
-    confirmed: [Option<Origin>; CONFIRMED_ORIGINS],
     push: PushConnection,
     subscribe_all: bool,
     subscribed: [Option<PageAddress>; MAX_SUBSCRIBED_PAGES],
@@ -362,14 +341,6 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             timer_told: None,
             cache: [None; CACHE_ENTRIES],
             cache_tick: 0,
-            form: FormState {
-                phase: FormPhase::Idle,
-                target: None,
-                method: Method::Post,
-                body_len: 0,
-                site: Site::SameService,
-            },
-            confirmed: [None; CONFIRMED_ORIGINS],
             push: PushConnection {
                 phase: PushPhase::Idle,
                 url: None,

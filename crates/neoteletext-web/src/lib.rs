@@ -10,15 +10,14 @@
 //! no socket and no cryptography here.
 //!
 //! Everything received is data (REQ-SEC-004): pages go to the format
-//! readers, descriptors and pushed messages are parsed into fixed fields,
-//! and forms are declarative. Nothing received is executed or loaded as
-//! code.
+//! readers, and descriptors and pushed messages are parsed into fixed
+//! fields. Nothing received is executed or loaded as code.
 //!
 //! - Foundation: [`consts`], [`bytes`], [`base64`], [`sha1`], [`json`];
 //! - addresses and origins: [`url`];
 //! - protocols: [`http`], [`ws`], [`sse`], [`cookie`], and `dbsc` (feature
 //!   `dbsc`): Device Bound Session Credentials (REQ-WEB-017);
-//! - content: [`channel`], [`contents`], [`descriptor`], [`form`];
+//! - content: [`channel`], [`contents`], [`descriptor`];
 //! - the machines: [`agent`] (the [`agent::UserAgent`]) and [`zxnet`]
 //!   (the [`zxnet::ZxnetFeed`]);
 //! - the web half of the platform interface (layer L8): [`port`].
@@ -63,7 +62,6 @@ pub mod ws;
 pub mod channel;
 pub mod contents;
 pub mod descriptor;
-pub mod form;
 
 pub mod agent;
 pub mod zxnet;

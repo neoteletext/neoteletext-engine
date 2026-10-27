@@ -76,18 +76,9 @@ impl Descriptor {
         }
         let mut descriptor = Self::defaults(base, channel)?;
         descriptor.base = *base;
-        let mut seen = [false; 9];
-        let [
-            seen_name,
-            seen_page,
-            seen_template,
-            seen_push,
-            seen_origins,
-            seen_region,
-            seen_services,
-            seen_aliases,
-            seen_refresh,
-        ] = &mut seen;
+        let mut seen = [false; 8];
+        let [seen_name, seen_page, seen_template, seen_push, seen_region, seen_services, seen_aliases, seen_refresh] =
+            &mut seen;
         while let Some(token) = reader.next_token()? {
             let key = match token {
                 Token::Key(key) => key,
@@ -111,9 +102,6 @@ impl Descriptor {
             } else if key.equals(b"push") {
                 first(seen_push, Member::Push)?;
                 descriptor.read_push(&mut reader, base, channel)?;
-            } else if key.equals(b"form_origins") {
-                first(seen_origins, Member::FormOrigins)?;
-                descriptor.parse_origins(&mut reader, base)?;
             } else if key.equals(b"region") {
                 first(seen_region, Member::Region)?;
                 let region = bounded_integer(&mut reader, Member::Region, 0, u32::from(MAX_REGION))?;
@@ -252,24 +240,5 @@ impl Descriptor {
             return Err(DescriptorError::Invalid(Member::PushInput));
         }
         Ok((url, method, input))
-    }
-
-    fn parse_origins(&mut self, reader: &mut JsonReader<'_>, base: &Url) -> Result<(), DescriptorError> {
-        if reader.next_token()? != Some(Token::BeginArray) {
-            return Err(DescriptorError::Invalid(Member::FormOrigins));
-        }
-        let mut count = 0usize;
-        loop {
-            let value = match reader.next_token()? {
-                Some(Token::EndArray) => return Ok(()),
-                Some(Token::Str(value)) => value,
-                _ => return Err(DescriptorError::Invalid(Member::FormOrigins)),
-            };
-            let value: TextBuf<MAX_URL_LENGTH> = text(value, Member::FormOrigins)?;
-            let url = address(base, value.as_str(), Member::FormOrigins)?;
-            let slot = self.form_origins.get_mut(count).ok_or(DescriptorError::TooMany(Member::FormOrigins))?;
-            *slot = Some(url.origin());
-            count = count.saturating_add(1);
-        }
     }
 }

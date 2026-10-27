@@ -82,43 +82,18 @@ Reveal shall be cleared when a different page is selected.
 A Home function shall request the initial page (REQ-SVC-004).
 *Verification:* Test.
 
-**REQ-NAV-009 — Entering values into forms.**
-On a page with an interactive form (REQ-WEB-010 and Appendix C), the viewer shall be able to move between fields, edit them and submit. Both input devices shall be supported.
-
-**With a keyboard:**
-- the Tab key and Shift-Tab move between fields;
-- typing enters characters;
-- the arrow keys move within a field and step through SELECT and RADIO choices;
-- the space bar toggles a checkbox;
-- the Enter key presses the focused button.
-
-**With a remote control only** (digits, the four colour keys and a few others):
-
-| Key | Action |
-|---|---|
-| Red | Previous field |
-| Green | Next field |
-| Yellow | Change the focused field. It steps SELECT and RADIO choices, toggles a checkbox, and switches TEXT entry between letters and digits. |
-| Cyan | Presses the focused button, or submits the form from any field |
-| Index | Leaves the form without submitting |
-
-In letter mode, TEXT entry uses the digit keys with repeated presses, as on a telephone keypad ("2" gives A, B, C and so on). In digit mode, the digit keys enter digits directly.
-
-While a form has focus, the digit keys shall not change the page. The status area shall show which mode is active.
-*Verification:* Test of each key in both input methods; demonstration.
-
+**REQ-NAV-009 — Withdrawn: Entering values into forms.**
+Withdrawn on 27 October 2026 (decision E.126): the TTI Form Extension is withdrawn, so a page has no form to enter values into. A channel that asks for text takes the viewer's keys over the input protocol and draws the fields itself, with its own cursor and echo (area INT).
 
 **REQ-NAV-010 — Back and forward history.**
 The viewer shall keep a history of the pages it has displayed, like a browser. Each entry records:
 - the service;
 - the page number;
-- the sub-page;
-- whether the page came from a form response.
+- the sub-page.
 
 **Moving through history:**
 - **Back** returns to the previous page. **Forward** undoes a Back.
 - Selecting a new page by any means clears the forward history.
-- A form submission's response page is recorded in the history. Back from it returns to the form, with the values already entered (REQ-WEB-011).
 
 **Keys:** On a keyboard, Back and Forward are the Backspace key and Alt with the left and right arrows. On a remote control, which has no standard back key, they are two configurable keys. The default is to hold the Index key for Back.
 
@@ -127,7 +102,8 @@ The viewer shall keep a history of the pages it has displayed, like a browser. E
 - Returning to a page shows the stored copy at once, and checks it is current as REQ-WEB-007 describes.
 - History is never saved between runs unless the port enables it, and it can be wiped, like the cookie store (REQ-SEC-013).
 
-*Verification:* Test of back, forward, clearing and the form case.
+*Verification:* Test of back, forward and clearing.
+*Amended 27 October 2026 (decision E.126):* an entry no longer records whether the page came from a form response, and the form case is gone, since forms are withdrawn.
 
 **REQ-NAV-013 — Links to addresses, page numbers and runs of text.** Moved out of the engine on 16 October 2026 (decision E.76), and withdrawn on 18 October 2026: it concerned only the browser, which was removed from this repository and is maintained in the separate neoteletext-browser repository.
 

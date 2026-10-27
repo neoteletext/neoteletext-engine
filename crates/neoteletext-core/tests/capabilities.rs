@@ -40,7 +40,6 @@ fn the_default_features_are_decision_e105() {
         "render",
         "bedstead",
         "viewer",
-        "forms",
         "extended-sets",
     ];
     expected.sort_unstable();

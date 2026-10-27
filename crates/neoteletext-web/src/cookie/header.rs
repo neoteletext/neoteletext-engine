@@ -33,7 +33,6 @@ impl<const SLOTS: usize, const BYTES: usize> CookieJar<SLOTS, BYTES> {
                 && match site {
                     Site::SameService => true,
                     Site::CrossServiceNavigation => record.same_site != SameSite::Strict,
-                    Site::CrossOriginForm => record.same_site == SameSite::None && record.secure,
                 };
             if wanted && let Some(entry) = order.get_mut(count) {
                 *entry = index;

@@ -59,7 +59,7 @@ pub enum HttpError {
 pub enum Method {
     /// GET
     Get,
-    /// POST, for form submission only.
+    /// POST, for Device Bound Session Credentials only (REQ-WEB-017).
     Post,
 }
 

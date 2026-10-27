@@ -2,11 +2,11 @@
 //! make a TTI page fail on some receivers or behave unsafely, reported per
 //! page with the line they were found on. The program adds the file name.
 
-use neoteletext_core::consts::{NATIONAL_POSITIONS, PACKET_ROW_24, SPACE};
+use neoteletext_core::consts::{PACKET_ROW_24, SPACE};
 use neoteletext_core::types::PageAddress;
 
 use crate::encode::{LABEL_CHARACTERS, OTHER_SERVICE_LABEL_CHARACTERS};
-use crate::page::{FieldKind, FormField, IssueKind, LinkLine, PageFile};
+use crate::page::{IssueKind, LinkLine, PageFile};
 // The warnings belong to the page, which records those marked considered;
 // they are named here too, where the checker reports them.
 pub use crate::page::Warning;
@@ -17,10 +17,8 @@ const PRINTABLE_FIRST: u8 = SPACE;
 /// The last printable ASCII character; above it lie DEL and the bytes no
 /// G0 set has.
 const PRINTABLE_LAST: u8 = b'~';
-/// Digits in a run that are taken for a telephone number.
-const TELEPHONE_DIGITS: usize = 6;
 /// Fragments that mark a web or e-mail address in page text. The check is
-/// approximate, as Appendix C.6 allows.
+/// approximate: it only decides whether a warning is given.
 const ADDRESS_MARKS: [&[u8]; 6] = [b"www.", b"http", b".co", b".org", b".net", b"@"];
 
 /// How serious a finding is: errors fail the check (exit status 4).
@@ -45,12 +43,7 @@ pub enum Problem {
     LabelTooLong,
     /// A label with characters the page's G0 set cannot show.
     LabelCharacters,
-    /// Fields that overlap, fall outside their row, or cannot be read.
-    BadFormField,
-    /// A version 2.0 form.
-    FormVersion2,
-    /// The withdrawn `FH` command, or the withdrawn `TF` line (decision
-    /// E.111).
+    /// The withdrawn `TF` line (decision E.111).
     WithdrawnCommand,
     /// A `CU` line that could not be read (REQ-INT-006).
     BadCursorLine,
@@ -109,40 +102,6 @@ fn text_has_number(page: &PageFile, digits: [u8; 3]) -> bool {
     })
 }
 
-/// True when some row holds a run of digits, spaces allowed between them,
-/// long enough for a telephone number.
-fn text_has_telephone(page: &PageFile) -> bool {
-    text_rows(page).any(|row| {
-        let mut digits = 0usize;
-        for &code in row {
-            if code.is_ascii_digit() {
-                digits = digits.saturating_add(1);
-                if digits >= TELEPHONE_DIGITS {
-                    return true;
-                }
-            } else if code != SPACE {
-                digits = 0;
-            }
-        }
-        false
-    })
-}
-
-/// The cells a field's placeholder occupies, as (row, first column,
-/// columns).
-fn placeholder_runs(page: &PageFile, index: usize, field: &FormField, out: &mut dyn FnMut(usize, usize, usize)) {
-    let rows = usize::from(field.row)..usize::from(field.row).saturating_add(usize::from(field.rows));
-    for row in rows {
-        out(row, usize::from(field.column), usize::from(field.width));
-        if field.kind == FieldKind::Radio {
-            let options = page.form.options.as_slice().iter().filter(|option| usize::from(option.field) == index);
-            for column in options.skip(1).filter_map(|option| option.column) {
-                out(row, usize::from(column), usize::from(field.width));
-            }
-        }
-    }
-}
-
 fn check_links(page: &PageFile, options: &CheckOptions<'_>, report: &mut dyn FnMut(Severity, Problem, u32)) {
     for link in page.links.as_slice() {
         if let (Some(services), true) = (options.services, link.is_other_service())
@@ -190,32 +149,6 @@ fn check_label(link: &LinkLine, report: &mut dyn FnMut(Severity, Problem, u32)) 
     }
 }
 
-fn check_form(page: &PageFile, report: &mut dyn FnMut(Severity, Problem, u32)) {
-    if page.form.fields.is_empty() {
-        return;
-    }
-    let addressed = ADDRESS_MARKS.iter().any(|mark| text_contains(page, mark));
-    if !addressed && !text_has_telephone(page) {
-        report(Severity::Warning, Problem::Warning(Warning::NoBroadcastFallback), page.line);
-    }
-    for (index, field) in page.form.fields.as_slice().iter().enumerate() {
-        if matches!(field.kind, FieldKind::Submit | FieldKind::Reset) {
-            continue;
-        }
-        let mut national = false;
-        placeholder_runs(page, index, field, &mut |row, column, width| {
-            if let Some(cells) = page.row(row).and_then(|codes| codes.get(column..column.saturating_add(width))) {
-                national |= cells
-                    .iter()
-                    .any(|&code| NATIONAL_POSITIONS.contains(&(code & neoteletext_core::consts::CODE_MASK_7BIT)));
-            }
-        });
-        if national {
-            report(Severity::Warning, Problem::Warning(Warning::UnreliablePlaceholders), field.line);
-        }
-    }
-}
-
 /// Checks one page, reporting each finding (REQ-CLI-006). Warnings the page
 /// marks as considered are not reported.
 pub fn check_page(page: &PageFile, options: &CheckOptions<'_>, out: &mut dyn FnMut(Finding)) {
@@ -236,17 +169,10 @@ pub fn check_page(page: &PageFile, options: &CheckOptions<'_>, out: &mut dyn FnM
             IssueKind::BadModesLine => Problem::BadModesLine,
             IssueKind::BadLogLine(why) => Problem::BadLogLine(why),
             IssueKind::TooManyLogLines => Problem::TooManyLogLines,
-            IssueKind::FormNeedsConversion => Problem::FormVersion2,
-            IssueKind::FieldOverlap
-            | IssueKind::FieldOutsideRow
-            | IssueKind::FieldWithoutRow
-            | IssueKind::BadField
-            | IssueKind::OptionWithoutField => Problem::BadFormField,
         };
         report(Severity::Error, problem, issue.line);
     }
     check_links(page, options, &mut report);
-    check_form(page, &mut report);
 }
 
 #[cfg(test)]

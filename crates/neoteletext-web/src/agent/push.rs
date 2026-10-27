@@ -104,7 +104,6 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
                 path,
                 Site::SameService,
                 seconds,
-                0,
             )?;
             writer.put(CRLF)?;
             Ok(truncated)

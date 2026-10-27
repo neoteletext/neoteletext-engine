@@ -28,10 +28,10 @@ Dependencies point **downward only**. A layer may use the layers below it and th
  │                               Keys · CookieStorage · DeviceKey              │
  ├───────────────┬───────────────────────────────────────────────────────────┤
  │ L7  Web user  │ URL parser · origin · HTTP/1.1 · WebSocket · SSE ·          │  sans-IO, no_std
- │     agent     │ cookies · cache · descriptor · form submission              │
+ │     agent     │ cookies · cache · descriptor · channels                     │
  ├───────────────┴───────────────────────────────────────────────────────────┤
  │ L6  Interaction               viewer FSM · navigation · history · input ·   │  no_std
- │                               form model & editing · status area            │
+ │                               status area                                   │
  ├───────────────────────────────────────────────────────────────────────────┤
  │ L5  Output adapters           pixel formats · PNG/PPM · text/ANSI (sanitised)│  helpers no_std
  ├───────────────────────────────────────────────────────────────────────────┤
@@ -172,7 +172,7 @@ Each module named below is one concept. Since the reorganisation of 24 October 2
 - **Must not know about:** teletext rules.
 - **Requirements:** RND-005 to RND-009, RND-029, SEC-010.
 
-### L6 Interaction — `neoteletext-core::{viewer, nav, forms}`
+### L6 Interaction — `neoteletext-core::{viewer, nav}`
 
 - **Owns:**
   - the viewer state machine;
@@ -180,11 +180,10 @@ Each module named below is one concept. Since the reorganisation of 24 October 2
   - Fastext, index, home and sub-page navigation;
   - back and forward history;
   - reveal, mix and zoom;
-  - the form model: fields, focus, editing and validation, from the declarative commands of Appendix C;
   - the contents of the receiver-owned status area in row 0, columns 0 to 7, including every security indicator.
 - **Must not know about:** HTTP, sockets, how pages are fetched.
-- **Key types:** `Viewer`, `ViewerState`, `History<const N: usize>`, `FormModel`, `Key`, `Action`.
-- **Requirements:** NAV, FSM-005, SEC-005, SEC-009, and the model half of Appendix C.
+- **Key types:** `Viewer`, `ViewerState`, `History<const N: usize>`, `Key`, `Action`.
+- **Requirements:** NAV, FSM-005, SEC-005. The form model of Appendix C was here until the TTI Form Extension was withdrawn on 27 October 2026 (decision E.126).
 
 ### L7 Web user agent — `neoteletext-web`
 
@@ -201,14 +200,13 @@ Each module named below is one concept. Since the reorganisation of 24 October 2
   - channels: which addresses name a channel's folder and files, and the checks a channel's file must pass (`channel`, decision E.70);
   - the contents file's reader (`contents`, REQ-WEB-025);
   - push subscriptions;
-  - form encoding and submission;
   - Device Bound Session Credentials (`dbsc`, and the agent's `agent::bound`, feature `dbsc`, REQ-WEB-017): the registration and challenge headers, the session instructions, the proofs and the session store; the keys are the port's;
   - the zxnet live feed.
 
   It is fed received bytes, the time and requests. It produces bytes to send, timers, TTI or T42 bytes for Ingress, and events.
 - **Must not know about:** teletext decoding. Pages leave it only as bytes.
 - **Key types:** `Url`, `Origin`, `UserAgent`, `CookieJar<const N: usize>`, `Input`, `Output::{Send, Timer, PageBytes, Event}`.
-- **Requirements:** WEB, INP-022, SEC-006 to SEC-013.
+- **Requirements:** WEB, INP-022, SEC-006 to SEC-008, SEC-010 to SEC-013.
 
 ### L8 Platform interface — traits in `neoteletext-core::port` and `neoteletext-web::port`
 
@@ -233,7 +231,7 @@ Each module named below is one concept. Since the reorganisation of 24 October 2
 - **The split between `neoteletext-app` and `neoteletext-cli`:**
   - `neoteletext-app` holds what any program needs. That is the session, reading inputs, both processes of live mode, sandboxing, conversion and slicing, and the `Source` trait a viewer reads pages through.
   - `neoteletext-cli` holds argument parsing, terminal output and the terminal viewer.
-  - `neoteletext-app` also holds what viewers share: the form pieces (`interact`), and text and raster output (`present`).
+  - `neoteletext-app` also holds what viewers share: the row 24 messages (`interact`), and text and raster output (`present`).
   - `neoteletext-app::write_text` (feature `write-text`) turns Unicode text into a page in any set: it encodes with the core's `charset` tables, reorders right-to-left text with the `unicode-bidi` crate, lays out Thai and Lao rows, and writes tones and rarer marks as X/26 triplets (decision E.82, REQ-CLI-010). `neottx write-text` is its command.
 - **Requirements:** CLI, SEC-017 to SEC-019, GEN-018.
 
@@ -247,7 +245,7 @@ Sound carried with teletext sits beside the page layers, as the web user agent d
 
 | Module | Contents |
 |---|---|
-| `policy` | Every security decision, as pure functions asked by the layers that need them. Examples: "is this address blocked?", "may this form submit to that origin?", "is this a downgrade?". No layer reimplements a policy decision. |
+| `policy` | Every security decision, as pure functions asked by the layers that need them. Examples: "is this address blocked?", "are these the same origin?", "is this a downgrade?". No layer reimplements a policy decision. |
 | `config` | The configuration struct, its defaults and the named profiles. |
 | `trace` | The state-machine transition trace (REQ-FSM-010): `TraceEntry`, `Machine`, and `TraceSink` for machines with no event queue of their own. |
 
@@ -349,9 +347,8 @@ Field groups shared with the presentation layer are foundation types in `types`:
 ### 4.3 Interacting
 
 ```
-key ──► L6 Viewer ──► Action::{RequestPage, History, EditField, Submit, Toggle…}
-            ├─► RequestPage → L2 (broadcast source) or, through L9, → L7 (web source)
-            └─► Submit      → through L9, → L7 form submission
+key ──► L6 Viewer ──► Action::{RequestPage, History, Toggle…}
+            └─► RequestPage → L2 (broadcast source) or, through L9, → L7 (web source)
 ```
 
 ### 4.4 Web
@@ -458,11 +455,10 @@ Where each crate's code lives, one sentence per directory (the reorganisation of
 - `glyphs/`: the generated Bedstead and G3 tables, a font loaded at run time and a font's conformance per set.
 - `render/`: the render options, the cell raster, the row renderer, the colours, flash and change tracking.
 - `viewer/`: the viewer's keys, its screen and the status area of row 0.
-- `forms/`: a form's declaration, editing, validation, submission and drawing.
 
 **`neoteletext-formats`**
-- `page/`: the records a page file carries beyond its rows: packets, links, the Form Extension, the interaction lines and the reader's issues.
-- `tti/`: the TTI reader's line dispatcher, argument grammar, row text, packed lines, link lines, link targets and Form Extension.
+- `page/`: the records a page file carries beyond its rows: packets, links, the interaction lines and the reader's issues.
+- `tti/`: the TTI reader's line dispatcher, argument grammar, row text, packed lines, link lines and link targets.
 - `encode/`: the page encoder's parts: one page in transmission order, the rows, X/28/0, packed triplets, the link row, the checksum and the order of a set of pages.
 - `transport/`: the transport stream reader, with PSI sections and the PAT and PMT in `transport/reader/`.
 - `pes/`: the PES packet header and its teletext data units.
@@ -488,7 +484,7 @@ Where each crate's code lives, one sentence per directory (the reorganisation of
 - `dbsc/`: Device Bound Session Credentials: structured fields, the two headers, the session instructions, the proof and the session store.
 - `descriptor/`: the descriptor's member grammar, its page address template and its links to other sites.
 - `zxnet/`: the live feed's channel, vocabulary, messages, page walk and connection.
-- `agent/`: the user agent's parts: configuration, vocabulary, entry point, service opening, requests, responses, pages, forms, cookies, the fetch and push connections, and the agent's side of `dbsc`.
+- `agent/`: the user agent's parts: configuration, vocabulary, entry point, service opening, requests, responses, pages, cookies, the fetch and push connections, and the agent's side of `dbsc`.
 
 **`neoteletext-audio`, `neoteletext-audio-mix`**
 - `idl/`: record reassembly from fragments.
@@ -522,14 +518,13 @@ Where each crate's code lives, one sentence per directory (the reorganisation of
 - `live/`: the decoder side of live mode: starting the fetcher and which pages a response may fill.
 - `present/`: the palette-index raster and the receiver-drawn page.
 - `convert/`: stored pages back to page files.
-- `extras/`: a TTI form as the core's form specification.
 - `sandbox/`: the Linux sandbox and the platforms without one.
 - `write_text/`: the writer's set table and encoding, right-to-left lines, and Thai and Lao rows.
 
 **`neoteletext-cli`** (the program is the library `lib.rs`; `main.rs` calls its `run`)
 - `args/`: the tests of the command-line specification `args.rs`.
 - `commands/`: one file per `neottx` command; `commands/sound/` and `commands/write_text/` hold the commands' code for a build that has them, under an ungated parent that answers in every build.
-- `view/`: the terminal viewer's keys, terminal side, typing into a channel and the form-origin ticker.
+- `view/`: the terminal viewer's keys, terminal side and typing into a channel.
 
 **`xtask`**
 - `checks/`: the four source checks, one file each: layers, dependencies, constants and operating-system access.
@@ -548,14 +543,14 @@ Decision E.61 makes each crate's optional areas Cargo features, all on by defaul
 - **A request a build cannot serve is answered, never ignored or panicked on:**
   - a configured level that is not compiled in falls back (`PresentationLevel::available`);
   - a format that is not compiled in gives `FormatNotCompiled`;
-  - push, forms and cookies give their `NotCompiledIn` values;
+  - push and cookies give their `NotCompiledIn` values;
   - a `neottx` command whose area is left out says so and exits with the usage status.
 
 | Crate | Features |
 |---|---|
-| `neoteletext-core` | Default (decision E.105): `level15`, `level25`, `nonspacing-attributes`, `level25-32colors`, `level35-32colors`, `render`, `bedstead`, `viewer`, `forms`, `extended-sets` (neoteletext's own character sets and the joining pass, decision E.78). Not default: the capabilities `objects`, `side-panels`, `additional-flash-functions` (decision E.71), and the profile `modern-classic` |
+| `neoteletext-core` | Default (decision E.105): `level15`, `level25`, `nonspacing-attributes`, `level25-32colors`, `level35-32colors`, `render`, `bedstead`, `viewer`, `extended-sets` (neoteletext's own character sets and the joining pass, decision E.78). Not default: the capabilities `objects`, `side-panels`, `additional-flash-functions` (decision E.71), and the profile `modern-classic` |
 | `neoteletext-formats` | `transport`, `sliced`, `pages`, `tti`, `ep1`, `edittf`, `dump`, `check`, `bdf` (the font reader of REQ-FNT-002), and `std` (not default) |
-| `neoteletext-web` | `push`, `forms`, `cookies`; not default: `dbsc` (REQ-WEB-017, decision E.110), `error-trait` and `std` |
+| `neoteletext-web` | `push`, `cookies`; not default: `dbsc` (REQ-WEB-017, decision E.110), `error-trait` and `std` |
 | `neoteletext-app` | `live`, `slice`, `write-text` (the text-to-page writer and its `unicode-bidi` dependency) |
 | `neoteletext-audio` | `idl`, `ima`, and `encode` (not default) |
 | `neoteletext-opus` | None: the profile is the whole decoder |
@@ -607,7 +602,7 @@ A module may use the modules listed for it, and nothing else. The cross-cutting 
 | `enhance` | L3 | Foundation, `charset`, `level1` (grid types and the Level 1 row machine), `packet` (triplet and X/28 field types), `acq` (read-only stored page types and enhancement lookup), `colour`, `objects` |
 | `glyphs` | L4 | Foundation, `charset` (character references) |
 | `render` | L4 | Foundation, `glyphs`, `level1` (grid types), `colour` (Colour Map) |
-| `viewer`, `nav`, `forms` | L6 | Foundation, `acq`, `level1`, `level15`, `enhance`, `colour`, `render` (change tracking), `service` |
+| `viewer`, `nav` | L6 | Foundation, `acq`, `level1`, `level15`, `enhance`, `colour`, `render` (change tracking), `service` |
 | `port` | L8 | Foundation |
 
 `neoteletext-formats` and `neoteletext-slicer` may use Foundation and `packet` only. `neoteletext-web` may use Foundation, `policy` and `config` only; it never uses the decoding layers. `neoteletext-image` may use Foundation, the `render` output types and the `colour` Colour Map type only. `neoteletext-audio` may use Foundation and `packet` only; `neoteletext-audio-mix` and `neoteletext-opus` use no other crate.

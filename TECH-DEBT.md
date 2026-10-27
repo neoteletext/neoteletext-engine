@@ -253,3 +253,12 @@ Built and integrated; owed:
 - **Fuzzing:** `opus_packets` has run 45 minutes with overflow checks (`cargo fuzz run -a`) on the engine's version, and the gate gives it 20 seconds; the gate's run is without `-a`, so overflow checks reach it only by hand (`docs/spec/design/opus-security.md`).
 - **The porting workspace** `tmp/opus-integer/` (ignored) holds the internal oracle tests; it is now behind this crate, which is the source.
 
+## The TTI Form Extension withdrawn (decision E.126, 27 October 2026)
+
+Removed from the code and the specification; owed:
+- **The decision's number.** The uncommitted mouse change in `neoteletext-input` cites a decision E.125 that `decisions.md` does not hold yet, so this withdrawal took E.126. Confirm the numbering with the owner before either is committed.
+- **Traceability:** `docs/traceability.md` still lists the removed form files; regenerate it with `cargo xtask traceability` at integration.
+- **The full gate:** `cargo xtask features`, `cargo xtask size` (the `core-all` and `web-all` images shrink) and the fuzz targets, not run for this change.
+- **`fuzz/Cargo.lock`** is stale from before this change: it lacks `neoteletext-opus` under `neoteletext-audio` (decision E.124), and Cargo rewrites it on the next fuzz build.
+- **`CLAUDE.md`** still calls Appendix C normative, points to it as the corrected forms specification, and says the web module runs forms; for the owner to change.
+- **Outside this repository:** NeoTeletext's code maps the cookie site `Site::CrossOriginForm`, which no longer exists, so its next re-pin past this change needs that mapping removed; `neoteletext-common/INPUT.md` section 1 still puts forms out of its scope as page files and HTTP submissions.

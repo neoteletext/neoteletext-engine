@@ -362,6 +362,7 @@ The decisions taken from it are listed below.
 5. **The transport belongs to the port.** Network sockets and encryption are supplied by the port through the platform interface (REQ-ARCH-009). This keeps the library free of any particular network stack, and is consistent with REQ-ARCH-010. jellytext planned to embed a network stack and an encryption library on each microcontroller, which is heavy.
 6. **One platform at a time.** jellytext decided to "write for 3 platforms at once" (composite video from an ESP32, HDMI from an RP2350, and a video stream to YouTube) shortly before it was suspended. neoteletext keeps all platforms outside the library (REQ-ARCH-010), and streaming rendered pages as video is not part of it.
 7. **Geometry settled once.** jellytext's notes changed their minds several times about pixel sizes. neoteletext settles this in REQ-RND-002 to REQ-RND-004 and REQ-RND-024.
+*Note of 27 October 2026:* item 4 no longer applies: the TTI Form Extension is withdrawn, and a page's form lines are unknown commands, ignored (decision E.126).
 
 **E.31 — Corrections made in adopting the TTI Form System.**
 jellytext's TTI Form System version 2.0 is kept unchanged in `research/jellytext-tti-form-system-spec-v2.md`. Version 3, in Appendix C, is normative for neoteletext. It keeps the core ideas:
@@ -382,6 +383,7 @@ It makes these corrections:
 4. **An input method.** Version 2.0 assumed a keyboard. A teletext viewer may only have a remote control: digits, four colour keys and a few others. Version 3 defines how fields are edited from both a keyboard and a remote control (REQ-NAV-009).
 5. **Characters the page can show.** A value entered in a field is drawn in the page's own G0 character set. Characters the page cannot show are refused at entry.
 6. **Where a form may submit to.** A form may submit only to the same origin (scheme, host and port) as the page that contains it, unless the service descriptor lists other permitted origins (REQ-WEB-008).
+*Superseded on 27 October 2026 by decision E.126:* the TTI Form Extension that these corrections made version 3 of is withdrawn, with Appendix C, and its lines are unknown commands, ignored. The corrections are kept here as history.
 
 **E.32 — Security overrides every other requirement; plain HTTP is allowed.**
 Security is the overriding requirement of this project. Every requirement in area SEC takes precedence over any requirement it conflicts with. Any such conflict is resolved in favour of security and recorded as a decision in this part.
@@ -395,6 +397,7 @@ The project owner decided on 1 October 2026 that **plain HTTP is allowed in full
   - `Secure` cookies never sent over plain HTTP;
   - no downgrade of a service first reached over HTTPS (REQ-SEC-007).
 - **What remains.** The user is told, but not prevented. Services that need protection should use HTTPS.
+*Note of 27 October 2026:* what this decision says of form submissions over plain HTTP, of the values they carry and of the warning before them no longer applies; forms are withdrawn (decision E.126).
 
 **E.33 — How the software is sandboxed.**
 Sandboxing is layered, and each layer assumes the one inside it might fail:
@@ -433,6 +436,7 @@ The decisions taken are:
 4. **History.** Back and forward history (REQ-NAV-010) is the one basic browser function the teletext model lacked.
 
 *Amended 12 October 2026 by decision E.73:* the profile handles the `Link` header, and scans the first 8,192 bytes of an HTML answer for pointers, during discovery only (REQ-WEB-028, REQ-WEB-029).
+*Note of 27 October 2026:* the browser no longer submits forms: the TTI Form Extension is withdrawn, and POST is left only to device-bound sessions (decision E.126).
 
 **E.35 — Cookies follow current practice, not the 2011 standard.**
 The cookie specification of 2011, RFC 6265, is out of date. Its replacement, RFC 6265bis, remains an IETF draft; the latest version checked is dated 30 September 2026. The major browsers already implement it. Newer practice has been added on top since:
@@ -574,6 +578,7 @@ Decided while implementing `neoteletext-web` on 10 October 2026:
 9. **IPv6 hosts are compared exactly as written**, so `[::1]` and `[0:0:0:0:0:0:0:1]` are different origins. This is the stricter reading of REQ-WEB-015.
 
 *Reason:* Each is the simplest choice consistent with the requirements and the relevant RFCs, and REQ-DOC-004 requires behaviour the requirements leave open to be recorded here.
+*Note of 27 October 2026:* the descriptor member `form_origins` of item 1 no longer applies; it is withdrawn with the TTI Form Extension, and a descriptor that has it is refused as having an unknown member (decision E.126).
 
 **E.40 — Presentation Levels 2.5 and 3.5 are in scope, and the presentation level is a setting.**
 On 10 October 2026 the project owner asked for complete Presentation Levels 2.5 and 3.5, with comprehensive tests, as Phase 1 work. The receiver therefore implements Levels 1.0, 1.5, 2.5 and 3.5.
@@ -972,6 +977,7 @@ The features of `neoteletext-web`, all on by default. A request a build cannot s
 The application layer of `neottx` is a library crate of its own, `neoteletext-app`: sessions, inputs, both processes of live mode, and sandboxing, which a windowed viewer will share. Its features are `live` (the web module, TLS and the fetcher process) and `slice` (the slicer). `neottx`'s features are `view` (the interactive viewer and its terminal library), `live` and `slice`. Every command stays defined, so the help text never changes, and a command whose area is left out exits with the usage status and says so. A `neottx` without `live` contains no TLS code and is about half the size. The fetcher stays a second run of the same program: a separate fetcher binary would leave TLS out of the decoder process too, but is deferred for its packaging cost, since the decoder's sandbox already keeps it off the network.
 
 *Reason:* The microcontroller targets (REQ-GEN-015) and the flash budget of REQ-GEN-009.
+*Note of 27 October 2026:* the feature `forms` of `neoteletext-core` and of `neoteletext-web`, and `FormRefused::NotCompiledIn`, no longer exist; the form model and form submission are removed (decision E.126).
 
 **E.62 — How the original glyphs are drawn and accepted.**
 Recorded on 11 October 2026 (REQ-DOC-004), on the owner's instruction to write the checks first and then start the glyphs of REQ-RND-028.
@@ -1061,6 +1067,7 @@ Decided by the owner on 12 October 2026, who asked for solutions that are opinio
 
 *Amended 12 October 2026 by decision E.73:* a folder whose four requests all show that it holds no channel leads to discovery (REQ-WEB-028), instead of a failure.
 *Amended 18 October 2026* (decision E.76): the browser was removed from this repository. The rules above stand for the web module and `neottx`. What concerned only the browser no longer applies here: the tuning screen (items 2, 12 and 15), the name in row 0 (items 2 and 13), bookmarks and the confirmed channels of a session (item 2), the contents view (item 8), and discovery (decision E.73, withdrawn). The requests that items 6 and 10 give to the browser are made by the web module. `channels.md` is kept in the neoteletext-browser repository.
+*Note of 27 October 2026:* what item 12 says of forms and of a channel's cookies sent with its form submissions no longer applies; forms are withdrawn (decision E.126).
 
 **E.71 — Capability features within Levels 2.5 and 3.5, and the modern-classic profile.**
 Recorded on 12 October 2026, on the owner's instruction to add teletext feature flags so that capabilities can be compiled out, with this "modern-classic" profile: keep the 40 by 24 grid, the classic eight-colour palette by default, contiguous and separated mosaics, no proportional spacing, non-spacing colour and character attributes, the additional international character sets, monochrome downloadable characters, reusable page objects and bold characters; leave out the 32-colour palette, italic characters, side panels, multicolour downloadable characters and animation. This amends rule 2 of decision E.61: within the enhancement area, there is one feature for each capability the owner named, not one for the whole area.
@@ -1089,6 +1096,7 @@ Recorded on 12 October 2026, on the owner's instruction to add teletext feature 
 *Note of 20 October 2026:* the `drcs` and `drcs-multicolour` features were removed with the decoding of dynamically redefinable characters (decision E.95); the profile's monochrome downloadable characters went with them.
 
 *Note of 20 October 2026:* the `bold` and `italic` features were removed with the Level 3.5 font styles (decision E.96); the profile's bold characters went with them.
+*Note of 27 October 2026:* `modern-classic` no longer turns on `forms`, which is removed (decision E.126).
 
 **E.72 — Fonts: Bedstead as the one bundled font, and every other font a 12 × 10 BDF loaded when it is named.**
 Decided by the owner on 12 October 2026. This supersedes decision E.62 and amends decisions E.25 and E.34 (REQ-WEB-014 now permits one kind of third-party request: a font named with its checksum). `docs/spec/design/font-security.md` is the security analysis of this decision.
@@ -1438,6 +1446,7 @@ Decided by the owner on 22 October 2026: "there should be level25-32colors level
 4. **The non-spacing attributes were off by default** on the owner's instruction of 17 October 2026, recorded in `TECH-DEBT.md` but never as a decision; this decision reverses it and records the defaults.
 
 *Reason:* The owner's instruction. `neottx` is the engine's own viewer, and pages that use the non-spacing attributes and the Colour Map showed wrongly in it; the capabilities that change teletext's look most stay a choice.
+*Note of 27 October 2026:* `forms` is no longer among the default features; it is removed (decision E.126).
 
 **E.106 — The qrkeyboard screen waits on its socket and a waker, never on a timer.**
 Taken on 23 October 2026 while the owner was away, as the owner had instructed, for NeoTeletext's keyboard process, which looked for its trusted core's "finish" between 50 ms waits on the relay because nothing could end a wait sooner.
@@ -1499,6 +1508,7 @@ Taken on 23 October 2026 while the owner was away, as the owner had instructed, 
 4. **REQ-WEB-014** loses its one exception for third-party content; **REQ-WEB-024** loses the `font` member.
 
 *Reason:* The owner's instruction for the browser, which is the engine's only port that fetched channel fonts' kind of content; requirements no port meets, which widen a security rule, are withdrawn rather than kept.
+*Note of 27 October 2026:* `FH` is no longer reported as a withdrawn command: with the TTI Form Extension withdrawn, it is an unknown command, as every form line is (decision E.126). `TF` is still reported as withdrawn.
 
 **E.112 — A form redirected with its method kept does not leave its target's origin.**
 Taken on 24 October 2026 while the owner was away, as the owner had instructed, after NeoTeletext's security review of that day (its finding F-16) found that a form submitted to a permitted origin that answers 307 or 308 is sent again, with the viewer's values and its `ttx_token`, to a third origin, with no check against the origins the channel may submit to and no first-submission confirmation (REQ-WEB-008, REQ-SEC-009).
@@ -1508,6 +1518,7 @@ Taken on 24 October 2026 while the owner was away, as the owner had instructed, 
 4. **REQ-SEC-009 and REQ-WEB-008 gain the rule** with the code.
 
 *Reason:* It is the least privilege and the simplest to verify. A redirect within the origin still works, and a service that redirects a submitted form to another origin is not a pattern teletext forms use.
+*Note of 27 October 2026:* this decision no longer applies: forms are withdrawn, so the web agent makes no submission to redirect (decision E.126). Its test went with them.
 
 **E.113 — Through a proxy, local names are refused by a wider list.**
 Taken on 24 October 2026 while the owner was away, as the owner had instructed, after NeoTeletext's security review of that day (its finding F-17). Through a proxy the agent sees only the name it asks for, not the address (decision E.102 item 2), and `hidden_local` refused only `localhost` and names under `.localhost`, `.local` and `.internal`, so `router`, `nas.lan` and `x.home.arpa` reached the local network through a proxy on it.
@@ -1530,6 +1541,7 @@ Taken on 24 October 2026 while the owner was away, as the owner had instructed, 
 9. **An IPv6 host is kept in RFC 5952's text form** (finding F-96), so the memory of secure hosts, the cookie host and the table of confirmed origins do not split between two spellings of one address.
 
 *Reason:* Each closes a finding with the smallest change to what a server can make the agent do; none widens a rule.
+*Note of 27 October 2026:* what item 2 says of a permitted form target, and item 9 of the table of confirmed origins, no longer applies; forms are withdrawn (decision E.126). Item 2's rule is tested with a page redirected out of the channel's folder.
 
 **E.115 — More address ranges count as local, and an embedded IPv4 address is judged as itself.**
 Taken on 24 October 2026 while the owner was away, as the owner had instructed, after NeoTeletext's security review of that day (its finding F-46) listed ranges `neoteletext-core`'s `policy` did not block (REQ-SEC-006).
@@ -1620,3 +1632,17 @@ Decided on 26 October 2026 on the owner's instruction "add the Opus decoder to e
 6. **A stored sound is still at most two minutes,** as the sink keeps it decoded; longer sound is live.
 
 *Reason:* Constant-rate packets fit the store's fixed slots, so Opus needed no change to the record frame, the store or its admission; decoding in order is what the codec requires, and a decoder's concealment is the better answer to a lost live packet.
+
+**E.126 — The TTI Form Extension withdrawn.**
+Decided by the owner on 27 October 2026: "we must COMPLETELY REMOVE from the code/deprecate our custom forms handling that is built in to the neoteletext engine". The engine keeps no form of its own; a channel that asks for text does so over the input protocol.
+1. **Removed:** Appendix C, the TTI Form Extension (`requirements/tti-form-extension.md`, kept as history with a notice), and all that served it alone, with no feature, shim or stub left in its place:
+   - in `neoteletext-core`, the form model (`forms`: fields, focus, editing from a keyboard or a remote control, multi-tap letter entry, validation, the submitted pairs and the drawing of values) and its feature `forms`; `policy::may_submit` and `policy::needs_plain_http_warning`; the security indicators `PlainHttpWarning` and `ConfirmSubmission`; and `HistoryEntry::from_form`;
+   - in `neoteletext-formats`, the reading and writing of `FD`, `OPTION`, `FS`, `FP` and `FT`, the page's `Form` with its records and limits, the reader's form issues and capacities, and the page checker's form error and its warnings `no-broadcast-fallback` and `unreliable-placeholders`;
+   - in `neoteletext-web`, form submission and its feature `forms`: the module `form`, the agent's submission, confirmation and response, `Input::Submit` and `Input::ConfirmSubmission`, the events `ConfirmSubmission` and `Submission…`, `Source::Form`, the cookie site `CrossOriginForm`, the descriptor's `form_origins`, the buffer of an encoded form, `Config::confirm_first_submission` and the table of confirmed origins, the form field names `ttx_token` and `ttx_action`, and the form media type;
+   - in `neoteletext-app` and `neottx`, the active form, its keys, its origin ticker, its confirmation and outcome, the pipe's form frames, and the address a page came from, which only a form used;
+   - the local test server's form page and its submission, and the viewer driver's form steps.
+2. **A page with the old lines still shows.** `FD`, `OPTION`, `FS`, `FP`, `FT` and the already withdrawn `FH` are unknown commands, each reported with a diagnostic and ignored, as every unknown TTI line is (REQ-INP-013), so a page that still carries them reads as its rows alone and encodes to the same packets (`withdrawn_form_lines_are_unknown_and_the_page_is_its_rows`, which fails on the code before it). A descriptor or `channel.json` that still names `form_origins` is refused, as one naming any unknown member is (REQ-WEB-014, REQ-WEB-024). The pipe's form frames are unknown kinds, refused (REQ-SEC-018).
+3. **E.31 is superseded:** its corrections were to the appendix withdrawn here. What E.30 item 4, E.32, E.34, E.39 item 1, E.61, E.70 item 12, E.71 item 2, E.105, E.111, E.112 and E.114 items 2 and 9 say of forms no longer applies; each has a note.
+4. **Requirements.** REQ-WEB-010, REQ-WEB-011, REQ-NAV-009 and REQ-SEC-009 are withdrawn. REQ-WEB-001, REQ-WEB-002, REQ-WEB-006, REQ-WEB-008, REQ-WEB-012 to REQ-WEB-016, REQ-WEB-018, REQ-WEB-019, REQ-WEB-024, REQ-WEB-026, REQ-NAV-010, REQ-SEC-002 to REQ-SEC-008, REQ-SEC-018, REQ-SEC-020, REQ-CLI-006, REQ-GEN-010, REQ-GEN-011, REQ-GEN-020 and REQ-TST-040, which served forms among other things, are amended.
+
+*Reason:* The owner withdrew it. Forms are now drawn and handled by a channel's own program over the input protocol (`neoteletext-common/INPUT.md`: text fields with the channel's cursor and echo, keys and pastes), so the engine no longer needs a second, page-file form system.

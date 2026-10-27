@@ -1,8 +1,7 @@
-//! The viewer's keys: a terminal key as a viewer key, as a form key, and
-//! the key that leaves a channel's keys.
+//! The viewer's keys: a terminal key as a viewer key, and the key that
+//! leaves a channel's keys.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use neoteletext_core::forms::FormKey;
 use neoteletext_core::viewer::Key;
 
 /// The key that leaves a channel's keys, as telnet's escape character
@@ -30,29 +29,6 @@ pub(super) fn map_key(key: KeyEvent) -> Option<Key> {
         KeyCode::Char('m') => Key::Mix,
         KeyCode::Char('z') => Key::Zoom,
         KeyCode::Backspace => Key::Back,
-        _ => return None,
-    })
-}
-
-/// Keys while a form has focus (REQ-NAV-009): typing enters text; the
-/// coloured keys are F1 to F4; Esc leaves the form.
-pub(super) fn map_form_key(key: KeyEvent) -> Option<FormKey> {
-    Some(match key.code {
-        KeyCode::Tab => FormKey::Tab,
-        KeyCode::BackTab => FormKey::BackTab,
-        KeyCode::Enter => FormKey::Enter,
-        KeyCode::Backspace => FormKey::Backspace,
-        KeyCode::Left => FormKey::Left,
-        KeyCode::Right => FormKey::Right,
-        KeyCode::Up => FormKey::Up,
-        KeyCode::Down => FormKey::Down,
-        KeyCode::Char(' ') => FormKey::Space,
-        KeyCode::Char(c) => FormKey::Char(c),
-        KeyCode::F(1) => FormKey::Red,
-        KeyCode::F(2) => FormKey::Green,
-        KeyCode::F(3) => FormKey::Yellow,
-        KeyCode::F(4) => FormKey::Cyan,
-        KeyCode::Esc => FormKey::Index,
         _ => return None,
     })
 }

@@ -13,7 +13,7 @@ The standards clauses and tables each module is written from (REQ-DOC-005, and t
 | `neoteletext-core::level1` | Clause 12.2 and Table 26; Annexes C.3 and G.3; decisions E.10, E.15 to E.18, E.22, E.23 |
 | `neoteletext-core::level15` | Clauses 12.3.1 to 12.3.4, Tables 27 to 29; Annexes A.3, A.4 and D.1.3; decisions E.1 to E.5, E.9 |
 | `neoteletext-core::render`, `glyphs` | SAA5050 datasheet (character rounding, mosaic geometry, flash timing) as recorded in decisions E.12 to E.14; glyph data from Bedstead 3.261 (temporary, decision E.25, `third_party/bedstead/PROVENANCE.md`) |
-| `neoteletext-core::nav`, `viewer`, `forms` | Annex H (Fastext), clause 11.1; REQUIREMENTS.md Appendices C and E; decisions E.10, E.36 |
+| `neoteletext-core::nav`, `viewer` | Annex H (Fastext), clause 11.1; REQUIREMENTS.md Appendix E; decisions E.10, E.36 |
 | `neoteletext-core::policy` | RFC 1918, RFC 6598, RFC 3927, RFC 4193, RFC 4291 (blocked address ranges); REQUIREMENTS.md area SEC |
 | `neoteletext-image::png` | PNG specification (ISO/IEC 15948) sections 5, 9, 11; RFC 1950 (zlib) and RFC 1951 (deflate, fixed Huffman codes section 3.2.6) |
 | `neoteletext-image::palette` | Table 30 (CLUT 0) |

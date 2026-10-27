@@ -7,10 +7,10 @@ use neoteletext_core::types::{Instant, PageAddress, SubCode};
 #[cfg(feature = "dbsc")]
 use super::bound;
 use super::cookies::{cookie_store, write_cookie_header};
-use super::{Event, Exchange, Failure, FormPhase, Link, Output, PageFile, Purpose, Sink, Target, UserAgent, event};
+use super::{Event, Exchange, Failure, Link, Output, PageFile, Purpose, Sink, Target, UserAgent, event};
 use crate::bytes::{Overflow, Writer};
 use crate::channel::{self, ChannelFile};
-use crate::consts::{ACCEPT_PAGES, CRLF, IDENTITY, header, media};
+use crate::consts::{ACCEPT_PAGES, CRLF, IDENTITY, header};
 use crate::cookie::Site;
 use crate::http::{self, Method};
 use crate::port::{ConnectionId, RandomSource, Security};
@@ -71,13 +71,6 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
                 request
             } else if let Some(url) = self.contents.take() {
                 (Purpose::Contents, url, Method::Get, Site::SameService)
-            } else if cfg!(feature = "forms") && self.form.phase == FormPhase::Queued {
-                let Some(url) = self.form.target else {
-                    self.form.phase = FormPhase::Idle;
-                    continue;
-                };
-                self.form.phase = FormPhase::InFlight;
-                (Purpose::Form, url, self.form.method, self.form.site)
             } else if self.queue.iter().any(Option::is_some) && now >= self.next_fetch_at {
                 let Some((page, subcode)) = self.take_queued() else { return };
                 let Some(request) = self.page_request(now, page, subcode, sink) else { continue };
@@ -208,10 +201,6 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
 
     fn write_request(&mut self, now: Instant, exchange: &Exchange, sink: &mut Sink<'_>) -> Result<usize, Overflow> {
         let (seconds, _) = self.seconds(now);
-        // Only a form's request has a body; the bound sessions' requests
-        // are posted empty (REQ-WEB-017).
-        let body_len =
-            if exchange.method == Method::Post && exchange.purpose == Purpose::Form { self.form.body_len } else { 0 };
         let mut writer = Writer::new(self.buffers.fetch_request);
         http::write_request_line(&mut writer, exchange.method, exchange.url.target())?;
         http::write_host(&mut writer, &exchange.url)?;
@@ -229,13 +218,10 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
                 http::write_header(&mut writer, header::IF_MODIFIED_SINCE, date.as_bytes())?;
             }
         }
+        // The bound sessions' requests are posted empty (REQ-WEB-017).
         if exchange.method == Method::Post {
-            if exchange.purpose == Purpose::Form {
-                http::write_header(&mut writer, header::CONTENT_TYPE, media::FORM_URLENCODED)?;
-            }
             writer.put(header::CONTENT_LENGTH)?;
-            writer.put(b": ")?;
-            writer.decimal(body_len as u64)?;
+            writer.put(b": 0")?;
             writer.put(CRLF)?;
         }
         #[cfg(feature = "dbsc")]
@@ -248,12 +234,10 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
             path,
             exchange.site,
             seconds,
-            body_len,
         )? {
             event(sink, Event::CookiesTruncated);
         }
         writer.put(CRLF)?;
-        writer.put(self.buffers.form.get(..body_len).unwrap_or(&[]))?;
         Ok(writer.len())
     }
 

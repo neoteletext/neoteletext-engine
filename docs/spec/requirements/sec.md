@@ -10,7 +10,7 @@ Where any requirement, decision or profile conflicts with a requirement of this 
 The repository shall contain a threat model in `THREAT-MODEL.md`. It shall list:
 - **Assets.** These include:
   - the host device and its resources;
-  - the user's session cookies and form data;
+  - the user's session cookies;
   - the user's trust in what is displayed;
   - the user's local network;
   - the user's terminal;
@@ -24,21 +24,24 @@ The repository shall contain a threat model in `THREAT-MODEL.md`. It shall list:
 
 It shall be reviewed and updated at the end of every milestone, and whenever a new input source or output is added.
 *Verification:* Inspection.
+*Amended 27 October 2026 (decision E.126):* form data is no longer among the assets, since forms are withdrawn.
 
 **REQ-SEC-003 — All input is untrusted.**
 Everything the software receives shall be treated as hostile, except the configuration supplied by the user or port. This covers:
 - every packet, file, stream and sample buffer;
 - every web response and pushed message;
-- every service descriptor and form;
+- every service descriptor;
 - every live feed;
 - every cookie.
 
 The robustness requirements (REQ-GEN-008) and the fuzzing requirement (REQ-TST-040) apply to all of these without exception. No source is trusted more because of where it comes from, including the zxnet live feed (REQ-INP-022).
 *Verification:* Inspection of the threat model; the fuzzing targets.
+*Amended 27 October 2026 (decision E.126):* forms leave the list, since they are withdrawn.
 
 **REQ-SEC-004 — No executable content, ever.**
-Pages, forms, descriptors, pushed messages and every other received content are data only. Nothing received shall ever be executed, interpreted as a script or used to load code or plugins. Forms (Appendix C) are declarative, and shall remain so. No future requirement may add scripting, macros or loadable code driven by content, unless this requirement is first changed by an explicit, recorded decision of the project owner.
+Pages, descriptors, pushed messages and every other received content are data only. Nothing received shall ever be executed, interpreted as a script or used to load code or plugins. No future requirement may add scripting, macros or loadable code driven by content, unless this requirement is first changed by an explicit, recorded decision of the project owner.
 *Verification:* Inspection.
+*Amended 27 October 2026 (decision E.126):* forms leave the list, and the sentence on keeping them declarative goes with them, since they are withdrawn.
 
 **REQ-SEC-005 — The receiver-owned status area cannot be forged.**
 Row 0, columns 0 to 7, belong to the receiver alone. Nothing a page transmits can write there:
@@ -47,13 +50,12 @@ Row 0, columns 0 to 7, belong to the receiver alone. Nothing a page transmits ca
 - nor any other data.
 
 Every security indicator shall be shown only there:
-- a marker for an unencrypted connection;
-- the origin of a form while it has focus;
-- the warning before submitting over plain HTTP.
+- a marker for an unencrypted connection.
 
 While a security indicator is active, it shall be shown even on pages with bit C7 (Suppress Header) set.
 *Reason:* Every warning in this area depends on the user being able to believe the status area. A page that could draw there could draw a fake "secure" marker.
 *Verification:* Test that pages writing to row 0 columns 0 to 7 by every route leave the status area unchanged.
+*Amended 27 October 2026 (decision E.126):* the indicators of a form's origin and of the warning before submitting over plain HTTP are withdrawn with forms.
 
 **REQ-SEC-006 — Protecting the local network.**
 The web module shall refuse to connect to these addresses:
@@ -70,33 +72,28 @@ The check shall be applied:
 - to the address the connection actually reaches, which the transport reports after name resolution (REQ-WEB-001);
 - again after every redirect.
 
-This covers descriptors, pages, push connections and form submissions. Local-network services can be allowed only by naming them explicitly in the configuration.
+This covers descriptors, pages and push connections. Local-network services can be allowed only by naming them explicitly in the configuration.
 
 **Through a proxy** (REQ-WEB-032) the proxy resolves names, so the transport reports only the proxy's address, and the rule is applied by name before anything is sent (decision E.113): an address in a range above, `localhost`, a name of one label (with no dot once a trailing dot is removed), and a name ending in `.localhost`, `.local`, `.internal`, `.home.arpa`, `.lan`, `.corp`, `.intranet`, `.private` or `.localdomain`, compared without regard to case, shall be refused. A public name that resolves to a local address is not seen through a proxy; that residual is the price of the name privacy a proxy gives.
 *Reason:* A web-native client on a home network is a classic target for requests forged to reach routers and other devices behind it ("server-side request forgery").
 *Verification:* Test against a list of blocked addresses and encodings, including redirects and names that resolve to blocked addresses. The ranges added by decision E.115 are tested by `policy::tests::ranges_from_the_security_review_are_blocked` in `neoteletext-core`. Through a proxy, `single_label_and_private_use_names_are_local_through_a_proxy` and `through_a_proxy_local_names_are_refused_and_the_proxy_may_be_local`, which refuse `router`, `nas.lan` and `x.home.arpa` and fail on the code before 24 October 2026 (finding F-17 of NeoTeletext's security review).
+*Amended 27 October 2026 (decision E.126):* form submissions leave the list, since forms are withdrawn.
 
 **REQ-SEC-007 — No downgrade.**
-Once a service has been reached over HTTPS, every later connection for that service shall use encryption, for the rest of the session and for as long as its cookies last. This covers pages, push, redirects and form submissions. A redirect from HTTPS to plain HTTP shall be refused. A descriptor fetched over HTTPS shall not name plain `http://` or `ws://` addresses; if it does, the descriptor shall be rejected. The memory of hosts reached over HTTPS is bounded (`SECURE_HOSTS`); when it is full, the host least recently reached is forgotten, so the rule keeps holding for the hosts in use (decision E.114 item 3).
+Once a service has been reached over HTTPS, every later connection for that service shall use encryption, for the rest of the session and for as long as its cookies last. This covers pages, push and redirects. A redirect from HTTPS to plain HTTP shall be refused. A descriptor fetched over HTTPS shall not name plain `http://` or `ws://` addresses; if it does, the descriptor shall be rejected. The memory of hosts reached over HTTPS is bounded (`SECURE_HOSTS`); when it is full, the host least recently reached is forgotten, so the rule keeps holding for the hosts in use (decision E.114 item 3).
 *Verification:* Test; the bounded memory by `the_secure_host_memory_forgets_the_host_least_recently_seen`, which fails on the code before 24 October 2026 (finding F-43 of NeoTeletext's security review).
+*Amended 27 October 2026 (decision E.126):* form submissions leave the list, since forms are withdrawn.
 
 **REQ-SEC-008 — Plain HTTP, as decided.**
-Plain HTTP is allowed for reading, cookies and forms (decision E.32). The following safeguards are mandatory:
+Plain HTTP is allowed for reading and cookies (decision E.32). The following safeguards are mandatory:
 - **Indicator.** An unencrypted connection shall be shown by the security indicator of REQ-SEC-005 whenever the page on screen came from plain HTTP.
-- **Warning before submission.** Before every form submission over plain HTTP, the viewer shall see a warning that the entered values will travel unencrypted, and must confirm it.
 - **`Secure` cookies.** Cookies marked `Secure` shall never be sent over plain HTTP.
 
 *Verification:* Test.
+*Amended 27 October 2026 (decision E.126):* the warning before a form submission over plain HTTP is withdrawn with forms; plain HTTP is no longer allowed "for forms", since there are none.
 
-**REQ-SEC-009 — Protecting against deceptive forms.**
-- **Show where the form goes.** While a form has focus, the origin it submits to shall be shown by the security indicator.
-- **Confirm the first submission.** The first submission to any origin shall require explicit confirmation showing that origin.
-- **No password fields.** Forms shall offer no field type for passwords or secrets (Appendix C has none).
-- **Restricted destinations.** Forms may submit only to the origins of REQ-WEB-008.
-- **Redirected submissions keep their origin.** A submission answered by a 307 or 308 redirect, which keeps the method and the body, shall be refused, with nothing sent, when the new address is not on the submission's own target origin; a 307 or 308 within that origin is followed, and a 303, and a 301 or 302 answering a POST, become a GET with no body (decision E.112).
-
-*Reason:* Any page can draw "enter your password". The user must always be able to see where their input will go.
-*Verification:* Test. The redirect rule by `a_form_redirected_with_its_method_kept_stays_on_its_target_origin`, which fails on the code before 24 October 2026 (finding F-16 of NeoTeletext's security review).
+**REQ-SEC-009 — Withdrawn: Protecting against deceptive forms.**
+Withdrawn on 27 October 2026 (decision E.126): the TTI Form Extension is withdrawn, so the engine has no form to show the origin of, to confirm, to restrict or to keep on its origin through a redirect. A channel's own program asks for text over the input protocol (area INT), which carries the viewer's keys only to the channel of the page open.
 
 **REQ-SEC-010 — Safe text and terminal output.**
 - **Allow-list only.** The text and terminal renderers (REQ-RND-008 and REQ-RND-009) shall emit only an allow-list of printable characters. The terminal graphics renderer (REQ-RND-029) writes no page text at all, only image data it encodes itself.
@@ -171,9 +168,10 @@ In web mode on hosted systems, `neottx` shall run as two processes:
 - **A fetcher.** It holds the network rights and runs the web module's transport and TLS.
 - **A decoder and renderer.** It holds no rights beyond its output.
 
-They shall be joined only by a pipe carrying TTI pages or T42 packets and a small, fixed set of framed control messages, such as page requests and form submissions. Each process validates everything it receives from the other. The decoder process shall run under the sandbox of REQ-SEC-017 with no network and no file access.
+They shall be joined only by a pipe carrying TTI pages or T42 packets and a small, fixed set of framed control messages, such as page requests and the viewer's input for the channel. Each process validates everything it receives from the other. The decoder process shall run under the sandbox of REQ-SEC-017 with no network and no file access.
 *Phase:* Phase 1 on Linux; Phase 2 on the other systems.
 *Verification:* Test that the decoder process cannot open network connections or files; fuzzing of the control messages.
+*Amended 27 October 2026 (decision E.126):* form submissions, their confirmation and their outcome are no longer among the control messages, since forms are withdrawn; the frames that carried them are unknown kinds, refused.
 
 **REQ-SEC-019 — WebAssembly isolation.**
 `neoteletext-core` and `neoteletext-formats` shall build for `wasm32-unknown-unknown` and `wasm32-wasip1` (REQ-GEN-015). An example host shall run the decoder inside a WebAssembly runtime with limits on memory and execution time. Hosts can then isolate the decoder completely, and C programs can use it without the unsafe C interface.
@@ -184,11 +182,11 @@ They shall be joined only by a pipe carrying TTI pages or T42 packets and a smal
 Every configurable security-related setting shall default to the safer choice. Examples:
 - no local-network access;
 - cookie store not saved;
-- the security indicator on;
-- confirmation of form submission on.
+- the security indicator on.
 
 The documentation shall list each such setting and the risk of changing it.
 *Verification:* Inspection; a test of the default configuration.
+*Amended 27 October 2026 (decision E.126):* the confirmation of form submission is no longer a setting, since forms are withdrawn.
 
 **REQ-SEC-021 — Guidance on hardware isolation for microcontroller ports.**
 The porting guide shall explain how a microcontroller port can use a memory protection unit, where the chip has one (the Arm Cortex-M MPU, or RISC-V physical memory protection), to separate the network stack from the decoder. The library cannot enforce this (REQ-ARCH-010).

@@ -1,15 +1,11 @@
-//! The page a turn shows: found and its state told to the viewer, its
-//! form made active, and its grid built with row 24 and the form.
+//! The page a turn shows: found and its state told to the viewer, and its
+//! grid built with row 24.
 
-use super::ticker::origin_ticker;
 use super::{Shown, ViewState};
-use neoteletext_app::extras::{self, PageExtras};
-use neoteletext_app::interact::{ActiveForm, origin_of};
+use neoteletext_app::extras;
 use neoteletext_app::session::Session;
 use neoteletext_core::acq::StoredPage;
-use neoteletext_core::forms::FormModel;
 use neoteletext_core::fsm::PageState;
-use neoteletext_core::level1::Grid;
 use neoteletext_core::types::{PageAddress, SubCode};
 use neoteletext_core::viewer::{ComposeContext, Composed, ViewerEvent, ViewerState};
 
@@ -43,47 +39,7 @@ impl ViewState {
         page
     }
 
-    /// A form on the page shown becomes active, keeping values when
-    /// returning; leaving for another page drops it.
-    pub(super) fn activate_form(&mut self, session: &Session, shown: &Shown<'_>) {
-        match (shown.extras, shown.page) {
-            (Some(PageExtras { form: Some(spec), url, .. }), Some(page)) => {
-                let same = self
-                    .form
-                    .as_ref()
-                    .is_some_and(|form| form.page == page.key.address && form.subcode == page.key.subcode);
-                if !same {
-                    let mut probe = Grid::EMPTY;
-                    let magazine = session.decoder().magazine_data(page.key.address.magazine);
-                    let store = session.decoder().store();
-                    let rolling = session.rolling_header();
-                    let context = ComposeContext {
-                        magazine: &magazine,
-                        config: shown.config,
-                        rolling_header: &rolling,
-                        store,
-                        row24: None,
-                        lookup: session.decoder().enhancement_lookup(),
-                    };
-                    let _ = self.viewer.compose(&mut probe, Some(page), &context);
-                    self.form = FormModel::new(*spec, probe.designation.g0).ok().map(|model| ActiveForm {
-                        page: page.key.address,
-                        subcode: page.key.subcode,
-                        model,
-                        url: url.clone(),
-                        focused: true,
-                    });
-                }
-            }
-            (_, Some(page)) if self.form.as_ref().is_some_and(|form| form.page != page.key.address) => {
-                self.form = None;
-            }
-            _ => {}
-        }
-    }
-
-    /// Builds the grid of the page shown, with row 24's prompt or links,
-    /// and the active form over it with its origin ticker.
+    /// Builds the grid of the page shown, with row 24's prompt or links.
     pub(super) fn compose(&mut self, session: &Session, requested: PageAddress, shown: &Shown<'_>) {
         let rolling = session.rolling_header();
         let magazine = session.decoder().magazine_data(requested.magazine);
@@ -105,12 +61,6 @@ impl ViewState {
             && let Some((_, marks)) = shown.extras.and_then(|extras| extras.row24.as_ref())
         {
             extras::draw_marks(&mut self.grid, marks);
-        }
-        if let Some(active) = &self.form {
-            active.model.draw(&mut self.grid);
-            if active.focused && self.pending.is_none() {
-                origin_ticker(&mut self.grid, &origin_of(&active.url), shown.now);
-            }
         }
     }
 }

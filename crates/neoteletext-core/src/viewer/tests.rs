@@ -226,10 +226,10 @@ fn decoder_events_mark_the_page_stale_and_fresh() {
     assert_eq!(viewer.state(), ViewerState::Displaying);
 }
 
-/// REQ-SEC-005, REQ-SEC-008, REQ-SEC-009, REQ-NAV-012, decision E.10: the
-/// status area shows each security indicator in the receiver's own
-/// columns, red for the plain-HTTP marker and warning, yellow for the
-/// confirmations, and the page number again when it is cleared.
+/// REQ-SEC-005, REQ-SEC-008, REQ-NAV-012, decision E.10: the status area
+/// shows each security indicator in the receiver's own columns, red for the
+/// plain-HTTP marker, yellow for the confirmation of leaving the service,
+/// and the page number again when it is cleared.
 #[test]
 fn status_area_shows_each_security_indicator() {
     let mut slots = std::vec![StoredPage::EMPTY; 2];
@@ -240,9 +240,7 @@ fn status_area_shows_each_security_indicator() {
         viewer.status(decoder.store())
     };
     assert_eq!(status(SecurityIndicator::Unencrypted), [ALPHA_RED, b'1', b'0', b'0', b' ', b'!', b' ']);
-    assert_eq!(status(SecurityIndicator::PlainHttpWarning), [ALPHA_RED, b'H', b'T', b'T', b'P', b'?', b' ']);
     assert_eq!(status(SecurityIndicator::LeavingService), [ALPHA_YELLOW, b'L', b'E', b'A', b'V', b'E', b'?']);
-    assert_eq!(status(SecurityIndicator::ConfirmSubmission), [ALPHA_YELLOW, b'S', b'E', b'N', b'D', b'?', b' ']);
     assert_eq!(&status(SecurityIndicator::None), b"P100   ");
 }
 

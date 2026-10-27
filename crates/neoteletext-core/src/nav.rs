@@ -187,8 +187,6 @@ pub struct HistoryEntry {
     pub address: PageAddress,
     /// The sub-page.
     pub subcode: SubCode,
-    /// The page came from a form response.
-    pub from_form: bool,
 }
 
 /// Back and forward history in caller-sized memory (REQ-NAV-010).
@@ -202,7 +200,6 @@ const EMPTY_ENTRY: HistoryEntry = HistoryEntry {
     service: 0,
     address: PageAddress { magazine: crate::types::Magazine::from_bits(1), page: PageNumber(0) },
     subcode: SubCode::ANY,
-    from_form: false,
 };
 
 impl<const N: usize> Default for History<N> {

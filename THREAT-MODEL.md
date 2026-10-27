@@ -7,7 +7,7 @@ This is the threat model REQ-SEC-002 requires. Security overrides every other re
 | Asset | Why it matters |
 |---|---|
 | The host device and its resources | A decoder bug must not become code execution, file access or denial of service. |
-| The user's session cookies and form data | They identify the user to web teletext services. |
+| The user's session cookies | They identify the user to web teletext services. |
 | The user's trust in what is displayed | A page must not be able to fake receiver messages, security markers or link destinations. |
 | The user's local network | A web-native client on a home network can be used to reach routers and other devices. |
 | The user's terminal | Escape sequences in output can rewrite the screen, change titles or worse. |
@@ -29,8 +29,8 @@ This is the threat model REQ-SEC-002 requires. Security overrides every other re
 | Page content into the grid (L3) | 1 | Trust | Row 0 columns 0 to 7 cannot be written by any page route (REQ-SEC-005, E.5 (j)). |
 | Output to the terminal (L5) | 1 | Terminal | Allow-listed characters only; only our own fixed escape sequences; image data encoded from pixels (REQ-SEC-010, REQ-RND-029). |
 | Untrusted bytes into the web user agent (L7) | 1, 2 | Host, network, cookies | Strict address parser, minimal user agent profile, strict HTTP framing, no compression, size and time limits, policy checks on every connection and redirect (REQ-WEB-014 to 016, REQ-SEC-006 to 011). |
-| Plain HTTP connections | 2 | Cookies, form data, trust | Unencrypted marker in the status area, warning and confirmation before plain-HTTP submission, `Secure` cookies never sent, no downgrade (REQ-SEC-007, REQ-SEC-008). |
-| Forms | 1 | Form data, trust | Origin shown, first submission confirmed, no password fields, same-origin targets only (REQ-SEC-009). |
+| Plain HTTP connections | 2 | Cookies, trust | Unencrypted marker in the status area, `Secure` cookies never sent, no downgrade (REQ-SEC-007, REQ-SEC-008). |
+| A page's form lines | 1 | Trust | None to protect: the TTI Form Extension is withdrawn (decision E.126), and its lines are unknown commands, ignored with a diagnostic (REQ-INP-013). A channel asks for text over the input protocol instead (area INT). |
 | Links | 1 | Trust | Receiver-drawn link row, other services marked and confirmed (REQ-SEC-024, REQ-NAV-011, REQ-NAV-012). |
 | Device-bound sessions (feature `dbsc`) | 1, 2 | Cookies, the device's keys | Over HTTPS only; registration, scope and refresh on the responding origin; private keys only in the port's store; every header and the instructions read by bounded, fuzzed readers; at most four sessions (REQ-WEB-017, decision E.110). Reviewed 23 October 2026. |
 | A channel's log lines | 1 | A developer's console, trust | `LG` lines are refused whole unless one of three levels and 1 to 200 bytes of UTF-8 with no control or bidirectional formatting character, at most 16 per page; never drawn on a page; fuzzed (REQ-INP-026, decision E.109). Reviewed 23 October 2026. |

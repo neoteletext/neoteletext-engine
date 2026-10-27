@@ -2,16 +2,14 @@
 """A local web teletext test server (REQ-WEB-013, REQ-WEB-012).
 
 Test code, not part of the library. Serves a service descriptor, TTI pages
-with ETag validators, a versioned session cookie, a form with a
-session-bound token, server-sent event and WebSocket push, and fault
-injection. Standard library only.
+with ETag validators, a versioned session cookie, server-sent event and
+WebSocket push, and fault injection. Standard library only.
 
 Usage: server.py PORT
 """
 
 import base64
 import hashlib
-import hmac
 import http.server
 import os
 import socketserver
@@ -19,7 +17,6 @@ import sys
 import threading
 import time
 
-SECRET = os.urandom(16)
 # REQ-WEB-012: the session lives in a cookie whose value starts with a
 # format version.
 SESSION_VERSION = "v1"
@@ -40,11 +37,11 @@ PAGES = {
         "PS,8000",
         "OL,1," + esc(YELLOW) + esc(DOUBLE_HEIGHT) + "NEOTELETEXT TEST SERVICE",
         "OL,4," + esc(WHITE) + "Weather ......................... 200",
-        "OL,5," + esc(WHITE) + "Contact form .................... 300",
+        "OL,5," + esc(WHITE) + "News ............................ 300",
         "OL,7," + esc(CYAN) + "Served over plain HTTP from a",
         "OL,8," + esc(CYAN) + "local test server.",
         "LN,R,200,Weather",
-        "LN,G,300,Contact",
+        "LN,G,300,News",
         "LN,Y,other:100,Other",
         "LN,I,100,",
         # REQ-INP-026: a log line for the channel's author.
@@ -58,31 +55,14 @@ PAGES = {
         "LN,R,100,Index",
         "",
     ]),
+    "300": "\r\n".join([
+        "PN,30000",
+        "OL,1," + esc(YELLOW) + "TEST NEWS",
+        "OL,3," + esc(WHITE) + "The local test server is running.",
+        "LN,R,100,Index",
+        "",
+    ]),
 }
-
-FORM_PAGE = "\r\n".join([
-    "PN,30000",
-    "DE,Contact form",
-    "FT,{token}",
-    "OL,1," + esc(YELLOW) + "CONTACT US",
-    "OL,3,Name:  ...............................",
-    "FD,TEXT,name,7,31,50,Y,,",
-    "OL,4,Email: ...............................",
-    "FD,EMAIL,email,7,31,100,Y,",
-    "OL,8,  < SEND MESSAGE >",
-    "FD,SUBMIT,send,2,16,Send message,send_contact",
-    "FS,POST,/contact",
-    "FP,30100,30200",
-    "OL,22,Or telephone 0800 000 000.",
-    "",
-])
-
-THANKS_PAGE = "\r\n".join([
-    "PN,30100",
-    "OL,1," + esc(GREEN) + "THANK YOU",
-    "OL,3,Your message was received.",
-    "",
-])
 
 DESCRIPTOR = """{{
   "name": "Test service",
@@ -91,10 +71,6 @@ DESCRIPTOR = """{{
   "push": {{"address": "/push", "method": "sse"}},
   "services": [{{"name": "other", "display_name": "Other service", "descriptor": "http://127.0.0.1:{port}/other.json"}}]
 }}"""
-
-
-def token_for(session):
-    return hmac.new(SECRET, session.encode(), hashlib.sha256).hexdigest()[:32]
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -136,12 +112,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self.send(200, other, "application/json", cookies)
         if path.startswith("/pages/") and path.endswith(".tti"):
             page = path[len("/pages/"):-len(".tti")]
-            if page == "300":
-                body = FORM_PAGE.format(token=token_for(session))
-            elif page in PAGES:
-                body = PAGES[page]
-            else:
+            if page not in PAGES:
                 return self.send(404, "", "text/plain", cookies)
+            body = PAGES[page]
             etag = '"' + hashlib.sha256(body.encode("latin-1")).hexdigest()[:16] + '"'
             if self.headers.get("If-None-Match") == etag:
                 self.send_response(304)
@@ -215,18 +188,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n")
             return None
         return self.send(404, "", "text/plain")
-
-    def do_POST(self):
-        length = int(self.headers.get("Content-Length", "0"))
-        body = self.rfile.read(min(length, 65536)).decode("latin-1")
-        fields = dict(part.split("=", 1) for part in body.split("&") if "=" in part)
-        session = self.session()
-        if self.path != "/contact" or session is None:
-            return self.send(404, "", "text/plain")
-        if not hmac.compare_digest(fields.get("ttx_token", ""), token_for(session)):
-            # Forged or expired token (REQ-WEB-012).
-            return self.send(403, "", "text/plain")
-        return self.send(200, THANKS_PAGE)
 
 
 class Server(socketserver.ThreadingMixIn, http.server.HTTPServer):

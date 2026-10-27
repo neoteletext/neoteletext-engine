@@ -1,33 +1,24 @@
 //! Page extension data that packets cannot carry (decision 7 of
 //! IMPLEMENTATION-LOG.md): TTI Link Extension links with their labels and
-//! services (Appendix E) and forms (Appendix C), kept beside the page store
-//! and read by the viewer.
+//! services (Appendix E), and the page's input modes, kept beside the page
+//! store and read by the viewer.
 
 use neoteletext_core::charset::{CharRef, CharSet, G2Set};
 use neoteletext_core::consts::{COLUMNS, G2_RIGHT_GUILLEMET, ROWS};
-use neoteletext_core::forms::FormSpec;
 use neoteletext_core::level1::{Glyph, Grid};
 use neoteletext_core::nav::{LinkTarget, PageLinks};
 use neoteletext_core::types::{PageAddress, SubCode};
 use neoteletext_formats::links::{self, INDEX_KEY as FORMATS_INDEX_KEY, KEYS_WITH_INDEX as FORMATS_KEYS};
 use neoteletext_formats::page::PageFile;
 
-mod forms;
-
-pub use forms::form_spec;
-
 /// What the viewer needs beyond the packets of one page.
 #[derive(Clone, Debug)]
 pub struct PageExtras {
-    /// The address the page came from: the base and origin of its form.
-    pub url: String,
     /// The links of the TTI Link Extension, when the page has `LN` lines.
     pub links: Option<PageLinks>,
     /// Row 24 drawn by the receiver from the links (REQ-NAV-011), 7-bit
     /// codes, and the columns where the "»" mark goes.
     pub row24: Option<([u8; COLUMNS], Vec<usize>)>,
-    /// The form, when the page has an interactive one.
-    pub form: Option<FormSpec>,
     /// The addresses the coloured keys and Index lead to, when an `LN`
     /// line names an address; indexed red, green, yellow, cyan, Index.
     pub key_addresses: [Option<String>; KEYS_WITH_INDEX],
@@ -106,12 +97,10 @@ fn destination(target: links::Destination<'_>) -> Option<Destination> {
 /// rule 2). The links and row 24 are `neoteletext_formats::links`'s, the
 /// one implementation every port uses.
 #[must_use]
-pub fn from_page(page: &PageFile, url: &str, services: &[String]) -> PageExtras {
+pub fn from_page(page: &PageFile, services: &[String]) -> PageExtras {
     let mut extras = PageExtras {
-        url: url.to_string(),
         links: None,
         row24: None,
-        form: None,
         key_addresses: Default::default(),
         number_links: Vec::new(),
         text_links: Vec::new(),
@@ -156,9 +145,6 @@ pub fn from_page(page: &PageFile, url: &str, services: &[String]) -> PageExtras 
             });
         }
     }
-    if page.form.interactive {
-        extras.form = form_spec(&page.form);
-    }
     extras
 }
 
@@ -200,7 +186,7 @@ mod tests {
     #[test]
     fn a_labels_control_codes_never_reach_row_24() {
         let page = page_file(b"PN,10000\r\nOL,1,TEXT\r\nLN,R,101,Fl\x08ash\r\nLN,G,140,Big\x0dTall\r\n");
-        let (row, _) = from_page(&page, "https://example.org/100.tti", &[]).row24.unwrap();
+        let (row, _) = from_page(&page, &[]).row24.unwrap();
         assert!(row.iter().enumerate().all(|(column, &code)| code >= b' ' || column % (COLUMNS / 4) == 0), "{row:?}");
         assert_eq!(&row[1..7], b"Fl ash");
         assert_eq!(&row[11..19], b"Big Tall");

@@ -1,7 +1,7 @@
 //! The interactive viewer, `neottx view` (REQ-CLI-004, decision 19 of
 //! IMPLEMENTATION-LOG.md): the core viewer machine driven by terminal keys,
-//! with forms (Appendix C, REQ-NAV-009), the TTI Link Extension (Appendix
-//! E, REQ-NAV-011 and 012) and the security confirmations of area SEC.
+//! with the TTI Link Extension (Appendix E, REQ-NAV-011 and 012) and the
+//! security confirmations of area SEC.
 
 use crate::ansi::{ColourDepth, MosaicStyle, ansi};
 use crate::frame::Frame;
@@ -12,7 +12,6 @@ use crossterm::event::{
 };
 use crossterm::{cursor, execute, queue, terminal};
 use neoteletext_app::extras::PageExtras;
-use neoteletext_app::interact::ActiveForm;
 use neoteletext_app::session::Session;
 use neoteletext_app::source::Source;
 use neoteletext_core::acq::{EnhancementReport, StoredPage};
@@ -36,15 +35,8 @@ mod keys;
 mod notices;
 mod page;
 mod terminal_io;
-mod ticker;
 mod turn;
 mod typing;
-
-/// What the viewer is waiting for the user to confirm.
-enum Pending {
-    /// A form submission (REQ-SEC-008 and REQ-SEC-009).
-    Submission,
-}
 
 /// What the viewer keeps from one turn of its loop to the next.
 struct ViewState {
@@ -56,8 +48,6 @@ struct ViewState {
     grid: Grid,
     last_drawn: Option<(Grid, Option<Frame>, bool)>,
     action: Action,
-    form: Option<ActiveForm>,
-    pending: Option<Pending>,
     prompt: Option<[u8; COLUMNS]>,
     confirmed_services: HashSet<u8>,
     typing: Typing,
@@ -91,8 +81,6 @@ impl ViewState {
             grid: Grid::EMPTY,
             last_drawn: None,
             action,
-            form: None,
-            pending: None,
             prompt: None,
             confirmed_services: HashSet::new(),
             typing: Typing::new(enhanced),

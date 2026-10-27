@@ -15,22 +15,8 @@ pub enum IssueKind {
     RepeatedKey,
     /// An `LN` target that could not be read.
     BadLinkTarget,
-    /// The withdrawn `FH` command (Appendix C.2), or the withdrawn `TF`
-    /// line, which named a page's font (decision E.111).
+    /// The withdrawn `TF` line, which named a page's font (decision E.111).
     WithdrawnCommand,
-    /// A version 2.0 field definition, with no column or width
-    /// (Appendix C.6).
-    FormNeedsConversion,
-    /// Fields that overlap (Appendix C.2).
-    FieldOverlap,
-    /// A field that does not fit within its row or the page.
-    FieldOutsideRow,
-    /// A field definition before any `OL` line.
-    FieldWithoutRow,
-    /// A field definition that could not be read.
-    BadField,
-    /// An `OPTION` line with no SELECT or RADIO field before it.
-    OptionWithoutField,
     /// A `CU` line that could not be read (REQ-INT-006).
     BadCursorLine,
     /// An `IM` line that could not be read or names modes not defined
@@ -40,22 +26,6 @@ pub enum IssueKind {
     BadLogLine(crate::log::LogRefused),
     /// More `LG` lines than a page may carry (REQ-INP-026).
     TooManyLogLines,
-}
-
-impl IssueKind {
-    /// True for the problems that stop a form being interactive
-    /// (Appendix C.2 and C.6).
-    #[must_use]
-    pub const fn affects_form(self) -> bool {
-        matches!(
-            self,
-            Self::FormNeedsConversion
-                | Self::FieldOverlap
-                | Self::FieldOutsideRow
-                | Self::FieldWithoutRow
-                | Self::BadField
-        )
-    }
 }
 
 /// The warnings, which a page may mark as considered with
@@ -68,10 +38,6 @@ pub enum Warning {
     /// A link to another service with no other route given (Appendix E.2
     /// rule 6).
     NoOtherRoute,
-    /// A form page with no fallback for broadcast viewers (Appendix C.6).
-    NoBroadcastFallback,
-    /// Form placeholders using national option characters (Appendix C.4).
-    UnreliablePlaceholders,
     /// Content in row 24 of a page with links, which the receiver replaces
     /// (REQ-NAV-011).
     HiddenContent,
@@ -79,13 +45,7 @@ pub enum Warning {
 
 impl Warning {
     /// Every warning.
-    pub const ALL: [Self; 5] = [
-        Self::PageNumberNotShown,
-        Self::NoOtherRoute,
-        Self::NoBroadcastFallback,
-        Self::UnreliablePlaceholders,
-        Self::HiddenContent,
-    ];
+    pub const ALL: [Self; 3] = [Self::PageNumberNotShown, Self::NoOtherRoute, Self::HiddenContent];
 
     /// The name used in `CK` lines and reports.
     #[must_use]
@@ -93,8 +53,6 @@ impl Warning {
         match self {
             Self::PageNumberNotShown => b"page-number-not-shown",
             Self::NoOtherRoute => b"no-other-route",
-            Self::NoBroadcastFallback => b"no-broadcast-fallback",
-            Self::UnreliablePlaceholders => b"unreliable-placeholders",
             Self::HiddenContent => b"hidden-content",
         }
     }

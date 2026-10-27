@@ -9,7 +9,7 @@ use crate::consts::TTI_COMMAND_BYTES;
 use crate::item::{Capacity, Diagnostic, DiagnosticKind, Item};
 use crate::page::{INPUT_MODE_BITS, IssueKind, ModesLine, PageFunction, Warning};
 
-use super::fields::{Args, CODING_LAST, REGION_LAST, decimal, hex, page_address, result_page, set_value};
+use super::fields::{Args, CODING_LAST, REGION_LAST, decimal, hex, page_address, set_value};
 use super::row_text::decode_text;
 use super::{PAGE_COMMANDS, TtiReader};
 
@@ -127,24 +127,9 @@ impl TtiReader {
                     _ => self.diagnostic(bad, out),
                 }
             }
-            b"FD" => self.field_definition(args, out),
-            b"OP" => self.option_line(args, out),
-            b"FS" => self.form_submission(args, out),
-            b"FP" => {
-                let mut fields = Args::new(args);
-                match (result_page(fields.next()), result_page(fields.next())) {
-                    (Some(success), Some(error)) => self.page.form.result_pages = Some((success, error)),
-                    _ => self.diagnostic(bad, out),
-                }
-            }
-            b"FT" => {
-                if !set_value(&mut self.page.form.token, args) {
-                    self.diagnostic(DiagnosticKind::CapacityExceeded { what: Capacity::Text }, out);
-                }
-            }
             // `TF` named a page's font, withdrawn on 23 October 2026
             // (decision E.111): reported, and nothing of it kept.
-            b"FH" | b"TF" => self.issue(IssueKind::WithdrawnCommand, out),
+            b"TF" => self.issue(IssueKind::WithdrawnCommand, out),
             _ => self.diagnostic(DiagnosticKind::UnknownCommand { command: name }, out),
         }
     }
@@ -177,7 +162,6 @@ impl TtiReader {
         self.started = true;
         self.has_content = false;
         self.last_row = None;
-        self.last_choice_field = None;
         let digits = args.trim_ascii();
         let address = digits.get(..3).and_then(page_address);
         // `ss` is a decimal sub-page number (vbit2).
@@ -232,7 +216,6 @@ impl TtiReader {
 
     pub(super) fn emit(&mut self, out: &mut dyn FnMut(Item<'_>)) {
         if self.started || self.has_content {
-            self.finish_form(out);
             out(Item::Page(&self.page));
         }
     }

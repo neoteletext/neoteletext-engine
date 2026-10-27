@@ -2,7 +2,7 @@
 //! relative resolution (RFC 3986 section 5).
 //!
 //! One parser is used for every address the web module meets: descriptors,
-//! templates, redirects, push addresses, form targets and configuration.
+//! templates, redirects, push addresses, links and configuration.
 //! It accepts only:
 //!
 //! - the schemes `http`, `https`, `ws` and `wss`, in any letter case;

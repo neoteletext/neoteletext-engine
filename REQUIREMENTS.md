@@ -10,7 +10,7 @@ The specification moved to [`docs/spec/`](docs/spec/README.md) on 18 October 202
 | Part G, out of scope | `docs/spec/requirements/out-of-scope.md` |
 | Appendix A, glossary | `docs/spec/glossary.md` |
 | Appendix B, source documents | `docs/spec/source-documents.md` |
-| Appendices C and E, the TTI extensions | `docs/spec/requirements/tti-form-extension.md`, `tti-link-extension.md` |
+| Appendices C and E, the TTI extensions (Appendix C, the Form Extension, withdrawn on 27 October 2026 by decision E.126) | `docs/spec/requirements/tti-form-extension.md`, `tti-link-extension.md` |
 | Appendix D, open questions | `docs/spec/open-questions-record.md` |
 
 A reference elsewhere to "REQUIREMENTS.md" with a part, section or decision number means the same text at its new place.

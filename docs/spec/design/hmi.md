@@ -2,6 +2,8 @@
 
 *Note of 18 October 2026:* the windowed browser was removed from this repository and is maintained in the separate neoteletext-browser repository (decision E.76). What this design says of the browser, its tuning screen and its address bar applies there; the rest stays the engine's design.
 
+*Note of 27 October 2026:* the TTI Form Extension was withdrawn (decision E.126): the form model, `forms::FormKey`, `MULTITAP_US`, the form mode and the confirmation before a form is sent are removed, and REQ-NAV-009 and REQ-SEC-009 are withdrawn. What this design says of them no longer applies; a channel that asks for text takes the viewer's keys over the input protocol (area INT).
+
 A proposal, not a requirement. It describes how the code should take input from the very different controls of the machines neoteletext targets (REQ-GEN-015), and what that means for each crate and port. Nothing here changes REQUIREMENTS.md until it is recorded as decisions in Part E. Adding any of the third-party crates named in section 5 is a library choice and needs the owner's approval first.
 
 Related documents:

@@ -1,5 +1,5 @@
 //! A byte string with a fixed capacity, held inline, for the text fields of
-//! page files (descriptions, link labels, form values). No allocation.
+//! page files (descriptions, link labels and addresses). No allocation.
 
 /// Up to `N` bytes of text. Bytes are kept as they appeared in the file;
 /// callers decide which characters are acceptable.

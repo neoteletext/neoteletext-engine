@@ -43,17 +43,9 @@ impl Viewer {
                 write(&mut status, 1, &digits);
                 write(&mut status, 5, b"!");
             }
-            SecurityIndicator::PlainHttpWarning => {
-                write(&mut status, 0, &[ALPHA_RED]);
-                write(&mut status, 1, b"HTTP?");
-            }
             SecurityIndicator::LeavingService => {
                 write(&mut status, 0, &[ALPHA_YELLOW]);
                 write(&mut status, 1, b"LEAVE?");
-            }
-            SecurityIndicator::ConfirmSubmission => {
-                write(&mut status, 0, &[ALPHA_YELLOW]);
-                write(&mut status, 1, b"SEND?");
             }
         }
         status

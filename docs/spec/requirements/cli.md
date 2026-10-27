@@ -64,20 +64,18 @@ The program shall exit with:
 - **Bad link targets.** Targets naming services missing from a given descriptor, and `LK` or `LT` lines whose target, page number or position is invalid (Appendix E.1).
 - **Bad log lines.** An `LG` line the reader refuses, or more than a page may carry (REQ-INP-026).
 - **Bad labels.** Labels too long for the prompt, or using characters the page's G0 set cannot show.
-- **Bad form fields.** Overlapping fields, fields outside the row, or version 2.0 form syntax.
-- **Withdrawn commands.** Use of the withdrawn `FH` command, or of the withdrawn `TF` line (decision E.111).
+- **Withdrawn commands.** Use of the withdrawn `TF` line (decision E.111).
 
 *Warnings:*
 - **Page number not shown.** A link to a page in the same service whose page number does not appear in the page's text (Appendix E.2 rule 5), or an `LK` line that links a page number the page's text does not show (Appendix E.2 rule 7, decision E.64).
 - **No other route.** A link to another service with no other route given in the text (Appendix E.2 rule 6).
-- **No broadcast fallback.** A form page with no fallback instruction for broadcast viewers (Appendix C.6).
-- **Unreliable placeholders.** Form placeholders using national option characters (Appendix C.4).
 - **Hidden content.** Content in row 24 of a page with links, which neoteletext will not display.
 
 A warning may be marked as considered with a line `CK,considered,<warning name>` in the page, so that it is not reported again. Other TTI readers ignore the line as an unknown command.
 
 Exit status is 0 when there are no errors, and 4 when there are errors. Warnings alone do not fail.
 *Verification:* Test with a set of pages, each containing one problem.
+*Amended 27 October 2026 (decision E.126):* the form errors and warnings (bad form fields, no broadcast fallback, unreliable placeholders) are withdrawn with the TTI Form Extension, and an `FH` line is no longer a withdrawn command: it is unknown, as every form line is, and ignored with a diagnostic (REQ-INP-013).
 
 **REQ-CLI-007 — The presentation level option.**
 Every command that decodes pages shall accept `--level` followed by `1`, `1.5`, `2.5` or `3.5`, which sets the presentation level of REQ-PRF-006 and overrides the level of the chosen profile. Any other value shall be invalid usage (REQ-CLI-005). The former `--level1-only` option shall be removed; `--level 1` replaces it (decision E.40).

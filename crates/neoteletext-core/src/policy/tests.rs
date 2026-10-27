@@ -33,16 +33,14 @@ fn blocked_addresses() {
 }
 
 #[test]
-fn origins_and_submission() {
+fn origins() {
     let page = OriginParts { secure: true, host: "example.org", port: 443 };
     let same = OriginParts { secure: true, host: "EXAMPLE.org", port: 443 };
     let plain = OriginParts { secure: false, host: "example.org", port: 80 };
-    let other = OriginParts { secure: true, host: "forms.example", port: 443 };
+    let other = OriginParts { secure: true, host: "other.example", port: 443 };
     assert!(same_origin(page, same));
     assert!(!same_origin(page, plain));
-    assert!(may_submit(page, same, &[]));
-    assert!(!may_submit(page, other, &[]));
-    assert!(may_submit(page, other, &[other]));
+    assert!(!same_origin(page, other));
     assert!(is_downgrade(true, plain, "example.org"));
     assert!(!may_send_cookie(true, false));
 }
@@ -124,12 +122,4 @@ fn a_nat64_local_use_address_with_a_u_octet_is_read_as_96_only() {
     assert!(!ipv6_blocked([0x0064, 0xFF9B, 0x0001, 0, 0x010A, 0, 0x0800, 0]));
     // 64:ff9b:1:a00:101::808:808: /48 would read 10.0.1.1, /96 8.8.8.8.
     assert!(!ipv6_blocked([0x0064, 0xFF9B, 0x0001, 0x0A00, 0x0101, 0, 0x0808, 0x0808]));
-}
-
-/// REQ-SEC-008: every submission over plain HTTP needs the warning, and
-/// none over encryption does.
-#[test]
-fn plain_http_submission_needs_the_warning() {
-    assert!(needs_plain_http_warning(false));
-    assert!(!needs_plain_http_warning(true));
 }

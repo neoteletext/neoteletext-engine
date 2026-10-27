@@ -22,8 +22,6 @@ pub enum Origin {
     Page,
     /// The push connection.
     Push,
-    /// The response to a form submission (REQ-WEB-011).
-    Form,
     /// The front door of a site without a descriptor: any number of the
     /// site's pages.
     FrontDoor,
@@ -36,27 +34,8 @@ pub struct PageData {
     pub secure: bool,
     /// Where the bytes came from.
     pub origin: Origin,
-    /// The address they came from: the base and origin of a form on them.
-    pub url: String,
     /// TTI or T42 bytes.
     pub bytes: Vec<u8>,
-}
-
-/// A form submission for the fetcher (REQ-WEB-011).
-#[derive(Clone, PartialEq, Eq, Debug, Default)]
-pub struct Submission {
-    /// The page's address.
-    pub page_url: String,
-    /// True for POST, false for GET.
-    pub post: bool,
-    /// The `FS` address.
-    pub target: String,
-    /// The `FT` token.
-    pub token: Option<String>,
-    /// The pressed button's action.
-    pub action: Option<String>,
-    /// Field names and values.
-    pub fields: Vec<(String, String)>,
 }
 
 /// A message on the pipe.
@@ -72,10 +51,6 @@ pub enum Frame {
     Notice(Notice),
     /// Decoder to fetcher: request a page (`0xMPP`, sub-code or 0xFFFF).
     Request(u16, u16),
-    /// Decoder to fetcher: submit a form.
-    Submit(Submission),
-    /// Decoder to fetcher: the viewer's answer to a confirmation.
-    Confirm(bool),
     /// Decoder to fetcher: follow a link to another service.
     Follow(String, u16, u16),
     /// Decoder to fetcher: one input message for the channel's push
@@ -96,13 +71,6 @@ pub enum Notice {
     /// A new service is ready; its linked services' short names in
     /// descriptor order (Appendix E).
     Service(Vec<String>),
-    /// Confirm a submission (REQ-SEC-008, REQ-SEC-009): host, plain HTTP,
-    /// first submission to this origin.
-    Confirm(String, bool, bool),
-    /// A submission finished: true for success.
-    Submitted(bool),
-    /// Show this page, `0xMPP`: a form response carried it (REQ-WEB-011).
-    ShowPage(u16),
     /// The server confirmed page `0xMPP` unchanged (REQ-WEB-004): the
     /// stored copy is current (REQ-WEB-009).
     Current(u16),

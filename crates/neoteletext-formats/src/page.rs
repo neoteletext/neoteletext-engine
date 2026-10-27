@@ -1,7 +1,7 @@
 //! The page file representation shared by the TTI, EP1, edit.tf and screen
 //! dump readers: one sub-page of fixed size, with the extension data of the
-//! TTI Link Extension (Appendix E) and Form Extension (Appendix C) kept
-//! beside it (implementation decision 7).
+//! TTI Link Extension (Appendix E) kept beside it (implementation decision
+//! 7).
 
 use neoteletext_core::consts::{
     C4_ERASE, C12, C13, C14, COLUMNS, CONTROL_MASK, DEFAULT_INITIAL_PAGE, DESIGNATION_CODES, NATIONAL_INDEX_MASK,
@@ -13,16 +13,11 @@ use neoteletext_core::types::{ControlBits, FixedVec, Magazine, PageAddress, Page
 use crate::consts::{TTI_PS_C4, TTI_PS_C5_SHIFT, TTI_PS_C5_TO_C11, TTI_PS_C12_BIT};
 use crate::text::Text;
 
-mod form;
 mod interaction;
 mod issues;
 mod links;
 mod packets;
 
-pub use form::{
-    FIELD_LIMIT_BYTES, FIELD_NAME_BYTES, FIELD_TEXT_BYTES, FORM_ADDRESS_BYTES, FORM_FIELDS, FORM_OPTIONS,
-    FORM_TOKEN_BYTES, FieldKind, Form, FormField, FormMethod, FormOption,
-};
 pub use interaction::{CursorLine, INPUT_MODE_BITS, ModesLine};
 pub use issues::{IssueKind, PAGE_ISSUES, PageIssue, Warning};
 pub use links::{
@@ -88,8 +83,6 @@ pub struct PageFile {
     pub cursor: Option<CursorLine>,
     /// The last `IM` line (REQ-INT-114).
     pub input_modes: Option<ModesLine>,
-    /// The form.
-    pub form: Form,
     /// Problems found while reading.
     pub issues: FixedVec<PageIssue, PAGE_ISSUES>,
     /// Bit w set when warning w was marked `CK,considered`.
@@ -142,8 +135,7 @@ impl PageFile {
             text_links: FixedVec::new(TextLink { row: 0, column: 0, length: 0, destination, line: 0 }),
             cursor: None,
             input_modes: None,
-            form: Form::new(),
-            issues: FixedVec::new(PageIssue { kind: IssueKind::BadField, line: 0 }),
+            issues: FixedVec::new(PageIssue { kind: IssueKind::BadCursorLine, line: 0 }),
             considered: 0,
             line: 0,
         }
@@ -172,12 +164,6 @@ impl PageFile {
         self.text_links.clear();
         self.cursor = None;
         self.input_modes = None;
-        self.form.fields.clear();
-        self.form.options.clear();
-        self.form.submission = None;
-        self.form.result_pages = None;
-        self.form.token.clear();
-        self.form.interactive = false;
         self.issues.clear();
         self.considered = 0;
         self.line = 0;
@@ -269,7 +255,8 @@ impl PageFile {
     }
 }
 
-// As for `Form`: compare what the page holds, not unused storage.
+// `FixedVec`'s derived equality also compares its unused slots, which hold
+// whatever an earlier page left; pages compare by what they hold.
 impl PartialEq for PageFile {
     fn eq(&self, other: &Self) -> bool {
         self.address == other.address
@@ -292,7 +279,6 @@ impl PartialEq for PageFile {
             && self.text_links.as_slice() == other.text_links.as_slice()
             && self.cursor == other.cursor
             && self.input_modes == other.input_modes
-            && self.form == other.form
             && self.issues.as_slice() == other.issues.as_slice()
             && self.considered == other.considered
             && self.line == other.line

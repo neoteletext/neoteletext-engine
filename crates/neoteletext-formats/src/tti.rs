@@ -1,6 +1,5 @@
 //! TTI page files (REQ-INP-013): the MRG Systems format with the vbit2
-//! extensions, the TTI Link Extension (Appendix E) and the Form Extension
-//! (Appendix C), read line by line.
+//! extensions and the TTI Link Extension (Appendix E), read line by line.
 
 use crate::consts::TTI_COMMAND_BYTES;
 use crate::item::{Item, Reader};
@@ -10,7 +9,6 @@ use crate::text::Text;
 
 mod commands;
 mod fields;
-mod form;
 mod links;
 mod packed;
 mod row_text;
@@ -22,13 +20,12 @@ pub use row_text::{DecodedText, decode_text};
 /// in the escape form needs at most 6 + 80 bytes.
 pub const LINE_BYTES: usize = 512;
 
-/// The commands that belong to a page (REQ-INP-013, Appendices C and E,
-/// `CK` of REQ-CLI-006, and `TF`, withdrawn by decision E.111). `OP` is `OPTION`,
-/// recognised by its first two letters.
-const PAGE_COMMANDS: [[u8; TTI_COMMAND_BYTES]; 19] = [
-    *b"SC", *b"PS", *b"OL", *b"FL", *b"LN", *b"LK", *b"LT", *b"RE", *b"PF", *b"CK", *b"FD", *b"OP", *b"FS", *b"FP",
-    *b"FT", *b"FH", *b"TF", *b"CU", *b"IM",
-];
+/// The commands that belong to a page (REQ-INP-013, Appendix E, `CK` of
+/// REQ-CLI-006, and `TF`, withdrawn by decision E.111). The lines of the
+/// withdrawn Form Extension (decision E.126) are not among them, so they
+/// are unknown commands, reported and ignored as every other is.
+const PAGE_COMMANDS: [[u8; TTI_COMMAND_BYTES]; 13] =
+    [*b"SC", *b"PS", *b"OL", *b"FL", *b"LN", *b"LK", *b"LT", *b"RE", *b"PF", *b"CK", *b"TF", *b"CU", *b"IM"];
 
 /// The streaming TTI reader. It reports each sub-page as an
 /// [`Item::Page`] when the next `PN` line or the end of input completes it.
@@ -43,7 +40,6 @@ pub struct TtiReader {
     file_description: Text<{ crate::page::DESCRIPTION_BYTES }>,
     file_source: Text<{ crate::page::DESCRIPTION_BYTES }>,
     last_row: Option<u8>,
-    last_choice_field: Option<u8>,
     /// The designation code of the packet X/28 that set the page function,
     /// if one did.
     function_designation: Option<u8>,
@@ -68,7 +64,6 @@ impl TtiReader {
             file_description: Text::new(),
             file_source: Text::new(),
             last_row: None,
-            last_choice_field: None,
             function_designation: None,
         }
     }

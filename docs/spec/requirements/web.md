@@ -1,14 +1,13 @@
 # F.19 Web-native page sources (WEB)
 
-This area makes neoteletext a web-native receiver (decision E.30). Pages and packets can be fetched from ordinary web servers, pushed by them, and interacted with through forms. Everything here lives in an optional web module. The core library stays free of networking (REQ-GEN-002), and the network transport itself is supplied by the port (REQ-WEB-001).
+This area makes neoteletext a web-native receiver (decision E.30). Pages and packets can be fetched from ordinary web servers and pushed by them; a channel's program answers the viewer's input over its push connection (area INT). The TTI Form Extension and form submission were withdrawn on 27 October 2026 (decision E.126). Everything here lives in an optional web module. The core library stays free of networking (REQ-GEN-002), and the network transport itself is supplied by the port (REQ-WEB-001).
 
 **REQ-WEB-001 — The network transport is supplied by the port.**
 The web module shall contain the protocol logic for:
 - HTTP/1.1;
 - WebSockets;
 - server-sent events;
-- cookies;
-- forms.
+- cookies.
 
 It shall not open sockets or perform encryption itself. It shall be written "sans-IO":
 - it is a set of state machines;
@@ -23,6 +22,7 @@ The same code then works with a blocking port, an asynchronous port, a desktop p
 
 Certificate checking is the port's responsibility and shall be on by default. Every operation shall be non-blocking and report its results as events (decision E.30 item 3).
 *Verification:* Test with an in-memory transport that replays recorded exchanges; inspection that the module has no socket or cryptography code.
+*Amended 27 October 2026 (decision E.126):* forms are no longer among the protocols, since the TTI Form Extension is withdrawn.
 
 **REQ-WEB-002 — The service descriptor.**
 A web teletext service shall be identified by the address of a small descriptor document. The descriptor is a JSON object with these members:
@@ -30,7 +30,6 @@ A web teletext service shall be identified by the address of a small descriptor 
 - the initial page;
 - a page address template;
 - optionally, a push address and the push method (WebSocket or server-sent events), and with a WebSocket only, `"input": true` in the `push` object: the channel takes the viewer's keys back on that socket (area INT, decision E.90; *amended 20 October 2026, decision E.92*), which shall then be on the descriptor's own origin, as `INPUT.md` section 4 requires (*amended 24 October 2026*, finding F-90 of NeoTeletext's security review; `input_goes_only_to_the_descriptors_own_origin`, which fails on the code before it);
-- optionally, a list of other origins that forms may submit to;
 - optionally, the default character set region (decision E.4);
 - optionally, a list of other services that links may lead to (Appendix E). Each has a short name, a display name and the address of its own descriptor;
 - optionally, `aliases`: an object whose members map a page number to a target, either `name:mpp` or an address (decisions E.63 and E.64). An alias is one page number, never a range. A relative address shall be refused, an address in a descriptor fetched over `https` shall be `https`, and there shall be at most 16 aliases;
@@ -42,6 +41,7 @@ The page address template uses the placeholders `{m}` (magazine), `{pp}` (page n
 *Reason:* A page number is teletext's address. The template maps it to a web address without making the page files themselves aware of the web.
 *Amended 12 October 2026* (decisions E.63 and E.70): `aliases`, `refresh`, and `channel.json` as a channel's descriptor.
 *Verification:* Test with valid and malformed descriptors, including aliases and refresh intervals out of range.
+*Amended 27 October 2026 (decision E.126):* the optional list of other origins that forms may submit to, `form_origins`, is withdrawn with the TTI Form Extension; a descriptor that still has it is refused, as every descriptor with an unknown member is (REQ-WEB-014).
 
 **REQ-WEB-003 — Fetching pages.**
 The web module shall fetch a page by expanding the template for the requested page, and optionally sub-page, and making an HTTP GET request. It shall accept these response types:
@@ -105,7 +105,6 @@ The cookie store shall follow current cookie practice (decision E.35): the lates
 *Sending cookies:*
 - **Which cookies.** Cookies shall be sent only to the host that set them, on paths matching their `Path`, and `Secure` cookies only over encrypted connections.
 - **Which requests.** They shall be sent with every request that matches, including WebSocket upgrades and server-sent event connections, over both plain and encrypted connections (decision E.32).
-- **Cross-origin form submissions.** A form submission to a different origin is a cross-site request. Only `SameSite=None` cookies that are also `Secure` shall be sent with it.
 - **Navigation between services.** A top-level GET to a different service, made by the viewer following a link, shall carry the destination's `Lax`, default and `None` cookies, but not its `Strict` cookies.
 
 *The store:*
@@ -117,6 +116,7 @@ The cookie store shall follow current cookie practice (decision E.35): the lates
 - **`Clear-Site-Data`.** A response over an encrypted connection whose `Clear-Site-Data` names `"cookies"` or `"*"` shall clear its host's cookies before its own `Set-Cookie` values are stored; over plain HTTP the header shall be ignored (decision E.104).
 
 *Verification:* A test for every rule above. Where the draft has a published test suite (the web-platform-tests cookie tests), the applicable cases shall be adapted and run.
+*Amended 27 October 2026 (decision E.126):* the rule for cross-origin form submissions is withdrawn with them; no request the module makes is one.
 
 **REQ-WEB-007 — Navigation on web services.**
 The following shall all resolve to pages of the same service, fetched through REQ-WEB-003:
@@ -135,13 +135,12 @@ The requirements of area SEC apply to the web module in full and take precedence
 - local-network protection (REQ-SEC-006);
 - no downgrade (REQ-SEC-007);
 - plain HTTP safeguards (REQ-SEC-008);
-- deceptive forms (REQ-SEC-009);
 - strict HTTP handling (REQ-SEC-011).
 
 In addition, the web module shall:
 - **allow both plain and encrypted connections.** It shall support both plain HTTP and HTTPS, and both plain and secure WebSockets (`ws://` and `wss://`). Neither requires any special configuration. The scheme of the service descriptor's addresses decides which is used.
   - Plain HTTP must be allowed. Many small devices that might display teletext cannot run TLS, and much teletext content is public in any case.
-  - A connection made without encryption shall be shown in the status area (for example, a marker in row 0 columns 0 to 6) and reported as an event. The viewer can then see that the page and any form data travel unprotected.
+  - A connection made without encryption shall be shown in the status area (for example, a marker in row 0 columns 0 to 6) and reported as an event. The viewer can then see that the page travels unprotected.
   - The port may still refuse to offer TLS. The module shall then work over plain connections only, and report an HTTPS address as unreachable.
 - **limit sizes.** It shall enforce configurable size limits, with documented defaults:
   - one page response, 256 kilobytes by default;
@@ -151,9 +150,8 @@ In addition, the web module shall:
 
   Anything larger shall be abandoned with a diagnostic.
 - **treat everything received as untrusted input.** Page files, packets, descriptors and headers all pass the robustness requirement REQ-GEN-008, including fuzzing (REQ-TST-040).
-- **restrict form submission.** A form may submit only to the origin of the page containing it, or to an origin listed in the service descriptor (decision E.31 item 6). A redirect of a submission that keeps its method and body, a 307 or 308, shall not leave the submission's target origin (REQ-SEC-009, decision E.112). A form on a page fetched over plain HTTP may submit over plain HTTP. Before a form is submitted over plain HTTP, the status area shall show a warning that the entered values will be sent unencrypted.
-- **ignore headers in page content.** The withdrawn `FH` form command shall be ignored with a diagnostic, never acted on (decision E.31 item 2).
 *Verification:* Test for each rule; fuzzing of the HTTP, WebSocket, server-sent event and descriptor parsers.
+*Amended 27 October 2026 (decision E.126):* the rules restricting form submission and ignoring the `FH` command are withdrawn with the TTI Form Extension, and REQ-SEC-009 with them; an `FH` line is an unknown command, reported and ignored (REQ-INP-013).
 
 **REQ-WEB-009 — Working offline.**
 When the network is unavailable:
@@ -164,67 +162,41 @@ When the network is unavailable:
 When the network returns, stale pages that are being viewed shall be checked first.
 *Verification:* Test with the transport switched off and on.
 
-**REQ-WEB-010 — Forms.**
-The web module shall implement the TTI Form Extension version 3 of Appendix C in full. This covers:
-- field definitions with explicit columns;
-- the field types;
-- options;
-- the form token;
-- the submission target;
-- success and error pages;
-- client-side validation;
-- submission;
-- the response handling rules.
+**REQ-WEB-010 — Withdrawn: Forms.**
+Withdrawn on 27 October 2026 (decision E.126): the owner withdrew the TTI Form Extension (Appendix C). A page file's form lines are unknown commands, reported and ignored as every other is, so the page shows its rows alone (REQ-INP-013). A channel that wants a form draws it and handles its keys itself, over the input protocol (area INT).
 
-A decoder without the web module shall still display form pages correctly as ordinary pages, because it ignores the form commands (REQ-INP-013).
-*Verification:* Test of each command and field type; test that the same page displays identically with the form commands stripped.
-
-**REQ-WEB-011 — Form submission and the response.**
-On submission, the web module shall:
-1. validate every field against its definition (Appendix C.5). If any field fails, it shall not submit, but move to the first failing field and show why in the status area.
-2. send the form as `application/x-www-form-urlencoded` data:
-   - by POST or GET, as the `FS` command says;
-   - to the `FS` address;
-   - with the session cookies (REQ-WEB-006);
-   - with the form token (`FT`) as the field `ttx_token`;
-   - with the name of the submit button pressed as the field `ttx_action`.
-3. handle the response:
-   - If it is a TTI page (REQ-WEB-003), display that page.
-   - Otherwise, a 2xx status leads to the success page of the `FP` command.
-   - A 4xx or 5xx status, or a failure of the network, leads to the error page. Values already entered shall be kept, so the viewer can return and try again.
-
-Only one submission of the same form may be in progress at a time.
-*Verification:* Test against the local test server for success, validation failure, server error, network failure and a response carrying a TTI page.
+**REQ-WEB-011 — Withdrawn: Form submission and the response.**
+Withdrawn on 27 October 2026 (decision E.126), with REQ-WEB-010: the web module submits nothing, and has no success or error page to show.
 
 **REQ-WEB-012 — Guidance for page servers.**
 Servers built to serve neoteletext pages should follow these practices, which the reference test server (REQ-WEB-013) shall demonstrate:
 - **Keep no session state on the server.** Hold it in a cookie whose value begins with a format version number, so that the format can change without breaking clients that hold old cookies (decision E.30 item 2).
-- **Validate and version.** Issue a form token bound to the session, and check it on every submission. Send `ETag` validators with every page.
+- **Validate and version.** Send `ETag` validators with every page.
 - **Push only what changed.** Push only changed pages, and push each page whole, not partial rows.
 - **Keep pages simple.** Serve Level 1 and Level 1.5 pages only.
-- **Publish channels as folders** (decision E.70). Serve each channel's files under their fixed names in its folder (REQ-WEB-019), whether they are files on disk or generated on request. Answer 404 for a file that does not exist, never a page with status 200. Send one of the media types of REQ-WEB-027. Keep each channel's pages, forms and redirects inside its folder, and put any variation in the folder path or the session cookie, never in a query string, which the browser never sends for a channel's files.
+- **Publish channels as folders** (decision E.70). Serve each channel's files under their fixed names in its folder (REQ-WEB-019), whether they are files on disk or generated on request. Answer 404 for a file that does not exist, never a page with status 200. Send one of the media types of REQ-WEB-027. Keep each channel's pages and redirects inside its folder, and put any variation in the folder path or the session cookie, never in a query string, which the browser never sends for a channel's files.
 - **Point to it from the web** (decision E.73). Put `<link rel="alternate" type="text/x-teletext-tti" href="...">` in the first 8,192 bytes of each web page that has a teletext edition, directly after `<meta charset>`, naming the channel's folder or the page's file; or send the same as a `Link` header. A program may instead answer a request whose `Accept` puts the teletext types first with `303 See Other` to the page's file, sending `Vary: Accept` so that caches keep the two answers apart. Test with `neottx discover` (REQ-CLI-009).
 
 *Verification:* Inspection of the reference server.
+*Amended 27 October 2026 (decision E.126):* the form token is withdrawn with the TTI Form Extension; a channel that takes input checks it over its own connection (area INT).
 
 **REQ-WEB-013 — Test server and tests.**
 The test suite shall include a small local test server, which may be written in any language because it is test code, not part of the library. It shall serve:
 - a service descriptor;
 - TTI and T42 pages, with validators;
 - WebSocket and server-sent event push;
-- cookies and sessions;
-- forms with tokens.
+- cookies and sessions.
 
 It shall be able to inject faults:
 - slow responses;
 - dropped connections;
 - oversized and malformed responses;
 - wrong media types;
-- redirect loops;
-- expired and forged tokens.
+- redirect loops.
 
 The tests of this area shall run against it, and against the in-memory transport of REQ-WEB-001 for exact replay.
 *Verification:* Test.
+*Amended 27 October 2026 (decision E.126):* forms with tokens, and expired and forged tokens, are withdrawn with the TTI Form Extension.
 
 
 **REQ-WEB-014 — The minimal user agent profile.**
@@ -235,8 +207,8 @@ The web module shall implement exactly the following profile, and nothing beyond
 | Feature | What is supported |
 |---|---|
 | Protocol | HTTP/1.1 over plain or TLS connections supplied by the port |
-| Methods | GET, and POST for form submission only |
-| Request headers sent | `Host`, `User-Agent` (fixed for the build, naming the port's program, its version and platform, and neoteletext and its version, REQ-WEB-031), `Accept` (the two page media types and JSON, or `text/event-stream` for server-sent events, decision E.39), `Accept-Encoding: identity`, `Cookie`, `If-None-Match`, `If-Modified-Since`, `Content-Type` and `Content-Length` (form submissions only), `Last-Event-ID` (server-sent events only), and the WebSocket upgrade headers. No other headers are sent, in particular no `Referer`. |
+| Methods | GET, and POST for the requests of device-bound sessions only (REQ-WEB-017), with an empty body |
+| Request headers sent | `Host`, `User-Agent` (fixed for the build, naming the port's program, its version and platform, and neoteletext and its version, REQ-WEB-031), `Accept` (the two page media types and JSON, or `text/event-stream` for server-sent events, decision E.39), `Accept-Encoding: identity`, `Cookie`, `If-None-Match`, `If-Modified-Since`, `Content-Length` (POST only), `Last-Event-ID` (server-sent events only), and the WebSocket upgrade headers. No other headers are sent, in particular no `Referer`. |
 | Response handling | Status codes 200, 204, 301, 302, 303, 304, 307, 308, 404 and other 4xx and 5xx codes as errors. Interim 1xx responses other than 101 before the final response are read past and their fields ignored (RFC 9110 section 15.2; `interim_responses_before_the_final_one_are_read_past`, finding F-75). Headers: `Content-Type`, `Content-Length`, `Transfer-Encoding: chunked`, `Location`, `Set-Cookie`, `Clear-Site-Data` (decision E.104), `ETag`, `Last-Modified`, `Cache-Control` (`max-age`, `no-cache`, `no-store`), `Retry-After`. Other headers are ignored. |
 | Connections | One request at a time per connection. Connections may be reused (persistent connections); pipelining is not used. |
 | Push | WebSocket (RFC 6455) and server-sent events, as REQ-WEB-005 defines |
@@ -255,10 +227,11 @@ The web module shall implement exactly the following profile, and nothing beyond
 - plugins;
 - `file:`, `data:`, `javascript:` and all other address schemes except those of REQ-WEB-016;
 - proxy auto-configuration;
-- cross-origin requests other than the permitted form origins of REQ-WEB-008, and the fonts of REQ-FNT-003.
+- cross-origin requests other than the fonts of REQ-FNT-003.
 
 Any response or message outside the profile shall be rejected with a diagnostic, never partly interpreted.
 *Verification:* Inspection; tests that each excluded feature is rejected; a test that every request sent contains only the permitted headers.
+*Amended 27 October 2026 (decision E.126):* with forms withdrawn, POST is only for device-bound sessions and carries no body, so no request sends `Content-Type`, and there are no permitted form origins.
 
 **REQ-WEB-015 — The origin.**
 An origin is the combination of scheme, host and port of an address, after the address has been normalised by the parser of REQ-WEB-016:
@@ -267,13 +240,13 @@ An origin is the combination of scheme, host and port of an address, after the a
 
 Two addresses have the same origin only if all three parts are equal. The one exception is that `ws` and `wss` addresses count as the same origin as the `http` or `https` address with the same host and port. Every security rule that depends on "the same service" or "the same origin" shall use this definition and no other:
 - which cookies are sent. Cookies are host-only: a cookie is sent only to the exact host that set it, and the cookie `Domain` attribute is ignored (REQ-WEB-006). This is stricter than RFC 6265bis requires, and is chosen because security overrides (REQ-SEC-001).
-- where a form may submit to (REQ-WEB-008 and REQ-SEC-009);
 - the no-downgrade rule (REQ-SEC-007), which applies to the host whatever the scheme;
 - pre-fetching (REQ-SEC-013);
 - the security indicator (REQ-SEC-005).
 
 A service's origin is the origin of its descriptor. When a service is opened as a channel (REQ-WEB-018), the channel is narrower than an origin: the rules REQ-WEB-026 lists use the channel, and the rest use the origin.
 *Verification:* Test with a table of address pairs covering case, default ports, scheme differences and internationalised host names.
+*Amended 27 October 2026 (decision E.126):* where a form may submit to is no longer among the rules, since forms are withdrawn.
 
 **REQ-WEB-016 — The strict address parser.**
 All web addresses shall be parsed by one small parser in `neoteletext-web`. This covers addresses in:
@@ -281,7 +254,7 @@ All web addresses shall be parsed by one small parser in `neoteletext-web`. This
 - page address templates;
 - redirects;
 - push addresses;
-- form targets;
+- link targets;
 - the configuration.
 
 It shall accept only a strict subset of URL syntax:
@@ -306,6 +279,7 @@ It shall reject:
 Relative addresses shall be resolved against their base address by the rules of RFC 3986, and the result parsed again. The parser shall be `no_std`, shall not allocate, and shall be a fuzzing target (REQ-TST-040). The address checks of REQ-SEC-006 shall be applied to its output.
 *Reason:* Different parsers disagreeing about what an address means is a classic source of browser security flaws. One strict parser, used everywhere, removes that class of fault. Rejecting unusual addresses costs nothing for a teletext service.
 *Verification:* Test with a corpus of valid, invalid and deceptive addresses, including known cases where parsers disagree; fuzzing.
+*Amended 27 October 2026 (decision E.126):* form targets, withdrawn with the TTI Form Extension, give way to link targets in the list.
 
 
 **REQ-WEB-017 — Device-bound sessions.**
@@ -320,12 +294,12 @@ The session is then bound to that device. The server issues short-lived cookies 
 **REQ-WEB-018 — Channels: a channel is a folder.**
 The web module shall be able to open a channel given only the address of its folder (decision E.70). A channel is a folder on a web server: its address is an `http` or `https` address whose path ends in `/`, written in the canonical form of REQ-WEB-023.
 
-**Identity.** A channel is identified by its origin (REQ-WEB-015) together with its folder path, compared exactly, including letter case. Every rule that depends on "the same channel" shall use this identity and no other: cookies, forms, push, redirects and links (REQ-WEB-026), and history. The rules that concern the server as a whole keep using the origin: the plain-HTTP marker (REQ-SEC-005), no downgrade (REQ-SEC-007) and the local-network checks (REQ-SEC-006). A folder inside a channel's folder is a different channel, and inherits nothing from it.
+**Identity.** A channel is identified by its origin (REQ-WEB-015) together with its folder path, compared exactly, including letter case. Every rule that depends on "the same channel" shall use this identity and no other: cookies, push, redirects and links (REQ-WEB-026), and history. The rules that concern the server as a whole keep using the origin: the plain-HTTP marker (REQ-SEC-005), no downgrade (REQ-SEC-007) and the local-network checks (REQ-SEC-006). A folder inside a channel's folder is a different channel, and inherits nothing from it.
 
 **Opening a channel.** The web module shall make these requests in this order, each relative to the channel's folder, and no others:
 1. **`channel.json`.**
    - When it answers 200 with a valid file (REQ-WEB-024), the channel takes its settings.
-   - When it answers 404 or 410, the channel takes the defaults: initial page 100, no push address, no linked channels, no aliases, no refresh interval, no other form origins, and the configured default character set region.
+   - When it answers 404 or 410, the channel takes the defaults: initial page 100, no push address, no linked channels, no aliases, no refresh interval, and the configured default character set region.
    - Any other answer, including a server error, a refused media type (REQ-WEB-027) and an invalid file, shall be reported as a failure, and the channel shall not open. The defaults shall never replace a file that exists but cannot be used.
 2. **`index.t42`.**
    - When it answers 200 with whole T42 packets, every page it holds shall be stored (REQ-WEB-019).
@@ -339,6 +313,7 @@ The web module shall be able to open a channel given only the address of its fol
 *Reason:* A channel in a folder works on every static host, including a GitHub Pages project site at `user.github.io/project/`, and keeps strangers on one shared host apart. Three fixed requests answer every question about a channel, with nothing inferred.
 *Amended 12 October 2026* (decision E.70): this requirement was "Sites", which made the origin the site and looked for the descriptor at `/.well-known/teletext.json`. *Amended 12 October 2026* (decision E.73): a folder that holds no channel leads to discovery.
 *Verification:* Tests against the local test server with a channel at the root and two channels in different folders of one origin; with and without `channel.json` and `index.t42`; with a `channel.json` that answers a server error, one that is invalid, and one served as `text/html`; and that a channel never asks for any other file when it opens.
+*Amended 27 October 2026 (decision E.126):* forms leave the channel's rules and its defaults, since they are withdrawn.
 
 **REQ-WEB-019 — The files of a channel.**
 A channel's files shall have these fixed names, in the channel's folder, and no others (decision E.70 item 4):
@@ -362,13 +337,14 @@ Within a channel, the extension that last answered 200 shall be tried first, and
 
 **What each file may fill.**
 - **A page's own file** shall fill only pages that have been asked for in this channel, and enhancement pages, whose page numbers are not decimal and which a page may carry for its objects (decision E.63 item 5). Any other page in it shall be dropped, by its header, with a diagnostic.
-- **`index.t42`,** a pushed message, a form response and a local file shall fill every page they hold.
+- **`index.t42`,** a pushed message and a local file shall fill every page they hold.
 - `index.t42` is bounded by the page response limit of REQ-WEB-008, 256 kilobytes by default. A channel larger than that publishes page files.
 
 When the bundle or a file does not hold the page asked for, and the viewer has not chosen a page, the first page it holds shall be shown.
 *Reason:* A page's file cannot overwrite the rest of its channel, while a whole capture published as `index.t42` is a working channel. Fixed names mean one layout to learn and to build.
 *Amended 12 October 2026* (decision E.70): fixed file names in the channel's folder replace the page address template and the front door at the root.
 *Verification:* Tests that a page is found as `.tti`, as `.t42`, and not at all; that the order of the two requests changes after a success but the result does not; that a page file holding other pages fills only the pages asked for and enhancement pages; and that `index.t42` fills every page.
+*Amended 27 October 2026 (decision E.126):* a form response no longer fills pages, since forms are withdrawn.
 
 **REQ-WEB-020 — Aliases and refresh.**
 When the channel's `channel.json` has aliases (REQ-WEB-024), a typed number that has no link on the current page shall follow the alias for that number, if there is one (decision E.64 item 4). An alias to another channel is reported to the port as a link to another channel, as REQ-WEB-026 describes. When the descriptor has a refresh interval and the service has no push, the page on screen shall be asked for again at that interval, with a conditional request (REQ-WEB-004).
@@ -406,10 +382,12 @@ An address lies inside a channel when it has the channel's origin and its path s
 - **`name`,** when present, is the channel's own name for itself. A port may show it outside the page, but never in row 0, which belongs to the receiver (REQ-SEC-005).
 - **`services`,** the linked channels, gives each one a short name, a display name, and either `channel`, the address of the linked channel's folder in the form of REQ-WEB-023, or `descriptor`, the address of a descriptor service (REQ-WEB-018). An entry with both, or neither, shall be refused.
 - **`font`,** which named the channel's font, was withdrawn on 23 October 2026 (decision E.111): it is an unknown member.
-- **`aliases`, `refresh`, `push` and `form_origins`** are as REQ-WEB-002 defines them. A push address shall be on the channel's origin, in any folder.
+- **`form_origins`,** which listed the origins a form could submit to, was withdrawn on 27 October 2026 with the TTI Form Extension (decision E.126): it is an unknown member.
+- **`aliases`, `refresh` and `push`** are as REQ-WEB-002 defines them. A push address shall be on the channel's origin, in any folder.
 
 Unknown members shall be refused, as REQ-WEB-002 requires of every descriptor.
 *Verification:* Tests of an empty object, of each member alone, of `page_template`, of a linked channel given each way and both ways, of a push address on another origin, and of an unknown member.
+*Amended 27 October 2026 (decision E.126):* `form_origins` is withdrawn, and refused as an unknown member.
 
 **REQ-WEB-025 — `contents.txt`.**
 `contents.txt` lists a channel's sections, pages and linked channels, in the order they shall be shown (decision E.70 item 8). It shall be read by a strict, bounded reader:
@@ -437,13 +415,13 @@ Nothing in `contents.txt` is checked against the channel's files: a listed page 
 
 **REQ-WEB-026 — The channel is the boundary.**
 When a service is opened as a channel, the channel shall be the boundary for these rules (decision E.70 item 12). Each is stricter than the origin-based rule of the same name, which still applies.
-- **Cookies.** Each channel has its own cookie store, under the rules of REQ-WEB-006. A cookie set by a response to a request inside the channel's folder belongs to that channel, and so does one set by its push connection's handshake, wherever in the origin the push address is. A response from outside the folder, such as a permitted form target's or a redirect's elsewhere, shall set and clear no cookies; the folder's upgrade to `https` on the same host (REQ-WEB-021) counts as inside it (decision E.114 item 2). A `Path` attribute outside the folder, including the default path, shall be narrowed to the folder; a `Path` inside it is kept. A channel's cookies shall be sent only with requests inside its folder, with its push connection, and with its form submissions, and never with another channel's requests, even on the same origin.
-- **Forms.** A form shall submit only to an address inside the channel's folder, or to an origin that `channel.json` lists in `form_origins` (REQ-WEB-008). A form whose target is elsewhere shall be refused before anything is sent, with the target shown.
+- **Cookies.** Each channel has its own cookie store, under the rules of REQ-WEB-006. A cookie set by a response to a request inside the channel's folder belongs to that channel, and so does one set by its push connection's handshake, wherever in the origin the push address is. A response from outside the folder, such as a redirect's elsewhere, shall set and clear no cookies; the folder's upgrade to `https` on the same host (REQ-WEB-021) counts as inside it (decision E.114 item 2). A `Path` attribute outside the folder, including the default path, shall be narrowed to the folder; a `Path` inside it is kept. A channel's cookies shall be sent only with requests inside its folder and with its push connection, and never with another channel's requests, even on the same origin.
 - **Push.** The push connection named in `channel.json` shall be on the channel's origin, and may be in any folder.
 - **Redirects.** As REQ-WEB-021 says.
 - **Links.** An address that is a page file in the channel's own folder is a page of the channel, followed at once. Every other address leads to another channel, and is reported to the port as such; the port decides how the viewer confirms it.
-*Reason:* On a shared host, another folder is often another person. The channel must not share a session, a form target or a link's trust with its neighbours.
-*Verification:* Tests with two channels on one origin: their cookies are kept apart, including a cookie set with `Path=/` by a page and by a push handshake (`a_push_handshake_cookie_stays_in_its_channel_folder`, finding F-15, which fails on the code before 24 October 2026); a form target's response stores none (`a_response_from_outside_the_channel_stores_no_cookies`, finding F-42, likewise); a form targeting the other channel's folder is refused; a link and a redirect into the other folder are reported as leaving the channel.
+*Reason:* On a shared host, another folder is often another person. The channel must not share a session or a link's trust with its neighbours.
+*Verification:* Tests with two channels on one origin: their cookies are kept apart, including a cookie set with `Path=/` by a page and by a push handshake (`a_push_handshake_cookie_stays_in_its_channel_folder`, finding F-15, which fails on the code before 24 October 2026); a response redirected from outside the folder stores none (`a_response_from_outside_the_channel_stores_no_cookies`, finding F-42); a link and a redirect into the other folder are reported as leaving the channel.
+*Amended 27 October 2026 (decision E.126):* the rule for forms is withdrawn with them, and a channel's cookies are no longer sent with form submissions. The test of finding F-42 reaches outside the folder by a redirect now, where it used a permitted form target.
 
 **REQ-WEB-027 — Media types and content checks of a channel's files.**
 No teletext media type is registered, and common hosts send generic types (decision E.70 item 11). A channel's files shall therefore be accepted with these media types, whatever their parameters, such as `charset`:

@@ -18,7 +18,6 @@ use neoteletext_web::bytes::Writer;
 use neoteletext_web::cookie::{CookieJar, Cookies};
 #[cfg(feature = "cookies")]
 use neoteletext_web::cookie::{CookieRejected, Site};
-use neoteletext_web::form::{FormMethod, FormSubmission};
 use neoteletext_web::http::MediaType;
 use neoteletext_web::port::{ConnectionId, Pump, Security};
 use neoteletext_web::url::IpAddress;
@@ -181,7 +180,7 @@ fn pages(records: &[Rec]) -> Vec<&Rec> {
 
 fn descriptor(extra: &str) -> Vec<u8> {
     format!(
-        r#"{{"name":"Test","initial_page":"100","page_template":"/p/{{mpp}}","form_origins":["http://forms.example"],
+        r#"{{"name":"Test","initial_page":"100","page_template":"/p/{{mpp}}",
             "services":[{{"name":"other","display_name":"Other","descriptor":"http://other.example/d.json"}}]{extra}}}"#
     )
     .into_bytes()
@@ -236,13 +235,12 @@ fn assert_profile_headers(replay: &Replay) {
         if !names.contains(&"upgrade".to_string()) {
             assert_eq!(header_value(request, "Accept-Encoding").as_deref(), Some("identity"));
         }
-        let is_post = request_line.starts_with("POST ");
-        assert_eq!(names.contains(&"content-type".to_string()), is_post, "Content-Type only on form submissions");
+        assert!(!names.contains(&"content-type".to_string()), "no request has a body to type");
     }
 }
 
 fn plain_service() -> Harness {
-    let mut replay = Replay::new(&[("tt.example", PUBLIC), ("forms.example", PUBLIC_2), ("evil.example", PRIVATE)]);
+    let mut replay = Replay::new(&[("tt.example", PUBLIC), ("evil.example", PRIVATE)]);
     replay.reply("tt.example:80", json_response(&descriptor("")));
     let mut harness = Harness::new(Config::default(), replay);
     let records = harness.open("http://tt.example/service.json");
@@ -623,206 +621,6 @@ fn descriptor_rejections() {
     harness.advance(SECOND);
     assert!(has_event(&harness.open("https://secure.example/c.json"), "DescriptorRejected(Downgrade(PageTemplate))"));
     assert!(has_event(&harness.open("ftp://x.example/"), "DescriptorFailed(Address(Scheme))"));
-}
-
-fn submission<'a>(page_url: &'a str, target: &'a str, fields: &'a [(&'a str, &'a str)]) -> FormSubmission<'a> {
-    FormSubmission {
-        page_url,
-        method: FormMethod::Post,
-        target,
-        fields,
-        token: Some("5f2c9a17e0"),
-        action: Some("send_contact"),
-    }
-}
-
-#[test]
-#[cfg(feature = "forms")]
-fn form_over_plain_http_needs_the_warning_every_time() {
-    let mut harness = plain_service();
-    harness.replay().reply("tt.example:80", Reply::Bytes(response("200 OK", &["Content-Type: text/plain"], b"ok")));
-    harness.replay().reply("tt.example:80", Reply::Bytes(response("500 Error", &[], b"")));
-    let fields = [("name", "Ann Smith"), ("email", "ann@example.org")];
-    harness.input(Input::Submit(submission("http://tt.example/p/400", "/contact", &fields)));
-    let records = harness.take();
-    assert!(
-        has_event(
-            &records,
-            "ConfirmSubmission { host: \"tt.example\", port: 80, secure: false, plain_http: true, first_to_origin: true }"
-        ),
-        "{records:?}"
-    );
-    assert!(harness.replay().requests_to("tt.example:80").len() == 1, "nothing sent before confirmation");
-    // Only one submission at a time.
-    harness.input(Input::Submit(submission("http://tt.example/p/400", "/contact", &fields)));
-    assert!(has_event(&harness.take(), "SubmissionRefused(Busy)"));
-    harness.input(Input::ConfirmSubmission(true));
-    assert!(has_event(&harness.take(), "SubmissionSucceeded { status: 200 }"));
-    let post = harness.replay().requests_to("tt.example:80").pop().unwrap();
-    let text = String::from_utf8(post.clone()).unwrap();
-    assert!(text.starts_with("POST /contact HTTP/1.1\r\n"));
-    assert_eq!(header_value(&post, "Content-Type").as_deref(), Some("application/x-www-form-urlencoded"));
-    assert!(
-        text.ends_with("\r\n\r\nname=Ann+Smith&email=ann%40example.org&ttx_token=5f2c9a17e0&ttx_action=send_contact"),
-        "{text}"
-    );
-    // The second submission to the same plain origin still warns.
-    harness.input(Input::Submit(submission("http://tt.example/p/400", "/contact", &fields)));
-    assert!(has_event(
-        &harness.take(),
-        "ConfirmSubmission { host: \"tt.example\", port: 80, secure: false, plain_http: true, first_to_origin: false }"
-    ));
-    harness.input(Input::ConfirmSubmission(true));
-    assert!(has_event(&harness.take(), "SubmissionFailed { status: Some(500), failure: None }"));
-    // Declining sends nothing.
-    harness.input(Input::Submit(submission("http://tt.example/p/400", "/contact", &fields)));
-    harness.input(Input::ConfirmSubmission(false));
-    assert!(has_event(&harness.take(), "SubmissionCancelled"));
-    assert_profile_headers(harness.replay());
-}
-
-#[test]
-#[cfg(feature = "forms")]
-fn form_destinations_are_restricted() {
-    let mut harness = plain_service();
-    let fields = [("a", "1")];
-    harness.input(Input::Submit(submission("http://tt.example/p/400", "http://evil.example/steal", &fields)));
-    assert!(has_event(&harness.take(), "SubmissionRefused(Origin)"));
-    harness.input(Input::Submit(submission("http://tt.example/p/400", "http://tt.example:8080/x", &fields)));
-    assert!(has_event(&harness.take(), "SubmissionRefused(Origin)"));
-    // An origin the descriptor lists.
-    harness.replay().reply("forms.example:80", Reply::Bytes(response("204 No Content", &[], b"")));
-    harness.input(Input::Submit(submission("http://tt.example/p/400", "http://forms.example/in", &fields)));
-    harness.input(Input::ConfirmSubmission(true));
-    assert!(has_event(&harness.take(), "SubmissionSucceeded { status: 204 }"));
-}
-
-/// Finding F-16 (decision E.112; the review's probe E): a form sent to a
-/// permitted origin that answers 307 or 308 is not sent again to a third
-/// origin, which would get the viewer's values and the token with no check
-/// and no confirmation. A 307 within the target's origin is followed.
-#[test]
-#[cfg(feature = "forms")]
-fn a_form_redirected_with_its_method_kept_stays_on_its_target_origin() {
-    for status in ["307 Temporary Redirect", "308 Permanent Redirect"] {
-        let mut harness = plain_service();
-        harness.replay().resolve.insert("third.example".to_string(), PUBLIC);
-        let away = response(status, &["Location: http://third.example/collect"], b"");
-        harness.replay().reply("forms.example:80", Reply::Bytes(away));
-        harness.replay().reply("third.example:80", Reply::Bytes(response("204 No Content", &[], b"")));
-        let fields = [("a", "1")];
-        harness.input(Input::Submit(submission("http://tt.example/p/400", "http://forms.example/in", &fields)));
-        harness.input(Input::ConfirmSubmission(true));
-        let records = harness.take();
-        assert!(has_event(&records, "SubmissionRefused(Origin)"), "{status}: {records:?}");
-        assert!(harness.replay().requests_to("third.example:80").is_empty(), "{status}: nothing to the third origin");
-    }
-    // Within the target's origin, the method and body are kept.
-    let mut harness = plain_service();
-    let along = response("307 Temporary Redirect", &["Location: /in/again"], b"");
-    harness.replay().reply("forms.example:80", Reply::Bytes(along));
-    harness.replay().reply("forms.example:80", Reply::Bytes(response("204 No Content", &[], b"")));
-    let fields = [("a", "1")];
-    harness.input(Input::Submit(submission("http://tt.example/p/400", "http://forms.example/in", &fields)));
-    harness.input(Input::ConfirmSubmission(true));
-    assert!(has_event(&harness.take(), "SubmissionSucceeded { status: 204 }"));
-    let last = harness.replay().requests_to("forms.example:80").last().unwrap().clone();
-    assert!(String::from_utf8_lossy(&last).starts_with("POST /in/again HTTP/1.1"));
-}
-
-#[test]
-#[cfg(feature = "forms")]
-fn form_responses() {
-    let mut replay = Replay::new(&[("secure.example", PUBLIC)]);
-    replay
-        .reply("secure.example:443", json_response(br#"{"name":"S","initial_page":"100","page_template":"/p/{mpp}"}"#));
-    replay.reply(
-        "secure.example:443",
-        Reply::Bytes(response("303 See Other", &["Location: /thanks", "Set-Cookie: s=2; Secure; Path=/"], b"")),
-    );
-    replay.reply("secure.example:443", tti_response(&[]));
-    replay.reply("secure.example:443", Reply::Close);
-    let mut harness = Harness::new(Config::default(), replay);
-    harness.open("https://secure.example/d.json");
-    let fields = [("q", "x")];
-    harness.input(Input::Submit(submission("https://secure.example/p/400", "/f", &fields)));
-    assert!(has_event(
-        &harness.take(),
-        "ConfirmSubmission { host: \"secure.example\", port: 443, secure: true, plain_http: false, first_to_origin: true }"
-    ));
-    harness.input(Input::ConfirmSubmission(true));
-    let records = harness.take();
-    assert!(has_event(&records, "SubmissionPage"), "{records:?}");
-    let Rec::Page { source, url, .. } = pages(&records)[0] else { unreachable!() };
-    assert_eq!(*source, Source::Form);
-    assert_eq!(url, "https://secure.example/thanks");
-    let requests = harness.replay().requests_to("secure.example:443");
-    assert!(String::from_utf8_lossy(requests.last().unwrap()).starts_with("GET /thanks HTTP/1.1"), "303 becomes GET");
-    // Second submission to a confirmed HTTPS origin: no confirmation. The
-    // server closes without answering: a network failure.
-    harness.input(Input::Submit(submission("https://secure.example/p/400", "/f", &fields)));
-    let records = harness.take();
-    assert!(!has_event(&records, "ConfirmSubmission"));
-    assert!(has_event(&records, "SubmissionFailed { status: None, failure: Some(Network) }"), "{records:?}");
-}
-
-#[test]
-#[cfg(feature = "forms")]
-fn get_form_puts_values_in_the_query() {
-    let mut harness = plain_service();
-    harness.replay().reply("tt.example:80", tti_response(&[]));
-    let fields = [("q", "a b")];
-    let form =
-        FormSubmission { method: FormMethod::Get, ..submission("http://tt.example/p/400", "/search?old=1", &fields) };
-    harness.input(Input::Submit(form));
-    harness.input(Input::ConfirmSubmission(true));
-    let request = harness.replay().requests_to("tt.example:80").pop().unwrap();
-    assert!(
-        String::from_utf8_lossy(&request)
-            .starts_with("GET /search?q=a+b&ttx_token=5f2c9a17e0&ttx_action=send_contact HTTP/1.1")
-    );
-    assert_eq!(header_value(&request, "Content-Length"), None);
-}
-
-#[test]
-#[cfg(all(feature = "forms", feature = "cookies"))]
-fn cross_origin_form_sends_only_same_site_none_secure_cookies() {
-    let mut replay = Replay::new(&[("secure.example", PUBLIC), ("forms.example", PUBLIC_2)]);
-    replay.reply(
-        "secure.example:443",
-        json_response(
-            br#"{"name":"S","initial_page":"100","page_template":"/p/{mpp}","form_origins":["https://forms.example"]}"#,
-        ),
-    );
-    replay.reply(
-        "forms.example:443",
-        Reply::Bytes(response(
-            "200 OK",
-            &[
-                "Set-Cookie: lax=1; Secure; Path=/",
-                "Set-Cookie: none=1; Secure; SameSite=None; Path=/",
-                "Content-Type: text/plain",
-            ],
-            b"",
-        )),
-    );
-    replay.reply("forms.example:443", Reply::Bytes(response("200 OK", &["Content-Type: text/plain"], b"")));
-    replay.reply("forms.example:443", Reply::Bytes(response("200 OK", &["Content-Type: text/plain"], b"")));
-    let mut harness = Harness::new(Config::default(), replay);
-    harness.open("https://secure.example/d.json");
-    let fields = [("a", "1")];
-    // Same-origin submission on the forms host sets its cookies.
-    harness.input(Input::Submit(submission("https://forms.example/form", "/in", &fields)));
-    harness.input(Input::ConfirmSubmission(true));
-    harness.take();
-    harness.input(Input::Submit(submission("https://forms.example/form", "/in", &fields)));
-    let same = harness.replay().requests_to("forms.example:443").pop().unwrap();
-    assert_eq!(header_value(&same, "Cookie").as_deref(), Some("lax=1; none=1"));
-    // Cross-origin, from the service's page.
-    harness.input(Input::Submit(submission("https://secure.example/p/400", "https://forms.example/in", &fields)));
-    harness.input(Input::ConfirmSubmission(true));
-    let cross = harness.replay().requests_to("forms.example:443").pop().unwrap();
-    assert_eq!(header_value(&cross, "Cookie").as_deref(), Some("none=1"));
 }
 
 #[test]
@@ -1356,19 +1154,6 @@ fn push_not_compiled_in_is_reported_and_never_connects() {
 }
 
 #[test]
-#[cfg(not(feature = "forms"))]
-fn form_submission_not_compiled_in_is_refused_and_sends_nothing() {
-    let mut harness = plain_service();
-    let before = harness.replay().requests.len();
-    let fields = [("name", "Ann Smith")];
-    harness.input(Input::Submit(submission("http://tt.example/p/400", "/contact", &fields)));
-    harness.input(Input::ConfirmSubmission(true));
-    let records = harness.take();
-    assert_eq!(events(&records), ["SubmissionRefused(NotCompiledIn)"]);
-    assert_eq!(harness.replay().requests.len(), before, "no request was made");
-}
-
-#[test]
 #[cfg(not(feature = "cookies"))]
 fn cookies_not_compiled_in_are_reported_and_never_kept() {
     const UNIX_NOW: u64 = 1_791_590_400;
@@ -1627,26 +1412,6 @@ fn contents_are_fetched_on_request() {
 }
 
 #[test]
-#[cfg(feature = "forms")]
-fn a_channel_form_submits_only_inside_its_folder() {
-    let mut harness = site_harness(Config::default());
-    harness.replay().reply("site.example:80", json_response(br#"{"form_origins":["http://other.example"]}"#));
-    harness.replay().reply("site.example:80", not_found());
-    harness.open_channel("http://site.example/one/");
-    let fields = [("a", "1")];
-    harness.input(Input::Submit(submission("http://site.example/one/100.tti", "/two/send", &fields)));
-    assert!(has_event(&harness.take(), "SubmissionRefused(Origin)"), "another folder of the same origin");
-    harness.replay().reply("site.example:80", Reply::Bytes(response("204 No Content", &[], b"")));
-    harness.input(Input::Submit(submission("http://site.example/one/100.tti", "/one/api/send", &fields)));
-    harness.input(Input::ConfirmSubmission(true));
-    assert!(has_event(&harness.take(), "SubmissionSucceeded { status: 204 }"), "inside the folder");
-    harness.replay().reply("other.example:80", Reply::Bytes(response("204 No Content", &[], b"")));
-    harness.input(Input::Submit(submission("http://site.example/one/100.tti", "http://other.example/in", &fields)));
-    harness.input(Input::ConfirmSubmission(true));
-    assert!(has_event(&harness.take(), "SubmissionSucceeded { status: 204 }"), "a listed origin");
-}
-
-#[test]
 #[cfg(feature = "cookies")]
 fn a_channel_cookie_set_for_the_whole_host_stays_in_its_folder() {
     let mut harness = site_harness(Config::default());
@@ -1694,23 +1459,22 @@ fn a_push_handshake_cookie_stays_in_its_channel_folder() {
 }
 
 /// Finding F-42 (decision E.114 item 2): a response from outside the
-/// channel's folder, here a permitted form target on another origin,
-/// stores no cookies; it was stored under the channel's folder on that
-/// origin. A response after an upgrade to `https` on the channel's host
-/// and folder is inside the channel, and stores its cookies.
+/// channel's folder, here a page redirected to another origin, stores no
+/// cookies; it was stored under the channel's folder on that origin. A
+/// response after an upgrade to `https` on the channel's host and folder is
+/// inside the channel, and stores its cookies.
 #[test]
-#[cfg(all(feature = "forms", feature = "cookies"))]
+#[cfg(feature = "cookies")]
 fn a_response_from_outside_the_channel_stores_no_cookies() {
     let mut harness = site_harness(Config::default());
-    harness.replay().reply("site.example:80", json_response(br#"{"form_origins":["http://other.example"]}"#));
+    harness.replay().reply("site.example:80", not_found());
     harness.replay().reply("site.example:80", not_found());
     harness.open_channel("http://site.example/one/");
-    let set = response("204 No Content", &["Set-Cookie: t=1; Path=/"], b"");
-    harness.replay().reply("other.example:80", Reply::Bytes(set));
-    let fields = [("a", "1")];
-    harness.input(Input::Submit(submission("http://site.example/one/100.tti", "http://other.example/in", &fields)));
-    harness.input(Input::ConfirmSubmission(true));
-    assert!(has_event(&harness.take(), "SubmissionSucceeded { status: 204 }"));
+    let away = response("302 Found", &["Location: http://other.example/in/100.tti"], b"");
+    harness.replay().reply("site.example:80", Reply::Bytes(away));
+    harness.replay().reply("other.example:80", tti_response(&["Set-Cookie: t=1; Path=/"]));
+    harness.fetch(0x100);
+    assert_eq!(paths(&mut harness, "other.example:80"), ["/in/100.tti"], "the redirect was followed");
     assert!(
         harness.agent.cookies().cookies().all(|cookie| cookie.host != b"other.example"),
         "nothing stored from outside the channel"

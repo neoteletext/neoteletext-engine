@@ -29,9 +29,8 @@ const LAYER_TABLE: &[(&str, &[&str])] = &[
     ("compose", &["acq", "level1", "level15", "enhance", "joining"]),
     ("glyphs", &["charset"]),
     ("render", &["glyphs", "level1", "colour"]),
-    ("viewer", &["acq", "level1", "compose", "colour", "render", "service", "nav", "forms", "charset"]),
-    ("nav", &["acq", "level1", "level15", "enhance", "colour", "render", "service", "forms", "charset"]),
-    ("forms", &["acq", "level1", "level15", "enhance", "colour", "render", "service", "charset"]),
+    ("viewer", &["acq", "level1", "compose", "colour", "render", "service", "nav", "charset"]),
+    ("nav", &["acq", "level1", "level15", "enhance", "colour", "render", "service", "charset"]),
     ("port", &[]),
     ("policy", &[]),
     ("config", &[]),
@@ -99,7 +98,7 @@ mod tests {
     /// the check, as cutting the file at its first `#[cfg(test)]` did.
     #[test]
     fn a_file_with_an_early_test_item_is_still_scanned() {
-        let source = "#[cfg(test)]\nuse crate::render::Grid;\n\nuse crate::viewer::Viewer;\n\n#[cfg(test)]\nmod tests {\n    use crate::forms::FormModel;\n}\n";
+        let source = "#[cfg(test)]\nuse crate::render::Grid;\n\nuse crate::viewer::Viewer;\n\n#[cfg(test)]\nmod tests {\n    use crate::nav::History;\n}\n";
         assert_eq!(uses(&production_text(source)), BTreeSet::from(["viewer".to_string()]));
     }
 }

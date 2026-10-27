@@ -6,7 +6,6 @@ use neoteletext_core::types::Instant;
 
 use super::{Event, Failure, Input, Output, PushPhase, Sink, UserAgent, event};
 use crate::channel;
-use crate::form::FormRefused;
 use crate::port::{ConnectionId, NetInput, RandomSource};
 use crate::url::{Url, UrlError};
 
@@ -36,19 +35,6 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
             Input::FollowLink { service, page, subcode } => self.follow_link(service, page, subcode, sink),
             Input::FetchPage { page, subcode } => self.enqueue(page, subcode, sink),
             Input::Subscribe(subscription) => self.subscribe(now, subscription, sink),
-            Input::Submit(submission) => {
-                if cfg!(feature = "forms") {
-                    self.submit(&submission, sink);
-                } else {
-                    event(sink, Event::SubmissionRefused(FormRefused::NotCompiledIn));
-                }
-            }
-            // Without forms nothing ever waits for a confirmation.
-            Input::ConfirmSubmission(confirmed) => {
-                if cfg!(feature = "forms") {
-                    self.confirm(confirmed, sink);
-                }
-            }
             Input::WipeCookies => self.wipe_cookies(),
             Input::WallClock(unix) => self.wall_clock = Some((now, unix)),
             Input::Send(message) => self.send_input(message, sink),

@@ -120,8 +120,6 @@ pub const DEFAULT_HEADER_LIMIT: usize = 16 * 1024;
 /// Default room for one outgoing request: request line, headers and
 /// cookies.
 pub const DEFAULT_REQUEST_LIMIT: usize = 16 * 1024;
-/// Default room for an encoded form body.
-pub const DEFAULT_FORM_LIMIT: usize = 4 * 1024;
 
 /// Header names this client sends or reads (REQ-WEB-014). Compared without
 /// regard to letter case (RFC 9110 section 5.1).
@@ -206,7 +204,7 @@ pub const CONNECTION_UPGRADE: &[u8] = b"Upgrade";
 /// The upgrade token for WebSocket (RFC 6455 section 4.1).
 pub const UPGRADE_WEBSOCKET: &[u8] = b"websocket";
 
-/// Media types (REQ-WEB-003, REQ-WEB-002, REQ-WEB-005, REQ-WEB-011).
+/// Media types (REQ-WEB-003, REQ-WEB-002, REQ-WEB-005).
 pub mod media {
     /// A TTI page file, defined by this project.
     pub const TTI: &[u8] = b"text/x-teletext-tti";
@@ -223,8 +221,6 @@ pub mod media {
     pub const JSON: &[u8] = b"application/json";
     /// A server-sent event stream.
     pub const EVENT_STREAM: &[u8] = b"text/event-stream";
-    /// Form submissions (WHATWG URL Standard section 5).
-    pub const FORM_URLENCODED: &[u8] = b"application/x-www-form-urlencoded";
 }
 
 /// Cache-Control directives honoured (RFC 9111 section 5.2.2).
@@ -424,8 +420,6 @@ pub const MAX_JSON_DEPTH: usize = 16;
 // Service descriptor (REQ-WEB-002)
 // ---------------------------------------------------------------------------
 
-/// The most permitted form origins a descriptor may list.
-pub const MAX_FORM_ORIGINS: usize = 8;
 /// The most other services a descriptor may list.
 pub const MAX_LINKED_SERVICES: usize = 16;
 /// The longest service name or display name kept.
@@ -434,15 +428,6 @@ pub const MAX_SERVICE_NAME: usize = 64;
 pub const MAX_SHORT_NAME: usize = 32;
 /// The highest character set region (decision E.4): a 4-bit group.
 pub const MAX_REGION: u8 = 15;
-
-// ---------------------------------------------------------------------------
-// Forms (REQ-WEB-011, Appendix C)
-// ---------------------------------------------------------------------------
-
-/// The field carrying the form token (REQ-WEB-011).
-pub const FIELD_TOKEN: &[u8] = b"ttx_token";
-/// The field naming the submit button pressed (REQ-WEB-011).
-pub const FIELD_ACTION: &[u8] = b"ttx_action";
 
 // ---------------------------------------------------------------------------
 // The zxnet live feed (REQ-INP-022)
@@ -512,8 +497,6 @@ pub const PAGE_QUEUE: usize = 16;
 pub const CACHE_ENTRIES: usize = 32;
 /// Hosts remembered as reached over HTTPS this session (REQ-SEC-007).
 pub const SECURE_HOSTS: usize = 32;
-/// Origins whose first form submission has been confirmed (REQ-SEC-009).
-pub const CONFIRMED_ORIGINS: usize = 16;
 /// Local-network addresses the configuration may allow (REQ-SEC-006).
 pub const ALLOWED_LOCAL: usize = 4;
 /// Pages a push subscription may name (REQ-WEB-005).

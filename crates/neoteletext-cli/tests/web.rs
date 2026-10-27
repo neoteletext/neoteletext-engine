@@ -51,10 +51,10 @@ fn page_is_fetched_from_a_web_service() {
     let (ok, text, errors) = neottx(&["text", &url, "100", "--allow-local", "127.0.0.1", "--duration", "15"]);
     assert!(ok, "neottx failed: {errors}");
     assert!(text.contains("NEOTELETEXT TEST SERVICE"), "{text}");
-    assert!(text.contains("Contact form"), "{text}");
+    assert!(text.contains("News ....."), "{text}");
     // The TTI Link Extension row drawn from the LN lines (REQ-NAV-011).
     let row24 = text.lines().nth(24).unwrap_or_default();
-    assert!(row24.contains("Weather") && row24.contains("Contact"), "row 24: {row24:?}");
+    assert!(row24.contains("Weather") && row24.contains("News"), "row 24: {row24:?}");
 }
 
 #[test]
@@ -82,7 +82,7 @@ fn faults_do_not_crash_the_receiver() {
 
 #[cfg(feature = "view")]
 #[test]
-fn viewer_fills_and_submits_a_form() {
+fn viewer_shows_pages_and_follows_links() {
     let Some(server) = server() else { return };
     let script = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/web-server/drive_viewer.py");
     let output = Command::new("python3")

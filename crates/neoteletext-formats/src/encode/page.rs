@@ -116,7 +116,6 @@ fn triplets_with_marks(
 /// and packets 28. A display page then sends packets 26 in ascending
 /// designation code and the rows (item 2); a page for further processing
 /// ([`is_enhancement_page`]) sends the rows and then packets 26 (item 3).
-/// Form commands are never transmitted (Appendix C.6).
 pub fn encode_page(page: &PageFile, out: &mut dyn FnMut(Packet)) {
     let magazine = page.address.magazine;
     let further_processing = is_enhancement_page(page);

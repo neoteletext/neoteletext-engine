@@ -41,7 +41,7 @@ fn entry_rejects_invalid_digits() {
 #[test]
 fn history_back_forward_and_clearing() {
     let mut history: History<3> = History::new();
-    let entry = |mpp| HistoryEntry { service: 0, address: page(mpp), subcode: SubCode::ANY, from_form: false };
+    let entry = |mpp| HistoryEntry { service: 0, address: page(mpp), subcode: SubCode::ANY };
     history.visit(entry(0x100));
     history.visit(entry(0x200));
     history.visit(entry(0x300));
@@ -128,7 +128,7 @@ fn entry_refuses_hexadecimal_digits() {
 fn history_ignores_repeats_and_can_be_wiped() {
     let mut history: History<4> = History::default();
     assert_eq!((history.current(), history.can_go_back(), history.can_go_forward()), (None, false, false));
-    let entry = |mpp| HistoryEntry { service: 0, address: page(mpp), subcode: SubCode::ANY, from_form: false };
+    let entry = |mpp| HistoryEntry { service: 0, address: page(mpp), subcode: SubCode::ANY };
     history.visit(entry(0x100));
     history.visit(entry(0x100));
     assert!(!history.can_go_back(), "the same page twice is one entry");

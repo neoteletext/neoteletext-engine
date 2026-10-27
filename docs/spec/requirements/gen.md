@@ -90,7 +90,7 @@ The project shall be a single Cargo workspace with these crates. Each optional c
 | `neoteletext-core` | Everything listed in REQ-GEN-002 | `no_std`, no allocation |
 | `neoteletext-formats` | The streaming readers, writers and page encoder of area INP | `no_std` readers. Writers and file helpers behind an `std` feature. |
 | `neoteletext-slicer` | The software data slicer (area SLC) | `no_std`; a `fixed-point` feature (REQ-SLC-015) |
-| `neoteletext-web` | The web-native protocols: HTTP, WebSockets, server-sent events, cookies and forms (area WEB), and the live feed reader of REQ-INP-022 | `no_std`, written "sans-IO": it consumes and produces bytes and events, and never performs input or output itself |
+| `neoteletext-web` | The web-native protocols: HTTP, WebSockets, server-sent events and cookies (area WEB), and the live feed reader of REQ-INP-022 | `no_std`, written "sans-IO": it consumes and produces bytes and events, and never performs input or output itself |
 | `neoteletext-image` | The pixel-format helpers (REQ-RND-018) and the image writers (REQ-RND-007) | Helpers `no_std`; image writers need `std` |
 | `neoteletext-app` | The application layer shared by `neottx` and a windowed viewer: sessions, inputs, the two processes of live mode, sandboxing (decision E.61) | `std` |
 | `neoteletext-cli` | The command-line program `neottx` (area CLI) | `std` |
@@ -100,6 +100,7 @@ A development-tools package (`xtask`) holds project automation that is not part 
 
 Features shall be additive. Each crate's optional areas are features, as decision E.61 lists. `cargo xtask features` builds, lints and tests each library and application crate with no optional area and with each area alone, and the workspace tests run with every feature. The mapping of the core modules of REQ-ARCH-001 to Rust modules shall be one module each within `neoteletext-core`.
 *Verification:* Continuous integration.
+*Amended 27 October 2026 (decision E.126):* forms leave the web crate's contents, since they are withdrawn.
 
 **REQ-GEN-011 — Public interface conventions.**
 - **Conventions.** The public interface shall follow the Rust API Guidelines.
@@ -107,9 +108,10 @@ Features shall be additive. Each crate's optional areas are features, as decisio
 - **Configuration.** Configuration is a plain struct with a `Default` implementation and named profile constructors (area PRF).
 - **Documentation.** Every public item is documented.
 - **Stability.** Crates follow semantic versioning, checked with `cargo-semver-checks` before each release.
-- **Identifier prefixes.** The prefix `ttx_` is kept only for identifiers visible outside Rust: the C interface and the form field names `ttx_token` and `ttx_action` of Appendix C.
+- **Identifier prefixes.** The prefix `ttx_` is kept only for identifiers visible outside Rust: the C interface.
 
 *Verification:* Inspection; `cargo-semver-checks` in the release process.
+*Amended 27 October 2026 (decision E.126):* the form field names `ttx_token` and `ttx_action` are withdrawn with the TTI Form Extension.
 
 **REQ-GEN-012 — Provenance and licensing.**
 The repository shall contain a licence file for the project. It shall also contain a provenance record listing:
@@ -210,10 +212,11 @@ The size check of REQ-GEN-009 shall measure the same image.
 *Verification:* Continuous integration, including a test that a deliberately added floating-point operation makes the check fail.
 
 **REQ-GEN-020 — Capability features and the modern-classic profile.**
-`neoteletext-core` shall offer the capability features of decisions E.71 and E.105, `objects`, `side-panels`, `level25-32colors`, `level35-32colors` (which turns on `level25-32colors`) and `additional-flash-functions` (which needs `nonspacing-attributes`), each needing `level25`. A build without one of them shall contain neither the decoding nor the drawing of that capability, and shall treat its page data as decision E.71 item 1 says, never as an error. The feature `modern-classic` shall turn on `level15`, `level25`, `render`, `original`, `viewer`, `forms` and `objects`, and nothing else.
+`neoteletext-core` shall offer the capability features of decisions E.71 and E.105, `objects`, `side-panels`, `level25-32colors`, `level35-32colors` (which turns on `level25-32colors`) and `additional-flash-functions` (which needs `nonspacing-attributes`), each needing `level25`. A build without one of them shall contain neither the decoding nor the drawing of that capability, and shall treat its page data as decision E.71 item 1 says, never as an error. The feature `modern-classic` shall turn on `level15`, `level25`, `render`, `original`, `viewer` and `objects`, and nothing else.
 *Amended 20 October 2026 (decision E.95):* DRCS is not decoded, and the parts of this requirement that concerned it are removed.
 *Amended 20 October 2026 (decision E.96):* the Level 3.5 font styles are not drawn, and the parts of this requirement that concerned them are removed.
 *Verification:* `cargo xtask features` builds, lints and tests the core with `level25` alone and with `modern-classic`; a test checks each capability compiled out; `cargo xtask size` reports the image of the profile beside the full one.
+*Amended 27 October 2026 (decision E.126):* `modern-classic` no longer turns on `forms`, which is removed with the TTI Form Extension.
 
 **REQ-GEN-018 — Optional C interface.**
 *Phase:* Phase 2 (whole requirement).
