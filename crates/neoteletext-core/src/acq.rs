@@ -19,6 +19,7 @@ mod enhancement;
 mod enhancement_pages;
 mod events;
 mod header;
+mod inventory;
 mod machines;
 mod page;
 mod reception;
@@ -32,9 +33,9 @@ pub use enhancement::{
 };
 
 pub use events::{Discard, Event, MagazineData};
-pub use page::StoredPage;
+pub use page::{Numbering, StoredPage};
 pub use statistics::{EnhancementFaults, EnhancementReport, PageBuild, Statistics};
-pub use store::PageStore;
+pub use store::{PageStore, SubCodes};
 
 /// Search state of the requested page (REQ-ACQ-012).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

@@ -14,23 +14,14 @@
 
 use super::MagazineData;
 use crate::consts::{
-    C4_ERASE, DATA_BYTES, DESIGNATION_CODES, ENHANCEMENT_SUBPAGE_PACKETS, MAGAZINES, NIBBLE_MASK, PACKET_ROW_25,
-    PAGE_MOT,
+    C4_ERASE, DATA_BYTES, DESIGNATION_CODES, ENHANCEMENT_SUBPAGE_PACKETS, MAGAZINES, PACKET_ROW_25, PAGE_MOT,
 };
+use crate::limits::{PAGE_MIP, enhancement_last_packet, enhancement_sub_page, enhancement_update};
 use crate::packet::PageFormat;
 use crate::types::{ControlBits, Instant, Magazine, PageAddress, PageNumber, SubCode};
 
 /// A pool slot that belongs to no sub-page.
 const FREE: u16 = u16::MAX;
-/// Shift of the update indicator S2 in a sub-code (Annex A.1).
-const S2_SHIFT: u32 = 4;
-/// Mask of S2 after the shift: three bits.
-const S2_MASK: u16 = 0x7;
-/// Shift of S3 in a sub-code; S4 S3 together give the last packet number
-/// of an enhancement page (Annex A.1).
-const S3_SHIFT: u32 = 8;
-/// Mask of the six bits of S4 S3 after the shift.
-const LAST_PACKET_MASK: u16 = 0x3F;
 
 /// The key of an enhancement sub-page: its page address and the sub-page
 /// number S1, which is all of the sub-code that names a sub-page of an
@@ -45,10 +36,11 @@ pub struct EnhancementKey {
 }
 
 impl EnhancementKey {
-    /// The key of the sub-page a sub-code belongs to.
+    /// The key of the sub-page a sub-code belongs to: S1 of the sub-code
+    /// nnXs alone (Annex A.1; REQ-NUM-022).
     #[must_use]
     pub const fn new(address: PageAddress, subcode: SubCode) -> Self {
-        Self { address, s1: subcode.value() as u8 & NIBBLE_MASK }
+        Self { address, s1: enhancement_sub_page(subcode.value()) }
     }
 }
 
@@ -143,7 +135,7 @@ impl<'s> EnhancementPage<'s> {
     /// X/26/15 (Annex A.1; REQ-ACQ-021).
     #[must_use]
     pub const fn last_packet(&self) -> u8 {
-        ((self.entry.subcode.value() >> S3_SHIFT) & LAST_PACKET_MASK) as u8
+        enhancement_last_packet(self.entry.subcode.value())
     }
 
     /// The page function and coding from the page's X/28/0 or X/28/3, if
@@ -343,7 +335,7 @@ impl<'a> EnhancementStore<'a> {
             }
         }
         let entry = self.sub_pages.get_mut(index)?;
-        let update = |subcode: SubCode| (subcode.value() >> S2_SHIFT) & S2_MASK;
+        let update = |subcode: SubCode| enhancement_update(subcode.value());
         if update(entry.subcode) != update(subcode) {
             entry.generation = entry.generation.wrapping_add(1);
         }
@@ -454,6 +446,13 @@ impl<'s> EnhancementLookup<'s> {
     #[must_use]
     pub fn magazine_organization_table(&self, magazine: Magazine) -> Option<EnhancementPage<'s>> {
         self.sub_page(magazine, PageNumber(PAGE_MOT), 0)
+    }
+
+    /// The Magazine Inventory Page of a magazine: page mFD, sub-page S1 = 0
+    /// only (clause 11.3.2; REQ-NUM-026).
+    #[must_use]
+    pub fn magazine_inventory_page(&self, magazine: Magazine) -> Option<EnhancementPage<'s>> {
+        self.sub_page(magazine, PageNumber(PAGE_MIP), 0)
     }
 
     /// The stored M/29 packets of a magazine (REQ-ACQ-018).

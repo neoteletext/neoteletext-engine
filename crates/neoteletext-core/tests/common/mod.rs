@@ -42,6 +42,7 @@ pub fn header(mpp: u16, subcode: u16, control: u16) -> Packet {
         ControlBits(control),
         &[with_odd_parity(b' '); 32],
     )
+    .unwrap()
 }
 
 /// A display row of magazine 1 from 7-bit codes, padded with spaces.

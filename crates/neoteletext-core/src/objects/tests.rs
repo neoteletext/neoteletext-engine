@@ -129,7 +129,7 @@ fn page_link(mpp: u16) -> PageLink {
 fn header(mpp: u16, s1: u8) -> Packet {
     let address = address(mpp);
     let display = [with_odd_parity(b' '); 32];
-    encode::header(address.magazine, address.page, SubCode::new(u16::from(s1)), ControlBits(0), &display)
+    encode::header(address.magazine, address.page, SubCode::new(u16::from(s1)), ControlBits(0), &display).unwrap()
 }
 
 /// Feeds the packets, ends every magazine's page with a time-filling

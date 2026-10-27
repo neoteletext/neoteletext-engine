@@ -95,7 +95,8 @@ fn stored_order_steps_to_stored_pages() {
         for (index, mpp) in pages.iter().copied().chain(filling).enumerate() {
             let address = page(mpp);
             let display = [with_odd_parity(b' '); 32];
-            let header = encode::header(address.magazine, address.page, SubCode::new(0), ControlBits(0), &display);
+            let header =
+                encode::header(address.magazine, address.page, SubCode::new(0), ControlBits(0), &display).unwrap();
             decoder.push(&header, &PacketMeta::default(), Instant(index as u64 * 1000), &mut |_| {});
         }
     };

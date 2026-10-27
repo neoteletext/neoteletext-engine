@@ -34,7 +34,7 @@ const _: () = assert!(control::MAX_BODY == 26);
 /// The highest page number a record may name: magazine 8 (written 0 on
 /// air), page FF. Pages with hexadecimal digits are addressable though no
 /// viewer types them (EN 300 706 clause 7.1.2), so a channel may use them.
-pub const LAST_ADDRESSABLE_PAGE: u16 = 0x8FF;
+pub const LAST_ADDRESSABLE_PAGE: u16 = neoteletext_core::limits::LAST_PAGE_ADDRESS;
 
 /// Whether `page` is a page number in the form records carry: magazine 1
 /// to 8 then two hexadecimal page digits.

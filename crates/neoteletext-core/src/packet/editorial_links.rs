@@ -3,6 +3,7 @@
 
 use super::{Packet, nibble};
 use crate::consts::{LINK_NULL_PAGE, LINK_NULL_SUBCODE, MAGAZINE_MASK};
+use crate::limits::sub_code;
 use crate::types::{Magazine, PageNumber, SubCode};
 
 /// One editorial link of packet X/27/0 (clause 9.6.1).
@@ -40,9 +41,8 @@ pub(super) fn page_reference(packet: &Packet, start: usize) -> Option<(PageNumbe
     }
     let [units, tens, s1, s2m1, s3, s4m23] = values;
     let page = PageNumber((tens << 4) | units);
-    let subcode = SubCode::new(
-        u16::from(s1) | (u16::from(s2m1 & 0x7) << 4) | (u16::from(s3) << 8) | (u16::from(s4m23 & 0x3) << 12),
-    );
+    // The magazine bits beside S2 and S4 are masked away by `sub_code`.
+    let subcode = SubCode::new(sub_code(s4m23, s3, s2m1, s1));
     // M1 is data bit 4 of the S2 byte; M2 and M3 are data bits 3 and 4 of
     // the S4 byte (Figure 12).
     let magazine_bits = (s2m1 >> 3) | ((s4m23 >> 1) & 0x6);
@@ -85,18 +85,22 @@ pub(super) mod encode {
     use super::{LINK_BYTES, LINK_CHECKSUM, LINK_CONTROL, LINK_CONTROL_ROW_24, LINK_START, Packet};
     use crate::consts::DATA_START;
     use crate::ecc::hamming84_encode;
+    use crate::limits::{S2_MASK, s1, s2, s3, s4};
     use crate::types::{Magazine, PageNumber, SubCode};
 
     /// Writes a 6-byte page reference with three magazine bits.
     fn page_reference(packet: &mut Packet, start: usize, page: PageNumber, subcode: SubCode, magazine_bits: u8) {
         let sub = subcode.value();
+        // M1 sits above S2's three bits; M2 and M3 above S4's two (Figure
+        // 12).
+        let m1_shift = S2_MASK.count_ones();
         let values = [
             page.units(),
             page.tens(),
-            (sub & 0xF) as u8,
-            (((sub >> 4) & 0x7) as u8) | ((magazine_bits & 1) << 3),
-            ((sub >> 8) & 0xF) as u8,
-            (((sub >> 12) & 0x3) as u8) | ((magazine_bits & 0x6) << 1),
+            s1(sub),
+            s2(sub) | ((magazine_bits & 1) << m1_shift),
+            s3(sub),
+            s4(sub) | ((magazine_bits & 0x6) << 1),
         ];
         for (offset, value) in values.iter().enumerate() {
             set(packet, start.saturating_add(offset), hamming84_encode(*value));

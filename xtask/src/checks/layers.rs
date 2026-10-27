@@ -8,11 +8,13 @@ use std::path::Path;
 
 /// The allowed-dependency table of ARCHITECTURE.md section 9. Foundation
 /// modules and the cross-cutting modules are allowed everywhere listed.
-const FOUNDATION: &[&str] = &["consts", "ecc", "types"];
+const FOUNDATION: &[&str] = &["consts", "ecc", "limits", "types"];
 const CROSS_CUTTING: &[&str] = &["policy", "config", "trace"];
 const LAYER_TABLE: &[(&str, &[&str])] = &[
     ("consts", &[]),
     ("ecc", &[]),
+    // REQ-NUM-031: the numbers of area NUM, with no dependency at all.
+    ("limits", &[]),
     ("types", &[]),
     ("packet", &[]),
     ("fsm", &["packet"]),

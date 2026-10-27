@@ -247,9 +247,22 @@ Built behind `neoteletext-web`'s feature `dbsc`; owed:
 
 `neoteletext-cli`'s `typing` test, whose median budget is 2 ms (REQ-INT-008), failed the commit gate once at 2.8 ms with the machine's load average near 20, and three times more when run alone, then passed five times in a row; nothing on its path had changed. A timed test that fails under load stops unrelated commits: consider measuring it against an unloaded baseline, or running it only in the full gate.
 
-## The standard's maxima and sub-pages on the wire (26 October 2026)
+## The standard's maxima and sub-pages on the wire (26 October 2026), and area NUM (28 October 2026)
 
-Owed by E.122: every item of `neoteletext-common/STANDARD-LIMITS.md` section 7 that names this repository, in its order; none is started. The owner's questions are its section 6.
+Owed by E.122 and E.130: every item of `neoteletext-common/STANDARD-LIMITS.md` section 7 that names this repository, in its order. The owner's questions are its section 6. Built on branch `num-limits` on 28 October 2026, uncommitted: items 1 to 4 of section 7 and the engine core's part of section 7.1 (`neoteletext_core::limits`; `consts::pages`, the magazines and `contents::MAX_PAGES` named from it; `viewer::MAX_LISTED_SUBPAGES` withdrawn, the store's stepping API; the null address, page FF, the reserved page numbers, the MIP, page functions and TOP pages; tests in `limits/tests.rs` and `tests/numbering.rs`). Still owed:
+- **The row 0 status area** (`STANDARD-LIMITS.md` question 2, for the owner): a place up to 99 shows as before, "P100/12"; a place of three digits gives up the "P", "100/123"; a place of four digits does not fit the seven columns and shows "100/+++". The count of sub-pages stored, which REQ-NAV-005 also asks the status area to show, was not shown before and is not now.
+- **Sub-page entry is not wired to keys:** `nav::SubPageEntry` accepts exactly the 3,199 decimal sub-codes and `Viewer::show_subpage` shows one, but no `Key` enters sub-page digits, and area FSM's viewer table has no row for it (REQ-NAV-005, REQ-FSM-005). The keys and the table rows are a decision for the owner.
+- **Sub-pages not held:** the viewer steps through the sub-pages the store holds. Reaching a sub-page that is not held (REQ-NUM-030, "whether or not the store holds it at the moment") needs the catalogue of a channel served over the web (`SERVER.md` section 6, REQ-WEB-019); `neoteletext-web` is another agent's (items 5 and 6 of section 7).
+- **MIP codes giving one page of storage** other than 79 (Table 24 notes 1 to 5: codes 01, 70 to 78, 7A, 7C, 7D, 7F, 81) are kept as any page; only code 79 keeps the latest version alone, as REQ-NUM-021 asks.
+- **The BTT's page linking table is not read** (REQ-NUM-028 asks a test that "the BTT's page numbers are read"): EN 300 706 clause 11.2.2 gives no byte layout for it beyond Figure 24, and Annex I was not read for one. TOP pages are kept from display by page 1F0 being reserved, by their page functions (1000 to 1011) and by MIP code FE.
+- **Links of X/27/4 to X/27/7 Format 2** (clause 9.6.3) are not decoded, so REQ-NUM-007's and REQ-NUM-018's cases for them have no code to test; X/27/0, X/27/4 and X/27/5 Format 1 and packet 8/30 are tested.
+- **REQ-NUM-002 in the other parts:** the TTI reader's `SC` line across all 8,190 sub-codes (item 6), the kits' and the server's numbering by `limits::sub_code_of`, the server's refusal to publish on page FF or a reserved number (REQ-NUM-008, REQ-NUM-010), its MIP (REQ-NUM-026), C9 and C11 (REQ-NUM-029), and the kits' hexadecimal data page numbers and their warning on numbers ending in F (REQ-NUM-012, REQ-NUM-014).
+- **Restatements left in `neoteletext-web`,** which another agent is editing: `contents.rs`'s `FIRST_PAGE` (0x100) and `PAGE_SLOTS` (0x800), and `consts.rs`'s `ZXNET_MAX_PAGES` (2,048, the page numbers of a service, `limits::PAGE_NUMBERS`).
+- **The diagnostic setting no longer stores reserved page numbers:** `Config::store_hexadecimal_pages` stores every other hexadecimal page, but mFD, mFE, mFF, 1BE and 1F0 never reach the page store (REQ-NUM-010); a tool that showed the MOT as text under that setting no longer can.
+- **Traceability:** regenerate `docs/traceability.md` with `cargo xtask traceability` for area NUM.
+- **User guide:** the status area's place of three and four digits, sub-page entry once it has keys, and the store's sub-page listing for ports.
+- **The full gate:** `cargo xtask size` (the store's listing is now a pass over the slots per call instead of a buffer of 64), the fuzz targets, and the Xtensa builds; not run for this change beyond what the report of 28 October 2026 lists.
+- **The browser's re-pin:** `viewer::MAX_LISTED_SUBPAGES` and `PageStore::subcodes(address, &mut [SubCode])` are gone, and `packet::encode::header` returns `Option<Packet>`.
 
 ## The Opus decoder (decision E.123, 26 October 2026)
 

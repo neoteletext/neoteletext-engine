@@ -2,7 +2,7 @@
 //! Fastext, stepping, history and the confirmation of links that leave the
 //! service.
 
-use super::{Action, Key, KeyContext, MAX_LISTED_SUBPAGES, SecurityIndicator, Viewer, ViewerState};
+use super::{Action, Key, KeyContext, SecurityIndicator, Viewer, ViewerState};
 use crate::acq::PageStore;
 use crate::config::{RevealStyle, StepOrder};
 use crate::level1::Zoom;
@@ -134,30 +134,28 @@ impl Viewer {
         }
     }
 
+    /// The next or previous stored sub-page, wrapping at either end
+    /// (REQ-NAV-005). The store is asked for the neighbour of the sub-page
+    /// shown, so every one of up to 8,190 is reached and the viewer holds
+    /// no list (decision E.122). A page with no listed sub-pages, such as
+    /// one that keeps its latest version only (REQ-NUM-021) or a data page
+    /// (REQ-NUM-024), is not stepped.
     fn step_subpage(&mut self, forward: bool, store: &PageStore<'_>) -> Action {
         if self.state != ViewerState::Displaying {
             return Action::None;
         }
-        let mut codes = [SubCode::ANY; MAX_LISTED_SUBPAGES];
-        let count = store.subcodes(self.requested, &mut codes);
-        let listed = codes.get(..count).unwrap_or(&[]);
-        if listed.is_empty() {
-            return Action::None;
-        }
-        let current = if self.subcode.is_any() {
-            store.latest(self.requested).map(|page| page.key.subcode)
-        } else {
-            Some(self.subcode)
+        let address = self.requested;
+        let current =
+            if self.subcode.is_any() { store.latest(address).map(|page| page.key.subcode) } else { Some(self.subcode) };
+        let next = match (current, forward) {
+            (Some(current), true) => store.next_subpage(address, current).or_else(|| store.first_subpage(address)),
+            (Some(current), false) => store.previous_subpage(address, current).or_else(|| store.last_subpage(address)),
+            (None, true) => store.first_subpage(address),
+            (None, false) => store.last_subpage(address),
         };
-        let position = current.and_then(|current| listed.iter().position(|&s| s == current)).unwrap_or(0);
-        let next = if forward {
-            position.saturating_add(1).checked_rem(listed.len()).unwrap_or(0)
-        } else {
-            position.checked_sub(1).unwrap_or(listed.len().saturating_sub(1))
-        };
-        let subcode = listed.get(next).copied().unwrap_or(SubCode::ANY);
+        let Some(subcode) = next else { return Action::None };
         self.subcode = subcode;
-        Action::Request(self.requested, subcode)
+        Action::Request(address, subcode)
     }
 }
 

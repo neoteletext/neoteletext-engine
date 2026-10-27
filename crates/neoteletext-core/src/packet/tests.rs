@@ -43,7 +43,7 @@ fn uncorrectable_address_is_rejected() {
 fn header_fields_round_trip() {
     let display = [with_odd_parity(b'A'); 32];
     let control = ControlBits(C4_ERASE | C8_UPDATE | C11_SERIAL | C12 | C14);
-    let packet = encode::header(mag(3), PageNumber(0x45), SubCode::new(0x2A5B), control, &display);
+    let packet = encode::header(mag(3), PageNumber(0x45), SubCode::new(0x2A5B), control, &display).unwrap();
     let Ok(Decoded::Header(header)) = decode(&packet) else { panic!("not a header") };
     assert_eq!(header.magazine.number(), 3);
     assert_eq!(header.page, Some(PageNumber(0x45)));
@@ -58,7 +58,7 @@ fn header_fields_round_trip() {
 fn every_control_bit_round_trips() {
     for bit in 4..=14 {
         let control = ControlBits(1 << bit);
-        let packet = encode::header(mag(1), PageNumber(0), SubCode::new(0), control, &[0x20; 32]);
+        let packet = encode::header(mag(1), PageNumber(0), SubCode::new(0), control, &[0x20; 32]).unwrap();
         let Ok(Decoded::Header(header)) = decode(&packet) else { panic!() };
         assert_eq!(header.control, Some(control), "C{bit}");
     }
@@ -66,7 +66,7 @@ fn every_control_bit_round_trips() {
 
 #[test]
 fn header_with_bad_page_byte_is_incomplete() {
-    let mut packet = encode::header(mag(1), PageNumber(0x23), SubCode::new(0), ControlBits(0), &[0x20; 32]);
+    let mut packet = encode::header(mag(1), PageNumber(0x23), SubCode::new(0), ControlBits(0), &[0x20; 32]).unwrap();
     packet.bytes[HEADER_UNITS] ^= 0b11;
     let Ok(Decoded::Header(header)) = decode(&packet) else { panic!() };
     assert!(header.page.is_none());
@@ -519,7 +519,7 @@ fn packets_30_outside_magazine_8_and_31_are_ignored() {
 #[test]
 fn header_sub_code_and_control_bits_fail_separately() {
     let control = ControlBits(C8_UPDATE | C11_SERIAL);
-    let good = encode::header(mag(2), PageNumber(0x34), SubCode::new(0x0005), control, &[0x20; 32]);
+    let good = encode::header(mag(2), PageNumber(0x34), SubCode::new(0x0005), control, &[0x20; 32]).unwrap();
     let decoded = |packet: &Packet| {
         let Ok(Decoded::Header(header)) = decode(packet) else { panic!("not a header") };
         header

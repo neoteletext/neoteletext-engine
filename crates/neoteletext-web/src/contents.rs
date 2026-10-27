@@ -25,7 +25,7 @@ pub const MAX_BYTES: usize = 64 * 1024;
 pub const MAX_LINES: usize = 1000;
 /// The most page entries a file can list: one for each page number a
 /// viewer can type, 100 to 899, since a page listed twice is a fault.
-pub const MAX_PAGES: usize = 800;
+pub const MAX_PAGES: usize = neoteletext_core::limits::KEYABLE_PAGES;
 /// The longest title kept; longer titles are cut (decision E.120: a whole
 /// headline, which a receiver fits to the room it has).
 pub const MAX_TITLE: usize = 120;

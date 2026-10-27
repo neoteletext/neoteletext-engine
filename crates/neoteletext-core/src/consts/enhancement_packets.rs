@@ -29,6 +29,21 @@ pub const PAGE_FUNCTION_GDRCS: u8 = 0x4;
 pub const PAGE_FUNCTION_DRCS: u8 = 0x5;
 /// Page function 0110: Magazine Organization Table.
 pub const PAGE_FUNCTION_MOT: u8 = 0x6;
+/// Page function 0001: a data broadcasting page of EN 300 708 clause 4,
+/// whose sub-code numbers no sub-page (Table 3; REQ-NUM-024).
+pub const PAGE_FUNCTION_DATA_BROADCASTING: u8 = 0x1;
+/// Page function 0111: Magazine Inventory Page (Table 3; clause 11.3).
+pub const PAGE_FUNCTION_MIP: u8 = 0x7;
+/// Page function 1000: Basic TOP Table (Table 3; clause 11.2.2).
+pub const PAGE_FUNCTION_BTT: u8 = 0x8;
+/// Page function 1001: Additional Information Table.
+pub const PAGE_FUNCTION_AIT: u8 = 0x9;
+/// Page function 1010: Multi-Page Table.
+pub const PAGE_FUNCTION_MPT: u8 = 0xA;
+/// Page function 1011: Multi-Page Extension Table.
+pub const PAGE_FUNCTION_MPT_EX: u8 = 0xB;
+/// Page function 1100: trigger messages.
+pub const PAGE_FUNCTION_TRIGGER: u8 = 0xC;
 /// Page coding 000: 7 data bits with odd parity (Table 3).
 pub const PAGE_CODING_PARITY: u8 = 0x0;
 /// Mask of the M/29 packet function, triplet 1 bits 1 to 7; only 0000000

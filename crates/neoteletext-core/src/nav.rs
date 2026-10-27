@@ -1,7 +1,11 @@
 //! Navigation (area NAV, layer L6): page arithmetic, links and history.
 
 use crate::acq::{PageStore, StoredPage};
-use crate::consts::{FIRST_PAGE, LAST_PAGE, MAGAZINE_ZERO_MEANS};
+use crate::consts::{FIRST_PAGE, LAST_PAGE, LINK_NULL_PAGE, MAGAZINE_ZERO_MEANS};
+use crate::limits::{
+    DECIMAL_DIGIT_MAX, KEYABLE_PAGES, MPP_MAGAZINE_SHIFT, PAGE_DIGIT_MAX, PAGE_TENS_SHIFT, S2_MASK, S4_MASK,
+    SUBCODE_DIGITS, decimal_sub_code,
+};
 use crate::types::{FixedVec, PageAddress, PageNumber, SubCode};
 
 /// A link target: a page, a sub-code (3F7F for any), and the service it
@@ -36,8 +40,10 @@ impl PageLinks {
     #[must_use]
     pub fn from_page(page: &StoredPage) -> Self {
         let Some(links) = page.links else { return Self::default() };
+        // REQ-NUM-018: page number FF names no page; the null address
+        // XFF:3F7F is already no link (REQ-PKT-005).
         let target = |index: usize| {
-            links.links.get(index).copied().flatten().and_then(|link| {
+            links.links.get(index).copied().flatten().filter(|link| link.page.0 != LINK_NULL_PAGE).and_then(|link| {
                 let mpp = (u16::from(link.magazine.number()) << 8) | u16::from(link.page.0);
                 PageAddress::from_mpp(mpp).map(|address| LinkTarget { address, subcode: link.subcode, service: None })
             })
@@ -81,11 +87,21 @@ fn to_decimal(address: PageAddress) -> u16 {
         .saturating_add(u16::from(page.units().min(9)))
 }
 
+/// The number a viewer reads in a decimal `0xMPP`: 0x100 is 100.
+const fn decimal_number(mpp: u16) -> u16 {
+    let base = DECIMAL_DIGIT_MAX as u16 + 1;
+    let hundreds = (mpp >> MPP_MAGAZINE_SHIFT) & PAGE_DIGIT_MAX as u16;
+    let tens = (mpp >> PAGE_TENS_SHIFT) & PAGE_DIGIT_MAX as u16;
+    let units = mpp & PAGE_DIGIT_MAX as u16;
+    hundreds.wrapping_mul(base).wrapping_add(tens).wrapping_mul(base).wrapping_add(units)
+}
+
 /// First and last pages as decimal numbers.
-const FIRST_DECIMAL: u16 = 100;
-const LAST_DECIMAL: u16 = 899;
-/// Number of decimal pages, bounding the search for a stored page.
-const PAGE_COUNT: u16 = LAST_DECIMAL - FIRST_DECIMAL + 1;
+const FIRST_DECIMAL: u16 = decimal_number(FIRST_PAGE);
+const LAST_DECIMAL: u16 = decimal_number(LAST_PAGE);
+/// Number of keyable pages, bounding the search for a stored page.
+const PAGE_COUNT: u16 = KEYABLE_PAGES as u16;
+const _: () = assert!(LAST_DECIMAL - FIRST_DECIMAL + 1 == PAGE_COUNT);
 
 fn step(address: PageAddress, forward: bool) -> PageAddress {
     let value = to_decimal(address);
@@ -99,14 +115,16 @@ fn step(address: PageAddress, forward: bool) -> PageAddress {
     decimal(next).or_else(|| PageAddress::from_mpp(FIRST_PAGE)).unwrap_or(address)
 }
 
-/// The next or previous page present in the store (REQ-NAV-002), or the
-/// numerical neighbour when none is stored. Bounded: at most 800 steps.
+/// The next or previous display page present in the store (REQ-NAV-002),
+/// or the numerical neighbour when none is stored. A data page, by its
+/// page function or its MIP code, is not offered (REQ-NUM-027,
+/// REQ-NUM-028). Bounded: at most 800 steps.
 #[must_use]
 pub fn step_stored(address: PageAddress, forward: bool, store: &PageStore<'_>) -> PageAddress {
     let mut candidate = address;
     for _ in 0..PAGE_COUNT {
         candidate = step(candidate, forward);
-        if store.contains(candidate) {
+        if store.has_display_page(candidate) {
             return candidate;
         }
     }
@@ -175,6 +193,63 @@ impl PageEntry {
             }
         }
         out
+    }
+}
+
+/// Four-digit sub-page entry (REQ-NAV-005, REQ-NUM-017): the 3,199 decimal
+/// sub-codes 0001 to 3979, S4 0 to 3, S3 0 to 9, S2 0 to 7 and S1 0 to 9.
+/// A digit that cannot begin or continue one is refused.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub struct SubPageEntry {
+    digits: [u8; SUBCODE_DIGITS],
+    count: u8,
+}
+
+/// The highest digit at each place of a decimal sub-code, S4 S3 S2 S1:
+/// S4 has two bits and S2 three (clause 9.3.1.2).
+const SUBCODE_DIGIT_HIGHEST: [u8; SUBCODE_DIGITS] =
+    [S4_MASK as u8, DECIMAL_DIGIT_MAX, S2_MASK as u8, DECIMAL_DIGIT_MAX];
+
+/// What a digit did to a sub-page entry.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SubPageEntryResult {
+    /// The digit was refused: no decimal sub-code has it there.
+    Rejected,
+    /// More digits are needed.
+    Partial,
+    /// A sub-code is complete.
+    Complete(SubCode),
+}
+
+impl SubPageEntry {
+    /// Number of digits entered so far.
+    #[must_use]
+    pub const fn count(&self) -> u8 {
+        self.count
+    }
+
+    /// Clears the entry.
+    pub fn clear(&mut self) {
+        *self = Self::default();
+    }
+
+    /// Adds a digit 0 to 9.
+    pub fn push(&mut self, digit: u8) -> SubPageEntryResult {
+        let position = usize::from(self.count);
+        if SUBCODE_DIGIT_HIGHEST.get(position).is_none_or(|&highest| digit > highest) {
+            return SubPageEntryResult::Rejected;
+        }
+        if let Some(slot) = self.digits.get_mut(position) {
+            *slot = digit;
+        }
+        self.count = self.count.saturating_add(1);
+        if usize::from(self.count) < SUBCODE_DIGITS {
+            return SubPageEntryResult::Partial;
+        }
+        let digits = self.digits;
+        self.clear();
+        decimal_sub_code(digits)
+            .map_or(SubPageEntryResult::Rejected, |code| SubPageEntryResult::Complete(SubCode::new(code)))
     }
 }
 
@@ -271,8 +346,6 @@ impl<const N: usize> History<N> {
         self.position = 0;
     }
 }
-
-const _: () = assert!(FIRST_PAGE == 0x100 && LAST_PAGE == 0x899);
 
 #[cfg(test)]
 mod tests;

@@ -68,10 +68,11 @@ The Web user agent (L7) sits beside the lower layers rather than above them in t
 
 Each module named below is one concept. Since the reorganisation of 24 October 2026 (`docs/spec/design/reorganisation-2026-10-24.md`), a module with parts is a file of its own name holding the concept's spine (the type, its construction and the `mod` lines) beside a directory of that name holding the parts, one concept per file, in the 2018 layout (no `mod.rs`); section 7 gives one sentence per directory. A module's unit tests are its `tests.rs`, declared `#[cfg(test)] mod tests;` as the parent's last item. The module names, and so the layer table of section 9, are unchanged, and every public path is kept by re-exports.
 
-### Foundation — `neoteletext-core::{consts, ecc, types}`
+### Foundation — `neoteletext-core::{consts, ecc, limits, types}`
 
 - **Owns:**
   - every teletext constant, each defined once (REQ-GEN-014), with both bit orders side by side where two exist;
+  - in `limits`, every number of area NUM, written once (REQ-NUM-031, decisions E.122 and E.130): magazines, page numbers, the null page address, the reserved and recommended page numbers, the counts (2,022 page numbers, 800 keyable, 8,192 sub-codes, 8,190 sub-pages, 8,069 above 0079, 3,199 decimal, 3,120 decimal above 0079), the three sub-code layouts (a display page's; an enhancement data page's nnXs, Annex A.1; a data broadcasting page's, EN 300 708 clause 4.3.1.2), and the numbering `sub_code_of(place, count)` with its inverse `place_of`. It depends on nothing, not even the rest of the core, and has no feature gate, so the server and the browser take it from `neoteletext-core` with the default features off; `consts` re-exports the names it had before;
   - odd parity;
   - Hamming 8/4 and 24/18, with tables generated at compile time from the equations of EN 300 706;
   - the page checksum;
@@ -122,6 +123,7 @@ Each module named below is one concept. Since the reorganisation of 24 October 2
   - at Levels 2.5 and 3.5, the enhancement pages (object pages, the Magazine Organization Table, and any other page whose function is not a basic Level 1 page), stored as received in a part of the store with its own capacity, and the read-only lookup through which the presentation layer reaches them (decision E.56).
 - **Must not know about:** characters, pixels, the web.
 - **Key types:** `Decoder<const PAGES: usize>`, `PageStore`, `StoredPage`, `MagState`, `PageState`, `Event`, `EnhancementStore`, `EnhancementLookup`.
+- **Sub-pages through the store:** `PageStore` lists, counts and steps a page's sub-pages (`subcodes`, `subpage_count`, `first_subpage`, `next_subpage`, `previous_subpage`, `last_subpage`, `subpage_place`), each a bounded pass over the caller's slots, holding no list, so a page may have every one of its 8,190 sub-pages and a port's stack does not grow with the maximum (REQ-NAV-005, REQ-NUM-030). Only a display page's sub-pages are listed: a page its Magazine Inventory Page marks as keeping its latest version (code 79) or as a data page, or whose page function is not a basic page, is not (`StoredPage::numbering`, REQ-NUM-021 to REQ-NUM-028). The MIP is kept in the enhancement store and read through `Decoder::inventory_code` and `Decoder::inventory_sub_pages` (REQ-NUM-026). A reserved page number (mFD, mFE, mFF, 1BE, 1F0) never reaches the page store (REQ-NUM-010).
 - **Requirements:** ACQ, SVC, FSM-003, FSM-004.
 
 ### L3 Presentation model — `neoteletext-core::{charset, level1, level15, colour, objects, enhance, joining}`
@@ -443,9 +445,10 @@ Each boundary is one narrow type. Nothing reaches past its neighbour.
 Where each crate's code lives, one sentence per directory (the reorganisation of 24 October 2026). The `tests.rs` files and `tests/` directories under `src/` hold unit tests and are not listed.
 
 **`neoteletext-core`**
-- `consts/`: the constants by the clause that defines them: signal framing, packets, pages, coding, triplets, enhancement packets, object pages, character sets, spacing attributes, colour, geometry, timing and audio.
+- `consts/`: the constants by the clause that defines them: signal framing, packets, pages, coding, triplets, enhancement packets, object pages, the Magazine Inventory Page, character sets, spacing attributes, colour, geometry, timing and audio.
+- `limits.rs`: the numbers of area NUM and the numbering of a page's sub-pages, depending on nothing.
 - `types/`: the shared types: addresses, the fixed-capacity collection, a loaded font's glyph and the X/28 and M/29 field groups.
-- `packet/`: one file per packet kind: the header, X/26 triplets and their fields and functions, editorial and compositional links, X/28 and M/29, the Magazine Organization Table, object pages, broadcast service data, and the encoders.
+- `packet/`: one file per packet kind: the header, X/26 triplets and their fields and functions, editorial and compositional links, X/28 and M/29, the Magazine Organization Table, the Magazine Inventory Page, object pages, broadcast service data, and the encoders.
 - `acq/`: the decoder's parts: reception of packets, the stored page, the cache-mode store, the enhancement pages and their store, the events and the statistics.
 - `charset/`: one file per table of clause 15 (Latin and national options, the standard's other G0 sets, G2, G3, mosaics, diacritics, designation, composition) and neoteletext's own sets (the extended designations, the extended G0 sets, Arabic script, Thai and Lao), with the code-table lookup.
 - `level1/`: the cell, the grid, page assembly, the choice of character sets and the row attribute machine.
@@ -589,7 +592,7 @@ A module may use the modules listed for it, and nothing else. The cross-cutting 
 
 | Module | Layer | May use |
 |---|---|---|
-| `consts`, `ecc`, `types` | Foundation | — |
+| `consts`, `ecc`, `limits`, `types` | Foundation | — (`limits` uses nothing, not even the other Foundation modules) |
 | `packet` | L1 | Foundation |
 | `fsm` | L2 | Foundation, `packet` |
 | `acq` | L2 | Foundation, `packet`, `fsm` |

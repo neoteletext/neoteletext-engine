@@ -47,7 +47,7 @@ pub use mot::{Mot, MotLevel, object_link};
 pub use objects::{ObjectPage, pointer_place, public_number};
 pub use triplets::{FlashMode, FlashRate, LocalObject, ObjectRef, RowScope, Triplets, row_address};
 
-use crate::consts::{SUBCODE_LAST_PACKET_SHIFT, SUBCODE_UPDATE_MASK, SUBCODE_UPDATE_SHIFT, TTI_PS_TRANSMIT};
+use crate::consts::TTI_PS_TRANSMIT;
 use crate::encode::{default_clut_2_and_3, encode_page, packed_line_of};
 use crate::page::{PageFile, RawBody, RawPacket};
 use crate::write::{in_transmission_order, write_tti};
@@ -132,16 +132,12 @@ fn new_page(address: PageAddress, subcode: SubCode) -> PageFile {
     page
 }
 
-/// The sub-code of an enhancement page, `nnXs` (Annex A.1): the last
-/// packet of an uninterrupted transmission, the update indicator S2 and
-/// the sub-page S1.
+/// The sub-code of an enhancement page, `nnXs` (Annex A.1; REQ-NUM-022):
+/// the last packet of an uninterrupted transmission, the update indicator
+/// S2 and the sub-page S1, laid out by the one definition in `limits`.
 #[must_use]
 pub fn enhancement_subcode(last_packet: u8, update: u8, s1: u8) -> SubCode {
-    SubCode::new(
-        u16::from(last_packet) << SUBCODE_LAST_PACKET_SHIFT
-            | (u16::from(update) & SUBCODE_UPDATE_MASK) << SUBCODE_UPDATE_SHIFT
-            | u16::from(s1 & neoteletext_core::consts::NIBBLE_MASK),
-    )
+    SubCode::new(neoteletext_core::limits::enhancement_sub_code(last_packet, update, s1))
 }
 
 /// The packed `OL` line of a packet just built by the core's encoders,
@@ -261,7 +257,7 @@ impl Stream {
         }
         let display = [with_odd_parity(SPACE); HEADER_DISPLAY_BYTES];
         for magazine in magazines {
-            packets.push(encode::header(
+            packets.extend(encode::header(
                 magazine,
                 PageNumber(PAGE_TIME_FILLING),
                 SubCode::new(0),

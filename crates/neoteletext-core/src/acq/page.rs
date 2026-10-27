@@ -11,6 +11,29 @@ use crate::fsm::{PageKey, PageState};
 use crate::packet::{CompositionalLink, Links, PageEnhancement, PageFormat, Triplet};
 use crate::types::{ControlBits, Instant, Magazine, PageAddress, PageNumber, SubCode};
 
+/// How a stored page's sub-code is read, as the Magazine Inventory Page
+/// of its magazine said when the reception started (clause 11.3.3, Table
+/// 24; REQ-NUM-021, REQ-NUM-022, REQ-NUM-024, REQ-NUM-028). A page with no
+/// MIP is a display page (REQ-NUM-002); its page function (X/28/0 or
+/// X/28/3) is read from the stored packets as they arrive
+/// ([`StoredPage::is_text_page`], REQ-NUM-027).
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum Numbering {
+    /// A display page: the sub-code numbers a sub-page (REQ-NUM-016), and
+    /// each sub-page is stored, listed and stepped through.
+    #[default]
+    SubPages,
+    /// A page not following the sub-code rules (MIP code 79), such as an
+    /// alarm clock page whose sub-code is the time: only its latest version
+    /// is kept, and its sub-code is not listed as a sub-page (REQ-NUM-021).
+    LatestOnly,
+    /// A data page by the MIP (data broadcasting, a DRCS or object page, a
+    /// systems page or a TOP page): its sub-code numbers no sub-page of a
+    /// display page, so it is neither listed nor offered as a display page
+    /// (REQ-NUM-022, REQ-NUM-024, REQ-NUM-028).
+    Data,
+}
+
 /// One stored page or sub-page (REQ-ACQ-007).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct StoredPage {
@@ -60,6 +83,8 @@ pub struct StoredPage {
     pub receptions: u32,
     /// Number of parity and Hamming errors seen.
     pub errors: u32,
+    /// How the page's sub-code is read (REQ-NUM-021, REQ-NUM-027).
+    pub numbering: Numbering,
 }
 
 /// A blank row.
@@ -91,6 +116,7 @@ impl StoredPage {
         last_received: Instant(0),
         receptions: 0,
         errors: 0,
+        numbering: Numbering::SubPages,
     };
 
     /// False when packet X/28/0 format 1 or packet X/28/3 says the page is
@@ -102,6 +128,22 @@ impl StoredPage {
             format.is_none_or(|format| format.function == PAGE_FUNCTION_BASIC && format.coding == PAGE_CODING_PARITY)
         };
         is_text(self.page_data.and_then(|data| data.format)) && is_text(self.download_function)
+    }
+
+    /// True when the page is stored and is a display page by its page
+    /// function and its MIP code: one the viewer may show and step to
+    /// (REQ-NUM-027, REQ-NUM-028).
+    #[must_use]
+    pub fn is_display_page(&self) -> bool {
+        self.state != PageState::Empty && self.numbering != Numbering::Data && self.is_text_page()
+    }
+
+    /// True when the page is a stored sub-page of a display page, one that
+    /// is listed, counted and stepped through (REQ-NAV-005): a display page
+    /// whose sub-code numbers its sub-pages (REQ-NUM-016, REQ-NUM-021).
+    #[must_use]
+    pub fn is_listed_sub_page(&self) -> bool {
+        self.numbering == Numbering::SubPages && self.is_display_page()
     }
 
     /// True when row `row` has been received.

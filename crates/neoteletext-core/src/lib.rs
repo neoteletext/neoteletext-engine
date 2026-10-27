@@ -10,7 +10,7 @@
 //! other crate, so no core module can depend on an optional module. The
 //! layers and their allowed dependencies are described in `ARCHITECTURE.md`:
 //!
-//! - Foundation: [`consts`], [`ecc`], [`types`];
+//! - Foundation: [`consts`], [`ecc`], [`limits`], [`types`];
 //! - L1 packet decoding: [`packet`];
 //! - L2 acquisition: [`fsm`], [`acq`], [`service`];
 //! - L3 presentation model: [`charset`], [`level1`], [`compose`], [`level15`], and for
@@ -40,6 +40,7 @@ extern crate std;
 
 pub mod consts;
 pub mod ecc;
+pub mod limits;
 pub mod types;
 
 pub mod packet;

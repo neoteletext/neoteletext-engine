@@ -258,13 +258,6 @@ pub const OBJECTS_PER_POINTER_PACKET: usize = 8;
 /// Objects of one type on one object sub-page: packets 1 to 4
 /// (clause 10.5.1.1).
 pub const OBJECTS_PER_TYPE: usize = 32;
-/// Shift of the sub-code's S3 digit; S4 S3 together hold the last packet
-/// of an enhancement page as six bits (Annex A.1).
-pub const SUBCODE_LAST_PACKET_SHIFT: u32 = 8;
-/// Shift of the sub-code's S2 digit, the update indicator (Annex A.1).
-pub const SUBCODE_UPDATE_SHIFT: u32 = 4;
-/// Mask of the three bits of S2.
-pub const SUBCODE_UPDATE_MASK: u16 = 0x7;
 /// The last packet number of an enhancement page sent up to X/26 with
 /// designation code d is this plus d (Annex A.1).
 pub const LAST_PACKET_ENHANCEMENT_BASE: u8 = 26;

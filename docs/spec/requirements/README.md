@@ -30,6 +30,7 @@
 | FNT | Fonts (section F.21) | `fnt.md` |
 | AUD | Audio: sounds carried with teletext, and their playing (section F.22) | `aud.md` |
 | INT | Input: keys, the mouse and text sent back to a channel, and the records it answers with (section F.23) | `int.md` |
+| NUM | Page and sub-page numbering, every rule of World System Teletext (section F.24) | `num.md` |
 | SEC | Security and sandboxing, which overrides every other area (section F.0.3) | `sec.md` |
 
 ## F.0.1 Delivery phases

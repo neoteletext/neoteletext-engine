@@ -305,7 +305,7 @@ fn magazine_1() -> Magazine {
 fn header(mpp: u16, control: u16) -> Packet {
     let address = PageAddress::from_mpp(mpp).unwrap();
     let display = [with_odd_parity(b' '); HEADER_DISPLAY_BYTES];
-    encode::header(address.magazine, address.page, SubCode::new(0), ControlBits(control), &display)
+    encode::header(address.magazine, address.page, SubCode::new(0), ControlBits(control), &display).unwrap()
 }
 
 /// A display row of magazine 1 from 7-bit codes, padded with spaces.
@@ -842,9 +842,11 @@ fn screen_and_row_colours() {
     }
 }
 
-/// REQ-OBJ-041: an enhancement page shows no rows of text: the Magazine
-/// Organization Table, and a page whose X/28/0 names an object page
-/// function; row 0 stays.
+/// REQ-OBJ-041: an enhancement page shows no rows of text: a page whose
+/// X/28/0 names an object page function; row 0 stays. The Magazine
+/// Organization Table is never in the page store at all, even under the
+/// diagnostic setting, since a reserved page number is read only as its
+/// function (REQ-NUM-010).
 #[test]
 fn enhancement_pages_show_no_text() {
     let config = Config { store_hexadecimal_pages: true, ..level(PresentationLevel::Level25) };
@@ -854,12 +856,15 @@ fn enhancement_pages_show_no_text() {
     // page is then stored in both stores (REQ-ACQ-016).
     let pop_page = [page(0, &[(1, b"OBJECTS")], std::vec![x28]), page(0, &[(1, b"OBJECTS")], std::vec![x28])].concat();
     let mot = PageAddress { magazine: magazine_1(), page: crate::types::PageNumber(PAGE_MOT) }.mpp();
-    let mot_page = std::vec![header(mot, 0), display_row(1, b"TABLE")];
-    for (mpp, packets) in [(PAGE, pop_page), (mot, mot_page)] {
-        let (grid, report) = build_page(mpp, &packets, &config);
-        assert!(grid.cells[1..].iter().flatten().all(|cell| *cell == Cell::BLANK), "{mpp:X}");
-        assert_eq!((grid.double_height_rows, report.steps), (0, 0));
+    let (grid, report) = build_page(PAGE, &pop_page, &config);
+    assert!(grid.cells[1..].iter().flatten().all(|cell| *cell == Cell::BLANK));
+    assert_eq!((grid.double_height_rows, report.steps), (0, 0));
+    let mut pages = std::vec![StoredPage::EMPTY; 4];
+    let mut decoder = Decoder::new(&mut pages, config);
+    for (index, packet) in [header(mot, 0), display_row(1, b"TABLE"), header(PAGE, 0)].iter().enumerate() {
+        decoder.push(packet, &PacketMeta::default(), Instant(index as u64), &mut |_| {});
     }
+    assert!(!decoder.store().contains(PageAddress::from_mpp(mot).unwrap()));
 }
 
 /// REQ-OBJ-041: a page that a link names, and that is therefore also kept

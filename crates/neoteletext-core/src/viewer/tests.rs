@@ -141,7 +141,7 @@ fn receive(decoder: &mut Decoder<'_>, pages: &[(u16, u16)]) {
     let header = |mpp: u16, subcode: u16| {
         let address = page(mpp);
         let display = [with_odd_parity(b' '); HEADER_DISPLAY_BYTES];
-        encode::header(address.magazine, address.page, SubCode::new(subcode), ControlBits(0), &display)
+        encode::header(address.magazine, address.page, SubCode::new(subcode), ControlBits(0), &display).unwrap()
     };
     let filling = (1..=8u16).map(|magazine| (magazine << 8 | u16::from(PAGE_TIME_FILLING), 0));
     for (index, (mpp, subcode)) in pages.iter().copied().chain(filling).enumerate() {

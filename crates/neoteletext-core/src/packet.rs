@@ -27,6 +27,7 @@ mod compositional_links;
 mod editorial_links;
 mod function;
 mod header;
+mod inventory;
 mod magazine_table;
 mod object_pages;
 mod page_data;
@@ -44,6 +45,7 @@ pub use compositional_links::CompositionalLink;
 pub use editorial_links::{Link, Links};
 pub use function::TripletFunction;
 pub use header::Header;
+pub use inventory::{InventoryFunction, PageCode, mip_position, page_code, sub_page_count};
 pub use magazine_table::{
     DefaultObject, MotObjectLink, MotPageEntry, MotPosition, MotTotals, mot_fallback, mot_object_link, mot_page_entry,
     mot_position, mot_totals,

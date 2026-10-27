@@ -34,7 +34,7 @@ fn text(s: &[u8]) -> [u8; 40] {
 fn header(m: u8, page: u8, sub: u16, control: u16) -> Packet {
     let mut display = [with_odd_parity(b' '); 32];
     display[..4].copy_from_slice(&text(b"HDR!")[..4]);
-    encode::header(mag(m), PageNumber(page), SubCode::new(sub), ControlBits(control), &display)
+    encode::header(mag(m), PageNumber(page), SubCode::new(sub), ControlBits(control), &display).unwrap()
 }
 
 fn feed(decoder: &mut Decoder<'_>, packets: &[Packet], events: &mut Vec<Event>) {
@@ -150,10 +150,9 @@ fn subpages_are_kept_separately_and_eviction_is_lru() {
         &mut events,
     );
     let address = PageAddress::from_mpp(0x100).unwrap();
-    let mut subcodes = [SubCode::default(); 4];
-    let count = decoder.store().subcodes(address, &mut subcodes);
     // 100/0001 was evicted first, then 100/0002; 101 and 102 remain.
-    assert_eq!(count, 0);
+    assert_eq!(decoder.store().subpage_count(address), 0);
+    assert_eq!(decoder.store().subcodes(address).next(), None);
     assert!(decoder.store().contains(PageAddress::from_mpp(0x101).unwrap()));
     assert!(decoder.store().contains(PageAddress::from_mpp(0x102).unwrap()));
 }
@@ -168,27 +167,8 @@ fn subcode_listing_is_sorted() {
         &[header(1, 0x00, 3, 0), header(1, 0x00, 1, 0), header(1, 0x00, 2, 0), header(1, 0x01, 0, 0)],
         &mut events,
     );
-    let mut subcodes = [SubCode::default(); 8];
-    let count = decoder.store().subcodes(PageAddress::from_mpp(0x100).unwrap(), &mut subcodes);
-    assert_eq!(&subcodes[..count], &[SubCode::new(1), SubCode::new(2), SubCode::new(3)]);
-}
-
-/// REQ-GEN-006: a listing buffer smaller than the stored sub-pages keeps
-/// the lowest sub-codes, without panicking when a later sub-code is
-/// higher than every one already listed.
-#[test]
-fn subcode_listing_into_a_full_buffer_keeps_the_lowest() {
-    let mut slots = std::vec![StoredPage::EMPTY; 8];
-    let mut decoder = Decoder::new(&mut slots, Config::default());
-    let mut events = Vec::new();
-    feed(
-        &mut decoder,
-        &[header(1, 0x00, 1, 0), header(1, 0x00, 2, 0), header(1, 0x00, 3, 0), header(1, 0x01, 0, 0)],
-        &mut events,
-    );
-    let mut subcodes = [SubCode::default(); 2];
-    let count = decoder.store().subcodes(PageAddress::from_mpp(0x100).unwrap(), &mut subcodes);
-    assert_eq!(&subcodes[..count], &[SubCode::new(1), SubCode::new(2)]);
+    let listed: Vec<SubCode> = decoder.store().subcodes(PageAddress::from_mpp(0x100).unwrap()).collect();
+    assert_eq!(listed, [SubCode::new(1), SubCode::new(2), SubCode::new(3)]);
 }
 
 /// REQ-ACQ-001, REQ-ACQ-002: parallel magazines interleave, the mode
@@ -517,7 +497,7 @@ fn rolling_header_and_clock_follow_decision_e11() {
         let mut display = [with_odd_parity(b' '); HEADER_DISPLAY_BYTES];
         display[..rolling.len()].copy_from_slice(&text(rolling)[..rolling.len()]);
         display[ROLLING_BYTES..ROLLING_BYTES + clock.len()].copy_from_slice(&text(clock)[..clock.len()]);
-        encode::header(mag(m), PageNumber(0x10), SubCode::new(0), ControlBits(control), &display)
+        encode::header(mag(m), PageNumber(0x10), SubCode::new(0), ControlBits(control), &display).unwrap()
     };
     let shown =
         |bytes: &[u8]| -> std::string::String { bytes.iter().map(|&b| char::from(b & CODE_MASK_7BIT)).collect() };
@@ -814,10 +794,11 @@ fn a_sub_code_request_gets_that_sub_page() {
     assert!(decoder.store().get(address, SubCode::new(3)).is_none());
 }
 
-/// REQ-GEN-006: a full listing buffer keeps the lowest sub-codes when a
-/// lower one than those listed comes later in the store.
+/// REQ-NAV-005: the store steps and counts a page's sub-pages in
+/// ascending order whatever order its slots hold them in, wrapping to
+/// nothing at either end, and gives each its place.
 #[test]
-fn subcode_listing_into_a_full_buffer_takes_a_later_lower_sub_code() {
+fn sub_pages_are_stepped_and_counted_through_the_store() {
     let mut slots = std::vec![StoredPage::EMPTY; 8];
     let mut decoder = Decoder::new(&mut slots, Config::default());
     let mut events = Vec::new();
@@ -826,9 +807,19 @@ fn subcode_listing_into_a_full_buffer_takes_a_later_lower_sub_code() {
         &[header(1, 0x00, 2, 0), header(1, 0x00, 3, 0), header(1, 0x00, 1, 0), header(1, 0x01, 0, 0)],
         &mut events,
     );
-    let mut subcodes = [SubCode::default(); 2];
-    let count = decoder.store().subcodes(PageAddress::from_mpp(0x100).unwrap(), &mut subcodes);
-    assert_eq!(&subcodes[..count], &[SubCode::new(1), SubCode::new(2)]);
+    let store = decoder.store();
+    let address = PageAddress::from_mpp(0x100).unwrap();
+    assert_eq!(store.subpage_count(address), 3);
+    assert_eq!(
+        (store.first_subpage(address), store.last_subpage(address)),
+        (Some(SubCode::new(1)), Some(SubCode::new(3)))
+    );
+    assert_eq!(store.next_subpage(address, SubCode::new(1)), Some(SubCode::new(2)));
+    assert_eq!(store.next_subpage(address, SubCode::new(3)), None);
+    assert_eq!(store.previous_subpage(address, SubCode::new(2)), Some(SubCode::new(1)));
+    assert_eq!(store.previous_subpage(address, SubCode::new(1)), None);
+    assert_eq!(store.subpage_place(address, SubCode::new(3)), Some(3));
+    assert_eq!(store.subpage_place(address, SubCode::new(4)), None);
 }
 
 /// REQ-ACQ-005: the store uses only the slots the caller gives. When

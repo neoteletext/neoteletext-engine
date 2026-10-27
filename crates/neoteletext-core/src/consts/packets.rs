@@ -1,12 +1,8 @@
 //! Packet numbers and magazines (clause 7.1.2, Table 1), and the fields of
 //! the broadcast service data packet (clause 9.8.1).
 
-/// Number of magazines.
-pub const MAGAZINES: usize = 8;
-/// Magazine number transmitted as 0 means magazine 8 (clause 7.1.2).
-pub const MAGAZINE_ZERO_MEANS: u8 = 8;
-/// Mask of the magazine bits in the first address nibble.
-pub const MAGAZINE_MASK: u8 = 0x07;
+// The magazines are area NUM's, written once in `limits` (REQ-NUM-031).
+pub use crate::limits::{MAGAZINE_MASK, MAGAZINE_ZERO_MEANS, MAGAZINES};
 /// Packet number of the page header.
 pub const PACKET_HEADER: u8 = 0;
 /// First display row packet.

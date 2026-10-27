@@ -3,6 +3,7 @@
 
 use super::{Packet, nibble};
 use crate::consts::{HEADER_DISPLAY_BYTES, HEADER_DISPLAY_START};
+use crate::limits::sub_code;
 use crate::types::{ControlBits, Magazine, PageNumber, SubCode};
 
 /// A decoded page header (REQ-PKT-002).
@@ -60,10 +61,10 @@ pub(super) fn decode_header(packet: &Packet, magazine: Magazine) -> Header {
     let s4c5c6 = nibble(packet, HEADER_S4_C5_C6);
     let c7c10 = nibble(packet, HEADER_C7_C10);
     let c11c14 = nibble(packet, HEADER_C11_C14);
+    // REQ-NUM-005: the bits beside S2 and S4 are C4, C5 and C6, which
+    // `sub_code` masks away; they are never part of the sub-code.
     let subcode = match (s1, s2c4, s3, s4c5c6) {
-        (Some(s1), Some(s2), Some(s3), Some(s4)) => Some(SubCode::new(
-            u16::from(s1) | (u16::from(s2 & 0x7) << 4) | (u16::from(s3) << 8) | (u16::from(s4 & 0x3) << 12),
-        )),
+        (Some(s1), Some(s2), Some(s3), Some(s4)) => Some(SubCode::new(sub_code(s4, s3, s2, s1))),
         _ => None,
     };
     let control = match (s2c4, s4c5c6, c7c10, c11c14) {
@@ -96,9 +97,14 @@ pub(super) mod encode {
     };
     use crate::consts::{HEADER_DISPLAY_BYTES, HEADER_DISPLAY_START};
     use crate::ecc::hamming84_encode;
+    use crate::limits::{NULL_ADDRESS, S2_MASK, S4_MASK, s1, s2, s3, s4};
     use crate::types::{ControlBits, Magazine, PageNumber, SubCode};
 
     /// A page header. `display` is 32 bytes already carrying parity.
+    ///
+    /// `None` for the null page address XFF:3F7F, which shall never be
+    /// sent as a header (clause 7.2.2; Annex A.1, rule 3; REQ-NUM-007).
+    /// Every other address is written as given (REQ-NUM-002).
     #[must_use]
     pub fn header(
         magazine: Magazine,
@@ -106,17 +112,24 @@ pub(super) mod encode {
         subcode: SubCode,
         control: ControlBits,
         display: &[u8; HEADER_DISPLAY_BYTES],
-    ) -> Packet {
+    ) -> Option<Packet> {
+        if (page.0, subcode.value()) == NULL_ADDRESS {
+            return None;
+        }
         let mut packet = address(magazine, 0);
         let sub = subcode.value();
         let c = control.0;
+        // C4 sits above S2's three bits, and C5 and C6 above S4's two
+        // (clause 9.3.1.3).
+        let c4_shift = S2_MASK.count_ones();
+        let c5_shift = S4_MASK.count_ones();
         let nibbles = [
             (HEADER_UNITS, page.units()),
             (HEADER_TENS, page.tens()),
-            (HEADER_S1, (sub & 0xF) as u8),
-            (HEADER_S2_C4, (((sub >> 4) & 0x7) as u8) | ((((c >> 4) & 1) as u8) << 3)),
-            (HEADER_S3, ((sub >> 8) & 0xF) as u8),
-            (HEADER_S4_C5_C6, (((sub >> 12) & 0x3) as u8) | ((((c >> 5) & 0x3) as u8) << 2)),
+            (HEADER_S1, s1(sub)),
+            (HEADER_S2_C4, s2(sub) | ((((c >> 4) & 1) as u8) << c4_shift)),
+            (HEADER_S3, s3(sub)),
+            (HEADER_S4_C5_C6, s4(sub) | ((((c >> 5) & 0x3) as u8) << c5_shift)),
             (HEADER_C7_C10, ((c >> 7) & 0xF) as u8),
             (HEADER_C11_C14, ((c >> 11) & 0xF) as u8),
         ];
@@ -126,6 +139,6 @@ pub(super) mod encode {
         if let Some(target) = packet.bytes.get_mut(HEADER_DISPLAY_START..) {
             target.copy_from_slice(display);
         }
-        packet
+        Some(packet)
     }
 }

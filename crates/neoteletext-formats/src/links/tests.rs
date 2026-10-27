@@ -109,13 +109,16 @@ LN,I,100,\r\n";
         let mut packets = std::vec::Vec::new();
         crate::encode::encode_page(file, &mut |packet| packets.push(packet));
         // Another page of the magazine ends this one.
-        packets.push(encode::header(
-            file.address.magazine,
-            PageNumber(neoteletext_core::consts::PAGE_TIME_FILLING),
-            SubCode::new(0),
-            ControlBits(0),
-            &[neoteletext_core::ecc::with_odd_parity(SPACE); HEADER_DISPLAY_BYTES],
-        ));
+        packets.push(
+            encode::header(
+                file.address.magazine,
+                PageNumber(neoteletext_core::consts::PAGE_TIME_FILLING),
+                SubCode::new(0),
+                ControlBits(0),
+                &[neoteletext_core::ecc::with_odd_parity(SPACE); HEADER_DISPLAY_BYTES],
+            )
+            .unwrap(),
+        );
         let mut slots = std::vec![StoredPage::EMPTY; 8];
         let mut decoder = Decoder::new(&mut slots, Config::default());
         for (index, packet) in packets.iter().enumerate() {

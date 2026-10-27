@@ -42,8 +42,9 @@ pub const ENHANCEMENT_PACKETS_LEVEL_35: usize = 1200;
 // The Magazine Organization Table (clause 10.6, Figure 20, Tables 20 to 23)
 // ---------------------------------------------------------------------------
 
-/// Page number of the Magazine Organization Table in every magazine.
-pub const PAGE_MOT: u8 = 0xFE;
+// The Magazine Organization Table's page number, mFE, is area NUM's,
+// written once in `limits` (REQ-NUM-031).
+pub use crate::limits::PAGE_MOT;
 /// The first packet of the byte pairs for decimal pages x00 to x99.
 pub const MOT_DECIMAL_FIRST_PACKET: u8 = 1;
 /// The first packet of the byte pairs for tens A to F, units 0 to 9.

@@ -3,6 +3,7 @@
 use crate::consts::{
     DEFAULT_INITIAL_PAGE, MJD_REFERENCE, NIBBLE_MASK, SERVICE_DIGIT_OFFSET, SERVICE_FORMAT_2_BIT, STATUS_MESSAGE_BYTES,
 };
+use crate::limits::{LINK_NULL_PAGE, MPP_MAGAZINE_SHIFT};
 use crate::packet::ServicePacket;
 use crate::types::{PageAddress, SubCode};
 
@@ -48,9 +49,13 @@ pub struct ServiceInfo {
 #[must_use]
 pub fn interpret(packet: &ServicePacket) -> ServiceInfo {
     let format2 = packet.designation & SERVICE_FORMAT_2_BIT != 0;
-    let initial_page = packet.initial_page.and_then(|(magazine, page, subcode)| {
-        PageAddress::from_mpp((u16::from(magazine.number()) << 8) | u16::from(page.0)).map(|address| (address, subcode))
-    });
+    // REQ-NUM-007, REQ-NUM-018: page number FF names no page, and XFF:3F7F
+    // is the null address, so the initial page is then the default.
+    let initial_page =
+        packet.initial_page.filter(|(_, page, _)| page.0 != LINK_NULL_PAGE).and_then(|(magazine, page, subcode)| {
+            PageAddress::from_mpp((u16::from(magazine.number()) << MPP_MAGAZINE_SHIFT) | u16::from(page.0))
+                .map(|address| (address, subcode))
+        });
     let mut status = [0; STATUS_MESSAGE_BYTES];
     for (out, &byte) in status.iter_mut().zip(packet.status.iter()) {
         *out = byte & crate::consts::CODE_MASK_7BIT;

@@ -9,6 +9,7 @@ use crate::consts::{
     PAGE_FUNCTION_BASIC, PAGE_MOT,
 };
 use crate::fsm::{MagazineState, PageEvent, PageKey};
+use crate::limits::{PAGE_MIP, is_reserved_page};
 use crate::packet::{PageFormat, mot_object_link};
 use crate::types::{ControlBits, Instant, PageAddress};
 
@@ -108,13 +109,18 @@ impl Decoder<'_> {
     /// go to the enhancement store when they are enhancement pages, and
     /// otherwise to the page store at Levels 2.5 and 3.5 or under the
     /// diagnostic setting.
+    ///
+    /// A reserved page number (mFD, mFE, mFF, 1BE, 1F0) is never a display
+    /// page: it is read only as the function it is reserved for, so it never
+    /// goes to the page store (Annex A.10; REQ-NUM-008, REQ-NUM-010). The
+    /// MOT and the MIP go to the enhancement store, as the tables they are.
     pub(super) fn route(&self, address: PageAddress) -> Route {
+        let table = address.page.0 == PAGE_MOT || address.page.0 == PAGE_MIP;
         let enhancement = self.enhancement.is_enabled()
-            && (address.page.0 == PAGE_MOT
-                || self.enhancement.contains_address(address)
-                || self.named.as_slice().contains(&address));
+            && (table || self.enhancement.contains_address(address) || self.named.as_slice().contains(&address));
         let hexadecimal = self.config.store_hexadecimal_pages || (self.config.level.is_enhanced() && !enhancement);
-        Route { main: address.page.is_decimal() || hexadecimal, enhancement }
+        let reserved = is_reserved_page(address.magazine.number(), address.page.0);
+        Route { main: !reserved && (address.page.is_decimal() || hexadecimal), enhancement }
     }
 
     /// Stores a packet of an enhancement sub-page as received (decision

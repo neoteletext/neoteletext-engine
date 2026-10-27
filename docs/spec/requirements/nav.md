@@ -65,6 +65,7 @@ The status area shall show the current sub-page number and the number of sub-pag
 A page may have every sub-page the standard addresses, 8,190 (sub-codes 0001 to 3F7E; `limits`, decision E.122), and the viewer shall step and count them through the store, holding no list of its own. A sub-page number entered directly is one of the 3,199 decimal ones (0001 to 3979, the tens digit 0 to 7, Annex A.1).
 *Verification:* Test; demonstration.
 *Amended 26 October 2026 (decision E.122):* the viewer's own bound of 64 listed sub-pages (`viewer::MAX_LISTED_SUBPAGES`) is withdrawn; a page may have 8,190, and entry is of the decimal sub-page numbers.
+*Amended 28 October 2026 (decision E.130):* every sub-code is accepted (REQ-NUM-002), and the viewer steps through and counts every sub-page of a page, up to 8,190, reaching any one whether or not the store holds it at the moment (REQ-NUM-030); entry is of the 3,199 decimal sub-codes (REQ-NUM-017); a page marked by its MIP as not following the sub-code rules shows its latest version only (REQ-NUM-021).
 
 **REQ-NAV-006 — Hold.**
 The viewer shall be able to hold the displayed page, so that it is not updated by new receptions until hold is released.

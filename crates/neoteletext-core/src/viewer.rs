@@ -242,6 +242,18 @@ impl Viewer {
         self.history.wipe();
     }
 
+    /// Shows a sub-page of the page shown, entered directly (REQ-NAV-005):
+    /// one of the 3,199 decimal sub-codes ([`crate::nav::SubPageEntry`];
+    /// REQ-NUM-017), or `SubCode::ANY` to return to the rotating display.
+    /// Ignored unless a page is shown or searched for.
+    pub fn show_subpage(&mut self, subcode: SubCode) -> Action {
+        if !matches!(self.state, ViewerState::Displaying | ViewerState::Searching) {
+            return Action::None;
+        }
+        self.subcode = subcode;
+        Action::Request(self.requested, subcode)
+    }
+
     fn select(&mut self, address: PageAddress, subcode: SubCode, record: bool) -> Action {
         if address != self.requested {
             // REQ-NAV-007: reveal clears when a different page is selected.
@@ -278,11 +290,6 @@ impl Viewer {
         }
     }
 }
-
-/// The most sub-pages of one page the viewer lists for stepping and
-/// numbering ("2/5"); a page with more steps through the first this many.
-/// Public so that a port showing the same list names the same bound.
-pub const MAX_LISTED_SUBPAGES: usize = 64;
 
 #[cfg(test)]
 mod tests;

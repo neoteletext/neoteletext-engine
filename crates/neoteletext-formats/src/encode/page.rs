@@ -116,8 +116,20 @@ fn triplets_with_marks(
 /// and packets 28. A display page then sends packets 26 in ascending
 /// designation code and the rows (item 2); a page for further processing
 /// ([`is_enhancement_page`]) sends the rows and then packets 26 (item 3).
+///
+/// A page at the null page address XFF:3F7F is refused: nothing is
+/// written, since its header shall never be sent (clause 7.2.2; Annex A.1,
+/// rule 3; REQ-NUM-007).
 pub fn encode_page(page: &PageFile, out: &mut dyn FnMut(Packet)) {
     let magazine = page.address.magazine;
+    let header_codes = page.row(0).copied().unwrap_or([SPACE; COLUMNS]);
+    let mut display = [with_odd_parity(SPACE); HEADER_DISPLAY_BYTES];
+    for (slot, &code) in display.iter_mut().zip(header_codes.iter().skip(HEADER_DISPLAY_COLUMN)) {
+        *slot = with_odd_parity(code);
+    }
+    let Some(header) = encode::header(magazine, page.address.page, page.subcode, page.control(), &display) else {
+        return;
+    };
     let further_processing = is_enhancement_page(page);
     // The receiver-style link row belongs to display pages only.
     let link_row = if further_processing { None } else { link_row(page) };
@@ -126,13 +138,7 @@ pub fn encode_page(page: &PageFile, out: &mut dyn FnMut(Packet)) {
     for raw in page.raw_packets.as_slice().iter().filter(|raw| raw.number == PACKET_MAGAZINE_ENHANCEMENT) {
         out(raw_packet(magazine, raw));
     }
-
-    let header_codes = page.row(0).copied().unwrap_or([SPACE; COLUMNS]);
-    let mut display = [with_odd_parity(SPACE); HEADER_DISPLAY_BYTES];
-    for (slot, &code) in display.iter_mut().zip(header_codes.iter().skip(HEADER_DISPLAY_COLUMN)) {
-        *slot = with_odd_parity(code);
-    }
-    out(encode::header(magazine, page.address.page, page.subcode, page.control(), &display));
+    out(header);
 
     if let Some((links, row_24)) = fastext_links(page) {
         let checksum = page_checksum(&display, &rows);

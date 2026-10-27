@@ -67,6 +67,23 @@ fn header_carries_every_control_bit_and_the_display_bytes() {
     assert_eq!(packets.len(), 1);
 }
 
+/// REQ-NUM-007: a page at the null address XFF:3F7F is refused whole,
+/// nothing written; page FF with another sub-code, and 3F7F on another
+/// page, are written as given (REQ-NUM-002).
+#[test]
+fn a_page_at_the_null_address_is_not_written() {
+    let mut page = PageFile::new();
+    page.set_row(1, b"Hello");
+    page.address = PageAddress::from_mpp(0x1FF).unwrap();
+    page.subcode = SubCode::new(0x3F7F);
+    assert_eq!(encode_all(&page).len(), 0);
+    page.subcode = SubCode::new(0x3F7E);
+    assert_eq!(encode_all(&page).len(), 2);
+    page.address = PageAddress::from_mpp(0x1FE).unwrap();
+    page.subcode = SubCode::new(0x3F7F);
+    assert_eq!(encode_all(&page).len(), 2);
+}
+
 #[test]
 fn checksum_covers_rows_1_to_25_with_absent_rows_as_spaces() {
     let mut page = PageFile::new();

@@ -4,6 +4,7 @@
 use crate::consts::{
     DECIMAL_DIGIT_MAX, MAGAZINE_MASK, MAGAZINE_ZERO_MEANS, NIBBLE_MASK, PAGE_TIME_FILLING, SUBCODE_ANY, SUBCODE_MASK,
 };
+use crate::limits::{LAST_PAGE_ADDRESS, MPP_MAGAZINE_SHIFT, is_decimal_sub_code};
 
 /// A magazine number, 1 to 8 (clause 7.1.2).
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
@@ -87,9 +88,10 @@ impl PageAddress {
     /// the magazine digit is 1 to 8. `None` otherwise.
     #[must_use]
     pub const fn from_mpp(mpp: u16) -> Option<Self> {
-        let magazine_digit = (mpp >> 8) as u8;
+        let magazine_digit = (mpp >> MPP_MAGAZINE_SHIFT) as u8;
         match Magazine::new(magazine_digit) {
-            Some(magazine) if mpp <= 0x8FF => Some(Self { magazine, page: PageNumber((mpp & 0xFF) as u8) }),
+            // The page number is the low byte: the truncation keeps it.
+            Some(magazine) if mpp <= LAST_PAGE_ADDRESS => Some(Self { magazine, page: PageNumber(mpp as u8) }),
             _ => None,
         }
     }
@@ -97,7 +99,7 @@ impl PageAddress {
     /// The three-digit form `0xMPP` with the magazine as 1 to 8.
     #[must_use]
     pub const fn mpp(self) -> u16 {
-        ((self.magazine.number() as u16) << 8) | self.page.0 as u16
+        ((self.magazine.number() as u16) << MPP_MAGAZINE_SHIFT) | self.page.0 as u16
     }
 
     /// The three ASCII characters of `mpp`, uppercase hexadecimal.
@@ -138,6 +140,13 @@ impl SubCode {
     #[must_use]
     pub const fn is_any(self) -> bool {
         self.0 == SUBCODE_ANY
+    }
+
+    /// True when every element is a decimal digit, as a viewer keys it
+    /// (REQ-NUM-017).
+    #[must_use]
+    pub const fn is_decimal(self) -> bool {
+        is_decimal_sub_code(self.0)
     }
 }
 

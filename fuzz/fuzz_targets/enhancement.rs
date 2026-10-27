@@ -65,7 +65,7 @@ fn packet_of(selector: u8, data: &mut &[u8]) -> Option<Packet> {
             let [s1, control_low, control_high] = *take(data, 3)? else { return None };
             let subcode = SubCode::new(u16::from(s1 & 0xF));
             let control = ControlBits(u16::from_le_bytes([control_low, control_high]));
-            Some(encode::header(magazine, page, subcode, control, &[b' '; HEADER_DISPLAY_BYTES]))
+            encode::header(magazine, page, subcode, control, &[b' '; HEADER_DISPLAY_BYTES])
         }
         1 => {
             let [row] = *take(data, 1)? else { return None };

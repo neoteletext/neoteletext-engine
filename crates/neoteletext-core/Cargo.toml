@@ -92,6 +92,11 @@ name = "behaviour"
 required-features = ["level15", "render", "viewer"]
 
 [[test]]
+name = "numbering"
+# Area NUM through the decoder, the store and the viewer.
+required-features = ["viewer"]
+
+[[test]]
 name = "capabilities"
 required-features = ["level15", "level25"]
 

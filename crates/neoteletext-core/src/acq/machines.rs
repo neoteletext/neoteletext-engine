@@ -2,7 +2,7 @@
 //! one transition of each, and the actions a magazine transition takes,
 //! starting and ending the reception of a page.
 
-use super::{Decoder, Discard, Event, StoredPage};
+use super::{Decoder, Discard, Event, Numbering, StoredPage};
 use crate::fsm::{
     MagazineAction, MagazineEvent, PageAction, PageEvent, PageKey, PageState, magazine_action_name,
     magazine_event_name, magazine_state_name, magazine_transition, page_action_name, page_event_name, page_state_name,
@@ -65,6 +65,10 @@ impl Decoder<'_> {
         if !route.main {
             return;
         }
+        let numbering = self.numbering(key.address);
+        if numbering == Numbering::LatestOnly {
+            self.release_other_versions(key, now, events);
+        }
         let Some((slot, evict)) = self.store.allocate(key, &self.receiving_slot) else {
             return;
         };
@@ -78,11 +82,28 @@ impl Decoder<'_> {
             page.key = key;
             page.first_received = now;
         }
+        if let Some(page) = self.store.page_mut(slot) {
+            page.numbering = numbering;
+        }
         if let Some(receiving) = self.receiving_slot.get_mut(magazine_index) {
             *receiving = Some(slot);
         }
         self.stats.pages_started = self.stats.pages_started.saturating_add(1);
         self.page_event(slot, PageEvent::ReceptionStarted { erase }, now, events);
+    }
+
+    /// Releases every stored version of a page other than `key`'s, for a
+    /// page that keeps only its latest (REQ-NUM-021): its sub-code is the
+    /// time or the like, not a sub-page, so each new one replaces the last.
+    fn release_other_versions(&mut self, key: PageKey, now: Instant, events: &mut dyn FnMut(Event)) {
+        for index in 0..self.store.pages().len() {
+            let other = self.store.slot(index).is_some_and(|page| {
+                page.state != PageState::Empty && page.key.address == key.address && page.key != key
+            });
+            if other && !self.receiving_slot.contains(&Some(index)) {
+                self.page_event(index, PageEvent::Evicted, now, events);
+            }
+        }
     }
 
     fn end(&mut self, magazine_index: usize, now: Instant, events: &mut dyn FnMut(Event)) {

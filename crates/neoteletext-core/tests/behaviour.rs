@@ -33,6 +33,7 @@ fn text(s: &[u8]) -> [u8; 40] {
 
 fn header(page: u8, control: u16) -> Packet {
     encode::header(mag(), PageNumber(page), SubCode::new(0), ControlBits(control), &[with_odd_parity(b' '); 32])
+        .unwrap()
 }
 
 /// The packets of one page: rows, two X/26 packets, X/27/0 and X/28/0.

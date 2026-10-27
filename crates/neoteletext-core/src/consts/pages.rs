@@ -24,24 +24,18 @@ pub const RECEIVER_COLUMNS: usize = 8;
 pub const CLOCK_COLUMN: usize = 32;
 /// The clock's bytes: header columns 32 to 39 (decision E.11).
 pub const CLOCK_BYTES: usize = COLUMNS - CLOCK_COLUMN;
-/// Page number of time-filling headers (clause 9.3.1.1).
-pub const PAGE_TIME_FILLING: u8 = 0xFF;
-/// Page number tens or units digits above 9 are hexadecimal (Table 1 note).
-pub const DECIMAL_DIGIT_MAX: u8 = 9;
-/// Sub-code meaning "any sub-page" (Annex A.1, REQ-NAV-003).
-pub const SUBCODE_ANY: u16 = 0x3F7F;
-/// The bits a sub-code can carry: S1 4 bits, S2 3, S3 4, S4 2.
-pub const SUBCODE_MASK: u16 = 0x3F7F;
-/// Page number of a null link (clause 9.6.1).
-pub const LINK_NULL_PAGE: u8 = 0xFF;
-/// Sub-code of a null link (clause 9.6.1).
-pub const LINK_NULL_SUBCODE: u16 = 0x3F7F;
-/// Default initial page when no 8/30 packet is received (Annex D.3).
-pub const DEFAULT_INITIAL_PAGE: u16 = 0x100;
-/// Lowest and highest page numbers that can be entered (REQ-NAV-001).
-pub const FIRST_PAGE: u16 = 0x100;
+// The page numbers and sub-codes are area NUM's, written once in
+// `limits` (REQ-NUM-031, decision E.122); these names are kept for the
+// code that used them before.
+/// Lowest page number that can be entered (REQ-NAV-001).
+pub use crate::limits::FIRST_KEYABLE_PAGE as FIRST_PAGE;
 /// Highest page number; 899 wraps to 100 (REQ-NAV-002).
-pub const LAST_PAGE: u16 = 0x899;
+pub use crate::limits::LAST_KEYABLE_PAGE as LAST_PAGE;
+/// Default initial page when no 8/30 packet is received (Annex D.3).
+pub use crate::limits::PAGE_HOME as DEFAULT_INITIAL_PAGE;
+pub use crate::limits::{
+    DECIMAL_DIGIT_MAX, LINK_NULL_PAGE, LINK_NULL_SUBCODE, PAGE_TIME_FILLING, SUBCODE_ANY, SUBCODE_MASK,
+};
 
 // Header control bits (clause 9.3.1.3). Bit n of a control word is Cn.
 

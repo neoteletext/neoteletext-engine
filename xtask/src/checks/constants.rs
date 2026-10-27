@@ -11,10 +11,14 @@ const CORE_SRC: &str = "crates/neoteletext-core/src";
 /// of code points or glyphs, where the literal values are characters, not
 /// teletext constants. A path ending in `/` is a directory and covers
 /// every file under it.
-const DATA_FILES: &[&str] = &["consts.rs", "consts/", "charset/", "glyphs/bedstead.rs"];
+const DATA_FILES: &[&str] = &["consts.rs", "consts/", "limits.rs", "charset/", "glyphs/bedstead.rs"];
 /// Teletext values that must only appear in the constants module
-/// (REQ-GEN-014).
-const WATCHED_LITERALS: &[&str] = &["0x27", "0xE4", "0xe4", "6937500", "6_937_500", "0x55"];
+/// (REQ-GEN-014), and the numbers of area NUM, which only `limits` writes
+/// (REQ-NUM-031): the null sub-code, the last sub-page's and the last
+/// keyable page. The decimal counts (8,190 and the like) are not watched,
+/// since codec tables hold the same values for other reasons.
+const WATCHED_LITERALS: &[&str] =
+    &["0x27", "0xE4", "0xe4", "6937500", "6_937_500", "0x55", "0x3F7F", "0x3f7f", "0x3F7E", "0x3f7e", "0x899"];
 
 /// Whether `path`, relative to the core's `src/`, is one of [`DATA_FILES`].
 fn is_data_file(path: &str) -> bool {
