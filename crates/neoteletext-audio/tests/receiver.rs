@@ -24,6 +24,7 @@ enum Call {
     Start(u8, Start),
     Stop(u8, u16),
     Gain(u8, u8, u16),
+    Concealed(SoundId, u16, u32),
 }
 
 #[derive(Default)]
@@ -89,6 +90,9 @@ impl VoiceSink for Recorder {
     fn gain(&mut self, channel: u8, gain: u8, fade_ms: u16) {
         self.calls.push(Call::Gain(channel, gain, fade_ms));
     }
+    fn concealed(&mut self, sound: SoundId, block: u16, samples: u32) {
+        self.calls.push(Call::Concealed(sound, block, samples));
+    }
 }
 
 /// A tone of `samples` samples.
@@ -111,6 +115,7 @@ fn play(channel: u8, sequence: u16, sound: &Sound, page: Option<u16>) -> Command
     }
 }
 
+#[cfg(feature = "pcm16")]
 fn stop(channel: u8, sequence: u16) -> Command {
     Command {
         channel,
@@ -172,6 +177,7 @@ fn a_page_sound_plays_when_its_page_is_opened() {
     assert_eq!(sink.starts(), [(0, id)], "already at the sink, so only started");
 }
 
+#[cfg(feature = "pcm16")]
 #[test]
 fn pcm_round_trips_exactly() {
     let pcm = tone(777);
@@ -186,6 +192,7 @@ fn pcm_round_trips_exactly() {
     assert_eq!(sink.pcm[0].1, pcm);
 }
 
+#[cfg(feature = "pcm16")]
 #[test]
 fn a_stop_that_arrives_before_the_older_play_wins() {
     let sound = Sound::new(1, 1, Codec::Pcm16, 8_000, 1000, &tone(100)).unwrap();
@@ -259,6 +266,7 @@ fn a_progressive_play_starts_after_forty_milliseconds() {
     assert!(sink.calls[before..].iter().all(|call| matches!(call, Call::Samples(..))) && sink.calls.len() > before);
 }
 
+#[cfg(feature = "pcm16")]
 #[test]
 fn damaged_packets_are_dropped_and_the_carousel_repeat_recovers() {
     let sound = Sound::new(1, 1, Codec::Pcm16, 8_000, 1000, &tone(2000)).unwrap();
@@ -279,6 +287,7 @@ fn damaged_packets_are_dropped_and_the_carousel_repeat_recovers() {
     assert_eq!(sink.starts().len(), 1);
 }
 
+#[cfg(feature = "pcm16")]
 #[test]
 fn page_sounds_off_keeps_a_page_quiet() {
     let sound = Sound::new(1, 1, Codec::Pcm16, 8_000, 1000, &tone(100)).unwrap();
@@ -295,6 +304,7 @@ fn page_sounds_off_keeps_a_page_quiet() {
     assert_eq!(sink.starts().len(), 1);
 }
 
+#[cfg(feature = "pcm16")]
 #[test]
 fn channels_beyond_the_sink_are_ignored_and_a_lost_sink_is_refilled() {
     let sound = Sound::new(1, 1, Codec::Pcm16, 8_000, 1000, &tone(100)).unwrap();
@@ -314,6 +324,7 @@ fn channels_beyond_the_sink_are_ignored_and_a_lost_sink_is_refilled() {
     assert!(matches!(sink.calls.first(), Some(Call::Define(..))));
 }
 
+#[cfg(feature = "pcm16")]
 #[test]
 fn a_newer_generation_replaces_the_sound_at_the_sink() {
     let first = Sound::new(1, 1, Codec::Pcm16, 8_000, 1000, &tone(100)).unwrap();
@@ -340,6 +351,7 @@ fn a_label_longer_than_the_bound_is_not_written() {
     assert!(sound.object_record().is_err());
 }
 
+#[cfg(feature = "pcm16")]
 /// A live PCM sound at 8 kHz, 100-byte blocks of 50 samples.
 fn live_sound() -> Sound {
     Sound::live(4, 1, Codec::Pcm16, 8_000, 100).unwrap()
@@ -347,6 +359,7 @@ fn live_sound() -> Sound {
 
 /// The packets of live blocks `first..first + count`, block `n` holding the
 /// value `n` in every sample, one block a record.
+#[cfg(feature = "pcm16")]
 fn live_blocks(sound: &Sound, first: u16, count: u16) -> Vec<Packet> {
     let records: Vec<Vec<u8>> = (0..count)
         .flat_map(|offset| {
@@ -357,19 +370,28 @@ fn live_blocks(sound: &Sound, first: u16, count: u16) -> Vec<Packet> {
     packets(0, 0, &records).0
 }
 
+#[cfg(any(feature = "pcm16", feature = "opus"))]
 fn push(receiver: &mut Receiver<'_, 8, 2>, packets: &[Packet], sink: &mut Recorder) {
     for packet in packets {
         assert!(receiver.push_packet(packet, sink));
     }
 }
 
-/// The value of each block of 50 samples the sink received, in order.
+#[cfg(feature = "pcm16")]
+/// The value of each block of 50 samples the sink received, in order: its
+/// loudest sample, since a block next to a silence is faded at that edge.
 fn live_values(sink: &Recorder, sound: &Sound) -> Vec<i16> {
-    let id = SoundId { handle: sound.handle, generation: sound.generation };
-    let (_, pcm) = sink.pcm.iter().rev().find(|(sound, _)| *sound == id).unwrap();
-    pcm.chunks(50).map(|block| block[0]).collect()
+    live_samples(sink, sound).chunks(50).map(|block| block.iter().copied().max().unwrap()).collect()
 }
 
+/// Every sample of a live sound the sink received, in order.
+#[cfg(feature = "pcm16")]
+fn live_samples(sink: &Recorder, sound: &Sound) -> Vec<i16> {
+    let id = SoundId { handle: sound.handle, generation: sound.generation };
+    sink.pcm.iter().rev().find(|(sound, _)| *sound == id).unwrap().1.clone()
+}
+
+#[cfg(feature = "pcm16")]
 #[test]
 fn a_live_sound_joins_at_its_newest_block_and_follows_in_order() {
     let sound = live_sound();
@@ -392,6 +414,7 @@ fn a_live_sound_joins_at_its_newest_block_and_follows_in_order() {
     assert_eq!(receiver.statistics().concealed, 0);
 }
 
+#[cfg(feature = "pcm16")]
 #[test]
 fn a_lost_live_block_is_heard_as_silence_once_three_newer_have_come() {
     let sound = live_sound();
@@ -416,6 +439,7 @@ fn a_lost_live_block_is_heard_as_silence_once_three_newer_have_come() {
     assert_eq!(receiver.statistics().concealed, 1);
 }
 
+#[cfg(feature = "pcm16")]
 #[test]
 fn a_stalled_live_sound_fades_out_and_resumes_when_its_blocks_return() {
     let sound = live_sound();
@@ -447,6 +471,7 @@ fn a_stalled_live_sound_fades_out_and_resumes_when_its_blocks_return() {
     assert_eq!(live_values(&sink, &sound), [500]);
 }
 
+#[cfg(feature = "pcm16")]
 #[test]
 fn a_stopped_live_sound_is_not_restarted_by_its_blocks() {
     let sound = live_sound();
@@ -461,6 +486,7 @@ fn a_stopped_live_sound_is_not_restarted_by_its_blocks() {
     assert_eq!(sink.starts(), NO_STARTS);
 }
 
+#[cfg(feature = "pcm16")]
 #[test]
 fn a_cursor_record_on_the_audio_channel_is_left_to_the_input_profile() {
     // The input profile's cursor record shares data channel 12 (decision
@@ -487,6 +513,214 @@ fn a_cursor_record_on_the_audio_channel_is_left_to_the_input_profile() {
     }
     assert_eq!(receiver.statistics().records_refused, 0);
     assert_eq!(sink.starts(), [(1, SoundId { handle: 1, generation: 1 })]);
+}
+
+/// The samples of a 5 ms loss fade at 8 kHz (REQ-AUD-013).
+#[cfg(feature = "pcm16")]
+const FADE_8_KHZ: usize = 40;
+
+/// Whether `got` ramps `level` down to silence (or up from it, `rising`)
+/// over its length, as (L − n) / (L + 1) of the level, within the rounding
+/// of 16-bit fixed point.
+#[cfg(feature = "pcm16")]
+fn ramps(got: &[i16], level: i16, rising: bool) -> bool {
+    let length = i32::try_from(got.len()).unwrap();
+    got.iter().zip(0..).all(|(&sample, n)| {
+        let steps = if rising { n + 1 } else { length - n };
+        let want = i32::from(level) * steps / (length + 1);
+        (i32::from(sample) - want).abs() <= 4
+    })
+}
+
+/// The packets of live blocks `first..first + count`, every sample `level`.
+#[cfg(feature = "pcm16")]
+fn level_blocks(sound: &Sound, first: u16, count: u16, level: i16) -> Vec<Packet> {
+    let records: Vec<Vec<u8>> =
+        (0..count).flat_map(|offset| sound.live_records(first.wrapping_add(offset), &[level; 50])).collect();
+    packets(0, 0, &records).0
+}
+
+/// REQ-AUD-013: a live block given up is silence, faded into from the block
+/// before and out of into the block after over 5 ms, and reported.
+#[cfg(feature = "pcm16")]
+#[test]
+fn a_lost_live_block_is_faded_into_and_out_of_and_reported_concealed() {
+    const LEVEL: i16 = 8000;
+    let sound = live_sound();
+    let id = SoundId { handle: 4, generation: 1 };
+    let mut arena = vec![0; ARENA];
+    let mut receiver = Receiver::<8, 2>::new(&mut arena);
+    let mut sink = Recorder::new();
+    let announce = [sound.object_record().unwrap(), play(0, 1, &sound, None).record()];
+    push(&mut receiver, &packets(0, 0, &announce).0, &mut sink);
+    push(&mut receiver, &level_blocks(&sound, 10, 1, LEVEL), &mut sink);
+    // Block 11 is lost: once 14 is here, three ahead, it is silence.
+    push(&mut receiver, &level_blocks(&sound, 12, 3, LEVEL), &mut sink);
+    let heard = live_samples(&sink, &sound);
+    let (before, rest) = heard.split_at(50);
+    let (gap, after) = rest.split_at(50);
+    assert!(before[..50 - FADE_8_KHZ].iter().all(|&sample| sample == LEVEL));
+    assert!(ramps(&before[50 - FADE_8_KHZ..], LEVEL, false), "faded into the gap: {before:?}");
+    assert!(gap.iter().all(|&sample| sample == 0), "{gap:?}");
+    assert!(ramps(&after[..FADE_8_KHZ], LEVEL, true), "faded out of the gap: {after:?}");
+    // Then whole blocks, the newest's last 5 ms held until its successor.
+    assert!(after[FADE_8_KHZ..].iter().all(|&sample| sample == LEVEL));
+    assert_eq!(after.len(), 3 * 50 - FADE_8_KHZ);
+    let reports: Vec<&Call> = sink.calls.iter().filter(|call| matches!(call, Call::Concealed(..))).collect();
+    assert_eq!(reports, [&Call::Concealed(id, 11, 50)]);
+    assert_eq!(receiver.statistics().concealed, 1);
+    // The held tail goes, whole, once the next block comes.
+    push(&mut receiver, &level_blocks(&sound, 15, 1, LEVEL), &mut sink);
+    let heard = live_samples(&sink, &sound);
+    assert!(heard[100 + FADE_8_KHZ..].iter().all(|&sample| sample == LEVEL));
+    assert_eq!(heard.len(), 100 + 4 * 50 - FADE_8_KHZ);
+}
+
+/// A stored PCM sound of four 500-sample blocks at one level, and its
+/// records, one block each.
+#[cfg(feature = "pcm16")]
+fn level_sound(level: i16) -> (Sound, Vec<Vec<u8>>) {
+    let sound = Sound::new(3, 1, Codec::Pcm16, 8_000, 1000, &[level; 2000]).unwrap();
+    let data = sound.data_records();
+    assert_eq!(data.len(), 4);
+    (sound, data)
+}
+
+/// REQ-AUD-013: a missing stored block is silence at the sink, with the
+/// blocks either side faded over 5 ms, and whole once it arrives.
+#[cfg(feature = "pcm16")]
+#[test]
+fn a_missing_stored_block_is_faded_either_side_and_mended_when_it_comes() {
+    const LEVEL: i16 = -9000;
+    let (sound, data) = level_sound(LEVEL);
+    let mut command = play(0, 1, &sound, None);
+    command.flags = FLAG_PROGRESSIVE;
+    let mut arena = vec![0; ARENA];
+    let mut receiver = Receiver::<8, 2>::new(&mut arena);
+    let mut sink = Recorder::new();
+    let records = [sound.object_record().unwrap(), command.record(), data[0].clone(), data[1].clone(), data[3].clone()];
+    push(&mut receiver, &packets(0, 0, &records).0, &mut sink);
+    assert_eq!(sink.starts().len(), 1);
+    let held = &sink.pcm[0].1;
+    assert!(held[..1000 - FADE_8_KHZ].iter().all(|&sample| sample == LEVEL));
+    assert!(ramps(&held[1000 - FADE_8_KHZ..1000], LEVEL, false), "block 1 fades into the gap");
+    assert!(held[1000..1500].iter().all(|&sample| sample == 0), "block 2 is silence");
+    assert!(ramps(&held[1500..1500 + FADE_8_KHZ], LEVEL, true), "block 3 fades out of it");
+    assert!(held[1500 + FADE_8_KHZ..].iter().all(|&sample| sample == LEVEL));
+    push(&mut receiver, &packets(0, 9, &data[2..3]).0, &mut sink);
+    assert_eq!(sink.pcm[0].1, [LEVEL; 2000], "whole once block 2 is here");
+}
+
+/// REQ-AUD-013: the receiver follows a progressive play by its clock and
+/// reports each block not there when the play reaches it, once; it asks
+/// for a tick at that moment.
+#[cfg(feature = "pcm16")]
+#[test]
+fn a_progressive_play_reports_each_block_not_there_when_it_is_due() {
+    let (sound, data) = level_sound(1000);
+    let id = SoundId { handle: 3, generation: 1 };
+    let mut command = play(0, 1, &sound, None);
+    command.flags = FLAG_PROGRESSIVE;
+    let mut arena = vec![0; ARENA];
+    let mut receiver = Receiver::<8, 2>::new(&mut arena);
+    let mut sink = Recorder::new();
+    receiver.tick(1_000, &mut sink);
+    let records = [sound.object_record().unwrap(), command.record(), data[0].clone(), data[1].clone()];
+    push(&mut receiver, &packets(0, 0, &records).0, &mut sink);
+    assert_eq!(sink.starts().len(), 1);
+    // Block 2 starts 1 000 samples in: 125 ms at 8 kHz.
+    assert_eq!(receiver.next_tick_ms(), Some(1_125));
+    receiver.tick(1_124, &mut sink);
+    let concealed = |sink: &Recorder| -> Vec<Call> {
+        sink.calls.iter().filter(|call| matches!(call, Call::Concealed(..))).cloned().collect()
+    };
+    assert_eq!(concealed(&sink), NO_CALLS);
+    receiver.tick(1_125, &mut sink);
+    assert_eq!(concealed(&sink), [Call::Concealed(id, 2, 500)]);
+    // Block 3 comes in time, block 2 late: nothing more is reported.
+    push(&mut receiver, &packets(0, 7, &data[3..4]).0, &mut sink);
+    assert_eq!(receiver.next_tick_ms(), None, "nothing more can be missed");
+    push(&mut receiver, &packets(0, 9, &data[2..3]).0, &mut sink);
+    receiver.tick(2_000, &mut sink);
+    assert_eq!(concealed(&sink), [Call::Concealed(id, 2, 500)]);
+    assert_eq!(receiver.statistics().concealed, 1);
+}
+
+/// An IMA ADPCM sound, its records and a play of it, as a carousel sends them.
+fn ima_records() -> (Sound, Vec<Vec<u8>>) {
+    let sound = Sound::new(1, 1, Codec::ImaAdpcm, 8_000, IMA_BLOCK_SMALL, &tone(3000)).unwrap();
+    let mut records = vec![sound.object_record().unwrap()];
+    records.extend(sound.data_records());
+    records.push(play(0, 1, &sound, None).record());
+    (sound, records)
+}
+
+/// REQ-AUD-008: a `.ttau` file is records back to back; a truncated final
+/// record is discarded and a length beyond the bound ends the file.
+#[test]
+fn a_ttau_file_is_read_as_records_back_to_back() {
+    let (sound, records) = ima_records();
+    let file: Vec<u8> = records.concat();
+    let id = SoundId { handle: sound.handle, generation: sound.generation };
+    let mut arena = vec![0; ARENA];
+    let mut receiver = Receiver::<8, 2>::new(&mut arena);
+    let mut sink = Recorder::new();
+    assert_eq!(receiver.push_file(&file, &mut sink), neoteletext_audio::ttau::End::Complete);
+    assert_eq!(sink.starts(), [(0, id)]);
+    assert_eq!(receiver.statistics().records, u32::try_from(records.len()).unwrap());
+    // Cut short, the last record (the play) is discarded.
+    let mut arena = vec![0; ARENA];
+    let mut receiver = Receiver::<8, 2>::new(&mut arena);
+    let mut sink = Recorder::new();
+    assert_eq!(receiver.push_file(&file[..file.len() - 1], &mut sink), neoteletext_audio::ttau::End::Truncated);
+    assert_eq!(sink.starts(), NO_STARTS);
+    assert_eq!(receiver.statistics().records_refused, 0);
+    // A length beyond the bound: nothing after it is read.
+    let mut bad = records[0].clone();
+    bad.extend_from_slice(&[neoteletext_audio::PROFILE_VERSION, 2, 0xFF, 0xFF]);
+    bad.extend(records[1..].concat());
+    let mut arena = vec![0; ARENA];
+    let mut receiver = Receiver::<8, 2>::new(&mut arena);
+    assert_eq!(receiver.push_file(&bad, &mut sink), neoteletext_audio::ttau::End::BadLength);
+    assert_eq!(receiver.statistics().records, 1);
+}
+
+/// REQ-AUD-008 and REQ-WEB-005: a WebSocket's binary message is whole
+/// packets, the audio ones read as broadcast; any other length is refused
+/// whole.
+#[test]
+fn a_websocket_message_is_packets_and_a_ragged_one_is_refused_whole() {
+    let (sound, records) = ima_records();
+    let packets = packets(0, 0, &records).0;
+    let mut message: Vec<u8> = packets.iter().flat_map(|packet| packet.bytes).collect();
+    // A teletext packet among them is left to the decoder.
+    message.extend_from_slice(&[0x15; 42]);
+    let mut arena = vec![0; ARENA];
+    let mut receiver = Receiver::<8, 2>::new(&mut arena);
+    let mut sink = Recorder::new();
+    let mut ragged = message.clone();
+    ragged.push(0);
+    assert_eq!(receiver.push_message(&ragged, &mut sink), Err(neoteletext_audio::receiver::MessageError::PacketLength));
+    assert_eq!((receiver.statistics().messages_refused, receiver.statistics().records), (1, 0));
+    assert_eq!(receiver.push_message(&message, &mut sink), Ok(packets.len()));
+    assert_eq!(sink.starts(), [(0, SoundId { handle: sound.handle, generation: sound.generation })]);
+}
+
+/// Decision E.131: built without `pcm16`, a PCM16 sound is unsupported and
+/// skipped; the commands that name it play nothing.
+#[cfg(not(feature = "pcm16"))]
+#[test]
+fn without_pcm16_a_pcm_sound_is_unsupported_and_skipped() {
+    let sound = Sound::new(2, 1, Codec::Pcm16, 8_000, 1000, &tone(777)).unwrap();
+    let mut arena = vec![0; ARENA];
+    let mut receiver = Receiver::<8, 2>::new(&mut arena);
+    let mut sink = Recorder::new();
+    for packet in broadcast(&sound, &[play(1, 1, &sound, None)]) {
+        receiver.push_packet(&packet, &mut sink);
+    }
+    assert_eq!(sink.take(), NO_CALLS);
+    assert_eq!(receiver.statistics().unsupported, 1);
+    assert_eq!(receiver.statistics().records_refused, 0);
 }
 
 /// Decision E.124: Opus sounds reach the sink exactly as one decoder fed
@@ -581,6 +815,54 @@ mod opus {
         }
         let expected: Vec<Option<&[u8]>> = data.chunks(usize::from(PACKET)).map(Some).collect();
         assert_eq!(assembled(&sink, &sound), decoded(&expected));
+    }
+
+    /// REQ-AUD-013: a stored Opus sound's samples end where its blocks stop
+    /// arriving, faded out over 5 ms, and are whole once the next comes.
+    #[test]
+    fn a_stored_opus_sound_fades_where_its_blocks_stop_and_mends_when_they_come() {
+        const FADE_48_KHZ: usize = 240;
+        let data = packets(8, 5);
+        let samples = 8 * 960;
+        let sound = Sound::opus(5, 1, PACKET, &data, samples).unwrap();
+        let packet_bytes = usize::from(PACKET);
+        let mut start = play(0, 1, &sound, None);
+        start.flags = PROGRESSIVE;
+        let mut arena = vec![0; ARENA];
+        let mut receiver = Receiver::<8, 2>::new(&mut arena);
+        let mut sink = Recorder::new();
+        let mut records = vec![sound.object_record().unwrap(), start.record()];
+        // Blocks 0 to 2, then 4 onwards: block 3 is late.
+        records.extend(sound.packet_records(0, &data[..3 * packet_bytes]).unwrap());
+        records.extend(sound.packet_records(4, &data[4 * packet_bytes..]).unwrap());
+        push(&mut receiver, &neoteletext_audio::encode::packets(0, 0, &records).0, &mut sink);
+        let expected: Vec<Option<&[u8]>> = data.chunks(packet_bytes).map(Some).collect();
+        let want = decoded(&expected);
+        let held = assembled(&sink, &sound);
+        let edge = 3 * 960;
+        assert_eq!(held[..edge - FADE_48_KHZ], want[..edge - FADE_48_KHZ]);
+        let length = i32::try_from(FADE_48_KHZ).unwrap();
+        for (n, (&got, &whole)) in (0..).zip(held[edge - FADE_48_KHZ..edge].iter().zip(&want[edge - FADE_48_KHZ..edge]))
+        {
+            let faded = i32::from(whole) * (length - n) / (length + 1);
+            assert!(
+                (i32::from(got) - faded).abs() <= i32::from(whole).abs() / 200 + 2,
+                "sample {n}: {got} for {whole}"
+            );
+        }
+        assert!(held[edge..].iter().all(|&sample| sample == 0), "nothing decoded after the gap");
+        assert!(held[edge - 1].abs() <= want[edge - 1].abs() / 100 + 2, "faded to silence");
+        push(
+            &mut receiver,
+            &neoteletext_audio::encode::packets(
+                0,
+                9,
+                &sound.packet_records(3, &data[3 * packet_bytes..4 * packet_bytes]).unwrap(),
+            )
+            .0,
+            &mut sink,
+        );
+        assert_eq!(assembled(&sink, &sound), want, "whole once block 3 is here");
     }
 
     #[test]

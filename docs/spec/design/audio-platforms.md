@@ -35,11 +35,13 @@ It goes in the engine, beside `neoteletext-core`, because every receiver needs t
 - **No standard library and no allocation.** Every buffer is a slice the port provides, as the page store already is (`porting.md`, Memory). The receiver level (audio.md §12) sets the slice sizes.
 - **No panics.** It has the same no-panic lints as the engine's other parsers of outside input, and is fuzzed: the record parser, the fragment reassembler and each codec decoder.
 - **Cargo features** (decision E.61's pattern):
-  - `idl`, the broadcast carriage;
-  - `records`, the network and file carriage;
-  - `ima`, the IMA ADPCM decoder.
+  - `idl`, the broadcast carriage, which the network carriage's packets also need;
+  - `pcm16`, the PCM16 decode and play path;
+  - `ima`, the IMA ADPCM decoder;
+  - `opus`, the Opus decoder (decision E.124);
+  - `encode`, writing sounds for publishing tools (not default).
 
-  A port leaves out what it doesn't use. Leaving out `ima` also suits a sink that decodes IMA ADPCM itself, as tellyboy does.
+  The file carriage is always built. A port leaves out what it doesn't use. The desktop builds (Windows, macOS, Linux) name `idl` and `opus` alone: PCM16 and IMA ADPCM are compiled out of them by the owner's instruction of 28 October 2026, and kept for microcontrollers, which build the default (decision E.131). Leaving out `ima` would also suit a sink that decodes IMA ADPCM itself, as tellyboy does, once blocks can be passed to it undecoded (REQ-AUD-018).
 - **Time** comes from the port's existing `Clock` (`porting.md`), for stall timers, and from the sink's own count of samples played, for positions. Nothing in the core reads a wall clock.
 
 ### 1.2 The port trait

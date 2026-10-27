@@ -1,10 +1,11 @@
 //! Starting plays: a play starts once its sound is ready, or waits for it
 //! (REQ-AUD-011 to REQ-AUD-013).
 
-use super::{Receiver, duration_ms};
+use super::loss::Progress;
+use super::{MS_PER_SECOND, Receiver, duration_ms};
 use crate::control::Play;
 use crate::port::{Start, VoiceSink};
-use crate::store::Entry;
+use crate::store::{Entry, LiveEdge};
 use crate::{CHANNELS, PROGRESSIVE_BUFFER_MS};
 
 impl<const OBJECTS: usize, const SLOTS: usize> Receiver<'_, OBJECTS, SLOTS> {
@@ -32,12 +33,14 @@ impl<const OBJECTS: usize, const SLOTS: usize> Receiver<'_, OBJECTS, SLOTS> {
         channel.waiting = None;
         channel.playing_page = play.page;
         channel.playing = Some(play);
+        self.set_progress(index, Progress::follow(&entry, play.after_current, self.now_ms));
         if entry.live {
             if !entry.at_sink {
                 // Join at the newest block: a live sound is heard as it is now.
                 sink.stream(entry.sound, entry.rate_hz);
                 self.store.set_at_sink(entry.sound, true);
                 self.store.set_live_cursor(entry.sound, entry.newest.unwrap_or(0), entry.arrived_ms);
+                self.store.set_live_edge(entry.sound, LiveEdge::Joined);
                 self.send_live(entry.sound, sink);
             }
         } else if !entry.at_sink {
@@ -79,6 +82,6 @@ impl<const OBJECTS: usize, const SLOTS: usize> Receiver<'_, OBJECTS, SLOTS> {
     fn buffered_ms(&self, entry: &Entry) -> u32 {
         let blocks = self.store.contiguous(entry.sound);
         let samples = (0..blocks).map(|index| entry.block_samples(index)).fold(0_u32, u32::saturating_add);
-        samples.saturating_mul(1000).checked_div(entry.rate_hz).unwrap_or(0)
+        samples.saturating_mul(MS_PER_SECOND).checked_div(entry.rate_hz).unwrap_or(0)
     }
 }

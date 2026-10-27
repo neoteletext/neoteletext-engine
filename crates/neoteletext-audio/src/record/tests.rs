@@ -24,6 +24,7 @@ fn object_body() -> Vec<u8> {
     body
 }
 
+#[cfg(feature = "ima")]
 #[test]
 fn an_object_with_a_label_is_read() {
     let mut body = object_body();
@@ -37,6 +38,7 @@ fn an_object_with_a_label_is_read() {
     assert_eq!(object.label, Some(&b"Chime"[..]));
 }
 
+#[cfg(feature = "ima")]
 #[test]
 fn a_wrong_block_count_is_refused() {
     let mut body = object_body();
@@ -52,6 +54,24 @@ fn a_reserved_codec_is_read_and_left_for_the_receiver_to_ignore() {
     let bytes = frame(TYPE_OBJECT, &body);
     let Record::Object(object) = parse(&bytes).unwrap() else { panic!("not an object") };
     assert_eq!(object.codec, None);
+}
+
+/// Decision E.131: a build without `ima` or `pcm16` reads their objects as
+/// of no codec it decodes, so the receiver ignores them as unsupported.
+#[test]
+fn codecs_left_out_of_the_build_are_read_as_unsupported() {
+    let ima = frame(TYPE_OBJECT, &object_body());
+    let Record::Object(object) = parse(&ima).unwrap() else { panic!("not an object") };
+    assert_eq!(object.codec.is_some(), cfg!(feature = "ima"));
+    let mut pcm = object_body();
+    // PCM, 100-byte blocks: 1 000 samples in 20 blocks of 50.
+    pcm[7] = 0;
+    pcm[9..11].copy_from_slice(&100_u16.to_be_bytes());
+    let last = pcm.len() - 2;
+    pcm[last..].copy_from_slice(&20_u16.to_be_bytes());
+    let pcm = frame(TYPE_OBJECT, &pcm);
+    let Record::Object(object) = parse(&pcm).unwrap() else { panic!("not an object") };
+    assert_eq!(object.codec.is_some(), cfg!(feature = "pcm16"));
 }
 
 /// An Opus object: handle 3, generation 1, id 9, codec 2, rate code `rate`,

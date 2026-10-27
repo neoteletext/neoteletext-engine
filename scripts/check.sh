@@ -59,6 +59,13 @@ cargo clippy --workspace --all-targets --all-features -- -D warnings
 step "tests (REQ-TST-001)"
 cargo test --workspace --all-features --quiet
 
+# Decision E.131: the desktop builds compile PCM16 and IMA ADPCM out of the
+# audio profile and play Opus alone; microcontroller builds keep both, as the
+# workspace run above and scripts/build-targets.sh build them.
+step "the audio profile as the desktops build it: PCM16 and IMA ADPCM compiled out (decision E.131)"
+cargo clippy --quiet -p neoteletext-audio --all-targets --no-default-features --features idl,opus -- -D warnings
+cargo test --quiet -p neoteletext-audio --no-default-features --features idl,opus
+
 step "architecture and rule checks (REQ-ARCH-011, REQ-GEN-014, REQ-GEN-017, REQ-SEC-016)"
 cargo xtask check-layers
 cargo xtask check-constants

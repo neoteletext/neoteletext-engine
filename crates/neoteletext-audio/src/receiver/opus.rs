@@ -5,6 +5,11 @@
 //! from the first, as far as they have arrived without a gap, and its
 //! decoder is freed when the last is decoded; a live sound keeps its
 //! decoder, which conceals a block that never arrived.
+//!
+//! A stored sound's decoded samples end where its blocks stop arriving, and
+//! the sink plays silence beyond them until more come. So the last 5 ms of
+//! what is decoded are held back, and sent faded out while the next block is
+//! missing, then as they were once it is decoded (REQ-AUD-013).
 
 use neoteletext_opus::{Decoder, FRAME_SAMPLES};
 
@@ -12,6 +17,7 @@ use crate::port::{SoundId, VoiceSink};
 use crate::store::{Entry, Store};
 
 use super::Statistics;
+use super::fade::{MAX_FADE_SAMPLES, fade_out, fade_samples};
 
 /// One decoder and the sound it follows.
 struct Lane {
@@ -20,6 +26,12 @@ struct Lane {
     /// The next block it decodes.
     next: u16,
     decoder: Decoder,
+    /// The last 5 ms decoded of a stored sound, held back from the sink.
+    tail: [i16; MAX_FADE_SAMPLES],
+    /// How many of `tail` are held.
+    tail_len: usize,
+    /// The sound's sample at which the held tail starts.
+    tail_at: u32,
 }
 
 /// The receiver's Opus decoders.
@@ -29,7 +41,16 @@ pub(super) struct Lanes {
 
 impl Lanes {
     pub(super) fn new() -> Self {
-        Self { lanes: core::array::from_fn(|_| Lane { sound: None, next: 0, decoder: Decoder::new() }) }
+        Self {
+            lanes: core::array::from_fn(|_| Lane {
+                sound: None,
+                next: 0,
+                decoder: Decoder::new(),
+                tail: [0; MAX_FADE_SAMPLES],
+                tail_len: 0,
+                tail_at: 0,
+            }),
+        }
     }
 
     /// Frees every decoder: the sink has dropped every sound.
@@ -64,6 +85,7 @@ impl Lanes {
         if lane.sound != Some(sound) {
             lane.sound = Some(sound);
             lane.next = first;
+            lane.tail_len = 0;
             lane.decoder.reset();
         }
         Some(lane)
@@ -80,6 +102,7 @@ impl Lanes {
     ) {
         let Some(lane) = self.lane(store, entry.sound, 0) else { return };
         let mut pcm = [0_i16; FRAME_SAMPLES];
+        let fade = fade_samples(entry.rate_hz);
         while lane.next < entry.blocks {
             let Some(packet) = store.block(entry.sound, lane.next) else { break };
             if lane.decoder.decode(packet, &mut pcm).is_err() {
@@ -87,13 +110,34 @@ impl Lanes {
                 statistics.decode_failures = statistics.decode_failures.saturating_add(1);
                 lane.decoder.conceal(&mut pcm);
             }
-            let samples = usize::try_from(entry.block_samples(lane.next)).unwrap_or(0);
+            // The tail held before this block goes as it was decoded.
+            if lane.tail_len > 0 {
+                sink.samples(entry.sound, lane.tail_at, lane.tail.get(..lane.tail_len).unwrap_or(&[]));
+                lane.tail_len = 0;
+            }
+            let samples = usize::try_from(entry.block_samples(lane.next)).unwrap_or(0).min(pcm.len());
             let first = u32::from(lane.next).saturating_mul(entry.samples_per_block());
-            sink.samples(entry.sound, first, pcm.get(..samples).unwrap_or(&[]));
             lane.next = lane.next.saturating_add(1);
+            // The final block has nothing after it to wait for.
+            let held = if lane.next < entry.blocks { fade.min(samples) } else { 0 };
+            let kept = samples.saturating_sub(held);
+            sink.samples(entry.sound, first, pcm.get(..kept).unwrap_or(&[]));
+            if let (Some(target), Some(source)) = (lane.tail.get_mut(..held), pcm.get(kept..samples)) {
+                target.copy_from_slice(source);
+                lane.tail_len = held;
+                lane.tail_at = first.saturating_add(u32::try_from(kept).unwrap_or(0));
+            }
         }
         if lane.next >= entry.blocks {
             lane.sound = None;
+        } else if lane.tail_len > 0 {
+            // The next block is missing: the sink fades into the silence
+            // after what it holds, and gets the tail again unfaded when the
+            // block comes.
+            let mut faded = lane.tail;
+            let faded = faded.get_mut(..lane.tail_len).unwrap_or(&mut []);
+            fade_out(faded);
+            sink.samples(entry.sound, lane.tail_at, faded);
         }
     }
 
@@ -127,6 +171,7 @@ impl Lanes {
                 None if newest.wrapping_sub(next) >= crate::LIVE_LOOKAHEAD_BLOCKS => {
                     lane.decoder.conceal(&mut pcm);
                     statistics.concealed = statistics.concealed.saturating_add(1);
+                    sink.concealed(entry.sound, next, crate::OPUS_FRAME_SAMPLES);
                 }
                 None => break,
             }

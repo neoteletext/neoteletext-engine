@@ -68,12 +68,14 @@ The profile carries two formats, 16-bit linear PCM and IMA ADPCM, and nothing el
 
 | Code | Codec | Bits/sample | Support | Standard | tellyboy |
 |---:|---|---:|---|---|---|
-| 0 | Linear PCM, signed 16-bit little-endian | 16 | every receiver | WAVE format tag `0x0001`. Not in any teletext or videotex standard (§13). | native, `TB_AUDIO_FMT_S16LE` |
-| 1 | IMA ADPCM in WAVE blocks (format tag `0x0011`) | 4 | every receiver | IMA 1992. ADPCM at 32 kbit/s is ETS 300 149's default and mandatory encoding (§7.3 table 2, §9.1 table 3), but that ADPCM is G.721/G.726, not IMA (§13). | native, `TB_AUDIO_FMT_IMA_ADPCM`, assembly on every ISA |
+| 0 | Linear PCM, signed 16-bit little-endian | 16 | receivers built with the `pcm16` feature: microcontrollers, not desktops (decision E.131) | WAVE format tag `0x0001`. Not in any teletext or videotex standard (§13). | native, `TB_AUDIO_FMT_S16LE` |
+| 1 | IMA ADPCM in WAVE blocks (format tag `0x0011`) | 4 | receivers built with the `ima` feature: microcontrollers, not desktops (decision E.131) | IMA 1992. ADPCM at 32 kbit/s is ETS 300 149's default and mandatory encoding (§7.3 table 2, §9.1 table 3), but that ADPCM is G.721/G.726, not IMA (§13). | native, `TB_AUDIO_FMT_IMA_ADPCM`, assembly on every ISA |
 | 2 | Opus (RFC 6716), mono, 48 kHz, 20 ms frames: one constant-rate packet a block (§3.4) | 16 kbit/s on average | receivers built with the `opus` feature | RFC 6716, RFC 8251 | not yet |
 | 3–255 | reserved: a receiver ignores the object. Code 2 was held for a speech codec until the owner decided against one (E.89), then given to Opus (E.123, E.124) | | | | |
 
 Every object is one channel. The output of a microcontroller receiver is mono, and so is the broadcast budget (§6.3).
+
+Each codec is a feature of the receiver, and a receiver built without one ignores its objects as unsupported. By the owner's instruction of 28 October 2026 the desktop builds (Windows, macOS, Linux) leave out PCM16 and IMA ADPCM and play Opus alone; microcontroller builds keep both, and the code carries "DO NOT REMOVE THIS CODE" where it is gated (decision E.131).
 
 **IMA ADPCM is the baseline codec.** It is 4 bits a sample, the same as G.726 at 32 kbit/s. Each WAVE block begins with a header holding the predictor, as a signed 16-bit value that is the block's first sample, then the step index, then a reserved byte. So **every block decodes on its own**, and a receiver can:
 - start in the middle of a carousel at any block;
@@ -254,7 +256,7 @@ Following §6.7.1.1, a live sound fades out when its service has sent no packet 
 
 ### 6.2 Network and file
 
-- **WebSocket:** one binary message carries exactly one record. Text messages are ignored.
+- **WebSocket:** a binary message is whole 42-byte packets, the broadcast carriage's (REQ-WEB-005, decision E.92); a message of any other length is refused whole. Text messages are pages, not sound.
 - **File (`.ttau`):** records concatenated. A truncated final record is discarded. A record whose length breaks a bound ends the file, because nothing after it can be framed safely.
 - **Source:** the host associates each connection or file with one service. A record never names its own service, and the CRC is not authentication.
 
@@ -334,7 +336,7 @@ Because IMA ADPCM blocks are independent (§3.1), this one rule serves both code
 
 Audetel concealed losses by interpolating speech parameters (Suddle §7.5.4). A waveform codec can't do that, so silence with fades is the waveform equivalent.
 
-The receiver reports `concealed`, with each silenced range.
+The receiver reports `concealed`, with each silenced block. It cannot see the sink play, so it follows a play by its own clock from the moment it starts it, and reports each block not at the sink when the play reaches it (decision E.131). The fades fall on the samples either side of the gap: a block next to a missing one is sent with that edge faded, and sent again whole once the missing block arrives. An Opus sound's blocks are decoded in order, so its samples end where its blocks stop arriving, and that end is faded the same way.
 
 ### 8.3 Live
 
@@ -427,7 +429,7 @@ These are tellyboy's constraints as built (`<tellyboy/audio.h>`; `components/AUD
 | | Level A: microcontroller | Level B: desktop |
 |---|---|---|
 | Channels | at least 2 | 4 |
-| Codecs | 16-bit PCM, IMA ADPCM | 16-bit PCM, IMA ADPCM, Opus (decision E.124) |
+| Codecs | 16-bit PCM, IMA ADPCM | Opus (decision E.124); 16-bit PCM and IMA ADPCM are compiled out of the desktop builds (decision E.131) |
 | Sample rates | all of §3.2 | all of §3.2 |
 | Object store | at least 16 KB (4 s of IMA ADPCM at 8 kHz) | at least 4 MB |
 | Records being reassembled | 2 | 8 |

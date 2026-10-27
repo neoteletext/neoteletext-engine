@@ -5,7 +5,8 @@ This area is the teletext audio profile (decisions E.84 to E.86): sounds carried
 **REQ-AUD-001 — Formats.**
 *Phase:* Phase 2 (the whole area).
 The profile shall carry two formats, and only these: code 0, linear PCM, signed 16-bit little-endian; and code 1, IMA ADPCM in WAVE blocks (format tag 0x0011), whose blocks each begin with their own predictor and step index. Every sound is one channel. A receiver shall ignore an object of any other code; codes 2 to 255 are reserved. *Amended 20 October 2026 (decision E.89):* code 2 was reserved for a speech codec for live broadcast; the owner decided there will be none. The IMA ADPCM decoder shall follow the IMA's 1992 recommendation, saturate rather than wrap, and refuse a block whose step index exceeds 88. *Amended 26 October 2026 (decision E.124):* code 2 is Opus in the profile of decision E.123, at 48 kHz alone; an object of code 2 at another rate is refused, and a receiver built without the decoder ignores code 2.
-*Verification:* A worked decoding of a known block; tests of saturation and of a bad step index; PCM round-trips exactly through the whole receiver; Opus objects read at 48 kHz and refused at another rate (`opus_objects_are_read_at_48_khz_with_packets_the_decoder_takes`).
+*Amended 28 October 2026 (decision E.131):* each codec is a feature of the receiver, `pcm16`, `ima` and `opus`, all built by default; the desktop builds (Windows, macOS and Linux) leave out PCM16 and IMA ADPCM, which microcontroller builds keep. A receiver built without a codec's feature shall treat an object of that codec as unsupported: ignored, as an object of a reserved code is, and counted, never played and never a fault.
+*Verification:* A worked decoding of a known block; tests of saturation and of a bad step index; PCM round-trips exactly through the whole receiver; Opus objects read at 48 kHz and refused at another rate (`opus_objects_are_read_at_48_khz_with_packets_the_decoder_takes`); in every feature shape the gates build, a codec left out is read as unsupported and its sound skipped (`codecs_left_out_of_the_build_are_read_as_unsupported`, `a_pcm16_sound_plays_only_in_a_build_with_pcm16`, `an_ima_adpcm_sound_plays_only_in_a_build_with_ima`, `without_pcm16_a_pcm_sound_is_unsupported_and_skipped`).
 
 **REQ-AUD-002 — Sample rates.**
 A sound's rate shall be one of 8 000, 11 025, 16 000, 22 050, 24 000, 32 000, 44 100 and 48 000 samples a second, named by the codes 0 to 7. Any other code makes the OBJECT record invalid.
@@ -33,7 +34,8 @@ Records shall be carried on independent data lines of EN 300 708 clause 6.7.3, d
 
 **REQ-AUD-008 — Network and file carriage.**
 Over a WebSocket, records shall travel as the broadcast carriage's packets, whole 42-byte packets in binary messages, as REQ-WEB-005 defines them: a binary message is packets, never a bare record (*amended 20 October 2026, decision E.92*: the first text, one record a binary message, conflicted with REQ-WEB-005). A `.ttau` file shall be records back to back; a record whose length breaks a bound ends the file, and a truncated final record is discarded. A record never names its own service: the host associates each connection or file with one.
-*Verification:* *Not yet built:* no port reads `.ttau` files or WebSocket records yet (TECH-DEBT.md).
+*Amended 28 October 2026 (decision E.131):* both readers are built: `Receiver::push_file` reads a `.ttau` file, and `Receiver::push_message` a WebSocket's binary message, refusing whole a message that is not whole packets.
+*Verification:* Tests of a file's records, of a truncated final record and of a length beyond the bound (`ttau` module; `a_ttau_file_is_read_as_records_back_to_back`), and of a message of packets and a message refused whole (`a_websocket_message_is_packets_and_a_ragged_one_is_refused_whole`); the fuzz targets `audio_file` and `audio_messages`.
 
 **REQ-AUD-009 — The object store.**
 A receiver shall keep sounds compressed in a fixed arena, admitting a sound only if it will fit once complete. It shall evict the oldest sound no channel has armed or waiting, and report a resource limit when nothing can be evicted. A repeated OBJECT changes nothing; a newer generation replaces the older and tells the sink to forget it; an older generation, or a different definition of the same generation, is a conflict and is refused. A block that arrives again with different bytes puts the sound in conflict, and a sound in conflict is not played until a newer generation replaces it.
@@ -52,8 +54,9 @@ A play naming a page shall be armed for that page. It shall start whenever that 
 *Verification:* Receiver tests of opening, leaving and reopening a page, and of the setting.
 
 **REQ-AUD-013 — Starting and loss.**
-A play shall start once its whole sound has arrived, or, with the *progressive* flag, once 40 milliseconds of it have arrived contiguously from the start (or all of it, if shorter); later blocks are passed to the sink as they arrive. Samples of blocks that have not arrived are silence at the sink, and the sound's timing is never shifted or stretched. *Not yet built:* the 5 ms fades at each edge of a missing block, and the `concealed` report.
-*Verification:* A receiver test of a progressive start and of later blocks reaching the sink.
+A play shall start once its whole sound has arrived, or, with the *progressive* flag, once 40 milliseconds of it have arrived contiguously from the start (or all of it, if shorter); later blocks are passed to the sink as they arrive. Samples of blocks that have not arrived are silence at the sink, and the sound's timing is never shifted or stretched.
+*Amended 28 October 2026 (decision E.131):* the silence of a block that has not arrived shall be faded into and out of over 5 milliseconds, on the samples either side of it, and a stored block's faded edge sent again whole once the block next to it arrives. Each block given as silence, or concealed by its decoder, shall be reported `concealed` to the sink (`VoiceSink::concealed`) and counted: a live block when it is given up, and a stored sound's block when, by the receiver's clock from the play's start, the play reaches it before it is at the sink, once a play. A play that waits for the sound before it, and a loop after its first pass, are not followed.
+*Verification:* A receiver test of a progressive start and of later blocks reaching the sink; receiver tests of a stored block's faded edges and their mending (`a_missing_stored_block_is_faded_either_side_and_mended_when_it_comes`), of a live block given up (`a_lost_live_block_is_faded_into_and_out_of_and_reported_concealed`), of a stored Opus sound's decoded samples ending faded (`a_stored_opus_sound_fades_where_its_blocks_stop_and_mends_when_they_come`) and of a progressive play's report (`a_progressive_play_reports_each_block_not_there_when_it_is_due`); unit tests of the ramp.
 
 **REQ-AUD-025 — Opus decoded in order.**
 An Opus sound's packets shall be decoded in index order, by one decoder that follows the sound: a stored sound from its first block, as far as its blocks have arrived without a gap; a live sound from where it joined, a lost packet concealed. The receiver shall keep at most `OPUS_DECODERS` decoders; a stored sound frees its decoder when its last block is decoded. A packet the decoder refuses is concealed and counted as a decode failure. The engine carries an encoder's packets and encodes no Opus itself.
@@ -67,6 +70,7 @@ A sound with a sample count of 0 is live: its blocks arrive without end, each wh
 - **Fade out** over 100 ms when no new block has come for two seconds, as EN 300 708 clause 6.7.1.1 asks, forget the sound at the sink, and start the play again, at the newest block, when blocks return.
 The port tells the receiver the time (`Receiver::tick`), and the receiver says when it next needs it (`Receiver::next_tick_ms`): when a live sound at the sink would stall, or never while none plays.
 *Amended 21 October 2026 (decision E.98):* the receiver says when it next needs a tick.
+*Amended 28 October 2026 (decision E.131):* the next tick is also the moment a followed play reaches a stored block that is not at the sink, for the `concealed` report of REQ-AUD-013; and a live PCM16 or IMA ADPCM block's last 5 milliseconds reach the sink once the next block arrives or is given up, so that they can be faded out before a silence.
 *Verification:* Store tests of the ring and of the index wrapping; receiver tests of joining, of the next tick's time, ordered delivery, a late block, a lost block, the stall and the resumption, and of a stopped live sound staying stopped; mixer tests of priming, a sender 1 per cent fast and 1 per cent slow, playing out after the sound is forgotten, and skipping ahead when a ring behind; a `neottx sound --live` test played back at the browser's pace.
 
 **REQ-AUD-015 — Gain, fades and ducking.**
@@ -83,6 +87,7 @@ A port shall size the store, the objects held and the records in flight, and pub
 
 **REQ-AUD-018 — The voice sink.**
 The receiver shall drive a voice sink the port supplies, through `neoteletext_audio::port::VoiceSink`: define a sound, give it 16-bit samples, forget it, and start, stop or ramp a channel. The receiver decides what plays and when; the sink only plays. *Not yet built:* passing IMA ADPCM blocks undecoded to a sink that decodes them itself, such as tellyboy's.
+*Amended 28 October 2026 (decision E.131):* the sink is also told of each block concealed (`VoiceSink::concealed`), for diagnostics; a sink may leave the method as provided, doing nothing.
 *Verification:* The receiver's tests run through a recording sink.
 
 **REQ-AUD-019 — The software mixer.**
@@ -96,7 +101,7 @@ The `encode` feature shall write sounds for publishing tools: IMA ADPCM blocks w
 
 **REQ-AUD-021 — Security.**
 Every audio input is untrusted (area SEC). The parsers shall bound every length before using it, contain no panicking constructs, and be fuzzed. A label is shown only after the cleaning of page text. No sound starts without a command, and a page sound needs the user's setting (REQ-AUD-012).
-*Verification:* The crates' no-panic lints; the fuzz targets `audio_records` and `audio_packets`.
+*Verification:* The crates' no-panic lints; the fuzz targets `audio_records`, `audio_packets`, `audio_file` and `audio_messages`.
 
 **REQ-AUD-022 — Opus packets.**
 The Opus decoder (`neoteletext-opus`, decision E.123) shall take packets of one profile only: Opus mono, one 20 ms frame a packet, either bare (RFC 6716 §3.2.2, TOC code 0) or padded in a code 3 packet whose frame count is 1 (§3.2.5), at most 160 bytes. Any other packet (empty, longer, stereo, of several frames, of another duration, or with a frame count of 0 or padding beyond the packet) shall be refused with its reason before the decoder's state changes. A frame of one byte or none is one the encoder left out (§3.2.1) and shall be concealed.

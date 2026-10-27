@@ -44,6 +44,9 @@ pub struct Entry {
     /// When the last new block of a live sound arrived, in the receiver's
     /// milliseconds.
     pub arrived_ms: u64,
+    /// Where a live sound's samples stand at the sink, for the fades either
+    /// side of a block given as silence (REQ-AUD-013).
+    pub edge: LiveEdge,
     offset: usize,
     stamp: u32,
 }
@@ -94,6 +97,26 @@ impl Entry {
     fn size(&self) -> usize {
         self.data_bytes().saturating_add(self.bitmap_bytes()).saturating_add(self.index_table_bytes())
     }
+}
+
+/// Where a live sound's samples stand at the sink (REQ-AUD-013). A block
+/// given up as silence is faded into and out of over 5 ms; the fade into it
+/// falls on the block before, which was sent before the loss was known, so
+/// the last 5 ms of each block sent are held back until the next block's
+/// fate is.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum LiveEdge {
+    /// Nothing sent since the sound joined: the voice's own start ramps it in.
+    #[default]
+    Joined,
+    /// The last 5 ms of block `next − 1` are held back; `faded_in` when that
+    /// block followed a silence and its first 5 ms were faded in.
+    Held {
+        /// The held block followed a silence.
+        faded_in: bool,
+    },
+    /// The last block sent was silence: the next block fades in.
+    Gap,
 }
 
 /// What an OBJECT record did.
@@ -176,6 +199,13 @@ impl<'a, const OBJECTS: usize> Store<'a, OBJECTS> {
     pub fn set_at_sink(&mut self, sound: SoundId, at_sink: bool) {
         if let Some(entry) = self.entries.iter_mut().flatten().find(|entry| entry.sound == sound) {
             entry.at_sink = at_sink;
+        }
+    }
+
+    /// Records where a live sound's samples stand at the sink.
+    pub fn set_live_edge(&mut self, sound: SoundId, edge: LiveEdge) {
+        if let Some(entry) = self.entries.iter_mut().flatten().find(|entry| entry.sound == sound) {
+            entry.edge = edge;
         }
     }
 

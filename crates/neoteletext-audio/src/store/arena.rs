@@ -27,6 +27,7 @@ impl<const OBJECTS: usize> Store<'_, OBJECTS> {
             newest: None,
             next: 0,
             arrived_ms: 0,
+            edge: super::LiveEdge::Joined,
             offset: 0,
             stamp: 0,
         };

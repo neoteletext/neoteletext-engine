@@ -23,7 +23,12 @@ readonly ESP="esp"
 
 # The crates that run on bare metal (REQ-GEN-017), the pair built for
 # WebAssembly, and the std crates for operating systems without a terminal.
-readonly BARE="-p neoteletext-core -p neoteletext-formats -p neoteletext-slicer -p neoteletext-web -p neoteletext-image -p neoteletext-audio"
+# The audio profile's PCM16 and IMA ADPCM are named, though in its default,
+# because microcontroller ports keep them (decision E.131).
+readonly BARE="-p neoteletext-core -p neoteletext-formats -p neoteletext-slicer -p neoteletext-web -p neoteletext-image -p neoteletext-audio --features neoteletext-audio/pcm16,neoteletext-audio/ima"
+# The audio profile as the desktops build it: Opus alone, PCM16 and IMA
+# ADPCM compiled out (decision E.131).
+readonly AUDIO_DESKTOP="-p neoteletext-audio --no-default-features --features idl,opus"
 readonly WASM="-p neoteletext-core -p neoteletext-formats"
 readonly LIBRARIES_STD="$BARE --features neoteletext-formats/std,neoteletext-image/std"
 # Everything except the host-only xtask: the libraries and the neottx program.
@@ -49,6 +54,9 @@ riscv64gc-unknown-linux-gnu|$ALL|build|$RUST|
 aarch64-unknown-linux-gnu|$BARE --all-features|test|$RUST|
 armv7-unknown-linux-gnueabihf|$BARE --all-features|test|$RUST|
 riscv64gc-unknown-linux-gnu|$BARE --all-features|test|$RUST|
+x86_64-unknown-linux-gnu|$AUDIO_DESKTOP|test|$RUST|
+x86_64-pc-windows-msvc|$AUDIO_DESKTOP|check|$RUST|
+aarch64-apple-darwin|$AUDIO_DESKTOP|check|$RUST|
 x86_64-pc-windows-msvc|$LIBRARIES_STD|check|$RUST|
 x86_64-pc-windows-gnu|$ALL|build|$RUST|
 aarch64-apple-darwin|$LIBRARIES_STD|check|$RUST|
@@ -67,10 +75,13 @@ rustup -q target add --toolchain "$RUST" $(sed -n 's/^\([^|]*\)|.*|'"$RUST"'|.*$
 
 mkdir -p target/build-targets
 failures=0
+# Rows are numbered in their logs' names: a target may have several rows.
+row=0
 printf '%-32s %-6s %s\n' TARGET MODE RESULT
 while IFS='|' read -r target crates mode toolchain extra; do
     [ -z "$target" ] && continue
-    log="target/build-targets/$target.$mode.log"
+    row=$((row + 1))
+    log="target/build-targets/$row.$target.$mode.log"
     if ! rustup toolchain list | grep -q "^$toolchain"; then
         printf '%-32s %-6s %s\n' "$target" "$mode" "SKIPPED: toolchain $toolchain is not installed"
         continue

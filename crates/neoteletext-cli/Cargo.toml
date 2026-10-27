@@ -34,6 +34,12 @@ neoteletext-qrkeyboard = { workspace = true, optional = true }
 # receivers here normalize.
 unicode-normalization = { version = "=0.1.25", optional = true }
 
+[dev-dependencies]
+# The tests read `neottx sound`'s output back through the receiver, which
+# decodes PCM16 only with the `pcm16` feature (decision E.131); the program
+# itself only writes sounds, which needs no decoder.
+neoteletext-audio = { workspace = true, features = ["encode", "pcm16"] }
+
 [features]
 # Decision E.61: coarse, additive areas, all on by default. The commands
 # stay defined in every build, so the help text does not change; a command

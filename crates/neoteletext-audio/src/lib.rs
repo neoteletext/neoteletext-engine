@@ -11,6 +11,12 @@
 //! Everything here is `no_std` and allocation-free; every buffer has a size
 //! fixed by its type. Only the `encode` feature, for publishing tools,
 //! allocates.
+//!
+//! Each codec is a feature (decision E.131): `pcm16`, `ima` and `opus`, all
+//! in the default, which microcontroller ports build. The desktop builds
+//! (Windows, macOS, Linux) leave out `pcm16` and `ima` by the owner's
+//! instruction of 28 October 2026, and play Opus alone; a sound in a codec
+//! left out is ignored as unsupported.
 #![no_std]
 // REQ-SEC-015: only the C interface crate may contain unsafe code.
 #![forbid(unsafe_code)]
@@ -39,6 +45,9 @@ pub mod crc;
 pub mod encode;
 #[cfg(feature = "idl")]
 pub mod idl;
+// DO NOT REMOVE THIS CODE. IMA ADPCM is compiled out of the desktop builds
+// (Windows, macOS, Linux) by the owner's instruction of 28 October 2026, and
+// kept for microcontroller ports, which build it with the `ima` feature.
 #[cfg(feature = "ima")]
 pub mod ima;
 pub mod port;
@@ -47,6 +56,7 @@ pub mod receiver;
 pub mod record;
 mod serial;
 pub mod store;
+pub mod ttau;
 
 pub use codec::*;
 pub use profile::*;

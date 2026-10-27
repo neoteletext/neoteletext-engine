@@ -29,13 +29,15 @@ What the reorganisation of `IMPLEMENTATION-LOG.md` row 88 left (the record is `d
 
 ## Unfinished features
 
-- **Audio, area AUD (issue #220):** built and tested on branch `audio`; owed:
-  - live sounds (REQ-AUD-014) are not measured against a real sender's clock, only against a simulated 1 per cent; a live sound has no 5 ms fades at a concealed block either (below);
-  - the `.ttau` file and WebSocket record readers (REQ-AUD-008);
-  - 5 ms fades at each edge of a missing block, and the `concealed` report (REQ-AUD-013);
+- **Audio, area AUD (issue #220):** built and tested on branch `audio`; the `.ttau` and WebSocket readers, the fades at a lost block and the `concealed` report were built on 28 October 2026 (decision E.131). Owed:
+  - live sounds (REQ-AUD-014) are not measured against a real sender's clock, only against a simulated 1 per cent;
   - passing IMA ADPCM blocks undecoded to a sink that decodes them itself, for tellyboy (REQ-AUD-018);
-  - `cargo xtask size` and the Cortex-M0 flash of a receiver with audio;
-  - merging `audio` into `implementation` once the other session's work there is committed, and the full gate.
+  - `cargo xtask size` and the Cortex-M0 flash of a receiver with audio, now with the microcontroller shape (`pcm16`, `ima`, `idl`) and the desktop shape (`idl`, `opus`) as separate images;
+  - merging `audio` into `implementation` once the other session's work there is committed, and the full gate;
+  - decision E.131 items 3 to 5 (the readers, the fades and the report) for the owner to confirm;
+  - the `concealed` report of a stored sound follows the play by the receiver's clock, not the sink's: a sink's output latency, or a port that ticks late, moves the judgement by that much. A stored Opus sound's decoding that goes on after a gap writes samples the voice may meet mid-block, unfaded; a fade there needs the sink's position, which `VoiceSink` does not report (`design/audio.md` section 10.1 asks for it);
+  - NeoTeletext (`native/`) builds `neoteletext-audio` with `idl`, `ima` and `opus`: it must drop `ima` (and never add `pcm16`) for the desktop shape. A workspace build there that also builds a crate with `encode` (its `site`, and the decoder's tests) unifies `ima` back into the decoder, since `encode` needs it; the release decoder must be built on its own (`-p`) or the `encode` users kept out of its build;
+  - `fuzz/Cargo.lock` gains `neoteletext-opus` when the fuzz crate is next built (below), and the new targets `audio_file` and `audio_messages` have no seed corpus.
 
 - **Epics #177 (fonts) and #210 (character sets)** stay open until their work and the full gate are done.
 

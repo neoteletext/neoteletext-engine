@@ -79,4 +79,10 @@ pub trait VoiceSink {
 
     /// Ramps the channel to a new gain.
     fn gain(&mut self, channel: u8, gain: u8, fade_ms: u16);
+
+    /// The `concealed` report (REQ-AUD-013): block `block` of a sound, of
+    /// `samples` samples, was given as silence, or concealed by its decoder,
+    /// because it had not arrived when it was due. It is for diagnostics; a
+    /// sink plays nothing differently for it, and may ignore it.
+    fn concealed(&mut self, _sound: SoundId, _block: u16, _samples: u32) {}
 }

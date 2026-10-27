@@ -237,7 +237,7 @@ Each module named below is one concept. Since the reorganisation of 24 October 2
 
 ### Audio — `neoteletext-audio`, `neoteletext-audio-mix`, `neoteletext-opus` (area AUD)
 
-Sound carried with teletext sits beside the page layers, as the web user agent does: it shares only the packet type and the Hamming 8/4 decoder of L1 and Foundation, and the EN 300 708 constants of `consts`. The port passes each packet to `neoteletext_audio::receiver::Receiver::push_packet` before the decoder; the decoder keeps ignoring packet 31 (REQ-PKT-008). The receiver reassembles records (`idl`), parses them (`record`), keeps sounds compressed (`store`), applies each channel's latest command (`control`), decodes IMA ADPCM (`ima`), and drives the port's voice sink (`port::VoiceSink`, the L8 contract for sound). It mixes nothing and touches no hardware. `neoteletext-audio-mix` is a mixer a desktop or phone port may use as its sink's engine; a microcontroller port maps the sink onto the tellyboy driver instead. The design is `docs/spec/design/audio.md` and `audio-platforms.md`.
+Sound carried with teletext sits beside the page layers, as the web user agent does: it shares only the packet type and the Hamming 8/4 decoder of L1 and Foundation, and the EN 300 708 constants of `consts`. The port passes each packet to `neoteletext_audio::receiver::Receiver::push_packet` before the decoder, a push WebSocket's binary message to `Receiver::push_message`, and a `.ttau` file to `Receiver::push_file` (REQ-AUD-008); the decoder keeps ignoring packet 31 (REQ-PKT-008). The receiver reassembles records (`idl`), frames a file's records (`ttau`), parses them (`record`), keeps sounds compressed (`store`), applies each channel's latest command (`control`), decodes PCM16 and IMA ADPCM (`ima`) or Opus, fades either side of a block that has not arrived and reports it `concealed` (REQ-AUD-013), and drives the port's voice sink (`port::VoiceSink`, the L8 contract for sound). Each codec is a feature: the desktop builds leave out PCM16 and IMA ADPCM, which microcontroller builds keep (decision E.131). It mixes nothing and touches no hardware. `neoteletext-audio-mix` is a mixer a desktop or phone port may use as its sink's engine; a microcontroller port maps the sink onto the tellyboy driver instead. The design is `docs/spec/design/audio.md` and `audio-platforms.md`.
 
 `neoteletext-opus` decodes Opus (RFC 6716) for one profile, mono, one 20 ms frame a packet, 48 kHz out (decision E.123): an integer-only port of libopus 1.5.2's fixed-point decoder, bit-exact with it, `no_std`, with no allocation and no dependency. A packet outside the profile is refused before the decoder changes; a lost packet is concealed; in-band FEC is read past, never decoded. Its interface is `Decoder::decode`, `Decoder::conceal` and `Decoder::final_range`; the decoder holds its own scratch, about 28 KB, and a decode needs about 2.5 KB of stack. It reads packets and writes samples, and is the audio profile's decoder for its code 2 once that is wired (issue #223).
 
@@ -430,7 +430,7 @@ Each boundary is one narrow type. Nothing reaches past its neighbour.
 | `neoteletext-slicer` | L0: raw samples to packets | `no_std` |
 | `neoteletext-web` | L7 and L8 (web traits) | `no_std`, sans-IO |
 | `neoteletext-image` | L5 | Helpers `no_std`; writers `std` |
-| `neoteletext-audio` | Audio (area AUD, section 3, "Audio"): carriage, records, store, control, IMA ADPCM | `no_std`, no allocation; the `encode` feature allocates |
+| `neoteletext-audio` | Audio (area AUD, section 3, "Audio"): carriage, records, store, control, PCM16, IMA ADPCM and Opus | `no_std`, no allocation; the `encode` feature allocates |
 | `neoteletext-audio-mix` | Audio: the software mixer for ports with an operating system's audio output | `no_std` with `alloc` |
 | `neoteletext-opus` | Audio: the Opus decoder of the audio profile (decision E.123) | `no_std`, no allocation, integer only |
 | `neoteletext-app` | L9: the application layer of `neottx` and any other viewer program: sessions, inputs, live mode's two processes, sandboxing | `std` |
@@ -490,7 +490,8 @@ Where each crate's code lives, one sentence per directory (the reorganisation of
 - `idl/`: record reassembly from fragments.
 - `record/`: the record frame every record type shares.
 - `store/`: the arena sounds are defined in, and a live sound's ring.
-- `receiver/`: the broadcast carriage, starting plays and sending samples to the sink.
+- `receiver/`: the broadcast and network carriages, the file carriage, starting plays, sending samples to the sink, the fades at a lost block (`fade`) and the `concealed` report (`loss`).
+- `ttau`: the `.ttau` file's records, framed by their lengths.
 - `mixer/` (`neoteletext-audio-mix`): live sounds in the mixer.
 
 **`neoteletext-opus`**
@@ -552,7 +553,7 @@ Decision E.61 makes each crate's optional areas Cargo features, all on by defaul
 | `neoteletext-formats` | `transport`, `sliced`, `pages`, `tti`, `ep1`, `edittf`, `dump`, `check`, `bdf` (the font reader of REQ-FNT-002), and `std` (not default) |
 | `neoteletext-web` | `push`, `cookies`; not default: `dbsc` (REQ-WEB-017, decision E.110), `error-trait` and `std` |
 | `neoteletext-app` | `live`, `slice`, `write-text` (the text-to-page writer and its `unicode-bidi` dependency) |
-| `neoteletext-audio` | `idl`, `ima`, and `encode` (not default) |
+| `neoteletext-audio` | `idl`, `ima`, `pcm16`, `opus`, and `encode` (not default). The desktop builds name `idl` and `opus` alone: PCM16 and IMA ADPCM are compiled out of them and kept for microcontrollers (decision E.131) |
 | `neoteletext-opus` | None: the profile is the whole decoder |
 | `neoteletext-cli` | `view`, `live`, `slice`, `write-text`, `sound` |
 

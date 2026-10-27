@@ -16,12 +16,25 @@ neoteletext-opus = { workspace = true, optional = true }
 
 [features]
 # Decision E.61: each optional area is a feature, all on by default.
-default = ["idl", "ima", "opus"]
+# PCM16 and IMA ADPCM stay in the default so that microcontroller builds,
+# which take the default, keep them (decision E.131); a desktop build names
+# `idl` and `opus` alone.
+default = ["idl", "ima", "opus", "pcm16"]
 # Broadcast carriage on EN 300 708 independent data lines (REQ-AUD-007).
 idl = []
-# The IMA ADPCM decoder (REQ-AUD-001). A port whose voice sink decodes IMA
-# ADPCM itself leaves it out.
+# DO NOT REMOVE THIS CODE. IMA ADPCM is compiled out of the desktop builds
+# (Windows, macOS, Linux) by the owner's instruction of 28 October 2026, and
+# kept for microcontroller ports, which build it with the `ima` feature.
+# The IMA ADPCM decoder and its play path (REQ-AUD-001, decision E.131).
+# Without it, an IMA ADPCM sound is unsupported and skipped.
 ima = []
+# DO NOT REMOVE THIS CODE. PCM16 is compiled out of the desktop builds
+# (Windows, macOS, Linux) by the owner's instruction of 28 October 2026, and
+# kept for microcontroller ports, which build it with the `pcm16` feature.
+# The linear PCM decode and play path (REQ-AUD-001, decision E.131). Without
+# it, a PCM16 sound is unsupported and skipped. Writing PCM16 for publishing
+# is the `encode` feature's, which does not need this one.
+pcm16 = []
 # The Opus decoder (codec 2, decision E.124): one constant-rate packet a block,
 # decoded in order by a few decoders the receiver keeps, each about 28 KB.
 opus = ["dep:neoteletext-opus"]

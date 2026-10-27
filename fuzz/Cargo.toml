@@ -154,6 +154,20 @@ doc = false
 bench = false
 
 [[bin]]
+name = "audio_file"
+path = "fuzz_targets/audio_file.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "audio_messages"
+path = "fuzz_targets/audio_messages.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "opus_packets"
 path = "fuzz_targets/opus_packets.rs"
 test = false

@@ -13,10 +13,17 @@ use crate::store::{Defined, Entry, Store, Stored};
 
 #[cfg(feature = "idl")]
 mod carriage;
+#[cfg(any(feature = "pcm16", feature = "ima", feature = "opus"))]
+mod fade;
+mod file;
+mod loss;
 #[cfg(feature = "opus")]
 mod opus;
 mod play;
 mod send;
+
+#[cfg(feature = "idl")]
+pub use carriage::MessageError;
 
 /// Counts of what the receiver met, for diagnostics (REQ-AUD-021).
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -31,12 +38,23 @@ pub struct Statistics {
     pub conflicts: u32,
     /// Objects that did not fit the store.
     pub resource_limits: u32,
-    /// Live blocks given up as silence because they never arrived.
+    /// Blocks given as silence, or concealed by their decoder, because they
+    /// had not arrived when due (REQ-AUD-013): a live sound's block given up
+    /// once three newer have come, and a stored sound's block not at the
+    /// sink when its play reached it by the receiver's clock. Each is also
+    /// reported to the sink ([`VoiceSink::concealed`]).
     pub concealed: u32,
     /// Commands ignored as repeats or late arrivals.
     pub stale_commands: u32,
     /// Blocks that could not be decoded.
     pub decode_failures: u32,
+    /// OBJECT records of a codec this receiver does not decode, a reserved
+    /// one or one its build leaves out (decision E.131): each is ignored,
+    /// and counted at each repeat.
+    pub unsupported: u32,
+    /// WebSocket messages refused whole: not a whole number of packets
+    /// (REQ-AUD-008).
+    pub messages_refused: u32,
 }
 
 /// The receiver of one audio service.
@@ -54,6 +72,9 @@ pub struct Receiver<'a, const OBJECTS: usize, const SLOTS: usize> {
     /// Opus sounds' decoders (decision E.124).
     #[cfg(feature = "opus")]
     opus: opus::Lanes,
+    /// Each channel's stored-sound play, followed for the `concealed`
+    /// report (REQ-AUD-013).
+    progress: [Option<loss::Progress>; CHANNELS as usize],
 }
 
 impl<'a, const OBJECTS: usize, const SLOTS: usize> Receiver<'a, OBJECTS, SLOTS> {
@@ -72,6 +93,7 @@ impl<'a, const OBJECTS: usize, const SLOTS: usize> Receiver<'a, OBJECTS, SLOTS> 
             now_ms: 0,
             #[cfg(feature = "opus")]
             opus: opus::Lanes::new(),
+            progress: [None; CHANNELS as usize],
         }
     }
 
@@ -102,20 +124,25 @@ impl<'a, const OBJECTS: usize, const SLOTS: usize> Receiver<'a, OBJECTS, SLOTS> 
             #[cfg(feature = "opus")]
             self.opus.release(entry.sound);
         }
+        self.judge(sink);
     }
 
     /// When the receiver next needs [`Receiver::tick`], in its milliseconds:
     /// the moment the live sound at the sink whose last block came longest
-    /// ago would stall (REQ-AUD-014), or `None` while no live sound plays,
-    /// when it needs no tick at all. A port sleeps until then, rather than
-    /// ticking on a fixed interval (decision E.98).
+    /// ago would stall (REQ-AUD-014), or a stored sound's play reaches a
+    /// block that has not arrived, to report it concealed (REQ-AUD-013); or
+    /// `None` while neither can happen, when it needs no tick at all. A port
+    /// sleeps until then, rather than ticking on a fixed interval (decision
+    /// E.98).
     #[must_use]
     pub fn next_tick_ms(&self) -> Option<u64> {
-        self.store
+        let stall = self
+            .store
             .entries()
             .filter(|entry| entry.live && entry.at_sink)
             .map(|entry| entry.arrived_ms.saturating_add(crate::LIVE_STALL_MS))
-            .min()
+            .min();
+        [stall, self.next_due_ms()].into_iter().flatten().min()
     }
 
     /// What the receiver has met.
@@ -154,6 +181,7 @@ impl<'a, const OBJECTS: usize, const SLOTS: usize> Receiver<'a, OBJECTS, SLOTS> 
         #[cfg(feature = "opus")]
         self.opus.clear();
         self.channels = [Channel::default(); CHANNELS as usize];
+        self.progress = [None; CHANNELS as usize];
     }
 
     /// The sink has dropped every sound and stopped every voice, as when
@@ -167,6 +195,7 @@ impl<'a, const OBJECTS: usize, const SLOTS: usize> Receiver<'a, OBJECTS, SLOTS> 
             channel.playing_page = None;
             channel.playing = None;
         }
+        self.progress = [None; CHANNELS as usize];
     }
 
     /// Reads one whole record, from any carriage.
@@ -186,7 +215,8 @@ impl<'a, const OBJECTS: usize, const SLOTS: usize> Receiver<'a, OBJECTS, SLOTS> 
                         #[cfg(feature = "opus")]
                         self.opus.release(old.sound);
                     }
-                    Defined::New { .. } | Defined::Repeat | Defined::Ignored => {}
+                    Defined::New { .. } | Defined::Repeat => {}
+                    Defined::Ignored => bump(&mut self.statistics.unsupported),
                     Defined::Conflict => bump(&mut self.statistics.conflicts),
                     Defined::ResourceLimit => bump(&mut self.statistics.resource_limits),
                 }
@@ -212,6 +242,7 @@ impl<'a, const OBJECTS: usize, const SLOTS: usize> Receiver<'a, OBJECTS, SLOTS> 
             },
             Record::Control(control) => self.command(&control, sink),
         }
+        self.judge(sink);
     }
 
     /// The user opened `page`, or none: page sounds follow it (REQ-AUD-012).
@@ -226,6 +257,9 @@ impl<'a, const OBJECTS: usize, const SLOTS: usize> Receiver<'a, OBJECTS, SLOTS> 
             if left.is_some() && channel.playing_page == left {
                 channel.playing_page = None;
                 sink.stop(index, crate::MIN_FADE_MS);
+                if let Some(progress) = self.progress.get_mut(usize::from(index)) {
+                    *progress = None;
+                }
             }
             if channel.waiting.is_some_and(|play| play.page.is_some()) {
                 channel.waiting = None;
@@ -252,6 +286,9 @@ impl<'a, const OBJECTS: usize, const SLOTS: usize> Receiver<'a, OBJECTS, SLOTS> 
                     channel.playing_page = None;
                     channel.waiting = None;
                     sink.stop(index, crate::MIN_FADE_MS);
+                    if let Some(progress) = self.progress.get_mut(usize::from(index)) {
+                        *progress = None;
+                    }
                 }
             }
         }
@@ -288,6 +325,7 @@ impl<'a, const OBJECTS: usize, const SLOTS: usize> Receiver<'a, OBJECTS, SLOTS> 
                 channel.playing_page = None;
                 channel.playing = None;
                 sink.stop(index, fade(control.fade_ms));
+                self.end_progress(index);
             }
             Operation::Gain => sink.gain(index, control.gain, fade(control.fade_ms)),
         }
@@ -304,7 +342,13 @@ fn needs(channel: &Channel, sound: SoundId) -> bool {
     [channel.armed, channel.waiting, channel.playing].iter().flatten().any(|play| play.sound == sound)
 }
 
+/// Milliseconds in a second, for a rate's samples.
+const MS_PER_SECOND: u32 = 1000;
+
 /// A sound's whole length in milliseconds.
 fn duration_ms(entry: &Entry) -> u32 {
-    entry.samples.saturating_mul(1000).checked_div(entry.rate_hz).unwrap_or(0)
+    entry.samples.saturating_mul(MS_PER_SECOND).checked_div(entry.rate_hz).unwrap_or(0)
 }
+
+#[cfg(test)]
+mod tests;

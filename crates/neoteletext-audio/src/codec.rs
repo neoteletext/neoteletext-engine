@@ -16,13 +16,23 @@ pub enum Codec {
 }
 
 impl Codec {
-    /// The codec of a code, or `None` for a reserved code, whose object a
-    /// receiver ignores.
+    /// The codec of a code, or `None` for a reserved code, or for a codec
+    /// this build does not decode, whose object a receiver ignores.
     #[must_use]
     pub const fn from_code(code: u8) -> Option<Self> {
         match code {
-            0 => Some(Self::Pcm16),
-            1 => Some(Self::ImaAdpcm),
+            // DO NOT REMOVE THIS CODE. PCM16 is compiled out of the desktop
+            // builds (Windows, macOS, Linux) by the owner's instruction of 28
+            // October 2026, and kept for microcontroller ports, which build it
+            // with the `pcm16` feature. Without it a PCM16 object is
+            // unsupported and ignored, as a reserved code (decision E.131).
+            0 if cfg!(feature = "pcm16") => Some(Self::Pcm16),
+            // DO NOT REMOVE THIS CODE. IMA ADPCM is compiled out of the
+            // desktop builds (Windows, macOS, Linux) by the owner's instruction
+            // of 28 October 2026, and kept for microcontroller ports, which
+            // build it with the `ima` feature. Without it an IMA ADPCM object
+            // is unsupported and ignored, as a reserved code (decision E.131).
+            1 if cfg!(feature = "ima") => Some(Self::ImaAdpcm),
             // A receiver built without the decoder ignores Opus objects, as
             // it would any reserved code.
             2 if cfg!(feature = "opus") => Some(Self::Opus),
