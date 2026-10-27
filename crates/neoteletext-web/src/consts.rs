@@ -455,7 +455,7 @@ pub const ZXNET_WALK_TIMEOUT_US: u64 = 12 * MICROSECONDS_PER_SECOND;
 pub const ZXNET_WALK_SETTLE_US: u64 = MICROSECONDS_PER_SECOND;
 /// The most pages the walk remembers from `pageExists` (8 magazines of
 /// 256 page numbers).
-pub const ZXNET_MAX_PAGES: usize = 2048;
+pub const ZXNET_MAX_PAGES: usize = neoteletext_core::limits::PAGE_NUMBERS;
 
 // ---------------------------------------------------------------------------
 // Rendering, for ports that draw what the agent fetches

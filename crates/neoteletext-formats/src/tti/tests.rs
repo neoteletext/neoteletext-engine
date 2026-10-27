@@ -285,6 +285,31 @@ fn content_before_any_page_number_is_reported() {
     assert_eq!(diagnostics[0].kind, DiagnosticKind::MissingPageNumber);
 }
 
+/// REQ-INP-013 and REQ-NUM-002: `SC` carries every sub-code a header can
+/// carry, 0000 to 3F7F, unchanged into the page and into its encoded
+/// header (`STANDARD-LIMITS.md` section 7 item 6).
+#[test]
+fn sc_carries_every_sub_code() {
+    let codes: Vec<u16> = (0..=neoteletext_core::limits::SUBCODE_MASK)
+        .filter(|&value| neoteletext_core::limits::is_sub_code(value))
+        .collect();
+    assert_eq!(codes.len(), 8192);
+    for code in codes {
+        let text = std::format!("PN,10000\nSC,{code:04X}\nOL,1,x\n");
+        let items = crate::testing::run(&mut TtiReader::new(), text.as_bytes(), text.len());
+        assert!(diagnostics(&items).is_empty(), "{code:04X}: {:?}", diagnostics(&items));
+        let [crate::testing::Owned::Page(page)] = &items[..] else { panic!("{code:04X}: {items:?}") };
+        assert_eq!(page.subcode.value(), code);
+        let mut header = None;
+        encode_page(page, &mut |packet| {
+            if let Ok(Decoded::Header(decoded)) = decode(&packet) {
+                header = Some(decoded);
+            }
+        });
+        assert_eq!(header.and_then(|header| header.subcode).map(SubCode::value), Some(code), "{code:04X}");
+    }
+}
+
 #[test]
 fn encoded_pages_decode_to_the_same_fields() {
     let (pages, _) = read(&full_page());

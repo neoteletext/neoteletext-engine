@@ -7,7 +7,10 @@ use neoteletext_core::types::{Instant, PageAddress, SubCode};
 #[cfg(feature = "dbsc")]
 use super::bound;
 use super::cookies::{cookie_store, write_cookie_header};
-use super::{Event, Exchange, Failure, Link, Output, PageFile, Purpose, Sink, Target, UserAgent, event};
+use super::page::cached_as;
+use super::{
+    Cached, Event, Exchange, Failure, Link, Output, PageFile, Purpose, Queued, Sink, Target, UserAgent, Want, event,
+};
 use crate::bytes::{Overflow, Writer};
 use crate::channel::{self, ChannelFile};
 use crate::consts::{ACCEPT_PAGES, CRLF, IDENTITY, header};
@@ -72,8 +75,12 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
             } else if let Some(url) = self.contents.take() {
                 (Purpose::Contents, url, Method::Get, Site::SameService)
             } else if self.queue.iter().any(Option::is_some) && now >= self.next_fetch_at {
-                let Some((page, subcode)) = self.take_queued() else { return };
-                let Some(request) = self.page_request(now, page, subcode, sink) else { continue };
+                let Some(queued) = self.take_queued() else { return };
+                let request = match queued.want {
+                    Want::Page => self.page_request(now, queued.page, queued.subcode, sink),
+                    Want::SubPages => self.subpages_request(now, queued, sink),
+                };
+                let Some(request) = request else { continue };
                 request
             } else {
                 return;
@@ -144,19 +151,32 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
             event(sink, Event::FetchFailed { page, subcode, failure: Failure::NoService });
             return None;
         };
-        if self.cache_entry(page, subcode).is_some_and(|entry| entry.fresh_until.is_some_and(|until| now < until)) {
+        // A sub-page of a page whose catalogue answered is a file of its
+        // own (REQ-WEB-019); any other request is for the page's file, and
+        // so is 3F7F, which in a link names no particular sub-page
+        // (EN 300 706 clause 9.6.1).
+        let sub_page = match (self.channel, subcode) {
+            (Some(_), Some(subcode)) if !subcode.is_any() && self.is_catalogued(page) => Some(subcode),
+            _ => None,
+        };
+        let cached = if sub_page.is_some() { Cached::SubPage } else { Cached::Page };
+        let entry = self.cache_entry(page, subcode, cached);
+        if entry.is_some_and(|entry| entry.fresh_until.is_some_and(|until| now < until)) {
             event(sink, Event::PageCurrent { page, subcode });
             return None;
         }
-        let (address, file) = match self.channel {
-            Some(folder) => {
+        let (address, file) = match (self.channel, sub_page) {
+            (Some(folder), Some(subcode)) => {
+                (channel::file_url(&folder, ChannelFile::SubPage { page, subcode }), PageFile::SubPage)
+            }
+            (Some(folder), None) => {
                 // The file that answered last time is asked again,
                 // so its validators apply; otherwise the extension
                 // that last answered in the channel.
-                let t42 = self.cache_entry(page, subcode).map_or(self.t42_first, |entry| entry.t42);
+                let t42 = entry.map_or(self.t42_first, |entry| entry.t42);
                 (channel::file_url(&folder, ChannelFile::Page { page, t42 }), PageFile::Channel { t42, second: false })
             }
-            None => (descriptor.page_url(page, subcode), PageFile::Template),
+            (None, _) => (descriptor.page_url(page, subcode), PageFile::Template),
         };
         let url = match address {
             Ok(url) => url,
@@ -171,6 +191,33 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
             Site::SameService
         };
         Some((Purpose::Page { page, subcode, file }, url, Method::Get, site))
+    }
+
+    /// The request for a queued catalogue (REQ-WEB-034). `None` when no
+    /// channel is open, the cached copy is still fresh, or the address
+    /// fails, each reported.
+    fn subpages_request(
+        &mut self,
+        now: Instant,
+        Queued { page, .. }: Queued,
+        sink: &mut Sink<'_>,
+    ) -> Option<(Purpose, Url, Method, Site)> {
+        let Some(folder) = self.channel else {
+            event(sink, Event::SubPagesFailed { page, failure: Failure::NoService });
+            return None;
+        };
+        let entry = self.cache_entry(page, None, Cached::SubPages);
+        if entry.is_some_and(|entry| entry.fresh_until.is_some_and(|until| now < until)) {
+            event(sink, Event::SubPagesCurrent { page });
+            return None;
+        }
+        match channel::file_url(&folder, ChannelFile::SubPages { page }) {
+            Ok(url) => Some((Purpose::SubPages { page }, url, Method::Get, Site::SameService)),
+            Err(error) => {
+                event(sink, Event::SubPagesFailed { page, failure: Failure::Address(error) });
+                None
+            }
+        }
     }
 
     /// Sends the current exchange's request, connecting first if needed.
@@ -207,9 +254,15 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
         http::write_header(&mut writer, header::USER_AGENT, self.named_as.as_bytes())?;
         http::write_header(&mut writer, header::ACCEPT, ACCEPT_PAGES)?;
         http::write_header(&mut writer, header::ACCEPT_ENCODING, IDENTITY)?;
-        if let Purpose::Page { page, subcode, .. } = exchange.purpose
+        let validated = match exchange.purpose {
+            Purpose::Page { page, subcode, file } => Some((page, subcode, cached_as(file))),
+            Purpose::SubPages { page } => Some((page, None, Cached::SubPages)),
+            _ => None,
+        };
+        if let Some((page, subcode, file)) = validated
             && exchange.redirects == 0
-            && let Some(entry) = self.cache.iter().flatten().find(|e| e.page == page && e.subcode == subcode)
+            && let Some(entry) =
+                self.cache.iter().flatten().find(|e| e.page == page && e.subcode == subcode && e.file == file)
         {
             if let Some(etag) = &entry.etag {
                 http::write_header(&mut writer, header::IF_NONE_MATCH, etag.as_bytes())?;

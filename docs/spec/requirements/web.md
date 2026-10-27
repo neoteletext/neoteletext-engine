@@ -144,6 +144,7 @@ In addition, the web module shall:
   - The port may still refuse to offer TLS. The module shall then work over plain connections only, and report an HTTPS address as unreachable.
 - **limit sizes.** It shall enforce configurable size limits, with documented defaults:
   - one page response, 256 kilobytes by default;
+  - one page's catalogue of sub-pages, `NNN.sub`, 524,160 bytes (REQ-WEB-034);
   - one push message, 64 kilobytes;
   - the service descriptor, 16 kilobytes;
   - the headers of one response, 16 kilobytes.
@@ -152,6 +153,7 @@ In addition, the web module shall:
 - **treat everything received as untrusted input.** Page files, packets, descriptors and headers all pass the robustness requirement REQ-GEN-008, including fuzzing (REQ-TST-040).
 *Verification:* Test for each rule; fuzzing of the HTTP, WebSocket, server-sent event and descriptor parsers.
 *Amended 27 October 2026 (decision E.126):* the rules restricting form submission and ignoring the `FH` command are withdrawn with the TTI Form Extension, and REQ-SEC-009 with them; an `FH` line is an unknown command, reported and ignored (REQ-INP-013).
+*Amended 28 October 2026 (decision E.132):* a page's catalogue of sub-pages has a limit of its own, large enough for the standard's 8,190 sub-pages, as `contents.txt` has; every page response, a sub-page's file included, keeps the 256-kilobyte limit.
 
 **REQ-WEB-009 — Working offline.**
 When the network is unavailable:
@@ -337,16 +339,25 @@ A channel's files shall have these fixed names, in the channel's folder, and no 
 
 Within a channel, the extension that last answered 200 shall be tried first, and the other second. This changes only the number of requests, never which file is used when both exist: when the first answers 200, the second is not asked for. Conditional requests to keep a page current (REQ-WEB-004) shall go to the file that answered.
 
+**Finding a sub-page.** A page's sub-pages are files of their own when its catalogue `NNN.sub` exists (REQ-WEB-034). The web module shall ask for a page's catalogue only when the port asks for it, conditionally once it holds the catalogue's validators (REQ-WEB-004), and shall remember, for each page of the open channel, whether its last catalogue answered. A sub-page asked for by its sub-code shall then be looked for:
+1. in the store, when it is there and confirmed current;
+2. otherwise, for a page whose last catalogue answered, in `NNN-SSSS.t42` alone. When that answers 404 or 410 the sub-page is "not found", and the page's own file is not tried, since it holds the first sub-page only;
+3. otherwise, for a page with no catalogue, or for sub-code 3F7F, which names no particular sub-page (EN 300 706 clause 9.6.1), in the page's own file, as a page is.
+
+A sub-page's file is asked for only when that sub-page is asked for, so a sub-page passes the wire only when it is needed (decision E.122). A page that has `NNN.sub` should have no `NNN.tti`, which would be found first and carry every sub-page whole.
+
 **What each file may fill.**
-- **A page's own file** shall fill only pages that have been asked for in this channel, and enhancement pages, whose page numbers are not decimal and which a page may carry for its objects (decision E.63 item 5). Any other page in it shall be dropped, by its header, with a diagnostic.
+- **A page's own file,** and a sub-page's file, shall fill only pages that have been asked for in this channel, and enhancement pages, whose page numbers are not decimal and which a page may carry for its objects (decision E.63 item 5). Any other page in it shall be dropped, by its header, with a diagnostic.
+- **`NNN.sub`** fills no page: it lists sub-pages.
 - **`index.t42`,** a pushed message and a local file shall fill every page they hold.
 - `index.t42` is bounded by the page response limit of REQ-WEB-008, 256 kilobytes by default. A channel larger than that publishes page files.
 
 When the bundle or a file does not hold the page asked for, and the viewer has not chosen a page, the first page it holds shall be shown.
 *Reason:* A page's file cannot overwrite the rest of its channel, while a whole capture published as `index.t42` is a working channel. Fixed names mean one layout to learn and to build.
 *Amended 12 October 2026* (decision E.70): fixed file names in the channel's folder replace the page address template and the front door at the root.
-*Amended 26 October 2026 (decision E.122):* a page's sub-pages may be files of their own, `NNN-SSSS.t42`, listed by `NNN.sub`, so a page of up to 8,190 sub-pages stays within the page response limit of REQ-WEB-008 and a sub-page is fetched only when it is shown. Not built: the reader of `NNN.sub` (fuzzed, bounded at 8,190 entries) and the fetch of a sub-page's file.
-*Verification:* Tests that a page is found as `.tti`, as `.t42`, and not at all; that the order of the two requests changes after a success but the result does not; that a page file holding other pages fills only the pages asked for and enhancement pages; and that `index.t42` fills every page.
+*Amended 26 October 2026 (decision E.122):* a page's sub-pages may be files of their own, `NNN-SSSS.t42`, listed by `NNN.sub`, so a page of up to 8,190 sub-pages stays within the page response limit of REQ-WEB-008 and a sub-page is fetched only when it is shown.
+*Amended 28 October 2026 (decision E.132):* built: the reader and writer of `NNN.sub` (REQ-WEB-034), the fetch of a page's catalogue and of a sub-page's file ("Finding a sub-page"), and the layout of a channel's files, with `index.t42` holding first sub-pages only.
+*Verification:* Tests that a page is found as `.tti`, as `.t42`, and not at all; that the order of the two requests changes after a success but the result does not; that a page file holding other pages fills only the pages asked for and enhancement pages; and that `index.t42` fills every page. Sub-pages: `a_page_of_8190_sub_pages_is_fetched_one_sub_page_at_a_time` (the catalogue of 8,190 entries fetched, then one sub-page from `100-2345.t42` and nothing else, the catalogue again conditionally, a sub-page gone not looked for elsewhere, and a page with no catalogue keeping its page file), `a_catalogue_must_be_text`, `a_sub_page_and_a_catalogue_have_files_of_their_own` (the names, every sub-code in capitals), and `a_page_of_8190_sub_pages_is_written_as_files_and_read_back` with the other tests of `subpages::layout` (`NNN.t42` and the bundle holding the first sub-page only), each of which fails to build on the code before 28 October 2026.
 *Amended 27 October 2026 (decision E.126):* a form response no longer fills pages, since forms are withdrawn.
 
 **REQ-WEB-020 — Aliases and refresh.**
@@ -413,8 +424,11 @@ Unknown members shall be refused, as REQ-WEB-002 requires of every descriptor.
 - **At most 800 `p` entries** are kept; later ones shall be ignored and counted.
 
 Nothing in `contents.txt` is checked against the channel's files: a listed page that does not exist is "not found" when chosen, as a typed number would be.
+
+`contents.txt` lists pages, never sub-pages: a page's sub-pages, up to the standard's 8,190, are listed by its own catalogue `NNN.sub` (REQ-WEB-034), fetched only when they are wanted, so that the contents stay small at any number of sub-pages.
 *Reason:* One small text format that a person can write by hand, a server can generate, and the author's tool can write (REQ-CLI-008), is the whole of a channel's map.
 *Verification:* Tests of each kind of entry, of every fault listed, of comments and both line ends, of the size and count limits, and of a duplicate page; the fuzz target `contents`.
+*Amended 28 October 2026 (decision E.132; `neoteletext-common/STANDARD-LIMITS.md` section 7 item 5):* a page's sub-pages are listed by its `NNN.sub`, not here.
 
 **REQ-WEB-026 — The channel is the boundary.**
 When a service is opened as a channel, the channel shall be the boundary for these rules (decision E.70 item 12). Each is stricter than the origin-based rule of the same name, which still applies.
@@ -432,7 +446,8 @@ No teletext media type is registered, and common hosts send generic types (decis
 | File | Accepted media types |
 |---|---|
 | `NNN.tti` | `text/x-teletext-tti`, `text/plain`, `application/octet-stream` |
-| `NNN.t42`, `index.t42` | `application/x-teletext-t42`, `application/octet-stream`, `text/plain` |
+| `NNN.t42`, `NNN-SSSS.t42`, `index.t42` | `application/x-teletext-t42`, `application/octet-stream`, `text/plain` |
+| `NNN.sub` | `text/plain`, `application/octet-stream` |
 | `channel.json` | `application/json`, `text/plain`, `application/octet-stream` |
 | `contents.txt` | `text/plain`, `application/octet-stream` |
 
@@ -442,11 +457,13 @@ Each file shall then pass the check for the format its name says, and is refused
 - **a TTI file** shall be a TTI page file with at least one `PN` line, read by REQ-INP-013;
 - **a T42 file** shall be a whole number of 42-byte packets, every one with a valid Hamming 8/4 magazine and row address (EN 300 706 clause 8.2);
 - **`channel.json`** shall pass REQ-WEB-024;
-- **`contents.txt`** shall pass REQ-WEB-025.
+- **`contents.txt`** shall pass REQ-WEB-025;
+- **`NNN.sub`** shall pass REQ-WEB-034.
 
 A refused page file is reported as a failure of that page, not as "not found", and the other extension is not then tried.
 *Reason:* A file's name and type cannot be trusted alone: `.tti` is also Template Toolkit's extension, `.t42` is also PostScript Type 42 fonts', and some hosts answer a missing file with an HTML page and status 200.
 *Verification:* Tests serving each file with each accepted type and with `text/html`, with no type, with a Template Toolkit file named `100.tti`, with a Type 42 font named `100.t42`, and with an HTML "not found" page answered with status 200.
+*Amended 28 October 2026 (decision E.132):* the rows for a sub-page's file and a page's catalogue; `a_catalogue_must_be_text`.
 
 **REQ-WEB-028 — Discovery: from a web address to a channel.** Moved out of the engine on 16 October 2026 (decision E.76), and withdrawn on 18 October 2026: it concerned only the browser, which was removed from this repository and is maintained in the separate neoteletext-browser repository.
 
@@ -470,3 +487,21 @@ The agent shall report each answered request on the fetch connection, each hop o
 *Reason:* A developer of a channel, or of a port, needs to see what the agent asked for and what came back, without a packet capture.
 *Verification:* A test that a descriptor and a page are each reported with their address, status and size.
 
+**REQ-WEB-034 — `NNN.sub`: a page's catalogue of sub-pages.**
+`NNN.sub` lists the sub-pages of page `NNN` whose sub-pages are files of their own, `NNN-SSSS.t42` (REQ-WEB-019; decision E.132). It shall be read by a strict, bounded reader that allocates nothing:
+- **Size.** At most 524,160 bytes: 8,190 entries of the longest form, 64 bytes each. A larger file shall be refused whole, with a diagnostic.
+- **Characters.** Lines end with LF or CR LF. Fields are separated by one horizontal tab. A byte outside printable ASCII, other than the tab and the line ends, makes its line invalid. Empty lines are ignored; there are no comments.
+- **Entries.** Each line is one sub-page, in the page's order, which is the order its sub-pages are listed and stepped through; the first is the sub-page `NNN.t42` holds:
+
+  | Field | Holds |
+  |---|---|
+  | sub-code | Four capital hexadecimal digits, S4 first, any of 0000 to 3F7F with no bit outside the thirteen a sub-code has (EN 300 706 clause 9.3.1.2; REQ-NUM-002, REQ-NUM-005) |
+  | validator | 1 to 16 letters, digits, `-` and `_`, which change when the sub-page's file changes |
+  | title | Optional: 1 to 40 characters, a teletext row; a longer title shall be cut to 40 |
+
+- **Faults.** A line with fewer than two fields or more than three, an invalid sub-code or validator, or a title field that is present but empty shall be ignored. The second and later entries for one sub-code shall be ignored. The number of ignored lines shall be reported.
+- **At most 8,190 entries** are kept, every sub-page a display page may have (REQ-NUM-020); later ones shall be ignored and counted.
+
+A receiver that holds a sub-page whose validator is the catalogue's shall treat it as current without asking for its file. The engine's writers give each sub-page the first 16 hexadecimal digits, in lower case, of the SHA-256 digest of its file, and write titles as `contents.txt`'s are made: printable ASCII, spaces folded, cut to 40 characters.
+*Reason:* A page of the standard's 8,190 sub-pages cannot be one page response (REQ-WEB-008), and a receiver that lists them needs their sub-codes and titles without fetching each (decision E.122, `neoteletext-common/STANDARD-LIMITS.md` section 4 item 7). A validator that follows the file lets a receiver skip every unchanged sub-page.
+*Verification:* Tests of each field, of every fault listed, of a long title, of the writer's titles, of every sub-code 0000 to 3F7F with the 8,191st and 8,192nd entries ignored, of a full catalogue within the size limit and a larger file refused (`subpages` unit tests); the fuzz target `subpages`, which writes each entry back and reads it again.

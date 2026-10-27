@@ -201,6 +201,7 @@ Each module named below is one concept. Since the reorganisation of 24 October 2
   - the service descriptor;
   - channels: which addresses name a channel's folder and files, and the checks a channel's file must pass (`channel`, decision E.70);
   - the contents file's reader (`contents`, REQ-WEB-025);
+  - a page's catalogue of sub-pages, `NNN.sub` (`subpages`, REQ-WEB-034, decision E.132): its bounded reader and its writer, the validator of a sub-page's file, and, with the feature `std`, the layout of a channel's pages as files (`NNN.t42`, `NNN-SSSS.t42`, `NNN.sub` and an `index.t42` of first sub-pages); the agent asks for a page's catalogue when the port asks, and then for a sub-page's own file only when that sub-page is asked for (REQ-WEB-019);
   - push subscriptions;
   - Device Bound Session Credentials (`dbsc`, and the agent's `agent::bound`, feature `dbsc`, REQ-WEB-017): the registration and challenge headers, the session instructions, the proofs and the session store; the keys are the port's;
   - the zxnet live feed.
@@ -486,6 +487,7 @@ Where each crate's code lives, one sentence per directory (the reorganisation of
 - `cookie/`: the cookie store's `Set-Cookie` algorithm, the `Cookie` header, the date algorithm and the persistence format.
 - `dbsc/`: Device Bound Session Credentials: structured fields, the two headers, the session instructions, the proof and the session store.
 - `descriptor/`: the descriptor's member grammar, its page address template and its links to other sites.
+- `subpages/`: a channel's pages laid out as files (feature `std`).
 - `zxnet/`: the live feed's channel, vocabulary, messages, page walk and connection.
 - `agent/`: the user agent's parts: configuration, vocabulary, entry point, service opening, requests, responses, pages, cookies, the fetch and push connections, and the agent's side of `dbsc`.
 

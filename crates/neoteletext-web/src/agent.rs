@@ -69,7 +69,46 @@ enum PageFile {
     /// A channel's page file (REQ-WEB-019): T42 or TTI, and whether it is
     /// the second of the two tried.
     Channel { t42: bool, second: bool },
+    /// A channel's sub-page file, `NNN-SSSS.t42`, of a page whose
+    /// catalogue says its sub-pages are files of their own (REQ-WEB-019).
+    SubPage,
 }
+
+/// What a queued request is for.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Want {
+    /// A page, or a sub-page of it.
+    Page,
+    /// A page's catalogue of sub-pages, `NNN.sub` (REQ-WEB-034).
+    SubPages,
+}
+
+/// A request waiting for the fetch connection.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+struct Queued {
+    page: PageAddress,
+    subcode: Option<SubCode>,
+    want: Want,
+}
+
+/// Which file a cache entry's validators are for.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Cached {
+    /// The page's own file, or the descriptor's template.
+    Page,
+    /// A sub-page's file, `NNN-SSSS.t42`.
+    SubPage,
+    /// The page's catalogue, `NNN.sub`.
+    SubPages,
+}
+
+/// Page numbers of every magazine, 100 to 8FF, as bits from 100: the pages
+/// whose catalogues say their sub-pages are files of their own.
+const PAGE_SLOTS: usize = neoteletext_core::limits::PAGE_NUMBERS;
+/// The first page number, 100.
+const FIRST_PAGE: u16 = neoteletext_core::limits::FIRST_PAGE_ADDRESS;
+/// Bits in one word of a set of pages.
+const WORD_BITS: usize = 32;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Purpose {
@@ -84,6 +123,10 @@ enum Purpose {
         file: PageFile,
     },
     Contents,
+    /// A page's catalogue of sub-pages (REQ-WEB-034).
+    SubPages {
+        page: PageAddress,
+    },
     /// Registers a device-bound session (REQ-WEB-017).
     #[cfg_attr(not(feature = "dbsc"), allow(dead_code, reason = "made only with the feature `dbsc`"))]
     Register,
@@ -159,6 +202,8 @@ struct CacheEntry {
     used: u64,
     /// For a channel, the page file that answered is T42.
     t42: bool,
+    /// The file the validators are for.
+    file: Cached,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -235,7 +280,10 @@ pub struct UserAgent<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES
     fetch: FetchConnection,
     /// Close the fetch connection when the current response completes.
     close_fetch_after: bool,
-    queue: [Option<(PageAddress, Option<SubCode>)>; PAGE_QUEUE],
+    queue: [Option<Queued>; PAGE_QUEUE],
+    /// The pages of the open channel whose last catalogue answered: their
+    /// sub-pages are asked for as files of their own (REQ-WEB-019).
+    catalogued: [u32; PAGE_SLOTS / WORD_BITS],
     next_fetch_at: Instant,
     /// The deadline the port was last told, so it is told only of a change.
     timer_told: Option<Instant>,
@@ -337,6 +385,7 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             },
             close_fetch_after: false,
             queue: [None; PAGE_QUEUE],
+            catalogued: [0; PAGE_SLOTS / WORD_BITS],
             next_fetch_at: Instant(0),
             timer_told: None,
             cache: [None; CACHE_ENTRIES],

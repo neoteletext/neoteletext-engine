@@ -90,7 +90,10 @@ pub struct Buffers<'m> {
     pub fetch_head: &'m mut [u8],
     /// Requests on the fetch connection.
     pub fetch_request: &'m mut [u8],
-    /// Page, descriptor, bundle and contents response bodies.
+    /// Page, descriptor, bundle, contents and catalogue response bodies.
+    /// A page's catalogue may be larger than a page
+    /// ([`crate::subpages::MAX_BYTES`]); a body buffer smaller than that
+    /// reads only the catalogues that fit.
     pub body: &'m mut [u8],
     /// The push connection's handshake response head.
     pub push_head: &'m mut [u8],
@@ -100,12 +103,18 @@ pub struct Buffers<'m> {
     pub push_message: &'m mut [u8],
 }
 
+/// The default body buffer: a page response, or the largest catalogue of
+/// sub-pages, whichever is larger, so that every sub-page of a page of the
+/// standard's maximum is reachable (REQ-NUM-030).
+const BODY_BYTES: usize =
+    if DEFAULT_PAGE_LIMIT > crate::subpages::MAX_BYTES { DEFAULT_PAGE_LIMIT } else { crate::subpages::MAX_BYTES };
+
 /// Buffers of the default sizes, for callers that do not need to choose.
 #[derive(Debug)]
 pub struct Storage {
     fetch_head: [u8; DEFAULT_HEADER_LIMIT],
     fetch_request: [u8; crate::consts::DEFAULT_REQUEST_LIMIT],
-    body: [u8; DEFAULT_PAGE_LIMIT],
+    body: [u8; BODY_BYTES],
     push_head: [u8; DEFAULT_HEADER_LIMIT],
     push_request: [u8; crate::consts::DEFAULT_REQUEST_LIMIT],
     push_message: [u8; DEFAULT_PUSH_LIMIT],
@@ -127,7 +136,7 @@ impl Storage {
         Self {
             fetch_head: [0; DEFAULT_HEADER_LIMIT],
             fetch_request: [0; crate::consts::DEFAULT_REQUEST_LIMIT],
-            body: [0; DEFAULT_PAGE_LIMIT],
+            body: [0; BODY_BYTES],
             push_head: [0; DEFAULT_HEADER_LIMIT],
             push_request: [0; crate::consts::DEFAULT_REQUEST_LIMIT],
             push_message: [0; DEFAULT_PUSH_LIMIT],

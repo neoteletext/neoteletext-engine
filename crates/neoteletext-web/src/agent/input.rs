@@ -4,7 +4,7 @@
 
 use neoteletext_core::types::Instant;
 
-use super::{Event, Failure, Input, Output, PushPhase, Sink, UserAgent, event};
+use super::{Event, Failure, Input, Output, PushPhase, Sink, UserAgent, Want, event};
 use crate::channel;
 use crate::port::{ConnectionId, NetInput, RandomSource};
 use crate::url::{Url, UrlError};
@@ -33,7 +33,8 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
             },
             Input::FetchContents => self.fetch_contents(sink),
             Input::FollowLink { service, page, subcode } => self.follow_link(service, page, subcode, sink),
-            Input::FetchPage { page, subcode } => self.enqueue(page, subcode, sink),
+            Input::FetchPage { page, subcode } => self.enqueue(page, subcode, Want::Page, sink),
+            Input::FetchSubPages { page } => self.enqueue(page, None, Want::SubPages, sink),
             Input::Subscribe(subscription) => self.subscribe(now, subscription, sink),
             Input::WipeCookies => self.wipe_cookies(),
             Input::WallClock(unix) => self.wall_clock = Some((now, unix)),

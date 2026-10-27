@@ -14,10 +14,9 @@
 
 use neoteletext_core::consts::PACKET_BYTES;
 use neoteletext_core::ecc::hamming84;
-use neoteletext_core::types::PageAddress;
+use neoteletext_core::types::{PageAddress, SubCode};
 
-use crate::bytes::Writer;
-use crate::consts::MAX_URL_LENGTH;
+use crate::bytes::{Overflow, Writer};
 use crate::url::{Scheme, Url, UrlError};
 
 /// The channel's settings (REQ-WEB-024).
@@ -30,6 +29,14 @@ pub const CONTENTS_FILE: &str = "contents.txt";
 pub const TTI_EXTENSION: &str = ".tti";
 /// The extension of a page file in T42 (REQ-INP-002).
 pub const T42_EXTENSION: &str = ".t42";
+/// The extension of a page's catalogue of sub-pages (REQ-WEB-034).
+pub const SUBPAGES_EXTENSION: &str = ".sub";
+/// Between a page number and a sub-code in a sub-page's file name,
+/// `NNN-SSSS.t42` (REQ-WEB-019).
+pub const SUBPAGE_SEPARATOR: u8 = b'-';
+/// The longest file name of a channel: `NNN-SSSS.t42`, `channel.json` and
+/// `contents.txt` are twelve characters.
+pub const MAX_FILE_NAME: usize = PAGE_DIGITS + 1 + crate::subpages::SUBCODE_DIGITS + T42_EXTENSION.len();
 /// The most segments a folder path may have (REQ-WEB-023).
 pub const MAX_SEGMENTS: usize = 8;
 /// The longest segment of a folder path.
@@ -77,6 +84,19 @@ pub enum ChannelFile {
         /// The file is T42; otherwise TTI.
         t42: bool,
     },
+    /// `NNN-SSSS.t42`: one sub-page of a page whose sub-pages are files
+    /// of their own, listed by its `NNN.sub`.
+    SubPage {
+        /// The page.
+        page: PageAddress,
+        /// The sub-page.
+        subcode: SubCode,
+    },
+    /// `NNN.sub`: the catalogue of a page's sub-pages (REQ-WEB-034).
+    SubPages {
+        /// The page.
+        page: PageAddress,
+    },
     /// `index.t42`.
     Bundle,
     /// `channel.json`.
@@ -86,8 +106,9 @@ pub enum ChannelFile {
 }
 
 impl ChannelFile {
-    /// Reads a file name: a page file, written with capital `A` to `F`, or
-    /// one of the other fixed names. `None` for any other name.
+    /// Reads a file name: a page file, a sub-page's file or a catalogue,
+    /// written with capital `A` to `F`, or one of the other fixed names.
+    /// `None` for any other name.
     #[must_use]
     pub fn from_name(name: &str) -> Option<Self> {
         match name {
@@ -96,17 +117,61 @@ impl ChannelFile {
             CONTENTS_FILE => return Some(Self::Contents),
             _ => {}
         }
+        if let Some(digits) = name.strip_suffix(SUBPAGES_EXTENSION) {
+            return Some(Self::SubPages { page: page_of(digits.as_bytes())? });
+        }
         let (digits, t42) = if let Some(digits) = name.strip_suffix(TTI_EXTENSION) {
             (digits, false)
         } else {
             (name.strip_suffix(T42_EXTENSION)?, true)
         };
-        let capital_hex = |byte: &u8| byte.is_ascii_digit() || (b'A'..=b'F').contains(byte);
-        if digits.len() != PAGE_DIGITS || !digits.bytes().all(|byte| capital_hex(&byte)) {
-            return None;
+        let digits = digits.as_bytes();
+        match digits.split_at_checked(PAGE_DIGITS) {
+            Some((page, [])) => Some(Self::Page { page: page_of(page)?, t42 }),
+            Some((page, [SUBPAGE_SEPARATOR, code @ ..])) if t42 => {
+                let subcode = crate::subpages::parse_subcode(code)?;
+                Some(Self::SubPage { page: page_of(page)?, subcode })
+            }
+            _ => None,
         }
-        let mpp = crate::bytes::hex_number(digits.as_bytes())?;
-        Some(Self::Page { page: PageAddress::from_mpp(mpp)?, t42 })
+    }
+}
+
+/// True for the digits `0` to `9` and the capitals `A` to `F`, the only
+/// hexadecimal digits a channel's file names use (REQ-WEB-019).
+pub(crate) const fn is_capital_hex(byte: u8) -> bool {
+    byte.is_ascii_digit() || matches!(byte, b'A'..=b'F')
+}
+
+/// A page number in a file name: three capital hexadecimal digits, the
+/// magazine 1 to 8 first.
+fn page_of(digits: &[u8]) -> Option<PageAddress> {
+    if digits.len() != PAGE_DIGITS || !digits.iter().all(|&byte| is_capital_hex(byte)) {
+        return None;
+    }
+    PageAddress::from_mpp(crate::bytes::hex_number(digits)?)
+}
+
+/// Writes a file's name (REQ-WEB-019).
+pub fn write_file_name(writer: &mut Writer<'_>, file: ChannelFile) -> Result<(), Overflow> {
+    match file {
+        ChannelFile::Page { page, t42 } => {
+            writer.put(&page.ascii())?;
+            writer.put(if t42 { T42_EXTENSION } else { TTI_EXTENSION }.as_bytes())
+        }
+        ChannelFile::SubPage { page, subcode } => {
+            writer.put(&page.ascii())?;
+            writer.byte(SUBPAGE_SEPARATOR)?;
+            crate::subpages::write_subcode(writer, subcode)?;
+            writer.put(T42_EXTENSION.as_bytes())
+        }
+        ChannelFile::SubPages { page } => {
+            writer.put(&page.ascii())?;
+            writer.put(SUBPAGES_EXTENSION.as_bytes())
+        }
+        ChannelFile::Bundle => writer.put(BUNDLE_FILE.as_bytes()),
+        ChannelFile::Settings => writer.put(SETTINGS_FILE.as_bytes()),
+        ChannelFile::Contents => writer.put(CONTENTS_FILE.as_bytes()),
     }
 }
 
@@ -246,19 +311,9 @@ pub fn redirect_keeps_channel(folder: &Url, url: &Url) -> bool {
 
 /// The address of a file of the channel.
 pub fn file_url(folder: &Url, file: ChannelFile) -> Result<Url, UrlError> {
-    let mut buffer = [0u8; MAX_URL_LENGTH];
+    let mut buffer = [0u8; MAX_FILE_NAME];
     let mut writer = Writer::new(&mut buffer);
-    let too_long = |_| UrlError::TooLong;
-    match file {
-        ChannelFile::Page { page, t42 } => {
-            writer.put(&page.ascii()).map_err(too_long)?;
-            let extension = if t42 { T42_EXTENSION } else { TTI_EXTENSION };
-            writer.put(extension.as_bytes()).map_err(too_long)?;
-        }
-        ChannelFile::Bundle => writer.put(BUNDLE_FILE.as_bytes()).map_err(too_long)?,
-        ChannelFile::Settings => writer.put(SETTINGS_FILE.as_bytes()).map_err(too_long)?,
-        ChannelFile::Contents => writer.put(CONTENTS_FILE.as_bytes()).map_err(too_long)?,
-    }
+    write_file_name(&mut writer, file).map_err(|_| UrlError::TooLong)?;
     let name = core::str::from_utf8(writer.written()).map_err(|_| UrlError::BadCharacter)?;
     folder.join(name)
 }

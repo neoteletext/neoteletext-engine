@@ -1411,6 +1411,124 @@ fn contents_are_fetched_on_request() {
     assert!(has_event(&harness.take(), "ContentsFailed(MediaType)"));
 }
 
+/// A catalogue of the standard's 8,190 sub-pages of a page (REQ-NUM-020),
+/// each sub-page's file being `body`.
+fn full_catalogue(body: &[u8]) -> Vec<u8> {
+    use neoteletext_web::subpages::{self, Validator};
+    let mut catalogue = std::vec![0u8; subpages::MAX_BYTES];
+    let mut writer = Writer::new(&mut catalogue);
+    let codes = (1..neoteletext_core::limits::SUBCODE_ANY)
+        .filter(|&value| neoteletext_core::limits::is_sub_code(value))
+        .map(SubCode::new);
+    for code in codes {
+        let title = format!("Story {:04X}", code.value());
+        subpages::write_entry(&mut writer, code, &Validator::of(body), &title).unwrap();
+    }
+    let length = writer.len();
+    catalogue.truncate(length);
+    catalogue
+}
+
+/// REQ-WEB-019 and REQ-WEB-034 (decision E.132): a page's catalogue is
+/// asked for when wanted, conditionally once its validators are held, and
+/// then one sub-page passes the wire when it is asked for, from its own
+/// file and nothing else. A page with no catalogue keeps its page file.
+#[test]
+fn a_page_of_8190_sub_pages_is_fetched_one_sub_page_at_a_time() {
+    let mut harness = site_harness(Config::default());
+    harness.replay().reply("site.example:80", not_found());
+    harness.replay().reply("site.example:80", not_found());
+    harness.open_channel("http://site.example/news/");
+    // Large reads, so that the catalogue settles within the harness's
+    // bound on steps.
+    harness.replay().chunk = 4096;
+    let page = PageAddress::from_mpp(0x100).unwrap();
+    let interval = neoteletext_web::consts::DEFAULT_FETCH_INTERVAL_US;
+    // The catalogue: larger than a page response, within its own limit.
+    let catalogue = full_catalogue(&packet());
+    assert!(catalogue.len() > neoteletext_web::consts::DEFAULT_PAGE_LIMIT);
+    let reply = Reply::Bytes(response("200 OK", &["Content-Type: text/plain", "ETag: \"c1\""], &catalogue));
+    harness.replay().reply("site.example:80", reply);
+    harness.input(Input::FetchSubPages { page });
+    harness.advance(interval);
+    let records = harness.take();
+    let delivered = events(&records).into_iter().find(|event| event.starts_with("SubPages {")).unwrap();
+    let read = neoteletext_web::subpages::read(&catalogue).unwrap().flatten().count();
+    assert_eq!(read, 8190);
+    assert!(delivered.len() > catalogue.len(), "the whole catalogue is delivered");
+    // One sub-page, from its own file.
+    harness.replay().reply("site.example:80", ok("application/octet-stream", &packet()));
+    harness.input(Input::FetchPage { page, subcode: Some(SubCode::new(0x2345)) });
+    harness.advance(interval);
+    let records = harness.take();
+    let Rec::Page { source, url, .. } = pages(&records)[0] else { unreachable!() };
+    assert_eq!(*source, Source::Page { page, subcode: Some(SubCode::new(0x2345)) });
+    assert_eq!(url, "http://site.example/news/100-2345.t42");
+    // The catalogue again: conditional, and unchanged.
+    harness.replay().reply("site.example:80", Reply::Bytes(response("304 Not Modified", &["ETag: \"c1\""], b"")));
+    harness.input(Input::FetchSubPages { page });
+    harness.advance(interval);
+    assert!(has_event(&harness.take(), "SubPagesCurrent"));
+    let last = harness.replay().requests_to("site.example:80").last().unwrap().clone();
+    assert_eq!(header_value(&last, "If-None-Match").as_deref(), Some("\"c1\""));
+    // A sub-page that has gone is not looked for elsewhere.
+    harness.replay().reply("site.example:80", not_found());
+    harness.input(Input::FetchPage { page, subcode: Some(SubCode::new(0x0124)) });
+    harness.advance(interval);
+    assert!(has_event(&harness.take(), "PageNotInService"));
+    // "Any sub-page" is the page's own file.
+    harness.replay().reply("site.example:80", tti_response(&[]));
+    harness.input(Input::FetchPage { page, subcode: Some(SubCode::ANY) });
+    harness.advance(interval);
+    assert_eq!(pages(&harness.take()).len(), 1);
+    // A page with no catalogue: its sub-pages are in its page file.
+    let other = PageAddress::from_mpp(0x200).unwrap();
+    harness.replay().reply("site.example:80", not_found());
+    harness.input(Input::FetchSubPages { page: other });
+    harness.advance(interval);
+    assert!(has_event(&harness.take(), "SubPagesMissing"));
+    harness.replay().reply("site.example:80", tti_response(&[]));
+    harness.input(Input::FetchPage { page: other, subcode: Some(SubCode::new(1)) });
+    harness.advance(interval);
+    assert_eq!(pages(&harness.take()).len(), 1);
+    assert_eq!(
+        paths(&mut harness, "site.example:80"),
+        [
+            "/news/channel.json",
+            "/news/index.t42",
+            "/news/100.sub",
+            "/news/100-2345.t42",
+            "/news/100.sub",
+            "/news/100-0124.t42",
+            "/news/100.tti",
+            "/news/200.sub",
+            "/news/200.tti",
+        ]
+    );
+}
+
+/// REQ-WEB-027: a catalogue is text; anything else is refused, and the
+/// page's sub-pages stay in its page file.
+#[test]
+fn a_catalogue_must_be_text() {
+    let mut harness = site_harness(Config::default());
+    harness.replay().reply("site.example:80", not_found());
+    harness.replay().reply("site.example:80", not_found());
+    harness.open_channel("http://site.example/");
+    let page = PageAddress::from_mpp(0x100).unwrap();
+    harness.replay().reply("site.example:80", ok("text/html", b"0001\tv\n"));
+    harness.input(Input::FetchSubPages { page });
+    harness.advance(neoteletext_web::consts::DEFAULT_FETCH_INTERVAL_US);
+    assert!(has_event(
+        &harness.take(),
+        "SubPagesFailed { page: PageAddress { magazine: Magazine(1), page: PageNumber(0) }, failure: MediaType }"
+    ));
+    harness.replay().reply("site.example:80", tti_response(&[]));
+    harness.input(Input::FetchPage { page, subcode: Some(SubCode::new(1)) });
+    harness.advance(neoteletext_web::consts::DEFAULT_FETCH_INTERVAL_US);
+    assert_eq!(paths(&mut harness, "site.example:80").last().unwrap(), "/100.tti");
+}
+
 #[test]
 #[cfg(feature = "cookies")]
 fn a_channel_cookie_set_for_the_whole_host_stays_in_its_folder() {

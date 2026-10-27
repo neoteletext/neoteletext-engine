@@ -51,11 +51,24 @@ pub enum Input<'a> {
         subcode: Option<SubCode>,
     },
     /// Fetch a page of the current service (REQ-WEB-003, REQ-WEB-007).
+    /// On a channel, a sub-page of a page whose catalogue last answered
+    /// ([`Input::FetchSubPages`]) is fetched from its own file,
+    /// `NNN-SSSS.t42`, and nothing else; any other request asks for the
+    /// page's file, `NNN.tti` or `NNN.t42` (REQ-WEB-019), and so does
+    /// sub-code 3F7F, "any sub-page".
     FetchPage {
         /// The page.
         page: PageAddress,
         /// The sub-page, if given.
         subcode: Option<SubCode>,
+    },
+    /// Fetch the catalogue of a page of the open channel, `NNN.sub`
+    /// (REQ-WEB-034), conditionally when its validators are held,
+    /// answered by [`Event::SubPages`], [`Event::SubPagesCurrent`],
+    /// [`Event::SubPagesMissing`] or [`Event::SubPagesFailed`].
+    FetchSubPages {
+        /// The page.
+        page: PageAddress,
     },
     /// Change the push subscription.
     Subscribe(Subscription<'a>),
@@ -278,6 +291,34 @@ pub enum Event<'a> {
     ContentsMissing,
     /// The channel's `contents.txt` could not be fetched or used.
     ContentsFailed(Failure),
+    /// A page's catalogue of sub-pages, `NNN.sub`, unchecked: the caller
+    /// reads it with [`crate::subpages::read`]. From now on the page's
+    /// sub-pages are fetched from their own files (REQ-WEB-019).
+    SubPages {
+        /// The page.
+        page: PageAddress,
+        /// The catalogue.
+        bytes: &'a [u8],
+    },
+    /// A page's catalogue is unchanged (304), or still fresh by its cache
+    /// lifetime: the copy the caller holds is current.
+    SubPagesCurrent {
+        /// The page.
+        page: PageAddress,
+    },
+    /// The page has no catalogue (404 or 410): its sub-pages, if any, are
+    /// in its page file, which is where they are fetched from.
+    SubPagesMissing {
+        /// The page.
+        page: PageAddress,
+    },
+    /// A page's catalogue could not be fetched or used.
+    SubPagesFailed {
+        /// The page.
+        page: PageAddress,
+        /// Why.
+        failure: Failure,
+    },
     /// A `Set-Cookie` header was ignored.
     CookieRejected(CookieRejected),
     /// Not every matching cookie fitted in a request.

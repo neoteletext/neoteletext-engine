@@ -4,7 +4,9 @@
 
 use neoteletext_core::types::{Instant, PageAddress, SubCode};
 
-use super::{Event, Exchange, Failure, Output, PageBytes, Purpose, PushPhase, Sink, Source, UserAgent, event};
+use super::{
+    Event, Exchange, Failure, Output, PageBytes, Purpose, PushPhase, Queued, Sink, Source, UserAgent, Want, event,
+};
 use crate::channel::{self, ChannelFile};
 use crate::consts::{CACHE_ENTRIES, PAGE_QUEUE, PUSH_RETRY_FIRST_US, STATUS_GONE, STATUS_NOT_FOUND, STATUS_OK};
 use crate::descriptor::{Descriptor, PushMethod};
@@ -47,6 +49,7 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
         self.front_door = None;
         self.contents = None;
         self.second_try = None;
+        self.forget_catalogues();
     }
 
     /// Starts opening a channel: its settings first (REQ-WEB-018).
@@ -95,7 +98,7 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
                 }
                 self.queue = [None; PAGE_QUEUE];
                 if let Some(slot) = self.queue.first_mut() {
-                    *slot = Some((page, subcode));
+                    *slot = Some(Queued { page, subcode, want: Want::Page });
                 }
             }
             _ => event(sink, Event::LinkUnknown),
@@ -168,6 +171,7 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
         sink: &mut Sink<'_>,
     ) {
         self.cache = [None; CACHE_ENTRIES];
+        self.forget_catalogues();
         self.navigation_pending = via_link;
         if self.push.phase != PushPhase::Idle {
             sink(Output::Close { connection: ConnectionId::Push });

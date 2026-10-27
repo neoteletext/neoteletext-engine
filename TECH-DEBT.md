@@ -257,12 +257,21 @@ Owed by E.122 and E.130: every item of `neoteletext-common/STANDARD-LIMITS.md` s
 - **The BTT's page linking table is not read** (REQ-NUM-028 asks a test that "the BTT's page numbers are read"): EN 300 706 clause 11.2.2 gives no byte layout for it beyond Figure 24, and Annex I was not read for one. TOP pages are kept from display by page 1F0 being reserved, by their page functions (1000 to 1011) and by MIP code FE.
 - **Links of X/27/4 to X/27/7 Format 2** (clause 9.6.3) are not decoded, so REQ-NUM-007's and REQ-NUM-018's cases for them have no code to test; X/27/0, X/27/4 and X/27/5 Format 1 and packet 8/30 are tested.
 - **REQ-NUM-002 in the other parts:** the TTI reader's `SC` line across all 8,190 sub-codes (item 6), the kits' and the server's numbering by `limits::sub_code_of`, the server's refusal to publish on page FF or a reserved number (REQ-NUM-008, REQ-NUM-010), its MIP (REQ-NUM-026), C9 and C11 (REQ-NUM-029), and the kits' hexadecimal data page numbers and their warning on numbers ending in F (REQ-NUM-012, REQ-NUM-014).
-- **Restatements left in `neoteletext-web`,** which another agent is editing: `contents.rs`'s `FIRST_PAGE` (0x100) and `PAGE_SLOTS` (0x800), and `consts.rs`'s `ZXNET_MAX_PAGES` (2,048, the page numbers of a service, `limits::PAGE_NUMBERS`).
 - **The diagnostic setting no longer stores reserved page numbers:** `Config::store_hexadecimal_pages` stores every other hexadecimal page, but mFD, mFE, mFF, 1BE and 1F0 never reach the page store (REQ-NUM-010); a tool that showed the MOT as text under that setting no longer can.
 - **Traceability:** regenerate `docs/traceability.md` with `cargo xtask traceability` for area NUM.
 - **User guide:** the status area's place of three and four digits, sub-page entry once it has keys, and the store's sub-page listing for ports.
 - **The full gate:** `cargo xtask size` (the store's listing is now a pass over the slots per call instead of a buffer of 64), the fuzz targets, and the Xtensa builds; not run for this change beyond what the report of 28 October 2026 lists.
 - **The browser's re-pin:** `viewer::MAX_LISTED_SUBPAGES` and `PageStore::subcodes(address, &mut [SubCode])` are gone, and `packet::encode::header` returns `Option<Packet>`.
+
+## Sub-pages as files of their own (28 October 2026, E.132)
+
+Owed by E.122: every item of `neoteletext-common/STANDARD-LIMITS.md` section 7 that names this repository, in its order. The owner's questions are its section 6. Items 5 and 6 are built on branch `subpage-files` (decision E.132, 28 October 2026); what they leave:
+
+- **`neottx` does not use sub-pages' files:** `neoteletext-app` `fetch/web.rs` never sends `Input::FetchSubPages`, so on a channel whose pages have catalogues `neottx view` shows each page's first sub-page only. Owed: ask for the catalogue when a page with a sub-code other than 0000 is shown, and step through its entries.
+- **No program of the engine writes a channel's folder:** `subpages::ChannelFiles` (feature `std`) is the library the server's static files (`STANDARD-LIMITS.md` item 13) are to use. The author API cannot call it (`neoteletext-formats` does not depend on `neoteletext-web`), and no `neottx` command writes a channel; a `neottx convert --to channel` would need REQ-CLI amendments. Not decided.
+- **`SC` with bits outside the thirteen of a sub-code** (`SC,0080`, `SC,8000`) is masked without a diagnostic, so `SC,0080` becomes 0000 and joins that sub-page. It follows REQ-NUM-005 (those bits are control bits, never the sub-code) but tells the author nothing; whether to report it is a question for the owner. `sc_carries_every_sub_code` passed on the code before this branch: the reader already carried every sub-code 0000 to 3F7F, so nothing was fixed.
+- **The agent's default body buffer** (`agent::Storage`) is now the catalogue's 524,160 bytes instead of 256 KiB, so every catalogue of the standard's maximum is readable; `neottx`'s fetcher holds about 256 KiB more. `cargo xtask size` was not rerun (its images supply their own buffers).
+- **Integration still owed:** the implementation log row, the traceability table (`cargo xtask trace`), a line in `docs/user-guide.md` on a channel's sub-page files (it says nothing of them, and its link to `channels.md` names a file that does not exist), and the full gate.
 
 ## The Opus decoder (decision E.123, 26 October 2026)
 

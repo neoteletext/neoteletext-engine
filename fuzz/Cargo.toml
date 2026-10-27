@@ -210,6 +210,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "subpages"
+path = "fuzz_targets/subpages.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "zxnet_message"
 path = "fuzz_targets/zxnet_message.rs"
 test = false

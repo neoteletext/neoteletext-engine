@@ -52,6 +52,34 @@ fn file_names_are_fixed() {
 }
 
 #[test]
+fn a_sub_page_and_a_catalogue_have_files_of_their_own() {
+    // REQ-WEB-019: `NNN-SSSS.t42` and `NNN.sub`, every sub-code 0000 to
+    // 3F7F accepted (REQ-NUM-002), in capitals.
+    let page = PageAddress::from_mpp(0x1A0).unwrap();
+    let sub_page = |value| Some(ChannelFile::SubPage { page, subcode: SubCode::new(value) });
+    assert_eq!(ChannelFile::from_name("1A0-0001.t42"), sub_page(0x0001));
+    assert_eq!(ChannelFile::from_name("1A0-3F7E.t42"), sub_page(0x3F7E));
+    assert_eq!(ChannelFile::from_name("1A0-3F7F.t42"), sub_page(0x3F7F));
+    assert_eq!(ChannelFile::from_name("1A0-0000.t42"), sub_page(0x0000));
+    assert_eq!(ChannelFile::from_name("1A0.sub"), Some(ChannelFile::SubPages { page }));
+    for refused in
+        ["1A0-0080.t42", "1A0-3f7e.t42", "1A0-001.t42", "1A0-0001.tti", "1A0-0001.sub", "1a0.sub", "1A0_0001.t42"]
+    {
+        assert_eq!(ChannelFile::from_name(refused), None, "{refused}");
+    }
+    let folder = Url::parse("https://h.example/ceefax/").unwrap();
+    for (file, name) in [
+        (ChannelFile::SubPage { page, subcode: SubCode::new(0x3F7E) }, "1A0-3F7E.t42"),
+        (ChannelFile::SubPage { page, subcode: SubCode::new(0x0012) }, "1A0-0012.t42"),
+        (ChannelFile::SubPages { page }, "1A0.sub"),
+    ] {
+        let url = file_url(&folder, file).unwrap();
+        assert_eq!(url.as_str(), std::format!("https://h.example/ceefax/{name}"));
+        assert_eq!(parse_address(url.as_str()).unwrap().file, Some(file));
+    }
+}
+
+#[test]
 fn inside_means_the_same_origin_and_below_the_folder() {
     let at = |text| Url::parse(text).unwrap();
     let one = at("http://h.example/one/");

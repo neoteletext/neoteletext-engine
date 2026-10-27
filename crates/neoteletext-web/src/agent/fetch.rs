@@ -177,6 +177,7 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
             // than the page limit publishes page files instead.
             Purpose::Page { .. } | Purpose::FrontDoor => self.config.page_limit,
             Purpose::Contents => crate::contents::MAX_BYTES,
+            Purpose::SubPages { .. } => crate::subpages::MAX_BYTES,
             Purpose::Register | Purpose::Refresh { .. } => BOUND_INSTRUCTIONS_LIMIT,
         }
         .min(self.buffers.body.len());
@@ -217,6 +218,7 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
             Purpose::FrontDoor => event(sink, Event::BundleFailed(failure)),
             Purpose::Contents => event(sink, Event::ContentsFailed(failure)),
             Purpose::Page { page, subcode, .. } => event(sink, Event::FetchFailed { page, subcode, failure }),
+            Purpose::SubPages { page } => event(sink, Event::SubPagesFailed { page, failure }),
             Purpose::Register | Purpose::Refresh { .. } => self.bound_failed(purpose, sink),
         }
     }

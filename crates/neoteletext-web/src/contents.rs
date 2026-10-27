@@ -30,9 +30,9 @@ pub const MAX_PAGES: usize = neoteletext_core::limits::KEYABLE_PAGES;
 /// headline, which a receiver fits to the room it has).
 pub const MAX_TITLE: usize = 120;
 /// Page numbers a viewer can type: 100 to 8FF, as bits from 100.
-const PAGE_SLOTS: usize = 0x800;
+const PAGE_SLOTS: usize = neoteletext_core::limits::PAGE_NUMBERS;
 /// The first page number, 100.
-const FIRST_PAGE: u16 = 0x100;
+const FIRST_PAGE: u16 = neoteletext_core::limits::FIRST_PAGE_ADDRESS;
 /// Bits in one word of the set of pages seen.
 const WORD_BITS: usize = 32;
 /// The field separator.

@@ -17,7 +17,9 @@
 //! - addresses and origins: [`url`];
 //! - protocols: [`http`], [`ws`], [`sse`], [`cookie`], and `dbsc` (feature
 //!   `dbsc`): Device Bound Session Credentials (REQ-WEB-017);
-//! - content: [`channel`], [`contents`], [`descriptor`];
+//! - content: [`channel`], [`contents`], [`subpages`] (a page's catalogue
+//!   of sub-pages, and with `std` a page written as a channel's files),
+//!   [`descriptor`];
 //! - the machines: [`agent`] (the [`agent::UserAgent`]) and [`zxnet`]
 //!   (the [`zxnet::ZxnetFeed`]);
 //! - the web half of the platform interface (layer L8): [`port`].
@@ -62,6 +64,7 @@ pub mod ws;
 pub mod channel;
 pub mod contents;
 pub mod descriptor;
+pub mod subpages;
 
 pub mod agent;
 pub mod zxnet;
