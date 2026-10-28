@@ -41,7 +41,7 @@ Each crate's optional parts are Cargo features, on by default, so a port or a sm
 
 ## Checks
 
-`scripts/check.sh` has three tiers, and the git hooks in `.githooks` run them: `commit` (formatting, Clippy and the no-panic lists) before each commit; `push` (adding the tests, the rule checks and the documentation) before a push of any branch but `main`; and `full` (everything, including every target and fuzzing on the Linux build host, `NEOTELETEXT_REMOTE`, which runs alongside) before a push to `main`, the one long step, about an hour. Work happens on `livedeployment`. Each tier prints how long its last pass took before it starts and skips a lower tier already passed on the same tree. Tests that need the real broadcast corpus read it from `$NEOTELETEXT_CORPUS` (see `cargo xtask corpus`) and say so when it is absent.
+`scripts/check.sh` has three tiers, and the git hooks in `.githooks` run them: `commit` (formatting, Clippy and the no-panic lists) before each commit; `push` (adding the tests, the rule checks and the documentation) before a push of any branch but `main`; and `full` (everything, including every target and fuzzing on the Linux build host, `NEOTELETEXT_REMOTE`, which runs alongside) before a push to `main`, the one long step, about an hour. Work happens on `livedevelopment`. Each tier prints how long its last pass took before it starts and skips a lower tier already passed on the same tree. Tests that need the real broadcast corpus read it from `$NEOTELETEXT_CORPUS` (see `cargo xtask corpus`) and say so when it is absent.
 
 ## Licence
 
