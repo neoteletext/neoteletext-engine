@@ -12,7 +12,7 @@ use neoteletext_audio::record::{RecordError, framed_length, record_length, split
 use neoteletext_core::packet::Packet;
 
 use crate::TOKEN_BYTES;
-use crate::caps::{ALL_CAPS, RESUME_CAP, RETIRED_MODE_BITS};
+use crate::caps::{ALL_CAPS, RESUME_CAP, RETIRED_ECHO_BIT, RETIRED_MODE_BITS};
 use crate::carriage::input_record;
 use crate::event::{EVENT, FIRST_EXTENSION, LAST_EXTENSION};
 use crate::wire::{Reader, WireError, Writer};
@@ -110,8 +110,9 @@ pub fn read_body(body: &[u8]) -> Result<Control<'_>, ControlError> {
     let control = match kind {
         WELCOME => {
             let version = reader.uv()?;
-            // An older channel may still agree the input modes' bits.
-            let caps = reader.uv()? & !RETIRED_MODE_BITS;
+            // An older channel may still agree the input modes' bits and
+            // echo's.
+            let caps = reader.uv()? & !(RETIRED_MODE_BITS | RETIRED_ECHO_BIT);
             if caps & !ALL_CAPS != 0 {
                 return Err(ControlError::BadValue("caps"));
             }
@@ -263,6 +264,16 @@ mod tests {
             Ok(Control::Welcome { version: 2, caps: PAGE_CAP, resume: None })
         );
         assert!(write_body(&Control::Withdrawn(0x02), &mut [0; MAX_BODY]).is_err());
+    }
+
+    // Decision E.134: an older channel agreeing echo (bit 18) is read, the
+    // bit dropped.
+    #[test]
+    fn the_withdrawn_echo_bit_is_ignored() {
+        assert_eq!(
+            read_body(&[0xFF, WELCOME, 2, 0x80, 0x80, 0x14]),
+            Ok(Control::Welcome { version: 2, caps: PAGE_CAP, resume: None })
+        );
     }
 
     // REQ-INT-111.

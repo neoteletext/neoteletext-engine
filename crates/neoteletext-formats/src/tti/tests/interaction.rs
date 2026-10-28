@@ -47,7 +47,7 @@ fn a_modes_line_is_withdrawn() {
 fn a_cursor_line_is_read_kept_and_written_back() {
     let (pages, _) = read(b"PN,10000\nOL,5,Name: \nCU,1,0,0,0\nCU,5,6,20,1,42\nPN,10100\nCU,255,0,0,0\n");
     let cursor = pages[0].cursor.unwrap();
-    assert_eq!((cursor.row, cursor.column, cursor.width, cursor.flags, cursor.acked), (5, 6, 20, 1, 42));
+    assert_eq!((cursor.row, cursor.column, cursor.flags, cursor.acked), (5, 6, 1, 42));
     assert_eq!(pages[1].cursor.map(|cursor| (cursor.row, cursor.acked)), Some((255, 0)), "acked defaults to 0");
     #[cfg(feature = "std")]
     {
@@ -55,8 +55,12 @@ fn a_cursor_line_is_read_kept_and_written_back() {
         crate::write::write_tti(&[&pages[0]], &mut written).unwrap();
         let (again, _) = read(&written);
         assert_eq!(
-            again[0].cursor.map(|cursor| (cursor.row, cursor.column, cursor.width, cursor.flags, cursor.acked)),
-            Some((5, 6, 20, 1, 42))
+            again[0].cursor.map(|cursor| (cursor.row, cursor.column, cursor.flags, cursor.acked)),
+            Some((5, 6, 1, 42))
+        );
+        assert!(
+            std::string::String::from_utf8_lossy(&written).contains("CU,5,6,0,1,42"),
+            "the width written 0 (decision E.134)"
         );
     }
     for line in [b"CU,5,6\n".as_slice(), b"CU,256,0,0,0\n", b"CU,5,6,20,1,70000\n", b"CU,a,0,0,0\n"] {

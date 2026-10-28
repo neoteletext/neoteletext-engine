@@ -106,7 +106,7 @@ fn an_acknowledgement_is_taken_in_the_answers_frame_and_alone() {
     use neoteletext_input::event::{Event, Item};
     let mut session = neoteletext_app::session::Session::new(neoteletext_core::config::Config::default(), 8);
     session.keep(neoteletext_input::is_input_packet);
-    let cursor = |acked| Cursor { page: 0x100, acked, place: None, width: 0, flags: 0 }.packet(3, 1).unwrap();
+    let cursor = |acked| Cursor { page: 0x100, acked, place: None, flags: 0 }.packet(3, 1).unwrap();
     let magazine = Magazine::new(1).unwrap();
     // The answer: the page's header and a row, and the acknowledgement in
     // the same message.

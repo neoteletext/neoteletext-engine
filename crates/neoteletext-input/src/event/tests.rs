@@ -3,7 +3,7 @@
 use super::*;
 use crate::MAX_MESSAGE;
 use crate::caps::AGENT;
-use crate::caps::{ECHO_CAP, PAGE_CAP};
+use crate::caps::{CURSOR_CAP, PAGE_CAP};
 use crate::keys::code;
 use std::vec::Vec;
 
@@ -106,7 +106,7 @@ fn every_event_round_trips() {
         Event::Resize { columns: 40, rows: 25, width: 480, height: 500 },
         Event::Compose { cursor: 2, text: "にほん" },
         Event::Compose { cursor: 0, text: "" },
-        Event::Hello { version: 2, caps: PAGE_CAP | ECHO_CAP, agent: None },
+        Event::Hello { version: 2, caps: PAGE_CAP | CURSOR_CAP, agent: None },
         Event::Hello { version: 2, caps: AGENT, agent: Some("NeoTeletext/0.1 (macOS)") },
         Event::Page(0),
         Event::Page(0x8FF),

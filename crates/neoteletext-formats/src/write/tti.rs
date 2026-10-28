@@ -205,7 +205,8 @@ fn write_links(page: &PageFile, out: &mut dyn Write) -> io::Result<()> {
 fn write_interaction_lines(page: &PageFile, out: &mut dyn Write) -> io::Result<()> {
     // REQ-INT-006: the page's cursor record.
     if let Some(cursor) = page.cursor {
-        writeln!(out, "CU,{},{},{},{},{}", cursor.row, cursor.column, cursor.width, cursor.flags, cursor.acked)?;
+        // The width's place is kept, written 0 (decision E.134).
+        writeln!(out, "CU,{},{},0,{},{}", cursor.row, cursor.column, cursor.flags, cursor.acked)?;
     }
     // REQ-INT-114: the input modes the page asks for.
     Ok(())

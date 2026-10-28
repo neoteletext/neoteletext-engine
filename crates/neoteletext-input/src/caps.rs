@@ -12,8 +12,10 @@ pub const RETIRED_MODE_BITS: u32 = 0xFFFF;
 pub const PAGE_CAP: u32 = 1 << 16;
 /// Capability: the receiver draws the channel's cursor record.
 pub const CURSOR_CAP: u32 = 1 << 17;
-/// Capability: the receiver draws provisional echo.
-pub const ECHO_CAP: u32 = 1 << 18;
+/// Bit 18 was the capability of provisional echo until decision E.134,
+/// which withdrew echo: reserved, never set, and ignored when a peer still
+/// sets it, so an older channel's WELCOME is not refused for agreeing it.
+pub const RETIRED_ECHO_BIT: u32 = 1 << 18;
 /// Capability: HELLO carries the user agent string (HELLO only).
 pub const AGENT: u32 = 1 << 19;
 /// Capability: touch (REQ-RCH-041 to REQ-RCH-043): MOUSE's device bits and
@@ -25,4 +27,6 @@ pub const TOUCH_CAP: u32 = 1 << 20;
 /// RESUME after HELLO (INPUT.md section 6.4).
 pub const RESUME_CAP: u32 = 1 << 21;
 /// Every capability defined.
-pub const ALL_CAPS: u32 = PAGE_CAP | CURSOR_CAP | ECHO_CAP | AGENT | TOUCH_CAP | RESUME_CAP;
+pub const ALL_CAPS: u32 = PAGE_CAP | CURSOR_CAP | AGENT | TOUCH_CAP | RESUME_CAP;
+// A retired bit is never a capability.
+const _: () = assert!(ALL_CAPS & (RETIRED_MODE_BITS | RETIRED_ECHO_BIT) == 0);

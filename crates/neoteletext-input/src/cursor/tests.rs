@@ -5,7 +5,7 @@ use super::*;
 use neoteletext_audio::record::TYPE_CONTROL;
 
 fn cursor() -> Cursor {
-    Cursor { page: 0x100, acked: 7, place: Some(Place { row: 5, column: 10 }), width: 20, flags: ECHO | BLOCK }
+    Cursor { page: 0x100, acked: 7, place: Some(Place { row: 5, column: 10 }), flags: BLOCK }
 }
 
 // REQ-INT-005 and REQ-INT-110.
@@ -20,7 +20,7 @@ fn a_cursor_round_trips_through_a_packet() {
 
 #[test]
 fn no_cursor_carries_the_acknowledgement_alone() {
-    let game = Cursor { page: 0x8FF, acked: 65_535, place: None, width: 0, flags: 0 };
+    let game = Cursor { page: 0x8FF, acked: 65_535, place: None, flags: 0 };
     assert_eq!(read(&game.record().unwrap()), Ok(game));
 }
 
@@ -39,15 +39,25 @@ fn every_field_is_checked() {
     refused(|cursor| cursor.place = Some(Place { row: 0, column: 0 }));
     refused(|cursor| cursor.place = Some(Place { row: 24, column: 0 }));
     refused(|cursor| cursor.place = Some(Place { row: 1, column: 40 }));
-    refused(|cursor| cursor.width = 31);
     refused(|cursor| cursor.flags = 8);
-    refused(|cursor| cursor.flags = MASKED);
-    refused(|cursor| {
-        cursor.width = 0;
-    });
     refused(|cursor| {
         cursor.place = None;
     });
+}
+
+/// Decision E.134: the echo width and the echo and masked flags are
+/// withdrawn. A channel written before still sets them; its cursor is read
+/// all the same, without them, and nothing writes them.
+#[test]
+fn the_withdrawn_echo_fields_are_ignored() {
+    let mut body = cursor().body();
+    assert_eq!(body[6], 0, "the reserved byte is written 0");
+    body[6] = 20;
+    body[7] |= 1 | 2;
+    assert_eq!(from_body(body), Ok(cursor()));
+    let mut none = Cursor { page: 0x100, acked: 1, place: None, flags: 0 }.body();
+    none[6] = 9;
+    assert_eq!(from_body(none).map(|cursor| cursor.place), Ok(None));
 }
 
 #[test]

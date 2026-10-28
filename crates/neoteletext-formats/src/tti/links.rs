@@ -92,7 +92,9 @@ impl TtiReader {
     }
 
     /// `CU,row,column,width,flags[,acked]` (REQ-INT-006): the page's cursor
-    /// record, decimal. The last line is kept.
+    /// record, decimal. The last line is kept. The width, the echo width
+    /// before decision E.134, keeps its place and is read as a number but
+    /// not kept.
     pub(super) fn cursor_line(&mut self, args: &[u8], out: &mut dyn FnMut(Item<'_>)) {
         let mut fields = Args::new(args);
         let byte = |field: &[u8]| decimal(field).and_then(|value| u8::try_from(value).ok());
@@ -101,8 +103,8 @@ impl TtiReader {
         let rest = fields.rest().trim_ascii();
         let acked = if rest.is_empty() { Some(0) } else { decimal(rest).and_then(|value| u16::try_from(value).ok()) };
         match (row, column, width, flags, acked) {
-            (Some(row), Some(column), Some(width), Some(flags), Some(acked)) => {
-                self.page.cursor = Some(CursorLine { row, column, width, flags, acked, line: self.lines.number() });
+            (Some(row), Some(column), Some(_width), Some(flags), Some(acked)) => {
+                self.page.cursor = Some(CursorLine { row, column, flags, acked, line: self.lines.number() });
             }
             _ => self.issue(IssueKind::BadCursorLine, out),
         }

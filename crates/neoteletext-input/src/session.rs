@@ -382,7 +382,7 @@ impl<const KEPT: usize> SessionOf<KEPT> {
         self.count
     }
 
-    /// The last acknowledgement taken: echo up to it is answered.
+    /// The last acknowledgement taken.
     #[must_use]
     pub const fn acked(&self) -> u16 {
         self.acked

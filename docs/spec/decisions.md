@@ -1741,3 +1741,13 @@ Decided on 28 October 2026 on the owner's instructions: "the return channel that
 8. **Pointer areas withdrawn** (decision E, REQ-RCH-037): column mode 01010 is reserved again; `controls::MAX_POINTER_AREAS`, `Controls::pointer_areas`, `Controls::whole_page`, `consts::MODE_POINTER_AREA` and the author API's `Triplets::pointer_area` and `Triplets::whole_page_pointer_area` are removed. HOVER stays (decision F, REQ-RCH-040).
 
 *Reason:* The owner's instructions and decisions A to N. Batching by the agent's output, not by a timer, sends the messages of one moment in one write without delaying any; pacing in the input crate gives every receiver one implementation of the 60 a second; numbering by the count both sides keep resumes a session for the cost of a token and two counts, where a number in every event would cost bytes on every key; RESUME as an extension after HELLO keeps an older channel working.
+
+**E.134 — Local echo withdrawn.**
+Decided on 28 October 2026 on the owner's instruction, "remove that mechanism entirely", after asking "what do you mean provisional echo i never asked for that". Normative text: `neoteletext-common/INPUT.md` sections 6.2, 7.1, 9.3 and 9.5 and REQ-INT-134 amended; REQ-INT-005 amended.
+1. **The receiver draws nothing of the viewer's keys.** What is typed shows as the channel draws it on its page.
+2. **The capability ECHO (bit 18) is retired**: `caps::ECHO_CAP` is removed and `caps::RETIRED_ECHO_BIT` names the bit, never set and ignored when a peer still sets it, as the input modes' bits are (E.125), so a channel written before this decision is not refused for agreeing it.
+3. **The cursor record keeps its eight bytes.** Byte 6, the echo width, is reserved, and flags 1 (echo) and 2 (masked) are reserved: written 0 and ignored when read, so an older channel's cursor is still read. `Cursor::width` and the constants `cursor::ECHO` and `cursor::MASKED` are removed; `BLOCK` stays.
+4. **The TTI `CU` line keeps its fields' places**: the width is read as a number and not kept, and written 0. `CursorLine::width` is removed.
+5. **The acknowledgement stays**: it no longer drives echo, but a resumed session sends again by it (E.133 item 6), and a receiver uses it to know a channel has read the page it was told.
+
+*Reason:* The owner withdrew it. Drawing the viewer's keys before the channel does showed them twice whenever the acknowledgement was late, and it is a second picture of the field that only the channel knows.

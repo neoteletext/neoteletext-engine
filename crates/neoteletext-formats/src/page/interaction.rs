@@ -10,8 +10,6 @@ pub struct CursorLine {
     pub row: u8,
     /// Its column.
     pub column: u8,
-    /// How far local echo may run.
-    pub width: u8,
     /// The record's flags.
     pub flags: u8,
     /// The input count acted on (`neoteletext-common/INPUT.md` section

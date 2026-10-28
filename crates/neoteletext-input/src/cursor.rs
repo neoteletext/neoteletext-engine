@@ -1,8 +1,9 @@
 //! The cursor record (`neoteletext-common/INPUT.md` section 7.1,
 //! REQ-INT-005, REQ-INT-006, REQ-INT-110): a channel's answer to the input,
-//! saying where the cursor is, whether to echo, and how much input it has
-//! acted on. It is optional, as the cursor is; a receiver that gets none
-//! draws no cursor and echoes nothing.
+//! saying where the cursor is and how much input it has acted on. It is
+//! optional, as the cursor is; a receiver that gets none draws no cursor.
+//! A receiver draws nothing of its own for the input: what is typed shows
+//! as the channel draws it (decision E.134, which withdrew local echo).
 //!
 //! It is a record of the audio profile's frame (REQ-AUD-003) of type
 //! [`TYPE_CURSOR`], carried on the audio profile's independent data lines
@@ -16,8 +17,10 @@
 //! bytes 2-3  acked: the input count acted on, modulo 65 536, or 0
 //! byte 4     row, 1 to 23, or 255 for no cursor
 //! byte 5     column, 0 to 39
-//! byte 6     width: how far echo may run from the column, 0 to 40 cells
-//! byte 7     flags: 1 echo, 2 masked, 4 block
+//! byte 6     reserved: written 0, ignored when read (the echo width
+//!            before decision E.134)
+//! byte 7     flags: 4 block; bits 1 and 2 reserved, written 0 and
+//!            ignored when read (echo and masked before decision E.134)
 //! ```
 
 use neoteletext_audio::idl::{FRAGMENT_DATA, packet};
@@ -29,13 +32,12 @@ use neoteletext_core::packet::Packet;
 use crate::carriage::input_record;
 use crate::is_page;
 
-/// Flag: echo printable keys at the cursor until the channel answers.
-pub const ECHO: u8 = 1;
-/// Flag: echo `*` in place of each character, for a password.
-pub const MASKED: u8 = 2;
 /// Flag: draw a block cursor rather than a bar.
 pub const BLOCK: u8 = 4;
-const ALL_FLAGS: u8 = ECHO | MASKED | BLOCK;
+/// The flags that once asked for echo and masked echo (decision E.134):
+/// a channel written before their withdrawal may still set them, and its
+/// cursor is read all the same, without them.
+const WITHDRAWN_FLAGS: u8 = 1 | 2;
 /// The row value for no cursor.
 pub const NO_CURSOR: u8 = 255;
 /// The last row a cursor may be on: row 24 is the Fastext row, which a
@@ -70,9 +72,7 @@ pub struct Cursor {
     /// The cursor, or `None` for no cursor: a game sends that for the
     /// acknowledgement alone.
     pub place: Option<Place>,
-    /// How many cells echo may run from the cursor's column, 0 for none.
-    pub width: u8,
-    /// [`ECHO`], [`MASKED`] and [`BLOCK`].
+    /// [`BLOCK`], or 0.
     pub flags: u8,
 }
 
@@ -96,7 +96,7 @@ impl Cursor {
         let [p0, p1] = self.page.to_be_bytes();
         let [a0, a1] = self.acked.to_be_bytes();
         let (row, column) = self.place.map_or((NO_CURSOR, 0), |place| (place.row, place.column));
-        [p0, p1, a0, a1, row, column, self.width, self.flags]
+        [p0, p1, a0, a1, row, column, 0, self.flags]
     }
 
     /// The whole record, or `None` when a field is outside its range.
@@ -137,16 +137,18 @@ pub fn read(bytes: &[u8]) -> Result<Cursor, CursorError> {
 /// # Errors
 /// Any field outside its range (REQ-INT-005).
 pub fn from_body(body: [u8; BODY]) -> Result<Cursor, CursorError> {
-    let [p0, p1, a0, a1, row, column, width, flags] = body;
+    // Byte 6, the reserved byte, is not read.
+    let [p0, p1, a0, a1, row, column, _, flags] = body;
     let page = u16::from_be_bytes([p0, p1]);
     if !is_page(page) {
         return Err(CursorError::BadValue("page"));
     }
-    if flags & !ALL_FLAGS != 0 {
+    let flags = flags & !WITHDRAWN_FLAGS;
+    if flags & !BLOCK != 0 {
         return Err(CursorError::BadValue("flags"));
     }
     let place = if row == NO_CURSOR {
-        if column != 0 || width != 0 || flags != 0 {
+        if column != 0 || flags != 0 {
             return Err(CursorError::BadValue("a cursor's fields with no cursor"));
         }
         None
@@ -157,18 +159,9 @@ pub fn from_body(body: [u8; BODY]) -> Result<Cursor, CursorError> {
         if usize::from(column) >= COLUMNS {
             return Err(CursorError::BadValue("column"));
         }
-        if usize::from(column).saturating_add(usize::from(width)) > COLUMNS {
-            return Err(CursorError::BadValue("width"));
-        }
         Some(Place { row, column })
     };
-    if flags & ECHO != 0 && width == 0 {
-        return Err(CursorError::BadValue("echo with no width"));
-    }
-    if flags & MASKED != 0 && flags & ECHO == 0 {
-        return Err(CursorError::BadValue("masked with no echo"));
-    }
-    Ok(Cursor { page, acked: u16::from_be_bytes([a0, a1]), place, width, flags })
+    Ok(Cursor { page, acked: u16::from_be_bytes([a0, a1]), place, flags })
 }
 
 /// The cursor record `packet` carries, or `None` when the packet is not a
