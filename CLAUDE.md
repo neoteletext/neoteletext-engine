@@ -12,7 +12,7 @@ The owner shapes behaviour by asking for changes and looking at the result. Work
 
 **Rapid iteration (the default while a feature's behaviour is being shaped).**
 - Make the change, then rebuild `neottx` with the fast `iterate` profile, `cargo build --profile iterate -p neoteletext-cli` (seconds, not the release profile's minute and more), and show the result with `target/iterate/neottx` (for example `show` to an image). Check the output, then tell the owner it is ready to look at.
-- Do not write tests, user guide text, requirement prose, implementation log rows or traceability during this mode, and commit as rarely as possible: the pre-commit gate takes over ten minutes. Never bypass the hooks; batch the work instead.
+- Do not write tests, user guide text, requirement prose, implementation log rows or traceability during this mode, and commit whenever a step compiles: the pre-commit gate is formatting and Clippy only (IMPLEMENTATION-LOG.md row 96). Never bypass the hooks.
 - Run the existing tests of the code touched when that is quick, to catch breakage early.
 - **Accumulate everything owed in `TECH-DEBT.md`** as you go: tests to write, requirements and decisions to record, documents to update, verification to run (full gate, sizes, fuzzing), shortcuts taken and loose ends noticed. Nothing deferred may exist only in a reply.
 

@@ -1,19 +1,87 @@
 #!/usr/bin/env bash
-# Every local gate (decision 4 of IMPLEMENTATION-LOG.md).
-#   scripts/check.sh fast   formatting, lints, tests, architecture checks;
-#                           the pre-commit and pre-push hooks run it
-#   scripts/check.sh full   fast, plus the amd64 target builds, release
-#                           tests and, if NEOTELETEXT_REMOTE names a Linux
-#                           host, the x86_64 Linux tests, the build for
-#                           every target (scripts/build-targets.sh) and the
-#                           fuzzing targets run there (NEOTELETEXT_FUZZ_SECONDS
-#                           each). Run it before merging to main and
-#                           before a release; it takes about 40 minutes
+# Every local gate (decision 4 of IMPLEMENTATION-LOG.md; tiers, row 96).
+#   scripts/check.sh commit  formatting, Clippy and the no-panic lint lists:
+#                            the code compiles clean; the pre-commit hook
+#                            runs it
+#   scripts/check.sh push    commit, plus the tests, the desktop audio
+#                            profile, the architecture and rule checks, the
+#                            documentation and the fonts; the pre-push hook
+#                            runs it on every branch but main
+#   scripts/check.sh full    push, plus the amd64 target builds, the Opus
+#                            oracle, release tests, Rosetta, machete, deny
+#                            and, if NEOTELETEXT_REMOTE names a Linux host,
+#                            the x86_64 Linux tests, every target
+#                            (scripts/build-targets.sh), size, coverage and
+#                            fuzzing there (NEOTELETEXT_FUZZ_SECONDS each),
+#                            while the steps here run; the pre-push hook
+#                            runs it on a push to main
+# Each tier says how long its last pass took before it starts, and skips a
+# lower tier that already passed on the same tree.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-mode="${1:-fast}"
+mode="${1:-commit}"
+case "$mode" in
+commit | push | full) ;;
+*)
+    echo "usage: scripts/check.sh commit | push | full" >&2
+    exit 2
+    ;;
+esac
 
-step() { printf '\n== %s\n' "$*"; }
+# Timing and stamps (DEVELOPMENT.md section 10): each step prints its time
+# as it ends; a pass records its steps' times, for the next run's warning,
+# and the tree it passed on, so a higher tier does not run it again.
+git_dir="$(git rev-parse --git-common-dir)"
+step_name=""
+step_start=$SECONDS
+step_times=""
+minutes() { printf '%dm%02ds' $(($1 / 60)) $(($1 % 60)); }
+end_step() {
+    [[ -n "$step_name" ]] || return 0
+    local took=$((SECONDS - step_start))
+    printf '   (%s)\n' "$(minutes "$took")"
+    step_times+="$took	$step_name"$'\n'
+    step_name=""
+}
+step() {
+    end_step
+    step_name="$*"
+    step_start=$SECONDS
+    printf '\n== %s\n' "$*"
+}
+announce() {
+    local file="$git_dir/gate-times-$1"
+    if [[ -f "$file" ]]; then
+        printf '== the %s gate: its last pass took %s; its slowest steps:\n' "$1" "$(minutes "$(head -1 "$file")")"
+        tail -n +2 "$file" | sort -rn | head -3 | while IFS=$'\t' read -r took name; do
+            printf '   %s  %s\n' "$(minutes "$took")" "$name"
+        done
+    else
+        printf '== the %s gate: no pass measured yet\n' "$1"
+    fi
+}
+# The tree checked, which is the index's: nothing when the working
+# directory differs from it or holds untracked files, as a stamp would then
+# lie.
+tree_checked() {
+    git diff --quiet || return 0
+    [[ -z "$(git ls-files --others --exclude-standard)" ]] || return 0
+    git write-tree
+}
+passed() {
+    local tree="$2"
+    [[ -n "$tree" && -f "$git_dir/gate-passed-$1" && "$(cat "$git_dir/gate-passed-$1")" == "$tree" ]]
+}
+stamp() {
+    [[ -z "$2" ]] || printf '%s\n' "$2" >"$git_dir/gate-passed-$1"
+}
+record_pass() {
+    local tier="$1" tree="$2" took=$((SECONDS - gate_start))
+    end_step
+    printf '%s\n%s' "$took" "$step_times" >"$git_dir/gate-times-$tier"
+    stamp "$tier" "$tree"
+    printf '\nthe %s gate passed in %s\n' "$tier" "$(minutes "$took")"
+}
 
 # DEVELOPMENT.md section 6 (REQ-SEC-003): every crate root reads input from
 # outside its process, and each carries one no-panic lint list, the same
@@ -50,39 +118,109 @@ check_no_panic_lists() {
     echo "ok: ${#NO_PANIC_ROOTS[@]} crate roots carry the same list"
 }
 
-step "rustfmt (REQ-GEN-006)"
-cargo fmt --all --check
 
-step "clippy, warnings as errors (REQ-GEN-006)"
-cargo clippy --workspace --all-targets --all-features -- -D warnings
+commit_gate() {
+    step "rustfmt (REQ-GEN-006)"
+    cargo fmt --all --check
 
-step "tests (REQ-TST-001)"
-cargo test --workspace --all-features --quiet
+    step "clippy, warnings as errors (REQ-GEN-006)"
+    cargo clippy --workspace --all-targets --all-features -- -D warnings
 
-# Decision E.131: the desktop builds compile PCM16 and IMA ADPCM out of the
-# audio profile and play Opus alone; microcontroller builds keep both, as the
-# workspace run above and scripts/build-targets.sh build them.
-step "the audio profile as the desktops build it: PCM16 and IMA ADPCM compiled out (decision E.131)"
-cargo clippy --quiet -p neoteletext-audio --all-targets --no-default-features --features idl,opus -- -D warnings
-cargo test --quiet -p neoteletext-audio --no-default-features --features idl,opus
+    step "the no-panic lint list is the same in every crate root (REQ-SEC-003, DEVELOPMENT.md section 6)"
+    check_no_panic_lists
+}
 
-step "architecture and rule checks (REQ-ARCH-011, REQ-GEN-014, REQ-GEN-017, REQ-SEC-016)"
-cargo xtask check-layers
-cargo xtask check-constants
-cargo xtask check-io
-cargo xtask check-deps
+push_gate() {
+    step "tests (REQ-TST-001)"
+    cargo test --workspace --all-features --quiet
 
-step "documentation, warnings as errors (REQ-DOC-001)"
-RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --quiet
+    # Decision E.131: the desktop builds compile PCM16 and IMA ADPCM out of the
+    # audio profile and play Opus alone; microcontroller builds keep both, as the
+    # workspace run above and scripts/build-targets.sh build them.
+    step "the audio profile as the desktops build it: PCM16 and IMA ADPCM compiled out (decision E.131)"
+    cargo clippy --quiet -p neoteletext-audio --all-targets --no-default-features --features idl,opus -- -D warnings
+    cargo test --quiet -p neoteletext-audio --no-default-features --features idl,opus
 
-step "the no-panic lint list is the same in every crate root (REQ-SEC-003, DEVELOPMENT.md section 6)"
-check_no_panic_lists
+    step "architecture and rule checks (REQ-ARCH-011, REQ-GEN-014, REQ-GEN-017, REQ-SEC-016)"
+    cargo xtask check-layers
+    cargo xtask check-constants
+    cargo xtask check-io
+    cargo xtask check-deps
 
-step "the bundled font: Bedstead's export matches its recorded SHA-256 (REQ-FNT-001)"
-cargo xtask check-bedstead
-cargo xtask check-noto
+    step "documentation, warnings as errors (REQ-DOC-001)"
+    RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --quiet
 
-if [ "$mode" = "full" ]; then
+    step "the bundled font: Bedstead's export matches its recorded SHA-256 (REQ-FNT-001)"
+    cargo xtask check-bedstead
+    cargo xtask check-noto
+}
+
+# The Linux host's steps run while the local ones do; its output is shown
+# when they are done.
+remote_gate() {
+    step_name=""
+    step "x86_64 Linux tests on $NEOTELETEXT_REMOTE"
+    # Compared by content and written with the host's own times: with this
+    # machine's times kept, a file edited here before the host's last build
+    # looks older than that build, and Cargo reuses it.
+    rsync -a --no-times --checksum --delete --exclude target --exclude .git --exclude tmp --exclude tletxt.com \
+        --exclude fuzz/corpus --exclude fuzz/artifacts ./ "$NEOTELETEXT_REMOTE:neoteletext-check/"
+    # The Opus oracle's streams seed the fuzzer, which reaches the decoder's deep paths only
+    # from real packets; the corpus itself is the host's and is never sent back.
+    opus_seeds="${NEOTELETEXT_CORPUS:-target}/opus-oracle/fuzz-seeds"
+    if [ -d "$opus_seeds" ]; then
+        ssh "$NEOTELETEXT_REMOTE" 'mkdir -p neoteletext-check/fuzz/corpus/opus_packets'
+        rsync -a "$opus_seeds/" "$NEOTELETEXT_REMOTE:neoteletext-check/fuzz/corpus/opus_packets/"
+    fi
+    ssh "$NEOTELETEXT_REMOTE" 'cd neoteletext-check && . ~/.cargo/env && cargo test --workspace --all-features --quiet'
+
+    step "every target of REQ-GEN-015 on $NEOTELETEXT_REMOTE"
+    ssh "$NEOTELETEXT_REMOTE" 'cd neoteletext-check && scripts/build-targets.sh'
+
+    step "linked Cortex-M0 test image on $NEOTELETEXT_REMOTE: size and symbols (REQ-GEN-009, REQ-GEN-019)"
+    ssh "$NEOTELETEXT_REMOTE" 'cd neoteletext-check && . ~/.cargo/env && cargo xtask size'
+
+    if ! command -v cargo-deny >/dev/null 2>&1 && ssh "$NEOTELETEXT_REMOTE" '. ~/.cargo/env && command -v cargo-deny >/dev/null'; then
+        step "cargo-deny on $NEOTELETEXT_REMOTE: licences and advisories (REQ-GEN-017, REQ-SEC-014)"
+        ssh "$NEOTELETEXT_REMOTE" 'cd neoteletext-check && . ~/.cargo/env && cargo deny check 2>&1 | tail -1; exit ${PIPESTATUS[0]}'
+    fi
+
+    if ssh "$NEOTELETEXT_REMOTE" '. ~/.cargo/env && command -v cargo-llvm-cov >/dev/null'; then
+        step "core line coverage on $NEOTELETEXT_REMOTE, at least 90% (REQ-TST-041)"
+        ssh "$NEOTELETEXT_REMOTE" 'cd neoteletext-check && . ~/.cargo/env && \
+            cargo llvm-cov -p neoteletext-core --summary-only --fail-under-lines 90 2>&1 | grep -E "^TOTAL"; \
+            exit ${PIPESTATUS[0]}'
+    else
+        step "cargo-llvm-cov not installed on $NEOTELETEXT_REMOTE: coverage SKIPPED"
+    fi
+
+    # REQ-TST-040: every target for a fixed time on each change, after
+    # replaying every input that has ever found a fault.
+    seconds="${NEOTELETEXT_FUZZ_SECONDS:-20}"
+    if ssh "$NEOTELETEXT_REMOTE" '. ~/.cargo/env && command -v cargo-fuzz >/dev/null'; then
+        step "fuzzing on $NEOTELETEXT_REMOTE, $seconds seconds per target (REQ-TST-040)"
+        ssh "$NEOTELETEXT_REMOTE" "cd neoteletext-check/fuzz && . ~/.cargo/env && \
+            cargo +nightly clippy --quiet -- -D warnings && \
+            for target in \$(cargo +nightly fuzz list); do \
+                mkdir -p corpus/\$target regressions/\$target && \
+                cargo +nightly fuzz run \$target corpus/\$target regressions/\$target -- \
+                    -max_total_time=$seconds -timeout=10 -rss_limit_mb=2048 > fuzz.log 2>&1 \
+                    || { tail -40 fuzz.log; exit 1; }; \
+                echo \"\$target: \$(tail -1 fuzz.log)\"; \
+            done"
+    else
+        step "cargo-fuzz not installed on $NEOTELETEXT_REMOTE: fuzzing SKIPPED"
+    fi
+    end_step
+}
+
+full_gate() {
+    local remote_log="$git_dir/gate-remote.log" remote_pid=""
+    if [ -n "${NEOTELETEXT_REMOTE:-}" ]; then
+        remote_gate >"$remote_log" 2>&1 &
+        remote_pid=$!
+        printf '\n== the steps on %s run alongside, logged in %s\n' "$NEOTELETEXT_REMOTE" "$remote_log"
+    fi
     step "no_std crates on the amd64 bare-metal target (REQ-GEN-002)"
     cargo build --quiet --target x86_64-unknown-none \
         -p neoteletext-core -p neoteletext-formats -p neoteletext-slicer -p neoteletext-web -p neoteletext-image \
@@ -122,63 +260,38 @@ if [ "$mode" = "full" ]; then
         cargo deny check
         deny_done=yes
     fi
-
-    if [ -n "${NEOTELETEXT_REMOTE:-}" ]; then
-        step "x86_64 Linux tests on $NEOTELETEXT_REMOTE"
-        rsync -a --delete --exclude target --exclude .git --exclude tmp --exclude tletxt.com \
-            --exclude fuzz/corpus --exclude fuzz/artifacts ./ "$NEOTELETEXT_REMOTE:neoteletext-check/"
-        # The Opus oracle's streams seed the fuzzer, which reaches the decoder's deep paths only
-        # from real packets; the corpus itself is the host's and is never sent back.
-        opus_seeds="${NEOTELETEXT_CORPUS:-target}/opus-oracle/fuzz-seeds"
-        if [ -d "$opus_seeds" ]; then
-            ssh "$NEOTELETEXT_REMOTE" 'mkdir -p neoteletext-check/fuzz/corpus/opus_packets'
-            rsync -a "$opus_seeds/" "$NEOTELETEXT_REMOTE:neoteletext-check/fuzz/corpus/opus_packets/"
-        fi
-        ssh "$NEOTELETEXT_REMOTE" 'cd neoteletext-check && . ~/.cargo/env && cargo test --workspace --all-features --quiet'
-
-        step "every target of REQ-GEN-015 on $NEOTELETEXT_REMOTE"
-        ssh "$NEOTELETEXT_REMOTE" 'cd neoteletext-check && scripts/build-targets.sh'
-
-        step "linked Cortex-M0 test image on $NEOTELETEXT_REMOTE: size and symbols (REQ-GEN-009, REQ-GEN-019)"
-        ssh "$NEOTELETEXT_REMOTE" 'cd neoteletext-check && . ~/.cargo/env && cargo xtask size'
-
-        if [ "$deny_done" = no ] && ssh "$NEOTELETEXT_REMOTE" '. ~/.cargo/env && command -v cargo-deny >/dev/null'; then
-            step "cargo-deny on $NEOTELETEXT_REMOTE: licences and advisories (REQ-GEN-017, REQ-SEC-014)"
-            ssh "$NEOTELETEXT_REMOTE" 'cd neoteletext-check && . ~/.cargo/env && cargo deny check 2>&1 | tail -1; exit ${PIPESTATUS[0]}'
-            deny_done=yes
-        fi
-
-        if ssh "$NEOTELETEXT_REMOTE" '. ~/.cargo/env && command -v cargo-llvm-cov >/dev/null'; then
-            step "core line coverage on $NEOTELETEXT_REMOTE, at least 90% (REQ-TST-041)"
-            ssh "$NEOTELETEXT_REMOTE" 'cd neoteletext-check && . ~/.cargo/env && \
-                cargo llvm-cov -p neoteletext-core --summary-only --fail-under-lines 90 2>&1 | grep -E "^TOTAL"; \
-                exit ${PIPESTATUS[0]}'
+    if [ -n "$remote_pid" ]; then
+        step "waiting for $NEOTELETEXT_REMOTE"
+        if wait "$remote_pid"; then
+            cat "$remote_log"
         else
-            step "cargo-llvm-cov not installed on $NEOTELETEXT_REMOTE: coverage SKIPPED"
+            cat "$remote_log"
+            echo "the steps on $NEOTELETEXT_REMOTE failed" >&2
+            return 1
         fi
-
-        # REQ-TST-040: every target for a fixed time on each change, after
-        # replaying every input that has ever found a fault.
-        seconds="${NEOTELETEXT_FUZZ_SECONDS:-20}"
-        if ssh "$NEOTELETEXT_REMOTE" '. ~/.cargo/env && command -v cargo-fuzz >/dev/null'; then
-            step "fuzzing on $NEOTELETEXT_REMOTE, $seconds seconds per target (REQ-TST-040)"
-            ssh "$NEOTELETEXT_REMOTE" "cd neoteletext-check/fuzz && . ~/.cargo/env && \
-                cargo +nightly clippy --quiet -- -D warnings && \
-                for target in \$(cargo +nightly fuzz list); do \
-                    mkdir -p corpus/\$target regressions/\$target && \
-                    cargo +nightly fuzz run \$target corpus/\$target regressions/\$target -- \
-                        -max_total_time=$seconds -timeout=10 -rss_limit_mb=2048 > fuzz.log 2>&1 \
-                        || { tail -40 fuzz.log; exit 1; }; \
-                    echo \"\$target: \$(tail -1 fuzz.log)\"; \
-                done"
-        else
-            step "cargo-fuzz not installed on $NEOTELETEXT_REMOTE: fuzzing SKIPPED"
-        fi
+        grep -q '^== cargo-deny' "$remote_log" && deny_done=yes
     fi
-fi
+    if [ "$deny_done" = no ]; then
+        step "cargo-deny not installed here or on a remote host: licence and advisory checks SKIPPED"
+    fi
+}
 
-if [ "$mode" = "full" ] && [ "$deny_done" = no ]; then
-    step "cargo-deny not installed here or on a remote host: licence and advisory checks SKIPPED"
+tree="$(tree_checked)"
+announce "$mode"
+gate_start=$SECONDS
+if [ "$mode" = commit ] || ! passed commit "$tree"; then
+    commit_gate
+else
+    printf '\n== the commit gate passed on this tree: skipped\n'
 fi
-
-printf '\nall %s checks passed\n' "$mode"
+[ "$mode" = commit ] && { record_pass commit "$tree"; exit 0; }
+if [ "$mode" = push ] || ! passed push "$tree"; then
+    push_gate
+    [ "$mode" = push ] && { record_pass push "$tree"; stamp commit "$tree"; exit 0; }
+else
+    printf '\n== the push gate passed on this tree: skipped\n'
+fi
+full_gate
+record_pass full "$tree"
+stamp push "$tree"
+stamp commit "$tree"

@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
-# The fast gate: every pushed commit already passed it at commit time, so
-# this re-checks the tree in a minute or two. The full gate (about 40
-# minutes with the Linux build host) is run deliberately before merging
-# to main or releasing, not on every push (IMPLEMENTATION-LOG.md row 4).
-exec "$(git rev-parse --show-toplevel)/scripts/check.sh" fast
+# A push to main runs the full gate, the long integration step (about an
+# hour, the Linux host's steps alongside); a push of any other branch runs
+# the push gate (IMPLEMENTATION-LOG.md row 96). Git passes one line per ref
+# pushed: local ref, local commit, remote ref, remote commit.
+set -euo pipefail
+tier=push
+while read -r _ _ remote_ref _; do
+    [[ "$remote_ref" == refs/heads/main ]] && tier=full
+done
+if [[ "$tier" == full ]]; then
+    export NEOTELETEXT_REMOTE="${NEOTELETEXT_REMOTE:-foundintelquiet4060}"
+fi
+exec "$(git rev-parse --show-toplevel)/scripts/check.sh" "$tier"
