@@ -28,7 +28,7 @@ commit | push | full) ;;
     ;;
 esac
 
-# Timing and stamps (DEVELOPMENT.md section 10): each step prints its time
+# Timing and stamps (DEVELOPMENT.md section 9): each step prints its time
 # as it ends; a pass records its steps' times, for the next run's warning,
 # and the tree it passed on, so a higher tier does not run it again.
 git_dir="$(git rev-parse --git-common-dir)"
