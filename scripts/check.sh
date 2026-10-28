@@ -277,6 +277,10 @@ full_gate() {
 }
 
 tree="$(tree_checked)"
+if passed "$mode" "$tree"; then
+    printf '== the %s gate already passed on this tree\n' "$mode"
+    exit 0
+fi
 announce "$mode"
 gate_start=$SECONDS
 if [ "$mode" = commit ] || ! passed commit "$tree"; then

@@ -4,10 +4,15 @@
 # the push gate (IMPLEMENTATION-LOG.md row 96). Git passes one line per ref
 # pushed: local ref, local commit, remote ref, remote commit.
 set -euo pipefail
-tier=push
-while read -r _ _ remote_ref _; do
+deleted="0000000000000000000000000000000000000000"
+tier=""
+while read -r _ local_commit remote_ref _; do
+    # A deletion pushes no code.
+    [[ "$local_commit" == "$deleted" ]] && continue
     [[ "$remote_ref" == refs/heads/main ]] && tier=full
+    [[ -n "$tier" ]] || tier=push
 done
+[[ -n "$tier" ]] || exit 0
 if [[ "$tier" == full ]]; then
     export NEOTELETEXT_REMOTE="${NEOTELETEXT_REMOTE:-foundintelquiet4060}"
 fi
