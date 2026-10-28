@@ -83,7 +83,41 @@ pub enum Input<'a> {
     /// to [`crate::consts::INPUT_MESSAGE_MAX`] bytes. Anything else is
     /// dropped, with [`Event::InputDropped`]: what it sends never changes
     /// what is fetched.
-    Send(&'a [u8]),
+    Send(InputMessage<'a>),
+    /// Measure the push connection's round trip, by a WebSocket ping at
+    /// most once in [`crate::consts::ROUND_TRIP_EVERY_US`], answered by
+    /// [`Event::RoundTrip`] (REQ-RCH-016): on while keys go to the channel,
+    /// off otherwise.
+    MeasureRoundTrip(bool),
+}
+
+/// One message of the input profile for the push WebSocket
+/// ([`Input::Send`]).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct InputMessage<'a> {
+    /// The encoded message: one event, or a run of text.
+    pub bytes: &'a [u8],
+    /// The contact whose move it is, alone (0 the mouse's, 1 to 9 TOUCH's),
+    /// below [`crate::consts::PUSH_MOVE_SLOTS`]; `None` for any other
+    /// message. A move is written only while the push socket's unsent
+    /// bytes are under [`crate::consts::PUSH_UNSENT_BOUND`], and otherwise
+    /// held, the contact's latest replacing it, until they fall under it
+    /// or any other message is sent, which writes the held moves first
+    /// (REQ-RCH-035).
+    pub move_of: Option<u8>,
+    /// More messages, waiting at the same moment, are given at once after
+    /// this one: they are written together, as one send, when the last
+    /// comes (REQ-RCH-010). Nothing is ever held back for one that does
+    /// not come: whatever input is handled next writes what waits.
+    pub more: bool,
+}
+
+impl<'a> InputMessage<'a> {
+    /// A message alone, written at once: not a move, nothing more waiting.
+    #[must_use]
+    pub const fn alone(bytes: &'a [u8]) -> Self {
+        Self { bytes, move_of: None, more: false }
+    }
 }
 
 /// Where page bytes came from.
@@ -256,6 +290,12 @@ pub enum Event<'a> {
     /// An [`Input::Send`] was not sent: no push WebSocket is open, the
     /// channel does not take input, or the message is too long.
     InputDropped,
+    /// The push WebSocket's round trip, from a ping to its pong
+    /// (REQ-RCH-016), while [`Input::MeasureRoundTrip`] is on.
+    RoundTrip {
+        /// Microseconds.
+        microseconds: u64,
+    },
     /// The descriptor names a push address, but this build has no push
     /// (the `push` feature, decision E.61): pages are fetched on request
     /// only.

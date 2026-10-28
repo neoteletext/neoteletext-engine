@@ -49,7 +49,9 @@ mod response;
 mod service;
 
 pub use config::{Buffers, Config, Storage};
-pub use events::{BoundChange, Event, Failure, Input, Output, PageBytes, PushProblem, Sink, Source, Subscription};
+pub use events::{
+    BoundChange, Event, Failure, Input, InputMessage, Output, PageBytes, PushProblem, Sink, Source, Subscription,
+};
 
 /// The bytes of one T42 packet (REQ-INP-002).
 const T42_PACKET: usize = neoteletext_core::consts::PACKET_BYTES;
@@ -226,6 +228,27 @@ enum PushPhase {
     },
 }
 
+/// A pointer's move held while the push socket is congested (REQ-RCH-035).
+#[derive(Clone, Copy, Debug)]
+struct HeldMove {
+    bytes: [u8; crate::consts::PUSH_MOVE_MAX],
+    length: usize,
+}
+
+/// The push WebSocket's round trip, measured by ping and pong
+/// (REQ-RCH-016).
+#[derive(Clone, Copy, Debug, Default)]
+struct RoundTrip {
+    /// Measured: keys go to the channel.
+    on: bool,
+    /// The last ping's payload, one byte, counted on from ping to ping.
+    sequence: u8,
+    /// The ping not yet answered, and when it went.
+    waiting: Option<(u8, Instant)>,
+    /// When the last ping went.
+    last: Option<Instant>,
+}
+
 #[derive(Clone, Copy, Debug)]
 struct PushConnection {
     phase: PushPhase,
@@ -238,6 +261,15 @@ struct PushConnection {
     frames: FrameReader,
     delay_us: u64,
     healthy: bool,
+    /// Frames written into the push request buffer and not yet sent: the
+    /// messages waiting at one moment, sent together (REQ-RCH-010).
+    out: usize,
+    /// The push socket's unsent bytes as the port last reported them
+    /// (REQ-RCH-035).
+    unsent: usize,
+    /// Each contact's latest move, held while the socket is congested.
+    held: [Option<HeldMove>; crate::consts::PUSH_MOVE_SLOTS],
+    round_trip: RoundTrip,
 }
 
 /// The web user agent: `SLOTS` cookies in `COOKIE_BYTES` bytes, random
@@ -401,6 +433,10 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
                 frames: FrameReader::new(),
                 delay_us: PUSH_RETRY_FIRST_US,
                 healthy: false,
+                out: 0,
+                unsent: 0,
+                held: [None; crate::consts::PUSH_MOVE_SLOTS],
+                round_trip: RoundTrip::default(),
             },
             subscribe_all: true,
             subscribed: [None; MAX_SUBSCRIBED_PAGES],

@@ -1,16 +1,21 @@
 //! Decoding the input stream: one item from bytes that may end early,
 //! one whole message, and a byte stream split anywhere (section 5.1).
 
+use super::encode::RESUME_PAYLOAD;
 use super::{
-    ACTION, Action, COMPOSE, CORE_LAST_TYPE, EVENT, Event, FIRST_EXTENSION, FOCUS_IN, FOCUS_OUT, FUNCTIONAL, HAS_BASE,
-    HAS_MODS, HAS_PIXELS, HAS_TEXT, HELLO, HOVER, HOVER_LEAVE, InputError, Item, KEY, KEY_RESERVED, Key, KeyCode,
-    LAST_CORE, LAST_EXTENSION, MOUSE, Mouse, MouseAction, NEVER_UTF8, NEVER_UTF8_FROM, PAGE, PASTE, POINTER_RESERVED,
-    Point, RESIZE, WHEEL, Wheel, check_text, printable,
+    ACTION, Action, COMPOSE, CORE_LAST_TYPE, DEVICE_MASK, DEVICE_SHIFT, Device, EVENT, Event, FIRST_EXTENSION,
+    FOCUS_IN, FOCUS_OUT, FUNCTIONAL, HAS_BASE, HAS_MODS, HAS_PIXELS, HAS_TEXT, HELLO, HOVER, HOVER_LEAVE, InputError,
+    Item, KEY, KEY_RESERVED, Key, KeyCode, LAST_CORE, LAST_EXTENSION, MOUSE, MOUSE_RESERVED, Mouse, MouseAction,
+    NEVER_UTF8, NEVER_UTF8_FROM, PAGE, PASTE, Point, RESIZE, RESUME, Resume, TOUCH, TOUCH_RESERVED, Touch, WHEEL,
+    WHEEL_RESERVED, Wheel, check_text, printable,
 };
 use crate::caps::AGENT;
 use crate::keys::is_code;
 use crate::wire::{Reader, WireError};
-use crate::{MAX_AGENT, MAX_COLUMNS, MAX_COMPOSE, MAX_KEY_TEXT, MAX_MESSAGE, MAX_PASTE, MAX_ROWS, is_page};
+use crate::{
+    MAX_AGENT, MAX_COLUMNS, MAX_COMPOSE, MAX_KEY_TEXT, MAX_MESSAGE, MAX_PASTE, MAX_ROWS, MAX_TOUCH_ID, TOKEN_BYTES,
+    is_page,
+};
 
 /// Reads one item from `bytes`. `Ok(None)` means `bytes` is empty;
 /// [`InputError::Wire`] of [`WireError::Incomplete`] means more is needed.
@@ -51,15 +56,34 @@ fn read_text(bytes: &[u8]) -> Result<(Item<'_>, usize), InputError> {
     Ok((Item::Text(text), text.len()))
 }
 
-fn read_point(reader: &mut Reader<'_>, flags: u8) -> Result<Point, InputError> {
+/// A pointer's cell, its column and row, and its dot when known.
+type Cell = (u32, u32, Option<(u32, u32)>);
+
+/// A cell, `col` and `row`, and the dot when `flags` says it follows.
+fn read_cell(reader: &mut Reader<'_>, flags: u8) -> Result<Cell, InputError> {
     let column = reader.uv()?;
     let row = reader.uv()?;
     if column >= MAX_COLUMNS || row >= MAX_ROWS {
         return Err(InputError::BadValue("cell"));
     }
     let pixels = if flags & HAS_PIXELS == 0 { None } else { Some((reader.uv()?, reader.uv()?)) };
+    Ok((column, row, pixels))
+}
+
+fn read_point(reader: &mut Reader<'_>, flags: u8) -> Result<Point, InputError> {
+    let (column, row, pixels) = read_cell(reader, flags)?;
     let mods = if flags & HAS_MODS == 0 { 0 } else { reader.byte()? };
     Ok(Point { column, row, pixels, mods })
+}
+
+/// A pointer's action, MOUSE's or TOUCH's: all four codes are defined.
+const fn read_action(flags: u8) -> MouseAction {
+    match flags & ACTION {
+        0 => MouseAction::Press,
+        1 => MouseAction::Release,
+        2 => MouseAction::Move,
+        _ => MouseAction::Gone,
+    }
 }
 
 fn read_event<'a>(reader: &mut Reader<'a>) -> Result<Event<'a>, InputError> {
@@ -68,21 +92,22 @@ fn read_event<'a>(reader: &mut Reader<'a>) -> Result<Event<'a>, InputError> {
         KEY => Event::Key(read_key(reader)?),
         MOUSE => {
             let flags = reader.byte()?;
-            if flags & POINTER_RESERVED != 0 {
+            if flags & MOUSE_RESERVED != 0 {
                 return Err(InputError::Flags);
             }
-            let action = match flags & ACTION {
-                0 => MouseAction::Press,
-                1 => MouseAction::Release,
-                2 => MouseAction::Move,
-                _ => return Err(InputError::BadValue("mouse action")),
+            // REQ-RCH-042: device 3 is reserved, and a protocol error.
+            let device = match (flags & DEVICE_MASK) >> DEVICE_SHIFT {
+                0 => Device::Mouse,
+                1 => Device::Touch,
+                2 => Device::Pen,
+                _ => return Err(InputError::BadValue("mouse device")),
             };
             let button = reader.byte()?;
-            Event::Mouse(Mouse { action, button, at: read_point(reader, flags)? })
+            Event::Mouse(Mouse { action: read_action(flags), button, at: read_point(reader, flags)?, device })
         }
         WHEEL => {
             let flags = reader.byte()?;
-            if flags & (POINTER_RESERVED | ACTION) != 0 {
+            if flags & (WHEEL_RESERVED | ACTION) != 0 {
                 return Err(InputError::Flags);
             }
             let dx = reader.sv()?;
@@ -130,7 +155,18 @@ fn read_event<'a>(reader: &mut Reader<'a>) -> Result<Event<'a>, InputError> {
                 return Err(InputError::Message);
             }
             let payload = reader.take(length)?;
-            if kind == HOVER { read_hover(payload)? } else { Event::Extension { kind, payload } }
+            // A payload is whole once taken: a field it cuts short is a
+            // fault of the payload, never a wait for more of the stream.
+            let whole = |error| match error {
+                InputError::Wire(WireError::Incomplete) => InputError::BadValue("extension cut short"),
+                other => other,
+            };
+            match kind {
+                HOVER => read_hover(payload).map_err(whole)?,
+                TOUCH => read_touch(payload).map_err(whole)?,
+                RESUME => read_resume(payload).map_err(whole)?,
+                _ => Event::Extension { kind, payload },
+            }
         }
         other if other > LAST_CORE && other <= CORE_LAST_TYPE => return Err(InputError::Type(other)),
         other => return Err(InputError::Type(other)),
@@ -150,6 +186,37 @@ fn read_hover(payload: &[u8]) -> Result<Event<'static>, InputError> {
         return Err(InputError::BadValue("hover"));
     }
     Ok(Event::Hover { leave: flags & HOVER_LEAVE != 0, column, row })
+}
+
+/// TOUCH's payload (REQ-RCH-043): `flags` u8, `id` u8 of 1 to
+/// [`MAX_TOUCH_ID`], `col` uv, `row` uv, the dot when flagged, and nothing
+/// after.
+fn read_touch(payload: &[u8]) -> Result<Event<'static>, InputError> {
+    let mut reader = Reader::new(payload);
+    let flags = reader.byte()?;
+    if flags & TOUCH_RESERVED != 0 {
+        return Err(InputError::BadValue("touch flags"));
+    }
+    let id = reader.byte()?;
+    if !(1..=MAX_TOUCH_ID).contains(&id) {
+        return Err(InputError::BadValue("touch id"));
+    }
+    let (column, row, pixels) = read_cell(&mut reader, flags)?;
+    if reader.used() != payload.len() {
+        return Err(InputError::BadValue("touch"));
+    }
+    Ok(Event::Touch(Touch { action: read_action(flags), id, column, row, pixels }))
+}
+
+/// RESUME's payload (REQ-RCH-013): the token and the acknowledgement, big-endian, exactly.
+fn read_resume(payload: &[u8]) -> Result<Event<'static>, InputError> {
+    if payload.len() != RESUME_PAYLOAD {
+        return Err(InputError::BadValue("resume"));
+    }
+    let (token, acked) = payload.split_at_checked(TOKEN_BYTES).ok_or(InputError::BadValue("resume"))?;
+    let token: [u8; TOKEN_BYTES] = token.try_into().map_err(|_| InputError::BadValue("resume"))?;
+    let acked: [u8; 2] = acked.try_into().map_err(|_| InputError::BadValue("resume"))?;
+    Ok(Event::Resume(Resume { token, acked: u16::from_be_bytes(acked) }))
 }
 
 fn read_key<'a>(reader: &mut Reader<'a>) -> Result<Key<'a>, InputError> {

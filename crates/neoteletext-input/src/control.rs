@@ -11,7 +11,8 @@ pub use neoteletext_audio::record::TYPE_INPUT_CONTROL;
 use neoteletext_audio::record::{RecordError, framed_length, record_length, split, write};
 use neoteletext_core::packet::Packet;
 
-use crate::caps::{ALL_CAPS, RETIRED_MODE_BITS};
+use crate::TOKEN_BYTES;
+use crate::caps::{ALL_CAPS, RESUME_CAP, RETIRED_MODE_BITS};
 use crate::carriage::input_record;
 use crate::event::{EVENT, FIRST_EXTENSION, LAST_EXTENSION};
 use crate::wire::{Reader, WireError, Writer};
@@ -29,6 +30,24 @@ pub const LAST_WITHDRAWN: u8 = 0x04;
 /// fragment.
 pub const MAX_BODY: usize = FRAGMENT_DATA - record_length(0);
 
+/// WELCOME's session state byte, with RESUME: a new session.
+const SESSION_NEW: u8 = 0;
+/// WELCOME's session state byte, with RESUME: the session asked for is
+/// resumed, and the input count it had taken follows.
+const SESSION_RESUMED: u8 = 1;
+
+/// What WELCOME says of the session when both sides set RESUME (INPUT.md
+/// section 6.4, REQ-RCH-013).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Resumption {
+    /// The token for the next reconnection, new in every WELCOME.
+    pub token: [u8; TOKEN_BYTES],
+    /// For a resumed session, the input count the channel had taken of it
+    /// when its connection was lost, modulo 2¹⁶: the receiver sends again,
+    /// in order, what it sent after that. `None` for a new session.
+    pub taken: Option<u16>,
+}
+
 /// A control message.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Control<'a> {
@@ -38,6 +57,9 @@ pub enum Control<'a> {
         version: u32,
         /// The capabilities it will use, a subset of the receiver's.
         caps: u32,
+        /// The session's token and state, present exactly when `caps` has
+        /// [`RESUME_CAP`].
+        resume: Option<Resumption>,
     },
     /// A withdrawn type, `0x02` to `0x04`: ignored, and never written.
     Withdrawn(u8),
@@ -93,7 +115,8 @@ pub fn read_body(body: &[u8]) -> Result<Control<'_>, ControlError> {
             if caps & !ALL_CAPS != 0 {
                 return Err(ControlError::BadValue("caps"));
             }
-            Control::Welcome { version, caps }
+            let resume = if caps & RESUME_CAP == 0 { None } else { Some(read_resumption(&mut reader)?) };
+            Control::Welcome { version, caps, resume }
         }
         // Its fields are not read: the record is ignored whatever it holds.
         FIRST_WITHDRAWN..=LAST_WITHDRAWN => return Ok(Control::Withdrawn(kind)),
@@ -109,6 +132,22 @@ pub fn read_body(body: &[u8]) -> Result<Control<'_>, ControlError> {
     Ok(control)
 }
 
+/// WELCOME's session, with RESUME: the state, the token and, for a resumed
+/// session, the count taken, big-endian.
+fn read_resumption(reader: &mut Reader<'_>) -> Result<Resumption, ControlError> {
+    let state = reader.byte()?;
+    let mut token = [0_u8; TOKEN_BYTES];
+    for byte in &mut token {
+        *byte = reader.byte()?;
+    }
+    let count = match state {
+        SESSION_NEW => None,
+        SESSION_RESUMED => Some(u16::from_be_bytes([reader.byte()?, reader.byte()?])),
+        _ => return Err(ControlError::BadValue("session state")),
+    };
+    Ok(Resumption { token, taken: count })
+}
+
 /// Writes a control message's body into `out`, checked by the reader.
 ///
 /// # Errors
@@ -117,10 +156,20 @@ pub fn write_body(control: &Control<'_>, out: &mut [u8]) -> Result<usize, Contro
     let mut writer = Writer::new(out);
     writer.byte(EVENT)?;
     match control {
-        Control::Welcome { version, caps } => {
+        Control::Welcome { version, caps, resume } => {
+            if resume.is_some() != (caps & RESUME_CAP != 0) {
+                return Err(ControlError::BadValue("resume without its capability"));
+            }
             writer.byte(WELCOME)?;
             writer.uv(*version)?;
             writer.uv(*caps)?;
+            if let Some(resume) = resume {
+                writer.byte(if resume.taken.is_some() { SESSION_RESUMED } else { SESSION_NEW })?;
+                writer.bytes(&resume.token)?;
+                if let Some(taken) = resume.taken {
+                    writer.bytes(&taken.to_be_bytes())?;
+                }
+            }
         }
         Control::Withdrawn(_) => return Err(ControlError::BadValue("a withdrawn type")),
         Control::Extension { kind, payload } => {
@@ -182,7 +231,7 @@ pub fn from_packet<'b>(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, reason = "a test")]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing, reason = "a test")]
 mod tests {
     use super::*;
     use crate::caps::PAGE_CAP;
@@ -190,9 +239,10 @@ mod tests {
     // REQ-INT-111.
     #[test]
     fn every_control_message_round_trips_through_a_packet() {
-        for control in
-            [Control::Welcome { version: 2, caps: PAGE_CAP }, Control::Extension { kind: 0x40, payload: &[9, 9] }]
-        {
+        for control in [
+            Control::Welcome { version: 2, caps: PAGE_CAP, resume: None },
+            Control::Extension { kind: 0x40, payload: &[9, 9] },
+        ] {
             let packet = packet_of(&control, 3, 77).unwrap();
             let mut buffer = [0; FRAGMENT_DATA];
             assert_eq!(from_packet(&packet, &mut buffer), Some(Ok(control)), "{control:?}");
@@ -210,7 +260,7 @@ mod tests {
         // WELCOME agreeing PAGE and the old MOUSE_BUTTONS (8): the mode bit is dropped.
         assert_eq!(
             read_body(&[0xFF, WELCOME, 2, 0x88, 0x80, 0x04]),
-            Ok(Control::Welcome { version: 2, caps: PAGE_CAP })
+            Ok(Control::Welcome { version: 2, caps: PAGE_CAP, resume: None })
         );
         assert!(write_body(&Control::Withdrawn(0x02), &mut [0; MAX_BODY]).is_err());
     }
@@ -222,6 +272,39 @@ mod tests {
         assert!(read_body(&[0xFF, WELCOME, 2, 0x80, 0x80, 0x80, 0x01]).is_err(), "a capability not defined");
         assert!(read_body(&[0xFF, WELCOME, 2, 0, 0]).is_err(), "bytes after");
         assert!(read_body(&[0x01, WELCOME, 2, 0]).is_err(), "no event byte");
+    }
+
+    /// REQ-INT-111, REQ-INT-125, REQ-RCH-013, decision E.133: with RESUME, WELCOME carries the
+    /// session's state, its token and, resumed, the count taken; the
+    /// longest, every capability agreed, is still one fragment.
+    #[test]
+    fn welcome_carries_the_session_with_resume() {
+        let token = [7_u8; TOKEN_BYTES];
+        for taken in [None, Some(0xFFFF), Some(1)] {
+            let welcome = Control::Welcome { version: 2, caps: ALL_CAPS, resume: Some(Resumption { token, taken }) };
+            let mut out = [0_u8; MAX_BODY];
+            let length = write_body(&welcome, &mut out).unwrap();
+            assert_eq!(read_body(&out[..length]), Ok(welcome));
+            let packet = packet_of(&welcome, 3, 1).unwrap();
+            let mut buffer = [0; FRAGMENT_DATA];
+            assert_eq!(from_packet(&packet, &mut buffer), Some(Ok(welcome)), "one fragment");
+        }
+        // Resumed from 0x1234: state 1, the token, then the count, big-endian.
+        let welcome =
+            Control::Welcome { version: 2, caps: RESUME_CAP, resume: Some(Resumption { token, taken: Some(0x1234) }) };
+        let mut out = [0_u8; MAX_BODY];
+        let length = write_body(&welcome, &mut out).unwrap();
+        assert_eq!(&out[..7], &[0xFF, WELCOME, 2, 0x80, 0x80, 0x80, 0x01]);
+        assert_eq!(out[7], SESSION_RESUMED);
+        assert_eq!(&out[8..24], &token);
+        assert_eq!(&out[24..length], &[0x12, 0x34]);
+        // A state that is neither, a session missing, or one without RESUME.
+        let mut bad = out;
+        bad[7] = 2;
+        assert_eq!(read_body(&bad[..length]), Err(ControlError::BadValue("session state")));
+        assert!(read_body(&out[..7]).is_err(), "RESUME agreed and no session");
+        let without = Control::Welcome { version: 2, caps: PAGE_CAP, resume: Some(Resumption { token, taken: None }) };
+        assert!(write_body(&without, &mut out).is_err(), "a session without RESUME is never written");
     }
 
     /// The fuzz target `control_records` found an extension of 78 bytes

@@ -83,6 +83,7 @@ impl Harness {
                 neoteletext_web::port::NetInput::ConnectFailed(_) => (1, None, Vec::new()),
                 neoteletext_web::port::NetInput::Received(_, bytes) => (2, None, bytes.to_vec()),
                 neoteletext_web::port::NetInput::Closed(_) => (3, None, Vec::new()),
+                neoteletext_web::port::NetInput::Unsent(..) => continue,
             };
             let net = match kind {
                 0 => neoteletext_web::port::NetInput::Connected(ConnectionId::Fetch, peer.unwrap()),

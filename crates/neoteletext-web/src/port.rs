@@ -11,9 +11,16 @@
 //! - [`CookieStorage`]: optional saving of cookies between runs, only when
 //!   the port enables it (REQ-SEC-013).
 //!
+//! The push connection (REQ-RCH-014, REQ-RCH-015) is a connection of its
+//! own, HTTP/1.1, never multiplexed with fetches. A port with TLS resumes
+//! the session of an earlier connection to the same host where the server
+//! allows, and never sends early data (TLS 0-RTT) or uses TCP Fast Open on
+//! it: a key in either could be replayed.
+//!
 //! [`Pump`] connects a [`Transport`] to a protocol machine for ports that
 //! want the simplest loop.
 
+use crate::consts::PUSH_UNSENT_BOUND;
 use crate::url::IpAddress;
 
 /// The connections the web module uses. A port keeps one socket per
@@ -84,8 +91,19 @@ pub trait Transport: embedded_io::ErrorType {
     fn state(&mut self, connection: ConnectionId) -> LinkState;
 
     /// Queues all of `bytes` for sending, or fails. The port buffers what
-    /// the network cannot take at once.
+    /// the network cannot take at once. Bytes given in one call go in one
+    /// write where the transport allows, one TLS record up to its size
+    /// (REQ-RCH-010): the agent gives the messages waiting at one moment
+    /// together.
     fn send(&mut self, connection: ConnectionId, bytes: &[u8]) -> Result<(), Self::Error>;
+
+    /// The bytes given to [`Transport::send`] on `connection` that have not
+    /// yet left for the network: the port's own buffer, and where the
+    /// platform tells it the socket's (Linux's `SIOCOUTQNSD`), 0 when it
+    /// cannot see them. The agent writes a pointer's move only while the
+    /// push connection's are under [`crate::consts::PUSH_UNSENT_BOUND`]
+    /// (REQ-RCH-035); a port reports them as [`NetInput::Unsent`].
+    fn unsent(&mut self, connection: ConnectionId) -> usize;
 
     /// Reads whatever has arrived, without blocking.
     fn receive(&mut self, connection: ConnectionId, buffer: &mut [u8]) -> Result<Received, Self::Error>;
@@ -127,6 +145,12 @@ pub enum NetInput<'a> {
     Received(ConnectionId, &'a [u8]),
     /// The connection closed or broke.
     Closed(ConnectionId),
+    /// The bytes sent on the connection not yet gone to the network
+    /// ([`Transport::unsent`]). A port reports them when they reach
+    /// [`crate::consts::PUSH_UNSENT_BOUND`] after a send, and when they fall
+    /// under it again (where the platform has it, `TCP_NOTSENT_LOWAT` at the
+    /// bound wakes it then); [`Pump`] does both (REQ-RCH-035).
+    Unsent(ConnectionId, usize),
 }
 
 /// A connection-level output of a protocol machine.
@@ -181,12 +205,15 @@ pub struct Pump<T: Transport> {
     connecting: [bool; 3],
     open: [bool; 3],
     failed: [bool; 3],
+    /// Each connection's unsent bytes were last reported at or over
+    /// [`PUSH_UNSENT_BOUND`].
+    congested: [bool; 3],
 }
 
 impl<T: Transport> Pump<T> {
     /// A pump over `transport`, with no connections.
     pub const fn new(transport: T) -> Self {
-        Self { transport, connecting: [false; 3], open: [false; 3], failed: [false; 3] }
+        Self { transport, connecting: [false; 3], open: [false; 3], failed: [false; 3], congested: [false; 3] }
     }
 
     fn set(flags: &mut [bool; 3], connection: ConnectionId, value: bool) {
@@ -206,6 +233,7 @@ impl<T: Transport> Pump<T> {
             NetOutput::Connect { connection, host, port, security } => {
                 self.transport.close(connection);
                 Self::set(&mut self.open, connection, false);
+                Self::set(&mut self.congested, connection, false);
                 let ok = self.transport.connect(connection, host, port, security).is_ok();
                 Self::set(&mut self.connecting, connection, ok);
                 Self::set(&mut self.failed, connection, !ok);
@@ -219,6 +247,7 @@ impl<T: Transport> Pump<T> {
             NetOutput::Close(connection) => {
                 self.transport.close(connection);
                 Self::set(&mut self.open, connection, false);
+                Self::set(&mut self.congested, connection, false);
                 Self::set(&mut self.connecting, connection, false);
                 Self::set(&mut self.failed, connection, false);
             }
@@ -251,6 +280,13 @@ impl<T: Transport> Pump<T> {
         }
         if !Self::get(self.open, connection) {
             return None;
+        }
+        // REQ-RCH-035: the agent hears when the unsent bytes reach the
+        // bound, and when they fall under it, and nothing in between.
+        let unsent = self.transport.unsent(connection);
+        if (unsent >= PUSH_UNSENT_BOUND) != Self::get(self.congested, connection) {
+            Self::set(&mut self.congested, connection, unsent >= PUSH_UNSENT_BOUND);
+            return Some(NetInput::Unsent(connection, unsent));
         }
         match self.transport.receive(connection, buffer) {
             Ok(Received::Data(0) | Received::Nothing) => None,

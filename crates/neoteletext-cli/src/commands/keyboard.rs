@@ -55,10 +55,10 @@ impl Channel {
     /// focus (section 6.1).
     fn open(socket: WebSocket) -> Result<Self, Failure> {
         let mut channel = Self { socket, session: Session::new(OFFERED), started: Instant::now() };
-        let hello = channel.session.open(channel.now_ms(), None);
         let mut out = [0_u8; MAX_MESSAGE];
-        let length = neoteletext_input::event::write(&Item::Event(hello), &mut out)
-            .map_err(|error| (exit::INPUT, format!("HELLO: {error:?}")))?;
+        let now_ms = channel.now_ms();
+        let length =
+            channel.session.open(now_ms, None, &mut out).map_err(|error| (exit::INPUT, format!("HELLO: {error:?}")))?;
         channel.write(out.get(..length).ok_or((exit::INPUT, "HELLO: longer than a message".to_owned()))?)?;
         let wait = Duration::from_millis(u64::from(neoteletext_input::WELCOME_TIMEOUT_MS));
         let deadline = Instant::now().checked_add(wait).unwrap_or_else(Instant::now);
@@ -114,7 +114,11 @@ impl Channel {
         match crate::nfc::with_nfc(item, |item| self.session.send(item, now_ms, &mut out)) {
             Ok(0) => Ok(()),
             Ok(length) => self.write(out.get(..length).ok_or((exit::INPUT, "input longer than a message".to_owned()))?),
-            Err(SendError::NotWelcomed) => Err((exit::INPUT, "the channel does not take input".to_owned())),
+            // A session that keeps nothing is never resumed, so never asks
+            // for what it sent to be sent again first.
+            Err(SendError::NotWelcomed | SendError::ResendFirst) => {
+                Err((exit::INPUT, "the channel does not take input".to_owned()))
+            }
             Err(SendError::Input(error)) => Err((exit::INPUT, format!("input not sent: {error:?}"))),
         }
     }

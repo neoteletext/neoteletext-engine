@@ -1,36 +1,69 @@
 //! The rate limit (section 8, REQ-INT-109): units counted over a sliding
 //! second.
 
-use super::Session;
+use super::SessionOf;
 use crate::MAX_PER_SECOND;
 use crate::event::{Action, Event, Item, MouseAction, units};
 
 /// The window the rate limit counts over.
 const SECOND_MS: u32 = 1_000;
 
-impl Session {
-    /// How many of `item`'s units may go at `now_ms` under the rate limit
-    /// (REQ-INT-109), counting those that may; a release always goes, and a
-    /// move is never counted. Text
-    /// that may only partly go is cut to that many characters by the
-    /// caller.
+/// Whether `event` is held to the rate (section 8 rule 4): every event of
+/// input units, and COMPOSE, which counts none in the input count since
+/// it is never acknowledged (REQ-RCH-012) but which nothing else bounds.
+/// A move, gone and HOVER go only as the pointer moves, at most 60 a
+/// second (REQ-RCH-031), so they never cost a key.
+pub(super) fn rated(event: &Event<'_>) -> bool {
+    matches!(event, Event::Compose { .. }) || units(&Item::Event(*event)) > 0
+}
+
+/// Whether `event` lets go of something held: a key's or a button's
+/// release, a contact up. It always goes, so nothing is left held at the
+/// channel.
+fn release(event: &Event<'_>) -> bool {
+    match event {
+        Event::Key(key) => key.action == Action::Release,
+        Event::Mouse(mouse) => mouse.action == MouseAction::Release,
+        Event::Touch(touch) => touch.action == MouseAction::Release,
+        _ => false,
+    }
+}
+
+impl<const KEPT: usize> SessionOf<KEPT> {
+    /// How many of `item`'s units, as the rate counts them, may go at
+    /// `now_ms` (REQ-INT-109), counting those that may: a character of text
+    /// each, and 0 or 1 for an event held to the rate. A release always
+    /// goes; an event not held to the rate gives 0 and always goes.
     pub fn allow(&mut self, item: &Item<'_>, now_ms: u32) -> u32 {
-        // A move or a HOVER counts nothing against the limit (section 8 rule
-        // 4): each goes only as the pointer moves, and so can never cost a key.
-        if matches!(item, Item::Event(Event::Mouse(mouse)) if mouse.action == MouseAction::Move)
-            || matches!(item, Item::Event(Event::Hover { .. }))
-        {
-            return units(item);
-        }
-        let release = matches!(item, Item::Event(Event::Key(key)) if key.action == Action::Release);
+        let (wanted, release) = match item {
+            Item::Text(_) => (units(item), false),
+            Item::Event(event) => (u32::from(rated(event)), release(event)),
+        };
         let mut allowed: u32 = 0;
-        for _ in 0..units(item) {
+        for _ in 0..wanted {
             if !self.limiter.allow(now_ms, release) {
                 break;
             }
             allowed = allowed.saturating_add(1);
         }
         allowed
+    }
+
+    /// `item` as far as the rate lets it go at `now_ms`: text cut to the
+    /// characters allowed, an event held to the rate whole or not at all.
+    pub(super) fn within_rate<'a>(&mut self, item: Item<'a>, now_ms: u32) -> Option<Item<'a>> {
+        let allowed = self.allow(&item, now_ms);
+        match item {
+            Item::Text(text) => {
+                let end = text
+                    .char_indices()
+                    .nth(usize::try_from(allowed).unwrap_or(usize::MAX))
+                    .map_or(text.len(), |(at, _)| at);
+                text.get(..end).filter(|text| !text.is_empty()).map(Item::Text)
+            }
+            Item::Event(event) if allowed == 0 && rated(&event) => None,
+            event @ Item::Event(_) => Some(event),
+        }
     }
 }
 

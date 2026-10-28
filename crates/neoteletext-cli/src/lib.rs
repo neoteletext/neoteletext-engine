@@ -45,3 +45,9 @@ const _: () = assert!(
     neoteletext_web::consts::INPUT_MESSAGE_MAX == MAX_MESSAGE
         && neoteletext_app::pipe::MAX_INPUT_MESSAGE == MAX_MESSAGE
 );
+// The push connection holds a move for every contact, and the longest
+// move fits its slot (REQ-RCH-035, REQ-RCH-045).
+const _: () = assert!(
+    neoteletext_web::consts::PUSH_MOVE_SLOTS == neoteletext_input::MAX_CONTACTS
+        && neoteletext_web::consts::PUSH_MOVE_MAX >= neoteletext_input::event::MAX_MOVE_BYTES
+);

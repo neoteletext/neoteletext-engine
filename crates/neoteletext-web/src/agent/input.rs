@@ -4,7 +4,7 @@
 
 use neoteletext_core::types::Instant;
 
-use super::{Event, Failure, Input, Output, PushPhase, Sink, UserAgent, Want, event};
+use super::{Event, Failure, Input, InputMessage, Output, PushPhase, Sink, UserAgent, Want, event};
 use crate::channel;
 use crate::port::{ConnectionId, NetInput, RandomSource};
 use crate::url::{Url, UrlError};
@@ -13,6 +13,10 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
     /// Handles one input. Outputs go to `sink` before this returns.
     pub fn handle(&mut self, now: Instant, input: Input<'_>, sink: &mut Sink<'_>) {
         let ticked = matches!(input, Input::Tick);
+        // REQ-RCH-010: what this input writes on the push connection goes in
+        // one send when it is done, unless more messages of the same moment
+        // follow at once.
+        let more = matches!(input, Input::Send(InputMessage { more: true, .. }));
         match input {
             Input::Tick => self.tick(now, sink),
             Input::Net(net) => self.net(now, net, sink),
@@ -39,8 +43,12 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
             Input::WipeCookies => self.wipe_cookies(),
             Input::WallClock(unix) => self.wall_clock = Some((now, unix)),
             Input::Send(message) => self.send_input(message, sink),
+            Input::MeasureRoundTrip(on) => self.measure_round_trip(on),
         }
         self.dispatch(now, sink);
+        if !more {
+            self.flush_push(sink);
+        }
         // The port is told its timer when the deadline changes, and again
         // after a tick, which spent the one it had; not after every input,
         // which woke the port twice for each (decision E.103).
@@ -77,12 +85,15 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
             NetInput::Received(ConnectionId::Push, bytes) if cfg!(feature = "push") => {
                 self.push_received(now, bytes, sink);
             }
-            // The live feed has its own machine, and a build without
-            // push never opens a push connection.
+            NetInput::Unsent(ConnectionId::Push, unsent) if cfg!(feature = "push") => self.push_unsent(unsent, sink),
+            // The live feed has its own machine, a build without push never
+            // opens a push connection, and only the push connection's moves
+            // wait on the network (REQ-RCH-035).
             NetInput::Connected(ConnectionId::Push | ConnectionId::Live, _)
             | NetInput::ConnectFailed(ConnectionId::Push | ConnectionId::Live)
             | NetInput::Received(ConnectionId::Push | ConnectionId::Live, _)
-            | NetInput::Closed(ConnectionId::Push | ConnectionId::Live) => {}
+            | NetInput::Closed(ConnectionId::Push | ConnectionId::Live)
+            | NetInput::Unsent(..) => {}
         }
     }
 
@@ -99,7 +110,7 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
         let push = match self.push.phase {
             PushPhase::Backoff { until } => Some(until),
             PushPhase::Connecting { deadline } | PushPhase::Handshake { deadline } => Some(deadline),
-            PushPhase::Open { .. } => self.heartbeat_due(),
+            PushPhase::Open { .. } => [self.heartbeat_due(), self.round_trip_due()].into_iter().flatten().min(),
             PushPhase::Idle => None,
         };
         let queue =

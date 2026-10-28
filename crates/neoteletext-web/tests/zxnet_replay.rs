@@ -76,6 +76,7 @@ impl Harness {
                 NetInput::ConnectFailed(_) => (1, None, Vec::new()),
                 NetInput::Received(_, bytes) => (2, None, bytes.to_vec()),
                 NetInput::Closed(_) => (3, None, Vec::new()),
+                NetInput::Unsent(..) => continue,
             };
             let input = match kind {
                 0 => NetInput::Connected(ConnectionId::Live, peer.unwrap()),

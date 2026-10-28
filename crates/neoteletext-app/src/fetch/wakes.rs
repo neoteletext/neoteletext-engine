@@ -71,6 +71,13 @@ impl Wakes {
         self.requests.pop_front()
     }
 
+    /// Whether the decoder's next request, already here, is an input
+    /// message: the messages waiting at one moment are written together
+    /// (REQ-RCH-010).
+    pub(super) fn next_is_input(&self) -> bool {
+        matches!(self.requests.front(), Some(Frame::Input(_)))
+    }
+
     /// A turn of the loop begins: the sockets are about to be looked at,
     /// so a wake that came before is answered.
     pub(super) fn turn(&mut self) {

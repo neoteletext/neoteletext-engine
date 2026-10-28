@@ -7,7 +7,9 @@ use super::wakes::{Wake, Wakes};
 use super::{CHANNEL_PREFIX, clock, neottx};
 use crate::pipe::{self, Frame, Notice};
 use neoteletext_core::types::Instant;
-use neoteletext_web::agent::{Config, Event, Failure, Input, Output, PageBytes, Source as Came, Storage, UserAgent};
+use neoteletext_web::agent::{
+    Config, Event, Failure, Input, InputMessage, Output, PageBytes, Source as Came, Storage, UserAgent,
+};
 use neoteletext_web::descriptor::Descriptor;
 use neoteletext_web::http::MediaType;
 use neoteletext_web::port::{ConnectionId, Pump};
@@ -76,7 +78,8 @@ pub(super) fn run_web(
         while let Some(frame) = wakes.next_request() {
             busy = true;
             let now = clock(start);
-            hand_frame(&mut agent, now, frame, &mut |output| sink(output, &mut pump, &mut next_tick));
+            let more = wakes.next_is_input();
+            hand_frame(&mut agent, now, frame, more, &mut |output| sink(output, &mut pump, &mut next_tick));
         }
         if next_tick.is_some_and(|at| clock(start) >= at) {
             // What a tick asks for, a reconnection above all, is taken up
@@ -208,15 +211,18 @@ fn announce_service(descriptor: Option<&Descriptor>) -> std::io::Result<()> {
 }
 
 /// Gives the agent what the decoder asked for: a page, a key, or a link to
-/// another service.
-fn hand_frame(agent: &mut Agent<'_>, now: Instant, frame: Frame, out: &mut dyn FnMut(Output<'_>)) {
+/// another service. `more` says another input message is already waiting,
+/// to be written with this one (REQ-RCH-010).
+fn hand_frame(agent: &mut Agent<'_>, now: Instant, frame: Frame, more: bool, out: &mut dyn FnMut(Output<'_>)) {
     match frame {
         Frame::Request(mpp, sub) => {
             if let Some((page, subcode)) = page_request(mpp, sub) {
                 agent.handle(now, Input::FetchPage { page, subcode }, out);
             }
         }
-        Frame::Input(message) => agent.handle(now, Input::Send(&message), out),
+        Frame::Input(message) => {
+            agent.handle(now, Input::Send(InputMessage { bytes: &message, move_of: None, more }), out);
+        }
         Frame::Follow(service, mpp, sub) => {
             if let Some((page, subcode)) = page_request(mpp, sub) {
                 agent.handle(now, Input::FollowLink { service: &service, page, subcode }, out);

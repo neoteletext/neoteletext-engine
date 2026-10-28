@@ -46,7 +46,12 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
                 let len = copy_prefix(&mut payload, self.push.frames.control_payload());
                 self.send_push_frame(OPCODE_PONG, payload.get(..len).unwrap_or(&[]), sink);
             }
-            Some(WsMessage::Pong) => self.push.healthy = true,
+            Some(WsMessage::Pong) => {
+                self.push.healthy = true;
+                let mut payload = [0u8; crate::consts::WS_CONTROL_MAX];
+                let len = copy_prefix(&mut payload, self.push.frames.control_payload());
+                self.round_trip_pong(now, payload.get(..len).unwrap_or(&[]), sink);
+            }
             Some(WsMessage::Close(code)) => {
                 // RFC 6455 section 5.5.1: answer with a close, then end.
                 self.send_push_close(code.unwrap_or(crate::consts::CLOSE_NORMAL), sink);

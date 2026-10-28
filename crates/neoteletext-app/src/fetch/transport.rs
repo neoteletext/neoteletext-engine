@@ -39,6 +39,18 @@ struct Connection {
     pending: VecDeque<u8>,
 }
 
+/// The TLS configuration of every connection (REQ-RCH-014): one, shared,
+/// so a reconnection to a host resumes the session of the last connection
+/// where the server allows, from rustls's own in-memory store of sessions,
+/// saving a round trip; and no early data, which could replay an input
+/// message. (TCP Fast Open is never used: `std` does not offer it.)
+fn tls_config(roots: rustls::RootCertStore) -> rustls::ClientConfig {
+    let mut config = rustls::ClientConfig::builder().with_root_certificates(roots).with_no_client_auth();
+    config.resumption = rustls::client::Resumption::default();
+    config.enable_early_data = false;
+    config
+}
+
 /// A blocking-connect transport over std sockets and rustls, checking every
 /// resolved address against the policy before connecting (decision 27),
 /// whose connections each wake the loop when bytes arrive.
@@ -80,7 +92,7 @@ impl StdTransport {
     #[must_use]
     pub fn new(allowed_local: &[IpAddr], wake: Sender<Wake>, proxy: Option<Proxy>) -> Self {
         let roots = rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
-        let tls = rustls::ClientConfig::builder().with_root_certificates(roots).with_no_client_auth();
+        let tls = tls_config(roots);
         Self {
             streams: [None, None, None],
             states: [LinkState::Closed; 3],
@@ -306,6 +318,14 @@ impl Transport for StdTransport {
             Some(tls) => tls.writer().write_all(bytes).and_then(|()| write_records(tls, socket)),
         };
         result.map_err(|_| embedded_io::ErrorKind::Other)
+    }
+
+    /// Nothing waits here: a send is written whole, blocking, to the
+    /// kernel, and what the kernel has not sent cannot be read without
+    /// unsafe code (REQ-SEC-015), so moves are never held for this
+    /// transport (REQ-RCH-035; `TECH-DEBT.md`).
+    fn unsent(&mut self, _: ConnectionId) -> usize {
+        0
     }
 
     fn receive(&mut self, connection: ConnectionId, buffer: &mut [u8]) -> Result<Received, Self::Error> {

@@ -8,7 +8,8 @@ use super::{Event, Failure, Output, PushPhase, PushProblem, Sink, UserAgent, eve
 use crate::bytes::{Overflow, Writer};
 use crate::consts::{
     ACCEPT_EVENT_STREAM, CRLF, IDENTITY, MAX_URL_LENGTH, OPCODE_PING, PUSH_EVENTS_SILENCE_US, PUSH_PING_AFTER_US,
-    PUSH_PONG_WITHIN_US, PUSH_RETRY_FIRST_US, PUSH_RETRY_MAX_US, STATUS_OK, SUBSCRIBE_QUERY, header,
+    PUSH_PONG_WITHIN_US, PUSH_RETRY_FIRST_US, PUSH_RETRY_MAX_US, ROUND_TRIP_EVERY_US, STATUS_OK, SUBSCRIBE_QUERY,
+    header,
 };
 use crate::cookie::Site;
 use crate::descriptor::PushMethod;
@@ -46,6 +47,7 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
         self.push.phase =
             PushPhase::Connecting { deadline: Instant(now.0.saturating_add(self.config.connect_timeout_us)) };
         self.push.healthy = false;
+        self.forget_push_writes();
         let security = if url.is_secure() { Security::Tls } else { Security::Plain };
         sink(Output::Connect { connection: ConnectionId::Push, host: url.host_text(), port: url.port(), security });
     }
@@ -129,8 +131,9 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
             return;
         }
         if close {
-            sink(Output::Close { connection: ConnectionId::Push });
+            self.close_push(sink);
         }
+        self.forget_push_writes();
         if self.push.healthy {
             self.push.delay_us = PUSH_RETRY_FIRST_US;
         }
@@ -251,10 +254,58 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
             PushPhase::Connecting { deadline } | PushPhase::Handshake { deadline } if now >= deadline => {
                 self.push_lost(now, Some(PushProblem::Failure(Failure::Timeout)), true, sink);
             }
-            PushPhase::Open { .. } if self.heartbeat_due().is_some_and(|due| now >= due) => {
-                self.heartbeat(now, sink);
+            PushPhase::Open { .. } => {
+                if self.heartbeat_due().is_some_and(|due| now >= due) {
+                    self.heartbeat(now, sink);
+                }
+                if self.round_trip_due().is_some_and(|due| now >= due) {
+                    self.ping_round_trip(now, sink);
+                }
             }
             _ => {}
+        }
+    }
+
+    /// When the next ping that measures the round trip goes (REQ-RCH-016):
+    /// while it is measured on an open WebSocket and no ping waits for its
+    /// pong, a second after the last, or at once when none has gone.
+    pub(super) fn round_trip_due(&self) -> Option<Instant> {
+        let measured = self.push.round_trip.on
+            && self.push.method == PushMethod::WebSocket
+            && matches!(self.push.phase, PushPhase::Open { .. })
+            && self.push.round_trip.waiting.is_none();
+        measured.then(|| {
+            self.push.round_trip.last.map_or(Instant(0), |last| Instant(last.0.saturating_add(ROUND_TRIP_EVERY_US)))
+        })
+    }
+
+    /// Sends the ping that measures the round trip: its payload one byte,
+    /// counted on, so its pong is told from the heartbeat's, which has none.
+    fn ping_round_trip(&mut self, now: Instant, sink: &mut Sink<'_>) {
+        let sequence = self.push.round_trip.sequence.wrapping_add(1);
+        if self.send_push_frame(OPCODE_PING, &[sequence], sink) {
+            self.push.round_trip.sequence = sequence;
+            self.push.round_trip.waiting = Some((sequence, now));
+            self.push.round_trip.last = Some(now);
+        }
+    }
+
+    /// A pong: when it answers the round trip's ping, the round trip
+    /// (REQ-RCH-016).
+    pub(super) fn round_trip_pong(&mut self, now: Instant, payload: &[u8], sink: &mut Sink<'_>) {
+        if let Some((sequence, sent)) = self.push.round_trip.waiting
+            && payload == [sequence]
+        {
+            self.push.round_trip.waiting = None;
+            event(sink, Event::RoundTrip { microseconds: now.since(sent) });
+        }
+    }
+
+    /// Turns the round trip's measurement on or off (REQ-RCH-016).
+    pub(super) fn measure_round_trip(&mut self, on: bool) {
+        self.push.round_trip.on = on;
+        if !on {
+            self.push.round_trip.waiting = None;
         }
     }
 

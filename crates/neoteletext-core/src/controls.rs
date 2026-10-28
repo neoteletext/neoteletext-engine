@@ -12,16 +12,14 @@
 //! on (REQ-L25-003). D6 set joins the run to the control on the row above
 //! at the same column and width, so a control may be a rectangle.
 //!
-//! A pointer area (decision E.128) is declared the same way by column mode
-//! 01010, also reserved: while the pointer is in one, a receiver sends the
-//! channel every move, button held or not, where otherwise it sends moves
-//! only while a button is held (INPUT.md section 6.3). A width of 0, not
-//! joined, makes the whole page one.
+//! Column mode 01010 was a pointer area until 28 October 2026 (decision
+//! E.128); with every move over the page sent (decision E.133, REQ-RCH-037)
+//! it asks for nothing, and is reserved again, as Table 29 has it
+//! (REQ-INT-120, withdrawn).
 
 use crate::acq::StoredPage;
 use crate::consts::{
-    ADJACENT_CLUT_FLIP, COLUMNS, CONTROL_JOINED, CONTROL_WIDTH_MASK, LOCAL_TRIPLETS, MODE_CONTROL, MODE_POINTER_AREA,
-    ROW_ADDRESS_LAST,
+    ADJACENT_CLUT_FLIP, COLUMNS, CONTROL_JOINED, CONTROL_WIDTH_MASK, LOCAL_TRIPLETS, MODE_CONTROL, ROW_ADDRESS_LAST,
 };
 use crate::level1::Grid;
 use crate::objects::{Body, Fetch, row_of};
@@ -33,9 +31,6 @@ use crate::types::FixedVec;
 /// triplet, but a page of 23 rows holds no more distinct things to press
 /// than a list down it and a row of buttons.
 pub const MAX_CONTROLS: usize = 32;
-/// The most pointer areas a page has (decision E.128): a canvas, a game's
-/// field, a few rows that show something as the pointer passes.
-pub const MAX_POINTER_AREAS: usize = 8;
 /// The first row a control may lie on: row 0 is the header, as a page's
 /// `LT` links begin at row 1 (TTI Link Extension section E.1.2).
 pub const FIRST_CONTROL_ROW: u8 = 1;
@@ -84,31 +79,20 @@ impl Control {
     }
 }
 
-/// A page's controls and pointer areas, and how many of their triplets
-/// were dropped.
+/// A page's controls, and how many of their triplets were dropped.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Controls {
     /// The controls, in the order their first triplets come.
     pub list: FixedVec<Control, MAX_CONTROLS>,
-    /// The pointer areas (decision E.128), which may overlap each other and
-    /// the controls.
-    pub pointer_areas: FixedVec<Control, MAX_POINTER_AREAS>,
-    /// The whole page is a pointer area.
-    pub whole_page: bool,
     /// Triplets dropped (REQ-INT-118): outside rows 1 to 23 or past column
     /// 39, of no width, a control over another control, joined to nothing
-    /// above, or beyond [`MAX_CONTROLS`] or [`MAX_POINTER_AREAS`].
+    /// above, or beyond [`MAX_CONTROLS`].
     pub dropped: u16,
 }
 
 impl Controls {
     /// No controls.
-    pub const NONE: Self = Self {
-        list: FixedVec::new(Control::NONE),
-        pointer_areas: FixedVec::new(Control::NONE),
-        whole_page: false,
-        dropped: 0,
-    };
+    pub const NONE: Self = Self { list: FixedVec::new(Control::NONE), dropped: 0 };
 
     /// The control holding the cell at `row`, `column`, by its place in
     /// the list.
@@ -117,51 +101,38 @@ impl Controls {
         self.list.as_slice().iter().position(|control| control.contains(row, column))
     }
 
-    /// Takes one control triplet on `row`; false when it is dropped.
+    /// Takes one control triplet of `data` on `row`: a new run, or the run
+    /// joined to the one above at the same column and width; false when it
+    /// is dropped, as a run over another control is.
     fn take(&mut self, row: u8, column: u8, data: u8) -> bool {
-        take_into(&mut self.list, row, column, data, true)
-    }
-
-    /// Takes one pointer-area triplet on `row`; false when it is dropped.
-    fn take_pointer_area(&mut self, row: u8, column: u8, data: u8) -> bool {
-        if data == 0 {
-            self.whole_page = true;
-            return true;
+        let width = data & CONTROL_WIDTH_MASK;
+        let end = column.saturating_add(width);
+        if width == 0 || usize::from(end) > COLUMNS || !(FIRST_CONTROL_ROW..=LAST_CONTROL_ROW).contains(&row) {
+            return false;
         }
-        take_into(&mut self.pointer_areas, row, column, data, false)
+        if self.list.as_slice().iter().any(|control| control.overlaps(row, column, end)) {
+            return false;
+        }
+        if data & CONTROL_JOINED == 0 {
+            return self.list.push(Control { row, column, width, height: 1 });
+        }
+        let above = row.saturating_sub(1);
+        let joined = self
+            .list
+            .as_mut_slice()
+            .iter_mut()
+            .find(|control| control.last_row() == above && control.column == column && control.width == width);
+        match joined {
+            Some(control) => {
+                control.height = control.height.saturating_add(1);
+                true
+            }
+            None => false,
+        }
     }
 }
 
-/// Takes one triplet of `data` on `row` into `list`: a new run, or the run
-/// joined to the one above at the same column and width; false when it is
-/// dropped. `exclusive` refuses a run over another of the list.
-fn take_into<const N: usize>(list: &mut FixedVec<Control, N>, row: u8, column: u8, data: u8, exclusive: bool) -> bool {
-    let width = data & CONTROL_WIDTH_MASK;
-    let end = column.saturating_add(width);
-    if width == 0 || usize::from(end) > COLUMNS || !(FIRST_CONTROL_ROW..=LAST_CONTROL_ROW).contains(&row) {
-        return false;
-    }
-    if exclusive && list.as_slice().iter().any(|control| control.overlaps(row, column, end)) {
-        return false;
-    }
-    if data & CONTROL_JOINED == 0 {
-        return list.push(Control { row, column, width, height: 1 });
-    }
-    let above = row.saturating_sub(1);
-    let joined = list
-        .as_mut_slice()
-        .iter_mut()
-        .find(|control| control.last_row() == above && control.column == column && control.width == width);
-    match joined {
-        Some(control) => {
-            control.height = control.height.saturating_add(1);
-            true
-        }
-        None => false,
-    }
-}
-
-/// The controls and pointer areas `page` declares in its local enhancement data: its packets
+/// The controls `page` declares in its local enhancement data: its packets
 /// X/26 in designation order, up to the first Termination Marker or Object
 /// Definition (REQ-L25-002), with the active row moved as REQ-L25-003 says.
 /// Objects declare none: a control is the page's own (REQ-INT-117).
@@ -177,11 +148,6 @@ pub fn controls(page: &StoredPage) -> Controls {
             F::SetActivePosition { address, .. } | F::FullRowColour { address, .. } => row = row_of(address),
             F::AddressDisplayRow0 { address: ROW_ADDRESS_LAST, .. } => row = 0,
             F::ReservedColumn { column, mode: MODE_CONTROL, data } if !found.take(row, column, data) => {
-                found.dropped = found.dropped.saturating_add(1);
-            }
-            F::ReservedColumn { column, mode: MODE_POINTER_AREA, data }
-                if !found.take_pointer_area(row, column, data) =>
-            {
                 found.dropped = found.dropped.saturating_add(1);
             }
             _ => {}

@@ -203,6 +203,7 @@ Each module named below is one concept. Since the reorganisation of 24 October 2
   - the contents file's reader (`contents`, REQ-WEB-025);
   - a page's catalogue of sub-pages, `NNN.sub` (`subpages`, REQ-WEB-034, decision E.132): its bounded reader and its writer, the validator of a sub-page's file, and, with the feature `std`, the layout of a channel's pages as files (`NNN.t42`, `NNN-SSSS.t42`, `NNN.sub` and an `index.t42` of first sub-pages); the agent asks for a page's catalogue when the port asks, and then for a sub-page's own file only when that sub-page is asked for (REQ-WEB-019);
   - push subscriptions;
+  - the return channel on the push WebSocket (REQ-WEB-035, decision E.133): the frames of one input written together as one send, a contact's move held in its slot while the port reports the socket's unsent bytes at or over `PUSH_UNSENT_BOUND`, and the round trip by ping and pong (`Input::MeasureRoundTrip`, `Event::RoundTrip`);
   - Device Bound Session Credentials (`dbsc`, and the agent's `agent::bound`, feature `dbsc`, REQ-WEB-017): the registration and challenge headers, the session instructions, the proofs and the session store; the keys are the port's;
   - the zxnet live feed.
 
@@ -215,7 +216,7 @@ Each module named below is one concept. Since the reorganisation of 24 October 2
 
 - **Owns:** the complete porting contract (REQ-ARCH-009), and nothing else:
   - `DataSource`;
-  - `Transport`, following the `embedded-io` traits;
+  - `Transport`, following the `embedded-io` traits, with `unsent`, the bytes a connection has not yet sent (decision E.133);
   - `Clock`;
   - `Keys`;
   - `CookieStorage`;
@@ -243,6 +244,10 @@ Each module named below is one concept. Since the reorganisation of 24 October 2
 Sound carried with teletext sits beside the page layers, as the web user agent does: it shares only the packet type and the Hamming 8/4 decoder of L1 and Foundation, and the EN 300 708 constants of `consts`. The port passes each packet to `neoteletext_audio::receiver::Receiver::push_packet` before the decoder, a push WebSocket's binary message to `Receiver::push_message`, and a `.ttau` file to `Receiver::push_file` (REQ-AUD-008); the decoder keeps ignoring packet 31 (REQ-PKT-008). The receiver reassembles records (`idl`), frames a file's records (`ttau`), parses them (`record`), keeps sounds compressed (`store`), applies each channel's latest command (`control`), decodes PCM16 and IMA ADPCM (`ima`) or Opus, fades either side of a block that has not arrived and reports it `concealed` (REQ-AUD-013), and drives the port's voice sink (`port::VoiceSink`, the L8 contract for sound). Each codec is a feature: the desktop builds leave out PCM16 and IMA ADPCM, which microcontroller builds keep (decision E.131). It mixes nothing and touches no hardware. `neoteletext-audio-mix` is a mixer a desktop or phone port may use as its sink's engine; a microcontroller port maps the sink onto the tellyboy driver instead. The design is `docs/spec/design/audio.md` and `audio-platforms.md`.
 
 `neoteletext-opus` decodes Opus (RFC 6716) for one profile, mono, one 20 ms frame a packet, 48 kHz out (decision E.123): an integer-only port of libopus 1.5.2's fixed-point decoder, bit-exact with it, `no_std`, with no allocation and no dependency. A packet outside the profile is refused before the decoder changes; a lost packet is concealed; in-band FEC is read past, never decoded. Its interface is `Decoder::decode`, `Decoder::conceal` and `Decoder::final_range`; the decoder holds its own scratch, about 28 KB, and a decode needs about 2.5 KB of stack. It reads packets and writes samples, and is the audio profile's decoder for its code 2 once that is wired (issue #223).
+
+### Input — `neoteletext-input` (area INT)
+
+The input system's protocol (`neoteletext-common/INPUT.md`), beside the page layers as audio is: it shares the packet type with L1 and the record frame and data-line carriage with `neoteletext-audio`. `no_std`, with no allocation, so a microcontroller can be a receiver or a channel. `event` encodes and decodes the input stream, MOUSE's device and gone, HOVER, TOUCH and RESUME among it; `cursor` and `control` the channel's records, WELCOME with a session's token; `session::SessionOf` is a receiver's side of a session, the rate and the input count, and with RESUME the unacknowledged messages kept to send again (`ResumableSession`; `Session` keeps none); `pace::Pacer` paces the pointer's moves at 60 a second, one slot a contact, and `contacts::Contacts` numbers a touch screen's contacts (decision E.133). The browser's trusted core and `neottx` use them alike; the web agent carries the messages and knows only that a message is a contact's move.
 
 ### Cross-cutting modules — `neoteletext-core::{policy, config, trace}`
 
@@ -510,7 +515,8 @@ Where each crate's code lives, one sentence per directory (the reorganisation of
 **`neoteletext-input`**
 - `event/`: encoding and decoding the input stream.
 - `keys/`: the one-byte key codes and the United States layout.
-- `session/`: the acknowledged count, the mode filter and the rate limit.
+- `session/`: the acknowledged count and the messages kept to send again, the filter of what goes and the rate limit.
+- `pace/`: the tests of the pointer's pace (`pace.rs`; `contacts.rs` numbers the contacts).
 
 **`neoteletext-qrkeyboard`**
 - `crypto/`: SPAKE2 pairing and sealed frames.

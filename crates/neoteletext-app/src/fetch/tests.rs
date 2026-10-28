@@ -86,6 +86,10 @@ impl Transport for Fake {
         Ok(())
     }
 
+    fn unsent(&mut self, _: ConnectionId) -> usize {
+        0
+    }
+
     fn receive(&mut self, _: ConnectionId, buffer: &mut [u8]) -> Result<Received, Self::Error> {
         let mut server = self.server.lock().unwrap();
         if !server.open {

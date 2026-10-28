@@ -44,6 +44,16 @@ pub const LAST_EXTENSION: u8 = 0x7F;
 pub const HOVER: u8 = 0x43;
 /// HOVER's flag bit: the pointer left the control, rather than entered it.
 pub const HOVER_LEAVE: u8 = 1;
+/// TOUCH's type, an extension (INPUT.md section 5.4, REQ-INT-124,
+/// REQ-RCH-043): a
+/// contact after the first, which goes as MOUSE; a channel that does not
+/// know it skips it.
+pub const TOUCH: u8 = 0x44;
+/// RESUME's type, an extension (INPUT.md section 6.4, REQ-INT-125,
+/// REQ-RCH-013): after
+/// HELLO in a reconnection's first message, the session to resume; a
+/// channel that does not know it skips it and starts a new session.
+pub const RESUME: u8 = 0x45;
 
 /// KEY's flag bits (section 5.5).
 const ACTION: u8 = 0b11;
@@ -54,7 +64,15 @@ const HAS_BASE: u8 = 1 << 5;
 const KEY_RESERVED: u8 = 0b1100_0000;
 /// MOUSE's and WHEEL's flag bits (section 5.4).
 const HAS_PIXELS: u8 = 1 << 2;
-const POINTER_RESERVED: u8 = 0b1111_0000;
+/// WHEEL's reserved flag bits.
+const WHEEL_RESERVED: u8 = 0b1111_0000;
+/// MOUSE's device, bits 4 and 5 (REQ-RCH-042): 0 mouse, 1 touch, 2 pen.
+const DEVICE_SHIFT: u8 = 4;
+const DEVICE_MASK: u8 = 0b11 << DEVICE_SHIFT;
+/// MOUSE's reserved flag bits.
+const MOUSE_RESERVED: u8 = 0b1100_0000;
+/// TOUCH's reserved flag bits: it has no `mods` (REQ-RCH-043).
+const TOUCH_RESERVED: u8 = 0b1111_1000;
 
 /// The bytes that cannot begin text: UTF-8 never uses them (RFC 3629).
 const NEVER_UTF8: [u8; 2] = [0xC0, 0xC1];
@@ -113,15 +131,35 @@ pub struct Key<'a> {
     pub base: Option<char>,
 }
 
-/// A mouse button's action.
+/// A pointer's action, MOUSE's and TOUCH's alike.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum MouseAction {
-    /// A button pressed.
+    /// A button pressed; a contact down.
     Press,
-    /// A button released.
+    /// A button released; a contact up.
     Release,
-    /// The pointer moved.
+    /// The pointer or the contact moved.
     Move,
+    /// Gone (action 3, REQ-INT-123; REQ-RCH-034, REQ-RCH-046): the pointer left the page
+    /// or keys stopped going to its channel, or the system or the receiver
+    /// cancelled a contact. What it held is released without a click: a
+    /// channel must not act on it as on a release.
+    Gone,
+}
+
+/// The device a MOUSE comes from (MOUSE's `flags` bits 4 and 5,
+/// REQ-RCH-042): sent only when both sides set
+/// [`TOUCH_CAP`](crate::caps::TOUCH_CAP), and otherwise always
+/// [`Device::Mouse`], so touch looks like the mouse.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum Device {
+    /// A mouse or a trackpad.
+    #[default]
+    Mouse,
+    /// A finger: the first contact down (REQ-RCH-041).
+    Touch,
+    /// A pen (REQ-RCH-050): touching is button 0, the barrel button 2.
+    Pen,
 }
 
 /// Where on the page a pointer event happened.
@@ -140,13 +178,42 @@ pub struct Point {
 /// A MOUSE event.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Mouse {
-    /// Press, release or move.
+    /// Press, release, move or gone.
     pub action: MouseAction,
     /// On a press or release the button (0 left, 1 middle, 2 right, 3 back,
-    /// 4 forward); on a move the bit mask of buttons held.
+    /// 4 forward); on a move or gone the bit mask of buttons held.
     pub button: u8,
-    /// Where.
+    /// Where: on gone, the last position sent.
     pub at: Point,
+    /// What it comes from.
+    pub device: Device,
+}
+
+/// A TOUCH event (REQ-RCH-043): a contact after the first, which goes as
+/// MOUSE.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Touch {
+    /// Down, up, move or gone, as MOUSE's press, release, move and gone.
+    pub action: MouseAction,
+    /// The contact's number, 1 to [`MAX_TOUCH_ID`](crate::MAX_TOUCH_ID),
+    /// the same from its beginning to its end.
+    pub id: u8,
+    /// The cell's column, 0 to [`MAX_COLUMNS`](crate::MAX_COLUMNS) − 1.
+    pub column: u32,
+    /// The cell's row, 0 to [`MAX_ROWS`](crate::MAX_ROWS) − 1.
+    pub row: u32,
+    /// The dot of the page image, when the receiver knows it.
+    pub pixels: Option<(u32, u32)>,
+}
+
+/// The session a reconnection asks to resume (RESUME, INPUT.md section
+/// 6.4, REQ-RCH-013).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Resume {
+    /// The token the channel's last WELCOME gave.
+    pub token: [u8; crate::TOKEN_BYTES],
+    /// The last acknowledgement the receiver took, modulo 2¹⁶.
+    pub acked: u16,
 }
 
 /// A WHEEL event.
@@ -215,6 +282,11 @@ pub enum Event<'a> {
         /// The control's top row.
         row: u32,
     },
+    /// A contact after the first (REQ-RCH-043).
+    Touch(Touch),
+    /// The session a reconnection asks to resume, after HELLO
+    /// (REQ-RCH-013).
+    Resume(Resume),
     /// An extension, skipped by a receiver that does not know it.
     Extension {
         /// `0x40` to `0x7F`.
@@ -271,12 +343,49 @@ fn check_text(text: &str) -> Result<(), InputError> {
 }
 
 /// How much of the input count an item is (INPUT.md section 7.1): a
-/// character of text counts one, and every event counts one.
+/// character of text counts one, and every event counts one, but those
+/// that are never acknowledged (REQ-RCH-012, REQ-RCH-054): a move and gone,
+/// MOUSE's and TOUCH's, HOVER, COMPOSE and RESUME count none.
 #[must_use]
 pub fn units(item: &Item<'_>) -> u32 {
     match item {
         Item::Text(text) => u32::try_from(text.chars().count()).unwrap_or(u32::MAX),
-        Item::Event(_) => 1,
+        Item::Event(event) => u32::from(!uncounted(event)),
+    }
+}
+
+/// Whether `event` counts nothing in the input count (REQ-RCH-012).
+fn uncounted(event: &Event<'_>) -> bool {
+    let unacknowledged = |action| matches!(action, MouseAction::Move | MouseAction::Gone);
+    match event {
+        Event::Mouse(mouse) => unacknowledged(mouse.action),
+        Event::Touch(touch) => unacknowledged(touch.action),
+        Event::Hover { .. } | Event::Compose { .. } | Event::Resume(_) => true,
+        _ => false,
+    }
+}
+
+/// The capabilities `event` may be sent under (INPUT.md section 6.2): both
+/// sides must set every bit, so a channel that did not agree them refuses
+/// the event, and a receiver never sends it.
+#[must_use]
+pub fn needs(event: &Event<'_>) -> u32 {
+    match event {
+        Event::Touch(_) => crate::caps::TOUCH_CAP,
+        Event::Mouse(mouse) if mouse.device != Device::Mouse => crate::caps::TOUCH_CAP,
+        Event::Resume(_) => crate::caps::RESUME_CAP,
+        _ => 0,
+    }
+}
+
+/// A pointer's move, MOUSE's or TOUCH's, and the contact it is of: 0 for
+/// MOUSE, a TOUCH's `id` otherwise (REQ-RCH-045).
+#[must_use]
+pub fn move_contact(event: &Event<'_>) -> Option<usize> {
+    match event {
+        Event::Mouse(mouse) if mouse.action == MouseAction::Move => Some(0),
+        Event::Touch(touch) if touch.action == MouseAction::Move => Some(usize::from(touch.id)),
+        _ => None,
     }
 }
 
@@ -284,7 +393,7 @@ mod decode;
 mod encode;
 
 pub use decode::{MAX_STREAM_ITEM, StreamDecoder, read, read_message};
-pub use encode::write;
+pub use encode::{MAX_MOVE_BYTES, write};
 
 #[cfg(test)]
 mod tests;

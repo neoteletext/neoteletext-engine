@@ -336,6 +336,25 @@ pub const PUSH_EVENTS_SILENCE_US: u64 = 60 * MICROSECONDS_PER_SECOND;
 /// `neoteletext_input::MAX_MESSAGE` (`neoteletext-common/INPUT.md` section
 /// 5.1, REQ-INT-101). The command-line program asserts that the two agree.
 pub const INPUT_MESSAGE_MAX: usize = 4096;
+/// The contacts whose moves the push connection holds, one slot each
+/// (REQ-RCH-035, REQ-RCH-045): `neoteletext_input::MAX_CONTACTS`, the
+/// mouse's and nine fingers'. The command-line program asserts that the two
+/// agree.
+pub const PUSH_MOVE_SLOTS: usize = 10;
+/// The longest move a slot holds: at least `neoteletext_input::event::
+/// MAX_MOVE_BYTES`, as the command-line program asserts; a longer message
+/// given as a move is dropped.
+pub const PUSH_MOVE_MAX: usize = 32;
+/// A move is written only while the push socket's unsent bytes are under
+/// this (REQ-RCH-035); otherwise it waits in its contact's slot, the latest
+/// replacing it. A move is under 100 bytes as it leaves, framed by
+/// WebSocket, TLS and TCP, and ten contacts' moves of one period about 200,
+/// so 1 KiB unsent means the path is not taking the moves as they come;
+/// it is still a few periods' worth, so positions never queue for longer.
+pub const PUSH_UNSENT_BOUND: usize = 1024;
+/// The round trip is measured by a ping at most this often, while keys go
+/// to the channel (REQ-RCH-016).
+pub const ROUND_TRIP_EVERY_US: u64 = MICROSECONDS_PER_SECOND;
 
 // ---------------------------------------------------------------------------
 // Cookies (RFC 6265bis draft of 30 September 2026, REQ-WEB-006)

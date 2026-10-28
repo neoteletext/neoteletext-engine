@@ -229,3 +229,10 @@ path = "fuzz_targets/ts_packets.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "input_session"
+path = "fuzz_targets/input_session.rs"
+test = false
+doc = false
+bench = false

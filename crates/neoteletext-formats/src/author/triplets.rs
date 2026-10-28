@@ -4,8 +4,7 @@
 use std::vec::Vec;
 
 use neoteletext_core::consts::{
-    COLUMNS, CONTROL_JOINED, CONTROL_WIDTH_MASK, MODE_CONTROL, MODE_POINTER_AREA, ROW_ADDRESS_BASE, ROW_ADDRESS_LAST,
-    ROW_ADDRESS_ROW_24,
+    COLUMNS, CONTROL_JOINED, CONTROL_WIDTH_MASK, MODE_CONTROL, ROW_ADDRESS_BASE, ROW_ADDRESS_LAST, ROW_ADDRESS_ROW_24,
 };
 use neoteletext_core::packet::{
     ColourData, DisplayAttributes, ObjectKind, ObjectNumber, ObjectSource, Triplet, TripletFunction,
@@ -388,28 +387,6 @@ impl Triplets {
         }
         let data = width | if joined { CONTROL_JOINED } else { 0 };
         Ok(self.raw(Triplet { address: column, mode: MODE_CONTROL, data }))
-    }
-
-    /// NeoTeletext's pointer-area triplet (column mode 01010, decision
-    /// E.128): `width` cells from `column` on the active row, where every
-    /// move goes to the channel, joined to the area above when `joined`.
-    ///
-    /// # Errors
-    /// [`AuthorError::BadPosition`] for a width of 0, or one that runs past
-    /// column 39: [`Triplets::whole_page_pointer_area`] is the whole page.
-    pub fn pointer_area(&mut self, column: u8, width: u8, joined: bool) -> Result<&mut Self> {
-        if width == 0 || width > CONTROL_WIDTH_MASK || usize::from(column).saturating_add(usize::from(width)) > COLUMNS
-        {
-            return Err(AuthorError::BadPosition);
-        }
-        let data = width | if joined { CONTROL_JOINED } else { 0 };
-        Ok(self.raw(Triplet { address: column, mode: MODE_POINTER_AREA, data }))
-    }
-
-    /// The whole page as one pointer area (decision E.128): every move over
-    /// it goes to the channel.
-    pub fn whole_page_pointer_area(&mut self) -> &mut Self {
-        self.raw(Triplet { address: 0, mode: MODE_POINTER_AREA, data: 0 })
     }
 
     /// Appends every element of another list.

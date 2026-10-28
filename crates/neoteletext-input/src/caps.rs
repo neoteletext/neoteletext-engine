@@ -16,5 +16,13 @@ pub const CURSOR_CAP: u32 = 1 << 17;
 pub const ECHO_CAP: u32 = 1 << 18;
 /// Capability: HELLO carries the user agent string (HELLO only).
 pub const AGENT: u32 = 1 << 19;
+/// Capability: touch (REQ-RCH-041 to REQ-RCH-043): MOUSE's device bits and
+/// the TOUCH extension are sent; without it touch goes as the mouse, the
+/// first contact alone.
+pub const TOUCH_CAP: u32 = 1 << 20;
+/// Capability: a lost connection's session may be resumed (REQ-RCH-013):
+/// WELCOME carries a token, and a reconnection's first message carries
+/// RESUME after HELLO (INPUT.md section 6.4).
+pub const RESUME_CAP: u32 = 1 << 21;
 /// Every capability defined.
-pub const ALL_CAPS: u32 = PAGE_CAP | CURSOR_CAP | ECHO_CAP | AGENT;
+pub const ALL_CAPS: u32 = PAGE_CAP | CURSOR_CAP | ECHO_CAP | AGENT | TOUCH_CAP | RESUME_CAP;

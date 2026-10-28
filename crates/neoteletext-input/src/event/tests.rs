@@ -17,11 +17,20 @@ fn key(action: Action, key: KeyCode, mods: u8) -> Item<'static> {
     Item::Event(Event::Key(Key { action, key, mods, text: None, base: None }))
 }
 
-// REQ-INT-101.
+// REQ-INT-101; REQ-RCH-029 and REQ-RCH-055 (decision E.133): every row of
+// INPUT.md section 5.8, as the encoder writes it, KEY for every key.
 #[test]
 fn the_size_examples_of_section_5_8() {
     let functional = |name: &str| KeyCode::Functional(code(name).unwrap());
-    assert_eq!(bytes(&Item::Text("a")), [0x61]);
+    let press_a = Item::Event(Event::Key(Key {
+        action: Action::Press,
+        key: KeyCode::Character('a'),
+        mods: 0,
+        text: Some("a"),
+        base: None,
+    }));
+    assert_eq!(bytes(&press_a), [0xFF, 0x01, 0x10, 0x61, 0x01, 0x61]);
+    assert_eq!(bytes(&key(Action::Release, KeyCode::Character('a'), 0)), [0xFF, 0x01, 0x02, 0x61]);
     assert_eq!(bytes(&Item::Text("é")), [0xC3, 0xA9]);
     assert_eq!(bytes(&Item::Event(Event::FocusOut)), [0xFF, 0x06]);
     assert_eq!(bytes(&key(Action::Press, functional("Enter"), 0)), [0xFF, 0x01, 0x04, 0x02]);
@@ -30,14 +39,40 @@ fn the_size_examples_of_section_5_8() {
     assert_eq!(bytes(&key(Action::Press, KeyCode::Character('c'), CONTROL)), [0xFF, 0x01, 0x08, 0x63, 0x04]);
     assert_eq!(bytes(&Item::Event(Event::Page(0x100))), [0xFF, 0x0A, 0x80, 0x02]);
     let at = Point { column: 10, row: 5, pixels: None, mods: 0 };
+    let dot = |x| Point { column: 10, row: 5, pixels: Some((x, 100)), mods: 0 };
+    let mouse = |action, button, at, device| Item::Event(Event::Mouse(Mouse { action, button, at, device }));
+    assert_eq!(bytes(&mouse(MouseAction::Press, 0, at, Device::Mouse)), [0xFF, 0x02, 0x00, 0x00, 0x0A, 0x05]);
     assert_eq!(
-        bytes(&Item::Event(Event::Mouse(Mouse { action: MouseAction::Press, button: 0, at }))),
-        [0xFF, 0x02, 0x00, 0x00, 0x0A, 0x05]
+        bytes(&mouse(MouseAction::Press, 0, dot(120), Device::Mouse)),
+        [0xFF, 0x02, 0x04, 0x00, 0x0A, 0x05, 0x78, 0x64]
     );
+    assert_eq!(
+        bytes(&mouse(MouseAction::Move, 0, dot(121), Device::Mouse)),
+        [0xFF, 0x02, 0x06, 0x00, 0x0A, 0x05, 0x79, 0x64]
+    );
+    assert_eq!(bytes(&mouse(MouseAction::Gone, 0, at, Device::Mouse)), [0xFF, 0x02, 0x03, 0x00, 0x0A, 0x05]);
     assert_eq!(
         bytes(&Item::Event(Event::Wheel(Wheel { dx: 0, dy: 120, at }))),
         [0xFF, 0x03, 0x00, 0x00, 0xF0, 0x01, 0x0A, 0x05]
     );
+    assert_eq!(
+        bytes(&Item::Event(Event::Hover { leave: false, column: 2, row: 20 })),
+        [0xFF, 0x43, 0x03, 0x00, 0x02, 0x14]
+    );
+    // Touch (REQ-RCH-055): a tap, a second finger, two fingers moving.
+    assert_eq!(bytes(&mouse(MouseAction::Press, 0, at, Device::Touch)), [0xFF, 0x02, 0x10, 0x00, 0x0A, 0x05]);
+    let second = |action, pixels| Item::Event(Event::Touch(Touch { action, id: 1, column: 11, row: 5, pixels }));
+    assert_eq!(bytes(&second(MouseAction::Press, None)), [0xFF, 0x44, 0x04, 0x00, 0x01, 0x0B, 0x05]);
+    assert_eq!(
+        bytes(&mouse(MouseAction::Move, 1, dot(121), Device::Touch)),
+        [0xFF, 0x02, 0x16, 0x01, 0x0A, 0x05, 0x79, 0x64]
+    );
+    assert_eq!(
+        bytes(&second(MouseAction::Move, Some((133, 100)))),
+        [0xFF, 0x44, 0x07, 0x06, 0x01, 0x0B, 0x05, 0x85, 0x01, 0x64]
+    );
+    let resume = bytes(&Item::Event(Event::Resume(Resume { token: [0; crate::TOKEN_BYTES], acked: 0 })));
+    assert_eq!((resume.len(), &resume[..3]), (21, [0xFF, 0x45, 0x12].as_slice()));
 }
 
 // REQ-INT-103.
@@ -59,7 +94,12 @@ fn every_event_round_trips() {
             text: None,
             base: Some('\''),
         }),
-        Event::Mouse(Mouse { action: MouseAction::Move, button: 0b101, at }),
+        Event::Mouse(Mouse { action: MouseAction::Move, button: 0b101, at, device: Device::Mouse }),
+        Event::Mouse(Mouse { action: MouseAction::Gone, button: 1, at, device: Device::Touch }),
+        Event::Mouse(Mouse { action: MouseAction::Press, button: 2, at, device: Device::Pen }),
+        Event::Touch(Touch { action: MouseAction::Move, id: 9, column: 71, row: 24, pixels: Some((863, 499)) }),
+        Event::Touch(Touch { action: MouseAction::Gone, id: 1, column: 0, row: 0, pixels: None }),
+        Event::Resume(Resume { token: [0xA5; crate::TOKEN_BYTES], acked: 0xFFFE }),
         Event::Wheel(Wheel { dx: -240, dy: 1, at }),
         Event::Paste("line one\nline two\t\u{7}"),
         Event::FocusIn,
@@ -142,15 +182,130 @@ fn a_stream_split_anywhere_decodes_alike() {
     }
 }
 
-// REQ-INT-110.
+// REQ-INT-110, REQ-INT-126, amended by REQ-RCH-012 and REQ-RCH-054 (decision E.133):
+// what is never acknowledged counts nothing.
 #[test]
 fn the_input_count_counts_characters_and_events() {
     assert_eq!(units(&Item::Text("héllo")), 5);
     assert_eq!(units(&Item::Event(Event::Paste("a long paste"))), 1);
     assert_eq!(units(&Item::Event(Event::FocusIn)), 1);
+    let at = Point { column: 1, row: 1, pixels: None, mods: 0 };
+    let mouse = |action| Item::Event(Event::Mouse(Mouse { action, button: 0, at, device: Device::Touch }));
+    let touch = |action| Item::Event(Event::Touch(Touch { action, id: 1, column: 1, row: 1, pixels: None }));
+    for (action, counted) in
+        [(MouseAction::Press, 1), (MouseAction::Release, 1), (MouseAction::Move, 0), (MouseAction::Gone, 0)]
+    {
+        assert_eq!(units(&mouse(action)), counted, "MOUSE {action:?}");
+        assert_eq!(units(&touch(action)), counted, "TOUCH {action:?}");
+    }
+    assert_eq!(units(&Item::Event(Event::Hover { leave: false, column: 1, row: 1 })), 0, "HOVER");
+    assert_eq!(units(&Item::Event(Event::Compose { cursor: 0, text: "か" })), 0, "COMPOSE");
+    assert_eq!(units(&Item::Event(Event::Resume(Resume { token: [0; crate::TOKEN_BYTES], acked: 1 }))), 0);
 }
 
-/// Decision E.129: HOVER is the extension `0x43`, `flags`, `col` and `row`;
+/// REQ-INT-124, REQ-RCH-042, decision E.133: MOUSE's `flags` bits 4 and 5 give the
+/// device, 0 mouse, 1 touch, 2 pen; 3 is refused, and so are bits 6 and 7.
+/// A mouse's bytes are those of before.
+#[test]
+fn mouse_carries_its_device() {
+    let at = Point { column: 10, row: 5, pixels: None, mods: 0 };
+    for (device, flags) in [(Device::Mouse, 0x00), (Device::Touch, 0x10), (Device::Pen, 0x20)] {
+        let item = Item::Event(Event::Mouse(Mouse { action: MouseAction::Press, button: 0, at, device }));
+        assert_eq!(bytes(&item), [0xFF, 0x02, flags, 0x00, 0x0A, 0x05], "{device:?}");
+    }
+    assert_eq!(read(&[0xFF, 0x02, 0x30, 0x00, 0x0A, 0x05]), Err(InputError::BadValue("mouse device")));
+    assert_eq!(read(&[0xFF, 0x02, 0x40, 0x00, 0x0A, 0x05]), Err(InputError::Flags));
+    assert_eq!(read(&[0xFF, 0x02, 0x80, 0x00, 0x0A, 0x05]), Err(InputError::Flags));
+}
+
+/// REQ-INT-123, REQ-RCH-034, REQ-RCH-046, decision E.133: MOUSE action 3 is gone, the
+/// buttons held as on a move; it was a protocol error before.
+#[test]
+fn mouse_action_3_is_gone() {
+    let at = Point { column: 3, row: 4, pixels: None, mods: 0 };
+    let gone = Item::Event(Event::Mouse(Mouse { action: MouseAction::Gone, button: 1, at, device: Device::Mouse }));
+    assert_eq!(bytes(&gone), [0xFF, 0x02, 0x03, 0x01, 0x03, 0x04]);
+    assert_eq!(read(&[0xFF, 0x02, 0x03, 0x01, 0x03, 0x04]), Ok(Some((gone, 6))));
+}
+
+/// REQ-INT-124, REQ-RCH-043, decision E.133: TOUCH is the extension `0x44`, `flags`
+/// (the action, the dot), `id` 1 to 9, the cell and the dot; an id out of
+/// range, a reserved flag, a cell off the page, a dot missing and bytes
+/// after are refused. A receiver that does not know `0x44` skips it.
+#[test]
+fn touch_round_trips_and_is_checked() {
+    let down = Item::Event(Event::Touch(Touch { action: MouseAction::Press, id: 1, column: 10, row: 5, pixels: None }));
+    assert_eq!(bytes(&down), [0xFF, 0x44, 0x04, 0x00, 0x01, 0x0A, 0x05]);
+    let moved = Item::Event(Event::Touch(Touch {
+        action: MouseAction::Move,
+        id: 2,
+        column: 10,
+        row: 5,
+        pixels: Some((121, 100)),
+    }));
+    assert_eq!(bytes(&moved), [0xFF, 0x44, 0x06, 0x06, 0x02, 0x0A, 0x05, 0x79, 0x64]);
+    for bad in [
+        [0xFF, 0x44, 0x04, 0x00, 0x00, 0x0A, 0x05].as_slice(),
+        &[0xFF, 0x44, 0x04, 0x00, 0x0A, 0x0A, 0x05],
+        &[0xFF, 0x44, 0x04, 0x08, 0x01, 0x0A, 0x05],
+        &[0xFF, 0x44, 0x04, 0x00, 0x01, 0x48, 0x05],
+        &[0xFF, 0x44, 0x04, 0x04, 0x01, 0x0A, 0x05],
+        &[0xFF, 0x44, 0x05, 0x00, 0x01, 0x0A, 0x05, 0x00],
+    ] {
+        assert!(read_message(bad, &mut |_| {}).is_err(), "{bad:?}");
+    }
+    // A field cut short inside a payload is refused at once, never waited
+    // for: a stream decoder would otherwise hold it until its buffer filled.
+    assert_eq!(read(&[0xFF, 0x44, 0x03, 0x04, 0x01, 0x0A]), Err(InputError::BadValue("extension cut short")));
+    assert_eq!(read(&[0xFF, 0x43, 0x01, 0x00]), Err(InputError::BadValue("extension cut short")), "HOVER too");
+    // The longest moves fit a holder of one.
+    let far = Point { column: 71, row: 24, pixels: Some((u32::MAX, u32::MAX)), mods: u8::MAX };
+    let longest_mouse =
+        Item::Event(Event::Mouse(Mouse { action: MouseAction::Move, button: 0xFF, at: far, device: Device::Pen }));
+    let longest_touch = Item::Event(Event::Touch(Touch {
+        action: MouseAction::Move,
+        id: crate::MAX_TOUCH_ID,
+        column: 71,
+        row: 24,
+        pixels: Some((u32::MAX, u32::MAX)),
+    }));
+    assert_eq!(bytes(&longest_mouse).len().max(bytes(&longest_touch).len()), MAX_MOVE_BYTES);
+}
+
+/// REQ-INT-125, REQ-RCH-013, decision E.133: RESUME is the extension `0x45`, the token
+/// and the last acknowledgement big-endian, exactly 18 bytes.
+#[test]
+fn resume_round_trips_and_is_checked() {
+    let token = [0x11; crate::TOKEN_BYTES];
+    let resume = Item::Event(Event::Resume(Resume { token, acked: 0x0102 }));
+    let written = bytes(&resume);
+    assert_eq!(&written[..3], &[0xFF, 0x45, 18]);
+    assert_eq!(&written[3..19], &token);
+    assert_eq!(&written[19..], &[0x01, 0x02]);
+    let mut short = written.clone();
+    short[2] = 17;
+    short.pop();
+    assert_eq!(read(&short), Err(InputError::BadValue("resume")));
+}
+
+/// REQ-INT-106, REQ-INT-124, INPUT.md section 6.2: what each event needs both sides to have agreed.
+#[test]
+fn each_new_event_needs_its_capability() {
+    use crate::caps::{RESUME_CAP, TOUCH_CAP};
+    let at = Point { column: 1, row: 1, pixels: None, mods: 0 };
+    let mouse = |device| Event::Mouse(Mouse { action: MouseAction::Press, button: 0, at, device });
+    assert_eq!(needs(&mouse(Device::Mouse)), 0);
+    assert_eq!(needs(&mouse(Device::Touch)), TOUCH_CAP);
+    assert_eq!(needs(&mouse(Device::Pen)), TOUCH_CAP);
+    assert_eq!(
+        needs(&Event::Touch(Touch { action: MouseAction::Press, id: 1, column: 1, row: 1, pixels: None })),
+        TOUCH_CAP
+    );
+    assert_eq!(needs(&Event::Resume(Resume { token: [0; crate::TOKEN_BYTES], acked: 0 })), RESUME_CAP);
+    assert_eq!(needs(&Event::FocusIn), 0);
+}
+
+/// REQ-INT-121, decision E.129: HOVER is the extension `0x43`, `flags`, `col` and `row`;
 /// it reads back, and a bad flag, a cell off the page or bytes after are
 /// refused. A receiver that does not know `0x43` skips it as any extension.
 #[test]

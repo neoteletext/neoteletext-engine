@@ -11,7 +11,7 @@ use crate::channel::{self, ChannelFile};
 use crate::consts::{CACHE_ENTRIES, PAGE_QUEUE, PUSH_RETRY_FIRST_US, STATUS_GONE, STATUS_NOT_FOUND, STATUS_OK};
 use crate::descriptor::{Descriptor, PushMethod};
 use crate::http::{MediaType, ResponseHead};
-use crate::port::{ConnectionId, RandomSource};
+use crate::port::RandomSource;
 use crate::sse::SseParser;
 use crate::url::Url;
 
@@ -174,8 +174,9 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
         self.forget_catalogues();
         self.navigation_pending = via_link;
         if self.push.phase != PushPhase::Idle {
-            sink(Output::Close { connection: ConnectionId::Push });
+            self.close_push(sink);
         }
+        self.forget_push_writes();
         self.push.phase = PushPhase::Idle;
         self.push.delay_us = PUSH_RETRY_FIRST_US;
         self.push.sse = SseParser::new();

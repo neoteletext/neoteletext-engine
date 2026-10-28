@@ -24,7 +24,31 @@ pub const MAX_ROWS: u32 = 25;
 pub const MAX_PER_SECOND: u32 = 120;
 /// How long a receiver waits for WELCOME (section 6.1).
 pub const WELCOME_TIMEOUT_MS: u32 = 10_000;
+/// The most contacts on the page at once (section 5.4, REQ-RCH-043): ten
+/// fingers. The first is MOUSE's, the others TOUCH's.
+pub const MAX_CONTACTS: usize = 10;
+/// The highest TOUCH `id`: contact 0 is MOUSE's.
+pub const MAX_TOUCH_ID: u8 = (MAX_CONTACTS - 1) as u8;
+/// The pointer's moves a second (REQ-RCH-031): at most one in each period
+/// of 1000/60 ms, the display's refresh (the owner's decision of 28 October
+/// 2026). The period is not a whole number of microseconds, so the pacer
+/// counts it exactly ([`crate::pace`]).
+pub const MOVES_PER_SECOND: u64 = 60;
+/// The bytes of a session's token (section 6.4, REQ-RCH-013): 128 bits from
+/// the channel's cryptographic generator, which no one can guess within
+/// the session's hold.
+pub const TOKEN_BYTES: usize = 16;
+/// How long a channel that set RESUME holds a session whose connection was
+/// lost, at least (section 6.4): longer than the push connection's first
+/// five retries, 1, 2, 4, 8 and 16 s (the engine's `PUSH_RETRY_FIRST_US`,
+/// doubling), so a reconnection after a short break resumes.
+pub const RESUME_HOLD_MS: u32 = 32_000;
+/// The bytes of unacknowledged messages a resumable receiver keeps to send
+/// again (section 6.4): four of the largest message, a paste among them.
+pub const RESEND_BYTES: usize = 4 * MAX_MESSAGE;
 
+// A TOUCH id fits its byte, and every id from 1 is a contact.
+const _: () = assert!(MAX_CONTACTS > 1 && MAX_CONTACTS <= 1 + u8::MAX as usize);
 // A PASTE, its event byte, type and length, fits a message.
 const _: () = assert!(MAX_PASTE + 2 + wire::MAX_VARINT <= MAX_MESSAGE);
 // Section 7.2: a control message is at most 26 bytes, so its record, with

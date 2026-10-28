@@ -37,18 +37,16 @@ pub const MODE_COLUMN_RESERVED_2: u8 = 0x05;
 /// Column mode 00101, reserved in Table 29, is NeoTeletext's control
 /// triplet (decision E.127): cells a page answers itself.
 pub const MODE_CONTROL: u8 = MODE_COLUMN_RESERVED_2;
-/// Column mode 01010, reserved in Table 29, is NeoTeletext's pointer-area
-/// triplet (decision E.128): cells where every move goes to the channel.
-pub const MODE_POINTER_AREA: u8 = MODE_COLUMN_RESERVED_3;
-/// A control or pointer-area triplet's data bits D5 to D0: its width, 1 to
-/// 40 cells; 0, in a pointer area not joined, the whole page.
+/// A control triplet's data bits D5 to D0: its width, 1 to 40 cells.
 pub const CONTROL_WIDTH_MASK: u8 = 0x3F;
 /// A control triplet's data bit D6: the run joins the control on the row
 /// above, at the same column and width.
 pub const CONTROL_JOINED: u8 = 0x40;
 /// Column mode 00110: Programme Delivery Control.
 pub const MODE_COLUMN_PDC: u8 = 0x06;
-/// Column mode 01010: reserved.
+/// Column mode 01010: reserved. It was NeoTeletext's pointer-area triplet
+/// from 27 to 28 October 2026 (decision E.128), withdrawn by decision E.133
+/// (REQ-RCH-037): reserved again, as Table 29 has it.
 pub const MODE_COLUMN_RESERVED_3: u8 = 0x0A;
 /// Column mode 01011: G3 character at Level 2.5, ignored at 1.5.
 pub const MODE_G3_LEVEL_25: u8 = 0x0B;

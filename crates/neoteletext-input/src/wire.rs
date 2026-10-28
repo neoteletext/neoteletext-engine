@@ -8,6 +8,8 @@ pub const MAX_VARINT: usize = 5;
 const GROUP_BITS: u32 = 7;
 /// The low seven bits of a byte.
 const GROUP: u32 = 0x7F;
+/// The largest value a varint holds in one byte.
+pub const ONE_BYTE_MAX: u32 = GROUP;
 /// The bit that says another byte follows.
 const MORE: u8 = 0x80;
 /// The bits of a 32-bit value, for the zigzag mapping's sign.

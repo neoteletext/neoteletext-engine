@@ -1,6 +1,8 @@
 # F.23 Input: keys sent back to a channel (INT)
 
-This area is the input system: a receiver sends the viewer's input to a channel over the channel's push WebSocket, as a terminal sends keys to its host, and the channel answers with pushed rows and records that place a cursor, acknowledge input and ask for input modes. The design and the normative text of REQ-INT-101 to REQ-INT-121 are `neoteletext-common/INPUT.md` (protocol version 2, adopted on 21 October 2026, decision E.100), which replaced `docs/spec/design/input.md` and decision E.90's key record. Requirements REQ-INT-130 to REQ-INT-139 of that document are the browser's. Everything is built in `neoteletext-input` (`no_std`, no allocation).
+This area is the input system: a receiver sends the viewer's input to a channel over the channel's push WebSocket, as a terminal sends keys to its host, and the channel answers with pushed rows and records that place a cursor, acknowledge input and ask for input modes. The design and the normative text of REQ-INT-101 to REQ-INT-126 are `neoteletext-common/INPUT.md` (protocol version 2, adopted on 21 October 2026, decision E.100), which replaced `docs/spec/design/input.md` and decision E.90's key record. Requirements REQ-INT-130 to REQ-INT-139 of that document are the browser's. Everything is built in `neoteletext-input` (`no_std`, no allocation).
+
+*Amended 28 October 2026 (decision E.133):* the return channel of `neoteletext-common/RETURN-CHANNEL.md` (its requirements REQ-RCH-010 to REQ-RCH-055 that name the engine or `common`) is adopted into `INPUT.md`: REQ-INT-103, REQ-INT-106, REQ-INT-108 to REQ-INT-112, REQ-INT-115 and REQ-INT-121 are amended there, REQ-INT-120 is withdrawn, and REQ-INT-122 to REQ-INT-126 are added. The push WebSocket's part is REQ-WEB-035.
 
 **REQ-INT-001 — Withdrawn (the key record).**
 *Phase:* Phase 2 (the whole area).
@@ -45,6 +47,7 @@ As `neoteletext-common/INPUT.md` section 12, which holds its text, its reason an
 
 **REQ-INT-103 — Events.**
 As `neoteletext-common/INPUT.md` section 12, which holds its text, its reason and its verification.
+*Amended 28 October 2026 (decision E.133):* there.
 
 **REQ-INT-104 — Keys.**
 As `neoteletext-common/INPUT.md` section 12, which holds its text, its reason and its verification.
@@ -54,24 +57,30 @@ As `neoteletext-common/INPUT.md` section 12, which holds its text, its reason an
 
 **REQ-INT-106 — Negotiation.**
 As `neoteletext-common/INPUT.md` section 12, which holds its text, its reason and its verification.
+*Amended 28 October 2026 (decision E.133):* there.
 
 **REQ-INT-107 — Modes.**
 As `neoteletext-common/INPUT.md` section 12, which holds its text, its reason and its verification.
 
 **REQ-INT-108 — Held input.**
 As `neoteletext-common/INPUT.md` section 12, which holds its text, its reason and its verification.
+*Amended 28 October 2026 (decision E.133):* there.
 
 **REQ-INT-109 — The rate.**
 As `neoteletext-common/INPUT.md` section 12, which holds its text, its reason and its verification.
+*Amended 28 October 2026 (decision E.133):* there.
 
 **REQ-INT-110 — The cursor record and the input count.**
 As `neoteletext-common/INPUT.md` section 12, which holds its text, its reason and its verification.
+*Amended 28 October 2026 (decision E.133):* there.
 
 **REQ-INT-111 — The control record.**
 As `neoteletext-common/INPUT.md` section 12, which holds its text, its reason and its verification.
+*Amended 28 October 2026 (decision E.133):* there.
 
 **REQ-INT-112 — Immediacy.**
 As `neoteletext-common/INPUT.md` section 12, which holds its text, its reason and its verification.
+*Amended 28 October 2026 (decision E.133):* there.
 
 **REQ-INT-113 — A host goes to a page.**
 As `neoteletext-common/INPUT.md` section 12, which holds its text, its reason and its verification.
@@ -81,6 +90,37 @@ As `neoteletext-common/INPUT.md` section 12, which holds its text, its reason an
 
 **REQ-INT-115 — The mouse only on request.**
 As `neoteletext-common/INPUT.md` section 12, which holds its text, its reason and its verification.
+*Amended 28 October 2026 (decision E.133, REQ-RCH-030):* every move over the open page goes, at most 60 a second (REQ-INT-122).
 
 **REQ-INT-116 — International keyboards.**
 As `neoteletext-common/INPUT.md` section 12, which holds its text, its reason and its verification.
+
+**REQ-INT-117 — Controls.**
+As `neoteletext-common/INPUT.md` section 12, which holds its text, its reason and its verification.
+
+**REQ-INT-118 — Controls are bounded and checked.**
+As `neoteletext-common/INPUT.md` section 12, which holds its text, its reason and its verification.
+
+**REQ-INT-119 — Controls and links under the pointer.**
+As `neoteletext-common/INPUT.md` section 12, which holds its text, its reason and its verification.
+
+**REQ-INT-120 — Withdrawn (pointer areas).**
+Withdrawn on 28 October 2026 (decision E.133, REQ-RCH-037): column mode 01010 is reserved again; `neoteletext-common/INPUT.md` section 12 keeps its text as history.
+
+**REQ-INT-121 — HOVER.**
+As `neoteletext-common/INPUT.md` section 12, which holds its text, its reason and its verification.
+
+**REQ-INT-122 — The pointer's moves at 60 a second.**
+As `neoteletext-common/INPUT.md` section 12, which holds its text, its reason and its verification (decision E.133).
+
+**REQ-INT-123 — Gone.**
+As `neoteletext-common/INPUT.md` section 12, which holds its text, its reason and its verification (decision E.133).
+
+**REQ-INT-124 — Touch.**
+As `neoteletext-common/INPUT.md` section 12, which holds its text, its reason and its verification (decision E.133).
+
+**REQ-INT-125 — Resumption.**
+As `neoteletext-common/INPUT.md` section 12, which holds its text, its reason and its verification (decision E.133).
+
+**REQ-INT-126 — What is never acknowledged counts nothing.**
+As `neoteletext-common/INPUT.md` section 12, which holds its text, its reason and its verification (decision E.133).

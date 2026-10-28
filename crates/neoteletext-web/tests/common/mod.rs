@@ -55,6 +55,8 @@ pub struct Replay {
     pub chunk: usize,
     /// The port offers TLS.
     pub no_tls: bool,
+    /// The push connection's unsent bytes, as the port would see them.
+    pub unsent: usize,
     connections: HashMap<ConnectionId, Connection>,
 }
 
@@ -233,6 +235,10 @@ impl Transport for Replay {
         Ok(Received::Nothing)
     }
 
+    fn unsent(&mut self, connection: ConnectionId) -> usize {
+        if connection == ConnectionId::Push { self.unsent } else { 0 }
+    }
+
     fn close(&mut self, connection: ConnectionId) {
         self.connections.remove(&connection);
     }
@@ -262,6 +268,23 @@ pub fn client_frame(frame: &[u8]) -> (u8, Vec<u8>) {
     let mask = &frame[offset..offset + 4];
     let payload = frame[offset + 4..offset + 4 + len].iter().enumerate().map(|(i, b)| b ^ mask[i % 4]).collect();
     (frame[0] & 0x0F, payload)
+}
+
+/// Every client frame in one send (RFC 6455 section 5.2): the messages of
+/// one moment go together (REQ-RCH-010).
+pub fn client_frames(mut bytes: &[u8]) -> Vec<(u8, Vec<u8>)> {
+    let mut frames = Vec::new();
+    while !bytes.is_empty() {
+        let (length, offset) = match bytes[1] & 0x7F {
+            126 => (usize::from(u16::from_be_bytes([bytes[2], bytes[3]])), 4),
+            127 => panic!("not used"),
+            n => (usize::from(n), 2),
+        };
+        let end = offset + 4 + length;
+        frames.push(client_frame(&bytes[..end]));
+        bytes = &bytes[end..];
+    }
+    frames
 }
 
 /// An unmasked server frame.

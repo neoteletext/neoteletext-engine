@@ -11,8 +11,10 @@ use std::vec::Vec;
 
 use common::{Counter, Replay, Reply, header_value, response};
 #[cfg(feature = "push")]
-use common::{client_frame, server_frame};
+use common::{client_frames, server_frame};
 use neoteletext_core::types::{Instant, PageAddress, SubCode};
+#[cfg(feature = "push")]
+use neoteletext_web::agent::InputMessage;
 use neoteletext_web::agent::{Config, Input, Output, Source, Storage, Subscription, UserAgent};
 use neoteletext_web::bytes::Writer;
 use neoteletext_web::cookie::{CookieJar, Cookies};
@@ -151,6 +153,9 @@ fn copy_net(input: neoteletext_web::port::NetInput<'_>) -> NetCopy {
         NetInput::ConnectFailed(connection) => NetCopy { kind: 1, connection, peer: None, bytes: Vec::new() },
         NetInput::Received(connection, bytes) => NetCopy { kind: 2, connection, peer: None, bytes: bytes.to_vec() },
         NetInput::Closed(connection) => NetCopy { kind: 3, connection, peer: None, bytes: Vec::new() },
+        NetInput::Unsent(connection, unsent) => {
+            NetCopy { kind: 4, connection, peer: None, bytes: unsent.to_le_bytes().to_vec() }
+        }
     }
 }
 
@@ -161,7 +166,8 @@ impl NetCopy {
             0 => NetInput::Connected(self.connection, self.peer.unwrap()),
             1 => NetInput::ConnectFailed(self.connection),
             2 => NetInput::Received(self.connection, &self.bytes),
-            _ => NetInput::Closed(self.connection),
+            3 => NetInput::Closed(self.connection),
+            _ => NetInput::Unsent(self.connection, usize::from_le_bytes(self.bytes.as_slice().try_into().unwrap())),
         }
     }
 }
@@ -679,7 +685,7 @@ fn websocket_push() {
         .iter()
         .filter(|(c, _)| *c == ConnectionId::Push)
         .skip(1)
-        .map(|(_, f)| client_frame(f))
+        .flat_map(|(_, f)| client_frames(f))
         .collect();
     assert_eq!(push_frames[0], (0x1, b"subscribe all".to_vec()));
     assert_eq!(push_frames[1], (0xA, b"hi".to_vec()), "ping answered with pong");
@@ -689,7 +695,7 @@ fn websocket_push() {
     let wanted = [PageAddress::from_mpp(0x100).unwrap(), PageAddress::from_mpp(0x1A0).unwrap()];
     harness.input(Input::Subscribe(Subscription::Pages(&wanted)));
     let (_, last) = harness.replay().sent.last().unwrap().clone();
-    assert_eq!(client_frame(&last), (0x1, b"subscribe 100 1A0".to_vec()));
+    assert_eq!(client_frames(&last).last(), Some(&(0x1, b"subscribe 100 1A0".to_vec())));
     assert_profile_headers(harness.replay());
 }
 
@@ -703,7 +709,7 @@ fn websocket_push_reconnects_with_doubling_delays() {
     let records = harness.open("http://tt.example/service.json");
     assert!(has_event(&records, "PushLost { retry_in_us: 1000000, problem: None }"), "{records:?}");
     let (_, close) = harness.replay().sent.last().unwrap().clone();
-    assert_eq!(client_frame(&close), (0x8, 1000u16.to_be_bytes().to_vec()), "close answered");
+    assert_eq!(client_frames(&close).last(), Some(&(0x8, 1000u16.to_be_bytes().to_vec())), "close answered");
     harness.advance(SECOND);
     assert!(has_event(&harness.take(), "PushLost { retry_in_us: 2000000"));
     harness.advance(2 * SECOND);
@@ -726,7 +732,7 @@ fn websocket_push_protocol_errors() {
     assert!(has_event(&records, "PushLost { retry_in_us: 0, problem: Some(PacketLength)"));
     assert!(has_event(&records, "PushLost { retry_in_us: 1000000, problem: Some(WebSocket(Protocol))"), "{records:?}");
     let (_, close) = harness.replay().sent.last().unwrap().clone();
-    assert_eq!(client_frame(&close), (0x8, 1002u16.to_be_bytes().to_vec()));
+    assert_eq!(client_frames(&close).last(), Some(&(0x8, 1002u16.to_be_bytes().to_vec())));
     // A wrong accept value fails the handshake.
     harness.replay().reply("tt.example:80", Reply::BadWebSocket);
     harness.advance(SECOND);
@@ -1622,7 +1628,20 @@ fn push_frames(harness: &mut Harness) -> Vec<(u8, Vec<u8>)> {
         .iter()
         .filter(|(c, _)| *c == ConnectionId::Push)
         .skip(1)
-        .map(|(_, f)| client_frame(f))
+        .flat_map(|(_, f)| client_frames(f))
+        .collect()
+}
+
+/// The push connection's sends after the handshake, each as its frames.
+#[cfg(feature = "push")]
+fn push_sends(harness: &mut Harness) -> Vec<Vec<(u8, Vec<u8>)>> {
+    harness
+        .replay()
+        .sent
+        .iter()
+        .filter(|(c, _)| *c == ConnectionId::Push)
+        .skip(1)
+        .map(|(_, f)| client_frames(f))
         .collect()
 }
 
@@ -1634,17 +1653,17 @@ fn input_goes_on_the_push_websocket_only_when_declared() {
     let record = [1u8, 1, 0, 1, 0, 0, 0, 9, 0, 0x61, 0, 0, 0, 0];
     let mut harness = input_service(true);
     assert!(has_event(&harness.open("http://tt.example/service.json"), "PushConnected(WebSocket)"));
-    harness.input(Input::Send(&record));
-    assert_eq!(push_frames(&mut harness).last(), Some(&(0x2, record.to_vec())));
+    harness.input(Input::Send(InputMessage::alone(&record)));
+    assert_eq!(push_frames(&mut harness).last(), Some(&(0x2, record.to_vec())), "binary (REQ-RCH-017)");
     assert!(!has_event(&harness.take(), "InputDropped"));
     // Too long for the input profile.
-    harness.input(Input::Send(&[0; neoteletext_web::consts::INPUT_MESSAGE_MAX + 1]));
+    harness.input(Input::Send(InputMessage::alone(&[0; neoteletext_web::consts::INPUT_MESSAGE_MAX + 1])));
     assert!(has_event(&harness.take(), "InputDropped"));
     // A channel that does not take input sends nothing.
     let mut harness = input_service(false);
     harness.open("http://tt.example/service.json");
     let before = push_frames(&mut harness).len();
-    harness.input(Input::Send(&record));
+    harness.input(Input::Send(InputMessage::alone(&record)));
     assert!(has_event(&harness.take(), "InputDropped"));
     assert_eq!(push_frames(&mut harness).len(), before);
 }
@@ -1664,6 +1683,137 @@ fn a_silent_websocket_is_pinged_then_given_up() {
     assert!(!has_event(&harness.take(), "PushLost"));
     harness.advance(SECOND);
     assert!(has_event(&harness.take(), "PushLost { retry_in_us: 1000000, problem: Some(Failure(Timeout)) }"));
+}
+
+/// REQ-WEB-035, REQ-RCH-010, decision E.133: messages given together leave in one send,
+/// one write and one TLS record, in order, each its own WebSocket message;
+/// a lone one is written before `handle` returns, with no tick.
+#[test]
+#[cfg(feature = "push")]
+fn messages_waiting_together_leave_in_one_write() {
+    let mut harness = input_service(true);
+    harness.open("http://tt.example/service.json");
+    let before = push_sends(&mut harness).len();
+    let (left, entered) = ([0xFF, 0x43, 3, 1, 2, 20], [0xFF, 0x43, 3, 0, 11, 20]);
+    harness.handle(Input::Send(InputMessage { bytes: &left, move_of: None, more: true }));
+    assert_eq!(push_sends(&mut harness).len(), before, "nothing yet: more follows at once");
+    harness.handle(Input::Send(InputMessage { bytes: &entered, move_of: None, more: false }));
+    let sends = push_sends(&mut harness);
+    assert_eq!(sends.len(), before + 1, "one send");
+    assert_eq!(sends.last().unwrap(), &[(0x2, left.to_vec()), (0x2, entered.to_vec())], "two messages, in order");
+    harness.handle(Input::Send(InputMessage::alone(b"a")));
+    assert_eq!(push_sends(&mut harness).last().unwrap(), &[(0x2, b"a".to_vec())], "a lone event at once");
+}
+
+/// REQ-WEB-035, REQ-RCH-035, decision E.133: against a stalled socket a move waits in
+/// its contact's slot, the latest replacing it; any other event writes it
+/// first, then itself; once the socket drains, the latest held is written,
+/// one move and no backlog.
+#[test]
+#[cfg(feature = "push")]
+fn moves_wait_while_the_socket_is_stalled_and_only_the_latest_goes() {
+    use neoteletext_web::consts::PUSH_UNSENT_BOUND;
+    let mouse_move = |x: u8| [0xFF, 0x02, 0x06, 0x00, 0x01, 0x05, x, 0x64];
+    let touch_move = |x: u8| [0xFF, 0x44, 0x06, 0x06, 0x02, 0x01, 0x05, x, 0x64];
+    let send_move = |harness: &mut Harness, bytes: &[u8], contact: u8| {
+        harness.input(Input::Send(InputMessage { bytes, move_of: Some(contact), more: false }));
+    };
+    let mut harness = input_service(true);
+    harness.open("http://tt.example/service.json");
+    send_move(&mut harness, &mouse_move(1), 0);
+    assert_eq!(push_frames(&mut harness).last(), Some(&(0x2, mouse_move(1).to_vec())), "a free socket: at once");
+    // The socket stalls: the port reports its unsent bytes over the bound.
+    harness.replay().unsent = PUSH_UNSENT_BOUND;
+    harness.input(Input::Tick);
+    let before = push_sends(&mut harness).len();
+    for x in 2..=9 {
+        send_move(&mut harness, &mouse_move(x), 0);
+        send_move(&mut harness, &touch_move(x), 2);
+    }
+    assert_eq!(push_sends(&mut harness).len(), before, "nothing written behind the network");
+    // A key: the moves held first, then the key, together.
+    let key = [0xFF, 0x01, 0x10, b'a', 1, b'a'];
+    harness.input(Input::Send(InputMessage::alone(&key)));
+    assert_eq!(
+        push_sends(&mut harness).last().unwrap(),
+        &[(0x2, mouse_move(9).to_vec()), (0x2, touch_move(9).to_vec()), (0x2, key.to_vec())],
+        "a release never waits behind a move, nor comes before it"
+    );
+    for x in 10..=20 {
+        send_move(&mut harness, &mouse_move(x), 0);
+    }
+    let before = push_sends(&mut harness).len();
+    harness.replay().unsent = 0;
+    harness.input(Input::Tick);
+    let sends = push_sends(&mut harness);
+    assert_eq!(sends.len(), before + 1);
+    assert_eq!(sends.last().unwrap(), &[(0x2, mouse_move(20).to_vec())], "after the stall, one move, the latest");
+    // A move longer than a slot, or of no contact, is dropped.
+    harness.replay().unsent = PUSH_UNSENT_BOUND;
+    harness.input(Input::Tick);
+    harness.take();
+    send_move(&mut harness, &[0xFF; 40], 0);
+    send_move(&mut harness, &mouse_move(1), 10);
+    let dropped = harness.take().iter().filter(|record| matches!(record, Rec::Event(e) if e == "InputDropped")).count();
+    assert_eq!(dropped, 2);
+}
+
+/// REQ-WEB-035, REQ-RCH-016, decision E.133: while keys go to the channel the round trip
+/// is measured by a ping of one byte, at most once a second, and reported
+/// when its pong comes; the heartbeat's empty pong is not taken for it.
+#[test]
+#[cfg(feature = "push")]
+fn the_round_trip_is_measured_by_ping_and_pong() {
+    let mut harness = input_service(true);
+    harness.open("http://tt.example/service.json");
+    harness.input(Input::MeasureRoundTrip(true));
+    harness.input(Input::Tick);
+    let ping = push_frames(&mut harness).last().cloned().unwrap();
+    assert_eq!(ping.0, 0x9, "a ping");
+    assert_eq!(ping.1.len(), 1, "of one byte");
+    harness.replay().inject(ConnectionId::Push, &server_frame(0xA, b""));
+    harness.advance(3_000);
+    assert!(!has_event(&harness.take(), "RoundTrip"), "an empty pong is the heartbeat's");
+    harness.replay().inject(ConnectionId::Push, &server_frame(0xA, &ping.1));
+    harness.advance(2_000);
+    assert!(has_event(&harness.take(), "RoundTrip { microseconds: 5000 }"));
+    let pings = |harness: &mut Harness| push_frames(harness).iter().filter(|(opcode, _)| *opcode == 0x9).count();
+    let sent = pings(&mut harness);
+    harness.advance(SECOND / 2);
+    assert_eq!(pings(&mut harness), sent, "not within the second");
+    harness.advance(SECOND / 2);
+    assert_eq!(pings(&mut harness), sent + 1, "a second after the last");
+    harness.input(Input::MeasureRoundTrip(false));
+    harness.advance(5 * SECOND);
+    assert_eq!(pings(&mut harness), sent + 1, "off: no more");
+}
+
+/// REQ-WEB-035, REQ-RCH-015, REQ-RCH-017, decision E.133: the push WebSocket is a
+/// connection of its own, an HTTP/1.1 upgrade asking for no extension, so
+/// permessage-deflate is never offered (and refused when a server answers
+/// with it: `ws::tests`).
+#[test]
+#[cfg(feature = "push")]
+fn the_push_socket_is_a_connection_of_its_own() {
+    let mut harness = input_service(true);
+    harness.open("http://tt.example/service.json");
+    let connects: Vec<_> = harness.replay().connects.iter().map(|(connection, ..)| *connection).collect();
+    assert_eq!(connects, [ConnectionId::Fetch, ConnectionId::Push], "the descriptor's fetch, then push alone");
+    let upgrade = harness.replay().requests_to("tt.example:80")[1].clone();
+    assert!(upgrade.starts_with(b"GET /push HTTP/1.1\r\n"));
+    assert_eq!(header_value(&upgrade, "Sec-WebSocket-Extensions"), None, "no compression asked for");
+    harness.fetch(0x100);
+    let sent = &harness.replay().sent;
+    let upgrades: Vec<_> = sent.iter().filter(|(_, bytes)| bytes.starts_with(b"GET /push")).collect();
+    assert_eq!(upgrades.len(), 1);
+    assert_eq!(upgrades[0].0, ConnectionId::Push);
+    assert!(
+        sent.iter()
+            .filter(|(connection, _)| *connection == ConnectionId::Push)
+            .skip(1)
+            .all(|(_, bytes)| bytes[0] & 0x80 != 0),
+        "after the upgrade, only WebSocket frames on the push socket: never a fetch"
+    );
 }
 
 /// A silent event stream is made again after a minute.

@@ -96,3 +96,20 @@ fn a_refusing_proxy_fails_the_connection() {
     proxy.join().unwrap();
     assert!(Proxy::parse("ftp://p.example:21").is_err());
 }
+
+/// REQ-WEB-035, REQ-RCH-014, decision E.133: one TLS configuration, shared by every
+/// connection, keeps sessions to resume and never sends early data.
+#[test]
+fn tls_resumes_and_sends_no_early_data() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    let (wake, _) = mpsc::channel();
+    let transport = StdTransport::new(&[], wake, None);
+    assert!(!transport.tls.enable_early_data, "no 0-RTT: an input message could be replayed");
+    let shared = Arc::clone(&transport.tls);
+    assert!(Arc::ptr_eq(&shared, &transport.tls), "one configuration, so one store of sessions");
+    assert!(
+        format!("{:?}", transport.tls.resumption).contains("MemoryCache"),
+        "sessions kept in memory to resume: {:?}",
+        transport.tls.resumption
+    );
+}

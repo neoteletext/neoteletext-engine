@@ -2,6 +2,8 @@
 //! 8, REQ-INT-108): the keys and buttons a receiver has pressed and not
 //! released. On `FOCUS_OUT`, or when the connection is lost, the channel
 //! treats every one as released; the receiver sends no releases for them.
+//! A pointer gone (MOUSE or TOUCH action 3, REQ-RCH-046) releases what it
+//! held the same way: without a click.
 
 use crate::event::{Action, Event, Item, KeyCode, MouseAction};
 
@@ -18,6 +20,8 @@ pub struct Held {
     keys: [Option<KeyCode>; MAX_HELD_KEYS],
     /// Bit `n` set while button `n` is held.
     buttons: u8,
+    /// Bit `n` set while TOUCH contact `n` is down (REQ-RCH-043).
+    contacts: u16,
 }
 
 /// Something to treat as released.
@@ -27,13 +31,18 @@ pub enum Released {
     Key(KeyCode),
     /// A mouse button.
     Button(u8),
+    /// A TOUCH contact, by its `id`.
+    Contact(u8),
 }
+
+// Every TOUCH id has its bit.
+const _: () = assert!(crate::MAX_CONTACTS <= u16::BITS as usize);
 
 impl Held {
     /// Nothing held.
     #[must_use]
     pub const fn new() -> Self {
-        Self { keys: [None; MAX_HELD_KEYS], buttons: 0 }
+        Self { keys: [None; MAX_HELD_KEYS], buttons: 0, contacts: 0 }
     }
 
     /// Takes one item of the stream; on `FOCUS_OUT`, gives each held key and
@@ -57,12 +66,32 @@ impl Held {
                     }
                 }
             },
-            Event::Mouse(mouse) if mouse.button < BUTTONS => {
-                let bit = 1_u8 << mouse.button;
-                match mouse.action {
-                    MouseAction::Press => self.buttons |= bit,
-                    MouseAction::Release => self.buttons &= !bit,
-                    MouseAction::Move => {}
+            Event::Mouse(mouse) => match mouse.action {
+                MouseAction::Press if mouse.button < BUTTONS => self.buttons |= 1_u8 << mouse.button,
+                MouseAction::Release if mouse.button < BUTTONS => self.buttons &= !(1_u8 << mouse.button),
+                // On gone `button` is the mask of those held: each is let go
+                // without a click.
+                MouseAction::Gone => {
+                    for button in 0..BUTTONS {
+                        let bit = 1_u8 << button;
+                        if self.buttons & mouse.button & bit != 0 {
+                            self.buttons &= !bit;
+                            released(Released::Button(button));
+                        }
+                    }
+                }
+                _ => {}
+            },
+            Event::Touch(touch) => {
+                let bit = 1_u16.checked_shl(u32::from(touch.id)).unwrap_or(0);
+                match touch.action {
+                    MouseAction::Press => self.contacts |= bit,
+                    MouseAction::Release => self.contacts &= !bit,
+                    MouseAction::Gone if self.contacts & bit != 0 => {
+                        self.contacts &= !bit;
+                        released(Released::Contact(touch.id));
+                    }
+                    _ => {}
                 }
             }
             Event::FocusOut => self.release_all(released),
@@ -84,17 +113,23 @@ impl Held {
             }
         }
         self.buttons = 0;
+        for id in 0..u16::BITS {
+            if self.contacts & (1 << id) != 0 {
+                released(Released::Contact(id as u8));
+            }
+        }
+        self.contacts = 0;
     }
 
     /// Whether anything is held.
     #[must_use]
     pub fn any(&self) -> bool {
-        self.buttons != 0 || self.keys.iter().any(Option::is_some)
+        self.buttons != 0 || self.contacts != 0 || self.keys.iter().any(Option::is_some)
     }
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, reason = "a test")]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing, reason = "a test")]
 mod tests {
     use super::*;
     use crate::event::{Key, Mouse, Point, read_message};
@@ -133,6 +168,27 @@ mod tests {
         assert_eq!(released_by(b"ab"), [], "text holds nothing");
     }
 
+    /// REQ-INT-108, REQ-INT-123, REQ-RCH-046, decision E.133: a pointer gone, MOUSE's or a TOUCH's,
+    /// lets go of what it held without a click, and a lost connection lets
+    /// go of every contact down.
+    #[test]
+    fn gone_releases_what_the_pointer_held() {
+        let stream = [
+            0xFF, 0x02, 0x00, 0x00, 0x0A, 0x05, // left button pressed
+            0xFF, 0x02, 0x00, 0x02, 0x0A, 0x05, // right button pressed
+            0xFF, 0x02, 0x03, 0x01, 0x0A, 0x05, // gone, the left held
+            0xFF, 0x44, 0x04, 0x00, 0x03, 0x01, 0x01, // TOUCH 3 down
+            0xFF, 0x44, 0x04, 0x00, 0x05, 0x01, 0x01, // TOUCH 5 down
+            0xFF, 0x44, 0x04, 0x03, 0x03, 0x01, 0x01, // TOUCH 3 gone
+        ];
+        let mut held = Held::new();
+        let mut released = Vec::new();
+        read_message(&stream, &mut |item| held.take(&item, &mut |each| released.push(each))).unwrap();
+        assert_eq!(released, [Released::Button(0), Released::Contact(3)]);
+        held.release_all(&mut |each| released.push(each));
+        assert_eq!(released[2..], [Released::Button(2), Released::Contact(5)], "what is left, on a lost connection");
+    }
+
     #[test]
     fn presses_beyond_the_bound_are_not_tracked() {
         let mut held = Held::new();
@@ -142,7 +198,8 @@ mod tests {
             held.take(&Item::Event(Event::Key(key)), &mut |_| {});
         }
         let at = Point { column: 0, row: 0, pixels: None, mods: 0 };
-        held.take(&Item::Event(Event::Mouse(Mouse { action: MouseAction::Press, button: 200, at })), &mut |_| {});
+        let mouse = Mouse { action: MouseAction::Press, button: 200, at, device: crate::event::Device::Mouse };
+        held.take(&Item::Event(Event::Mouse(mouse)), &mut |_| {});
         let mut count = 0;
         held.release_all(&mut |_| count += 1);
         assert_eq!(count, MAX_HELD_KEYS, "the bound, and no button out of range");

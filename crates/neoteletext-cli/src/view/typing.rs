@@ -173,9 +173,8 @@ impl Typing {
         self.told = None;
         self.focus_told = None;
         if open {
-            let hello = self.input.open(clock_ms, None);
             let mut out = [0_u8; neoteletext_input::MAX_MESSAGE];
-            if let Ok(length) = neoteletext_input::event::write(&neoteletext_input::event::Item::Event(hello), &mut out)
+            if let Ok(length) = self.input.open(clock_ms, None, &mut out)
                 && let Some(message) = out.get(..length)
             {
                 source.send_input(message);
@@ -201,7 +200,7 @@ impl Typing {
                 // A refused WELCOME leaves the session refused, said below.
                 let _ = self.input.control(&control);
             } else if let Some(Ok(cursor)) = neoteletext_input::cursor::from_packet(&packet) {
-                self.input.acknowledged(cursor.acked, clock_ms);
+                self.input.acknowledged(cursor.acked);
                 if let Some(open) = self.told {
                     self.go_to = host_page(cursor.page, open, self.on()).or(self.go_to);
                 }

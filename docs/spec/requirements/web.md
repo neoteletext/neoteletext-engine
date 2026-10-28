@@ -21,6 +21,7 @@ The same code then works with a blocking port, an asynchronous port, a desktop p
 - close.
 
 Certificate checking is the port's responsibility and shall be on by default. Every operation shall be non-blocking and report its results as events (decision E.30 item 3).
+*Amended 28 October 2026 (decision E.133):* the transport also says how many bytes sent on a connection have not yet gone to the network, and a send's bytes go in one write where it can (REQ-WEB-035).
 *Verification:* Test with an in-memory transport that replays recorded exchanges; inspection that the module has no socket or cryptography code.
 *Amended 27 October 2026 (decision E.126):* forms are no longer among the protocols, since the TTI Form Extension is withdrawn.
 
@@ -82,6 +83,7 @@ Pushed content enters the normal acquisition path. **A heartbeat** keeps the con
 The zxnet live feed reader (REQ-INP-022) is a separate, fixed protocol and is not changed by this requirement.
 *Phase:* Phase 1 for WebSocket and server-sent events; Phase 2 for the long-polling fallback.
 *Verification:* Test against the local test server, including dropped connections and resumption; tests of the heartbeat on each method, and of input messages sent only on a channel that declares input.
+*Amended 28 October 2026 (decision E.133):* input on the push WebSocket is also as REQ-WEB-035 says.
 
 **REQ-WEB-006 — Cookies and sessions.**
 The cookie store shall follow current cookie practice (decision E.35): the latest draft of RFC 6265bis, the replacement for RFC 6265, as implemented by current browsers, made stricter wherever neoteletext's single-origin model allows. The following rules apply.
@@ -505,3 +507,13 @@ The agent shall report each answered request on the fetch connection, each hop o
 A receiver that holds a sub-page whose validator is the catalogue's shall treat it as current without asking for its file. The engine's writers give each sub-page the first 16 hexadecimal digits, in lower case, of the SHA-256 digest of its file, and write titles as `contents.txt`'s are made: printable ASCII, spaces folded, cut to 40 characters.
 *Reason:* A page of the standard's 8,190 sub-pages cannot be one page response (REQ-WEB-008), and a receiver that lists them needs their sub-codes and titles without fetching each (decision E.122, `neoteletext-common/STANDARD-LIMITS.md` section 4 item 7). A validator that follows the file lets a receiver skip every unchanged sub-page.
 *Verification:* Tests of each field, of every fault listed, of a long title, of the writer's titles, of every sub-code 0000 to 3F7F with the 8,191st and 8,192nd entries ignored, of a full catalogue within the size limit and a larger file refused (`subpages` unit tests); the fuzz target `subpages`, which writes each entry back and reads it again.
+
+**REQ-WEB-035 — The return channel on the push WebSocket.**
+The input messages of `neoteletext-common/INPUT.md` (area INT) shall travel on the push WebSocket with the least delay and the fewest bytes (`neoteletext-common/RETURN-CHANNEL.md`, decision E.133):
+- **Together, never held back** (REQ-RCH-010). Each input message shall be its own binary WebSocket message, written as it is given; every frame the agent writes on the push connection while it handles one input shall be sent as one send, so that the messages of one moment, and messages the port gives together, leave in one write; nothing shall be held for a timer.
+- **Never behind the network** (REQ-RCH-035). A message given as a contact's move shall be written only while the push socket's unsent bytes, as the port reports them, are under `PUSH_UNSENT_BOUND`; otherwise it shall wait in the contact's one slot, a newer move replacing it, until they fall under it or another message is given, which shall write the moves held first, then itself.
+- **The round trip** (REQ-RCH-016). While the port asks for it, the push WebSocket's round trip shall be measured by a ping at most once a second and reported when its pong comes; the heartbeat of REQ-WEB-005 is unchanged (REQ-RCH-014).
+- **Alone, binary, uncompressed** (REQ-RCH-015, REQ-RCH-017). The push WebSocket shall be a connection of its own, an HTTP/1.1 upgrade that asks for no extension, never carrying a fetch; input shall go in binary frames, and a server that answers with permessage-deflate shall be refused.
+- **No replay** (REQ-RCH-014). A port with TLS should resume a TLS session on a reconnection where the server allows, and shall never send input in TLS early data or a TCP Fast Open SYN.
+*Reason:* the owner's instructions of 28 October 2026 on the return channel's latency and bytes; a move written to TCP cannot be taken back, so coalescing must come before the write.
+*Verification:* agent tests: two messages given together leave in one send, in order, and a lone one before `handle` returns (`messages_waiting_together_leave_in_one_write`); against a stalled socket only the latest move is written after the stall, and a key writes the held moves first (`moves_wait_while_the_socket_is_stalled_and_only_the_latest_goes`); the round trip by ping and pong (`the_round_trip_is_measured_by_ping_and_pong`); the push socket alone (`the_push_socket_is_a_connection_of_its_own`); the WebSocket tests that refuse an extension; `neottx`'s TLS configuration (`tls_resumes_and_sends_no_early_data`).

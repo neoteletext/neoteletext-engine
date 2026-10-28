@@ -94,3 +94,38 @@ fn a_host_goes_to_a_page_by_naming_it() {
     assert_eq!(host_page(0x300, 0x300, true), None, "the page already open");
     assert_eq!(host_page(0x301, 0x300, false), None, "keys do not go to the channel");
 }
+
+/// REQ-INT-110 as amended by REQ-RCH-012 (decision E.133): the channel's
+/// acknowledgement is taken where it comes, in the answer's own frame
+/// among the page's packets, and alone.
+#[test]
+fn an_acknowledgement_is_taken_in_the_answers_frame_and_alone() {
+    use neoteletext_core::packet::{PacketMeta, encode};
+    use neoteletext_core::types::Magazine;
+    use neoteletext_input::cursor::{Cursor, from_packet};
+    use neoteletext_input::event::{Event, Item};
+    let mut session = neoteletext_app::session::Session::new(neoteletext_core::config::Config::default(), 8);
+    session.keep(neoteletext_input::is_input_packet);
+    let cursor = |acked| Cursor { page: 0x100, acked, place: None, width: 0, flags: 0 }.packet(3, 1).unwrap();
+    let magazine = Magazine::new(1).unwrap();
+    // The answer: the page's header and a row, and the acknowledgement in
+    // the same message.
+    for packet in [encode::address(magazine, 0), encode::row(magazine, 1, &[0x20; 40]), cursor(2)] {
+        session.push(&packet, &PacketMeta::default());
+    }
+    // A channel that published nothing: the acknowledgement alone.
+    session.push(&cursor(3), &PacketMeta::default());
+    let mut input = neoteletext_input::session::Session::new(0);
+    let mut out = [0_u8; neoteletext_input::MAX_MESSAGE];
+    input.open(0, None, &mut out).unwrap();
+    input.welcome(neoteletext_input::VERSION, 0, None).unwrap();
+    input.send(&Item::Event(Event::FocusIn), 0, &mut out).unwrap();
+    input.send(&Item::Event(Event::FocusOut), 0, &mut out).unwrap();
+    let mut taken = Vec::new();
+    for packet in session.take_kept() {
+        let acked = from_packet(&packet).unwrap().unwrap().acked;
+        taken.push((acked, input.acknowledged(acked)));
+    }
+    assert_eq!(taken, [(2, true), (3, true)], "both kept and taken, and nothing else of the answer");
+    assert_eq!(input.acked(), 3);
+}

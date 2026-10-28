@@ -65,7 +65,7 @@ pub struct Cursor {
     /// compared as a serial number ([`Session::acknowledged`]), or 0 for
     /// none yet.
     ///
-    /// [`Session::acknowledged`]: crate::session::Session::acknowledged
+    /// [`Session::acknowledged`]: crate::session::SessionOf::acknowledged
     pub acked: u16,
     /// The cursor, or `None` for no cursor: a game sends that for the
     /// acknowledgement alone.

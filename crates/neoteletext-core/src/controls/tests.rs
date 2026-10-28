@@ -6,7 +6,7 @@
 #[cfg(test)]
 use super::*;
 
-use crate::consts::{MODE_TERMINATION, ROW_ADDRESS_BASE, TRIPLETS_PER_PACKET};
+use crate::consts::{MODE_COLUMN_RESERVED_3, MODE_TERMINATION, ROW_ADDRESS_BASE, TRIPLETS_PER_PACKET};
 use crate::level1::Grid;
 use crate::packet::Triplet;
 use std::vec::Vec;
@@ -145,33 +145,27 @@ fn the_control_triplet_is_reserved_column_mode_00101() {
     ));
 }
 
-fn pointer_area(column: u8, width: u8, joined: bool) -> Triplet {
-    Triplet { address: column, mode: MODE_POINTER_AREA, data: width | if joined { CONTROL_JOINED } else { 0 } }
-}
-
-/// Decision E.128: pointer areas are read as controls are, may overlap each
-/// other and the controls, and a width of 0 makes the whole page one.
+/// REQ-INT-120 (withdrawn), REQ-RCH-037, decision E.133: column mode 01010, a pointer area from
+/// decision E.128, is reserved again, as EN 300 706 Table 29 has it: its
+/// triplets declare nothing and are not counted as dropped, whatever they
+/// hold, and a control beside them stays.
 #[test]
-fn pointer_areas_are_read_and_may_overlap() {
+fn column_mode_01010_is_reserved_again() {
+    let reserved = |column: u8, data: u8| Triplet { address: column, mode: MODE_COLUMN_RESERVED_3, data };
     let page = page_with(&[
         row(5),
         control(2, 10, false),
-        pointer_area(0, 40, false),
-        pointer_area(4, 4, false),
+        reserved(0, 40),
+        reserved(4, 4),
         row(6),
-        pointer_area(0, 40, true),
+        reserved(0, CONTROL_JOINED),
+        reserved(0, 0),
     ]);
     let found = controls(&page);
-    assert_eq!(list(&found), [(5, 2, 10, 1)], "the control stays");
-    let areas: Vec<_> = found.pointer_areas.as_slice().iter().map(|c| (c.row, c.column, c.width, c.height)).collect();
-    assert_eq!(areas, [(5, 0, 40, 2), (5, 4, 4, 1)]);
-    assert!(!found.whole_page);
-    assert_eq!(found.dropped, 0);
-    let whole = controls(&page_with(&[row(9), pointer_area(0, 0, false)]));
-    assert!(whole.whole_page);
-    assert_eq!(
-        controls(&page_with(&[row(9), pointer_area(0, 0, true)])).dropped,
-        1,
-        "a joined run of no width is nothing"
-    );
+    assert_eq!(list(&found), [(5, 2, 10, 1)], "the control stays, and nothing else is one");
+    assert_eq!(found.dropped, 0, "a reserved triplet is not a control dropped");
+    assert!(matches!(
+        reserved(4, 4).function(),
+        TripletFunction::ReservedColumn { column: 4, mode: MODE_COLUMN_RESERVED_3, data: 4 }
+    ));
 }
