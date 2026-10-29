@@ -14,8 +14,7 @@ pub use io::io;
 pub use layers::layers;
 
 /// Every file under `dir` whose extension is one of `extensions`, in the
-/// order the directories list them; the source checks and the
-/// traceability table share it.
+/// order the directories list them; the source checks share it.
 pub(crate) fn source_files(dir: &Path, extensions: &[&str], out: &mut Vec<PathBuf>) {
     let Ok(entries) = fs::read_dir(dir) else { return };
     for entry in entries.flatten() {

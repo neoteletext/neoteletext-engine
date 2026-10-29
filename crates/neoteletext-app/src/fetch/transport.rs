@@ -323,7 +323,7 @@ impl Transport for StdTransport {
     /// Nothing waits here: a send is written whole, blocking, to the
     /// kernel, and what the kernel has not sent cannot be read without
     /// unsafe code (REQ-SEC-015), so moves are never held for this
-    /// transport (REQ-RCH-035; `TECH-DEBT.md`).
+    /// transport (REQ-RCH-035; an rdm to-do).
     fn unsent(&mut self, _: ConnectionId) -> usize {
         0
     }

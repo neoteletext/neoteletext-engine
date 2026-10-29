@@ -1,6 +1,5 @@
 //! Test code told apart from production code, for the source checks
-//! (`check-layers`, `check-constants`, `check-io`) and the traceability
-//! table.
+//! (`check-layers`, `check-constants`, `check-io`).
 //!
 //! A file is test code when the module it holds is declared under a `cfg`
 //! that holds only under `test` (`#[cfg(test)] mod tests;`), in its parent
@@ -23,13 +22,9 @@ pub(crate) fn production_source(path: &Path) -> String {
     split(path, &|file| fs::read_to_string(file).ok()).0
 }
 
-/// The production code and the test code of the file at `path`, each with
-/// the other blanked. A file that is not Rust is all production code.
-pub(crate) fn production_and_tests(path: &Path) -> (String, String) {
-    split(path, &|file| fs::read_to_string(file).ok())
-}
-
-/// [`production_and_tests`], reading files with `read`.
+/// The production code and the test code of the file at `path`, read with
+/// `read`, each with the other blanked. A file that is not Rust is all
+/// production code.
 fn split(path: &Path, read: &dyn Fn(&Path) -> Option<String>) -> (String, String) {
     let text = read(path).unwrap_or_default();
     if path.extension().is_none_or(|extension| extension != "rs") {

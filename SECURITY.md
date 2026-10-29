@@ -1,6 +1,6 @@
 # Security policy
 
-Security overrides every other requirement of this project (decision E.32, `docs/spec/decisions.md`). This file is the reporting process REQ-SEC-023 requires.
+Security overrides every other requirement of this project (decision E.32, in rdm). This file is the reporting process REQ-SEC-023 requires.
 
 ## Reporting a vulnerability
 

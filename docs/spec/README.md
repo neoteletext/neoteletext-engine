@@ -10,7 +10,7 @@
 
 ## How the specification is organised
 
-This folder is neoteletext's specification: what the receiver does, why, and how each feature works. It was one file, `REQUIREMENTS.md`, until 18 October 2026, when the owner had it split so that each fact has one home. The text moved unchanged; the old part and section names (Part E, section F.0.1, Appendix C) still identify the same text, and the table below says where each now lives.
+This folder holds how neoteletext works: the design, the terms and the sources. Its requirements and decisions are records in rdm, reached through rdm's MCP tools, since 30 October 2026 (rdm decision DEC-1389); before that they were files here (and, until 18 October 2026, one file, `REQUIREMENTS.md`). Their old identifiers still work in rdm: `REQ-L1-012`, decision `E.30`, `F.0.1` (the delivery phases), `G.3` (an out-of-scope item), `Open question 4`.
 
 ### What goes where
 
@@ -18,17 +18,15 @@ Each fact is written once, in the one document whose job it is, and every other 
 
 | Kind of fact | Its home | Was |
 |---|---|---|
-| **What the system shall do:** numbered, testable requirements, one file per area | `requirements/<area>.md` | Part F |
-| How the requirements are organised: areas, delivery phases, milestones | `requirements/README.md` | Part F, sections F.0 to F.0.2 |
-| Security, which overrides every other requirement (decision E.32) | `requirements/sec.md` | Section F.0.3 |
-| What is deliberately out of scope | `requirements/out-of-scope.md` | Part G |
-| The TTI extensions: the Link Extension (normative), and the Form Extension (withdrawn on 27 October 2026 by decision E.126, kept as history) | `requirements/tti-link-extension.md`, `requirements/tti-form-extension.md` | Appendices E and C |
-| **Why:** each decision where the standard is silent, contradicts itself, or differs from the reference chips, with its reason. A decision says what was chosen and points to the design for the detail. | `decisions.md` | Part E |
+| **What the system shall do:** numbered, testable requirements (`REQ-<AREA>-<NNN>`), security (area SEC) overriding every other (decision E.32) | rdm | Part F |
+| The delivery phases and milestones | rdm decisions `F.0.1` and `F.0.2` | Part F, sections F.0.1 and F.0.2 |
+| What is deliberately out of scope | rdm decisions `G.1` to `G.16` | Part G |
+| **Why:** each decision where the standard is silent, contradicts itself, or differs from the reference chips, with its reason (`E.n`). A decision says what was chosen and points to the design for the detail. | rdm | Part E |
+| Questions for the owner, and work owed (outside help, known gaps, technical debt) | rdm decisions waiting for confirmation, and to-do records | `open-questions.md`, `TECH-DEBT.md` |
+| The TTI extensions: the Link Extension, and the Form Extension (withdrawn on 27 October 2026 by decision E.126, kept as history) | `design/tti-link-extension.md`, `design/tti-form-extension.md` | Appendices E and C |
 | **How a feature works,** explained from the beginning: walkthroughs of the standard and the reference chips, and the design of larger features | `design/*.md` | Parts A to D, and documents formerly in `docs/` |
 | Terms and abbreviations | `glossary.md` | Appendix A |
 | The standards and datasheets cited | `source-documents.md` | Appendix B |
-| Research questions: answered with their evidence, and those still open | `open-questions-record.md` | Appendix D |
-| Work items waiting on the owner, on outside help or on a measurement | `open-questions.md` | `docs/open-questions.md` |
 | The standards clauses and tables each code module is written from (REQ-DOC-005) | `module-sources.md` | `docs/sources.md` |
 | **Where the code for each part lives** | `ARCHITECTURE.md` (repository root) | |
 | **The evidence:** research notes, with a citation for every fact | `research/` (repository root) | |
@@ -50,23 +48,11 @@ The design documents are:
 | `design/audio-platforms.md` | How the audio profile is built on each platform: the engine crates, NeoTeletext on desktops, and microcontrollers through tellyboy |
 | `design/hmi.md` | A proposal, not yet a requirement: how the code takes input from different controls |
 
-**Only the requirements are normative.** A requirement wins over anything in the decisions or the design documents. The decisions are binding choices, recorded before the behaviour they govern is committed (REQ-DOC-004).
-
-### Checking references
-
-Every `REQ-` reference anywhere in the specification must resolve to a definition in `requirements/`:
-
-```sh
-cat docs/spec/*.md docs/spec/*/*.md | grep -o 'REQ-[A-Z0-9]*-[0-9]*' | sort -u > /tmp/refs
-cat docs/spec/requirements/*.md | grep -o '^\*\*REQ-[A-Z0-9]*-[0-9]*' | sed 's/\*\*//' | sort -u > /tmp/defs
-comm -23 /tmp/refs /tmp/defs   # must print nothing
-```
-
-`cargo xtask traceability` reads the requirement files in the order of `requirements/README.md`'s area table.
+**Only the requirements are normative.** A requirement wins over anything in the decisions or the design documents. The decisions are binding choices, recorded in rdm before the behaviour they govern is committed (REQ-DOC-004). rdm links each requirement to the tests that name it (REQ-DOC-003).
 
 ### Requirement wording
 
-Each requirement has an identifier of the form `REQ-<AREA>-<NUMBER>`, for example `REQ-L1-012`. The area codes are listed at the start of Part F. Requirement identifiers are never reused. A requirement that is withdrawn keeps its number and is marked as withdrawn. Numbers within an area are not always consecutive; gaps are deliberate and leave room for related requirements to be added later.
+Each requirement has an identifier of the form `REQ-<AREA>-<NUMBER>`, for example `REQ-L1-012`. The area code is the identifier's middle part. Requirement identifiers are never reused. A requirement that is withdrawn keeps its number and is marked as withdrawn. Numbers within an area are not always consecutive; gaps are deliberate and leave room for related requirements to be added later.
 
 - **shall** marks a mandatory requirement.
 - **should** marks a recommendation. It is expected to be implemented unless there is a documented reason not to.

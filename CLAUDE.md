@@ -6,6 +6,10 @@ The library and `neottx` are implemented; work continues feature by feature. Thi
 
 **The development process is `~/devel/neoteletext-common/DEVELOPMENT.md`**, shared with the browser since 21 October 2026. Where this file and that document differ, that document holds; its appendix B lists what this repository still has to change to follow it.
 
+## Requirements, decisions, checklists and to-dos: rdm only
+
+They are records in rdm, reached through its MCP tools (search, get_record, list_records, create_record, revise_record, set_status, link_records), since 30 October 2026 (rdm decision DEC-1389). **Never create or edit a file to record one:** there is no `TECH-DEBT.md`, `docs/spec/decisions.md`, `docs/spec/requirements/` or `open-questions.md` any more, and a hook refuses edits to those paths. Old identifiers still work in rdm: `REQ-INP-023`, `E.30`, `F.0.1`, `G.3`, `Open question 4`, `TECH-DEBT 12`. If a merge brings one of those files back, record what it adds in rdm and delete the file.
+
 ## Gates and the work branch
 
 @~/devel/neoteletext-common/gates.md
@@ -16,36 +20,26 @@ The owner shapes behaviour by asking for changes and looking at the result. Work
 
 **Rapid iteration (the default while a feature's behaviour is being shaped).**
 - Make the change, then rebuild `neottx` with the fast `iterate` profile, `cargo build --profile iterate -p neoteletext-cli` (seconds, not the release profile's minute and more), and show the result with `target/iterate/neottx` (for example `show` to an image). Check the output, then tell the owner it is ready to look at.
-- Do not write tests, user guide text, requirement prose, implementation log rows or traceability during this mode, and commit whenever a step compiles: the pre-commit gate is formatting and Clippy only (IMPLEMENTATION-LOG.md row 96). Never bypass the hooks.
+- Do not write tests, user guide text, requirement prose or implementation log rows during this mode, and commit whenever a step compiles: the pre-commit gate is formatting and Clippy only (IMPLEMENTATION-LOG.md row 96). Never bypass the hooks.
 - Run the existing tests of the code touched when that is quick, to catch breakage early.
-- **Accumulate everything owed in `TECH-DEBT.md`** as you go: tests to write, requirements and decisions to record, documents to update, verification to run (full gate, sizes, fuzzing), shortcuts taken and loose ends noticed. Nothing deferred may exist only in a reply.
+- **Record everything owed as a to-do in rdm** as you go (`create_record`, type `todo`, linked to the requirement or decision it concerns): tests to write, requirements and decisions to record, documents to update, verification to run (full gate, sizes, fuzzing), shortcuts taken and loose ends noticed. Nothing deferred may exist only in a reply.
 
 **Integration (when the owner says a feature works as they expect).**
-- Work through that feature's items in `TECH-DEBT.md`: record the decision in Part E and the requirements, write the tests (each failing on the old code), update the user guide, ARCHITECTURE.md and the other documents, add the implementation log row, regenerate traceability, and open or close the GitHub issues.
-- Commit through the gates in small commits that close their issues, and run the full gate before merging to `main`. Remove each item from `TECH-DEBT.md` when it is done.
+- Work through that feature's open to-dos in rdm: record the decision and the requirements in rdm, write the tests (each failing on the old code, each naming the requirement it verifies), update the user guide, ARCHITECTURE.md and the other documents, add the implementation log row, and open or close the GitHub issues.
+- Commit through the gates in small commits that close their issues, and run the full gate before merging to `main`. Mark each to-do done in rdm (`set_status`, lifecycle `done`, naming the commit) when it is done.
 
-The rules below about issues and the specification (`docs/spec/`) apply at integration: behaviour may be tried before it is recorded, but none is committed without its decision and requirements.
+The rules below about issues and requirements apply at integration: behaviour may be tried before it is recorded, but none is committed without its decision and requirements in rdm.
 
 ## Key documents
 
-- **`docs/spec/` is the specification and the single source of truth.** It was one file, `REQUIREMENTS.md`, until 18 October 2026, and is now split so that each fact has one home. `REQUIREMENTS.md` is a one-page index of where each old part went; `docs/spec/README.md` is the map:
-
-  | File | Contents | Was |
-  |---|---|---|
-  | `requirements/<area>.md` | The numbered requirements, one file per area; the only normative text | Part F |
-  | `requirements/README.md` | The areas, the phase plan (F.0.1) and the milestones (F.0.2) | F.0 to F.0.2 |
-  | `requirements/sec.md` | Security, which overrides every other area | F.0.3 |
-  | `requirements/out-of-scope.md` | What is out of scope | Part G |
-  | `requirements/tti-form-extension.md`, `tti-link-extension.md` | The TTI extensions (normative) | Appendices C and E |
-  | `decisions.md` | The decision register: what was chosen and why, pointing to the design | Part E |
-  | `design/*.md` | How things work: Levels 1.0 and 1.5, the SAA5050 and SAA5246A, character sets and fonts, languages | Parts A to D |
-  | `glossary.md`, `source-documents.md`, `open-questions-record.md` | Glossary, sources, open questions | Appendices A, B and D |
+- **Requirements and decisions are in rdm** (above): the requirements (Part F, area SEC overriding every other), the decisions (Part E), the phase plan and milestones (decisions `F.0.1`, `F.0.2`), what is out of scope (decisions `G.n`), the owner's open questions (decisions waiting for confirmation) and the work owed (to-dos).
+- **`docs/spec/`** holds how things work: `design/*.md` (Levels 1.0 and 1.5, the SAA5050 and SAA5246A, character sets and fonts, languages, the TTI Link and Form Extensions), `glossary.md`, `source-documents.md` and `module-sources.md`; `docs/spec/README.md` is the map.
 
   **Each fact has one home.** A requirement states behaviour; a decision states the choice and its reason and links to the design; a design document explains; `ARCHITECTURE.md` says where code lives; `research/` holds the evidence. Link rather than restate.
 
 - `ARCHITECTURE.md` describes the code's layers (Foundation, then L0 Ingress to L9 Applications), their boundary types, trust boundaries and the allowed-dependency table. REQ-ARCH-011 makes it mandatory, and it is enforced by an `xtask` check. Keep it in step with `docs/spec/`.
 - `research/notes-*.md` are the cited research notes behind Parts A to E. `research/answers-*.md` are the reports that answered the open questions: SAA5050 behaviour from emulators, the historic specifications, and Rust targets. Check a claim here before changing it.
-- `research/jellytext-tti-form-system-spec-v2.md` is the original forms specification from the earlier jellytext project, kept for history. The normative, corrected version 3 is `docs/spec/requirements/tti-form-extension.md` (formerly Appendix C); decision E.31 explains the changes.
+- `research/jellytext-tti-form-system-spec-v2.md` is the original forms specification from the earlier jellytext project, kept for history. The corrected version 3 is `docs/spec/design/tti-form-extension.md` (formerly Appendix C); decision E.31 explains the changes.
 - The source standards and datasheets are in `~/devel/teletext-reference/`. All folder paths cited in `docs/spec/` (`teletext-standards/`, `teletext-fonts/manufacturers/philips/datasheets/saa5050/` and so on) are relative to that directory.
 
 ## Rules that must not be broken
@@ -72,30 +66,21 @@ The rules below about issues and the specification (`docs/spec/`) apply at integ
 
 ## Tracking work: GitHub issues
 
-Work to be done is tracked in GitHub issues on crowdwave/neoteletext-engine (private). What the system must do, and why, stays in `docs/spec/`; an issue links to the requirement or decision it serves rather than restating it.
+Work to be done is tracked in GitHub issues on crowdwave/neoteletext-engine (private). What the system must do, and why, stays in rdm; an issue links to the requirement or decision it serves rather than restating it.
 
-- **Work starts from an issue.** If none exists, open one first. During rapid iteration, one issue per feature is enough; small changes go on `TECH-DEBT.md`.
+- **Work starts from an issue.** If none exists, open one first. During rapid iteration, one issue per feature is enough; small changes are rdm to-dos.
 - **The commit closes it.** End the commit message with `Closes #123`; partial progress gets a comment naming the commit.
 - **Log what you find.** Something discovered along the way (a bug, a gap, a decision for the owner) gets an issue, not just a mention in a reply. Decisions for the owner carry the `decision` label.
 - **Keep the milestones true.** Close finished work with the commit that did it; close work the design has overtaken as "not planned" with the reason. Delete an issue only with the owner's agreement.
 
-## Working with the specification (`docs/spec/`)
+## Working with requirements and decisions (rdm)
 
-- **Identifiers are permanent.**
-  - Requirement numbers (`REQ-<AREA>-<NNN>`) are never reused.
-  - Gaps in the numbering are deliberate.
-  - A dropped requirement is marked "Withdrawn", with its date and reason, and keeps its number.
-- **Record decisions before committing behaviour.** Any behaviour the standard leaves open must be recorded or amended in `docs/spec/decisions.md` (REQ-DOC-004) before the change is committed; during rapid iteration, note it in `TECH-DEBT.md` and record it at integration.
-- **Tag phases.** A Phase 2 requirement carries a `*Phase:*` line directly under its title, and is listed in the table in section F.0.1 (`docs/spec/requirements/README.md`). Phase 1 requirements have no tag.
-- **Keep state machine tables and prose in step.** The tables in area FSM (`docs/spec/requirements/fsm.md`) are the normative form of acquisition, slicer, lifecycle, viewer, row-attribute and Level 1.5 behaviour. If a table and a prose requirement disagree, fix both.
-- **Check references after editing.** Every `REQ-` reference must resolve to a definition:
-
-  ```sh
-  cat docs/spec/*.md docs/spec/*/*.md | grep -o 'REQ-[A-Z0-9]*-[0-9]*' | sort -u > /tmp/refs
-  cat docs/spec/requirements/*.md | grep -o '^\*\*REQ-[A-Z0-9]*-[0-9]*' | sed 's/\*\*//' | sort -u > /tmp/defs
-  comm -23 /tmp/refs /tmp/defs   # must print nothing
-  ```
-
+- **Identifiers are permanent.** Original identifiers (`REQ-<AREA>-<NNN>`, `E.n`) are never reused and keep resolving in rdm; a new record takes rdm's ID, with its area code at the start of the title (`[INP] …`).
+- **A dropped requirement is withdrawn, never deleted:** `set_status` lifecycle `cancelled` with the date's reason, or `superseded` naming its replacement.
+- **Record decisions before committing behaviour.** Any behaviour the standard leaves open must be recorded or revised as a decision in rdm (REQ-DOC-004) before the change is committed; during rapid iteration, record it as a to-do and decide it at integration. A decision taken without the owner is created with `needs_confirmation`.
+- **Tag phases.** A Phase 2 requirement says so in its body, and decision `F.0.1` lists it. Phase 1 requirements have no tag.
+- **Keep state machine tables and prose in step.** The tables in area FSM are the normative form of acquisition, slicer, lifecycle, viewer, row-attribute and Level 1.5 behaviour. If a table and a prose requirement disagree, revise both.
+- **Every reference resolves.** A requirement or decision cited in code, tests or documents must exist in rdm (`get_record`); tests name the requirement they verify, which is how rdm links them (REQ-DOC-003).
 - **Writing style.**
   - Write every requirement as full narrative sentences, not terse fragments.
   - Spell terms out rather than abbreviating them; the glossary is `docs/spec/glossary.md`.
@@ -125,11 +110,11 @@ Work to be done is tracked in GitHub issues on crowdwave/neoteletext-engine (pri
   - no floating point or atomic operations;
   - no division or 64-bit arithmetic on hot paths;
   - no `core::fmt` on hot paths.
-- **Where to start.** Start implementation with milestone M1 (section F.0.2).
+- **Where to start.** Start implementation with milestone M1 (rdm decision `F.0.2`).
 
 ## Architecture in brief
 
-The implementation follows the requirements in `docs/spec/requirements/`:
+The implementation follows the requirements in rdm:
 
 - **Core library** (`neoteletext-core`). It is `no_std`, with no allocation, no input or output, and no clock (REQ-GEN-002). It contains:
   - the error-protection codes;

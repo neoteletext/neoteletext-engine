@@ -130,7 +130,7 @@ The profile saves 2,864 bytes, about 4 percent. The profile is chosen for how pa
 
 A new switchable capability follows the same steps:
 
-1. **Record it first:** a decision in REQUIREMENTS.md Part E that says what it is, what happens to page data when it is compiled out, and which side of the principle of section 1 it falls on.
+1. **Record it first:** a decision in rdm that says what it is, what happens to page data when it is compiled out, and which side of the principle of section 1 it falls on.
 2. **Add the feature** to `crates/neoteletext-core/Cargo.toml`, in the default list only if the owner says so (decision E.105), and in `modern-classic` if it keeps the style.
 3. **Gate its decision point** in the decoder, and its drawing in the renderer, with `cfg!(feature = "...")`. Behaviour when it is compiled out must be the "not supported" behaviour of a lower level, never an error.
 4. **Gate its tests** with `#[cfg(feature = "...")]`, and add a test to `tests/capabilities.rs` for the compiled-out behaviour.

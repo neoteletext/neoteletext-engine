@@ -463,7 +463,7 @@ The Level A numbers are proposals. They must be checked against the RAM the tele
 
 Taken on 19 October 2026, while the owner was away, as the owner had instructed:
 - **The broadcast carrier** is EN 300 708 §6.7's user-defined service on data channel 12 (decision E.84). IDL Format B remains the alternative if an EBU Application Identifier is ever allocated.
-- **Page sounds are on by default** in NeoTeletext, which has no settings screen for them yet (`TECH-DEBT.md`).
+- **Page sounds are on by default** in NeoTeletext, which has no settings screen for them yet (an rdm to-do).
 - **The crates live in the engine** (decision E.85).
 
 Decided by the owner on 20 October 2026 (decision E.89):

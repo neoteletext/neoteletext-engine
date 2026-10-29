@@ -549,7 +549,7 @@ Where each crate's code lives, one sentence per directory (the reorganisation of
 
 Decision E.61 makes each crate's optional areas Cargo features, all on by default, because the linker cannot remove code reachable through a run-time choice. The rules that keep them safe:
 
-- **Additive and coarse:** one feature per requirement area (`docs/spec/requirements/`), never one per function.
+- **Additive and coarse:** one feature per requirement area (the `REQ-<AREA>` codes in rdm), never one per function.
 - **Types and acquisition are never optional.** Only processing is behind a feature, so enabling one never breaks code written without it, and Level 1.5 keeps reading the character set designations of X/28 and M/29.
 - **Crates name what they use.** The workspace dependencies have default features off, so feature unification never brings an area back into a build that left it out.
 - **A request a build cannot serve is answered, never ignored or panicked on:**

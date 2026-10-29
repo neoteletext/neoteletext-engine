@@ -4,7 +4,6 @@
 //!   the G3 set from the project's own geometry (REQ-RND-037), and the list
 //!   of required characters from the character set tables.
 //! - `corpus`: fetch and pin the real-broadcast test corpus (REQ-TST-022).
-//! - `traceability`: write docs/traceability.md (REQ-DOC-003).
 //! - `check-layers`: enforce the module dependency table of ARCHITECTURE.md
 //!   (REQ-ARCH-011).
 //! - `check-deps`: enforce the permitted dependency lists (REQ-GEN-017),
@@ -36,7 +35,6 @@ mod level25;
 mod noto;
 mod size;
 mod test_code;
-mod trace;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -52,7 +50,6 @@ fn main() -> ExitCode {
     let result = match command.as_str() {
         "glyphs" => glyphs::generate(&root),
         "corpus" => corpus::fetch(&root),
-        "traceability" => trace::generate(&root),
         "check-layers" => checks::layers(&root),
         "check-deps" => checks::dependencies(&root),
         "check-constants" => checks::constants(&root),
@@ -63,7 +60,7 @@ fn main() -> ExitCode {
         "features" => features::run(&root),
         "size" => size::run(&root, &std::env::args().skip(2).collect::<Vec<_>>()),
         _ => Err(format!(
-            "usage: cargo xtask <glyphs|corpus|traceability|check-layers|check-deps|check-constants|check-io|\
+            "usage: cargo xtask <glyphs|corpus|check-layers|check-deps|check-constants|check-io|\
              check-bedstead|check-noto|level25-stream|features|size> (got {command:?})"
         )),
     };

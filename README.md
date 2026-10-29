@@ -23,7 +23,6 @@ Each crate's optional parts are Cargo features, on by default, so a port or a sm
 | [docs/spec/](docs/spec/README.md) | The specification: requirements, decisions, design and open questions. |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | The layers, their boundaries and allowed dependencies. |
 | [THREAT-MODEL.md](THREAT-MODEL.md), [SECURITY.md](SECURITY.md) | Security design and reporting. |
-| [docs/traceability.md](docs/traceability.md) | Each requirement and the files that implement and test it (`cargo xtask traceability`). |
 | [docs/spec/module-sources.md](docs/spec/module-sources.md) | Where test data and live feeds come from. |
 | [IMPLEMENTATION-LOG.md](IMPLEMENTATION-LOG.md) | Questions met during implementation and the decisions taken. |
 
@@ -37,7 +36,7 @@ Each crate's optional parts are Cargo features, on by default, so a port or a sm
 | `neoteletext-web` | The sans-IO web agent: service descriptors, HTTP, WebSockets, server-sent events, cookies and the zxnet feed. |
 | `neoteletext-image` | Palettes, pixel formats, scaling, PNG and PPM writers. |
 | `neoteletext-cli` | The `neottx` program. |
-| `xtask` | Project checks: layers, dependencies, constants, glyphs (including the generated G3 set), the test corpus and the traceability table; `cargo xtask level25-stream` writes the authored Level 2.5 and 3.5 test stream. |
+| `xtask` | Project checks: layers, dependencies, constants, glyphs (including the generated G3 set) and the test corpus; `cargo xtask level25-stream` writes the authored Level 2.5 and 3.5 test stream. |
 
 ## Checks
 

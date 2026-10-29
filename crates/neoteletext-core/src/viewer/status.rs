@@ -41,7 +41,7 @@ impl Viewer {
                     // store. A place of three digits gives up the "P"
                     // ("100/123"); one of four does not fit seven columns,
                     // and shows "100/+++" until the owner chooses
-                    // (TECH-DEBT.md).
+                    // (an rdm to-do).
                     let place = store.subpage_place(self.requested, self.subcode).unwrap_or(0);
                     if place <= TWO_DIGIT_PLACE {
                         write(&mut status, 4, b"/");

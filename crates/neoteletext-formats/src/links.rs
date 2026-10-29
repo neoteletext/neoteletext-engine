@@ -1,5 +1,5 @@
 //! A page's links as a receiver follows them (Appendix E of the TTI Link
-//! Extension, `docs/spec/requirements/tti-link-extension.md`): where each
+//! Extension, `docs/spec/design/tti-link-extension.md`): where each
 //! coloured key, Index, page-number link and text link leads, with the
 //! services the descriptor names resolved, and the row 24 the receiver
 //! draws from the `LN` lines (REQ-NAV-011, decision E.108). One implementation for every
