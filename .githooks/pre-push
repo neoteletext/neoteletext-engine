@@ -1,19 +1,22 @@
 #!/usr/bin/env bash
-# A push to main runs the full gate, the long integration step (about an
-# hour, the Linux host's steps alongside); a push of any other branch runs
-# the push gate (IMPLEMENTATION-LOG.md row 96). Git passes one line per ref
-# pushed: local ref, local commit, remote ref, remote commit.
+# neoteletext-common's gates/pre-push, copied by gates/sync (gates.md).
+# Git passes one line per ref pushed: local ref, local commit, remote ref,
+# remote commit. A push to main runs the full gate, the long integration
+# step; a push of any other branch runs the push gate. Each checks the
+# commits pushed; a deletion pushes no commit, and a commit the remote
+# already holds, on any of its branches, brings it no code a gate has not
+# passed.
 set -euo pipefail
 deleted="0000000000000000000000000000000000000000"
+remote="$1"
 tier=""
+pushed=()
 while read -r _ local_commit remote_ref _; do
-    # A deletion pushes no code.
     [[ "$local_commit" == "$deleted" ]] && continue
     [[ "$remote_ref" == refs/heads/main ]] && tier=full
     [[ -n "$tier" ]] || tier=push
+    [[ -n "$(git branch --remotes --contains "$local_commit" --list "$remote/*")" ]] && continue
+    pushed+=("$local_commit")
 done
 [[ -n "$tier" ]] || exit 0
-if [[ "$tier" == full ]]; then
-    export NEOTELETEXT_REMOTE="${NEOTELETEXT_REMOTE:-foundintelquiet4060}"
-fi
-exec "$(git rev-parse --show-toplevel)/scripts/check.sh" "$tier"
+exec "$(git rev-parse --show-toplevel)/scripts/check.sh" "$tier" "${pushed[@]+"${pushed[@]}"}"

@@ -6,6 +6,10 @@ The library and `neottx` are implemented; work continues feature by feature. Thi
 
 **The development process is `~/devel/neoteletext-common/DEVELOPMENT.md`**, shared with the browser since 21 October 2026. Where this file and that document differ, that document holds; its appendix B lists what this repository still has to change to follow it.
 
+## Gates and the work branch
+
+@~/devel/neoteletext-common/gates.md
+
 ## How work proceeds: rapid iteration, then integration
 
 The owner shapes behaviour by asking for changes and looking at the result. Work therefore runs in two modes (owner's instruction, 13 October 2026).
