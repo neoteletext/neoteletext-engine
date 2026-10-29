@@ -9,6 +9,8 @@ The sources, checked against the documents in `~/devel/teletext-reference/telete
 
 A requirement here states the rule; the requirements that decode or display it are cited, not repeated. "Shall" in the standard or the code of practice stays "shall" here; their "should" stays "should", and a part that departs from one records why as a decision (`neoteletext-common/DEVELOPMENT.md` section 5). The terms are the standard's: a page address is a magazine, a page number and a sub-code; a display page is a page intended for display (a basic Level 1 page, page function 0000); an enhancement data page is a POP, GPOP, DRCS, GDRCS, MOT or MIP page; a data broadcasting page is one of EN 300 708.
 
+**Where the parts stand (29 October 2026).** The engine's tests trace each requirement here (`cargo xtask traceability`). The browser takes the area at its pin of the engine (its decisions 119 and 121). The server does not yet: it holds at most 64 sub-pages a page and 800 pages a channel, and sends a page's sub-pages whole to every viewer, so REQ-NUM-002, REQ-NUM-020 and REQ-NUM-030 are not met there, nor by the TypeScript channel kit (`neoteletext-common/STANDARD-LIMITS.md` sections 7 and 7.2).
+
 ## Scope
 
 **REQ-NUM-001 — World System Teletext numbering only.**
