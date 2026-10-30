@@ -327,7 +327,7 @@ pub struct Sent {
     /// The packets written.
     pub packets: usize,
     /// The record id after the last record's, for the service's next
-    /// record (section 7.9).
+    /// record (section 7.10).
     pub next_record_id: u8,
 }
 

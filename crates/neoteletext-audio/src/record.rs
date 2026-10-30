@@ -41,6 +41,10 @@ pub const TYPE_SET_COOKIE: u8 = 8;
 /// 7.8, REQ-1494), read by the web agent; this receiver leaves it alone.
 pub const TYPE_LINKS: u8 = 9;
 
+/// Record type: a page's list of sub-pages (`INPUT.md` section 7.9,
+/// REQ-1503), read by the web agent; this receiver leaves it alone.
+pub const TYPE_SUBPAGES: u8 = 10;
+
 /// Whether a record type belongs to the input profile, which shares this
 /// profile's carriage and is left alone by the audio receiver.
 #[must_use]
@@ -54,7 +58,12 @@ pub const fn is_input_type(kind: u8) -> bool {
 /// as refused.
 #[must_use]
 pub const fn is_channel_type(kind: u8) -> bool {
-    is_input_type(kind) || kind == TYPE_INDEX || kind == TYPE_LOG || kind == TYPE_SET_COOKIE || kind == TYPE_LINKS
+    is_input_type(kind)
+        || kind == TYPE_INDEX
+        || kind == TYPE_LOG
+        || kind == TYPE_SET_COOKIE
+        || kind == TYPE_LINKS
+        || kind == TYPE_SUBPAGES
 }
 
 /// OBJECT's fixed fields: handle, generation, id, codec, rate, block bytes,

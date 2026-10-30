@@ -204,6 +204,7 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
                 }
             },
             ChannelRecord::Links(links) => event(sink, Event::Links(links)),
+            ChannelRecord::SubPages(list) => event(sink, Event::SubPageList(list)),
             ChannelRecord::SetCookie(line) => {
                 if !cfg!(feature = "cookies") {
                     event(sink, Event::CookieRejected(CookieRejected::NotCompiledIn));

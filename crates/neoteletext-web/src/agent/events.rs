@@ -10,6 +10,7 @@ use crate::http::{HttpError, MediaType, Method};
 use crate::port::{ConnectionId, NetInput, NetOutput, Security};
 use crate::records::index::IndexRecord;
 use crate::records::links::LinksRecord;
+use crate::records::subpages::SubPagesRecord;
 use crate::sse::SseError;
 use crate::url::UrlError;
 use crate::ws::WsError;
@@ -347,6 +348,13 @@ pub enum Event<'a> {
     /// the links held for that page and sub-code; later parts add to
     /// them. A sub-page sent again without one has no such links.
     Links(LinksRecord<'a>),
+    /// A part of a page's list of sub-pages from a SUBPAGES record on the
+    /// push connection (`INPUT.md` section 7.9, REQ-1503), for the
+    /// sub-page list, its count, the view's place and stepping; never the
+    /// sub-pages themselves. A record of another `version` of the page
+    /// begins a new list; a list is whole when every part has arrived,
+    /// and a partial one removes nothing.
+    SubPageList(SubPagesRecord<'a>),
     /// A live channel (its `channel.json` names a push connection,
     /// REQ-WEB-018) is opening its connection: it asks for no bundle, page
     /// file or `contents.txt`, and is connecting, never a page not found,
