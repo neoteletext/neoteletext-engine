@@ -8,7 +8,6 @@ Sources:
 - **jsbeeb** `src/teletext.js` (mattgodbolt/jsbeeb).
 - **beebjit** `teletext.c` (scarybeasts/beebjit). Note: its glyph header comes from b-em and is GPL.
 - **b-em** `src/video.c` (stardot/b-em; the Mode 7 code is in `mode7_render`, around lines 612–770).
-- **zvbi** `src/lang.c`, `src/teletext.c`, `src/packet.c`, `src/vt.h`.
 - **vhs-teletext** `teletext/elements.py`, `parser.py`, `charset.py`.
 - **Hardware reverse engineering:** stardot thread "SAA5050 reverse engineering" (https://stardot.org.uk/forums/viewtopic.php?t=21608, pages 1–3; posters dreamseal, scarybeasts, Richard Russell). This is decap-based analysis of the real chip.
 
@@ -69,7 +68,7 @@ Sources:
   - MAME saves the chartype (contiguous or separated) together with the held character (cpp:468–475) and restores it when the held character is substituted (cpp:456–461).
   - jsbeeb (`heldGlyphs`, teletext.js:411–415, 302–304), beebjit (a pointer into the glyph table active at the time, teletext.c:472–475) and b-em (`mode7_heldp`, video.c around lines 719–722) all do the same.
   - dreamseal in the stardot thread (page 2) quotes the rule that the held mosaic "is always displayed in its original contiguous or separated form regardless of the mode prevailing at the time of substitution". This is consistent with the hardware re-circulating the rendered pattern in its "graphics shift register" (page 1).
-  - zvbi (teletext.c:2604–2609) and vhs-teletext (parser.py:69–75, `_heldsolid`) also use the stored form.
+  - vhs-teletext (parser.py:69–75, `_heldsolid`) also uses the stored form.
 - **What gets held:** only mosaic codes with b6 = 1 (0x20–0x3F and 0x60–0x7F) that are received while in graphics mode. Blast-through capitals do not update the held character (MAME cpp:470; beebjit teletext.c:472–478).
 - **When the held character is shown at a control-code cell** (MAME cpp:456; jsbeeb teletext.js:302; beebjit teletext.c:486–489). All three conditions must hold:
   1. Graphics mode was active **before** this control code, and
@@ -83,13 +82,12 @@ Sources:
   - In alphanumeric mode, any displayable character also resets it.
   - The net effect of alpha mode is reset on a change to alphanumerics, with the code cell itself still showing the held character (set-after).
   - Contiguous/separated changes do **not** reset it.
-  - zvbi does **not** reset on mode or size change, which deviates from the spec and the hardware.
   - vhs-teletext resets on alphanumeric colour codes and on size changes (parser.py:39–41, 90).
 
-| Code | MAME | jsbeeb | beebjit | b-em | zvbi | vhs-teletext |
-|---|---|---|---|---|---|---|
-| Hold (0x1E) | at | at | at | at | at | at |
-| Release (0x1F) | after | after | after | after | after | after |
+| Code | MAME | jsbeeb | beebjit | b-em | vhs-teletext |
+|---|---|---|---|---|---|
+| Hold (0x1E) | at | at | at | at | at |
+| Release (0x1F) | after | after | after | after | after |
 
 - dreamseal (stardot page 2): "Hold is 'set at' and Release is 'set after'… It takes 2 cycles of LOADCHAR to clear the Hold state… but only 1 cycle… to set it."
 - Page 1 has an earlier, contradictory remark that "the Hold doesn't take effect until the next character". It was superseded by the page-2 conclusion. I'd rate "hold set-at" as medium-high confidence.
@@ -114,13 +112,11 @@ Sources:
 - **SAA5050-specific quirk vs EN 300 706.** The SAA5050 itself does **not** re-fetch the upper row: it renders whatever byte stream it is given on the second row. Confidence: medium-high.
   - On the BBC Micro you must repeat the text in row n+1. All BBC emulators render the second row's own data.
   - The chip outputs TLC ("transmitted large character", MAME `tlc_r`, cpp:566–569) so that the external timing/memory controller in a TV decoder can re-present row n. MAME's generic `screen_update` does exactly this: it uses TLC to read row sy−1 again (cpp:638).
-  - EN 300 706 behaviour (row n+1 is ignored and row n's lower halves are shown) therefore depends on that controller. A decoder written from EN 300 706 should copy row n and ignore row n+1's content. That is also what zvbi does (teletext.c:2701–2725): double-height cells are copied into the next row as the lower half, and every other cell becomes a space that keeps its attributes, including the background.
+  - EN 300 706 behaviour (row n+1 is ignored and row n's lower halves are shown) therefore depends on that controller. A decoder written from EN 300 706 should copy row n and ignore row n+1's content. Double-height cells are copied into the next row as the lower half, and every other cell becomes a space that keeps its attributes, including the background.
 - **Timing.** 0x0D and 0x0C both take effect set-after for glyph selection in MAME (`dbl_height_prev`, cpp:445, 482) and in jsbeeb (`oldDbl`). Bottom-row blanking uses the state after processing the code.
-  - zvbi: normal size is set-at and double height is set-after (teletext.c:2575, 2649).
   - vhs-teletext: double sizes are set-after and normal size is set-at (parser.py:103–107).
-  - The EN 300 706 convention (double height set-after, normal size set-at) is what zvbi and vhs implement.
+  - The EN 300 706 convention is double height set-after and normal size set-at, which vhs implements.
   - Since a control cell shows only a space or the held character, and a size change kills hold, the difference is mostly invisible.
-- **Row limits.** zvbi ignores double height on row 0 and row 23 (teletext.c:2651–2652, 2664).
 - **Real-chip rounding in double height:** see §1.
 
 ## 6. Box, conceal, background
@@ -128,57 +124,52 @@ Sources:
 - **Start Box / End Box:**
   - MAME: TODO/no-op (cpp:293–296, header TODO line 17).
   - BBC emulators: ignored, because a Micro has no boxing.
-  - zvbi (teletext.c:2641–2649) requires **two consecutive** 0x0B (or 0x0A) codes. The box state is applied set-after the first of the pair, which means it starts at the second code's cell.
-  - vhs-teletext (parser.py:93–102) acts on the second of a doubled pair, set-at, which gives the same result.
+  - vhs-teletext (parser.py:93–102) requires **two consecutive** 0x0B (or 0x0A) codes and acts on the second of the pair, set-at, so the box starts at the second code's cell.
   - On a real SAA5050, boxing only drives the BLAN/picture-insertion output used for mixing with TV video, not the RGB itself (per datasheet, not verified here: medium confidence).
 - **Conceal (0x18): set-at** in every implementation.
   - MAME implements it crudely: it sets the foreground to the background colour for the current cell and after (cpp:316–318). It has no reveal control. A later colour code restores a visible foreground from the following cell onward.
   - jsbeeb (teletext.js:278–279, 424–425) and beebjit (teletext.c:383–387, 414–418): colour codes clear conceal, but "the current character remains concealed", so the reveal is set-after. Both mark conceal set-at.
-  - zvbi: conceal set-at, cleared by a colour code set-after (teletext.c:2579, 2637, 2681).
   - vhs-teletext: conceal set-at, cleared by colour codes set-after.
-- **Black background (0x1C) and New background (0x1D): set-at** everywhere (MAME cpp:330–336 with `m_bg` used immediately; jsbeeb, beebjit, b-em, zvbi, vhs).
+- **Black background (0x1C) and New background (0x1D): set-at** everywhere (MAME cpp:330–336 with `m_bg` used immediately; jsbeeb, beebjit, b-em, vhs).
   - New background takes the **current** foreground, meaning after any preceding colour code has been processed. For example, "red, new-bg" gives red background from the 0x1D cell onward.
 - **Colour codes (alpha 0x01–0x07, mosaic 0x11–0x17): set-after** everywhere. MAME latches `m_prev_col` before processing (cpp:450). b-em and beebjit use a copy saved before processing.
   - Codes 0x00 and 0x10 do nothing on the SAA5050 (beebjit comment at teletext.c:368–373 and 402–403: pre-2.5 presentation, black foreground not supported).
-- **Flash (0x08): set-after. Steady (0x09): set-at** in jsbeeb (teletext.js:420–422), zvbi and vhs.
+- **Flash (0x08): set-after. Steady (0x09): set-at** in jsbeeb (teletext.js:420–422) and vhs.
   - MAME uses the pre-code flash state for both codes, which makes Steady set-after as well: a minor deviation.
   - beebjit uses the post-code state for both, which makes Flash set-at.
-- **Contiguous / separated (0x19 / 0x1A):** set-at in zvbi and vhs. In MAME, jsbeeb and b-em they affect the *next* character's type (`m_next_chartype`). This only matters for the held character, which is in stored form anyway.
+- **Contiguous / separated (0x19 / 0x1A):** set-at in vhs. In MAME, jsbeeb and b-em they affect the *next* character's type (`m_next_chartype`). This only matters for the held character, which is in stored form anyway.
 
-## 7. Glyph identification (zvbi lang.c)
+## 7. Glyph identification
 
-zvbi column order in `national_subset` (lang.c ~185–206) is 2/3, 2/4, 4/0, 5/B, 5/C, 5/D, 5/E, 5/F, 6/0, 7/B, 7/C, 7/D, 7/E. Row 0 is the unmodified set, then Czech, English, Estonian, French, German, Italian, Lettish/Lithuanian, Polish, Portuguese/Spanish, Rumanian, Serbian/Croatian/Slovene, Swedish/Finnish/Hungarian, Turkish.
+The national option columns are, in order, 2/3, 2/4, 4/0, 5/B, 5/C, 5/D, 5/E, 5/F, 6/0, 7/B, 7/C, 7/D, 7/E. Row 0 is the unmodified set, then Czech, English, Estonian, French, German, Italian, Lettish/Lithuanian, Polish, Portuguese/Spanish, Rumanian, Serbian/Croatian/Slovene, Swedish/Finnish/Hungarian, Turkish.
 
-| Position | zvbi code point | Notes |
+| Position | Code point | Notes |
 |---|---|---|
 | Polish 5/B | **U+01B5 Ƶ** LATIN CAPITAL LETTER Z WITH STROKE | Not Ź; Ź U+0179 is not in the Polish row. Polish 7/E is ź U+017A. Confidence: high. |
 | Polish 7/D | **U+0142 ł** | Polish 5/D is Ł U+0141 |
 | English 6/0 | **U+2014 EM DASH** | Bedstead also uses U+2014 "emdash" for the SAA5050 long dash (bedstead.c:367). vhs-teletext uses U+2014, with U+2500 commented out as an alternative (charset.py:70–71). U+2015 is not used by any of them. |
 | English 7/C | **U+2016 ‖ DOUBLE VERTICAL LINE** | Bedstead: 0x2016 "dblverticalbar" (bedstead.c:369); vhs agrees |
-| Turkish 2/3 | **U+E800** (Private Use Area) | zvbi comment: "Turkish currency symbol not in Unicode". The official U+20BA TURKISH LIRA SIGN has existed since Unicode 6.2, but the teletext glyph is the older "TL" currency symbol. Mapping it to U+20BA is a reasonable modern choice but my own judgement (medium confidence). Bedstead has no Turkish TL glyph (its `lira` 0x20A4 is ₤). |
+| Turkish 2/3 | **U+E800** (Private Use Area) | The official U+20BA TURKISH LIRA SIGN has existed since Unicode 6.2, but the teletext glyph is the older "TL" currency symbol. Mapping it to U+20BA is a reasonable modern choice but my own judgement (medium confidence). Bedstead has no Turkish TL glyph (its `lira` 0x20A4 is ₤). |
 | Serbian/Croatian/Slovene 2/4 | **U+00CB Ë** | Bedstead also has Ë 0x00CB (bedstead.c:667) |
-| Latin G2 4/9 | **U+002E** '.' | zvbi comment: "0x49 seems to be dot below; not in Unicode (except combining), use U+002E". The combining form would be U+0323. vhs-teletext instead uses U+02CC MODIFIER LETTER LOW VERTICAL LINE, so the sources disagree: low confidence on what the glyph really is. |
+| Latin G2 4/9 | **U+002E** '.' | This position seems to be a dot below, which Unicode has only as a combining form. That form would be U+0323. vhs-teletext instead uses U+02CC MODIFIER LETTER LOW VERTICAL LINE, so the sources disagree: low confidence on what the glyph really is. |
 | Latin G2 4/C | **U+02CD** MODIFIER LETTER LOW MACRON | i.e. an underline/low-line accent. vhs uses U+005F LOW LINE; Bedstead has a U+02CD glyph (bedstead.c:1193). |
 | Latin G2 7/F | **U+25A0 ■ BLACK SQUARE** | vhs agrees |
 
-Related zvbi G2 oddities, for reference:
-- 4/B is U+02CF (low acute) in zvbi, while vhs uses U+00B8 CEDILLA. The spec glyph is the cedilla.
-- 5/0 is U+2014 in zvbi and U+2500 in vhs.
-- 5/6 is U+20A0 EURO-CURRENCY SIGN in both.
-- 5/8 is U+0251 in zvbi and U+03B1 in vhs.
-- 4/0 is U+0020 in zvbi and U+00A0 in vhs.
+Related G2 mappings in vhs-teletext, for reference:
+- 4/B is U+00B8 CEDILLA, the spec glyph.
+- 5/0 is U+2500.
+- 5/6 is U+20A0 EURO-CURRENCY SIGN.
+- 5/8 is U+03B1.
+- 4/0 is U+00A0.
 
 ## 8. National option index from C12–C14
 
-**zvbi: index = C12·4 + C13·2 + C14**, meaning C12 is the most significant bit.
-- packet.c:2314 unhams header bytes 8–9 into an 8-bit value. Its high nibble is C11 (bit 4), C12 (bit 5), C13 (bit 6), C14 (bit 7), consistent with the flag enum in vt.h:490–492 (C12 = 0x200000, i.e. bit 5 after `<<16`).
-- packet.c:2322 bit-reverses that byte and takes the low 3 bits. So C14 becomes bit 0, C13 bit 1 and C12 bit 2.
-- The result indexes `vbi_font_descriptors` (lang.c:40–59, used at teletext.c:1120 and packet.c:506). Group 0 in order is English, German, Swedish/Finnish/Hungarian, Italian, French, Portuguese/Spanish, Czech/Slovak, (none). That is EN 300 706 Table 32 read as a binary number written "C12 C13 C14".
+**Index = C12·4 + C13·2 + C14**, meaning C12 is the most significant bit: EN 300 706 Table 32 read as a binary number written "C12 C13 C14".
+- Group 0 in order is English, German, Swedish/Finnish/Hungarian, Italian, French, Portuguese/Spanish, Czech/Slovak, (none).
   - Example: German is C12=0, C13=0, C14=1. French is C12=1, C13=0, C14=0.
-- Confidence: high that this is what zvbi does. zvbi is widely field-tested (German broadcasts show German characters in it), so treat this as the correct mapping.
 
 **vhs-teletext is not directly comparable.**
-- elements.py:177–188: `control` packs C4 as bit 0, C5–C6 as bits 1–2, and C7–C14 as bits 3–10. `codepage = (control >> 8) & 7` = C12 + 2·C13 + 4·C14, so C12 is the **least** significant bit, the reverse of zvbi.
+- elements.py:177–188: `control` packs C4 as bit 0, C5–C6 as bits 1–2, and C7–C14 as bits 3–10. `codepage = (control >> 8) & 7` = C12 + 2·C13 + 4·C14, so C12 is the **least** significant bit, the reverse of Table 32's reading.
 - However vhs never uses this number as a Table 32 index. parser.py:47–60 only checks that it is non-zero, and the actual subset comes from a user-chosen `localcodepage`.
 - So vhs-teletext is no evidence for the opposite ordering. If you follow its bit packing literally you get the reversed (wrong) index.
 - Recommendation: **index = (C12<<2) | (C13<<1) | C14** into Table 32 order.

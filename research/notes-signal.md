@@ -243,7 +243,7 @@ Formula: **samples/bit = f_s / 6 937 500**. Samples per 64 µs line = f_s / 15 6
 | 14.318 18 MHz (4 × fsc NTSC) | 14 318 180 / 6 937 500 | 2.0639 | 916.36 |
 
 - For 35.468 950 MHz with a 2048-sample VBI capture window: 2048 / 35.46895 MHz = **57.74 µs**, i.e. 2048 / 5.1126 ≈ 400.6 bit periods. That covers the 360-bit packet (51.89 µs) plus about 5.8 µs of margin.
-- The "bt8x8 at 35.468950 MHz, 2048 samples per line" capture format itself (Brooktree Bt848/878 VBI, Linux V4L2 / zvbi convention) is **UNVERIFIED**: there is no bt8x8 or V4L2 document in the local sources.
+- The "bt8x8 at 35.468950 MHz, 2048 samples per line" capture format itself (Brooktree Bt848/878 VBI, Linux V4L2 convention) is **UNVERIFIED**: there is no bt8x8 or V4L2 document in the local sources.
 - The TPU2735 uses a 6-bit digital video input (V1 LSB … V6 MSB) [TPU2735 pins, p.6–7] at main clock 17.7 MHz for PAL, 14.4 MHz for NTSC and 20.25 MHz for D2MAC [TPU2735 recommended operating conditions p.12; pin 36 p.9]. This is a historical proof that a digital slicer works at about **2.56 samples/bit with 6-bit samples**, plus ghost cancellation.
 - Clock-accuracy effect: ±25 ppm over 360 bits is only 0.035 to 0.046 samples of drift across the table rates (**DERIVED**), so a fixed nominal rate with per-line phase recovery from the run-in is enough. Capture-clock error in real hardware is **UNVERIFIED**.
 - GEN §5 edge-jitter table (±0.5 sample / samples-per-bit) applies to generation. For reception, the analogous point is that fewer than about 4 samples/bit calls for interpolation (for example linear or sinc resampling) to find bit centres. This is a design inference.

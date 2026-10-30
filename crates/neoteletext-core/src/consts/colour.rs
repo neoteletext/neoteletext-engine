@@ -49,7 +49,7 @@ pub const CLUT_LEVEL_35_FIRST: u8 = 0;
 pub const CLUT_LEVEL_25_FIRST: u8 = 2;
 /// The default Colour Map of Table 30, verified on the page image (p.89):
 /// each entry `0xRGB`, four bits per primary. CLUT 1 entry 5 is 7, 0, 7 and
-/// entry 6 is 0, 7, 7 (decision E.43, where zvbi 0.2.44 differs). CLUT 1
+/// entry 6 is 0, 7, 7 (decision E.43). CLUT 1
 /// entry 0 is transparent; its value here is never shown.
 pub const COLOUR_MAP_DEFAULTS: [u16; COLOUR_MAP_ENTRIES] = [
     // CLUT 0: black, red, green, yellow, blue, magenta, cyan, white.

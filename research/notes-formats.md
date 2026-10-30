@@ -330,14 +330,13 @@ struct v4l2_vbi_format {
   - The last 4 bytes of each frame buffer are overwritten with the frame sequence number (little-endian u32 in vhs-teletext's reading: `struct.unpack('<I', chunk[-4:])`). This happens only with read() I/O. Kernel comment: "Ugly hack for backwards compatibility. Some applications expect that the last 4 bytes of the VBI data contains the sequence number." (bttv-driver.c ~line 2776; [VHS] cli/teletext.py record())
   - Consequence: the last 4 samples of line 335 are corrupt. This is outside the teletext data window (derived).
 - FileChunker reads `size`-byte lines. Per field it skips `field_range.start` lines, uses `len(field_range)` lines, and skips the rest. ([VHS] teletext/file.py)
-- **zvbi "old sliced" capture format** (zvbi test/sliced.c `write_func_old_sliced` / `read_loop_old_sliced`, github.com/zapping-vbi/zvbi branch main). Per frame:
+- **The "old sliced" capture format.** Per frame:
   1. ASCII text of the time delta since the previous frame (`"%f\n"`, seconds).
   2. One byte `n_lines` (+1 if a raw block follows).
   3. Per line: service index byte, line number (2 bytes, little-endian; the high byte is masked &15 on read), then payload.
      - Service index → payload size: 0 = Teletext B (42 bytes), 1 = Caption 625 (2), 2 = VPS (13), 3 = WSS 625 (2), 4 = WSS CPR1204 (3), 7 = Caption 525 (2).
      - Index 255 = raw block. It starts with a header: u16 line=0, u16 system, u32 sampling_rate, u16 samples_per_line, u16 bytes_per_line, u16 offset, u16 start[2], u16 count[2], u8 interlaced, u8 synchronous (all little-endian). Raw samples follow.
-  - The teletext payload is in vbi_sliced order, which in zvbi is LSB-first like V4L2. UNVERIFIED from zvbi docs; inferred from V4L2 compatibility.
-  - zvbi sliced.c also reads and writes DVB PES and TS (`FILE_FORMAT_DVB_PES/_TS`).
+  - The teletext payload is LSB-first, like V4L2. UNVERIFIED; inferred from V4L2 compatibility.
 
 ---------------------------------------------------------------------------------------------------
 
@@ -547,5 +546,5 @@ Sources: [EDITTF] README "All frame data is kept in the URL"; teletext-editor.js
 4. CEBRA .ttx has no official spec; only the zxnet writer was examined.
 5. The BBC MODE 7 dump layout is conventional, based on the zxnet exporter, not an Acorn document.
 6. The SMPTE 2031 UDW layout was not read from the standard.
-7. zvbi's teletext payload bit order was inferred, not read from zvbi docs.
+7. The sliced format's teletext payload bit order was inferred, not read from a document.
 8. The byte order of vhs-teletext 'tbc' uint16 samples was not confirmed.

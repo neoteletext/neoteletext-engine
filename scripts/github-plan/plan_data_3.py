@@ -589,6 +589,5 @@ DECISIONS = [
     ("Find the cause of the 16 KB growth of neottx", "The full neottx grew when its application layer moved into its own crate. Row 50.", ["tech-gap"]),
     ("Shrink the web agent's buffers per feature", "agent::Storage does not shrink with its features.", ["tech-gap"]),
     ("Run the core under QEMU system emulation", "The Cortex-M0 test image is measured but never run.", ["tech-gap", "area/testing"]),
-    ("Run the zvbi comparisons in the gate", "They are run by hand on the build host today.", ["tech-gap", "area/testing"]),
     ("Print traces in the interactive viewer", "The other commands print state-machine traces with -vv.", ["tech-gap"]),
 ]

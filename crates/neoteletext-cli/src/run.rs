@@ -28,8 +28,8 @@ pub fn run() -> ExitCode {
         Command::Render { common, page, output, raster, image } => {
             commands::render(&common.options(), &page, &output, &raster, image)
         }
-        Command::Text { common, page, reveal, legacy_mosaics, cells } => {
-            commands::text(&common.options(), &page, reveal, legacy_mosaics, cells)
+        Command::Text { common, page, reveal, legacy_mosaics } => {
+            commands::text(&common.options(), &page, reveal, legacy_mosaics)
         }
         Command::Convert { common, output, to, page } => {
             commands::convert(&common.options(), &output, to, page.as_deref())

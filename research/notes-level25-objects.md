@@ -666,7 +666,7 @@ Expected foreground colour of each word:
 | IN | yellow (note 5: Active attribute continues past the last addressed cell) | green (note 6: effect ends at last addressed cell 24, then αG resumes) | green (note 6) |
 
 ### 13.2 Derived triplet encodings [D]
-- Computed from the clause 8.3 equations by a script in the session scratchpad. Each was checked to pass all six parity tests (A-F) and to round-trip to the same 18-bit value. Both the encoder and the checker were written from my reading of the standard, so **confirm against an independent oracle, such as zvbi at test time, before using them as golden values**.
+- Computed from the clause 8.3 equations by a script in the session scratchpad. Each was checked to pass all six parity tests (A-F) and to round-trip to the same 18-bit value. Both the encoder and the checker were written from my reading of the standard, so **confirm independently before using them as golden values**.
 - Bytes are listed as received, with bit 0 = first bit on air. Value = address | mode<<6 | data<<11.
 
 | Triplet | Address | Mode | Data | 18-bit value | Bytes |

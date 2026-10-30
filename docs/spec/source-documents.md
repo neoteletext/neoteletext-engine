@@ -52,7 +52,6 @@
 - the vhs-teletext sample captures, for raw sampled video.
 
 **Community resources used as test oracles:**
-- zvbi;
 - vhs-teletext;
 - vbit2 and raspi-teletext;
 - QTeletextMaker;

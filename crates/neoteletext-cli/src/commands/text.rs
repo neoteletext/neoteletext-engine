@@ -7,7 +7,7 @@ use neoteletext_app::input::{self, Options};
 use std::io::Write;
 
 /// `neottx text`.
-pub fn text(options: &Options, page: &str, reveal: bool, legacy_mosaics: bool, cells: bool) -> Result<(), Failure> {
+pub fn text(options: &Options, page: &str, reveal: bool, legacy_mosaics: bool) -> Result<(), Failure> {
     let selection = parse_selection(page)?;
     let mut session = input::load_for(options, selection.page())?;
     sandbox_closed(options.no_sandbox)?;
@@ -17,8 +17,7 @@ pub fn text(options: &Options, page: &str, reveal: bool, legacy_mosaics: bool, c
         if selection == Selection::All {
             let _ = writeln!(out, "=== {}:{:04X}", String::from_utf8_lossy(&key.address.ascii()), key.subcode.value());
         }
-        let written =
-            if cells { crate::cells::cells(&grid) } else { plain(&grid, reveal, mosaic_style(legacy_mosaics)) };
+        let written = plain(&grid, reveal, mosaic_style(legacy_mosaics));
         let _ = out.write_all(written.as_bytes());
     }
     Ok(())

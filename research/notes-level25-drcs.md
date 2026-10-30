@@ -6,12 +6,11 @@ Markers:
 - **[V]** read directly in the standard at the cited place.
 - **[D]** derived by arithmetic or by combining cited statements; the derivation is shown.
 - **[U]** unverified: an inference, a reading of an unclear passage, or something the standard does not say. Each one also appears in section 15.
-- **[E]** empirical: measured from the raster of a standard figure, or observed by running zvbi 0.2.44 on `oldvga`. The method is given.
+- **[E]** empirical: measured from the raster of a standard figure. The method is given.
 
 Other sources:
 - [L2-19-025] Unicode L2/19-025, "Proposal to add characters from legacy computers and teletext to the UCS", Terminals Working Group, 2019-01-04, https://www.unicode.org/L2/L2019/19025-terminals-prop.pdf, and its attached mapping file `TELTXTG3.TXT` ("Map from Teletext G3 character set to Unicode", Rebecca Bettencourt, 2018-04-20). The characters were encoded in Unicode 13.0 (block U+1FB00, "Symbols for Legacy Computing").
 - [MRG], [VBIT2], [ZXED]: as defined in `notes-formats.md`. Only public documentation was read; no GPL source.
-- [ZVBI-H] `/usr/include/libzvbi.h` on `oldvga`, package `libzvbi-dev` 0.2.44-1ubuntu2. Read, not copied.
 
 Scope boundary: MOT and X/27/4/X/27/5 linking are in `notes-level25-objects.md` (sections 7 and 9); triplet field encodings, the colour map and CLUT handling are in `notes-level25-enhancement.md`; Level 1.5 G0/G2 glyph tables, Tables 32/33 and Hamming coding are in `notes-level15.md`. They are cited here, not repeated. Quotations are short; the rest is paraphrase.
 
@@ -160,7 +159,6 @@ The packet column follows from "two PTUs per packet"; the T42 index subtracts 4,
   - plane 0 (PTU 1) = `7F 7F` and then `40`s;
   - plane 1 (PTU 2) = `7F 40` and then `40`s;
   - X/28/3 mode IDs: PTU 1 = 0001 and PTU 2 = 1110.
-  - The same bytes were used in the zvbi probe of section 13.
 
 ---------------------------------------------------------------------------------------------------
 
@@ -186,7 +184,7 @@ The packet column follows from "two PTUs per packet"; the T42 index subtracts 4,
   - triplets 3-11 = 0x3FFFF;
   - triplet 12 = 0x00FFF;
   - triplet 13 = 0x00000.
-  - These values use the LSB-first reading. zvbi did not confirm them (section 13.3).
+  - These values use the LSB-first reading, unconfirmed by any decoder.
 
 ---------------------------------------------------------------------------------------------------
 
@@ -512,9 +510,8 @@ Glyphs that are not polygons. Stroke positions are measured from the figure quan
   - These are example data only. Read as written, MSB on the left, they make a ready test vector for X/28/1 packing [D].
   - The order of rows in the figure (top = address 0) is [U].
 - **Table 31, Table 9 and Table 28/29 rows** give exact bit layouts for unit tests of the field decoders.
-- **zvbi probe stream** (section 13): a synthetic T42 stream with a DRCS page, a MOT and a display page using X/26 G3, G2, diacritic and Font Style triplets. Its Hamming 24/18 encodings were accepted by zvbi, which validates the encoder used for the worked values above [E].
 
-Worked triplet encodings [D, encoder validated as just described]:
+Worked triplet encodings [D]:
 
 | Triplet | 18-bit value | Hamming 24/18 bytes (on-air order) | TTI characters (hex) |
 |---|---|---|---|
@@ -552,70 +549,6 @@ Details are in `notes-formats.md` sections 5.1-5.2; the points that matter here:
 
 ---------------------------------------------------------------------------------------------------
 
-## 13. zvbi 0.2.44 as a test oracle (`oldvga`)
-
-### 13.1 What the public header exposes ([ZVBI-H], read only) [V for declarations; semantics marked]
-- `vbi_teletext_set_level(vbi, level)` and `vbi_fetch_vt_page(vbi, pg, pgno, subno, max_level, display_rows, navigation)`, with `vbi_wst_level` = `VBI_WST_LEVEL_1`, `_1p5`, `_2p5`, `_3p5`.
-- `vbi_decode(vbi, vbi_sliced *, lines, timestamp)`. `vbi_sliced` is `{id, line, data[56]}`; a T42 record goes in `data` with `id = VBI_SLICED_TELETEXT_B`.
-- `vbi_page` fields:
-  - `rows`, `columns` (observed 25 × 41: the 40 columns plus one spare [E]);
-  - `text[1056]` of `vbi_char`;
-  - `screen_color`, `screen_opacity`;
-  - `color_map[40]`;
-  - `drcs_clut` ("64 entries");
-  - `drcs[32]`;
-  - `font[2]`, `page_opacity[2]`, `boxed_opacity[2]`, `nav_link[6]`, `nav_index`.
-  - INFERENCE: `drcs[32]` is one pointer per accessible sub-table (16 normal + 16 global) [U].
-- `vbi_char` bit-fields: `underline`, `bold`, `italic`, `flash`, `conceal`, `proportional`, `link`, `size` (`vbi_size`: normal, double width, double height, double size, over top, over bottom, double height 2, double size 2), `opacity` (`vbi_opacity`: transparent space, transparent full, semi-transparent, opaque), `foreground`, `background` (indices into `color_map`), `drcs_clut_offs`, `unicode` (16 bits).
-- Inline helpers:
-  - `vbi_is_print(u)` is u < 0xE600;
-  - `vbi_is_gfx(u)` is 0xEE00 ≤ u ≤ 0xEFFF, the private range for G1 and G3;
-  - `vbi_is_drcs(u)` is u ≥ 0xF000.
-- Rendering: `vbi_draw_vt_page_region(pg, fmt, canvas, rowstride, column, row, width, height, reveal, flash_on)`, `vbi_get_vt_cell_size`.
-
-### 13.2 Observed behaviour [E]
-Method:
-- A Python generator in the session scratchpad built a T42 stream: DRCS page 1A0 with X/28/3, a MOT 1FE, and display page 100 with X/27/4, X/28/0 and X/26. Hamming 8/4 was checked against the standard table (0x15, 0x02, … 0xEA). Hamming 24/18 passed all six parity tests of cl. 8.3.
-- A C probe in `~/neoteletext-probe` on `oldvga`, outside the repository, fed each record to `vbi_decode` three times, then fetched page 100 at `VBI_WST_LEVEL_3p5` after `vbi_teletext_set_level(…, 3)`.
-
-Results:
-- **G3:** mode 01011 code 0x20 gave `unicode` U+EF20, and code 0x5B gave U+EF5B. zvbi stores G3 as `0xEF00 + code`, inside `vbi_is_gfx`.
-- **G2 and diacritics:** mode 01111 code 0x24 gave U+0024. Mode 10010 (acute, G2 4/2) on G0 `a` gave U+00E1.
-- **Font Style** at column 4 with D0-D2 set set `bold`, `italic` and `proportional` from column 4 to the end of the row. With R = 2, the same flags appeared at columns ≥ 4 on the next two rows and not on the third. This matches the reading "R further rows, from the same column".
-- **Ordering:** when a triplet addressed a column earlier than the previous triplet (A.4 allows ignoring it), zvbi did not move back. It wrote that triplet's character at the current position instead. Test streams should keep A.4 order.
-- **DRCS:** zvbi did not resolve the synthetic DRCS page in any of six variants:
-  - with and without X/28/3;
-  - with X/28/0 page function 0101;
-  - with S4/S3 = last packet;
-  - with a decimal page number;
-  - with both MOT and X/27/4 links.
-
-  While a DRCS triplet was present, zvbi dropped *every* X/26 enhancement on the page, not just the DRCS cells. With the DRCS triplets removed, the rest applied. The cause was not found.
-- **DCLUT defaults:** `drcs_clut` held, with no X/28/1:
-  - bytes 2-5 = 0 1 2 3;
-  - bytes 6-9 = 0 1 2 3;
-  - bytes 10-25 = 0-15;
-  - bytes 26-41 = 0-15.
-
-  This is consistent with D.2.2 and suggests the layout global DCLUT4, normal DCLUT4, global DCLUT16, normal DCLUT16 from offset 2 [U for the layout]. Bytes 42-63 held values that were not interpreted.
-- **Colour map:** `color_map` entries 0-31 matched Table 30, as 0xAABBGGRR, for CLUT 0, CLUT 2 and CLUT 3, and for CLUT 1 entries 1-4 and 7. The exceptions:
-  - entry 13 (CLUT 1 entry 5, half magenta) read ff007777 instead of the expected ff770077;
-  - entry 14 (CLUT 1 entry 6, half cyan) read 00200000.
-
-  Entries 32-39 are zvbi-private. Treat zvbi's CLUT 1 entries 5-6 with suspicion when using it as an oracle.
-- An all-zero X/28/0 Format 1 was honoured: CLUTs 2 and 3 became black.
-
-### 13.3 Using zvbi as an oracle
-- Usable now for:
-  - G3 placement, via the `unicode` value 0xEF00 + code;
-  - G0/G2/diacritic composition;
-  - font-style flag propagation;
-  - attribute and size fields.
-- Not usable yet for DRCS: the synthetic stream never got zvbi to load a DRCS page. A real broadcast capture with Level 2.5/3.5 DRCS, from the `$NEOTELETEXT_CORPUS` captures, should be tried before relying on it.
-- zvbi is GPL, so it may only be run as an external program at test time, never linked into the product (CLAUDE.md).
-
----------------------------------------------------------------------------------------------------
-
 ## 14. Summary of what a decoder must hold [D]
 - Per sub-table: 48 PTUs of 20 D-bytes (6 useful bits each) and 48 mode IDs of 4 bits.
   - Payload = 48 × 20 × 6 = 5760 bits = 720 bytes of pixel data per sub-table if packed, or 960 bytes stored as received.
@@ -636,7 +569,7 @@ Results:
   - Proposed: a 2.5 decoder reads X/28/3 and treats any non-0000 PTU as unusable.
 - **A-4. Bit and PTU order of the X/28/3 mode IDs.** Table 9 gives "Bits (MSB LSB)" but not which transmitted bit is the MSB, nor that PTU 0 comes first.
   - Proposed: PTU n at stream positions 4n..4n+3, LSB first, consistent with Table 8's explicit LSB-first rule.
-  - Not confirmed by any oracle; zvbi did not load the test page.
+  - Not confirmed by any decoder.
 - **A-5. Mode 3 (6×5×4).**
   - The bit order within each D-byte is not restated; the proposal is MSB of 6 = left, as mode 0.
   - The mapping of 6×5 onto the 12×10 cell is not stated; the proposal is 2×2 replication.
@@ -658,7 +591,6 @@ Results:
     - how attributes in cells, background fill and double width interact with it;
     - how R2-R0 interacts with a later Font Style triplet on an extended row.
   - Also: whether styles apply to G1 columns 4-5, G3 or DRCS. Table 25 names only G0 and G2.
-  - zvbi sets flags on every cell from the start column, whatever the character set.
 - **A-13. G3 and Hold Mosaics.** Whether a G3 cell written by X/26 affects the held-mosaic character, or is replaced by it, is not stated. Table 26 NOTE 14 says hold applies to "characters defined at Levels 1 and 1.5", which arguably includes the Level 1.5 G3 triplet (00010).
 - **A-14. G3 2/F "alternate dots".** The figure draws 2-dot by 1-row checks, not single-dot alternation.
   - Decide: single-dot checkerboard (matches the words) or 2×1 (matches the figure, and is about square on a 4:3 display) [E for the figure].
@@ -669,7 +601,7 @@ Results:
   - D-bytes outside 4/0-7/F, such as 2/0 padding, or bytes with parity errors.
   - Proposed: show a space, or the background, and log a diagnostic.
 - **A-17. Missing DRCS packets or pages.** D.1.1 rule 2 allows treating these as an error, with the response undefined.
-  - Decide the fallback: show the Level 1 character underneath, show a space, or show nothing for that cell. Not the zvbi behaviour, which drops all enhancement.
+  - Decide the fallback: show the Level 1 character underneath, show a space, or show nothing for that cell.
 - **A-18. DRCS Mode triplet L1/L0.**
   - The meaning of "presentation Levels at which the DRCS data will be used" is not spelt out.
   - Proposed: a decoder running at level X ignores DRCS Mode triplets whose L bits exclude X. That lets a page designate different sub-tables for 2.5 and 3.5.
@@ -677,4 +609,3 @@ Results:
 - **A-19. DRCS Mode latch across rows.** Unlike mode 01000, nothing resets the DRCS sub-table at the end of a row. Proposed: it persists to the end of the local enhancement data or object [U].
 - **A-20. Table 25 "7/E and 7/E"** for G3 undefined codes: a typo for 7/F (`notes-level15.md`).
 - **A-21. Clause 9.4.7 text** says X/28/4 "redefines CLUTs 2 and 3 instead of CLUTs 0 and 1", the reverse of Table 10 and clause 10.3.4 (also in ETS 1997). This belongs to the colour topic and is listed only because DRCS DCLUT defaults depend on CLUTs 0 and 1. Follow Table 10: X/28/4 defines CLUTs 0 and 1.
-- **A-22. zvbi CLUT 1 entries 5-6** differ from Table 30 (section 13.2) [E]. Do not use zvbi's `color_map` as an oracle for those entries.

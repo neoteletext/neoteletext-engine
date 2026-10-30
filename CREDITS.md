@@ -46,15 +46,6 @@ Terriberry, CSIRO, Gregory Maxwell, Mark Borgerding, Erik de Castro Lopo, Mozill
 These programs are run as separate programs or test oracles, in containers with no network access
 (REQ-TST-001). Their code and test files are never copied into this repository.
 
-**zvbi** — Michael H. Schimek and contributors, <https://github.com/zapping-vbi/zvbi>
-- *What it provides:* the independent oracle at Levels 2.5 and 3.5 (REQ-TST-023): `tests/oracles/`
-  decodes the same recordings with zvbi and compares the result cell by cell. Where the standard is
-  silent, neoteletext follows zvbi's observable behaviour, and records the places where it does
-  not (REQUIREMENTS.md, the decision on the oracle's known differences).
-- *Licence:* libzvbi is LGPL-2+ and the zvbi programs GPL-2+. The oracle programs in
-  `tests/oracles/` are neoteletext's own; they call the installed libzvbi at test time only, so the
-  receiver neoteletext ships contains no zvbi code.
-
 **libopus 1.5.2, fixed-point build** — <https://opus-codec.org/>
 - *What it provides:* the oracle of REQ-AUD-023. `tests/oracles/run_opus.sh` downloads its source,
   checks it against its pinned SHA-256 and builds it; its `opus_demo` encodes the test streams and
@@ -83,7 +74,4 @@ These programs are run as separate programs or test oracles, in containers with 
 ## Fonts loaded at run time
 
 Fonts other than Bedstead are not part of neoteletext: the user loads them from font libraries at
-run time (area FNT), and each keeps its own licence and record of where it came from. One open
-font that draws every teletext character set is the **libzvbi teletext font** (Michael H.
-Schimek, LGPL-2+). It must stay a loadable font, never a bundled one: bundling it would bring the
-LGPL's conditions into the release.
+run time (area FNT), and each keeps its own licence and record of where it came from.

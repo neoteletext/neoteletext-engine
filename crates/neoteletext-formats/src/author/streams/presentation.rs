@@ -192,8 +192,7 @@ pub(super) fn every_mode() -> Result<DisplayPage> {
 
 /// 124: double height, width and size on characters that the enhancement
 /// data writes itself, each size ended after its text, with the Level 1
-/// rows left empty: the sizes that a decoder which sizes only enhancement
-/// characters (zvbi) shows too (REQ-TST-023, Annex C.3).
+/// rows left empty (Annex C.3).
 pub(super) fn sizes_written_by_enhancement_data() -> Result<DisplayPage> {
     let mut page = page(0x124, b"SIZES OF CHARACTERS WRITTEN BY X/26")?;
     let none = DisplayAttributes::default();

@@ -35,31 +35,7 @@ Paths in this table are relative to `crates/tellytxt-` plus the named crate; for
 
 ## Findings
 
-### 1. External comparison can pass when no pages are decoded — high priority
-
-`tests/oracles/compare_cells.py:166` compares only the intersection of page/subpage keys. Missing pages are printed but never contribute to failure. At line 179 it compares rows using `zip`, so missing or truncated rows/cells can also escape comparison. Line 217 fails only for unexplained differences among compared cells.
-
-Reproduced using an empty ttx output and a reference output containing page 100 and one cell. It reported `ttx 0, zvbi 1, compared 0`, `cells compared: 0`, and exited **0**.
-
-`tests/oracles/run_cells.sh` additionally ignores failure of the ttx command with `|| true`. Together, these behaviors permit a decoder failure with empty output to be accepted as an oracle success.
-
-Fix the acceptance criteria to require expected page sets, row and cell counts, nonzero comparisons, and successful decoder execution. Explicitly scoped exceptions may be needed for genuine receiver-policy differences.
-
-### 2. Known differences exempt entire page numbers — high priority
-
-`compare_cells.py:195` discards every mismatch on any page listed in `zvbi-known-differences.txt`. Exemptions are keyed by page number, so they also cover all subpages. The file documents specific reasons, but the executable rule does not limit exceptions to those reasons, coordinates or fields.
-
-For example, a documented Local Object disagreement can mask an unrelated color or sizing regression anywhere else on that page. This does not prove the listed explanations are wrong; it means the harness cannot establish that *all* differences have those explanations.
-
-Replace whole-page waivers with expected mismatch records or narrowly defined predicates, and fail on additional differences.
-
-### 3. Font attributes are emitted but excluded from comparison — medium priority
-
-`compare_cells.py:52` defines `COMPARED_FLAGS = set("ufc")`, checking underline, flash and conceal only. Both `tests/oracles/zvbi_cells.c` and `crates/tellytxt-cli/src/output/cells.rs` emit bold, italic and proportional flags. Nevertheless, these flags are discarded before comparison.
-
-This falls short of REQ-TST-023, which explicitly requests comparison of those attributes. The comparator also limits itself to the 40-column main area; it does not independently validate side-panel presentation or RGB palette values.
-
-Include `b`, `i` and `p` in attribute comparison and add appropriate palette/panel checks. Cell agreement alone cannot validate glyph pixels, flash timing or DRCS bitplanes.
+*Note of 31 October 2026:* findings 1 to 3 concerned the comparison with another decoder, which the owner removed from the system with its harness, so they are withdrawn.
 
 ### 4. Proportional spacing is decoded but never laid out — presentation limitation
 
@@ -75,7 +51,7 @@ The implementation log explicitly records that no real broadcast containing comp
 
 Authored streams are often created using this project's own encoder and decoded by its own receiver. A shared misunderstanding of a bit field can therefore survive round-trip tests. Golden rasters detect regressions, but do not establish normative correctness unless their initial expected results are independently checked.
 
-Priority targets are independently sourced object/DRCS/MOT packets, cross-magazine links, multi-plane DRCS and mode 3 pixel order, and side-panel addressing. The open questions in REQUIREMENTS.md Appendix D already identify several of these risks. External zvbi differences should be adjudicated against specific clauses or independent vectors, not resolved simply by choosing either decoder.
+Priority targets are independently sourced object/DRCS/MOT packets, cross-magazine links, multi-plane DRCS and mode 3 pixel order, and side-panel addressing. The open questions in REQUIREMENTS.md Appendix D already identify several of these risks.
 
 ### 6. IC profiles should be described as behavioral approximations — fidelity limitation
 
@@ -87,13 +63,12 @@ Separate specification-level semantic tests from chip-specific pixel and recover
 
 ## Recommended order
 
-1. Repair the oracle's acceptance criteria and narrow its exceptions. This makes subsequent validation meaningful.
-2. Compare all font flags and add independent tests for palette and panel output.
-3. Qualify the fixed-pitch Level 3.5 claim in public documentation.
-4. Add independently checked raw vectors for compositional links, MOT, objects and every DRCS mode; obtain complete real enhancement-page captures when available.
-5. Compare chip-profile output against hardware photographs/captures, including double-height diagonals and held-mosaic transitions.
+1. Add independent tests for palette and panel output.
+2. Qualify the fixed-pitch Level 3.5 claim in public documentation.
+3. Add independently checked raw vectors for compositional links, MOT, objects and every DRCS mode; obtain complete real enhancement-page captures when available.
+4. Compare chip-profile output against hardware photographs/captures, including double-height diagonals and held-mosaic transitions.
 
-The findings above distinguish confirmed harness defects, deliberate presentation limitations, and missing evidence. They do not establish a new packet-decoding defect in the basic teletext path.
+The findings above distinguish deliberate presentation limitations and missing evidence. They do not establish a new packet-decoding defect in the basic teletext path.
 
 ## Verification performed
 
@@ -101,4 +76,4 @@ The findings above distinguish confirmed harness defects, deliberate presentatio
 
 These totals count successful Rust test functions, including any corpus tests that return early when their data is absent. They must not be interpreted as 602 independent conformance assertions or proof that all external recordings were exercised. The historical implementation log's figure of 606 was not reproduced by this command.
 
-The external zvbi oracle was inspected and its missing-page false success was reproduced with local fixtures. The full external zvbi comparisons, hardware captures, target-platform checks and coverage measurements were not rerun in this investigation. No implementation code was changed; this report is the only repository addition from the audit.
+Hardware captures, target-platform checks and coverage measurements were not rerun in this investigation. No implementation code was changed; this report is the only repository addition from the audit.

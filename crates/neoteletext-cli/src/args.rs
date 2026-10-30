@@ -224,10 +224,6 @@ pub(crate) enum Command {
         /// Write separated mosaics with contiguous characters, for older fonts.
         #[arg(long)]
         legacy_mosaics: bool,
-        /// Write every cell with its colours and attributes instead: the
-        /// test interface of the zvbi oracle (REQ-TST-023).
-        #[arg(long, hide = true)]
-        cells: bool,
     },
     /// Convert between formats.
     Convert {

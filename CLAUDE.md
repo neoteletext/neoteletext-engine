@@ -54,7 +54,7 @@ The rules below about issues and requirements apply at integration: behaviour ma
   - Plain HTTP is allowed by the owner's decision (E.32), with the safeguards of REQ-SEC-008.
 
 - **No copyrighted source material in this repository.** Do not copy standards PDFs or datasheets here. Link to them or cite them by clause.
-- **No GPL code.** zvbi, vhs-teletext, vbit2 and QTeletextMaker may be run as external programs, or used as test oracles at test time. Their code and test files must never be copied into this repository.
+- **No GPL code.** vhs-teletext, vbit2 and QTeletextMaker may be run as external programs, or used as test oracles at test time. Their code and test files must never be copied into this repository.
 - **One bundled font: Bedstead** (decisions E.72 and E.77, REQ-FNT-001).
   - `third_party/bedstead/bedstead-glyphs.txt` is the only font compiled into the receiver. Its licence and legal basis are in `third_party/bedstead/PROVENANCE.md`.
   - The only other glyph data in the repository is the Noto-derived 12 × 20 fonts in `third_party/noto/`, with their converter (decision E.77, REQ-FNT-012). They are loaded at run time, never compiled in.

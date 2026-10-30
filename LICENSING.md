@@ -24,7 +24,7 @@ The owner accepted LGPL system libraries on 19 October 2026: the system's `libas
 
 ## 3. What is not acceptable
 
-- **GPL and AGPL code in anything we ship** (REQ-GEN-017). Linking it into a program puts the whole program under the GPL. The repository keeps no GPL code. The GPL decoders in CREDITS.md are used only as test oracles: they run as separate programs, and nothing we ship contains their code. The same goes for libzvbi (LGPL), which our own oracle programs call at test time.
+- **GPL and AGPL code in anything we ship** (REQ-GEN-017). Linking it into a program puts the whole program under the GPL. The repository keeps no GPL code. The GPL decoders in CREDITS.md are used only as test oracles: they run as separate programs, and nothing we ship contains their code.
 - **LGPL code compiled in or linked statically.** That would oblige anyone who ships our program to let users relink it against their own copy of the library.
 - **LGPL libraries bundled with a release** (for example inside an AppImage or Flatpak) unless the release also carries the LGPL text and offers that library's source. The preferred course is not to bundle them: a package lists `libasound` as a dependency instead.
 - **File-level copyleft code compiled in,** such as MPL-2.0 or EPL-2.0. It would not spread to our files, but changed files would have to be published. It needs the owner's decision first.

@@ -8,9 +8,7 @@
 //! The stream's pages are kept as TTI source in `tests/pages/level25/`, one
 //! file per page address, as REQ-TST-024 asks; a second test checks that
 //! the builder of REQ-INP-025 still writes exactly those files. Each page
-//! was checked by eye, and cell by cell against zvbi where zvbi decodes it
-//! correctly (`tests/oracles/run_cells.sh`, REQ-TST-023), before its
-//! checksum was taken.
+//! was checked by eye before its checksum was taken.
 //!
 //! The file carries a format version. A deliberate change to the stream,
 //! the enhancement processor or the renderer raises the version and
