@@ -49,7 +49,16 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
         self.front_door = None;
         self.contents = None;
         self.second_try = None;
+        self.live = false;
+        self.connecting = false;
+        self.index = crate::records::index::Progress::new();
         self.forget_catalogues();
+    }
+
+    /// Whether the open channel is live (REQ-WEB-018): its pages and its
+    /// contents come on its push connection, and none is fetched.
+    pub(super) const fn is_live(&self) -> bool {
+        self.live
     }
 
     /// Starts opening a channel: its settings first (REQ-WEB-018).

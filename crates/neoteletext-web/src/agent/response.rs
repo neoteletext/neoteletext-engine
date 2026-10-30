@@ -76,7 +76,13 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
                     match parsed {
                         Ok(descriptor) => {
                             self.open_descriptor(now, descriptor, via_link, sink);
-                            if channel {
+                            if channel && self.push.url.is_some() {
+                                // REQ-WEB-018 (DEC-1467): a live channel's
+                                // connection brings its pages and contents.
+                                self.live = true;
+                                self.connecting = true;
+                                event(sink, Event::ChannelConnecting);
+                            } else if channel {
                                 self.front_door = self
                                     .channel
                                     .and_then(|folder| channel::file_url(&folder, ChannelFile::Bundle).ok());

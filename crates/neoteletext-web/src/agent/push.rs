@@ -233,6 +233,9 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
             return false;
         }
         self.push.phase = PushPhase::Open { heard: now, pinged: None };
+        self.push.invalid = 0;
+        self.push.log_lines = 0;
+        self.records.clear();
         event(sink, Event::PushConnected(self.push.method));
         if self.push.method == PushMethod::WebSocket {
             self.send_subscribe(sink);

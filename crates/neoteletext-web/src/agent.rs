@@ -270,6 +270,10 @@ struct PushConnection {
     /// Each contact's latest move, held while the socket is congested.
     held: [Option<HeldMove>; crate::consts::PUSH_MOVE_SLOTS],
     round_trip: RoundTrip,
+    /// Invalid packets since the connection opened (REQ-1462).
+    invalid: u64,
+    /// LOG records given on since the last page frame (REQ-INP-026).
+    log_lines: usize,
 }
 
 /// The web user agent: `SLOTS` cookies in `COOKIE_BYTES` bytes, random
@@ -322,6 +326,15 @@ pub struct UserAgent<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES
     cache: [Option<CacheEntry>; CACHE_ENTRIES],
     cache_tick: u64,
     push: PushConnection,
+    /// The channel's records on the push connection (INPUT.md section 7).
+    records: crate::records::RecordReader,
+    /// The index sending in progress (INPUT.md section 7.5).
+    index: crate::records::index::Progress,
+    /// The open channel is live: its `channel.json` names a push
+    /// connection, so nothing is fetched but its settings (REQ-WEB-018).
+    live: bool,
+    /// A live channel whose first page has not yet arrived.
+    connecting: bool,
     subscribe_all: bool,
     subscribed: [Option<PageAddress>; MAX_SUBSCRIBED_PAGES],
     /// The port's keys that never leave the device (REQ-WEB-017).
@@ -437,7 +450,13 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
                 unsent: 0,
                 held: [None; crate::consts::PUSH_MOVE_SLOTS],
                 round_trip: RoundTrip::default(),
+                invalid: 0,
+                log_lines: 0,
             },
+            records: crate::records::RecordReader::new(),
+            index: crate::records::index::Progress::new(),
+            live: false,
+            connecting: false,
             subscribe_all: true,
             subscribed: [None; MAX_SUBSCRIBED_PAGES],
             #[cfg(feature = "dbsc")]

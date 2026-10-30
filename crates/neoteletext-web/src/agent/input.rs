@@ -35,6 +35,9 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
                 }
                 Err(_) => event(sink, Event::DescriptorFailed(Failure::Address(UrlError::Path))),
             },
+            // REQ-WEB-018: a live channel fetches nothing after its
+            // settings; its pages and its index come on its connection.
+            Input::FetchContents | Input::FetchPage { .. } | Input::FetchSubPages { .. } if self.is_live() => {}
             Input::FetchContents => self.fetch_contents(sink),
             Input::FollowLink { service, page, subcode } => self.follow_link(service, page, subcode, sink),
             Input::FetchPage { page, subcode } => self.enqueue(page, subcode, Want::Page, sink),

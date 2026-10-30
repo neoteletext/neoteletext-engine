@@ -672,13 +672,13 @@ fn websocket_push() {
     let records = harness.open("http://tt.example/service.json");
     assert!(has_event(&records, "PushConnected(WebSocket)"), "{records:?}");
     let delivered = pages(&records);
-    assert_eq!(delivered.len(), 2);
+    // DEC-1459, REQ-1462: the text message is never read as a page; it is
+    // discarded and counted as one invalid packet.
+    assert_eq!(delivered.len(), 1);
     assert!(
         matches!(delivered[0], Rec::Page { source: Source::Push, media: MediaType::T42, bytes, .. } if bytes.len() == 84)
     );
-    assert!(
-        matches!(delivered[1], Rec::Page { source: Source::Push, media: MediaType::Tti, bytes, .. } if bytes == TTI)
-    );
+    assert!(has_event(&records, "InvalidPackets { total: 1 }"), "{records:?}");
     let push_frames: Vec<_> = harness
         .replay()
         .sent
@@ -729,7 +729,8 @@ fn websocket_push_protocol_errors() {
     frames.extend([0x82, 0x85, 0, 0, 0, 0, 1, 2, 3, 4, 5]); // masked server frame
     harness.replay().reply("tt.example:80", Reply::WebSocket(frames));
     let records = harness.open("http://tt.example/service.json");
-    assert!(has_event(&records, "PushLost { retry_in_us: 0, problem: Some(PacketLength)"));
+    // REQ-1462: a ragged message is discarded and counted, ⌈41 ÷ 42⌉ = 1.
+    assert!(has_event(&records, "InvalidPackets { total: 1 }"), "{records:?}");
     assert!(has_event(&records, "PushLost { retry_in_us: 1000000, problem: Some(WebSocket(Protocol))"), "{records:?}");
     let (_, close) = harness.replay().sent.last().unwrap().clone();
     assert_eq!(client_frames(&close).last(), Some(&(0x8, 1002u16.to_be_bytes().to_vec())));
@@ -1568,7 +1569,7 @@ fn a_push_handshake_cookie_stays_in_its_channel_folder() {
     harness.replay().reply("site.example:80", json_response(settings));
     let head = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nSet-Cookie: s=1; Path=/\r\n\
                 Transfer-Encoding: chunked\r\n\r\n";
-    harness.replay().reply("site.example:80", not_found());
+    // A live channel asks for no bundle (REQ-WEB-018).
     harness.replay().reply("site.example:80", Reply::Bytes(head.as_bytes().to_vec()));
     let records = harness.open_channel("http://site.example/a/");
     assert!(has_event(&records, "PushConnected(ServerSentEvents)"), "{records:?}");

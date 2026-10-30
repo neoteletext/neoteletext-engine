@@ -74,7 +74,7 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
                 request
             } else if let Some(url) = self.contents.take() {
                 (Purpose::Contents, url, Method::Get, Site::SameService)
-            } else if self.queue.iter().any(Option::is_some) && now >= self.next_fetch_at {
+            } else if !self.live && self.queue.iter().any(Option::is_some) && now >= self.next_fetch_at {
                 let Some(queued) = self.take_queued() else { return };
                 let request = match queued.want {
                     Want::Page => self.page_request(now, queued.page, queued.subcode, sink),

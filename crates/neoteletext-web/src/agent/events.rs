@@ -8,9 +8,11 @@ use crate::cookie::CookieRejected;
 use crate::descriptor::{DescriptorError, PushMethod};
 use crate::http::{HttpError, MediaType, Method};
 use crate::port::{ConnectionId, NetInput, NetOutput, Security};
+use crate::records::index::IndexRecord;
 use crate::sse::SseError;
 use crate::url::UrlError;
 use crate::ws::WsError;
+use neoteletext_formats::log::LogLine;
 
 /// Which pages the push connection should carry (REQ-WEB-005).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -203,8 +205,6 @@ pub enum PushProblem {
     WebSocket(WsError),
     /// A server-sent event was too big.
     EventStream(SseError),
-    /// Pushed T42 data was not whole 42-byte packets.
-    PacketLength,
     /// Pushed packets were not valid base64.
     Base64,
 }
@@ -300,6 +300,51 @@ pub enum Event<'a> {
     /// (the `push` feature, decision E.61): pages are fetched on request
     /// only.
     PushNotCompiledIn(PushMethod),
+    /// Packets the push connection carried that were invalid
+    /// (neoteletext-common's REQ-1462): a packet whose address does not
+    /// decode or whose kind the stream may not carry
+    /// ([`neoteletext_core::packet::is_valid_stream_packet`]), a binary
+    /// message that is not whole packets (counted as its length divided by
+    /// 42, rounded up), a text message (counted as one), or a channel
+    /// record that breaks its layout (each of its packets). Each was
+    /// discarded with nothing of it applied, and the connection kept.
+    /// Given each time the count rises: the port reports it at most once
+    /// in [`crate::consts::INVALID_PACKET_REPORT_SECONDS`].
+    InvalidPackets {
+        /// The count since the push connection opened.
+        total: u64,
+    },
+    /// A log line for the channel's author from a LOG record on the push
+    /// connection (`INPUT.md` section 7.6, REQ-INP-026): the same line a
+    /// TTI `LG` line gives as `Item::Log`, shown only in a developer's
+    /// view. At most `MAX_LOG_LINES_PER_PAGE` for each page frame, and as
+    /// many before the first.
+    Log {
+        /// The level and the checked text.
+        line: LogLine<'a>,
+        /// The page it concerns, if any.
+        page: Option<PageAddress>,
+    },
+    /// A part of a live channel's index (`INPUT.md` section 7.5): its
+    /// pages are shown at once, added or replacing what was there;
+    /// [`IndexRecord::entries`] gives them as `contents.txt`'s entries
+    /// and [`IndexRecord::pages`] with their sub-page counts. Nothing is
+    /// removed until [`Event::IndexComplete`].
+    Index(IndexRecord<'a>),
+    /// Every part of an index sending has arrived: the pages and
+    /// magazines it listed are the whole index, and every other is
+    /// removed (`INPUT.md` section 7.5).
+    IndexComplete {
+        /// The sending's generation.
+        generation: u16,
+    },
+    /// A live channel (its `channel.json` names a push connection,
+    /// REQ-WEB-018) is opening its connection: it asks for no bundle, page
+    /// file or `contents.txt`, and is connecting, never a page not found,
+    /// until [`Event::ChannelLive`].
+    ChannelConnecting,
+    /// A live channel's first page arrived on its connection.
+    ChannelLive,
     /// The push connection was lost; it is retried after this delay.
     PushLost {
         /// Microseconds until the next attempt.

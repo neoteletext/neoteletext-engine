@@ -319,6 +319,13 @@ pub const MAX_EVENT_TYPE: usize = 32;
 /// The query parameter naming the pages subscribed to over server-sent
 /// events (REQ-WEB-005).
 pub const SUBSCRIBE_QUERY: &[u8] = b"subscribe=";
+/// How often a port reports the push connection's invalid packets, when
+/// there are any (neoteletext-common's REQ-1462): their cumulative count,
+/// at most once in this many seconds, since the agent has no clock of its
+/// own beyond what the port gives it ([`crate::agent::Event::InvalidPackets`]).
+/// The owner's instruction of 30 October 2026: "accumulate for N seconds
+/// (say 20) before logging at the client console".
+pub const INVALID_PACKET_REPORT_SECONDS: u64 = 20;
 /// The first reconnection delay (REQ-WEB-005).
 pub const PUSH_RETRY_FIRST_US: u64 = MICROSECONDS_PER_SECOND;
 /// The longest reconnection delay (REQ-WEB-005).
