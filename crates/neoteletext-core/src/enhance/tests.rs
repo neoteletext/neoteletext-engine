@@ -695,12 +695,12 @@ fn underline_and_separated_mosaics() {
 /// Decision E.48: Level 1 Flash is slow flash in normal mode at Levels 2.5
 /// and 3.5, until Steady.
 #[test]
-fn level_1_flash_is_slow_normal_flash() {
+fn level_1_flash_is_normal_flash_at_the_level_1_rate() {
     let codes = [FLASH, b'A', STEADY, b'B'];
     let (grid, _) = build_25(&page(0, &[(7, &codes)], local_data(&[position(7, 0), g0_at(10, b'Z')])));
     let cell = grid.cells[7][1];
     assert!(cell.flash);
-    assert_eq!((cell.attributes.flash_mode(), cell.attributes.flash_rate()), (FlashMode::Normal, FlashRate::Slow));
+    assert_eq!((cell.attributes.flash_mode(), cell.attributes.flash_rate()), (FlashMode::Normal, FlashRate::Level1));
     assert!(!grid.cells[7][2].flash && !grid.cells[7][3].flash);
 }
 

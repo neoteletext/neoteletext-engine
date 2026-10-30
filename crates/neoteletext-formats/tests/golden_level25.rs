@@ -34,7 +34,7 @@ use std::path::PathBuf;
 
 /// Raise when the stream, enhancement or rendering changes on purpose
 /// (REQ-TST-030).
-const FORMAT_VERSION: u32 = 7;
+const FORMAT_VERSION: u32 = 8;
 /// One line period between packets, as the command-line program uses.
 const LINE_US: u64 = 64;
 /// The flash units of decision E.48 a still page is drawn at: the start of

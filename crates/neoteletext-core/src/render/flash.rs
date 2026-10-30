@@ -11,18 +11,18 @@ use crate::types::Instant;
 /// cell raster only tests a bit (REQ-GEN-016).
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub struct FlashPhase {
-    /// Bit r set when [`FlashRate`] number r (slow, then fast phases 1 to
-    /// 3) is on.
+    /// One bit for each [`FlashRate`], set while it is on.
     on: u8,
 }
 
 /// The bit of a flash rate in [`FlashPhase`].
 const fn rate_bit(rate: FlashRate) -> u8 {
     match rate {
-        FlashRate::Slow => 0b0001,
-        FlashRate::FastPhase1 => 0b0010,
-        FlashRate::FastPhase2 => 0b0100,
-        FlashRate::FastPhase3 => 0b1000,
+        FlashRate::Slow => 0b0_0001,
+        FlashRate::FastPhase1 => 0b0_0010,
+        FlashRate::FastPhase2 => 0b0_0100,
+        FlashRate::FastPhase3 => 0b0_1000,
+        FlashRate::Level1 => 0b1_0000,
     }
 }
 
@@ -30,16 +30,19 @@ impl FlashPhase {
     /// Every rate on: flashing characters in their "on" phase, for still
     /// images.
     pub const STEADY: Self = Self {
-        on: rate_bit(FlashRate::Slow)
+        on: rate_bit(FlashRate::Level1)
+            | rate_bit(FlashRate::Slow)
             | rate_bit(FlashRate::FastPhase1)
             | rate_bit(FlashRate::FastPhase2)
             | rate_bit(FlashRate::FastPhase3),
     };
 
-    /// The phase of flash unit `unit`, 0 to 11 (taken modulo 12).
+    /// The phase of flash unit `unit`, 0 to 11 (taken modulo 12), with the
+    /// Level 1 flash, which units do not time, in its "on" phase.
     #[must_use]
     pub const fn at_unit(unit: u8) -> Self {
-        let rates = [FlashRate::Slow, FlashRate::FastPhase1, FlashRate::FastPhase2, FlashRate::FastPhase3];
+        let rates =
+            [FlashRate::Level1, FlashRate::Slow, FlashRate::FastPhase1, FlashRate::FastPhase2, FlashRate::FastPhase3];
         let mut on = 0;
         let mut index = 0;
         while index < rates.len() {
@@ -54,10 +57,19 @@ impl FlashPhase {
         Self { on }
     }
 
-    /// The phase at a time on the caller's clock (REQ-GEN-005).
+    /// The same phase with the Level 1 flash shown or hidden.
     #[must_use]
-    pub fn at(now: Instant) -> Self {
-        Self::at_unit(flash_unit(now))
+    pub const fn with_level_1(self, shown: bool) -> Self {
+        let bit = rate_bit(FlashRate::Level1);
+        Self { on: if shown { self.on | bit } else { self.on & !bit } }
+    }
+
+    /// The phase at a time on the caller's clock (REQ-GEN-005): the Level 1
+    /// flash follows the timing of `config` at every level (decision E.12),
+    /// and the units time only the Additional Flash Functions.
+    #[must_use]
+    pub fn at(now: Instant, config: &Config) -> Self {
+        Self::at_unit(flash_unit(now)).with_level_1(flash_visible(now, config))
     }
 
     /// True while a character of this rate shows its "on" phase.
@@ -78,6 +90,8 @@ pub fn flash_unit(now: Instant) -> u8 {
 /// True when a character of `rate` is in its "on" phase in flash unit
 /// `unit` (decision E.48, REQ-RND-040):
 ///
+/// - the Level 1 flash is timed by [`flash_visible`], not by units, so it
+///   counts as on;
 /// - slow flash (1 hertz) is on in units 0 to 8 and off in 9 to 11;
 /// - fast flash (2 hertz) with phase p is off in units 2(p − 1) and 2p − 1
 ///   of each half-second of six units, and on otherwise.
@@ -87,6 +101,7 @@ pub fn flash_unit(now: Instant) -> u8 {
 pub const fn flash_on(rate: FlashRate, unit: u8) -> bool {
     let unit = unit % FLASH_UNITS;
     let off_pair = match rate {
+        FlashRate::Level1 => return true,
         FlashRate::Slow => return unit < FLASH_SLOW_ON_UNITS,
         FlashRate::FastPhase1 => 0,
         FlashRate::FastPhase2 => 1,
@@ -102,8 +117,8 @@ pub(super) fn flash_shown(cell: &Cell, flash: FlashPhase) -> bool {
     flash.is_on(attributes.flash_rate()) != (attributes.flash_mode() == FlashMode::InvertPhase)
 }
 
-/// The flash phase at a time at Levels 1 and 1.5 (decision E.12): true
-/// while shown. Levels 2.5 and 3.5 use [`FlashPhase::at`].
+/// The Level 1 flash at a time, at every level (decision E.12): true while
+/// shown. [`FlashPhase::at`] carries it into the resolved mode.
 #[must_use]
 pub fn flash_visible(now: Instant, config: &Config) -> bool {
     let period = config.flash_shown_us.saturating_add(config.flash_hidden_us);

@@ -30,7 +30,7 @@ impl Frame {
     #[cfg(feature = "view")]
     #[must_use]
     pub fn at(config: &Config, reveal: bool, now: neoteletext_core::types::Instant) -> Self {
-        let options = RenderOptions::for_level(config, reveal, FlashPhase::at(now));
+        let options = RenderOptions::for_level(config, reveal, FlashPhase::at(now, config));
         let flash_visible =
             options.colour != ColourMode::Palette || neoteletext_core::render::flash_visible(now, config);
         Self { options, flash_visible }
@@ -75,5 +75,31 @@ mod tests {
         let on = raster(&grid, at(&enhanced, 200_000), one, Rgba::TRANSPARENT);
         let off = raster(&grid, at(&enhanced, 0), one, Rgba::TRANSPARENT);
         assert_eq!((on.indices[20 * 480], off.indices[20 * 480]), (3, 4));
+    }
+
+    /// Decision E.48 as the owner changed it: the Level 1 Flash code keeps
+    /// the SAA5050's timing of decision E.12 at every level, 960 ms shown
+    /// and 320 ms hidden.
+    #[test]
+    fn a_level_1_flash_keeps_the_saa5050_timing_at_every_level() {
+        use neoteletext_core::level1::{Cell, Glyph};
+        use neoteletext_core::types::Instant;
+        let mut grid = Grid::EMPTY;
+        grid.cells[1][0] = Cell {
+            glyph: Glyph::Mosaic { pattern: 0x3F, separated: false },
+            foreground: 3,
+            background: 4,
+            flash: true,
+            ..Cell::BLANK
+        };
+        let one = Scale { x: 1, y: 1, aspect: false };
+        for level in [PresentationLevel::Level25, PresentationLevel::Level35] {
+            let config = Config { level, ..Config::default() };
+            let shown =
+                |us| raster(&grid, Frame::at(&config, false, Instant(us)), one, Rgba::TRANSPARENT).indices[20 * 480];
+            for (us, colour) in [(0, 3), (800_000, 3), (959_999, 3), (960_000, 4), (1_279_999, 4), (1_280_000, 3)] {
+                assert_eq!(shown(us), colour, "{level:?} at {us} microseconds");
+            }
+        }
     }
 }

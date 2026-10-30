@@ -78,8 +78,12 @@ pub enum FlashMode {
 /// decremental flash are resolved into a phase for each cell.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum FlashRate {
-    /// 1 hertz: on in units 0 to 8 of the twelve, off in 9 to 11. At Levels
-    /// 1 and 1.5 the timing of decision E.12 is used instead.
+    /// The Level 1 Flash code (0/8): the SAA5050's timing of decision E.12
+    /// at every level, 960 ms shown and 320 ms hidden. The default, so a
+    /// Level 1 page needs no attribute to flash.
+    Level1,
+    /// The slow rate of the Additional Flash Functions (Table 29 mode
+    /// 00111), 1 hertz: on in units 0 to 8 of the twelve, off in 9 to 11.
     Slow,
     /// 2 hertz, phase 1: off in units 0 and 1 of each half-second.
     FastPhase1,
@@ -115,19 +119,19 @@ pub enum CharSource {
 pub struct CellAttributes(u16);
 
 /// Bit layout of [`CellAttributes`]: width bits 0 and 1, flash mode 2 and
-/// 3, flash rate 4 and 5, underline 6, invert 7, source 8 to 10.
+/// 3, flash rate 4 to 6, underline 7, invert 8, source 9 to 11.
 const WIDTH_SHIFT: u32 = 0;
 const FLASH_MODE_SHIFT: u32 = 2;
 const FLASH_RATE_SHIFT: u32 = 4;
-const UNDERLINE_BIT: u16 = 1 << 6;
-const INVERT_BIT: u16 = 1 << 7;
-const SOURCE_SHIFT: u32 = 8;
+const UNDERLINE_BIT: u16 = 1 << 7;
+const INVERT_BIT: u16 = 1 << 8;
+const SOURCE_SHIFT: u32 = 9;
 const TWO_BITS: u16 = 0b11;
 const THREE_BITS: u16 = 0b111;
 
 impl CellAttributes {
-    /// Normal width, steady normal slow flash settings, no underline or
-    /// invert, written by the Level 1 page.
+    /// Normal width, the Level 1 flash settings, no underline or invert,
+    /// written by the Level 1 page.
     pub const DEFAULT: Self = Self(0);
 
     const fn field(self, shift: u32, mask: u16) -> u16 {
@@ -187,11 +191,12 @@ impl CellAttributes {
     /// The flash rate and phase, when the cell flashes.
     #[must_use]
     pub const fn flash_rate(self) -> FlashRate {
-        match self.field(FLASH_RATE_SHIFT, TWO_BITS) {
+        match self.field(FLASH_RATE_SHIFT, THREE_BITS) {
             1 => FlashRate::FastPhase1,
             2 => FlashRate::FastPhase2,
             3 => FlashRate::FastPhase3,
-            _ => FlashRate::Slow,
+            4 => FlashRate::Slow,
+            _ => FlashRate::Level1,
         }
     }
 
@@ -199,12 +204,13 @@ impl CellAttributes {
     #[must_use]
     pub const fn with_flash_rate(self, rate: FlashRate) -> Self {
         let bits = match rate {
-            FlashRate::Slow => 0,
+            FlashRate::Level1 => 0,
             FlashRate::FastPhase1 => 1,
             FlashRate::FastPhase2 => 2,
             FlashRate::FastPhase3 => 3,
+            FlashRate::Slow => 4,
         };
-        self.with_field(FLASH_RATE_SHIFT, TWO_BITS, bits)
+        self.with_field(FLASH_RATE_SHIFT, THREE_BITS, bits)
     }
 
     /// Underline (Table 29 mode 01100 D5); separated mosaics are in the

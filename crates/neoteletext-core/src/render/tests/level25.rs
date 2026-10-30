@@ -16,7 +16,7 @@ use super::*;
 
 use crate::charset::{CharRef, CharSet, G0, G0Set, NationalOption};
 use crate::colour::SidePanels;
-use crate::config::CellMode;
+use crate::config::{CellMode, Config};
 use crate::consts::{
     ADJACENT_CLUT_FLIP, CELL_HEIGHT, CELL_WIDTH, COLOUR_TRANSPARENT, COLUMNS, FLASH_UNITS, G3_CODES, G3_FIRST_CODE,
     PAGE_WIDTH, PALETTE_SIZE, RECEIVER_COLUMNS, SIDE_PANEL_FIRST_COLUMN,
@@ -111,7 +111,7 @@ fn flash_unit_from_time() {
     assert_eq!((unit(0), unit(83_333), unit(83_334)), (0, 0, 1));
     assert_eq!((unit(999_999), unit(1_000_000), unit(1_500_000)), (11, 0, 6));
     assert_eq!(unit(u64::MAX), unit(u64::MAX % 1_000_000));
-    assert_eq!(FlashPhase::at(Instant(250_000)), FlashPhase::at_unit(3));
+    assert_eq!(FlashPhase::at(Instant(250_000), &Config::default()), FlashPhase::at_unit(3));
 }
 
 /// REQ-RND-040, REQ-L25-027: an incremental run of phases 1, 2, 3, 1, ...
@@ -185,12 +185,13 @@ fn resolved_mode_matches_palette_mode_on_level1_pages() {
                 let palette_options =
                     RenderOptions { mode, rounding: true, reveal, colour: ColourMode::Palette, underline: true };
                 let indices = screen(&grid, palette_options);
-                for unit in 0..FLASH_UNITS {
+                for shown in [true, false] {
                     let mut palette = [0u8; PALETTE_SIZE];
-                    fill_palette(&mut palette, &identity, flash_on(FlashRate::Slow, unit), reveal);
+                    fill_palette(&mut palette, &identity, shown, reveal);
                     let expected: Vec<u8> = indices.iter().map(|&index| palette[usize::from(index)]).collect();
-                    let resolved = screen(&grid, options(mode, unit, reveal));
-                    assert!(expected == resolved, "boxed {boxed_mode}, {mode:?}, reveal {reveal}, unit {unit}");
+                    let colour = ColourMode::Resolved(FlashPhase::STEADY.with_level_1(shown));
+                    let resolved = screen(&grid, RenderOptions { colour, ..palette_options });
+                    assert!(expected == resolved, "boxed {boxed_mode}, {mode:?}, reveal {reveal}, shown {shown}");
                 }
             }
         }
@@ -219,7 +220,7 @@ fn palette_mode_is_refused_where_it_cannot_draw() {
         row == Err(RenderError::NeedsResolvedMode)
     };
     assert!(!refused(&level1_grid()), "a Level 1 page draws in the palette mode");
-    let cases: [RefusalCase; 6] = [
+    let cases: [RefusalCase; 7] = [
         ("foreground outside CLUT 0", |grid| grid.cells[2][5].foreground = 9),
         ("background outside CLUT 0", |grid| grid.cells[2][5].background = 31),
         ("fast flash", |grid| {
@@ -229,6 +230,10 @@ fn palette_mode_is_refused_where_it_cannot_draw() {
         ("inverted flash", |grid| {
             grid.cells[2][5].flash = true;
             grid.cells[2][5].attributes = CellAttributes::DEFAULT.with_flash_mode(FlashMode::InvertPhase);
+        }),
+        ("the Additional Flash Functions' slow flash, timed by units", |grid| {
+            grid.cells[2][5].flash = true;
+            grid.cells[2][5].attributes = CellAttributes::DEFAULT.with_flash_rate(FlashRate::Slow);
         }),
         ("adjacent-CLUT flash", |grid| {
             grid.cells[2][5].flash = true;
@@ -292,8 +297,10 @@ fn invert_flash_and_conceal_combinations() {
     ];
     let grid = Grid::EMPTY;
     for (invert, flash, conceal, reveal, unit, expected) in cases {
-        let attributes =
-            CellAttributes::DEFAULT.with_invert(invert).with_flash_mode(flash.unwrap_or(FlashMode::Normal));
+        let attributes = CellAttributes::DEFAULT
+            .with_invert(invert)
+            .with_flash_mode(flash.unwrap_or(FlashMode::Normal))
+            .with_flash_rate(FlashRate::Slow);
         let cell = Cell {
             glyph: text(b'W'),
             foreground: RED,
@@ -788,6 +795,35 @@ fn four_bit_format_in_the_resolved_mode() {
     assert!(render_line(&grid, 2 * CELL_HEIGHT, Zoom::Off, &glyphs, palette, IndexFormat::Bits4, &mut out).is_ok());
 }
 
+/// Decisions E.12 and E.48: the Level 1 Flash code keeps the SAA5050's
+/// timing at every level, 960 ms shown and 320 ms hidden, and the phase
+/// changes for it at those moments, not with the units.
+#[test]
+fn the_level_1_flash_follows_the_saa5050_timing_at_every_level() {
+    let config = Config::default();
+    for (us, shown) in
+        [(0, true), (800_000, true), (959_999, true), (960_000, false), (1_279_999, false), (1_280_000, true)]
+    {
+        let phase = FlashPhase::at(Instant(us), &config);
+        assert_eq!(phase.is_on(FlashRate::Level1), shown, "{us} microseconds");
+    }
+    assert!(!FlashPhase::at(Instant(800_000), &config).is_on(FlashRate::Slow), "unit 9 still times the slow rate");
+    let mut grid = Grid::EMPTY;
+    grid.cells[3][0] = Cell { glyph: text(b'X'), foreground: RED, background: BLUE, flash: true, ..Cell::BLANK };
+    let at = |us| RenderOptions {
+        mode: CellMode::Saa5050,
+        rounding: true,
+        reveal: false,
+        colour: ColourMode::Resolved(FlashPhase::at(Instant(us), &config)),
+        underline: true,
+    };
+    let mut tracker = ChangeTracker::new();
+    tracker.changed_rows(&grid, at(0));
+    assert_eq!(tracker.changed_rows(&grid, at(800_000)), 0, "750 ms is not an edge of this flash");
+    assert_eq!(tracker.changed_rows(&grid, at(960_000)), 1 << 3, "hidden");
+    assert_eq!(tracker.changed_rows(&grid, at(1_280_000)), 1 << 3, "shown");
+}
+
 /// REQ-RND-032: a flash phase change reports a row only for a flashing
 /// cell that can show dots: a mosaic with at least one block set, and any
 /// G3 character, whose shapes are drawn whatever the code; a mosaic with
@@ -795,7 +831,8 @@ fn four_bit_format_in_the_resolved_mode() {
 #[test]
 fn flash_changes_follow_what_a_cell_can_show() {
     let mut grid = Grid::EMPTY;
-    let flashing = Cell { foreground: RED, background: BLUE, flash: true, ..Cell::BLANK };
+    let attributes = CellAttributes::DEFAULT.with_flash_rate(FlashRate::Slow);
+    let flashing = Cell { foreground: RED, background: BLUE, flash: true, attributes, ..Cell::BLANK };
     grid.cells[3][0] = Cell { glyph: Glyph::Mosaic { pattern: 0x15, separated: false }, ..flashing };
     grid.cells[5][0] = Cell { glyph: Glyph::Mosaic { pattern: 0, separated: true }, ..flashing };
     grid.cells[7][0] = Cell { glyph: g3(0x20), ..flashing };
@@ -834,7 +871,9 @@ fn change_tracking_in_the_resolved_mode() {
     grid.cells[12][0] = Cell { flash: true, ..Cell::BLANK };
     grid.cells[13][0] = Cell { glyph: text(b'X'), foreground: RED, background: RED, flash: true, ..Cell::BLANK };
     // A flashing concealed cell changes nothing until revealed.
-    grid.cells[14][0] = Cell { glyph: text(b'X'), foreground: RED, flash: true, conceal: true, ..Cell::BLANK };
+    let attributes = CellAttributes::DEFAULT.with_flash_rate(FlashRate::Slow);
+    grid.cells[14][0] =
+        Cell { glyph: text(b'X'), foreground: RED, flash: true, conceal: true, attributes, ..Cell::BLANK };
     grid.cells[16][3] = Cell { glyph: text(b'X'), conceal: true, ..Cell::BLANK };
     let mut tracker = ChangeTracker::new();
     assert_eq!(tracker.changed_rows(&grid, large(11)), ALL_ROWS);

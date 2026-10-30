@@ -139,6 +139,6 @@ fn additional_flash_functions_compiled_out_leave_level_1_flash() {
     assert!(level_1.flash);
     assert_eq!(
         (level_1.attributes.flash_mode(), level_1.attributes.flash_rate()),
-        (FlashMode::Normal, FlashRate::Slow)
+        (FlashMode::Normal, FlashRate::Level1)
     );
 }

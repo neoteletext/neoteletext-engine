@@ -47,9 +47,10 @@ pub(super) enum Flash {
 /// sets only the column, as reserved data does.
 pub(super) const ATTRIBUTES: bool = cfg!(feature = "nonspacing-attributes");
 
-/// Level 1 Flash at Levels 2.5 and 3.5: slow, normal mode (decision E.48).
+/// Level 1 Flash at Levels 2.5 and 3.5: normal mode, at the Level 1 rate
+/// (decisions E.12 and E.48).
 pub(super) const LEVEL_1_FLASH: Flash =
-    Flash::On { mode: FlashMode::Normal, rate: Rate::Fixed(FlashRate::Slow), start: 0 };
+    Flash::On { mode: FlashMode::Normal, rate: Rate::Fixed(FlashRate::Level1), start: 0 };
 
 impl Attrs {
     /// The start of every Passive object: white (CLUT 0 entry 7), black

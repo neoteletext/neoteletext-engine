@@ -106,7 +106,7 @@ fn palette_cell_allowed(cell: &Cell) -> bool {
     let attributes = cell.attributes;
     let colours = cell.foreground <= CLUT0_LAST && cell.background <= CLUT0_LAST;
     let flash =
-        !cell.flash || (attributes.flash_mode() == FlashMode::Normal && attributes.flash_rate() == FlashRate::Slow);
+        !cell.flash || (attributes.flash_mode() == FlashMode::Normal && attributes.flash_rate() == FlashRate::Level1);
     colours && flash
 }
 

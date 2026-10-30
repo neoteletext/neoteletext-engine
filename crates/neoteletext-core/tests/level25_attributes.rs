@@ -291,9 +291,9 @@ mod additional_flash_functions {
         assert_eq!(phases(10), [p1, p2, p3, p1], "incremental");
         assert_eq!(phases(20), [p1, p3, p2, p1], "decremental");
         assert_eq!(phases(30), [p3, p2, p1, p3], "reserved values change nothing: decremental continues");
-        // Level 1 Flash: slow, normal, until Steady.
+        // Level 1 Flash: normal, at the Level 1 rate, until Steady.
         let level_1: Vec<bool> = grid.cells[2][..5].iter().map(|cell| cell.flash).collect();
         assert_eq!(level_1, [false, true, true, false, false]);
-        assert_eq!(grid.cells[2][1].attributes.flash_rate(), FlashRate::Slow);
+        assert_eq!(grid.cells[2][1].attributes.flash_rate(), FlashRate::Level1);
     }
 }

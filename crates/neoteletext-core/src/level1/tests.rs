@@ -42,7 +42,13 @@ fn cell_attributes_pack_independently() {
         [CharSource::Level1, CharSource::Local, CharSource::Active, CharSource::Adaptive, CharSource::Passive];
     for width in [Width::Normal, Width::LeftHalf, Width::RightHalf] {
         for mode in [FlashMode::Normal, FlashMode::InvertPhase, FlashMode::AdjacentClut] {
-            for rate in [FlashRate::Slow, FlashRate::FastPhase1, FlashRate::FastPhase2, FlashRate::FastPhase3] {
+            for rate in [
+                FlashRate::Level1,
+                FlashRate::Slow,
+                FlashRate::FastPhase1,
+                FlashRate::FastPhase2,
+                FlashRate::FastPhase3,
+            ] {
                 for source in &sources {
                     for flags in 0..4 {
                         let attributes = CellAttributes::DEFAULT

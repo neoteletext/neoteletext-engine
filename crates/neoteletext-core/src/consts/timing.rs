@@ -1,5 +1,5 @@
 //! Timing (decisions E.12 and E.19, REQ-NAV-007) and the flash units of
-//! Levels 2.5 and 3.5 (decision E.48, Table 29 mode 00111).
+//! the Additional Flash Functions (decision E.48, Table 29 mode 00111).
 
 /// Microseconds per field at 50 fields per second.
 pub const FIELD_PERIOD_US: u64 = 20_000;
@@ -13,10 +13,12 @@ pub const PAGE_COMPLETION_TIMEOUT_US: u64 = 100_000;
 pub const MOMENTARY_REVEAL_US: u64 = 160_000;
 
 // ---------------------------------------------------------------------------
-// Flash at Levels 2.5 and 3.5 (decision E.48, Table 29 mode 00111)
+// The Additional Flash Functions (decision E.48, Table 29 mode 00111); the
+// Level 1 Flash code keeps the timing of decision E.12 at every level
 // ---------------------------------------------------------------------------
 
-/// One flash cycle at Levels 2.5 and 3.5 lasts one second (decision E.48).
+/// One cycle of the Additional Flash Functions lasts one second (decision
+/// E.48).
 pub const FLASH_CYCLE_US: u64 = 1_000_000;
 /// The cycle is divided into twelve units of one twelfth of a second,
 /// numbered 0 to 11: twelve divides both rates and the three fast phases
