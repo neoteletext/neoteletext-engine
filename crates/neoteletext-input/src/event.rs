@@ -40,7 +40,7 @@ pub const FIRST_EXTENSION: u8 = 0x40;
 /// The last extension type.
 pub const LAST_EXTENSION: u8 = 0x7F;
 /// SELECT's type, an extension (INPUT.md section 5.4, REQ-INT-140): the
-/// page and sub-page a view has selected; a channel that does not know it
+/// page and sub-page the connection has selected; a channel that does not know it
 /// skips it.
 pub const SELECT: u8 = 0x40;
 /// HOVER's type, an extension (INPUT.md section 5.4, decision E.129): a
@@ -220,34 +220,32 @@ pub struct Resume {
     pub acked: u16,
 }
 
-/// A SELECT event (INPUT.md section 5.4, REQ-INT-140): the page and
-/// sub-page a view has selected. Made by [`Select::new`], which refuses
-/// what a channel would refuse.
+/// A SELECT event (INPUT.md section 5.4, REQ-INT-140): the connection's
+/// selection, the page and sub-page its one view shows (neoteletext-
+/// common's DEC-1527: a connection per tab, so no view number). Made by
+/// [`Select::new`], which refuses what a channel would refuse.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Select {
-    /// The receiver's number for the view, 0 to
-    /// [`MAX_VIEWS`](crate::MAX_VIEWS) − 1.
-    pub view: u8,
-    /// The page, `0x100` to `0x8FF`, or 0 when the view shows no page of
+    /// The page, `0x100` to `0x8FF`, or 0 when the tab shows no page of
     /// the channel.
     pub page: u16,
-    /// The sub-code chosen (EN 300 706 clause 9.3.1.2), or `0x3F7F`, any
-    /// sub-page (clause 9.6.1), when the page was chosen and none of its
-    /// sub-pages; always `0x3F7F` with page 0.
+    /// The sub-code selected (EN 300 706 clause 9.3.1.2), or `0x3F7F`, no
+    /// particular sub-code (clause 9.6.1), which shows the page's first
+    /// sub-page in ascending order (DEC-1526); always `0x3F7F` with page 0.
     pub sub: u16,
 }
 
 impl Select {
-    /// A selection, or `None` when a field is outside its range: a view
-    /// of [`MAX_VIEWS`](crate::MAX_VIEWS) or more, a page neither 0 nor
-    /// `0x100` to `0x8FF`, a sub-code with a bit outside the thirteen a
-    /// sub-code has, or page 0 with a sub-code other than `0x3F7F`.
+    /// A selection, or `None` when a field is outside its range: a page
+    /// neither 0 nor `0x100` to `0x8FF`, a sub-code with a bit outside the
+    /// thirteen a sub-code has, or page 0 with a sub-code other than
+    /// `0x3F7F`.
     #[must_use]
-    pub const fn new(view: u8, page: u16, sub: u16) -> Option<Self> {
+    pub const fn new(page: u16, sub: u16) -> Option<Self> {
         let page_ok = page == 0 || crate::is_page(page);
         let sub_ok = sub & !neoteletext_core::limits::SUBCODE_MASK == 0
             && (page != 0 || sub == neoteletext_core::limits::SUBCODE_ANY);
-        if view < crate::MAX_VIEWS && page_ok && sub_ok { Some(Self { view, page, sub }) } else { None }
+        if page_ok && sub_ok { Some(Self { page, sub }) } else { None }
     }
 }
 
@@ -322,7 +320,7 @@ pub enum Event<'a> {
     /// The session a reconnection asks to resume, after HELLO
     /// (REQ-RCH-013).
     Resume(Resume),
-    /// The page and sub-page a view has selected (REQ-INT-140).
+    /// The page and sub-page the connection has selected (REQ-INT-140).
     Select(Select),
     /// An extension, skipped by a receiver that does not know it.
     Extension {

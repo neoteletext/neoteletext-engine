@@ -26,9 +26,9 @@ pub const TOUCH_CAP: u32 = 1 << 20;
 /// WELCOME carries a token, and a reconnection's first message carries
 /// RESUME after HELLO (INPUT.md section 6.4).
 pub const RESUME_CAP: u32 = 1 << 21;
-/// Capability: the receiver sends SELECT for each view's page and
-/// sub-page (INPUT.md section 5.4, REQ-INT-140); a channel that sets it
-/// sends a page's sub-pages when the page is selected.
+/// Capability: the receiver sends SELECT, the connection's selection
+/// (INPUT.md section 5.4, REQ-INT-140); a channel that sets it sends the
+/// one sub-page selected, never a page's sub-pages together (DEC-1500).
 pub const SELECT_CAP: u32 = 1 << 22;
 /// Every capability defined.
 pub const ALL_CAPS: u32 = PAGE_CAP | CURSOR_CAP | AGENT | TOUCH_CAP | RESUME_CAP | SELECT_CAP;

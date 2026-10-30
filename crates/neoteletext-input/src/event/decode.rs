@@ -209,17 +209,16 @@ fn read_touch(payload: &[u8]) -> Result<Event<'static>, InputError> {
     Ok(Event::Touch(Touch { action: read_action(flags), id, column, row, pixels }))
 }
 
-/// SELECT's payload (REQ-INT-140): `view` uv, `page` uv and `sub` uv, and
+/// SELECT's payload (REQ-INT-140, DEC-1527): `page` uv and `sub` uv, and
 /// nothing after; every bound of [`Select::new`] a protocol error.
 fn read_select(payload: &[u8]) -> Result<Event<'static>, InputError> {
     let mut reader = Reader::new(payload);
-    let (view, page, sub) = (reader.uv()?, reader.uv()?, reader.uv()?);
+    let (page, sub) = (reader.uv()?, reader.uv()?);
     if reader.used() != payload.len() {
         return Err(InputError::BadValue("select"));
     }
     let narrow = |value: u32| u16::try_from(value).map_err(|_| InputError::BadValue("select"));
-    let view = u8::try_from(view).map_err(|_| InputError::BadValue("select view"))?;
-    Select::new(view, narrow(page)?, narrow(sub)?).map(Event::Select).ok_or(InputError::BadValue("select"))
+    Select::new(narrow(page)?, narrow(sub)?).map(Event::Select).ok_or(InputError::BadValue("select"))
 }
 
 /// RESUME's payload (REQ-RCH-013): the token and the acknowledgement, big-endian, exactly.
