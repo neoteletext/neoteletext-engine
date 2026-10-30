@@ -6,8 +6,8 @@ use super::{
     ACTION, Action, COMPOSE, CORE_LAST_TYPE, DEVICE_MASK, DEVICE_SHIFT, Device, EVENT, Event, FIRST_EXTENSION,
     FOCUS_IN, FOCUS_OUT, FUNCTIONAL, HAS_BASE, HAS_MODS, HAS_PIXELS, HAS_TEXT, HELLO, HOVER, HOVER_LEAVE, InputError,
     Item, KEY, KEY_RESERVED, Key, KeyCode, LAST_CORE, LAST_EXTENSION, MOUSE, MOUSE_RESERVED, Mouse, MouseAction,
-    NEVER_UTF8, NEVER_UTF8_FROM, PAGE, PASTE, Point, RESIZE, RESUME, Resume, TOUCH, TOUCH_RESERVED, Touch, WHEEL,
-    WHEEL_RESERVED, Wheel, check_text, printable,
+    NEVER_UTF8, NEVER_UTF8_FROM, PAGE, PASTE, Point, RESIZE, RESUME, Resume, SELECT, Select, TOUCH, TOUCH_RESERVED,
+    Touch, WHEEL, WHEEL_RESERVED, Wheel, check_text, printable,
 };
 use crate::caps::AGENT;
 use crate::keys::is_code;
@@ -165,6 +165,7 @@ fn read_event<'a>(reader: &mut Reader<'a>) -> Result<Event<'a>, InputError> {
                 HOVER => read_hover(payload).map_err(whole)?,
                 TOUCH => read_touch(payload).map_err(whole)?,
                 RESUME => read_resume(payload).map_err(whole)?,
+                SELECT => read_select(payload).map_err(whole)?,
                 _ => Event::Extension { kind, payload },
             }
         }
@@ -206,6 +207,19 @@ fn read_touch(payload: &[u8]) -> Result<Event<'static>, InputError> {
         return Err(InputError::BadValue("touch"));
     }
     Ok(Event::Touch(Touch { action: read_action(flags), id, column, row, pixels }))
+}
+
+/// SELECT's payload (REQ-INT-140): `view` uv, `page` uv and `sub` uv, and
+/// nothing after; every bound of [`Select::new`] a protocol error.
+fn read_select(payload: &[u8]) -> Result<Event<'static>, InputError> {
+    let mut reader = Reader::new(payload);
+    let (view, page, sub) = (reader.uv()?, reader.uv()?, reader.uv()?);
+    if reader.used() != payload.len() {
+        return Err(InputError::BadValue("select"));
+    }
+    let narrow = |value: u32| u16::try_from(value).map_err(|_| InputError::BadValue("select"));
+    let view = u8::try_from(view).map_err(|_| InputError::BadValue("select view"))?;
+    Select::new(view, narrow(page)?, narrow(sub)?).map(Event::Select).ok_or(InputError::BadValue("select"))
 }
 
 /// RESUME's payload (REQ-RCH-013): the token and the acknowledgement, big-endian, exactly.

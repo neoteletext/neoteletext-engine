@@ -34,6 +34,10 @@ pub const MAX_TOUCH_ID: u8 = (MAX_CONTACTS - 1) as u8;
 /// 2026). The period is not a whole number of microseconds, so the pacer
 /// counts it exactly ([`crate::pace`]).
 pub const MOVES_PER_SECOND: u64 = 60;
+/// The most views that share one connection, each with its own selection
+/// (INPUT.md section 5.4, REQ-INT-140): SELECT's `view` is 0 to
+/// `MAX_VIEWS` − 1.
+pub const MAX_VIEWS: u8 = 16;
 /// The bytes of a session's token (section 6.4, REQ-RCH-013): 128 bits from
 /// the channel's cryptographic generator, which no one can guess within
 /// the session's hold.

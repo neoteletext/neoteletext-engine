@@ -4,7 +4,7 @@ use super::decode::read;
 use super::{
     Action, COMPOSE, DEVICE_SHIFT, Device, EVENT, Event, FIRST_EXTENSION, FOCUS_IN, FOCUS_OUT, FUNCTIONAL, HAS_BASE,
     HAS_MODS, HAS_PIXELS, HAS_TEXT, HELLO, HOVER, HOVER_LEAVE, InputError, Item, KEY, Key, KeyCode, LAST_EXTENSION,
-    MOUSE, MouseAction, PAGE, PASTE, Point, RESIZE, RESUME, TOUCH, Touch, WHEEL, check_text,
+    MOUSE, MouseAction, PAGE, PASTE, Point, RESIZE, RESUME, SELECT, TOUCH, Touch, WHEEL, check_text,
 };
 use crate::caps::AGENT;
 use crate::wire::{MAX_VARINT, ONE_BYTE_MAX, Writer};
@@ -14,6 +14,8 @@ use crate::{MAX_AGENT, MAX_COLUMNS, MAX_COMPOSE, MAX_KEY_TEXT, MAX_PASTE, MAX_RO
 const HOVER_PAYLOAD: usize = 1 + 2 * MAX_VARINT;
 /// TOUCH's payload at its longest: the flags, the id and four varints.
 pub(super) const TOUCH_PAYLOAD: usize = 2 + 4 * MAX_VARINT;
+/// SELECT's payload at its longest: three varints.
+const SELECT_PAYLOAD: usize = 3 * MAX_VARINT;
 /// RESUME's payload: the token and the acknowledgement, big-endian.
 pub(super) const RESUME_PAYLOAD: usize = TOKEN_BYTES + 2;
 /// The bytes of a cell's column or row: every one is under 128, one
@@ -214,6 +216,12 @@ fn write_event(event: &Event<'_>, writer: &mut Writer<'_>) -> Result<(), InputEr
         Event::Resume(resume) => write_extension::<RESUME_PAYLOAD>(RESUME, writer, |inner| {
             inner.bytes(&resume.token)?;
             inner.bytes(&resume.acked.to_be_bytes())?;
+            Ok(())
+        })?,
+        Event::Select(select) => write_extension::<SELECT_PAYLOAD>(SELECT, writer, |inner| {
+            inner.uv(u32::from(select.view))?;
+            inner.uv(u32::from(select.page))?;
+            inner.uv(u32::from(select.sub))?;
             Ok(())
         })?,
         Event::Extension { kind, payload } => {
