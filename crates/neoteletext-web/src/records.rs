@@ -1,8 +1,8 @@
 //! The channel's records on its push connection beside its pages
 //! (`neoteletext-common/INPUT.md` section 7): the index (type 6), LOG
-//! (type 7) and `SET_COOKIE` (type 8), in the audio profile's record frame
+//! (type 7), `SET_COOKIE` (type 8) and LINKS (type 9), in the audio profile's record frame
 //! (REQ-AUD-003) on data channel 12, packet 4/31, cut into as many
-//! fragments as a record needs (section 7.8).
+//! fragments as a record needs (section 7.9).
 //!
 //! Each record's encoder writes its packets through a callback, so it
 //! allocates nothing, and checks what it writes with its reader, so a
@@ -16,12 +16,13 @@ use neoteletext_core::packet::Packet;
 
 pub mod cookie;
 pub mod index;
+pub mod links;
 pub mod log;
 
-pub use neoteletext_audio::record::{TYPE_INDEX, TYPE_LOG, TYPE_SET_COOKIE};
+pub use neoteletext_audio::record::{TYPE_INDEX, TYPE_LINKS, TYPE_LOG, TYPE_SET_COOKIE};
 
 /// Why a record was refused: it is discarded whole, and its packets are
-/// counted as invalid (REQ-1462, `INPUT.md` section 7.8).
+/// counted as invalid (REQ-1462, `INPUT.md` section 7.9).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum RecordFault {
     /// The frame failed: its length, CRC-32 or version.
@@ -38,7 +39,7 @@ impl From<RecordError> for RecordFault {
     }
 }
 
-/// The fragments a record of `body` bytes takes (section 7.8).
+/// The fragments a record of `body` bytes takes (section 7.9).
 #[must_use]
 pub const fn fragments(body: usize) -> usize {
     record_length(body).div_ceil(FRAGMENT_DATA)
@@ -77,6 +78,8 @@ pub enum ChannelRecord<'a> {
     Log(log::LogRecord<'a>),
     /// A cookie's `Set-Cookie` value (section 7.7).
     SetCookie(&'a [u8]),
+    /// A sub-page's Link Extension links (section 7.8).
+    Links(links::LinksRecord<'a>),
 }
 
 /// What one packet gave the reader.
@@ -92,8 +95,8 @@ pub enum Read<'a> {
     Invalid(usize),
 }
 
-/// Reassembles the index, LOG and `SET_COOKIE` records from a push stream's
-/// packets (section 7.8). A record is followed from its fragment 0, which
+/// Reassembles the index, LOG, `SET_COOKIE` and LINKS records from a push stream's
+/// packets (section 7.9). A record is followed from its fragment 0, which
 /// names its type, so the audio profile's records and the one-fragment
 /// cursor and control records, which other readers take, are never copied
 /// here.
@@ -128,7 +131,7 @@ impl RecordReader {
         let Ok(fragment) = result else { return Read::Invalid(1) };
         if fragment.index == 0 {
             let kind = fragment.data.get(1).copied().unwrap_or(0);
-            if !matches!(kind, TYPE_INDEX | TYPE_LOG | TYPE_SET_COOKIE) {
+            if !matches!(kind, TYPE_INDEX | TYPE_LOG | TYPE_SET_COOKIE | TYPE_LINKS) {
                 return Read::Nothing;
             }
             self.reassembler.clear();
@@ -146,7 +149,7 @@ impl RecordReader {
     }
 }
 
-/// Reads one whole record of the three types, frame and CRC included.
+/// Reads one whole record of the four types, frame and CRC included.
 ///
 /// # Errors
 /// The frame's failures, another record type, or any field of the
@@ -157,6 +160,7 @@ pub fn read_record(bytes: &[u8]) -> Result<ChannelRecord<'_>, RecordFault> {
         TYPE_INDEX => index::read(body).map(ChannelRecord::Index),
         TYPE_LOG => log::read(body).map(ChannelRecord::Log),
         TYPE_SET_COOKIE => cookie::read(body).map(ChannelRecord::SetCookie),
+        TYPE_LINKS => links::read(body).map(ChannelRecord::Links),
         _ => Err(RecordFault::BadValue("record type")),
     }
 }

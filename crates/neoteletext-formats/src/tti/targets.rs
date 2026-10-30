@@ -31,7 +31,8 @@ fn link_address(text: &[u8]) -> Option<Text<LINK_ADDRESS_BYTES>> {
 }
 
 /// A link target of Appendix E, or an address (concept section 3).
-pub(super) fn link_destination(text: &[u8]) -> Option<LinkDestination> {
+#[must_use]
+pub fn link_destination(text: &[u8]) -> Option<LinkDestination> {
     let text = text.trim_ascii();
     if text.starts_with(WEB_MARK) || text.windows(ADDRESS_MARK.len()).any(|window| window == ADDRESS_MARK) {
         let url = link_address(text)?;

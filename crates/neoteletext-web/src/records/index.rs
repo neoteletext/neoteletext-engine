@@ -339,14 +339,14 @@ pub struct Sent {
     /// The packets written.
     pub packets: usize,
     /// The record id after the last record's, for the service's next
-    /// record (section 7.8).
+    /// record (section 7.9).
     pub next_record_id: u8,
 }
 
 /// Writes a whole index as one sending of `generation`: its records, as
 /// packets 4/31 of audio service `service`, given to `out` in order, the
 /// first record with id `first_record_id` and each after it the next
-/// (section 7.8). An empty index is one record of magazine 1, unnamed,
+/// (section 7.9). An empty index is one record of magazine 1, unnamed,
 /// with no pages.
 ///
 /// # Errors

@@ -15,8 +15,10 @@ embedded-io.workspace = true
 # LOG and SET_COOKIE records share with sound (INPUT.md section 7).
 neoteletext-audio = { workspace = true, features = ["idl"] }
 # A LOG record is checked by the rules of a TTI `LG` line (REQ-INP-026),
-# and given on as the same `LogLine`.
-neoteletext-formats.workspace = true
+# and given on as the same `LogLine`; a LINKS record's targets by the TTI
+# reader's parser, and given on as its `LinkLine`, `NumberLink` and
+# `TextLink` (REQ-1494).
+neoteletext-formats = { workspace = true, features = ["tti"] }
 
 [features]
 # Decision E.61: each part of the user agent that a run-time choice reaches

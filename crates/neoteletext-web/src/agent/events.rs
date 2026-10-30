@@ -9,6 +9,7 @@ use crate::descriptor::{DescriptorError, PushMethod};
 use crate::http::{HttpError, MediaType, Method};
 use crate::port::{ConnectionId, NetInput, NetOutput, Security};
 use crate::records::index::IndexRecord;
+use crate::records::links::LinksRecord;
 use crate::sse::SseError;
 use crate::url::UrlError;
 use crate::ws::WsError;
@@ -338,6 +339,14 @@ pub enum Event<'a> {
         /// The sending's generation.
         generation: u16,
     },
+    /// A sub-page's TTI Link Extension links from a LINKS record on the
+    /// push connection (`INPUT.md` section 7.8, REQ-1494), given as a TTI
+    /// file's `LN`, `LK` and `LT` lines give them
+    /// ([`LinksRecord::key_links`], [`LinksRecord::number_links`],
+    /// [`LinksRecord::text_links`]), for the same store. Part 0 replaces
+    /// the links held for that page and sub-code; later parts add to
+    /// them. A sub-page sent again without one has no such links.
+    Links(LinksRecord<'a>),
     /// A live channel (its `channel.json` names a push connection,
     /// REQ-WEB-018) is opening its connection: it asks for no bundle, page
     /// file or `contents.txt`, and is connecting, never a page not found,

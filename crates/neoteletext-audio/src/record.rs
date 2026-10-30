@@ -37,6 +37,10 @@ pub const TYPE_LOG: u8 = 7;
 /// section 7.7), read by the web agent; this receiver leaves it alone.
 pub const TYPE_SET_COOKIE: u8 = 8;
 
+/// Record type: a sub-page's TTI Link Extension links (`INPUT.md` section
+/// 7.8, REQ-1494), read by the web agent; this receiver leaves it alone.
+pub const TYPE_LINKS: u8 = 9;
+
 /// Whether a record type belongs to the input profile, which shares this
 /// profile's carriage and is left alone by the audio receiver.
 #[must_use]
@@ -50,7 +54,7 @@ pub const fn is_input_type(kind: u8) -> bool {
 /// as refused.
 #[must_use]
 pub const fn is_channel_type(kind: u8) -> bool {
-    is_input_type(kind) || kind == TYPE_INDEX || kind == TYPE_LOG || kind == TYPE_SET_COOKIE
+    is_input_type(kind) || kind == TYPE_INDEX || kind == TYPE_LOG || kind == TYPE_SET_COOKIE || kind == TYPE_LINKS
 }
 
 /// OBJECT's fixed fields: handle, generation, id, codec, rate, block bytes,
