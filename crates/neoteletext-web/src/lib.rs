@@ -64,6 +64,7 @@ pub mod ws;
 pub mod channel;
 pub mod contents;
 pub mod descriptor;
+pub mod records;
 pub mod subpages;
 
 pub mod agent;

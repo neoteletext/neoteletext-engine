@@ -200,6 +200,11 @@ impl<'a, const OBJECTS: usize, const SLOTS: usize> Receiver<'a, OBJECTS, SLOTS> 
 
     /// Reads one whole record, from any carriage.
     pub fn push_record(&mut self, bytes: &[u8], sink: &mut dyn VoiceSink) {
+        // The channel's records share the carriage and are another
+        // reader's (INPUT.md section 7).
+        if crate::record::split(bytes).is_ok_and(|(kind, _)| crate::record::is_channel_type(kind)) {
+            return;
+        }
         let Ok(record) = parse(bytes) else {
             bump(&mut self.statistics.records_refused);
             return;

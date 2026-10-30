@@ -12,7 +12,9 @@ const PERMITTED: &[(&str, &[&str])] = &[
     ("neoteletext-core", &[]),
     ("neoteletext-formats", &["neoteletext-core"]),
     ("neoteletext-slicer", &["neoteletext-core"]),
-    ("neoteletext-web", &["neoteletext-core", "embedded-io"]),
+    // The channel's records share the audio profile's frame, and a LOG
+    // record the TTI reader's rules for an `LG` line (INPUT.md section 7).
+    ("neoteletext-web", &["neoteletext-core", "embedded-io", "neoteletext-audio", "neoteletext-formats"]),
     ("neoteletext-image", &["neoteletext-core"]),
     ("neoteletext-audio", &["neoteletext-core"]),
     ("neoteletext-audio-mix", &[]),

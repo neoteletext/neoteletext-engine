@@ -206,7 +206,7 @@ const fn digit_value(byte: u8) -> Option<u8> {
 
 /// RFC 9110 §5.6.2: a `tchar` is a letter, a digit, or one of
 /// ``! # $ % & ' * + - . ^ _ ` | ~``.
-pub(super) const fn is_token_character(byte: u8) -> bool {
+pub(crate) const fn is_token_character(byte: u8) -> bool {
     byte.is_ascii_alphanumeric()
         || matches!(
             byte,

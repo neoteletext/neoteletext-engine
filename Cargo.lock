@@ -736,7 +736,9 @@ name = "neoteletext-web"
 version = "0.1.0"
 dependencies = [
  "embedded-io",
+ "neoteletext-audio",
  "neoteletext-core",
+ "neoteletext-formats",
  "proptest",
 ]
 

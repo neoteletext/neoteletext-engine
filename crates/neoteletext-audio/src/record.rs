@@ -26,11 +26,31 @@ pub const TYPE_CURSOR: u8 = 4;
 /// record is, one fragment; this receiver leaves it alone.
 pub const TYPE_INPUT_CONTROL: u8 = 5;
 
+/// Record type: the channel's index, its magazines and pages
+/// (`neoteletext-common/INPUT.md` section 7.5), read by the web agent; one
+/// or more fragments; this receiver leaves it alone.
+pub const TYPE_INDEX: u8 = 6;
+/// Record type: a log line for the channel's author (`INPUT.md` section
+/// 7.6, REQ-INP-026), read by the web agent; this receiver leaves it alone.
+pub const TYPE_LOG: u8 = 7;
+/// Record type: a cookie set while the connection is open (`INPUT.md`
+/// section 7.7), read by the web agent; this receiver leaves it alone.
+pub const TYPE_SET_COOKIE: u8 = 8;
+
 /// Whether a record type belongs to the input profile, which shares this
 /// profile's carriage and is left alone by the audio receiver.
 #[must_use]
 pub const fn is_input_type(kind: u8) -> bool {
     kind == TYPE_CURSOR || kind == TYPE_INPUT_CONTROL
+}
+
+/// Whether a record type is one of the channel's records beside sound
+/// (`INPUT.md` section 7): the input profile's, the index, LOG and
+/// `SET_COOKIE`. The audio receiver leaves every one alone, and counts none
+/// as refused.
+#[must_use]
+pub const fn is_channel_type(kind: u8) -> bool {
+    is_input_type(kind) || kind == TYPE_INDEX || kind == TYPE_LOG || kind == TYPE_SET_COOKIE
 }
 
 /// OBJECT's fixed fields: handle, generation, id, codec, rate, block bytes,
