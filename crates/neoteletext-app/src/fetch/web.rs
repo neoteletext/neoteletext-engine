@@ -45,13 +45,16 @@ pub(super) fn run_web(
     // The push connection opened (true) or was lost (false), for the
     // decoder to know when keys may go (area INT).
     let push_state: Cell<Option<bool>> = Cell::new(None);
+    // When the push connection's invalid packets were last reported
+    // (REQ-1462): at most once in INVALID_PACKET_REPORT_SECONDS.
+    let invalid_reported: Cell<Option<StdInstant>> = Cell::new(None);
     let mut next_tick: Option<Instant> = Some(Instant(0));
     let sink = |output: Output<'_>, pump: &mut Pump<StdTransport>, next_tick: &mut Option<Instant>| {
         if let Some(net) = output.net() {
             pump.execute(net);
             return;
         }
-        if forward(output, next_tick, &service_ready, &push_state).is_err() {
+        if forward(output, next_tick, &service_ready, &push_state, &invalid_reported).is_err() {
             broken.set(true);
         }
     };
@@ -119,6 +122,7 @@ fn forward(
     next_tick: &mut Option<Instant>,
     service_ready: &Cell<bool>,
     push_state: &Cell<Option<bool>>,
+    invalid_reported: &Cell<Option<StdInstant>>,
 ) -> std::io::Result<()> {
     match output {
         Output::Timer { at } => {
@@ -146,6 +150,23 @@ fn forward(
         Output::Event(Event::PushLost { retry_in_us, .. }) if retry_in_us > 0 => {
             push_state.set(Some(false));
             Ok(())
+        }
+        // REQ-INP-026: a channel's log line from a LOG record, as an LG
+        // line's would be.
+        Output::Event(Event::Log { line, page }) => {
+            let page = page.map_or_else(|| "no page".to_owned(), |page| format!("page {:03X}", page.mpp()));
+            send(&Frame::Notice(Notice::Message(format!("log {:?}, {page}: {}", line.level, line.text))))
+        }
+        Output::Event(Event::ChannelConnecting) => send(&Frame::Notice(Notice::Message("connecting".into()))),
+        Output::Event(Event::InvalidPackets { total }) => {
+            let due = invalid_reported
+                .get()
+                .is_none_or(|at| at.elapsed().as_secs() >= neoteletext_web::consts::INVALID_PACKET_REPORT_SECONDS);
+            if !due {
+                return Ok(());
+            }
+            invalid_reported.set(Some(StdInstant::now()));
+            send(&Frame::Notice(Notice::Message(format!("{total} invalid packets on the push connection"))))
         }
         Output::Event(Event::PageCurrent { page, .. }) => send(&Frame::Notice(Notice::Current(page.mpp()))),
         Output::Event(Event::FetchFailed { page, failure: Failure::Network | Failure::Timeout, .. }) => {
