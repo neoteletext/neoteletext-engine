@@ -64,6 +64,55 @@ PAGES = {
     ]),
 }
 
+# Hamming 8/4 codes of the nibbles 0 to 15 (EN 300 706 clause 8.2, Table 3).
+HAMMING_84 = [0x15, 0x02, 0x49, 0x5E, 0x64, 0x73, 0x38, 0x2F, 0xD0, 0xC7, 0x8C, 0x9B, 0xA1, 0xB6, 0xFD, 0xEA]
+# Bytes of a packet after the framing code, and its text bytes.
+PACKET_BYTES, ROW_BYTES, HEADER_TEXT = 42, 40, 32
+# The erase bit C4 (in the S2 nibble) and serial mode C11 (EN 300 706
+# clause 9.3.1).
+C4_ERASE_IN_S2, C11_SERIAL = 0x8, 0x1
+
+
+def odd_parity(code):
+    """A 7-bit code with its odd parity bit (EN 300 706 clause 8.1)."""
+    return code | (0x80 if bin(code).count("1") % 2 == 0 else 0)
+
+
+def address(magazine, row):
+    """A packet's two address bytes (clause 7.1.2)."""
+    return bytes([HAMMING_84[(magazine & 7) | ((row & 1) << 3)], HAMMING_84[row >> 1]])
+
+
+def row_codes(text, width):
+    """A TTI row's text as 7-bit codes, escapes turned into control codes."""
+    codes, escaped = [], False
+    for char in text:
+        if char == "\x1b":
+            escaped = True
+            continue
+        codes.append((ord(char) - 0x40 if escaped else ord(char)) & 0x7F)
+        escaped = False
+    return bytes(odd_parity(code) for code in (codes + [0x20] * width)[:width])
+
+
+def t42_page(tti):
+    """A TTI page's header and rows as T42 packets (a test's own encoder:
+    sub-code 0, the erase bit and serial mode set)."""
+    lines = [line for line in tti.split("\r\n") if line]
+    number = next(line[3:6] for line in lines if line.startswith("PN,"))
+    magazine, tens, units = int(number[0]), int(number[1], 16), int(number[2], 16)
+    header = address(magazine, 0) + bytes(
+        HAMMING_84[nibble] for nibble in [units, tens, 0, C4_ERASE_IN_S2, 0, 0, 0, C11_SERIAL]
+    ) + row_codes("", HEADER_TEXT)
+    packets = [header]
+    for line in lines:
+        if line.startswith("OL,"):
+            _, row, text = line.split(",", 2)
+            packets.append(address(magazine, int(row)) + row_codes(text, ROW_BYTES))
+    assert all(len(packet) == PACKET_BYTES for packet in packets)
+    return b"".join(packets)
+
+
 DESCRIPTOR = """{{
   "name": "Test service",
   "initial_page": "100",
@@ -154,8 +203,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header("Connection", "Upgrade")
         self.send_header("Sec-WebSocket-Accept", accept)
         self.end_headers()
-        payload = PAGES["200"].encode("latin-1")
-        header = bytes([0x81, 126]) + len(payload).to_bytes(2, "big") if len(payload) >= 126 else bytes([0x81, len(payload)])
+        # DEC-1459: a channel's receiver is sent T42 packets in binary
+        # frames, never TTI text.
+        payload = t42_page(PAGES["200"])
+        header = bytes([0x82, 126]) + len(payload).to_bytes(2, "big") if len(payload) >= 126 else bytes([0x82, len(payload)])
         try:
             self.wfile.write(header + payload)
             self.wfile.flush()

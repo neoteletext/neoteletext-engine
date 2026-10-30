@@ -15,6 +15,9 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use neoteletext_app::pipe::{self, Frame, Notice, Origin};
+use neoteletext_formats::encode::encode_page;
+use neoteletext_formats::item::{Item as ReadItem, Reader};
+use neoteletext_formats::tti::TtiReader;
 use neoteletext_input::MAX_MESSAGE;
 use neoteletext_input::event::{Item, write};
 use neoteletext_web::ws::accept_for;
@@ -35,7 +38,6 @@ const WAKE_BUDGET: Duration = Duration::from_millis(2);
 /// RFC 6455 section 5.2: the FIN bit, the opcodes and the length forms.
 const FIN: u8 = 0x80;
 const OPCODE: u8 = 0x0F;
-const TEXT: u8 = 0x1;
 const BINARY: u8 = 0x2;
 const CLOSE: u8 = 0x8;
 const MASKED: u8 = 0x80;
@@ -53,6 +55,21 @@ fn descriptor(port: u16) -> String {
 /// The page the channel shows, and pushes again for each key.
 fn page(keys: u16) -> String {
     format!("PN,10000\r\nSC,0000\r\nPS,8000\r\nOL,1,Keys: {keys}\r\n")
+}
+
+/// The page as the channel pushes it: T42 packets, by the engine's page
+/// encoder (DEC-1459: a channel's receiver is sent no TTI text).
+fn page_packets(keys: u16) -> Vec<u8> {
+    let mut packets = Vec::new();
+    let mut reader = TtiReader::new();
+    let mut each = |item: ReadItem<'_>| {
+        if let ReadItem::Page(page) = item {
+            encode_page(page, &mut |packet| packets.extend_from_slice(&packet.bytes));
+        }
+    };
+    reader.feed(page(keys).as_bytes(), &mut each);
+    reader.finish(&mut each);
+    packets
 }
 
 struct Killed(Child);
@@ -166,7 +183,7 @@ fn serve(listener: &TcpListener) {
                         match opcode {
                             BINARY => {
                                 keys += 1;
-                                if write_frame(&mut stream, TEXT, page(keys).as_bytes()).is_err() {
+                                if write_frame(&mut stream, BINARY, &page_packets(keys)).is_err() {
                                     return;
                                 }
                             }
@@ -236,7 +253,7 @@ fn keys_reach_the_channel_and_its_answer_comes_back_at_once() {
         pipe::write(&mut input, &Frame::Input(key_message('a'))).expect("send a key");
         input.flush().expect("send a key");
         let pushed = wait_for(
-            &|frame| matches!(frame, Frame::Tti(data) if data.origin == Origin::Push && data.bytes.ends_with(format!("Keys: {}\r\n", index + 1).as_bytes())),
+            &|frame| matches!(frame, Frame::T42(data) if data.origin == Origin::Push && data.bytes == page_packets(index + 1)),
         );
         round_trips.push(pushed.duration_since(sent));
         std::thread::sleep(KEY_INTERVAL.saturating_sub(sent.elapsed()));
