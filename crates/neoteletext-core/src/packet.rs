@@ -139,6 +139,35 @@ pub fn decode_address(packet: &Packet) -> Result<PacketAddress, PacketError> {
     Ok(PacketAddress { magazine: Magazine::from_bits(first & MAGAZINE_MASK), number })
 }
 
+/// The magazine whose packet 31 is data channel 12, the audio profile's
+/// and the channel records' (EN 300 708 clause 6.4.2): the data channel's
+/// low three bits are the magazine bits, and its fourth bit the packet
+/// number's low bit, set for packet 31.
+const INDEPENDENT_AUDIO_MAGAZINE: u8 = crate::consts::IDL_CHANNEL_INDEPENDENT_AUDIO & MAGAZINE_MASK;
+const _: () = assert!(
+    crate::consts::IDL_CHANNEL_INDEPENDENT_AUDIO == INDEPENDENT_AUDIO_MAGAZINE | PACKET_NUMBER_LOW_BIT,
+    "data channel 12 is magazine 4's packet 31"
+);
+
+/// Whether a packet is one a channel's T42 stream may carry (neoteletext-
+/// common's REQ-1462, DEC-1459): its address decodes under Hamming 8/4
+/// (EN 300 706 clause 8.2), and its kind is a page's packet X/0 to X/28,
+/// the magazine's packet M/29, packet 8/30, or packet 4/31, data channel
+/// 12 (EN 300 708 clause 6.4.2). Every other packet is invalid: an address
+/// that does not decode, packet 30 of a magazine other than 8, and packet
+/// 31 of any other data channel. The one check the push reader and a
+/// server both use.
+#[must_use]
+pub fn is_valid_stream_packet(packet: &Packet) -> bool {
+    let Ok(address) = decode_address(packet) else { return false };
+    match address.number {
+        number if number <= PACKET_MAGAZINE_ENHANCEMENT => true,
+        PACKET_SERVICE => address.magazine.number() == SERVICE_MAGAZINE,
+        crate::consts::PACKET_INDEPENDENT_DATA => address.magazine.number() == INDEPENDENT_AUDIO_MAGAZINE,
+        _ => false,
+    }
+}
+
 /// A display row packet X/1 to X/25 (REQ-PKT-003).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Row {
