@@ -3,7 +3,7 @@
 //! to, and an absolute address split into its scheme, host, port, path and
 //! query.
 
-use super::{Parts, Scheme, UrlError};
+use super::{FRAGMENT_MARK, Parts, Scheme, UrlError};
 use crate::bytes::parse_decimal;
 use crate::consts::{MAX_PORT_DIGITS, MAX_URL_LENGTH};
 
@@ -15,7 +15,6 @@ pub(super) fn check_characters(text: &[u8]) -> Result<(), UrlError> {
     for &byte in text {
         match byte {
             b'\\' => return Err(UrlError::Backslash),
-            b'#' => return Err(UrlError::Fragment),
             0x21..=0x7E => {}
             _ => return Err(UrlError::BadCharacter),
         }
@@ -39,7 +38,9 @@ pub(super) fn split_parts(text: &[u8]) -> Result<Parts<'_>, UrlError> {
     let scheme = Scheme::from_name(text.get(..end).unwrap_or(&[])).ok_or(UrlError::Scheme)?;
     let rest = text.get(end.saturating_add(1)..).unwrap_or(&[]);
     let rest = rest.strip_prefix(b"//").ok_or(UrlError::Scheme)?;
-    let authority_end = rest.iter().position(|&b| b == b'/' || b == b'?').unwrap_or(rest.len());
+    // REQ-WEB-016: the host ends at the first `/`, `?` or `#`, so nothing
+    // after a `#` can pose as the host.
+    let authority_end = rest.iter().position(|&b| matches!(b, b'/' | b'?' | FRAGMENT_MARK)).unwrap_or(rest.len());
     let (authority, tail) = rest.split_at(authority_end);
     if authority.contains(&b'@') {
         return Err(UrlError::UserInfo);
@@ -67,11 +68,15 @@ pub(super) fn split_parts(text: &[u8]) -> Result<Parts<'_>, UrlError> {
         None => None,
         Some(digits) => Some(parse_port(digits)?),
     };
+    let (tail, fragment) = match tail.iter().position(|&b| b == FRAGMENT_MARK) {
+        Some(mark) => (tail.get(..mark).unwrap_or(&[]), tail.get(mark.saturating_add(1)..)),
+        None => (tail, None),
+    };
     let (path, query) = match tail.iter().position(|&b| b == b'?') {
         Some(mark) => (tail.get(..mark).unwrap_or(&[]), Some(tail.get(mark.saturating_add(1)..).unwrap_or(&[]))),
         None => (tail, None),
     };
-    Ok(Parts { scheme, host, bracketed, port, path, query })
+    Ok(Parts { scheme, host, bracketed, port, path, query, fragment })
 }
 
 fn parse_port(digits: &[u8]) -> Result<u16, UrlError> {

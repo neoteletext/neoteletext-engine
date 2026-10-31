@@ -45,12 +45,12 @@ fn components() {
 #[test]
 fn invalid_and_deceptive_addresses() {
     let long = {
-        let mut text = [b'a'; 2100];
+        let mut text = [b'a'; MAX_URL_LENGTH + 1];
         text[..11].copy_from_slice(b"http://a.b/");
         text
     };
     let long = core::str::from_utf8(&long).unwrap();
-    let cases: [(&str, UrlError); 35] = [
+    let cases: [(&str, UrlError); 34] = [
         ("ftp://a.b/", UrlError::Scheme),
         ("javascript:alert(1)", UrlError::Scheme),
         ("file:///etc/passwd", UrlError::Scheme),
@@ -59,7 +59,6 @@ fn invalid_and_deceptive_addresses() {
         ("http//a.b", UrlError::Scheme),
         ("http://user:pass@a.b/", UrlError::UserInfo),
         ("http://good.example@evil.example/", UrlError::UserInfo),
-        ("http://a.b/#frag", UrlError::Fragment),
         ("http://a.b/x y", UrlError::BadCharacter),
         ("http://a.b/\t", UrlError::BadCharacter),
         ("http://a.b/\u{0}", UrlError::BadCharacter),
@@ -132,7 +131,12 @@ fn relative_resolution() {
     for (reference, expected) in cases {
         assert_eq!(base.join(reference).map(|u| u.as_str() == expected), Ok(true), "{reference}");
     }
-    assert_eq!(base.join("#f").map(|_| ()), Err(UrlError::Fragment));
+    let joined = base.join("g#f").unwrap();
+    assert_eq!((joined.as_str(), joined.fragment()), ("http://a.b/b/c/g", Some("f")));
+    let joined = base.join("#f").unwrap();
+    assert_eq!((joined.as_str(), joined.fragment()), (base.as_str(), Some("f")));
+    let inherited = base.join("#f").unwrap().join("g").unwrap();
+    assert_eq!(inherited.fragment(), None, "a reference never takes the base's fragment");
     assert_eq!(base.join("\\\\evil").map(|_| ()), Err(UrlError::Backslash));
     assert_eq!(base.join("//user@evil.example/").map(|_| ()), Err(UrlError::UserInfo));
 }
@@ -189,4 +193,39 @@ fn ipv6_hosts_are_kept_in_rfc_5952_form() {
         assert_eq!(url.host_text(), canonical, "{input}");
         assert_eq!(url.as_str(), std::format!("http://[{canonical}]/"), "{input}");
     }
+}
+
+/// REQ-WEB-016, REQ-1661: 8,000 octets is accepted, and one more is not.
+#[test]
+fn the_longest_address_is_8000_octets() {
+    let start = "https://a.example/";
+    let exact = std::format!("{start}{}", "a".repeat(8000 - start.len()));
+    assert_eq!(Url::parse(&exact).map(|url| url.as_str().len()), Ok(8000));
+    let over = std::format!("{exact}a");
+    assert_eq!(Url::parse(&over).map(|_| ()), Err(UrlError::TooLong));
+}
+
+/// REQ-WEB-016: a fragment is kept apart and reaches nothing that is sent.
+#[test]
+fn a_fragment_is_kept_apart() {
+    let url = Url::parse("https://a.example/b?c=d#302").unwrap();
+    assert_eq!(url.as_str(), "https://a.example/b?c=d");
+    assert_eq!(url.target(), "/b?c=d");
+    assert_eq!(url.path(), "/b");
+    assert_eq!(url.query(), Some("c=d"));
+    assert_eq!(url.fragment(), Some("302"));
+    let bare = Url::parse("https://a.example#302").unwrap();
+    assert_eq!((bare.as_str(), bare.target(), bare.fragment()), ("https://a.example/", "/", Some("302")));
+    assert_eq!(Url::parse("https://a.example/").unwrap().fragment(), None);
+    assert_eq!(Url::parse("https://a.example/#").unwrap().fragment(), Some(""));
+}
+
+/// REQ-WEB-016: a `#` can never hide the real host.
+#[test]
+fn a_fragment_cannot_pose_as_the_host() {
+    let url = Url::parse("https://evil.example#@good.example").unwrap();
+    assert_eq!(url.host_text(), "evil.example");
+    assert_eq!(url.fragment(), Some("@good.example"));
+    assert_eq!(Url::parse("https://a.example/#b%zz").map(|_| ()), Err(UrlError::Path));
+    assert_eq!(Url::parse("https://a.example/#b#c").map(|_| ()), Err(UrlError::Path));
 }

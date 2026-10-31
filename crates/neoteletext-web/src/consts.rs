@@ -17,8 +17,7 @@ pub const SECONDS_PER_DAY: u64 = 86_400;
 // Addresses (REQ-WEB-015, REQ-WEB-016, RFC 3986)
 // ---------------------------------------------------------------------------
 
-/// The longest address accepted, in characters (REQ-WEB-016).
-pub const MAX_URL_LENGTH: usize = 2048;
+pub use neoteletext_core::limits::MAX_URL_LENGTH;
 /// The longest DNS name accepted (REQ-WEB-016; RFC 1035 section 2.3.4).
 pub const MAX_HOST_NAME_LENGTH: usize = 253;
 /// The longest DNS label (RFC 1035 section 2.3.4).

@@ -25,6 +25,17 @@
 //! own named constant (REQ-NUM-030).
 
 // ---------------------------------------------------------------------------
+// Addresses (REQ-1661, REQ-WEB-016)
+// ---------------------------------------------------------------------------
+
+/// The longest address accepted anywhere, in octets, its fragment included:
+/// the minimum RFC 9110 section 4.1 recommends, "URIs with lengths of 8000
+/// octets in protocol elements", which NeoTeletext requires of every part.
+/// It is here so that the page formats, the web module, the server and the
+/// browser all derive their limits from this one number.
+pub const MAX_URL_LENGTH: usize = 8000;
+
+// ---------------------------------------------------------------------------
 // Magazines (REQ-NUM-003)
 // ---------------------------------------------------------------------------
 

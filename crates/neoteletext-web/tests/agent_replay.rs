@@ -41,7 +41,9 @@ enum Rec {
 }
 
 struct Harness {
-    agent: UserAgent<'static, Counter, 100, 32768>,
+    // Boxed, as a port keeps it: it holds many addresses of 8,000 octets
+    // (REQ-1661), and a test thread has 2 MB of stack.
+    agent: Box<UserAgent<'static, Counter, 100, 32768>>,
     pump: Pump<Replay>,
     now: Instant,
     out: Vec<Rec>,
@@ -74,7 +76,7 @@ impl Harness {
             Some(cookies) => UserAgent::with_cookies(config, storage.buffers(), Counter(0), cookies),
             None => UserAgent::new(config, storage.buffers(), Counter(0)),
         };
-        Self { agent, pump: Pump::new(replay), now: Instant(1_000 * SECOND), out: Vec::new() }
+        Self { agent: Box::new(agent), pump: Pump::new(replay), now: Instant(1_000 * SECOND), out: Vec::new() }
     }
 
     fn handle(&mut self, input: Input<'_>) {

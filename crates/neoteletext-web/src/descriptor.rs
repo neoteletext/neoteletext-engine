@@ -45,8 +45,9 @@ use crate::consts::{MAX_LINKED_SERVICES, MAX_SERVICE_NAME, MAX_SHORT_NAME, MAX_U
 use crate::json::JsonError;
 use crate::url::{Url, UrlError};
 
-/// Room for the addresses of all linked services' descriptors together.
-const SERVICE_ADDRESS_BYTES: usize = 4096;
+/// Room for the addresses of all linked services' descriptors together:
+/// at least one of the longest address (REQ-1661).
+const SERVICE_ADDRESS_BYTES: usize = MAX_URL_LENGTH;
 /// Aliases a descriptor may declare (the web-native concept
 /// section 5 item 4).
 pub const MAX_ALIASES: usize = 16;

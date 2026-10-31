@@ -250,6 +250,10 @@ pub fn parse_address(text: &str) -> Result<ChannelAddress, ChannelError> {
     if url.query().is_some() || text.bytes().any(|byte| byte == b'?') {
         return Err(ChannelError::Query);
     }
+    // A page is chosen after the channel opens: its folder has no fragment.
+    if url.fragment().is_some() {
+        return Err(ChannelError::Address(UrlError::Fragment));
+    }
     let written = written_path(text.as_bytes()).unwrap_or(b"/");
     let (folder_path, last) = match written.iter().rposition(|&byte| byte == b'/') {
         Some(slash) => (written.get(..=slash).unwrap_or(b"/"), written.get(slash.saturating_add(1)..).unwrap_or(b"")),

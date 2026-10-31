@@ -10,12 +10,14 @@
 //!   labels, at most 253 characters, already in Punycode), an IPv4 address
 //!   in dotted decimal, or an IPv6 address in brackets;
 //! - an optional decimal port from 1 to 65535;
-//! - a path and query of RFC 3986 characters with percent-encoding.
+//! - a path and query of RFC 3986 characters with percent-encoding;
+//! - a fragment after `#`, of the same characters, kept apart: it is never
+//!   part of what is requested.
 //!
-//! It rejects user information, fragments, white space, control
-//! characters, backslashes, IPv4 in octal, hexadecimal or shortened forms,
-//! anything over 2048 characters, and anything else it cannot parse
-//! exactly. The parsed address is stored normalised: scheme and host in
+//! It rejects user information, white space, control characters,
+//! backslashes, IPv4 in octal, hexadecimal or shortened forms, anything
+//! over 8,000 octets (RFC 9110 section 4.1), and anything else it cannot
+//! parse exactly. The parsed address is stored normalised: scheme and host in
 //! lower case, the path's dot segments removed (RFC 3986 section 5.2.4).
 
 mod host;
@@ -32,17 +34,20 @@ use path::{check_path, remove_dot_segments};
 use crate::bytes::{TextBuf, Writer};
 use crate::consts::{IPV4_OCTETS, IPV6_GROUPS, MAX_HOST_TEXT_LENGTH, MAX_URL_LENGTH, PORT_HTTP, PORT_HTTPS};
 
+/// What starts a fragment (RFC 3986 section 3.5).
+const FRAGMENT_MARK: u8 = b'#';
+
 /// Why an address was rejected.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum UrlError {
-    /// Longer than 2048 characters.
+    /// Longer than [`MAX_URL_LENGTH`].
     TooLong,
     /// White space, a control character or a non-ASCII byte (an
     /// internationalised name not in Punycode).
     BadCharacter,
     /// A backslash.
     Backslash,
-    /// A fragment (`#`).
+    /// A fragment (`#`) where the address may have none: a channel's own.
     Fragment,
     /// A scheme other than http, https, ws and wss, or no `//`.
     Scheme,
@@ -158,6 +163,10 @@ pub struct Url {
     path_start: u16,
     /// Start of the query, after `?`, when there is one.
     query_start: Option<u16>,
+    /// Start of the fragment, after `#`, when there is one. Everything
+    /// from its `#` on is left out of [`Url::as_str`], so that no fragment
+    /// can reach a request, a cookie or a channel's identity (REQ-WEB-016).
+    fragment_start: Option<u16>,
 }
 
 /// The positions found by the first pass over an absolute address.
@@ -168,6 +177,7 @@ struct Parts<'a> {
     port: Option<u16>,
     path: &'a [u8],
     query: Option<&'a [u8]>,
+    fragment: Option<&'a [u8]>,
 }
 
 impl Url {
@@ -185,6 +195,10 @@ impl Url {
         check_path(parts.path, false)?;
         if let Some(query) = parts.query {
             check_path(query, true)?;
+        }
+        // RFC 3986 section 3.5: a fragment takes the characters a query does.
+        if let Some(fragment) = parts.fragment {
+            check_path(fragment, true)?;
         }
         if parts.host.len() > MAX_HOST_TEXT_LENGTH {
             return Err(UrlError::Host);
@@ -230,6 +244,15 @@ impl Url {
             }
             None => None,
         };
+        let fragment_start = match parts.fragment {
+            Some(fragment) => {
+                writer.byte(FRAGMENT_MARK).map_err(too_long)?;
+                let start = writer.len();
+                writer.put(fragment).map_err(too_long)?;
+                Some(start)
+            }
+            None => None,
+        };
         let text = TextBuf::from_bytes(writer.written()).ok_or(UrlError::TooLong)?;
         let narrow = |value: usize| u16::try_from(value).map_err(|_| UrlError::TooLong);
         Ok(Self {
@@ -241,6 +264,7 @@ impl Url {
             port: parts.port,
             path_start: narrow(path_start)?,
             query_start: query_start.map(narrow).transpose()?,
+            fragment_start: fragment_start.map(narrow).transpose()?,
         })
     }
 
@@ -267,6 +291,12 @@ impl Url {
         if scheme_end(bytes).is_some() {
             return Self::parse(reference);
         }
+        // RFC 3986 section 5.2.2: the fragment is the reference's own, and
+        // the base's is never inherited.
+        let (bytes, fragment) = match bytes.iter().position(|&b| b == FRAGMENT_MARK) {
+            Some(mark) => (bytes.get(..mark).unwrap_or(&[]), bytes.get(mark..)),
+            None => (bytes, None),
+        };
         let mut buffer = [0u8; MAX_URL_LENGTH];
         let mut writer = Writer::new(&mut buffer);
         let too_long = |_| UrlError::TooLong;
@@ -308,14 +338,29 @@ impl Url {
                 }
             }
         }
+        if let Some(fragment) = fragment {
+            writer.put(fragment).map_err(too_long)?;
+        }
         let joined = core::str::from_utf8(writer.written()).map_err(|_| UrlError::BadCharacter)?;
         Self::parse(joined)
     }
 
-    /// The whole normalised address.
+    /// The normalised address without its fragment: what is requested,
+    /// and what names a channel.
     #[must_use]
     pub fn as_str(&self) -> &str {
-        self.text.as_str()
+        let whole = self.text.as_str();
+        match self.fragment_start {
+            Some(start) => whole.get(..usize::from(start).saturating_sub(1)).unwrap_or(whole),
+            None => whole,
+        }
+    }
+
+    /// The fragment without `#`, if any. It is never sent (RFC 9110
+    /// section 7.1): what it means is the receiver's to judge.
+    #[must_use]
+    pub fn fragment(&self) -> Option<&str> {
+        self.fragment_start.map(|start| self.text.as_str().get(usize::from(start)..).unwrap_or(""))
     }
 
     fn slice(&self, start: u16, end: u16) -> &str {
@@ -379,7 +424,7 @@ impl Url {
     /// The path, at least `/`.
     #[must_use]
     pub fn path(&self) -> &str {
-        let end = self.query_start.map_or(self.text.len(), |start| usize::from(start).saturating_sub(1));
+        let end = self.query_start.map_or(self.as_str().len(), |start| usize::from(start).saturating_sub(1));
         self.as_str().get(usize::from(self.path_start)..end).unwrap_or("/")
     }
 
