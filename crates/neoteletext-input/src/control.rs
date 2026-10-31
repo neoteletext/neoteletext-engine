@@ -235,13 +235,13 @@ pub fn from_packet<'b>(
 #[allow(clippy::unwrap_used, clippy::indexing_slicing, reason = "a test")]
 mod tests {
     use super::*;
-    use crate::caps::PAGE_CAP;
+    use crate::caps::CURSOR_CAP;
 
     // REQ-INT-111.
     #[test]
     fn every_control_message_round_trips_through_a_packet() {
         for control in [
-            Control::Welcome { version: 2, caps: PAGE_CAP, resume: None },
+            Control::Welcome { version: 3, caps: CURSOR_CAP, resume: None },
             Control::Extension { kind: 0x40, payload: &[9, 9] },
         ] {
             let packet = packet_of(&control, 3, 77).unwrap();
@@ -260,8 +260,8 @@ mod tests {
         assert_eq!(read_body(&[0xFF, 0x04, 0x80, 0x06, 0x08]), Ok(Control::Withdrawn(0x04)), "PAGE_MODES");
         // WELCOME agreeing PAGE and the old MOUSE_BUTTONS (8): the mode bit is dropped.
         assert_eq!(
-            read_body(&[0xFF, WELCOME, 2, 0x88, 0x80, 0x04]),
-            Ok(Control::Welcome { version: 2, caps: PAGE_CAP, resume: None })
+            read_body(&[0xFF, WELCOME, 3, 0x88, 0x80, 0x08]),
+            Ok(Control::Welcome { version: 3, caps: CURSOR_CAP, resume: None })
         );
         assert!(write_body(&Control::Withdrawn(0x02), &mut [0; MAX_BODY]).is_err());
     }
@@ -271,8 +271,8 @@ mod tests {
     #[test]
     fn the_withdrawn_echo_bit_is_ignored() {
         assert_eq!(
-            read_body(&[0xFF, WELCOME, 2, 0x80, 0x80, 0x14]),
-            Ok(Control::Welcome { version: 2, caps: PAGE_CAP, resume: None })
+            read_body(&[0xFF, WELCOME, 3, 0x80, 0x80, 0x18]),
+            Ok(Control::Welcome { version: 3, caps: CURSOR_CAP, resume: None })
         );
     }
 
@@ -280,7 +280,9 @@ mod tests {
     #[test]
     fn what_section_7_2_refuses_is_refused() {
         assert_eq!(read_body(&[0xFF, 0x05]), Err(ControlError::Type(5)));
-        assert!(read_body(&[0xFF, WELCOME, 2, 0x80, 0x80, 0x80, 0x01]).is_err(), "a capability not defined");
+        assert!(read_body(&[0xFF, WELCOME, 3, 0x80, 0x80, 0x80, 0x01]).is_err(), "a capability not defined");
+        // REQ-1556: bit 65,536 was PAGE's capability, a protocol error now.
+        assert!(read_body(&[0xFF, WELCOME, 3, 0x80, 0x80, 0x04]).is_err(), "PAGE's capability");
         assert!(read_body(&[0xFF, WELCOME, 2, 0, 0]).is_err(), "bytes after");
         assert!(read_body(&[0x01, WELCOME, 2, 0]).is_err(), "no event byte");
     }
@@ -292,7 +294,7 @@ mod tests {
     fn welcome_carries_the_session_with_resume() {
         let token = [7_u8; TOKEN_BYTES];
         for taken in [None, Some(0xFFFF), Some(1)] {
-            let welcome = Control::Welcome { version: 2, caps: ALL_CAPS, resume: Some(Resumption { token, taken }) };
+            let welcome = Control::Welcome { version: 3, caps: ALL_CAPS, resume: Some(Resumption { token, taken }) };
             let mut out = [0_u8; MAX_BODY];
             let length = write_body(&welcome, &mut out).unwrap();
             assert_eq!(read_body(&out[..length]), Ok(welcome));
@@ -302,10 +304,10 @@ mod tests {
         }
         // Resumed from 0x1234: state 1, the token, then the count, big-endian.
         let welcome =
-            Control::Welcome { version: 2, caps: RESUME_CAP, resume: Some(Resumption { token, taken: Some(0x1234) }) };
+            Control::Welcome { version: 3, caps: RESUME_CAP, resume: Some(Resumption { token, taken: Some(0x1234) }) };
         let mut out = [0_u8; MAX_BODY];
         let length = write_body(&welcome, &mut out).unwrap();
-        assert_eq!(&out[..7], &[0xFF, WELCOME, 2, 0x80, 0x80, 0x80, 0x01]);
+        assert_eq!(&out[..7], &[0xFF, WELCOME, 3, 0x80, 0x80, 0x80, 0x01]);
         assert_eq!(out[7], SESSION_RESUMED);
         assert_eq!(&out[8..24], &token);
         assert_eq!(&out[24..length], &[0x12, 0x34]);
@@ -314,7 +316,8 @@ mod tests {
         bad[7] = 2;
         assert_eq!(read_body(&bad[..length]), Err(ControlError::BadValue("session state")));
         assert!(read_body(&out[..7]).is_err(), "RESUME agreed and no session");
-        let without = Control::Welcome { version: 2, caps: PAGE_CAP, resume: Some(Resumption { token, taken: None }) };
+        let without =
+            Control::Welcome { version: 3, caps: CURSOR_CAP, resume: Some(Resumption { token, taken: None }) };
         assert!(write_body(&without, &mut out).is_err(), "a session without RESUME is never written");
     }
 

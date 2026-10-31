@@ -2,18 +2,20 @@
 #![allow(clippy::unwrap_used, clippy::arithmetic_side_effects, clippy::indexing_slicing, reason = "a test")]
 
 use super::*;
-use crate::event::{Device, Mouse, MouseAction, Point, Touch};
+use crate::event::{Device, Mouse, MouseAction, Point, Stamp, Touch};
 use std::vec::Vec;
 
 const MS: u64 = 1_000;
+/// The page on screen in these tests.
+const ON: Stamp = Stamp { page: 0x100, sub: 0 };
 
 fn mouse(column: u32) -> Event<'static> {
     let at = Point { column, row: 5, pixels: Some((column * 12, 100)), mods: 0 };
-    Event::Mouse(Mouse { action: MouseAction::Move, button: 0, at, device: Device::Mouse })
+    Event::Mouse(Mouse { on: ON, action: MouseAction::Move, button: 0, at, device: Device::Mouse })
 }
 
 fn touch(id: u8, column: u32) -> Event<'static> {
-    Event::Touch(Touch { action: MouseAction::Move, id, column, row: 5, pixels: None })
+    Event::Touch(Touch { on: ON, action: MouseAction::Move, id, column, row: 5, pixels: None })
 }
 
 /// REQ-INT-122, REQ-RCH-031: the period is 1000/60 ms, counted exactly.
@@ -58,7 +60,7 @@ fn a_thousand_moves_a_second_go_sixty_with_no_drift() {
         let now = u64::from(millisecond) * MS;
         pacer.take_due(now, &mut |_| sent_at.push(now));
         let at = Point { column: 1, row: 5, pixels: Some((millisecond, 0)), mods: 0 };
-        let moved = Event::Mouse(Mouse { action: MouseAction::Move, button: 0, at, device: Device::Mouse });
+        let moved = Event::Mouse(Mouse { on: ON, action: MouseAction::Move, button: 0, at, device: Device::Mouse });
         if let Offer::Now(_) = pacer.offer(moved, now) {
             sent_at.push(now);
         }
@@ -100,6 +102,6 @@ fn each_contact_is_paced_alone_and_due_moves_come_together() {
     pacer.take_due(20 * MS, &mut |event| together.push(event));
     assert_eq!(together, [mouse(2), touch(3, 2)], "both at one moment, to be written together");
     assert_eq!(pacer.offer(touch(MAX_CONTACTS as u8, 1), 0), Offer::NotAMove, "no such contact");
-    let press = Event::Touch(Touch { action: MouseAction::Press, id: 1, column: 1, row: 1, pixels: None });
+    let press = Event::Touch(Touch { on: ON, action: MouseAction::Press, id: 1, column: 1, row: 1, pixels: None });
     assert_eq!(pacer.offer(press, 0), Offer::NotAMove, "only moves");
 }

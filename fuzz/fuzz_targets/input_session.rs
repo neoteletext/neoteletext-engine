@@ -8,15 +8,15 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use neoteletext_input::caps::{PAGE_CAP, RESUME_CAP};
+use neoteletext_input::caps::{RESUME_CAP, SELECT_CAP};
 use neoteletext_input::control::Resumption;
-use neoteletext_input::event::{Device, Event, Item, Mouse, MouseAction, Point, read_message};
+use neoteletext_input::event::{Device, Event, Item, Mouse, MouseAction, Point, Stamp, read_message};
 use neoteletext_input::pace::{Offer, PERIOD_WHOLE_US, Pacer};
 use neoteletext_input::session::{ResumableSession, Welcomed};
 use neoteletext_input::{MAX_MESSAGE, TOKEN_BYTES};
 
 fuzz_target!(|data: &[u8]| {
-    let mut session = ResumableSession::new(PAGE_CAP);
+    let mut session = ResumableSession::new(SELECT_CAP);
     let mut pacer = Pacer::new();
     let mut now_ms = 0_u32;
     let mut now_us = 0_u64;
@@ -37,7 +37,7 @@ fuzz_target!(|data: &[u8]| {
             2 => {
                 let taken = (value & 1 == 1).then_some(value >> 1);
                 let resume = Some(Resumption { token: [op; TOKEN_BYTES], taken });
-                if let Ok(Welcomed::Resumed) = session.welcome(2, PAGE_CAP | RESUME_CAP, resume) {
+                if let Ok(Welcomed::Resumed) = session.welcome(neoteletext_input::VERSION, SELECT_CAP | RESUME_CAP, resume) {
                     let mut again = Vec::new();
                     session.resend(&mut |message| again.push(message.to_vec()));
                     // What goes again is the end of what was sent, whole messages in order.
@@ -57,7 +57,8 @@ fuzz_target!(|data: &[u8]| {
             5 => session.forget(),
             _ => {
                 let at = Point { column: u32::from(value % 40), row: 1, pixels: Some((u32::from(value), 0)), mods: 0 };
-                let moved = Event::Mouse(Mouse { action: MouseAction::Move, button: 0, at, device: Device::Mouse });
+                let on = Stamp { page: 0x100, sub: 0 };
+                let moved = Event::Mouse(Mouse { on, action: MouseAction::Move, button: 0, at, device: Device::Mouse });
                 // A move that waited went at the end of its period, not when
                 // the timer ran: the pace is counted from there.
                 let due = pacer.due();

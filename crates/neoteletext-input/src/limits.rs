@@ -4,7 +4,7 @@
 use crate::{control, wire};
 
 /// The protocol version HELLO and WELCOME carry (section 6.1).
-pub const VERSION: u32 = 2;
+pub const VERSION: u32 = 3;
 /// The most bytes in one binary message (section 5.1, REQ-INT-101).
 pub const MAX_MESSAGE: usize = 4096;
 /// The most bytes of a PASTE's text (section 5.4, REQ-INT-103).
@@ -15,8 +15,8 @@ pub const MAX_COMPOSE: usize = 256;
 pub const MAX_KEY_TEXT: usize = 32;
 /// The most bytes of HELLO's user agent string (section 5.4).
 pub const MAX_AGENT: usize = 64;
-/// Cells across a page with both side panels (section 5.4): 40 + 2 × 16.
-pub const MAX_COLUMNS: u32 = 72;
+/// Cells across a page (section 5.4): always 40 (DEC-1636, REQ-1643).
+pub const MAX_COLUMNS: u32 = neoteletext_core::consts::COLUMNS as u32;
 /// Rows of a page: header, 23 rows and the Fastext row (section 5.4).
 pub const MAX_ROWS: u32 = 25;
 /// The most input units a second (section 8, REQ-INT-109): qrkeyboard's
@@ -49,8 +49,8 @@ pub const RESEND_BYTES: usize = 4 * MAX_MESSAGE;
 
 // A TOUCH id fits its byte, and every id from 1 is a contact.
 const _: () = assert!(MAX_CONTACTS > 1 && MAX_CONTACTS <= 1 + u8::MAX as usize);
-// A PASTE, its event byte, type and length, fits a message.
-const _: () = assert!(MAX_PASTE + 2 + wire::MAX_VARINT <= MAX_MESSAGE);
+// A PASTE, its event byte, type, stamp and length, fits a message.
+const _: () = assert!(MAX_PASTE + 2 + crate::event::STAMP_BYTES + wire::MAX_VARINT <= MAX_MESSAGE);
 // Section 7.2: a control message is at most 26 bytes, so its record, with
 // the frame's 8, is the 34 bytes of one fragment.
 const _: () = assert!(control::MAX_BODY == 26);

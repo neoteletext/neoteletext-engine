@@ -8,8 +8,9 @@
 /// WELCOME is not refused for asking for a mode.
 pub const RETIRED_MODE_BITS: u32 = 0xFFFF;
 
-/// Capability: the receiver shows teletext pages and sends PAGE.
-pub const PAGE_CAP: u32 = 1 << 16;
+/// Bit 16 was the capability of PAGE until DEC-1538 (REQ-1556): withdrawn,
+/// never set, and a protocol error when set in HELLO or WELCOME.
+pub const RETIRED_PAGE_BIT: u32 = 1 << 16;
 /// Capability: the receiver draws the channel's cursor record.
 pub const CURSOR_CAP: u32 = 1 << 17;
 /// Bit 18 was the capability of provisional echo until decision E.134,
@@ -26,11 +27,11 @@ pub const TOUCH_CAP: u32 = 1 << 20;
 /// WELCOME carries a token, and a reconnection's first message carries
 /// RESUME after HELLO (INPUT.md section 6.4).
 pub const RESUME_CAP: u32 = 1 << 21;
-/// Capability: the receiver sends SELECT, the connection's selection
-/// (INPUT.md section 5.4, REQ-INT-140); a channel that sets it sends the
+/// Capability: the receiver shows teletext pages and sends SELECT, the
+/// connection's selection (INPUT.md section 5.4, REQ-INT-140); a channel that sets it sends the
 /// one sub-page selected, never a page's sub-pages together (DEC-1500).
 pub const SELECT_CAP: u32 = 1 << 22;
 /// Every capability defined.
-pub const ALL_CAPS: u32 = PAGE_CAP | CURSOR_CAP | AGENT | TOUCH_CAP | RESUME_CAP | SELECT_CAP;
+pub const ALL_CAPS: u32 = CURSOR_CAP | AGENT | TOUCH_CAP | RESUME_CAP | SELECT_CAP;
 // A retired bit is never a capability.
-const _: () = assert!(ALL_CAPS & (RETIRED_MODE_BITS | RETIRED_ECHO_BIT) == 0);
+const _: () = assert!(ALL_CAPS & (RETIRED_MODE_BITS | RETIRED_ECHO_BIT | RETIRED_PAGE_BIT) == 0);

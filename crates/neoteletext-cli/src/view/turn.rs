@@ -16,6 +16,7 @@ use neoteletext_core::config::Config;
 use neoteletext_core::level1::Grid;
 use neoteletext_core::types::{Instant, PageAddress, SubCode};
 use neoteletext_core::viewer::{Action, Viewer, ViewerEvent};
+use neoteletext_input::event::Stamp;
 use std::sync::mpsc;
 
 impl ViewState {
@@ -43,11 +44,12 @@ impl ViewState {
             let config: Config = *session.decoder().config();
             self.act(session, source);
             let (requested, subcode) = self.viewer.requested();
-            if self.typing_turn(session, source, requested) {
+            if self.typing_turn(session, source, requested, subcode) {
                 continue;
             }
             let session: &Session = session;
             let page = self.page_shown(session, requested, subcode);
+            self.typing.set_drawn(page.and_then(|page| Stamp::new(page.key.address.mpp(), page.key.subcode.value())));
             let page_extras = page.and_then(|page| source.extras(page.key.address, page.key.subcode)).cloned();
             let shown = Shown { page, extras: page_extras.as_ref(), config: &config, now };
             self.compose(session, requested, &shown);
@@ -97,10 +99,16 @@ impl ViewState {
     }
 
     /// The channel's side of the turn: its records taken, its welcome
-    /// shown, a page it sends the viewer to, and the page open told to it.
+    /// shown, a page it sends the viewer to, and the selection told to it.
     /// True when the channel sent the viewer to another page, which the
     /// next turn requests.
-    fn typing_turn(&mut self, session: &mut Session, source: &mut dyn Source, requested: PageAddress) -> bool {
+    fn typing_turn(
+        &mut self,
+        session: &mut Session,
+        source: &mut dyn Source,
+        requested: PageAddress,
+        subcode: SubCode,
+    ) -> bool {
         let clock_ms = now_ms(self.start);
         let was_on = self.typing.on();
         if self.typing.records(source, session.take_kept().into_iter(), clock_ms) {
@@ -116,7 +124,7 @@ impl ViewState {
             self.action = Action::Request(address, SubCode::ANY);
             return true;
         }
-        self.typing.tell_open_page(source, requested.mpp(), clock_ms);
+        self.typing.tell_selection(source, requested.mpp(), subcode.value(), clock_ms);
         false
     }
 }

@@ -6,8 +6,9 @@ use super::qr::qr;
 use crate::clock::now_ms;
 use neoteletext_app::{Failure, exit};
 use neoteletext_core::consts::PACKET_BYTES;
-use neoteletext_core::packet::Packet;
-use neoteletext_input::event::{Action, Event, Item, Key, KeyCode};
+use neoteletext_core::packet::{Decoded, Packet, decode};
+use neoteletext_core::types::PageAddress;
+use neoteletext_input::event::{Action, Event, Item, Key, KeyCode, Stamp};
 use neoteletext_input::session::{SendError, Session, State};
 use neoteletext_input::{MAX_MESSAGE, MAX_ROWS, control, keys};
 use neoteletext_qrkeyboard::config::{Layout, ScreenConfig};
@@ -44,6 +45,10 @@ struct Channel {
     socket: WebSocket,
     session: Session,
     started: Instant,
+    /// The page and sub-code the channel last sent: the bridge draws
+    /// nothing and sends no SELECT, so this is what its keys are for
+    /// (INPUT.md section 3.4).
+    on: Option<Stamp>,
 }
 
 impl Channel {
@@ -54,7 +59,7 @@ impl Channel {
     /// Sends HELLO and waits for WELCOME, then says the bridge's size and
     /// focus (section 6.1).
     fn open(socket: WebSocket) -> Result<Self, Failure> {
-        let mut channel = Self { socket, session: Session::new(OFFERED), started: Instant::now() };
+        let mut channel = Self { socket, session: Session::new(OFFERED), started: Instant::now(), on: None };
         let mut out = [0_u8; MAX_MESSAGE];
         let now_ms = channel.now_ms();
         let length =
@@ -89,10 +94,17 @@ impl Channel {
             Some(Incoming::Binary(bytes)) => {
                 let (packets, _) = bytes.as_chunks::<PACKET_BYTES>();
                 for bytes in packets {
+                    let packet = Packet { bytes: *bytes };
                     let mut buffer = [0; control::FRAGMENT_DATA];
-                    if let Some(Ok(control)) = control::from_packet(&Packet { bytes: *bytes }, &mut buffer) {
+                    if let Some(Ok(control)) = control::from_packet(&packet, &mut buffer) {
                         // A refused WELCOME leaves the session refused.
                         let _ = self.session.control(&control);
+                    } else if let Ok(Decoded::Header(header)) = decode(&packet)
+                        && let (Some(page), Some(subcode)) = (header.page, header.subcode)
+                        && let Some(on) =
+                            Stamp::new(PageAddress { magazine: header.magazine, page }.mpp(), subcode.value())
+                    {
+                        self.on = Some(on);
                     }
                 }
                 Ok(true)
@@ -125,8 +137,10 @@ impl Channel {
 
     /// A key the phone pressed or let go, by its W3C name or its character
     /// (INPUT.md sections 5.5 and 6.3): a character as KEY with its text,
-    /// any other key as KEY with its functional code.
+    /// any other key as KEY with its functional code. Nothing goes before
+    /// the channel has sent a page, since a key must be stamped with one.
     fn key(&mut self, name: &str, down: bool) -> Result<(), Failure> {
+        let Some(on) = self.on else { return Ok(()) };
         let mut characters = name.chars();
         let character = match (characters.next(), characters.next()) {
             (Some(character), None) if neoteletext_input::event::printable(character) => Some(character),
@@ -137,10 +151,12 @@ impl Channel {
             // The phone gives the character typed; its key unshifted.
             let unshifted = character.to_lowercase().next().unwrap_or(character);
             let text = down.then_some(name);
-            Item::Event(Event::Key(Key { action, key: KeyCode::Character(unshifted), mods: 0, text, base: None }))
+            let key = KeyCode::Character(unshifted);
+            Item::Event(Event::Key(Key { on, action, key, mods: 0, text, base: None, lost: false }))
         } else {
             let code = keys::code(name).unwrap_or_else(keys::unidentified);
-            Item::Event(Event::Key(Key { action, key: KeyCode::Functional(code), mods: 0, text: None, base: None }))
+            let key = KeyCode::Functional(code);
+            Item::Event(Event::Key(Key { on, action, key, mods: 0, text: None, base: None, lost: false }))
         };
         self.send(&item)
     }

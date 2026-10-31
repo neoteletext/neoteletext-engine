@@ -5,16 +5,18 @@ use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use neoteletext_app::source::Source;
 use neoteletext_core::consts::COLUMNS;
 use neoteletext_core::packet::Packet;
+use neoteletext_input::event::Stamp;
+use neoteletext_input::held::{Held, MAX_HELD_KEYS, Released, lost_key};
 
 /// What `neottx view` offers in HELLO (INPUT.md section 6.2): it shows
-/// pages; it draws no cursor and no echo.
-const OFFERED: u32 = neoteletext_input::caps::PAGE_CAP;
+/// pages and says which with SELECT; it draws no cursor and no echo.
+const OFFERED: u32 = neoteletext_input::caps::SELECT_CAP;
 
 /// A terminal key as the input stream has it (INPUT.md sections 5.3, 5.5
-/// and 6.3): every key as KEY, a character key's text with it unless
-/// Control or Alt is held or it is a release. `None` for keys a terminal
-/// cannot name.
-pub(super) fn input_of(key: KeyEvent, buffer: &mut [u8; 4]) -> Option<neoteletext_input::event::Item<'_>> {
+/// and 6.3): every key as KEY, stamped with the page on screen, a
+/// character key's text with it unless Control or Alt is held or it is a
+/// release. `None` for keys a terminal cannot name.
+pub(super) fn input_of(key: KeyEvent, on: Stamp, buffer: &mut [u8; 4]) -> Option<neoteletext_input::event::Item<'_>> {
     use neoteletext_input::event::{ALT, Action, CONTROL, Event, Item, Key, KeyCode as InputKey, SHIFT, printable};
     // A terminal with the Kitty keyboard protocol reports repeats and
     // releases; any other reports every key once, as a press.
@@ -63,7 +65,7 @@ pub(super) fn input_of(key: KeyEvent, buffer: &mut [u8; 4]) -> Option<neoteletex
         KeyCode::Insert => (functional("Insert")?, None),
         _ => return None,
     };
-    Some(Item::Event(Event::Key(Key { action, key: code, mods, text, base: None })))
+    Some(Item::Event(Event::Key(Key { on, action, key: code, mods, text, base: None, lost: false })))
 }
 
 /// Typing into a channel that takes input (area INT): the viewer's keys
@@ -84,8 +86,14 @@ pub(super) struct Typing {
     input: neoteletext_input::session::Session,
     /// The session was welcomed and told the size and focus.
     started: bool,
-    /// The page the channel was last told is open.
-    told: Option<u16>,
+    /// The selection the channel was last told: page and sub-code.
+    told: Option<(u16, u16)>,
+    /// The page and sub-code on screen, which stamp the viewer's input.
+    drawn: Option<Stamp>,
+    /// What the viewer holds, so a key the page loses is released.
+    held: Held,
+    /// The terminal reports releases: without them nothing can be held.
+    releases: bool,
     /// A page the channel's cursor record named, to open (REQ-INT-113).
     go_to: Option<u16>,
 }
@@ -108,6 +116,9 @@ impl Typing {
             input: neoteletext_input::session::Session::new(OFFERED),
             started: false,
             told: None,
+            drawn: None,
+            held: Held::new(),
+            releases: false,
             go_to: None,
         }
     }
@@ -136,12 +147,11 @@ impl Typing {
     }
 
     /// Leaves the keys with Control-], or takes them back, and tells the
-    /// channel the focus; the open page is told again on return. Returns
-    /// whether the keys are now left.
+    /// channel the focus. The selection stays as it was: focus never
+    /// changes it (REQ-1554). Returns whether the keys are now left.
     pub(super) fn leave_or_return(&mut self, source: &mut dyn Source, clock_ms: u32) -> bool {
         self.left = !self.left;
         self.tell_focus(source, clock_ms);
-        self.told = None;
         self.left
     }
 
@@ -156,14 +166,29 @@ impl Typing {
         self.go_to.take()
     }
 
-    /// The channel is told which of its pages is open (INPUT.md section
-    /// 5.4), when the keys go to it and the page changed.
-    pub(super) fn tell_open_page(&mut self, source: &mut dyn Source, page: u16, clock_ms: u32) {
-        if self.on() && self.told != Some(page) {
-            self.told = Some(page);
-            let item = neoteletext_input::event::Item::Event(neoteletext_input::event::Event::Page(page));
-            self.send(source, &item, clock_ms);
+    /// The channel is told the page and sub-page selected (INPUT.md section
+    /// 5.4), when they changed, whatever the focus (REQ-1090): 3F7F for a
+    /// page alone. What the channel answers 3F7F with stays the selection,
+    /// so no second SELECT goes for it.
+    pub(super) fn tell_selection(&mut self, source: &mut dyn Source, page: u16, sub: u16, clock_ms: u32) {
+        use neoteletext_input::event::{Event, Item, Select};
+        if self.started && self.told != Some((page, sub)) {
+            self.told = Some((page, sub));
+            if let Some(select) = Select::new(page, sub) {
+                self.send(source, &Item::Event(Event::Select(select)), clock_ms);
+            }
         }
+    }
+
+    /// What is on screen: `None` while nothing of the selected page is
+    /// drawn, when no input goes (REQ-1554).
+    pub(super) const fn set_drawn(&mut self, on: Option<Stamp>) {
+        self.drawn = on;
+    }
+
+    /// The stamp for input now, while keys go and the page is drawn.
+    pub(super) fn stamp(&self) -> Option<Stamp> {
+        self.drawn.filter(|_| self.on())
     }
 
     /// The push connection opened or closed: a new session (REQ-INT-106).
@@ -171,6 +196,8 @@ impl Typing {
         self.open = open;
         self.started = false;
         self.told = None;
+        self.drawn = None;
+        self.held = Held::new();
         self.focus_told = None;
         if open {
             let mut out = [0_u8; neoteletext_input::MAX_MESSAGE];
@@ -201,7 +228,7 @@ impl Typing {
                 let _ = self.input.control(&control);
             } else if let Some(Ok(cursor)) = neoteletext_input::cursor::from_packet(&packet) {
                 self.input.acknowledged(cursor.acked);
-                if let Some(open) = self.told {
+                if let Some((open, _)) = self.told {
                     self.go_to = host_page(cursor.page, open, self.on()).or(self.go_to);
                 }
             }
@@ -217,8 +244,31 @@ impl Typing {
         waiting && self.input.state() == neoteletext_input::session::State::Refused
     }
 
-    /// Writes `item` at once, one message an item (REQ-INT-112).
+    /// Writes `item` at once, one message an item (REQ-INT-112). The event
+    /// that ends the input goes after a lost release of each key held
+    /// (INPUT.md section 8 rule 3), on a terminal that reports releases.
     pub(super) fn send(&mut self, source: &mut dyn Source, item: &neoteletext_input::event::Item<'_>, clock_ms: u32) {
+        use neoteletext_input::event::{Action, Event, Item};
+        if matches!(item, Item::Event(Event::Key(key)) if key.action == Action::Release) {
+            self.releases = true;
+        }
+        let mut lost = [None; MAX_HELD_KEYS];
+        let mut count = 0;
+        self.held.take(item, &mut |released, on| {
+            if let (Released::Key(key), Some(slot)) = (released, lost.get_mut(count)) {
+                *slot = Some(lost_key(key, on));
+                count = count.saturating_add(1);
+            }
+        });
+        if self.releases {
+            for key in lost.into_iter().flatten() {
+                self.write(source, &Item::Event(Event::Key(key)), clock_ms);
+            }
+        }
+        self.write(source, item, clock_ms);
+    }
+
+    fn write(&mut self, source: &mut dyn Source, item: &neoteletext_input::event::Item<'_>, clock_ms: u32) {
         let mut out = [0_u8; neoteletext_input::MAX_MESSAGE];
         let sent = crate::nfc::with_nfc(item, |item| self.input.send(item, clock_ms, &mut out));
         if let Ok(length @ 1..) = sent

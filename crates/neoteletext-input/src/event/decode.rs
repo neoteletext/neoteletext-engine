@@ -6,15 +6,15 @@ use super::{
     ACTION, Action, COMPOSE, CORE_LAST_TYPE, DEVICE_MASK, DEVICE_SHIFT, Device, EVENT, Event, FIRST_EXTENSION,
     FOCUS_IN, FOCUS_OUT, FUNCTIONAL, HAS_BASE, HAS_MODS, HAS_PIXELS, HAS_TEXT, HELLO, HOVER, HOVER_LEAVE, InputError,
     Item, KEY, KEY_RESERVED, Key, KeyCode, LAST_CORE, LAST_EXTENSION, MOUSE, MOUSE_RESERVED, Mouse, MouseAction,
-    NEVER_UTF8, NEVER_UTF8_FROM, PAGE, PASTE, Point, RESIZE, RESUME, Resume, SELECT, Select, TOUCH, TOUCH_RESERVED,
+    NEVER_UTF8, NEVER_UTF8_FROM, PASTE, Point, RESIZE, RESUME, Resume, SELECT, Select, Stamp, TOUCH, TOUCH_RESERVED,
     Touch, WHEEL, WHEEL_RESERVED, Wheel, check_text, printable,
 };
-use crate::caps::AGENT;
+use super::{LOST, STAMP_BYTES};
+use crate::caps::{AGENT, RETIRED_PAGE_BIT};
 use crate::keys::is_code;
 use crate::wire::{Reader, WireError};
 use crate::{
     MAX_AGENT, MAX_COLUMNS, MAX_COMPOSE, MAX_KEY_TEXT, MAX_MESSAGE, MAX_PASTE, MAX_ROWS, MAX_TOUCH_ID, TOKEN_BYTES,
-    is_page,
 };
 
 /// Reads one item from `bytes`. `Ok(None)` means `bytes` is empty;
@@ -56,6 +56,13 @@ fn read_text(bytes: &[u8]) -> Result<(Item<'_>, usize), InputError> {
     Ok((Item::Text(text), text.len()))
 }
 
+/// The stamp every input event begins with (section 5.4, REQ-1555).
+fn read_stamp(reader: &mut Reader<'_>) -> Result<Stamp, InputError> {
+    let narrow = |value: u32| u16::try_from(value).map_err(|_| InputError::BadValue("stamp"));
+    let (page, sub) = (narrow(reader.uv()?)?, narrow(reader.uv()?)?);
+    Stamp::new(page, sub).ok_or(InputError::BadValue("stamp"))
+}
+
 /// A pointer's cell, its column and row, and its dot when known.
 type Cell = (u32, u32, Option<(u32, u32)>);
 
@@ -91,6 +98,7 @@ fn read_event<'a>(reader: &mut Reader<'a>) -> Result<Event<'a>, InputError> {
     Ok(match kind {
         KEY => Event::Key(read_key(reader)?),
         MOUSE => {
+            let on = read_stamp(reader)?;
             let flags = reader.byte()?;
             if flags & MOUSE_RESERVED != 0 {
                 return Err(InputError::Flags);
@@ -103,18 +111,22 @@ fn read_event<'a>(reader: &mut Reader<'a>) -> Result<Event<'a>, InputError> {
                 _ => return Err(InputError::BadValue("mouse device")),
             };
             let button = reader.byte()?;
-            Event::Mouse(Mouse { action: read_action(flags), button, at: read_point(reader, flags)?, device })
+            Event::Mouse(Mouse { on, action: read_action(flags), button, at: read_point(reader, flags)?, device })
         }
         WHEEL => {
+            let on = read_stamp(reader)?;
             let flags = reader.byte()?;
             if flags & (WHEEL_RESERVED | ACTION) != 0 {
                 return Err(InputError::Flags);
             }
             let dx = reader.sv()?;
             let dy = reader.sv()?;
-            Event::Wheel(Wheel { dx, dy, at: read_point(reader, flags)? })
+            Event::Wheel(Wheel { on, dx, dy, at: read_point(reader, flags)? })
         }
-        PASTE => Event::Paste(reader.str(MAX_PASTE)?),
+        PASTE => {
+            let on = read_stamp(reader)?;
+            Event::Paste { on, text: reader.str(MAX_PASTE)? }
+        }
         FOCUS_IN => Event::FocusIn,
         FOCUS_OUT => Event::FocusOut,
         RESIZE => {
@@ -125,29 +137,26 @@ fn read_event<'a>(reader: &mut Reader<'a>) -> Result<Event<'a>, InputError> {
             Event::Resize { columns, rows, width, height }
         }
         COMPOSE => {
+            let on = read_stamp(reader)?;
             let cursor = reader.uv()?;
             let text = reader.str(MAX_COMPOSE)?;
             check_text(text)?;
             if usize::try_from(cursor).map_or(true, |cursor| cursor > text.chars().count()) {
                 return Err(InputError::BadValue("compose cursor"));
             }
-            Event::Compose { cursor, text }
+            Event::Compose { on, cursor, text }
         }
         HELLO => {
             let version = reader.uv()?;
             let caps = reader.uv()?;
+            if caps & RETIRED_PAGE_BIT != 0 {
+                return Err(InputError::BadValue("caps"));
+            }
             let agent = if caps & AGENT == 0 { None } else { Some(reader.str(MAX_AGENT)?) };
             if agent.is_some_and(|agent| !agent.bytes().all(|byte| byte.is_ascii_graphic() || byte == b' ')) {
                 return Err(InputError::BadValue("agent"));
             }
             Event::Hello { version, caps, agent }
-        }
-        PAGE => {
-            let page = u16::try_from(reader.uv()?).map_err(|_| InputError::BadValue("page"))?;
-            if page != 0 && !is_page(page) {
-                return Err(InputError::BadValue("page"));
-            }
-            Event::Page(page)
         }
         FIRST_EXTENSION..=LAST_EXTENSION => {
             let length = usize::try_from(reader.uv()?).map_err(|_| InputError::Message)?;
@@ -174,10 +183,11 @@ fn read_event<'a>(reader: &mut Reader<'a>) -> Result<Event<'a>, InputError> {
     })
 }
 
-/// HOVER's payload: `flags` u8, `col` uv and `row` uv, the control's first
-/// cell, and nothing after.
+/// HOVER's payload: the stamp, `flags` u8, `col` uv and `row` uv, the
+/// control's first cell, and nothing after.
 fn read_hover(payload: &[u8]) -> Result<Event<'static>, InputError> {
     let mut reader = Reader::new(payload);
+    let on = read_stamp(&mut reader)?;
     let flags = reader.byte()?;
     if flags & !HOVER_LEAVE != 0 {
         return Err(InputError::BadValue("hover flags"));
@@ -186,14 +196,15 @@ fn read_hover(payload: &[u8]) -> Result<Event<'static>, InputError> {
     if column >= MAX_COLUMNS || row >= MAX_ROWS || reader.used() != payload.len() {
         return Err(InputError::BadValue("hover"));
     }
-    Ok(Event::Hover { leave: flags & HOVER_LEAVE != 0, column, row })
+    Ok(Event::Hover { on, leave: flags & HOVER_LEAVE != 0, column, row })
 }
 
-/// TOUCH's payload (REQ-RCH-043): `flags` u8, `id` u8 of 1 to
+/// TOUCH's payload (REQ-RCH-043): the stamp, `flags` u8, `id` u8 of 1 to
 /// [`MAX_TOUCH_ID`], `col` uv, `row` uv, the dot when flagged, and nothing
 /// after.
 fn read_touch(payload: &[u8]) -> Result<Event<'static>, InputError> {
     let mut reader = Reader::new(payload);
+    let on = read_stamp(&mut reader)?;
     let flags = reader.byte()?;
     if flags & TOUCH_RESERVED != 0 {
         return Err(InputError::BadValue("touch flags"));
@@ -206,7 +217,7 @@ fn read_touch(payload: &[u8]) -> Result<Event<'static>, InputError> {
     if reader.used() != payload.len() {
         return Err(InputError::BadValue("touch"));
     }
-    Ok(Event::Touch(Touch { action: read_action(flags), id, column, row, pixels }))
+    Ok(Event::Touch(Touch { on, action: read_action(flags), id, column, row, pixels }))
 }
 
 /// SELECT's payload (REQ-INT-140, DEC-1527): `page` uv and `sub` uv, and
@@ -233,6 +244,7 @@ fn read_resume(payload: &[u8]) -> Result<Event<'static>, InputError> {
 }
 
 fn read_key<'a>(reader: &mut Reader<'a>) -> Result<Key<'a>, InputError> {
+    let on = read_stamp(reader)?;
     let flags = reader.byte()?;
     if flags & KEY_RESERVED != 0 {
         return Err(InputError::Flags);
@@ -243,6 +255,10 @@ fn read_key<'a>(reader: &mut Reader<'a>) -> Result<Key<'a>, InputError> {
         2 => Action::Release,
         _ => return Err(InputError::BadValue("key action")),
     };
+    let lost = flags & LOST != 0;
+    if lost && action != Action::Release {
+        return Err(InputError::BadValue("lost, and not a release"));
+    }
     let value = reader.uv()?;
     let key = if flags & FUNCTIONAL == 0 {
         let character = char::from_u32(value).ok_or(InputError::BadValue("key"))?;
@@ -269,7 +285,7 @@ fn read_key<'a>(reader: &mut Reader<'a>) -> Result<Key<'a>, InputError> {
         let base = char::from_u32(reader.uv()?).filter(|base| printable(*base)).ok_or(InputError::BadValue("base"))?;
         Some(base)
     };
-    Ok(Key { action, key, mods, text, base })
+    Ok(Key { on, action, key, mods, text, base, lost })
 }
 
 /// Decodes one whole message (section 5.1): whole items only, at most
@@ -302,8 +318,8 @@ pub struct StreamDecoder<const N: usize> {
 }
 
 /// The most bytes one item takes: a PASTE of [`MAX_PASTE`] bytes with its
-/// type and length.
-pub const MAX_STREAM_ITEM: usize = MAX_PASTE + 8;
+/// event byte, type, stamp and length.
+pub const MAX_STREAM_ITEM: usize = 2 + STAMP_BYTES + crate::wire::MAX_VARINT + MAX_PASTE;
 
 impl<const N: usize> Default for StreamDecoder<N> {
     fn default() -> Self {

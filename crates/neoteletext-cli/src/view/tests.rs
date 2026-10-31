@@ -1,8 +1,9 @@
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, reason = "a test")]
 
 use super::terminal_io::{Wakened, next_event};
-use super::typing::{host_page, input_of};
+use super::typing::{Typing, host_page, input_of};
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use neoteletext_input::event::Stamp;
 use std::sync::mpsc;
 use std::time::{Duration, Instant as StdInstant};
 
@@ -22,9 +23,12 @@ fn a_page_from_the_source_ends_the_wait_at_once() {
     assert!(started.elapsed() < LONG / 10, "waited {:?}", started.elapsed());
 }
 
+/// The page on screen in these tests: 100, sub-code 0000.
+const ON: Stamp = Stamp { page: 0x100, sub: 0 };
+
 fn sent(code: KeyCode, modifiers: KeyModifiers) -> Option<Vec<u8>> {
     let mut buffer = [0_u8; 4];
-    let item = input_of(KeyEvent::new(code, modifiers), &mut buffer)?;
+    let item = input_of(KeyEvent::new(code, modifiers), ON, &mut buffer)?;
     let mut out = [0_u8; neoteletext_input::MAX_MESSAGE];
     let length = neoteletext_input::event::write(&item, &mut out).unwrap();
     Some(out[..length].to_vec())
@@ -37,19 +41,22 @@ fn sent(code: KeyCode, modifiers: KeyModifiers) -> Option<Vec<u8>> {
 #[test]
 fn a_terminal_key_is_sent_as_the_input_stream_has_it() {
     let none = KeyModifiers::NONE;
-    assert_eq!(sent(KeyCode::Char('a'), none), Some(vec![0xFF, 0x01, 0x10, b'a', 1, b'a']));
+    assert_eq!(sent(KeyCode::Char('a'), none), Some(vec![0xFF, 0x01, 0x80, 0x02, 0x00, 0x10, b'a', 1, b'a']));
     assert_eq!(
         sent(KeyCode::Char('A'), KeyModifiers::SHIFT),
-        Some(vec![0xFF, 0x01, 0x18, b'a', 0x01, 1, b'A']),
+        Some(vec![0xFF, 0x01, 0x80, 0x02, 0x00, 0x18, b'a', 0x01, 1, b'A']),
         "the key unshifted, Shift in mods, the text as typed"
     );
-    assert_eq!(sent(KeyCode::Char('c'), KeyModifiers::CONTROL), Some(vec![0xFF, 0x01, 0x08, b'c', 0x04]));
-    assert_eq!(sent(KeyCode::Enter, none), Some(vec![0xFF, 0x01, 0x04, 0x02]));
-    assert_eq!(sent(KeyCode::Up, KeyModifiers::SHIFT), Some(vec![0xFF, 0x01, 0x0C, 0x09, 0x01]));
-    assert_eq!(sent(KeyCode::BackTab, none), Some(vec![0xFF, 0x01, 0x0C, 0x03, 0x01]), "Shift-Tab");
+    assert_eq!(
+        sent(KeyCode::Char('c'), KeyModifiers::CONTROL),
+        Some(vec![0xFF, 0x01, 0x80, 0x02, 0x00, 0x08, b'c', 0x04])
+    );
+    assert_eq!(sent(KeyCode::Enter, none), Some(vec![0xFF, 0x01, 0x80, 0x02, 0x00, 0x04, 0x02]));
+    assert_eq!(sent(KeyCode::Up, KeyModifiers::SHIFT), Some(vec![0xFF, 0x01, 0x80, 0x02, 0x00, 0x0C, 0x09, 0x01]));
+    assert_eq!(sent(KeyCode::BackTab, none), Some(vec![0xFF, 0x01, 0x80, 0x02, 0x00, 0x0C, 0x03, 0x01]), "Shift-Tab");
     // `key` is the code point as a varint, `text` the UTF-8 with its length.
     let typed = |character: char| {
-        let mut bytes = vec![0xFF, 0x01, 0x10];
+        let mut bytes = vec![0xFF, 0x01, 0x80, 0x02, 0x00, 0x10];
         let mut point = u32::from(character);
         while point >= 0x80 {
             bytes.push(u8::try_from(point & 0x7F).unwrap() | 0x80);
@@ -75,15 +82,19 @@ fn repeats_and_releases_where_the_terminal_reports_them() {
     let event = |kind| KeyEvent::new_with_kind(KeyCode::Char('a'), KeyModifiers::NONE, kind);
     let encode = |key: KeyEvent| {
         let mut buffer = [0_u8; 4];
-        let item = input_of(key, &mut buffer).unwrap();
+        let item = input_of(key, ON, &mut buffer).unwrap();
         let mut out = [0_u8; neoteletext_input::MAX_MESSAGE];
         let length = neoteletext_input::event::write(&item, &mut out).unwrap();
         out[..length].to_vec()
     };
-    assert_eq!(encode(event(KeyEventKind::Repeat)), vec![0xFF, 0x01, 0x11, b'a', 1, b'a']);
-    assert_eq!(encode(event(KeyEventKind::Release)), vec![0xFF, 0x01, 0x02, b'a'], "a release, no text");
+    assert_eq!(encode(event(KeyEventKind::Repeat)), vec![0xFF, 0x01, 0x80, 0x02, 0x00, 0x11, b'a', 1, b'a']);
+    assert_eq!(
+        encode(event(KeyEventKind::Release)),
+        vec![0xFF, 0x01, 0x80, 0x02, 0x00, 0x02, b'a'],
+        "a release, no text"
+    );
     let up = KeyEvent::new_with_kind(KeyCode::Up, KeyModifiers::NONE, KeyEventKind::Release);
-    assert_eq!(encode(up), vec![0xFF, 0x01, 0x06, 0x09]);
+    assert_eq!(encode(up), vec![0xFF, 0x01, 0x80, 0x02, 0x00, 0x06, 0x09]);
 }
 
 /// REQ-INT-113: a cursor record naming another page opens it, only
@@ -128,4 +139,96 @@ fn an_acknowledgement_is_taken_in_the_answers_frame_and_alone() {
     }
     assert_eq!(taken, [(2, true), (3, true)], "both kept and taken, and nothing else of the answer");
     assert_eq!(input.acked(), 3);
+}
+
+/// What a channel is sent.
+#[derive(Default)]
+struct Recorded(Vec<Vec<u8>>);
+
+impl neoteletext_app::source::Source for Recorded {
+    fn poll(
+        &mut self,
+        _session: &mut neoteletext_app::session::Session,
+        _now: neoteletext_core::types::Instant,
+    ) -> bool {
+        false
+    }
+    fn send_input(&mut self, message: &[u8]) {
+        self.0.push(message.to_vec());
+    }
+}
+
+/// A session the channel welcomed, what it was sent so far forgotten.
+fn welcomed(source: &mut Recorded) -> Typing {
+    use neoteletext_input::caps::SELECT_CAP;
+    use neoteletext_input::control::{Control, packet_of};
+    let mut typing = Typing::new();
+    typing.connection(source, true, 0);
+    let welcome = Control::Welcome { version: neoteletext_input::VERSION, caps: SELECT_CAP, resume: None };
+    let packet = packet_of(&welcome, 1, 1).unwrap();
+    assert!(!typing.records(source, std::iter::once(packet), 0));
+    source.0.clear();
+    typing
+}
+
+/// `character` as a press stamped with what is drawn.
+fn press(typing: &mut Typing, source: &mut Recorded, character: char, kind: KeyEventKind) {
+    let on = typing.stamp().unwrap();
+    let mut buffer = [0_u8; 4];
+    let mut key = KeyEvent::new(KeyCode::Char(character), KeyModifiers::NONE);
+    key.kind = kind;
+    typing.send(source, &input_of(key, on, &mut buffer).unwrap(), 0);
+}
+
+/// REQ-1556, REQ-1090: opening a page sends SELECT, never 0x0A, with 3F7F
+/// for the page alone and the sub-code for a sub-page, once a change.
+#[test]
+fn opening_a_page_sends_select_and_never_page() {
+    let mut source = Recorded::default();
+    let mut typing = welcomed(&mut source);
+    typing.tell_selection(&mut source, 0x100, 0x3F7F, 0);
+    typing.tell_selection(&mut source, 0x100, 0x3F7F, 0);
+    typing.tell_selection(&mut source, 0x100, 0x0002, 0);
+    assert_eq!(
+        source.0,
+        [vec![0xFF, 0x40, 0x04, 0x80, 0x02, 0xFF, 0x7E], vec![0xFF, 0x40, 0x03, 0x80, 0x02, 0x02]],
+        "the page, then its sub-page, and no message of type 0x0A"
+    );
+}
+
+/// REQ-1555, REQ-1554: a key is stamped with the page drawn, whatever was
+/// selected since, and no key goes while nothing is drawn.
+#[test]
+fn a_key_is_stamped_with_the_page_drawn() {
+    let mut source = Recorded::default();
+    let mut typing = welcomed(&mut source);
+    typing.tell_selection(&mut source, 0x100, 0x3F7F, 0);
+    assert_eq!(typing.stamp(), None, "nothing drawn yet");
+    typing.set_drawn(Some(ON));
+    typing.tell_selection(&mut source, 0x200, 0x3F7F, 0);
+    source.0.clear();
+    press(&mut typing, &mut source, 'a', KeyEventKind::Press);
+    assert_eq!(source.0[0][2..5], [0x80, 0x02, 0x00], "page 100 is still on screen");
+}
+
+/// REQ-1554, REQ-207: after `Control-]` no key goes, `FOCUS_OUT` has gone, and
+/// the selection stays; a held key goes first, lost, where the terminal
+/// reports releases.
+#[test]
+fn after_leaving_keys_stop_and_focus_goes() {
+    let mut source = Recorded::default();
+    let mut typing = welcomed(&mut source);
+    typing.set_drawn(Some(ON));
+    typing.tell_selection(&mut source, 0x100, 0x3F7F, 0);
+    press(&mut typing, &mut source, 'a', KeyEventKind::Press);
+    press(&mut typing, &mut source, 'a', KeyEventKind::Release);
+    press(&mut typing, &mut source, 'b', KeyEventKind::Press);
+    source.0.clear();
+    assert!(typing.leave_or_return(&mut source, 0));
+    assert_eq!(
+        source.0,
+        [vec![0xFF, 0x01, 0x80, 0x02, 0x00, 0x42, b'b'], vec![0xFF, 0x06]],
+        "the held key released as lost, then FOCUS_OUT, and no SELECT"
+    );
+    assert_eq!(typing.stamp(), None, "no key goes");
 }

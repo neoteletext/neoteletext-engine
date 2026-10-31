@@ -339,7 +339,7 @@ impl<const KEPT: usize> SessionOf<KEPT> {
 
     /// Encodes `item` into `out` as sections 6.3 and 8 say, at `now_ms`, and
     /// counts it: everything goes, but a move to the dot of the last one sent
-    /// on the page, PAGE without the PAGE capability, an event whose
+    /// on the page, an event whose
     /// capability is not agreed (TOUCH; a device other than the mouse goes
     /// as the mouse), and text or an event over the rate limit, which is
     /// cut or dropped. Returns how many bytes to write, 0 for none.
@@ -368,7 +368,7 @@ impl<const KEPT: usize> SessionOf<KEPT> {
             Item::Event(Event::Mouse(mouse)) if mouse.action == MouseAction::Move => self.last_move = Some(mouse),
             // Another page, or the pointer gone: the next move goes,
             // wherever the pointer is.
-            Item::Event(Event::Page(_)) => self.last_move = None,
+            Item::Event(Event::Select(_)) => self.last_move = None,
             Item::Event(Event::Mouse(mouse)) if mouse.action == MouseAction::Gone => self.last_move = None,
             _ => {}
         }

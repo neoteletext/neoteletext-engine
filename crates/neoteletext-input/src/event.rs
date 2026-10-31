@@ -29,10 +29,9 @@ pub const RESIZE: u8 = 0x07;
 pub const COMPOSE: u8 = 0x08;
 /// The session's first event.
 pub const HELLO: u8 = 0x09;
-/// The page the viewer has open.
-pub const PAGE: u8 = 0x0A;
 /// The last core type defined; core types beyond it, to `0x3F`, are refused.
-const LAST_CORE: u8 = PAGE;
+/// Type `0x0A` was PAGE until DEC-1538 (REQ-1556): it is unused.
+const LAST_CORE: u8 = HELLO;
 /// The core types' range.
 const CORE_LAST_TYPE: u8 = 0x3F;
 /// Extension types: a length, then a payload a receiver may skip.
@@ -65,7 +64,17 @@ const FUNCTIONAL: u8 = 1 << 2;
 const HAS_MODS: u8 = 1 << 3;
 const HAS_TEXT: u8 = 1 << 4;
 const HAS_BASE: u8 = 1 << 5;
-const KEY_RESERVED: u8 = 0b1100_0000;
+/// KEY's L flag (section 5.5, REQ-207): a release the page lost.
+const LOST: u8 = 1 << 6;
+const KEY_RESERVED: u8 = 0b1000_0000;
+/// The most bytes a stamp takes: a page and a sub-code, two varint bytes each.
+pub const STAMP_BYTES: usize = 4;
+// Both fit two varint bytes.
+const _: () = assert!(
+    (crate::LAST_ADDRESSABLE_PAGE as u32) < (crate::wire::ONE_BYTE_MAX + 1) * (crate::wire::ONE_BYTE_MAX + 1)
+        && (neoteletext_core::limits::SUBCODE_MASK as u32)
+            < (crate::wire::ONE_BYTE_MAX + 1) * (crate::wire::ONE_BYTE_MAX + 1)
+);
 /// MOUSE's and WHEEL's flag bits (section 5.4).
 const HAS_PIXELS: u8 = 1 << 2;
 /// WHEEL's reserved flag bits.
@@ -119,9 +128,32 @@ pub enum KeyCode {
     Functional(u32),
 }
 
+/// The stamp (INPUT.md section 5.4, REQ-1555): the page and sub-code on
+/// screen when an input event happened, what the viewer was looking at.
+/// Made by [`Stamp::new`], which refuses what a channel would refuse.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Stamp {
+    /// The page, `0x100` to `0x8FF`.
+    pub page: u16,
+    /// The sub-code (EN 300 706 clause 9.3.1.2): never `0x3F7F`, since a
+    /// page on screen is always a particular sub-page.
+    pub sub: u16,
+}
+
+impl Stamp {
+    /// A stamp, or `None` when a field is outside its range.
+    #[must_use]
+    pub const fn new(page: u16, sub: u16) -> Option<Self> {
+        let sub_ok = sub & !neoteletext_core::limits::SUBCODE_MASK == 0 && sub != neoteletext_core::limits::SUBCODE_ANY;
+        if crate::is_page(page) && sub_ok { Some(Self { page, sub }) } else { None }
+    }
+}
+
 /// A KEY event.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Key<'a> {
+    /// The page on screen.
+    pub on: Stamp,
     /// Press, repeat or release.
     pub action: Action,
     /// Which key.
@@ -133,6 +165,8 @@ pub struct Key<'a> {
     /// The United States layout's character for the same physical key,
     /// when it differs from `key`.
     pub base: Option<char>,
+    /// A release the page lost: the key did not come up (REQ-207).
+    pub lost: bool,
 }
 
 /// A pointer's action, MOUSE's and TOUCH's alike.
@@ -182,6 +216,8 @@ pub struct Point {
 /// A MOUSE event.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Mouse {
+    /// The page on screen.
+    pub on: Stamp,
     /// Press, release, move or gone.
     pub action: MouseAction,
     /// On a press or release the button (0 left, 1 middle, 2 right, 3 back,
@@ -197,6 +233,8 @@ pub struct Mouse {
 /// MOUSE.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Touch {
+    /// The page on screen.
+    pub on: Stamp,
     /// Down, up, move or gone, as MOUSE's press, release, move and gone.
     pub action: MouseAction,
     /// The contact's number, 1 to [`MAX_TOUCH_ID`](crate::MAX_TOUCH_ID),
@@ -252,6 +290,8 @@ impl Select {
 /// A WHEEL event.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Wheel {
+    /// The page on screen.
+    pub on: Stamp,
     /// Across, in 1/120ths of a line, positive right.
     pub dx: i32,
     /// Down, in 1/120ths of a line, positive down.
@@ -270,8 +310,13 @@ pub enum Event<'a> {
     Mouse(Mouse),
     /// The wheel.
     Wheel(Wheel),
-    /// A paste, at most [`MAX_PASTE`](crate::MAX_PASTE) bytes; data, never keystrokes.
-    Paste(&'a str),
+    /// A paste; data, never keystrokes.
+    Paste {
+        /// The page on screen.
+        on: Stamp,
+        /// The text, at most [`MAX_PASTE`](crate::MAX_PASTE) bytes.
+        text: &'a str,
+    },
     /// The receiver has the focus.
     FocusIn,
     /// The receiver lost the focus: the channel releases what is held.
@@ -289,6 +334,8 @@ pub enum Event<'a> {
     },
     /// An input method's preedit; empty ends composition.
     Compose {
+        /// The page on screen.
+        on: Stamp,
         /// A code-point offset into the text.
         cursor: u32,
         /// The preedit, at most [`MAX_COMPOSE`](crate::MAX_COMPOSE) bytes.
@@ -303,11 +350,11 @@ pub enum Event<'a> {
         /// The user agent string, present with the AGENT capability.
         agent: Option<&'a str>,
     },
-    /// The page the viewer has open, or 0 for none.
-    Page(u16),
     /// The pointer entered or left a control of the open page (INPUT.md
     /// section 7.3): the control's first cell, its top left.
     Hover {
+        /// The page on screen.
+        on: Stamp,
         /// It left the control, rather than entered it.
         leave: bool,
         /// The control's first column.

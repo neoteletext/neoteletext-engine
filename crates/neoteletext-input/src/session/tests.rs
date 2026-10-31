@@ -8,11 +8,14 @@
 
 use super::*;
 use crate::MAX_PER_SECOND;
-use crate::caps::{CURSOR_CAP, PAGE_CAP, RESUME_CAP, TOUCH_CAP};
+use crate::caps::{CURSOR_CAP, RESUME_CAP, SELECT_CAP, TOUCH_CAP};
 use crate::control::Resumption;
-use crate::event::{self, Action, Device, MouseAction, Touch};
+use crate::event::{self, Action, Device, MouseAction, Stamp, Touch};
 use crate::event::{Key, KeyCode};
 use crate::keys;
+
+/// The page on screen in these tests.
+const ON: Stamp = Stamp { page: 0x100, sub: 0 };
 
 fn welcomed(caps: u32) -> Session {
     let mut session = Session::new(caps);
@@ -43,55 +46,55 @@ fn opening<const N: usize>(session: &mut SessionOf<N>, now: u32, agent: Option<&
 // REQ-INT-106.
 #[test]
 fn nothing_goes_before_welcome_and_a_late_one_refuses() {
-    let mut session = Session::new(PAGE_CAP | CURSOR_CAP);
+    let mut session = Session::new(SELECT_CAP | CURSOR_CAP);
     let hello = opening(&mut session, 1_000, None);
-    assert_eq!(hello, [Event::Hello { version: VERSION, caps: PAGE_CAP | CURSOR_CAP, agent: None }]);
+    assert_eq!(hello, [Event::Hello { version: VERSION, caps: SELECT_CAP | CURSOR_CAP, agent: None }]);
     assert!(!session.welcomed());
     assert_eq!(session.welcome_due(), Some(1_000 + WELCOME_TIMEOUT_MS));
     session.tick(1_000 + WELCOME_TIMEOUT_MS - 1);
     assert!(matches!(session.state(), State::Waiting(_)));
     session.tick(1_000 + WELCOME_TIMEOUT_MS);
     assert_eq!(session.state(), State::Refused);
-    assert_eq!(session.welcome(VERSION, PAGE_CAP, None), Err(WelcomeError::Unasked));
+    assert_eq!(session.welcome(VERSION, SELECT_CAP, None), Err(WelcomeError::Unasked));
 }
 
 // REQ-INT-106.
 #[test]
 fn hello_carries_the_agent_only_with_its_capability() {
-    let mut session = Session::new(PAGE_CAP | AGENT);
-    assert_eq!(opening(&mut session, 0, None), [Event::Hello { version: VERSION, caps: PAGE_CAP, agent: None }]);
+    let mut session = Session::new(SELECT_CAP | AGENT);
+    assert_eq!(opening(&mut session, 0, None), [Event::Hello { version: VERSION, caps: SELECT_CAP, agent: None }]);
     let agent = Some("NeoTeletext/0.1 (macOS)");
     assert_eq!(
         opening(&mut session, 0, agent),
-        [Event::Hello { version: VERSION, caps: PAGE_CAP | AGENT, agent: Some("agent") }]
+        [Event::Hello { version: VERSION, caps: SELECT_CAP | AGENT, agent: Some("agent") }]
     );
 }
 
 // REQ-INT-106.
 #[test]
 fn welcome_must_be_this_version_and_a_subset() {
-    let mut session = Session::new(PAGE_CAP);
+    let mut session = Session::new(SELECT_CAP);
     opening(&mut session, 0, None);
     assert_eq!(
-        session.welcome(VERSION, PAGE_CAP | CURSOR_CAP, None),
+        session.welcome(VERSION, SELECT_CAP | CURSOR_CAP, None),
         Err(WelcomeError::Caps),
         "a capability not offered"
     );
     opening(&mut session, 0, None);
-    assert_eq!(session.welcome(1, PAGE_CAP, None), Err(WelcomeError::Version(1)));
+    assert_eq!(session.welcome(1, SELECT_CAP, None), Err(WelcomeError::Version(1)));
     opening(&mut session, 0, None);
-    assert_eq!(session.welcome(VERSION, PAGE_CAP, None), Ok(Welcomed::New));
-    assert_eq!(session.caps(), PAGE_CAP);
+    assert_eq!(session.welcome(VERSION, SELECT_CAP, None), Ok(Welcomed::New));
+    assert_eq!(session.caps(), SELECT_CAP);
 }
 
 // REQ-INT-111, decision E.125: an older channel's mode records change
 // nothing, before WELCOME or after.
 #[test]
 fn the_withdrawn_mode_records_change_nothing() {
-    let mut session = Session::new(PAGE_CAP);
+    let mut session = Session::new(SELECT_CAP);
     opening(&mut session, 0, None);
     assert_eq!(session.control(&Control::Withdrawn(0x02)), Ok(None));
-    session.control(&Control::Welcome { version: VERSION, caps: PAGE_CAP, resume: None }).unwrap();
+    session.control(&Control::Welcome { version: VERSION, caps: SELECT_CAP, resume: None }).unwrap();
     assert_eq!(session.control(&Control::Withdrawn(0x04)), Ok(None));
     assert!(session.welcomed());
 }
@@ -99,7 +102,7 @@ fn the_withdrawn_mode_records_change_nothing() {
 // REQ-INT-106.
 #[test]
 fn a_reconnection_is_a_new_session() {
-    let mut session = welcomed(PAGE_CAP);
+    let mut session = welcomed(SELECT_CAP);
     sent_item(&mut session, &Item::Text("abc"));
     session.close();
     opening(&mut session, 10, None);
@@ -115,7 +118,7 @@ fn the_input_count_and_its_acknowledgement() {
     let mut session = welcomed(0);
     sent_item(&mut session, &Item::Text("ab"));
     assert_eq!(session.count(), 3, "HELLO, then two characters");
-    sent_item(&mut session, &Item::Event(Event::Paste("a long paste")));
+    sent_item(&mut session, &Item::Event(Event::Paste { on: ON, text: "a long paste" }));
     assert_eq!(session.count(), 4, "a paste counts one");
     sent_item(&mut session, &Item::Event(Event::FocusIn));
     assert_eq!(session.count(), 5);
@@ -148,15 +151,15 @@ fn the_count_wraps_and_is_compared_as_a_serial_number() {
 fn what_is_never_acknowledged_counts_nothing() {
     let mut session = welcomed(TOUCH_CAP);
     let at = event::Point { column: 2, row: 3, pixels: None, mods: 0 };
-    let mouse = |action| Item::Event(Event::Mouse(Mouse { action, button: 0, at, device: Device::Touch }));
-    let touch = |action| Item::Event(Event::Touch(Touch { action, id: 1, column: 2, row: 3, pixels: None }));
+    let mouse = |action| Item::Event(Event::Mouse(Mouse { on: ON, action, button: 0, at, device: Device::Touch }));
+    let touch = |action| Item::Event(Event::Touch(Touch { on: ON, action, id: 1, column: 2, row: 3, pixels: None }));
     for item in [
         mouse(MouseAction::Move),
         mouse(MouseAction::Gone),
         touch(MouseAction::Move),
         touch(MouseAction::Gone),
-        Item::Event(Event::Hover { leave: false, column: 2, row: 3 }),
-        Item::Event(Event::Compose { cursor: 0, text: "か" }),
+        Item::Event(Event::Hover { on: ON, leave: false, column: 2, row: 3 }),
+        Item::Event(Event::Compose { on: ON, cursor: 0, text: "か" }),
     ] {
         assert!(sent_item(&mut session, &item).is_some(), "{item:?} goes");
         assert_eq!(session.count(), 1, "{item:?} counts nothing");
@@ -180,6 +183,8 @@ fn the_rate_is_120_units_a_second_and_releases_always_go() {
     }
     assert_eq!(allowed, 118, "120 units in all");
     let release = Item::Event(Event::Key(Key {
+        on: ON,
+        lost: false,
         action: Action::Release,
         key: KeyCode::Character('a'),
         mods: 0,
@@ -188,12 +193,19 @@ fn the_rate_is_120_units_a_second_and_releases_always_go() {
     }));
     assert_eq!(session.allow(&release, 5), 1, "a release beyond the rate");
     let at = event::Point { column: 1, row: 1, pixels: Some((12, 20)), mods: 0 };
-    let mouse = |action, button| Item::Event(Event::Mouse(Mouse { action, button, at, device: Device::Mouse }));
+    let mouse = |action, button| Item::Event(Event::Mouse(Mouse { on: ON, action, button, at, device: Device::Mouse }));
     assert_eq!(session.allow(&mouse(MouseAction::Release, 0), 5), 1, "a button's release beyond the rate");
-    let up = Item::Event(Event::Touch(Touch { action: MouseAction::Release, id: 1, column: 1, row: 1, pixels: None }));
+    let up = Item::Event(Event::Touch(Touch {
+        on: ON,
+        action: MouseAction::Release,
+        id: 1,
+        column: 1,
+        row: 1,
+        pixels: None,
+    }));
     assert_eq!(session.allow(&up, 5), 1, "a contact's up beyond the rate");
     assert_eq!(session.allow(&mouse(MouseAction::Press, 0), 5), 0, "a press is held to it");
-    let compose = Item::Event(Event::Compose { cursor: 0, text: "" });
+    let compose = Item::Event(Event::Compose { on: ON, cursor: 0, text: "" });
     assert_eq!(session.allow(&compose, 5), 0, "so is COMPOSE, which nothing else bounds");
     assert_eq!(session.allow(&Item::Text("a"), 5 + 1_000), 1, "a second later");
     let mut limiter = Limiter::new();
@@ -206,7 +218,7 @@ fn the_rate_is_120_units_a_second_and_releases_always_go() {
 }
 
 fn key(action: Action, key: KeyCode) -> Item<'static> {
-    Item::Event(Event::Key(Key { action, key, mods: 0, text: Some("a"), base: Some('q') }))
+    Item::Event(Event::Key(Key { on: ON, lost: false, action, key, mods: 0, text: Some("a"), base: Some('q') }))
 }
 
 fn sent_item(session: &mut Session, item: &Item<'_>) -> Option<std::vec::Vec<u8>> {
@@ -217,7 +229,7 @@ fn sent_item(session: &mut Session, item: &Item<'_>) -> Option<std::vec::Vec<u8>
 
 fn move_to(column: u32, pixels: (u32, u32), button: u8) -> Item<'static> {
     let at = event::Point { column, row: 5, pixels: Some(pixels), mods: 0 };
-    Item::Event(Event::Mouse(Mouse { action: MouseAction::Move, button, at, device: Device::Mouse }))
+    Item::Event(Event::Mouse(Mouse { on: ON, action: MouseAction::Move, button, at, device: Device::Mouse }))
 }
 
 // REQ-INT-106.
@@ -232,17 +244,19 @@ fn nothing_is_sent_before_welcome() {
 // with its text and its base; a base the same as its key is left out.
 #[test]
 fn every_key_goes_whole() {
-    let mut session = welcomed(PAGE_CAP);
+    let mut session = welcomed(SELECT_CAP);
     let press = key(Action::Press, KeyCode::Character('a'));
     let release = key(Action::Release, KeyCode::Character('a'));
     assert_eq!(
         sent_item(&mut session, &press),
-        Some(std::vec![0xFF, 0x01, 0x30, b'a', 1, b'a', b'q']),
+        Some(std::vec![0xFF, 0x01, 0x80, 0x02, 0x00, 0x30, b'a', 1, b'a', b'q']),
         "text and base"
     );
     assert!(sent_item(&mut session, &release).is_some(), "a release");
     assert_eq!(sent_item(&mut session, &Item::Text("é")), Some("é".as_bytes().to_vec()), "an input method's text");
     let same = Item::Event(Event::Key(Key {
+        on: ON,
+        lost: false,
         action: Action::Press,
         key: KeyCode::Character('q'),
         mods: 0,
@@ -251,7 +265,7 @@ fn every_key_goes_whole() {
     }));
     assert_eq!(
         sent_item(&mut session, &same),
-        Some(std::vec![0xFF, 0x01, 0x10, b'q', 1, b'q']),
+        Some(std::vec![0xFF, 0x01, 0x80, 0x02, 0x00, 0x10, b'q', 1, b'q']),
         "no base the same as the key"
     );
 }
@@ -261,7 +275,7 @@ fn every_key_goes_whole() {
 #[test]
 fn a_dead_key_and_a_modifier_alone_go() {
     let functional = |name: &str| key(Action::Press, KeyCode::Functional(keys::code(name).unwrap()));
-    let mut session = welcomed(PAGE_CAP);
+    let mut session = welcomed(SELECT_CAP);
     for name in ["Dead", "ShiftLeft", "AltGraph", "CapsLock", "Enter"] {
         assert!(sent_item(&mut session, &functional(name)).is_some(), "{name}");
     }
@@ -271,17 +285,19 @@ fn a_dead_key_and_a_modifier_alone_go() {
 // release and move, and the wheel, go with the cell and the dot.
 #[test]
 fn the_mouse_and_the_wheel_always_go_with_their_dot() {
-    let mut session = welcomed(PAGE_CAP);
+    let mut session = welcomed(SELECT_CAP);
     let at = event::Point { column: 10, row: 5, pixels: Some((120, 100)), mods: 0 };
-    let click = Item::Event(Event::Mouse(Mouse { action: MouseAction::Press, button: 0, at, device: Device::Mouse }));
-    let wheel = Item::Event(Event::Wheel(event::Wheel { dx: 0, dy: 120, at }));
-    let drag = Item::Event(Event::Mouse(Mouse { action: MouseAction::Move, button: 1, at, device: Device::Mouse }));
+    let click =
+        Item::Event(Event::Mouse(Mouse { on: ON, action: MouseAction::Press, button: 0, at, device: Device::Mouse }));
+    let wheel = Item::Event(Event::Wheel(event::Wheel { on: ON, dx: 0, dy: 120, at }));
+    let drag =
+        Item::Event(Event::Mouse(Mouse { on: ON, action: MouseAction::Move, button: 1, at, device: Device::Mouse }));
     assert_eq!(
         sent_item(&mut session, &click),
-        Some(std::vec![0xFF, 0x02, 0x04, 0x00, 0x0A, 0x05, 0x78, 0x64]),
+        Some(std::vec![0xFF, 0x02, 0x80, 0x02, 0x00, 0x04, 0x00, 0x0A, 0x05, 0x78, 0x64]),
         "the cell and the dot"
     );
-    assert_eq!(sent_item(&mut session, &wheel).map(|bytes| bytes.len()), Some(10), "the wheel, with its dot");
+    assert_eq!(sent_item(&mut session, &wheel).map(|bytes| bytes.len()), Some(13), "the wheel, with its dot");
     assert!(sent_item(&mut session, &drag).is_some(), "a drag");
 }
 
@@ -289,25 +305,23 @@ fn the_mouse_and_the_wheel_always_go_with_their_dot() {
 // the pointer changes, and the first on another page always goes.
 #[test]
 fn a_move_to_the_same_dot_is_not_sent_again() {
-    let mut session = welcomed(PAGE_CAP);
+    let mut session = welcomed(SELECT_CAP);
     assert!(sent_item(&mut session, &move_to(10, (120, 100), 0)).is_some());
     assert_eq!(sent_item(&mut session, &move_to(10, (120, 100), 0)), None, "the same dot");
     assert!(sent_item(&mut session, &move_to(10, (121, 100), 0)).is_some(), "the next dot, in the same cell");
     assert!(sent_item(&mut session, &move_to(10, (121, 100), 1)).is_some(), "a button held is news");
-    assert!(sent_item(&mut session, &Item::Event(Event::Page(0x200))).is_some());
+    let select = event::Select::new(0x200, 0x3F7F).unwrap();
+    assert!(sent_item(&mut session, &Item::Event(Event::Select(select))).is_some());
     assert!(sent_item(&mut session, &move_to(10, (121, 100), 1)).is_some(), "the first move on another page");
 }
 
-// REQ-INT-106, decision E.125: PAGE needs its capability; COMPOSE and the
-// rest always go.
+// REQ-INT-106, decision E.125: COMPOSE and the rest always go, with or
+// without a capability.
 #[test]
-fn page_needs_its_capability_and_compose_always_goes() {
-    let compose = Item::Event(Event::Compose { cursor: 1, text: "か" });
-    let mut session = welcomed(PAGE_CAP);
-    assert!(sent_item(&mut session, &Item::Event(Event::Page(0x100))).is_some());
-    assert!(sent_item(&mut session, &compose).is_some());
+fn compose_always_goes() {
+    let compose = Item::Event(Event::Compose { on: ON, cursor: 1, text: "か" });
     let mut session = welcomed(0);
-    assert_eq!(sent_item(&mut session, &Item::Event(Event::Page(0x100))), None, "no PAGE capability");
+    assert!(sent_item(&mut session, &compose).is_some());
     assert!(sent_item(&mut session, &Item::Event(Event::FocusOut)).is_some());
 }
 
@@ -328,26 +342,48 @@ fn text_over_the_rate_is_cut_and_counted() {
 #[test]
 fn touch_goes_only_when_both_sides_set_it() {
     let at = event::Point { column: 10, row: 5, pixels: None, mods: 0 };
-    let tap = Item::Event(Event::Mouse(Mouse { action: MouseAction::Press, button: 0, at, device: Device::Touch }));
-    let second =
-        Item::Event(Event::Touch(Touch { action: MouseAction::Press, id: 1, column: 10, row: 5, pixels: None }));
+    let tap =
+        Item::Event(Event::Mouse(Mouse { on: ON, action: MouseAction::Press, button: 0, at, device: Device::Touch }));
+    let second = Item::Event(Event::Touch(Touch {
+        on: ON,
+        action: MouseAction::Press,
+        id: 1,
+        column: 10,
+        row: 5,
+        pixels: None,
+    }));
     let mut plain = welcomed(0);
-    assert_eq!(sent_item(&mut plain, &tap), Some(std::vec![0xFF, 0x02, 0x00, 0x00, 0x0A, 0x05]), "as the mouse");
+    assert_eq!(
+        sent_item(&mut plain, &tap),
+        Some(std::vec![0xFF, 0x02, 0x80, 0x02, 0x00, 0x00, 0x00, 0x0A, 0x05]),
+        "as the mouse"
+    );
     assert_eq!(sent_item(&mut plain, &second), None, "no TOUCH");
     let mut touch = welcomed(TOUCH_CAP);
-    assert_eq!(sent_item(&mut touch, &tap), Some(std::vec![0xFF, 0x02, 0x10, 0x00, 0x0A, 0x05]), "device 1");
-    assert_eq!(sent_item(&mut touch, &second), Some(std::vec![0xFF, 0x44, 0x04, 0x00, 0x01, 0x0A, 0x05]));
+    assert_eq!(
+        sent_item(&mut touch, &tap),
+        Some(std::vec![0xFF, 0x02, 0x80, 0x02, 0x00, 0x10, 0x00, 0x0A, 0x05]),
+        "device 1"
+    );
+    assert_eq!(
+        sent_item(&mut touch, &second),
+        Some(std::vec![0xFF, 0x44, 0x07, 0x80, 0x02, 0x00, 0x00, 0x01, 0x0A, 0x05])
+    );
 }
 
 const TOKEN: [u8; TOKEN_BYTES] = [0x5A; TOKEN_BYTES];
 
 /// A resumable session welcomed as a new one with RESUME and `TOKEN`.
 fn resumable() -> ResumableSession {
-    let mut session = ResumableSession::new(PAGE_CAP);
+    let mut session = ResumableSession::new(SELECT_CAP);
     let first = opening(&mut session, 0, None);
-    assert_eq!(first, [Event::Hello { version: VERSION, caps: PAGE_CAP | RESUME_CAP, agent: None }], "RESUME offered");
+    assert_eq!(
+        first,
+        [Event::Hello { version: VERSION, caps: SELECT_CAP | RESUME_CAP, agent: None }],
+        "RESUME offered"
+    );
     let resume = Some(Resumption { token: TOKEN, taken: None });
-    assert_eq!(session.welcome(VERSION, PAGE_CAP | RESUME_CAP, resume), Ok(Welcomed::New));
+    assert_eq!(session.welcome(VERSION, SELECT_CAP | RESUME_CAP, resume), Ok(Welcomed::New));
     session
 }
 
@@ -374,7 +410,8 @@ fn a_resumed_session_sends_again_only_what_the_channel_had_not_taken() {
     text(&mut session, "bc"); // 4
     text(&mut session, "d"); // 5
     let at = event::Point { column: 1, row: 1, pixels: None, mods: 0 };
-    let moved = Item::Event(Event::Mouse(Mouse { action: MouseAction::Move, button: 0, at, device: Device::Mouse }));
+    let moved =
+        Item::Event(Event::Mouse(Mouse { on: ON, action: MouseAction::Move, button: 0, at, device: Device::Mouse }));
     assert!(sent_any(&mut session, &moved), "a move goes, and is never kept");
     assert!(session.acknowledged(2));
     session.close();
@@ -383,13 +420,13 @@ fn a_resumed_session_sends_again_only_what_the_channel_had_not_taken() {
     assert_eq!(
         first,
         [
-            Event::Hello { version: VERSION, caps: PAGE_CAP | RESUME_CAP, agent: None },
+            Event::Hello { version: VERSION, caps: SELECT_CAP | RESUME_CAP, agent: None },
             Event::Resume(Resume { token: TOKEN, acked: 2 }),
         ]
     );
     let next = [0x77; TOKEN_BYTES];
     let resume = Some(Resumption { token: next, taken: Some(4) });
-    assert_eq!(session.welcome(VERSION, PAGE_CAP | RESUME_CAP, resume), Ok(Welcomed::Resumed));
+    assert_eq!(session.welcome(VERSION, SELECT_CAP | RESUME_CAP, resume), Ok(Welcomed::Resumed));
     assert_eq!(session.send(&Item::Text("e"), 0, &mut [0; 8]), Err(SendError::ResendFirst), "the order kept");
     assert_eq!(resent(&mut session), [b"d".to_vec()], "only what came after 4");
     assert_eq!(session.count(), 5, "the count goes on");
@@ -399,7 +436,7 @@ fn a_resumed_session_sends_again_only_what_the_channel_had_not_taken() {
     session.close();
     opening(&mut session, 200, None);
     let resume = Some(Resumption { token: next, taken: Some(2) });
-    assert_eq!(session.welcome(VERSION, PAGE_CAP | RESUME_CAP, resume), Ok(Welcomed::Resumed));
+    assert_eq!(session.welcome(VERSION, SELECT_CAP | RESUME_CAP, resume), Ok(Welcomed::Resumed));
     assert_eq!(resent(&mut session), [b"bc".to_vec(), b"d".to_vec(), b"e".to_vec()]);
 }
 
@@ -418,13 +455,13 @@ fn a_session_not_held_is_a_new_one_and_a_false_count_is_refused() {
     session.close();
     opening(&mut session, 10, None);
     let resume = Some(Resumption { token: [1; TOKEN_BYTES], taken: None });
-    assert_eq!(session.welcome(VERSION, PAGE_CAP | RESUME_CAP, resume), Ok(Welcomed::New));
+    assert_eq!(session.welcome(VERSION, SELECT_CAP | RESUME_CAP, resume), Ok(Welcomed::New));
     assert_eq!(session.count(), 1, "from HELLO");
     assert_eq!(resent(&mut session).len(), 0, "nothing sent again");
     text(&mut session, "ab");
     session.close();
     opening(&mut session, 20, None);
-    assert_eq!(session.welcome(VERSION, PAGE_CAP, None), Ok(Welcomed::New), "a channel without RESUME");
+    assert_eq!(session.welcome(VERSION, SELECT_CAP, None), Ok(Welcomed::New), "a channel without RESUME");
     assert_eq!(session.count(), 1);
     session.close();
     assert!(!session.resumable(), "no token: forgotten on close");
@@ -433,7 +470,11 @@ fn a_session_not_held_is_a_new_one_and_a_false_count_is_refused() {
     session.close();
     opening(&mut session, 30, None);
     let resume = Some(Resumption { token: TOKEN, taken: Some(2) });
-    assert_eq!(session.welcome(VERSION, PAGE_CAP | RESUME_CAP, resume), Err(WelcomeError::Resume), "inside a message");
+    assert_eq!(
+        session.welcome(VERSION, SELECT_CAP | RESUME_CAP, resume),
+        Err(WelcomeError::Resume),
+        "inside a message"
+    );
     assert!(!session.resumable());
     let mut session = resumable();
     let resume = Some(Resumption { token: TOKEN, taken: Some(1) });
@@ -441,7 +482,7 @@ fn a_session_not_held_is_a_new_one_and_a_false_count_is_refused() {
     opening(&mut session, 40, None);
     session.forget();
     opening(&mut session, 41, None);
-    assert_eq!(session.welcome(VERSION, PAGE_CAP | RESUME_CAP, resume), Err(WelcomeError::Resume), "not asked");
+    assert_eq!(session.welcome(VERSION, SELECT_CAP | RESUME_CAP, resume), Err(WelcomeError::Resume), "not asked");
 }
 
 // REQ-INT-125, REQ-RCH-013: what is kept is bounded; a message that does not fit, or
@@ -452,11 +493,11 @@ fn what_is_kept_is_bounded() {
     let mut session = resumable();
     let paste: std::string::String = core::iter::repeat_n('x', crate::MAX_PASTE).collect();
     for _ in 0..RESEND_BYTES / crate::MAX_PASTE - 1 {
-        assert!(sent_any(&mut session, &Item::Event(Event::Paste(&paste))));
+        assert!(sent_any(&mut session, &Item::Event(Event::Paste { on: ON, text: &paste })));
         assert!(session.resumable());
     }
-    assert!(sent_any(&mut session, &Item::Event(Event::Paste(&paste))));
-    assert!(sent_any(&mut session, &Item::Event(Event::Paste(&paste))), "one too many to keep");
+    assert!(sent_any(&mut session, &Item::Event(Event::Paste { on: ON, text: &paste })));
+    assert!(sent_any(&mut session, &Item::Event(Event::Paste { on: ON, text: &paste })), "one too many to keep");
     assert!(!session.resumable());
     session.close();
     assert_eq!(opening(&mut session, 0, None).len(), 1, "HELLO alone: a new session");
@@ -472,8 +513,8 @@ fn what_is_kept_is_bounded() {
 // REQ-INT-125, REQ-RCH-013: a plain session never offers RESUME.
 #[test]
 fn a_session_that_keeps_nothing_never_offers_resume() {
-    let mut session = Session::new(PAGE_CAP | RESUME_CAP);
-    assert_eq!(opening(&mut session, 0, None), [Event::Hello { version: VERSION, caps: PAGE_CAP, agent: None }]);
+    let mut session = Session::new(SELECT_CAP | RESUME_CAP);
+    assert_eq!(opening(&mut session, 0, None), [Event::Hello { version: VERSION, caps: SELECT_CAP, agent: None }]);
     let resume = Some(Resumption { token: TOKEN, taken: None });
-    assert_eq!(session.welcome(VERSION, PAGE_CAP | RESUME_CAP, resume), Err(WelcomeError::Caps));
+    assert_eq!(session.welcome(VERSION, SELECT_CAP | RESUME_CAP, resume), Err(WelcomeError::Caps));
 }

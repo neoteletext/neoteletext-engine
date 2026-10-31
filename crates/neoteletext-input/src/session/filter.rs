@@ -1,11 +1,10 @@
 //! What goes: everything a receiver gives, as sent (INPUT.md section 6.3,
-//! decision E.125), but PAGE without its capability, HELLO and RESUME,
-//! which go once from `open`, a `base` the same as its key, and what touch
+//! decision E.125), but HELLO and RESUME, which go once from `open`, a `base` the same as its key, and what touch
 //! adds without the TOUCH capability (REQ-RCH-041, REQ-RCH-042): TOUCH is
 //! not sent, and MOUSE goes as the mouse.
 
 use super::SessionOf;
-use crate::caps::{PAGE_CAP, TOUCH_CAP};
+use crate::caps::TOUCH_CAP;
 use crate::event::{Device, Event, Item, KeyCode};
 
 impl<const KEPT: usize> SessionOf<KEPT> {
@@ -30,7 +29,6 @@ impl<const KEPT: usize> SessionOf<KEPT> {
                 Event::Mouse(mouse)
             }
             Event::Touch(_) if !touch => return None,
-            Event::Page(_) if self.caps() & PAGE_CAP == 0 => return None,
             Event::Hello { .. } | Event::Resume(_) => return None,
             other => other,
         };

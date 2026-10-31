@@ -4,16 +4,18 @@ use super::decode::read;
 use super::{
     Action, COMPOSE, DEVICE_SHIFT, Device, EVENT, Event, FIRST_EXTENSION, FOCUS_IN, FOCUS_OUT, FUNCTIONAL, HAS_BASE,
     HAS_MODS, HAS_PIXELS, HAS_TEXT, HELLO, HOVER, HOVER_LEAVE, InputError, Item, KEY, Key, KeyCode, LAST_EXTENSION,
-    MOUSE, MouseAction, PAGE, PASTE, Point, RESIZE, RESUME, SELECT, TOUCH, Touch, WHEEL, check_text,
+    LOST, MOUSE, MouseAction, PASTE, Point, RESIZE, RESUME, SELECT, STAMP_BYTES, Stamp, TOUCH, Touch, WHEEL,
+    check_text,
 };
 use crate::caps::AGENT;
 use crate::wire::{MAX_VARINT, ONE_BYTE_MAX, Writer};
 use crate::{MAX_AGENT, MAX_COLUMNS, MAX_COMPOSE, MAX_KEY_TEXT, MAX_PASTE, MAX_ROWS, TOKEN_BYTES};
 
-/// HOVER's payload at its longest: the flags and two varints.
-const HOVER_PAYLOAD: usize = 1 + 2 * MAX_VARINT;
-/// TOUCH's payload at its longest: the flags, the id and four varints.
-pub(super) const TOUCH_PAYLOAD: usize = 2 + 4 * MAX_VARINT;
+/// HOVER's payload at its longest: the stamp, the flags and two varints.
+const HOVER_PAYLOAD: usize = STAMP_BYTES + 1 + 2 * MAX_VARINT;
+/// TOUCH's payload at its longest: the stamp, the flags, the id and four
+/// varints.
+pub(super) const TOUCH_PAYLOAD: usize = STAMP_BYTES + 2 + 4 * MAX_VARINT;
 /// SELECT's payload at its longest: two varints.
 const SELECT_PAYLOAD: usize = 2 * MAX_VARINT;
 /// RESUME's payload: the token and the acknowledgement, big-endian.
@@ -24,12 +26,12 @@ const CELL_BYTES: usize = 1;
 const _: () = assert!(MAX_COLUMNS <= ONE_BYTE_MAX + 1 && MAX_ROWS <= ONE_BYTE_MAX + 1);
 /// The most bytes a pointer's move takes as an event (REQ-RCH-035), what a
 /// holder of one move needs: a MOUSE move, its event byte, type, flags and
-/// button, the cell, the dot's two varints and the modifiers; or a TOUCH,
-/// its event byte, type and one-byte length, its flags and id, the cell
-/// and the dot; whichever is longer.
+/// button, the stamp, the cell, the dot's two varints and the modifiers;
+/// or a TOUCH, its event byte, type and one-byte length, the stamp, its
+/// flags and id, the cell and the dot; whichever is longer.
 pub const MAX_MOVE_BYTES: usize = {
-    let mouse = 4 + 2 * CELL_BYTES + 2 * MAX_VARINT + 1;
-    let touch = 3 + 2 + 2 * CELL_BYTES + 2 * MAX_VARINT;
+    let mouse = 4 + STAMP_BYTES + 2 * CELL_BYTES + 2 * MAX_VARINT + 1;
+    let touch = 3 + STAMP_BYTES + 2 + 2 * CELL_BYTES + 2 * MAX_VARINT;
     if mouse > touch { mouse } else { touch }
 };
 // TOUCH's length is one varint byte.
@@ -71,8 +73,16 @@ fn write_extension<const N: usize>(
     Ok(())
 }
 
+/// The stamp every input event begins with (section 5.4, REQ-1555).
+fn write_stamp(on: Stamp, writer: &mut Writer<'_>) -> Result<(), InputError> {
+    writer.uv(u32::from(on.page))?;
+    writer.uv(u32::from(on.sub))?;
+    Ok(())
+}
+
 fn write_touch(touch: &Touch, writer: &mut Writer<'_>) -> Result<(), InputError> {
     write_extension::<TOUCH_PAYLOAD>(TOUCH, writer, |inner| {
+        write_stamp(touch.on, inner)?;
         let pixels = if touch.pixels.is_some() { HAS_PIXELS } else { 0 };
         inner.bytes(&[action_code(touch.action) | pixels, touch.id])?;
         inner.uv(touch.column)?;
@@ -144,8 +154,11 @@ fn write_key(key: &Key<'_>, writer: &mut Writer<'_>) -> Result<(), InputError> {
         | functional
         | (if key.mods == 0 { 0 } else { HAS_MODS })
         | (if key.text.is_some() { HAS_TEXT } else { 0 })
-        | (if key.base.is_some() { HAS_BASE } else { 0 });
-    writer.bytes(&[KEY, flags])?;
+        | (if key.base.is_some() { HAS_BASE } else { 0 })
+        | (if key.lost { LOST } else { 0 });
+    writer.byte(KEY)?;
+    write_stamp(key.on, writer)?;
+    writer.byte(flags)?;
     writer.uv(value)?;
     if key.mods != 0 {
         writer.byte(key.mods)?;
@@ -165,17 +178,22 @@ fn write_event(event: &Event<'_>, writer: &mut Writer<'_>) -> Result<(), InputEr
         Event::Mouse(mouse) => {
             let flags =
                 action_code(mouse.action) | point_flags(&mouse.at) | (device_code(mouse.device) << DEVICE_SHIFT);
-            writer.bytes(&[MOUSE, flags, mouse.button])?;
+            writer.byte(MOUSE)?;
+            write_stamp(mouse.on, writer)?;
+            writer.bytes(&[flags, mouse.button])?;
             write_point(&mouse.at, writer)?;
         }
         Event::Wheel(wheel) => {
-            writer.bytes(&[WHEEL, point_flags(&wheel.at)])?;
+            writer.byte(WHEEL)?;
+            write_stamp(wheel.on, writer)?;
+            writer.byte(point_flags(&wheel.at))?;
             writer.sv(wheel.dx)?;
             writer.sv(wheel.dy)?;
             write_point(&wheel.at, writer)?;
         }
-        Event::Paste(text) => {
+        Event::Paste { on, text } => {
             writer.byte(PASTE)?;
+            write_stamp(*on, writer)?;
             writer.str(text, MAX_PASTE)?;
         }
         Event::FocusIn => writer.byte(FOCUS_IN)?,
@@ -186,8 +204,9 @@ fn write_event(event: &Event<'_>, writer: &mut Writer<'_>) -> Result<(), InputEr
                 writer.uv(value)?;
             }
         }
-        Event::Compose { cursor, text } => {
+        Event::Compose { on, cursor, text } => {
             writer.byte(COMPOSE)?;
+            write_stamp(*on, writer)?;
             writer.uv(*cursor)?;
             writer.str(text, MAX_COMPOSE)?;
         }
@@ -202,11 +221,8 @@ fn write_event(event: &Event<'_>, writer: &mut Writer<'_>) -> Result<(), InputEr
                 writer.str(agent, MAX_AGENT)?;
             }
         }
-        Event::Page(page) => {
-            writer.byte(PAGE)?;
-            writer.uv(u32::from(*page))?;
-        }
-        Event::Hover { leave, column, row } => write_extension::<HOVER_PAYLOAD>(HOVER, writer, |inner| {
+        Event::Hover { on, leave, column, row } => write_extension::<HOVER_PAYLOAD>(HOVER, writer, |inner| {
+            write_stamp(*on, inner)?;
             inner.byte(if *leave { HOVER_LEAVE } else { 0 })?;
             inner.uv(*column)?;
             inner.uv(*row)?;

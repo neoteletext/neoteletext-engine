@@ -17,16 +17,18 @@ impl ViewState {
     pub(super) fn paste_or_focus(&mut self, woke: Option<&Event>, source: &mut dyn Source, clock_ms: u32) {
         match woke {
             // A paste goes as one PASTE while keys go (INPUT.md section 9.6).
-            Some(Event::Paste(text)) if self.typing.on() => {
+            Some(Event::Paste(text)) => {
+                let Some(on) = self.typing.stamp() else { return };
                 let mut end = text.len().min(neoteletext_input::MAX_PASTE);
                 while !text.is_char_boundary(end) {
                     end = end.saturating_sub(1);
                 }
                 self.typing.send(
                     source,
-                    &neoteletext_input::event::Item::Event(neoteletext_input::event::Event::Paste(
-                        text.get(..end).unwrap_or_default(),
-                    )),
+                    &neoteletext_input::event::Item::Event(neoteletext_input::event::Event::Paste {
+                        on,
+                        text: text.get(..end).unwrap_or_default(),
+                    }),
                     clock_ms,
                 );
             }
@@ -60,7 +62,9 @@ impl ViewState {
         // included, as a terminal's are its host's.
         if self.typing.on() {
             let mut buffer = [0_u8; 4];
-            if let Some(item) = input_of(key, &mut buffer) {
+            if let Some(on) = self.typing.stamp()
+                && let Some(item) = input_of(key, on, &mut buffer)
+            {
                 self.typing.send(source, &item, clock_ms);
             }
             return ControlFlow::Continue(());

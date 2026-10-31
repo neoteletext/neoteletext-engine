@@ -29,7 +29,7 @@ pub fn with_nfc<R>(item: &Item<'_>, send: impl FnOnce(&Item<'_>) -> R) -> R {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use neoteletext_input::event::{Action, KeyCode};
+    use neoteletext_input::event::{Action, KeyCode, Stamp};
 
     /// REQ-INT-116: a decomposed `e` and combining acute accent go as
     /// U+00E9, in text and in a KEY's text; a paste goes as copied.
@@ -37,14 +37,23 @@ mod tests {
     fn text_goes_in_normalization_form_c() {
         let decomposed = "e\u{301}";
         assert!(with_nfc(&Item::Text(decomposed), |item| *item == Item::Text("\u{e9}")));
-        let key =
-            Key { action: Action::Press, key: KeyCode::Character('e'), mods: 0, text: Some(decomposed), base: None };
+        let on = Stamp { page: 0x100, sub: 0 };
+        let key = Key {
+            on,
+            action: Action::Press,
+            key: KeyCode::Character('e'),
+            mods: 0,
+            text: Some(decomposed),
+            base: None,
+            lost: false,
+        };
         let sent = with_nfc(&Item::Event(Event::Key(key)), |item| match item {
             Item::Event(Event::Key(key)) => key.text.map(str::to_owned),
             _ => None,
         });
         assert_eq!(sent.as_deref(), Some("\u{e9}"));
-        assert!(with_nfc(&Item::Event(Event::Paste(decomposed)), |item| *item == Item::Event(Event::Paste(decomposed))));
+        let paste = Item::Event(Event::Paste { on, text: decomposed });
+        assert!(with_nfc(&paste, |item| *item == paste));
         assert!(matches!(nfc("plain"), Cow::Borrowed("plain")), "already normal text is not copied");
         assert_eq!(nfc("\u{212B}"), "\u{C5}", "the Ångström sign is the letter Å");
     }
