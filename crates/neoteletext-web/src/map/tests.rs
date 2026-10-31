@@ -155,3 +155,32 @@ fn the_whole_address_obeys_the_general_limit() {
     let over = format!("{address}x");
     assert!(matches!(canonical(&over), Err(MapError::Channel(_))));
 }
+
+/// REQ-1693's Verification: this parser against the one table. The server
+/// runs the table's `answer` rows, and the browser its `open` and `refuse`.
+#[test]
+fn the_conformance_table_holds() {
+    let mut rows = 0;
+    for line in CONFORMANCE.lines().filter(|line| !line.is_empty() && !line.starts_with('#')) {
+        rows += 1;
+        let columns: vec::Vec<&str> = line.split('\t').collect();
+        match columns[..] {
+            ["open", address, spelled] => assert_eq!(canonical(address).as_deref(), Ok(spelled), "{line}"),
+            ["refuse", address, why] => {
+                let refused = match MapAddress::read(address) {
+                    Err(MapError::Place) => "place",
+                    Err(MapError::TwoPlaces) => "two-places",
+                    Err(MapError::ReceiverFile) => "receiver-file",
+                    Err(MapError::Channel(_)) => "channel",
+                    Ok(read) => panic!("{line}: opened as {read:?}"),
+                };
+                assert_eq!(refused, why, "{line}");
+            }
+            ["answer", target, status, location] => {
+                assert!(target.starts_with('/') && status.len() == 3 && !location.is_empty(), "{line}");
+            }
+            _ => panic!("not a row of the table: {line}"),
+        }
+    }
+    assert!(rows >= 70, "{rows} rows");
+}

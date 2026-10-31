@@ -1,0 +1,96 @@
+# The channel URL map's conformance table (neoteletext-common's REQ-1693,
+# written out in SERVER.md section 4). One file, read through
+# neoteletext_web::map::CONFORMANCE by every program that follows the map:
+# the engine's parser, the server's routes and the browser's address rules.
+# Columns are separated by one tab. A line that starts with a hash mark is a
+# comment.
+#
+# open    ADDRESS  CANONICAL  ADDRESS opens, and its one spelling is CANONICAL
+# refuse  ADDRESS  WHY        ADDRESS never opens as a viewer's; WHY is place,
+#                             two-places, receiver-file or channel
+# answer  TARGET   STATUS  LOCATION  the server answers a GET of the channel
+#                             `home`'s TARGET so; a hyphen is no redirect
+
+# Item 1: what viewers see.
+open	https://h.example/home/	https://h.example/home/
+open	http://h.example/home/	http://h.example/home/
+open	https://h.example/	https://h.example/
+open	https://h.example/home/#302	https://h.example/home/#302
+open	https://h.example/home/#302/0002	https://h.example/home/#302/0002
+open	https://h.example/home/#302?name=value	https://h.example/home/#302?name=value
+open	https://h.example/home/#302/0002?name=value	https://h.example/home/#302/0002?name=value
+open	https://h.example/home/#contents	https://h.example/home/#contents
+open	https://h.example/home/#wall	https://h.example/home/#wall
+open	https://h.example/home/?name=value	https://h.example/home/?name=value
+open	https://h.example/home/?name=value#302	https://h.example/home/?name=value#302
+open	https://h.example/home/?name=value#contents	https://h.example/home/?name=value#contents
+open	https://h.example/home/#100	https://h.example/home/#100
+open	https://h.example/home/#8FF	https://h.example/home/#8FF
+open	https://h.example/home/#100/0000	https://h.example/home/#100/0000
+open	https://h.example/home/#100/3F7E	https://h.example/home/#100/3F7E
+
+# Item 3: other spellings, normalised. Parameters are left as they came.
+open	https://h.example/home/#1fe	https://h.example/home/#1FE
+open	https://h.example/home/#302/3f7e	https://h.example/home/#302/3F7E
+open	https://h.example/home/302.tti	https://h.example/home/#302
+open	https://h.example/home/302.t42	https://h.example/home/#302
+open	https://h.example/home/302-0002.t42	https://h.example/home/#302/0002
+open	https://h.example/home/#1fe?b=%41&a=1	https://h.example/home/#1FE?b=%41&a=1
+
+# Item 5: a parameter's value may be empty.
+open	https://h.example/home/#302?name=	https://h.example/home/#302?name=
+
+# Item 4: every other fragment.
+refuse	https://h.example/home/#	place
+refuse	https://h.example/home/#30	place
+refuse	https://h.example/home/#3021	place
+refuse	https://h.example/home/#G02	place
+refuse	https://h.example/home/#902	place
+refuse	https://h.example/home/#002	place
+refuse	https://h.example/home/#302/2	place
+refuse	https://h.example/home/#302/3F7F	place
+refuse	https://h.example/home/#302/0080	place
+refuse	https://h.example/home/#302:0002	place
+refuse	https://h.example/home/#WALL	place
+refuse	https://h.example/home/#CONTENTS	place
+refuse	https://h.example/home/#contents/1	place
+refuse	https://h.example/home/#wall?name=value	place
+refuse	https://h.example/home/#contents?name=value	place
+refuse	https://h.example/home/#?name=value	place
+refuse	https://h.example/home/#302?	place
+refuse	https://h.example/home/#302?name	place
+refuse	https://h.example/home/#302?=value	place
+refuse	https://h.example/home/#302?a=1&	place
+refuse	https://h.example/home/302.tti#303	two-places
+
+# Item 2: names only receivers use.
+refuse	https://h.example/home/channel.json	receiver-file
+refuse	https://h.example/home/contents.txt	receiver-file
+refuse	https://h.example/home/index.t42	receiver-file
+refuse	https://h.example/home/302.sub	receiver-file
+
+# Not a channel at all.
+refuse	https://h.example/home	channel
+refuse	https://h.example/home/302	channel
+refuse	ftp://h.example/home/	channel
+refuse	wss://h.example/home/	channel
+
+# Item 7: what the server answers.
+answer	/home/	200	-
+answer	/home/?name=value	200	-
+answer	/home	308	/home/
+answer	/home?name=value	308	/home/?name=value
+answer	/home/channel.json	200	-
+answer	/home/push	426	-
+answer	/home/302	404	-
+answer	/home/302.tti	404	-
+answer	/home/302.t42	404	-
+answer	/home/302-0002.t42	404	-
+answer	/home/302.sub	404	-
+answer	/home/contents.txt	404	-
+answer	/home/index.t42	404	-
+answer	/home/push/	404	-
+answer	/home/a/b	404	-
+answer	/	404	-
+answer	/other/	404	-
+answer	/other	404	-

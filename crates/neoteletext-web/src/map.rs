@@ -27,6 +27,11 @@ const PAIR_MARK: u8 = b'&';
 /// Between a parameter's name and its value (REQ-1693 item 5).
 const VALUE_MARK: u8 = b'=';
 
+/// The map's conformance table: every address, what it opens or why it is
+/// refused, and what a server answers (REQ-1693's Verification). Every
+/// program that follows the map runs this one file, which says how to read it.
+pub const CONFORMANCE: &str = include_str!("map/conformance.tsv");
+
 /// What a fragment opens inside a channel (REQ-1693 item 1).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Place<'a> {
