@@ -1,7 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, reason = "a test")]
 
 use super::terminal_io::{Wakened, next_event};
-use super::typing::{Typing, host_page, input_of};
+use super::typing::{Typing, input_of};
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use neoteletext_input::event::Stamp;
 use std::sync::mpsc;
@@ -97,13 +97,28 @@ fn repeats_and_releases_where_the_terminal_reports_them() {
     assert_eq!(encode(up), vec![0xFF, 0x01, 0x80, 0x02, 0x00, 0x06, 0x09]);
 }
 
-/// REQ-INT-113: a cursor record naming another page opens it, only
-/// while keys go to the channel.
+/// REQ-INT-113: a REDIRECT record names the page to open, whether or not
+/// keys go to the channel, once.
 #[test]
-fn a_host_goes_to_a_page_by_naming_it() {
-    assert_eq!(host_page(0x301, 0x300, true), Some(0x301));
-    assert_eq!(host_page(0x300, 0x300, true), None, "the page already open");
-    assert_eq!(host_page(0x301, 0x300, false), None, "keys do not go to the channel");
+fn a_redirect_names_the_page_to_open() {
+    let mut typing = Typing::new();
+    assert!(!typing.on());
+    typing.redirected(0x301, 0x0002);
+    assert_eq!(typing.take_redirect(), Some((0x301, 0x0002)));
+    assert_eq!(typing.take_redirect(), None);
+}
+
+/// INPUT.md section 7.1 and DEC-1689: a cursor record never moves a viewer,
+/// whatever page it names, so one still in flight when the viewer selects
+/// another page cannot take them back (TODO-1656).
+#[test]
+fn a_cursor_record_never_moves_a_viewer() {
+    let mut source = Recorded::default();
+    let mut typing = welcomed(&mut source);
+    typing.tell_selection(&mut source, 0x200, 0x3F7F, 0);
+    let late = neoteletext_input::cursor::Cursor { page: 0x100, acked: 0, place: None, flags: 0 }.packet(3, 1).unwrap();
+    typing.records(&mut source, [late].into_iter(), 0);
+    assert_eq!(typing.take_redirect(), None);
 }
 
 /// REQ-INT-110 as amended by REQ-RCH-012 (decision E.133): the channel's

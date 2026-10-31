@@ -4,7 +4,7 @@
 use crate::{control, wire};
 
 /// The protocol version HELLO and WELCOME carry (section 6.1).
-pub const VERSION: u32 = 3;
+pub const VERSION: u32 = 4;
 /// The most bytes in one binary message (section 5.1, REQ-INT-101).
 pub const MAX_MESSAGE: usize = 4096;
 /// The most bytes of a PASTE's text (section 5.4, REQ-INT-103).

@@ -10,6 +10,7 @@ use crate::http::{HttpError, MediaType, Method};
 use crate::port::{ConnectionId, NetInput, NetOutput, Security};
 use crate::records::index::IndexRecord;
 use crate::records::links::LinksRecord;
+use crate::records::redirect::RedirectRecord;
 use crate::records::subpages::SubPagesRecord;
 use crate::sse::SseError;
 use crate::url::UrlError;
@@ -355,6 +356,11 @@ pub enum Event<'a> {
     /// begins a new list; a list is whole when every part has arrived,
     /// and a partial one removes nothing.
     SubPageList(SubPagesRecord<'a>),
+    /// The channel's program sent the viewer elsewhere with a REDIRECT
+    /// record (`INPUT.md` section 7.11, REQ-1688), to a page of the channel
+    /// or to an address. The application moves the viewer: it alone can
+    /// judge an address by its own rules. Nothing else moves a viewer.
+    Redirect(RedirectRecord<'a>),
     /// A live channel (its `channel.json` names a push connection,
     /// REQ-WEB-018) is opening its connection: it asks for no bundle, page
     /// file or `contents.txt`, and is connecting, never a page not found,

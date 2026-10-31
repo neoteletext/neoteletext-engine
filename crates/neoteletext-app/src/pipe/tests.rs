@@ -19,6 +19,7 @@ fn frames_round_trip_and_bad_frames_are_rejected() {
         Frame::Follow("other".into(), 0x400, 0xFFFF),
         Frame::Tti(PageData { secure: true, origin: Origin::FrontDoor, bytes: vec![] }),
         Frame::Notice(Notice::RedirectToOtherChannel("https://elsewhere.example/".into())),
+        Frame::Notice(Notice::PageRedirect(0x1A0, 0x3F7F)),
         Frame::Notice(Notice::ServiceName("Test".into())),
         Frame::Notice(Notice::Bundle(0x199)),
         Frame::Notice(Notice::Aliases(vec![(0x300, "weather:300".into())])),

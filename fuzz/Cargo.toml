@@ -99,6 +99,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "redirect_records"
+path = "fuzz_targets/redirect_records.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "channel_log"
 path = "fuzz_targets/channel_log.rs"
 test = false

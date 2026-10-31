@@ -80,6 +80,7 @@ name = "neoteletext-audio"
 version = "0.1.0"
 dependencies = [
  "neoteletext-core",
+ "neoteletext-opus",
 ]
 
 [[package]]
@@ -131,7 +132,9 @@ name = "neoteletext-web"
 version = "0.1.0"
 dependencies = [
  "embedded-io",
+ "neoteletext-audio",
  "neoteletext-core",
+ "neoteletext-formats",
 ]
 
 [[package]]

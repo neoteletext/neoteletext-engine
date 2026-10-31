@@ -117,11 +117,15 @@ impl ViewState {
         if self.typing.on() && !was_on {
             self.prompt = Some(message_row("Keys go to this channel. Ctrl-] leaves"));
         }
-        if let Some(address) = self.typing.take_go_to().and_then(PageAddress::from_mpp)
-            && address != requested
+        if let Some((mpp, sub)) = self.typing.take_redirect()
+            && let Some(address) = PageAddress::from_mpp(mpp)
+            && (address, SubCode::new(sub)) != (requested, subcode)
         {
             self.viewer = Viewer::new(address);
-            self.action = Action::Request(address, SubCode::ANY);
+            self.action = self.viewer.event(ViewerEvent::Started);
+            if SubCode::new(sub) != SubCode::ANY {
+                self.action = self.viewer.show_subpage(SubCode::new(sub));
+            }
             return true;
         }
         self.typing.tell_selection(source, requested.mpp(), subcode.value(), clock_ms);

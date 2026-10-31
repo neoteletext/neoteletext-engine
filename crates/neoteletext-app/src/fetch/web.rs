@@ -14,6 +14,7 @@ use neoteletext_web::descriptor::Descriptor;
 use neoteletext_web::http::MediaType;
 use neoteletext_web::port::{ConnectionId, Pump};
 use neoteletext_web::proxy::Proxy;
+use neoteletext_web::records::redirect::RedirectRecord;
 use std::cell::Cell;
 use std::net::IpAddr;
 use std::sync::mpsc::Sender;
@@ -137,6 +138,12 @@ fn forward(
         }
         Output::Event(Event::RedirectToOtherChannel { location }) => {
             send(&Frame::Notice(Notice::RedirectToOtherChannel(location.to_string())))
+        }
+        Output::Event(Event::Redirect(RedirectRecord::Page { page, subcode })) => {
+            send(&Frame::Notice(Notice::PageRedirect(page.mpp(), subcode.value())))
+        }
+        Output::Event(Event::Redirect(RedirectRecord::Address(address))) => {
+            send(&Frame::Notice(Notice::RedirectToOtherChannel(address.to_string())))
         }
         Output::Event(Event::BundleFailed(failure)) => {
             send(&Frame::Notice(Notice::Message(format!("index.t42 was not used: {failure:?}"))))

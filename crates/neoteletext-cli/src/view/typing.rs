@@ -94,15 +94,9 @@ pub(super) struct Typing {
     held: Held,
     /// The terminal reports releases: without them nothing can be held.
     releases: bool,
-    /// A page the channel's cursor record named, to open (REQ-INT-113).
-    go_to: Option<u16>,
-}
-
-/// The page a cursor record for `cursor_page` opens while `open` is open
-/// and keys go to the channel: another page of the channel, as a terminal
-/// shows what its host sends (INPUT.md section 8 rule 8, REQ-INT-113).
-pub(super) fn host_page(cursor_page: u16, open: u16, keys_go: bool) -> Option<u16> {
-    (keys_go && cursor_page != open).then_some(cursor_page)
+    /// The page and sub-code the channel's REDIRECT record named, to open
+    /// (INPUT.md section 8 rule 8, REQ-INT-113).
+    redirect: Option<(u16, u16)>,
 }
 
 impl Typing {
@@ -119,7 +113,7 @@ impl Typing {
             drawn: None,
             held: Held::new(),
             releases: false,
-            go_to: None,
+            redirect: None,
         }
     }
 
@@ -161,9 +155,16 @@ impl Typing {
         self.tell_focus(source, clock_ms);
     }
 
-    /// The page the channel's cursor record named, to open, once.
-    pub(super) fn take_go_to(&mut self) -> Option<u16> {
-        self.go_to.take()
+    /// The channel's REDIRECT record named a page of the channel, to open.
+    /// It needs no keys to go to the channel: a selected page is active
+    /// whatever its focus (INPUT.md section 7.11).
+    pub(super) fn redirected(&mut self, page: u16, sub: u16) {
+        self.redirect = Some((page, sub));
+    }
+
+    /// The page and sub-code a REDIRECT record named, to open, once.
+    pub(super) fn take_redirect(&mut self) -> Option<(u16, u16)> {
+        self.redirect.take()
     }
 
     /// The channel is told the page and sub-page selected (INPUT.md section
@@ -227,10 +228,9 @@ impl Typing {
                 // A refused WELCOME leaves the session refused, said below.
                 let _ = self.input.control(&control);
             } else if let Some(Ok(cursor)) = neoteletext_input::cursor::from_packet(&packet) {
+                // A cursor record never moves a viewer, whatever page it
+                // names (INPUT.md section 7.1).
                 self.input.acknowledged(cursor.acked);
-                if let Some((open, _)) = self.told {
-                    self.go_to = host_page(cursor.page, open, self.on()).or(self.go_to);
-                }
             }
         }
         self.input.tick(clock_ms);

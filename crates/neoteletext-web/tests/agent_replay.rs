@@ -22,6 +22,8 @@ use neoteletext_web::cookie::{CookieJar, Cookies};
 use neoteletext_web::cookie::{CookieRejected, Site};
 use neoteletext_web::http::MediaType;
 use neoteletext_web::port::{ConnectionId, Pump, Security};
+#[cfg(feature = "push")]
+use neoteletext_web::records::redirect::{RedirectRecord, encode};
 use neoteletext_web::url::IpAddress;
 
 const PUBLIC: IpAddress = IpAddress::V4([93, 184, 216, 34]);
@@ -697,6 +699,24 @@ fn websocket_push() {
     let (_, last) = harness.replay().sent.last().unwrap().clone();
     assert_eq!(client_frames(&last).last(), Some(&(0x1, b"subscribe 100 1A0".to_vec())));
     assert_profile_headers(harness.replay());
+}
+
+/// INPUT.md section 7.11, REQ-1688: a REDIRECT record on the push connection
+/// reaches the application, in either form, and the agent moves nothing.
+#[test]
+#[cfg(feature = "push")]
+fn a_channels_redirect_reaches_the_application() {
+    let mut harness = push_service("websocket", "ws://tt.example/push");
+    let page = PageAddress::from_mpp(0x1A0).unwrap();
+    let mut message = Vec::new();
+    let mut packet = |packet: neoteletext_core::packet::Packet| message.extend_from_slice(&packet.bytes);
+    encode(RedirectRecord::Page { page, subcode: SubCode::ANY }, 3, 1, &mut packet).unwrap();
+    encode(RedirectRecord::Address("https://elsewhere.example/channel/#302"), 3, 2, &mut packet).unwrap();
+    harness.replay().reply("tt.example:80", Reply::WebSocket(server_frame(0x2, &message)));
+    let records = harness.open("http://tt.example/service.json");
+    assert!(has_event(&records, "Redirect(Page {"), "{records:?}");
+    assert!(has_event(&records, "Redirect(Address(\"https://elsewhere.example/channel/#302\"))"), "{records:?}");
+    assert!(!has_event(&records, "InvalidPackets"), "{records:?}");
 }
 
 #[test]

@@ -45,6 +45,11 @@ pub const TYPE_LINKS: u8 = 9;
 /// REQ-1503), read by the web agent; this receiver leaves it alone.
 pub const TYPE_SUBPAGES: u8 = 10;
 
+/// Record type: a channel's redirect, to another page or another channel
+/// (`INPUT.md` section 7.11, REQ-1688), read by the web agent; this receiver
+/// leaves it alone.
+pub const TYPE_REDIRECT: u8 = 11;
+
 /// Whether a record type belongs to the input profile, which shares this
 /// profile's carriage and is left alone by the audio receiver.
 #[must_use]
@@ -64,6 +69,7 @@ pub const fn is_channel_type(kind: u8) -> bool {
         || kind == TYPE_SET_COOKIE
         || kind == TYPE_LINKS
         || kind == TYPE_SUBPAGES
+        || kind == TYPE_REDIRECT
 }
 
 /// OBJECT's fixed fields: handle, generation, id, codec, rate, block bytes,

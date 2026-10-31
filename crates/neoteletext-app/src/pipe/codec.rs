@@ -22,6 +22,7 @@ const FOLLOW: u8 = b'L';
 // confirmation and their outcome until decision E.126 withdrew forms. They
 // are not reused.
 const REDIRECT: u8 = b'W';
+const PAGE_REDIRECT: u8 = b'w';
 const SERVICE_NAME: u8 = b'M';
 const BUNDLE: u8 = b'b';
 const ALIASES: u8 = b'a';
@@ -149,6 +150,9 @@ pub fn write(out: &mut dyn Write, frame: &Frame) -> io::Result<()> {
             put(out, FOLLOW, &buffer)
         }
         Frame::Notice(Notice::RedirectToOtherChannel(address)) => put(out, REDIRECT, address.as_bytes()),
+        Frame::Notice(Notice::PageRedirect(mpp, sub)) => {
+            put(out, PAGE_REDIRECT, &[mpp.to_be_bytes(), sub.to_be_bytes()].concat())
+        }
         Frame::Notice(Notice::ServiceName(name)) => put(out, SERVICE_NAME, name.as_bytes()),
         Frame::Notice(Notice::Bundle(mpp)) => put(out, BUNDLE, &mpp.to_be_bytes()),
         Frame::Notice(Notice::Aliases(aliases)) => {
@@ -226,6 +230,11 @@ fn notice_frame(kind: u8, payload: &[u8]) -> io::Result<Frame> {
     Ok(match kind {
         REDIRECT => {
             Frame::Notice(Notice::RedirectToOtherChannel(String::from_utf8(payload.to_vec()).map_err(|_| invalid())?))
+        }
+        PAGE_REDIRECT => {
+            let (mpp, sub) = (cursor.u16()?, cursor.u16()?);
+            cursor.end()?;
+            Frame::Notice(Notice::PageRedirect(mpp, sub))
         }
         SERVICE_NAME => Frame::Notice(Notice::ServiceName(String::from_utf8(payload.to_vec()).map_err(|_| invalid())?)),
         BUNDLE => Frame::Notice(Notice::Bundle(u16::from_be_bytes(payload.try_into().map_err(|_| invalid())?))),

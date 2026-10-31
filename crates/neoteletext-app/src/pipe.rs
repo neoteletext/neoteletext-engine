@@ -76,9 +76,13 @@ pub enum Notice {
     Current(u16),
     /// Fetching page `0xMPP` failed for want of a network (REQ-WEB-009).
     Offline(u16),
-    /// A request was redirected out of the channel and not followed: its
-    /// address (REQ-WEB-021).
+    /// A request was redirected out of the channel, or the channel's
+    /// program sent the viewer to another channel, and it was not followed:
+    /// its address (REQ-WEB-021, REQ-1688).
     RedirectToOtherChannel(String),
+    /// The channel's program sent the viewer to page `0xMPP`, at this
+    /// sub-code (`INPUT.md` section 7.11).
+    PageRedirect(u16, u16),
     /// The service's name, from its descriptor or its host.
     ServiceName(String),
     /// The descriptor's aliases: page numbers, `0xMPP`, and their targets,
