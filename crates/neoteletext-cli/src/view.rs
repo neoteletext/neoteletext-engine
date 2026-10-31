@@ -12,6 +12,7 @@ use crossterm::event::{
 };
 use crossterm::{cursor, execute, queue, terminal};
 use neoteletext_app::extras::PageExtras;
+use neoteletext_app::input::Opening;
 use neoteletext_app::session::Session;
 use neoteletext_app::source::Source;
 use neoteletext_core::acq::{EnhancementReport, StoredPage};
@@ -19,7 +20,7 @@ use neoteletext_core::config::Config;
 use neoteletext_core::consts::COLUMNS;
 use neoteletext_core::level1::Grid;
 use neoteletext_core::service::initial_page;
-use neoteletext_core::types::{Instant, PageAddress};
+use neoteletext_core::types::{Instant, PageAddress, SubCode};
 use neoteletext_core::viewer::{Action, Viewer, ViewerEvent};
 use neoteletext_image::palette::Rgba;
 use std::collections::HashSet;
@@ -42,6 +43,9 @@ mod typing;
 struct ViewState {
     start: StdInstant,
     initial: PageAddress,
+    // The address opened named a page, which the channel's initial page,
+    // when it comes, does not replace (REQ-1693 item 1).
+    named: bool,
     viewer: Viewer,
     messages: Vec<String>,
     live: bool,
@@ -68,13 +72,19 @@ struct Shown<'a> {
 
 impl ViewState {
     /// The viewer at the start of `session`'s service, started at `start`.
-    fn new(session: &Session, start: StdInstant) -> Self {
-        let initial = initial_page(session.service().as_ref());
+    fn new(session: &Session, start: StdInstant, opening: Opening) -> Self {
+        let (initial, subcode) = opening.page.unwrap_or((initial_page(session.service().as_ref()), SubCode::ANY));
         let mut viewer = Viewer::new(initial);
-        let action = viewer.event(ViewerEvent::Started);
+        let mut action = viewer.event(ViewerEvent::Started);
+        if subcode != SubCode::ANY {
+            action = viewer.show_subpage(subcode);
+        }
+        let mut typing = Typing::new();
+        typing.opened_with((initial.mpp(), subcode.value()), opening.parameters);
         Self {
             start,
             initial,
+            named: opening.page.is_some(),
             viewer,
             messages: Vec::new(),
             live: true,
@@ -83,7 +93,7 @@ impl ViewState {
             action,
             prompt: None,
             confirmed_services: HashSet::new(),
-            typing: Typing::new(),
+            typing,
             unrecorded: None,
         }
     }
@@ -98,6 +108,7 @@ impl ViewState {
 pub fn run(
     session: &mut Session,
     source: &mut dyn Source,
+    opening: Opening,
     display: Display,
     scale: Scale,
     depth: ColourDepth,
@@ -116,7 +127,7 @@ pub fn run(
     }
 
     let start = StdInstant::now();
-    let mut state = ViewState::new(session, start);
+    let mut state = ViewState::new(session, start, opening);
     session.keep(neoteletext_input::is_input_packet);
     // The viewer waits for the terminal and the source together: a key,
     // and a page the source has for it, are taken at once; the tick is

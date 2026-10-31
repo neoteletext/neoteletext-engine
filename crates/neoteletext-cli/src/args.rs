@@ -170,7 +170,7 @@ pub(crate) enum Command {
     Show {
         #[command(flatten)]
         common: Common,
-        /// Page, e.g. 100 or 100:0003.
+        /// Page, e.g. 100 or 100/0003.
         page: String,
         #[command(flatten)]
         raster: RasterArgs,
@@ -204,7 +204,7 @@ pub(crate) enum Command {
     Render {
         #[command(flatten)]
         common: Common,
-        /// Page, e.g. 100, 100:0003, or `all`.
+        /// Page, e.g. 100, 100/0003, or `all`.
         page: String,
         /// Output file, or directory for `all`.
         #[arg(short, long)]
@@ -219,7 +219,7 @@ pub(crate) enum Command {
     Text {
         #[command(flatten)]
         common: Common,
-        /// Page, e.g. 100, 100:0003, or `all`.
+        /// Page, e.g. 100, 100/0003, or `all`.
         page: String,
         /// Show concealed text.
         #[arg(long)]

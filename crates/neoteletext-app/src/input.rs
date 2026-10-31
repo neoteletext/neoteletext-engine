@@ -15,7 +15,7 @@ use std::net::IpAddr;
 
 mod feed;
 
-pub use feed::{is_live, link_address, open_live};
+pub use feed::{Opening, is_live, link_address, open_live, opening};
 
 /// What to read and how to decode it: the options every `neottx` command
 /// accepts (REQ-CLI-002), free of any argument parser.

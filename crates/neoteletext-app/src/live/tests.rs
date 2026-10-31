@@ -137,3 +137,41 @@ fn a_page_file_fills_only_its_page() {
         assert_eq!(present, stored, "{origin:?}");
     }
 }
+
+/// REQ-1693: a viewer opens the map's addresses, normalised, and refuses the
+/// rest; a service's descriptor and a channel's own file name no place.
+#[test]
+fn an_address_says_where_a_viewer_opens() {
+    use crate::input::{Opening, opening};
+    use neoteletext_core::types::{PageAddress, SubCode};
+    let page = |mpp| PageAddress::from_mpp(mpp).unwrap();
+    let at = |mpp, code, parameters: &str| Opening { page: Some((page(mpp), code)), parameters: parameters.to_owned() };
+    for (address, opens) in [
+        ("https://a.example/home/#302", at(0x302, SubCode::ANY, "")),
+        ("neoteletext://https://a.example/home/#302", at(0x302, SubCode::ANY, "")),
+        ("https://a.example/home/?id=7#1fe", at(0x1FE, SubCode::ANY, "")),
+        ("https://a.example/home/#302/0002", at(0x302, SubCode::new(2), "")),
+        ("https://a.example/home/#302?a=1&b=", at(0x302, SubCode::ANY, "a=1&b=")),
+        ("https://a.example/home/302.tti", at(0x302, SubCode::ANY, "")),
+        ("https://a.example/home/302-0002.t42", at(0x302, SubCode::new(2), "")),
+        ("https://a.example/home/", Opening::default()),
+        ("https://a.example/home/#contents", Opening::default()),
+        ("https://a.example/home/#wall", Opening::default()),
+        ("https://a.example/home/channel.json", Opening::default()),
+        ("https://a.example/service.json", Opening::default()),
+        ("pages.t42", Opening::default()),
+    ] {
+        assert_eq!(opening(address), Ok(opens), "{address}");
+    }
+    for address in [
+        "https://a.example/home/#",
+        "https://a.example/home/#G02",
+        "https://a.example/home/#302:0002",
+        "https://a.example/home/#302/3F7F",
+        "https://a.example/home/302.tti#303",
+        "https://a.example/home/channel.json#302",
+        "neoteletext://https://a.example/home/#WALL",
+    ] {
+        assert!(opening(address).is_err(), "{address}");
+    }
+}

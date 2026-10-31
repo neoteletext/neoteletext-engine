@@ -6,7 +6,7 @@ use crate::Failure;
 use crate::session::Session;
 use crate::source::{Finished, Source};
 use neoteletext_core::fsm::PageState;
-use neoteletext_core::types::PageAddress;
+use neoteletext_core::types::{PageAddress, SubCode};
 
 /// What begins a link from outside: the address it wraps follows
 /// (DEC-1663, DEC-1666).
@@ -34,6 +34,50 @@ pub fn link_address(input: &str) -> Result<&str, String> {
     } else {
         Err(format!("{LINK_SCHEME} wraps an http or https address, as in {LINK_SCHEME}https://example.org/channel/"))
     }
+}
+
+/// Where an address goes inside its channel (REQ-1693), for a viewer.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Opening {
+    /// The page and sub-code it names; `None` arrives at the channel's
+    /// initial page, as `#contents` and `#wall` do in a viewer that shows
+    /// neither.
+    pub page: Option<(PageAddress, SubCode)>,
+    /// The page parameters that go with that selection, as written.
+    pub parameters: String,
+}
+
+/// Where `input` goes inside its channel. A channel's address follows the
+/// map, normalised as it says; anything else that opens names no place.
+///
+/// # Errors
+/// A channel's address the map refuses (REQ-1693 item 4), or a link that
+/// wraps no `http` or `https` address.
+#[cfg(feature = "live")]
+pub fn opening(input: &str) -> Result<Opening, String> {
+    use neoteletext_web::channel::is_channel_address;
+    use neoteletext_web::map::{MapAddress, Place};
+    let address = link_address(input)?;
+    if !is_channel_address(address) {
+        return Ok(Opening::default());
+    }
+    let read = MapAddress::read_opened(address).map_err(|_| format!("{address:?} is not an address of a channel"))?;
+    Ok(match read.place {
+        Some(Place::Page { page, subcode, parameters }) => Opening {
+            page: Some((page, subcode.unwrap_or(SubCode::ANY))),
+            parameters: parameters.unwrap_or_default().to_owned(),
+        },
+        Some(Place::Contents | Place::Wall) | None => Opening::default(),
+    })
+}
+
+/// A build without the `live` feature opens no address.
+///
+/// # Errors
+/// Never.
+#[cfg(not(feature = "live"))]
+pub fn opening(_input: &str) -> Result<Opening, String> {
+    Ok(Opening::default())
 }
 
 /// True for inputs that are live feeds or web services.
@@ -67,7 +111,7 @@ pub(super) fn load_live(options: &Options, wanted: Option<PageAddress>) -> Resul
     let start = std::time::Instant::now();
     let limit = std::time::Duration::from_secs(options.duration);
     if let Some(page) = wanted {
-        source.request(page, neoteletext_core::types::SubCode::ANY);
+        source.request(page, SubCode::ANY);
     }
     let mut asked_initial = wanted.is_some();
     while start.elapsed() < limit {
@@ -77,7 +121,7 @@ pub(super) fn load_live(options: &Options, wanted: Option<PageAddress>) -> Resul
             match notice {
                 crate::pipe::Notice::InitialPage(mpp) if !asked_initial => {
                     if let Some(page) = PageAddress::from_mpp(mpp) {
-                        source.request(page, neoteletext_core::types::SubCode::ANY);
+                        source.request(page, SubCode::ANY);
                         asked_initial = true;
                     }
                 }
@@ -86,7 +130,7 @@ pub(super) fn load_live(options: &Options, wanted: Option<PageAddress>) -> Resul
             }
         }
         let done = wanted
-            .and_then(|page| session.page(page, neoteletext_core::types::SubCode::ANY))
+            .and_then(|page| session.page(page, SubCode::ANY))
             .is_some_and(|page| page.state == PageState::Complete);
         if done || !alive {
             break;

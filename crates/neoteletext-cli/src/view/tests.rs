@@ -121,6 +121,36 @@ fn a_cursor_record_never_moves_a_viewer() {
     assert_eq!(typing.take_redirect(), None);
 }
 
+/// REQ-1693 item 6: the address's page parameters go with the selection it
+/// named, and any other selection leaves them behind for good.
+#[test]
+fn page_parameters_go_with_the_selection_alone() {
+    use neoteletext_input::event::{Event, Item, Select, read_message};
+    let selections = |source: &Recorded| {
+        let mut found = Vec::new();
+        for message in &source.0 {
+            read_message(message, &mut |item| {
+                if let Item::Event(Event::Select(select, parameters)) = item {
+                    found.push((select.page, select.sub, parameters.to_owned()));
+                }
+            })
+            .unwrap();
+        }
+        found
+    };
+    let any = Select::new(0x302, 0x3F7F).unwrap().sub;
+    let mut source = Recorded::default();
+    let mut typing = welcomed(&mut source);
+    typing.opened_with((0x302, any), "a=1&b=2".to_owned());
+    typing.tell_selection(&mut source, 0x302, any, 0);
+    typing.tell_selection(&mut source, 0x303, any, 0);
+    typing.tell_selection(&mut source, 0x302, any, 0);
+    assert_eq!(
+        selections(&source),
+        [(0x302, any, "a=1&b=2".to_owned()), (0x303, any, String::new()), (0x302, any, String::new())]
+    );
+}
+
 /// REQ-INT-110 as amended by REQ-RCH-012 (decision E.133): the channel's
 /// acknowledgement is taken where it comes, in the answer's own frame
 /// among the page's packets, and alone.

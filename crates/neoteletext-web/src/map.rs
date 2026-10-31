@@ -147,8 +147,22 @@ pub struct MapAddress<'a> {
 impl<'a> MapAddress<'a> {
     /// Reads an `http` or `https` address. `<channel>302.tti` and
     /// `<channel>302.t42` read as `<channel>#302`, and
-    /// `<channel>302-0002.t42` as `<channel>#302/0002`.
+    /// `<channel>302-0002.t42` as `<channel>#302/0002`. A file only receivers
+    /// use is refused: a viewer never sees one (REQ-1693 item 2).
     pub fn read(text: &'a str) -> Result<Self, MapError> {
+        Self::read_with(text, false)
+    }
+
+    /// Reads an address a program was told to open, which differs from
+    /// [`MapAddress::read`] in one way: a receiver's file with nothing after
+    /// it opens its channel (DEC-1710), as `neottx https://h.example/a/channel.json`
+    /// does. A fragment the map refuses is refused here as well, so no
+    /// address opens with one ignored (REQ-1693 item 4).
+    pub fn read_opened(text: &'a str) -> Result<Self, MapError> {
+        Self::read_with(text, true)
+    }
+
+    fn read_with(text: &'a str, opens_receiver_files: bool) -> Result<Self, MapError> {
         let (identity, fragment) = before(text, FRAGMENT_MARK).map_or((text, None), |(head, tail)| (head, Some(tail)));
         let (location, query) =
             before(identity, QUERY_MARK).map_or((identity, None), |(head, tail)| (head, Some(tail)));
@@ -165,6 +179,7 @@ impl<'a> MapAddress<'a> {
             (Some(ChannelFile::Page { .. } | ChannelFile::SubPage { .. }), Some(_)) => {
                 return Err(MapError::TwoPlaces);
             }
+            (Some(_), None) if opens_receiver_files => None,
             (Some(_), _) => return Err(MapError::ReceiverFile),
         };
         Ok(Self { folder: found.folder, query, place })

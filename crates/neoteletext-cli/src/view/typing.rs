@@ -88,6 +88,9 @@ pub(super) struct Typing {
     started: bool,
     /// The selection the channel was last told: page and sub-code.
     told: Option<(u16, u16)>,
+    /// The selection the address opened named, with its page parameters,
+    /// until another selection leaves them behind (REQ-1693 item 6).
+    parameters: Option<((u16, u16), String)>,
     /// The page and sub-code on screen, which stamp the viewer's input.
     drawn: Option<Stamp>,
     /// What the viewer holds, so a key the page loses is released.
@@ -110,6 +113,7 @@ impl Typing {
             input: neoteletext_input::session::Session::new(OFFERED),
             started: false,
             told: None,
+            parameters: None,
             drawn: None,
             held: Held::new(),
             releases: false,
@@ -167,16 +171,26 @@ impl Typing {
         self.redirect.take()
     }
 
+    /// The address opened named `selection` and these page parameters.
+    pub(super) fn opened_with(&mut self, selection: (u16, u16), parameters: String) {
+        self.parameters = (!parameters.is_empty()).then_some((selection, parameters));
+    }
+
     /// The channel is told the page and sub-page selected (INPUT.md section
     /// 5.4), when they changed, whatever the focus (REQ-1090): 3F7F for a
     /// page alone. What the channel answers 3F7F with stays the selection,
-    /// so no second SELECT goes for it.
+    /// so no second SELECT goes for it. The address's page parameters go
+    /// with the selection it named, and any other leaves them behind
+    /// (REQ-1693 item 6); a new connection to the same selection sends them
+    /// again, as they stay in the address.
     pub(super) fn tell_selection(&mut self, source: &mut dyn Source, page: u16, sub: u16, clock_ms: u32) {
         use neoteletext_input::event::{Event, Item, Select};
         if self.started && self.told != Some((page, sub)) {
             self.told = Some((page, sub));
+            self.parameters.take_if(|(selection, _)| *selection != (page, sub));
+            let parameters = self.parameters.as_ref().map_or_else(String::new, |(_, parameters)| parameters.clone());
             if let Some(select) = Select::new(page, sub) {
-                self.send(source, &Item::Event(Event::Select(select, "")), clock_ms);
+                self.send(source, &Item::Event(Event::Select(select, &parameters)), clock_ms);
             }
         }
     }

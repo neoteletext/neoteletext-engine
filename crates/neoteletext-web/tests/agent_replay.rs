@@ -1616,6 +1616,17 @@ fn push_target(address: &str) -> String {
     request_path(&last)
 }
 
+/// REQ-1693 item 4: a fragment the map does not list is refused, never
+/// ignored, so nothing is fetched for the address.
+#[test]
+fn an_address_with_a_refused_fragment_opens_nothing() {
+    for address in ["http://site.example/a/#G02", "http://site.example/a/302.tti#303", "http://site.example/a/#WALL"] {
+        let mut harness = site_harness(Config::default());
+        assert!(has_event(&harness.open_channel(address), "DescriptorFailed(Address(Fragment))"), "{address}");
+        assert!(harness.replay().requests_to("site.example:80").is_empty(), "{address}");
+    }
+}
+
 /// REQ-1674 item 1: an address's query goes, as written, on the upgrade
 /// request to the push address, and an address with none sends none. What
 /// follows `#` is never sent (REQ-1693 item 1).

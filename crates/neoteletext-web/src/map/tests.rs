@@ -130,6 +130,11 @@ fn what_is_outside_the_map_is_refused() {
     assert_eq!(canonical(&format!("{CHANNEL}302.tti#303")), Err(MapError::TwoPlaces));
     for name in ["channel.json", "index.t42", "contents.txt", "302.sub"] {
         assert_eq!(canonical(&format!("{CHANNEL}{name}")), Err(MapError::ReceiverFile), "{name}");
+        let address = format!("{CHANNEL}{name}");
+        let opened = MapAddress::read_opened(&address).unwrap();
+        assert_eq!((opened.folder.as_str(), opened.place), (CHANNEL, None), "DEC-1710: {name}");
+        let with_page = format!("{address}#302");
+        assert_eq!(MapAddress::read_opened(&with_page), Err(MapError::ReceiverFile), "{name}");
     }
     assert!(matches!(canonical("https://h.example/home"), Err(MapError::Channel(_))));
     assert!(matches!(canonical("ftp://h.example/home/"), Err(MapError::Channel(_))));

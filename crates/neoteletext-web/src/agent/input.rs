@@ -6,6 +6,7 @@ use neoteletext_core::types::Instant;
 
 use super::{Event, Failure, Input, InputMessage, Output, PushPhase, Sink, UserAgent, Want, event};
 use crate::channel;
+use crate::map::{MapAddress, MapError};
 use crate::port::{ConnectionId, NetInput, RandomSource};
 use crate::url::{Url, UrlError};
 
@@ -28,17 +29,18 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
                 Ok(_) => event(sink, Event::DescriptorFailed(Failure::Address(UrlError::Scheme))),
                 Err(error) => event(sink, Event::DescriptorFailed(Failure::Address(error))),
             },
-            Input::OpenChannel(address) => match channel::parse_address(channel::location(address)) {
+            Input::OpenChannel(address) => match MapAddress::read_opened(address) {
                 Ok(found) => {
                     self.open_channel(&found.folder, false);
                     // REQ-1674: the query goes with the push connection, so
                     // it needs the address parsed whole.
                     self.opened_as = Url::parse(address).ok().filter(|url| url.query().is_some());
                 }
-                Err(channel::ChannelError::Address(error)) => {
+                Err(MapError::Channel(channel::ChannelError::Address(error))) => {
                     event(sink, Event::DescriptorFailed(Failure::Address(error)));
                 }
-                Err(_) => event(sink, Event::DescriptorFailed(Failure::Address(UrlError::Path))),
+                Err(MapError::Channel(_)) => event(sink, Event::DescriptorFailed(Failure::Address(UrlError::Path))),
+                Err(_) => event(sink, Event::DescriptorFailed(Failure::Address(UrlError::Fragment))),
             },
             // REQ-WEB-018: a live channel fetches nothing after its
             // settings; its pages and its index come on its connection.

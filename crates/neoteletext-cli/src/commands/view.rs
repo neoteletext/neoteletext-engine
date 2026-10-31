@@ -26,6 +26,7 @@ pub fn view(
     colours8: bool,
 ) -> Result<(), Failure> {
     use neoteletext_core::consts::PAGE_WIDTH;
+    let opening = input::opening(&options.input).map_err(|message| (exit::USAGE, message))?;
     let (mut session, mut source) = input::open_live(options)?;
     let (display, _) = terminal::detect(display(graphics), std::io::stdout().is_terminal());
     let area = if display == Display::Iterm2 { terminal::text_area() } else { None };
@@ -33,7 +34,7 @@ pub fn view(
     let scale = scale_for(raster_args, area, (PAGE_WIDTH, height));
     sandbox_closed(options.no_sandbox)?;
     let depth = if colours8 { ColourDepth::Eight } else { ColourDepth::TrueColour };
-    crate::view::run(&mut session, source.as_mut(), display, scale, depth, mosaic_style(legacy_mosaics))
+    crate::view::run(&mut session, source.as_mut(), opening, display, scale, depth, mosaic_style(legacy_mosaics))
         .map_err(|error| (exit::INPUT, error.to_string()))
 }
 

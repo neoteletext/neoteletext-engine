@@ -13,6 +13,7 @@ use neoteletext_core::fsm::PageKey;
 use neoteletext_core::level1::Grid;
 use neoteletext_core::policy::is_safe_file_name_byte;
 use neoteletext_core::types::{PageAddress, SubCode};
+use neoteletext_web::map::Place;
 use std::path::Path;
 
 mod check;
@@ -93,26 +94,18 @@ impl Selection {
     }
 }
 
-/// Parses `100`, `100:0003`, `8FF` or `all` (REQ-CLI-003).
+/// Parses `100`, `100/0003`, `8FF` or `all` (REQ-CLI-003): a page in the
+/// URL map's own spelling (REQ-1693), read by the map.
 pub fn parse_selection(text: &str) -> Result<Selection, Failure> {
     if text.eq_ignore_ascii_case("all") {
         return Ok(Selection::All);
     }
-    let usage = || (exit::USAGE, format!("not a page number: {text:?} (expected e.g. 100 or 100:0003)"));
-    let (page, sub) = match text.split_once(':') {
-        Some((page, sub)) => (page, Some(sub)),
-        None => (text, None),
-    };
-    if page.len() != 3 {
-        return Err(usage());
+    match Place::read(text) {
+        Some(Place::Page { page, subcode, parameters: None }) => {
+            Ok(Selection::Page(page, subcode.unwrap_or(SubCode::ANY)))
+        }
+        _ => Err((exit::USAGE, format!("not a page number: {text:?} (expected e.g. 100 or 100/0003)"))),
     }
-    let mpp = u16::from_str_radix(page, 16).map_err(|_| usage())?;
-    let address = PageAddress::from_mpp(mpp).ok_or_else(usage)?;
-    let subcode = match sub {
-        Some(sub) => SubCode::new(u16::from_str_radix(sub, 16).map_err(|_| usage())?),
-        None => SubCode::ANY,
-    };
-    Ok(Selection::Page(address, subcode))
 }
 
 /// The pages a selection names, by key, so that building their grids may
@@ -191,10 +184,10 @@ fn page_file_name(key: PageKey, extension: &str) -> String {
 /// write a page or its sound.
 #[cfg(any(feature = "keyboard", feature = "sound", feature = "write-text"))]
 fn page_number(text: &str) -> Result<u16, Failure> {
-    u16::from_str_radix(text, 16)
-        .ok()
-        .filter(|&mpp| PageAddress::from_mpp(mpp).is_some())
-        .ok_or_else(|| (exit::USAGE, format!("{text}: not a page number 100 to 8FF")))
+    match Place::read(text) {
+        Some(Place::Page { page, subcode: None, parameters: None }) => Ok(page.mpp()),
+        _ => Err((exit::USAGE, format!("{text}: not a page number 100 to 8FF"))),
+    }
 }
 
 #[cfg(test)]
@@ -207,11 +200,13 @@ mod tests {
         assert_eq!(parse_selection("all"), Ok(Selection::All));
         assert_eq!(parse_selection("100"), Ok(Selection::Page(PageAddress::from_mpp(0x100).unwrap(), SubCode::ANY)));
         assert_eq!(
-            parse_selection("8FF:0003"),
+            parse_selection("8FF/0003"),
             Ok(Selection::Page(PageAddress::from_mpp(0x8FF).unwrap(), SubCode::new(3)))
         );
         assert!(parse_selection("900").is_err());
         assert!(parse_selection("10").is_err());
         assert!(parse_selection("1g0").is_err());
+        assert!(parse_selection("8FF:0003").is_err(), "not the map's spelling");
+        assert!(parse_selection("100?a=1").is_err(), "parameters are an address's");
     }
 }

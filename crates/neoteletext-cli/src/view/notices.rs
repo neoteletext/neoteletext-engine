@@ -16,7 +16,9 @@ impl ViewState {
             Notice::Unencrypted => self.viewer.set_indicator(SecurityIndicator::Unencrypted),
             Notice::InitialPage(mpp) => {
                 if let Some(address) = PageAddress::from_mpp(mpp) {
-                    let untouched = self.viewer.requested().0 == self.initial && !self.viewer.history().can_go_back();
+                    let untouched = self.viewer.requested().0 == self.initial
+                        && !self.viewer.history().can_go_back()
+                        && !core::mem::take(&mut self.named);
                     self.initial = address;
                     if untouched && address != self.viewer.requested().0 {
                         self.viewer = Viewer::new(address);
