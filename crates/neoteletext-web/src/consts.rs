@@ -341,7 +341,7 @@ pub const PUSH_EVENTS_SILENCE_US: u64 = 60 * MICROSECONDS_PER_SECOND;
 /// The longest input message a receiver sends on the push WebSocket:
 /// `neoteletext_input::MAX_MESSAGE` (`neoteletext-common/INPUT.md` section
 /// 5.1, REQ-INT-101). The command-line program asserts that the two agree.
-pub const INPUT_MESSAGE_MAX: usize = 4096;
+pub const INPUT_MESSAGE_MAX: usize = 8192;
 /// The contacts whose moves the push connection holds, one slot each
 /// (REQ-RCH-035, REQ-RCH-045): `neoteletext_input::MAX_CONTACTS`, the
 /// mouse's and nine fingers'. The command-line program asserts that the two

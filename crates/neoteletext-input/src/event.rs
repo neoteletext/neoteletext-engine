@@ -38,6 +38,9 @@ const CORE_LAST_TYPE: u8 = 0x3F;
 pub const FIRST_EXTENSION: u8 = 0x40;
 /// The last extension type.
 pub const LAST_EXTENSION: u8 = 0x7F;
+/// What ends an address's page parameters and so never appears in them
+/// (RFC 3986 section 3.5).
+const FRAGMENT_MARK: u8 = b'#';
 /// SELECT's type, an extension (INPUT.md section 5.4, REQ-INT-140): the
 /// page and sub-page the connection has selected; a channel that does not know it
 /// skips it.
@@ -287,6 +290,15 @@ impl Select {
     }
 }
 
+/// True when `parameters` may go in a SELECT for `select` (INPUT.md section
+/// 5.4): within the bound, printable ASCII with no `#`, and none with page 0.
+#[must_use]
+pub fn is_page_parameters(select: Select, parameters: &str) -> bool {
+    parameters.len() <= crate::MAX_PAGE_PARAMETERS
+        && (select.page != 0 || parameters.is_empty())
+        && parameters.bytes().all(|byte| byte.is_ascii_graphic() && byte != FRAGMENT_MARK)
+}
+
 /// A WHEEL event.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Wheel {
@@ -367,8 +379,10 @@ pub enum Event<'a> {
     /// The session a reconnection asks to resume, after HELLO
     /// (REQ-RCH-013).
     Resume(Resume),
-    /// The page and sub-page the connection has selected (REQ-INT-140).
-    Select(Select),
+    /// The page and sub-page the connection has selected (REQ-INT-140),
+    /// and the address's page parameters as written, without their `?`, or
+    /// nothing (REQ-1693 item 6).
+    Select(Select, &'a str),
     /// An extension, skipped by a receiver that does not know it.
     Extension {
         /// `0x40` to `0x7F`.
@@ -442,7 +456,7 @@ fn uncounted(event: &Event<'_>) -> bool {
     match event {
         Event::Mouse(mouse) => unacknowledged(mouse.action),
         Event::Touch(touch) => unacknowledged(touch.action),
-        Event::Hover { .. } | Event::Compose { .. } | Event::Resume(_) | Event::Select(_) => true,
+        Event::Hover { .. } | Event::Compose { .. } | Event::Resume(_) | Event::Select(..) => true,
         _ => false,
     }
 }
@@ -456,7 +470,7 @@ pub fn needs(event: &Event<'_>) -> u32 {
         Event::Touch(_) => crate::caps::TOUCH_CAP,
         Event::Mouse(mouse) if mouse.device != Device::Mouse => crate::caps::TOUCH_CAP,
         Event::Resume(_) => crate::caps::RESUME_CAP,
-        Event::Select(_) => crate::caps::SELECT_CAP,
+        Event::Select(..) => crate::caps::SELECT_CAP,
         _ => 0,
     }
 }

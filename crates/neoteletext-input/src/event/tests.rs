@@ -5,6 +5,8 @@ use crate::MAX_MESSAGE;
 use crate::caps::AGENT;
 use crate::caps::{CURSOR_CAP, RETIRED_PAGE_BIT, SELECT_CAP};
 use crate::keys::code;
+use std::borrow::ToOwned;
+use std::format;
 use std::vec::Vec;
 
 /// The stamp of INPUT.md section 5.8's examples: page 100, sub-code 0000.
@@ -46,8 +48,12 @@ fn the_size_examples_of_section_5_8() {
         [0xFF, 0x01, 0x80, 0x02, 0x00, 0x08, 0x63, 0x04]
     );
     assert_eq!(
-        bytes(&Item::Event(Event::Select(Select { page: 0x100, sub: 0x3F7F }))),
+        bytes(&Item::Event(Event::Select(Select { page: 0x100, sub: 0x3F7F }, ""))),
         [0xFF, 0x40, 0x04, 0x80, 0x02, 0xFF, 0x7E]
+    );
+    assert_eq!(
+        bytes(&Item::Event(Event::Select(Select { page: 0x302, sub: 0x0002 }, "a=1"))),
+        [0xFF, 0x40, 0x06, 0x82, 0x06, 0x02, 0x61, 0x3D, 0x31]
     );
     let at = Point { column: 10, row: 5, pixels: None, mods: 0 };
     let dot = |x| Point { column: 10, row: 5, pixels: Some((x, 100)), mods: 0 };
@@ -453,16 +459,52 @@ fn only_a_release_may_be_lost() {
 #[test]
 fn select_round_trips_at_every_bound() {
     for (page, sub) in [(0, 0x3F7F), (0x100, 0), (0x100, 0x3F7E), (0x100, 0x3F7F), (0x8FF, 0), (0x8FF, 0x3F7F)] {
-        let item = Item::Event(Event::Select(Select::new(page, sub).unwrap()));
+        let item = Item::Event(Event::Select(Select::new(page, sub).unwrap(), ""));
         let written = bytes(&item);
         assert_eq!(read(&written), Ok(Some((item, written.len()))), "{page:#X} {sub:#X}");
     }
-    let any = Item::Event(Event::Select(Select::new(0x100, 0x3F7F).unwrap()));
+    let any = Item::Event(Event::Select(Select::new(0x100, 0x3F7F).unwrap(), ""));
     assert_eq!(bytes(&any), [0xFF, 0x40, 0x04, 0x80, 0x02, 0xFF, 0x7E]);
 }
 
-// REQ-INT-140: one past each bound is refused, as is the third field of the
-// layout before DEC-1527 and a length that disagrees with the two fields.
+// DEC-1715: page parameters follow the two numbers, up to the bound, and
+// reach a channel fed a byte at a time.
+#[test]
+fn select_carries_page_parameters_up_to_the_bound() {
+    let select = Select::new(0x302, 0x0002).unwrap();
+    let short = Item::Event(Event::Select(select, "a=1&b=%20"));
+    let written = bytes(&short);
+    assert_eq!(written[..6], [0xFF, 0x40, 12, 0x82, 0x06, 0x02]);
+    assert_eq!(&written[6..], b"a=1&b=%20");
+    assert_eq!(read(&written), Ok(Some((short, written.len()))));
+
+    let longest = "x".repeat(crate::MAX_PAGE_PARAMETERS);
+    let item = Item::Event(Event::Select(select, &longest));
+    let written = bytes(&item);
+    assert!(written.len() <= MAX_MESSAGE, "{}", written.len());
+    assert_eq!(read(&written), Ok(Some((item, written.len()))));
+    let mut decoder = StreamDecoder::<MAX_STREAM_ITEM>::default();
+    let mut seen = Vec::new();
+    for byte in &written {
+        decoder
+            .push(core::slice::from_ref(byte), &mut |item| {
+                if let Item::Event(Event::Select(_, parameters)) = item {
+                    seen.push(parameters.to_owned());
+                }
+            })
+            .unwrap();
+    }
+    assert_eq!(seen, core::slice::from_ref(&longest));
+
+    let over = format!("{longest}x");
+    let mut out = [0_u8; MAX_MESSAGE];
+    assert!(write(&Item::Event(Event::Select(select, &over)), &mut out).is_err());
+    let none = Select::new(0, 0x3F7F).unwrap();
+    assert!(write(&Item::Event(Event::Select(none, "a=1")), &mut out).is_err());
+}
+
+// REQ-INT-140: one past each bound is refused, as is a length that disagrees
+// with the fields.
 #[test]
 fn select_refuses_one_past_each_bound() {
     assert_eq!(Select::new(0xFF, 0x3F7F), None, "below the first page");
@@ -477,6 +519,10 @@ fn select_refuses_one_past_each_bound() {
         &[0xFF, 0x40, 4, 0x80, 0x02, 0x80, 0x01],
         &[0xFF, 0x40, 2, 0x00, 0x00],
         &[0xFF, 0x40, 5, 0x80, 0x02, 0xFF, 0x7E, 0x00],
+        &[0xFF, 0x40, 5, 0x80, 0x02, 0xFF, 0x7E, b'#'],
+        &[0xFF, 0x40, 5, 0x80, 0x02, 0xFF, 0x7E, b' '],
+        &[0xFF, 0x40, 5, 0x80, 0x02, 0xFF, 0x7E, 0x80],
+        &[0xFF, 0x40, 5, 0x00, 0xFF, 0x7E, b'a', b'='],
         &[0xFF, 0x40, 3, 0x80, 0x02, 0xFF, 0x7E],
         &[0xFF, 0x40, 5, 0x80, 0x02, 0xFF, 0x7E],
     ] {
@@ -489,13 +535,13 @@ fn select_refuses_one_past_each_bound() {
 #[test]
 fn select_arrives_whole_and_counts_nothing() {
     let select = Select::new(0x123, 0x0042).unwrap();
-    let item = Item::Event(Event::Select(select));
+    let item = Item::Event(Event::Select(select, ""));
     let mut decoder = StreamDecoder::<MAX_STREAM_ITEM>::default();
     let mut seen = Vec::new();
     for byte in bytes(&item) {
         decoder
             .push(&[byte], &mut |item| {
-                if let Item::Event(Event::Select(select)) = item {
+                if let Item::Event(Event::Select(select, _)) = item {
                     seen.push(select);
                 }
             })
@@ -503,5 +549,5 @@ fn select_arrives_whole_and_counts_nothing() {
     }
     assert_eq!(seen, [select]);
     assert_eq!(units(&item), 0);
-    assert_eq!(needs(&Event::Select(select)), SELECT_CAP);
+    assert_eq!(needs(&Event::Select(select, "")), SELECT_CAP);
 }

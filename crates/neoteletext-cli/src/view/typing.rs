@@ -176,7 +176,7 @@ impl Typing {
         if self.started && self.told != Some((page, sub)) {
             self.told = Some((page, sub));
             if let Some(select) = Select::new(page, sub) {
-                self.send(source, &Item::Event(Event::Select(select)), clock_ms);
+                self.send(source, &Item::Event(Event::Select(select, "")), clock_ms);
             }
         }
     }

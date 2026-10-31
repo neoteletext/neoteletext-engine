@@ -368,7 +368,7 @@ impl<const KEPT: usize> SessionOf<KEPT> {
             Item::Event(Event::Mouse(mouse)) if mouse.action == MouseAction::Move => self.last_move = Some(mouse),
             // Another page, or the pointer gone: the next move goes,
             // wherever the pointer is.
-            Item::Event(Event::Select(_)) => self.last_move = None,
+            Item::Event(Event::Select(..)) => self.last_move = None,
             Item::Event(Event::Mouse(mouse)) if mouse.action == MouseAction::Gone => self.last_move = None,
             _ => {}
         }

@@ -4,8 +4,8 @@ use super::decode::read;
 use super::{
     Action, COMPOSE, DEVICE_SHIFT, Device, EVENT, Event, FIRST_EXTENSION, FOCUS_IN, FOCUS_OUT, FUNCTIONAL, HAS_BASE,
     HAS_MODS, HAS_PIXELS, HAS_TEXT, HELLO, HOVER, HOVER_LEAVE, InputError, Item, KEY, Key, KeyCode, LAST_EXTENSION,
-    LOST, MOUSE, MouseAction, PASTE, Point, RESIZE, RESUME, SELECT, STAMP_BYTES, Stamp, TOUCH, Touch, WHEEL,
-    check_text,
+    LOST, MOUSE, MouseAction, PASTE, Point, RESIZE, RESUME, SELECT, STAMP_BYTES, Select, Stamp, TOUCH, Touch, WHEEL,
+    check_text, is_page_parameters,
 };
 use crate::caps::AGENT;
 use crate::wire::{MAX_VARINT, ONE_BYTE_MAX, Writer};
@@ -16,8 +16,8 @@ const HOVER_PAYLOAD: usize = STAMP_BYTES + 1 + 2 * MAX_VARINT;
 /// TOUCH's payload at its longest: the stamp, the flags, the id and four
 /// varints.
 pub(super) const TOUCH_PAYLOAD: usize = STAMP_BYTES + 2 + 4 * MAX_VARINT;
-/// SELECT's payload at its longest: two varints.
-const SELECT_PAYLOAD: usize = 2 * MAX_VARINT;
+/// SELECT's payload before its page parameters: two varints.
+const SELECT_HEAD: usize = 2 * MAX_VARINT;
 /// RESUME's payload: the token and the acknowledgement, big-endian.
 pub(super) const RESUME_PAYLOAD: usize = TOKEN_BYTES + 2;
 /// The bytes of a cell's column or row: every one is under 128, one
@@ -77,6 +77,25 @@ fn write_extension<const N: usize>(
 fn write_stamp(on: Stamp, writer: &mut Writer<'_>) -> Result<(), InputError> {
     writer.uv(u32::from(on.page))?;
     writer.uv(u32::from(on.sub))?;
+    Ok(())
+}
+
+/// SELECT, its head first (INPUT.md section 5.4): the parameters are the
+/// longest thing in the protocol, so they are not copied to learn the length.
+fn write_select(select: Select, parameters: &str, writer: &mut Writer<'_>) -> Result<(), InputError> {
+    if !is_page_parameters(select, parameters) {
+        return Err(InputError::BadValue("select"));
+    }
+    let mut head = [0_u8; SELECT_HEAD];
+    let mut inner = Writer::new(&mut head);
+    inner.uv(u32::from(select.page))?;
+    inner.uv(u32::from(select.sub))?;
+    let used = inner.len();
+    let length = used.saturating_add(parameters.len());
+    writer.byte(SELECT)?;
+    writer.uv(u32::try_from(length).map_err(|_| InputError::Message)?)?;
+    writer.bytes(head.get(..used).unwrap_or(&[]))?;
+    writer.bytes(parameters.as_bytes())?;
     Ok(())
 }
 
@@ -234,11 +253,7 @@ fn write_event(event: &Event<'_>, writer: &mut Writer<'_>) -> Result<(), InputEr
             inner.bytes(&resume.acked.to_be_bytes())?;
             Ok(())
         })?,
-        Event::Select(select) => write_extension::<SELECT_PAYLOAD>(SELECT, writer, |inner| {
-            inner.uv(u32::from(select.page))?;
-            inner.uv(u32::from(select.sub))?;
-            Ok(())
-        })?,
+        Event::Select(select, parameters) => write_select(*select, parameters, writer)?,
         Event::Extension { kind, payload } => {
             if !(FIRST_EXTENSION..=LAST_EXTENSION).contains(kind) {
                 return Err(InputError::Type(*kind));

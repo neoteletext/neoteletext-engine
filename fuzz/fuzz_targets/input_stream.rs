@@ -8,7 +8,9 @@
 
 use libfuzzer_sys::fuzz_target;
 use neoteletext_input::MAX_MESSAGE;
-use neoteletext_input::event::{Event, Item, MAX_STREAM_ITEM, Select, Stamp, StreamDecoder, read_message, write};
+use neoteletext_input::event::{
+    Event, Item, MAX_STREAM_ITEM, Select, Stamp, StreamDecoder, is_page_parameters, read_message, write,
+};
 use neoteletext_input::held::Held;
 
 fuzz_target!(|data: &[u8]| {
@@ -16,7 +18,9 @@ fuzz_target!(|data: &[u8]| {
     if let [a, b, c, d, ..] = *data
         && let Some(select) = Select::new(u16::from_le_bytes([a, b]), u16::from_le_bytes([c, d]))
     {
-        let item = Item::Event(Event::Select(select));
+        let parameters = core::str::from_utf8(&data[4..]).unwrap_or_default();
+        let parameters = if is_page_parameters(select, parameters) { parameters } else { "" };
+        let item = Item::Event(Event::Select(select, parameters));
         let mut out = [0_u8; MAX_MESSAGE];
         let length = write(&item, &mut out).expect("a SELECT in bounds is written");
         read_message(&out[..length], &mut |back| assert_eq!(back, item)).expect("what was written is read");
@@ -40,8 +44,9 @@ fuzz_target!(|data: &[u8]| {
             if let Some(on) = on {
                 assert_eq!(Stamp::new(on.page, on.sub), Some(on), "a stamp a channel would refuse");
             }
-            if let Event::Select(select) = event {
+            if let Event::Select(select, parameters) = event {
                 assert_eq!(Select::new(select.page, select.sub), Some(*select), "a SELECT a channel would refuse");
+                assert!(is_page_parameters(*select, parameters), "parameters a channel would refuse");
             }
         }
         held.take(&item, &mut |_, _| {});

@@ -1,15 +1,15 @@
 //! Decoding the input stream: one item from bytes that may end early,
 //! one whole message, and a byte stream split anywhere (section 5.1).
 
+use super::LOST;
 use super::encode::RESUME_PAYLOAD;
 use super::{
     ACTION, Action, COMPOSE, CORE_LAST_TYPE, DEVICE_MASK, DEVICE_SHIFT, Device, EVENT, Event, FIRST_EXTENSION,
     FOCUS_IN, FOCUS_OUT, FUNCTIONAL, HAS_BASE, HAS_MODS, HAS_PIXELS, HAS_TEXT, HELLO, HOVER, HOVER_LEAVE, InputError,
     Item, KEY, KEY_RESERVED, Key, KeyCode, LAST_CORE, LAST_EXTENSION, MOUSE, MOUSE_RESERVED, Mouse, MouseAction,
     NEVER_UTF8, NEVER_UTF8_FROM, PASTE, Point, RESIZE, RESUME, Resume, SELECT, Select, Stamp, TOUCH, TOUCH_RESERVED,
-    Touch, WHEEL, WHEEL_RESERVED, Wheel, check_text, printable,
+    Touch, WHEEL, WHEEL_RESERVED, Wheel, check_text, is_page_parameters, printable,
 };
-use super::{LOST, STAMP_BYTES};
 use crate::caps::{AGENT, RETIRED_PAGE_BIT};
 use crate::keys::is_code;
 use crate::wire::{Reader, WireError};
@@ -220,16 +220,18 @@ fn read_touch(payload: &[u8]) -> Result<Event<'static>, InputError> {
     Ok(Event::Touch(Touch { on, action: read_action(flags), id, column, row, pixels }))
 }
 
-/// SELECT's payload (REQ-INT-140, DEC-1527): `page` uv and `sub` uv, and
-/// nothing after; every bound of [`Select::new`] a protocol error.
-fn read_select(payload: &[u8]) -> Result<Event<'static>, InputError> {
+/// SELECT's payload (REQ-INT-140, DEC-1527, DEC-1715): `page` uv and `sub`
+/// uv, then the page parameters to its end; every bound of [`Select::new`]
+/// and of [`is_page_parameters`] a protocol error.
+fn read_select(payload: &[u8]) -> Result<Event<'_>, InputError> {
+    let refused = InputError::BadValue("select");
     let mut reader = Reader::new(payload);
     let (page, sub) = (reader.uv()?, reader.uv()?);
-    if reader.used() != payload.len() {
-        return Err(InputError::BadValue("select"));
-    }
-    let narrow = |value: u32| u16::try_from(value).map_err(|_| InputError::BadValue("select"));
-    Select::new(narrow(page)?, narrow(sub)?).map(Event::Select).ok_or(InputError::BadValue("select"))
+    let narrow = |value: u32| u16::try_from(value).map_err(|_| refused);
+    let select = Select::new(narrow(page)?, narrow(sub)?).ok_or(refused)?;
+    let parameters = payload.get(reader.used()..).unwrap_or(&[]);
+    let parameters = core::str::from_utf8(parameters).map_err(|_| refused)?;
+    if is_page_parameters(select, parameters) { Ok(Event::Select(select, parameters)) } else { Err(refused) }
 }
 
 /// RESUME's payload (REQ-RCH-013): the token and the acknowledgement, big-endian, exactly.
@@ -317,9 +319,9 @@ pub struct StreamDecoder<const N: usize> {
     length: usize,
 }
 
-/// The most bytes one item takes: a PASTE of [`MAX_PASTE`] bytes with its
-/// event byte, type, stamp and length.
-pub const MAX_STREAM_ITEM: usize = 2 + STAMP_BYTES + crate::wire::MAX_VARINT + MAX_PASTE;
+/// The most bytes one item takes: a message, which a SELECT with the longest
+/// page parameters can fill (DEC-1715).
+pub const MAX_STREAM_ITEM: usize = MAX_MESSAGE;
 
 impl<const N: usize> Default for StreamDecoder<N> {
     fn default() -> Self {

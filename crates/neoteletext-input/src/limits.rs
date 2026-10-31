@@ -4,9 +4,13 @@
 use crate::{control, wire};
 
 /// The protocol version HELLO and WELCOME carry (section 6.1).
-pub const VERSION: u32 = 4;
-/// The most bytes in one binary message (section 5.1, REQ-INT-101).
-pub const MAX_MESSAGE: usize = 4096;
+pub const VERSION: u32 = 5;
+/// The most bytes in one binary message (section 5.1, REQ-INT-101): room
+/// for a SELECT with the longest page parameters (DEC-1715).
+pub const MAX_MESSAGE: usize = 8192;
+/// The most bytes of a SELECT's page parameters (section 5.4, DEC-1715): no
+/// address has more, so every address the map accepts can be selected.
+pub const MAX_PAGE_PARAMETERS: usize = neoteletext_core::limits::MAX_URL_LENGTH;
 /// The most bytes of a PASTE's text (section 5.4, REQ-INT-103).
 pub const MAX_PASTE: usize = 4000;
 /// The most bytes of a COMPOSE preedit (section 5.4).
@@ -44,13 +48,17 @@ pub const TOKEN_BYTES: usize = 16;
 /// doubling), so a reconnection after a short break resumes.
 pub const RESUME_HOLD_MS: u32 = 32_000;
 /// The bytes of unacknowledged messages a resumable receiver keeps to send
-/// again (section 6.4): four of the largest message, a paste among them.
-pub const RESEND_BYTES: usize = 4 * MAX_MESSAGE;
+/// again (section 6.4): four pastes and more. It is not four of
+/// [`MAX_MESSAGE`], because only SELECT reaches that, and it is never kept.
+pub const RESEND_BYTES: usize = 2 * MAX_MESSAGE;
 
 // A TOUCH id fits its byte, and every id from 1 is a contact.
 const _: () = assert!(MAX_CONTACTS > 1 && MAX_CONTACTS <= 1 + u8::MAX as usize);
 // A PASTE, its event byte, type, stamp and length, fits a message.
 const _: () = assert!(MAX_PASTE + 2 + crate::event::STAMP_BYTES + wire::MAX_VARINT <= MAX_MESSAGE);
+// A SELECT, its event byte, type and length, its page and sub-code and the
+// longest parameters, fits a message.
+const _: () = assert!(MAX_PAGE_PARAMETERS + 2 + 3 * wire::MAX_VARINT <= MAX_MESSAGE);
 // Section 7.2: a control message is at most 26 bytes, so its record, with
 // the frame's 8, is the 34 bytes of one fragment.
 const _: () = assert!(control::MAX_BODY == 26);

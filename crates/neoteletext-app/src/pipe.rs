@@ -11,7 +11,7 @@ pub use codec::{read, write};
 /// section 5.1): the web module's `INPUT_MESSAGE_MAX` and the input crate's
 /// `MAX_MESSAGE`, which this crate may be built without. The command-line
 /// program asserts that they agree.
-pub const MAX_INPUT_MESSAGE: usize = 4096;
+pub const MAX_INPUT_MESSAGE: usize = 8192;
 /// The largest payload: one page response (REQ-WEB-008 default).
 pub const MAX_FRAME: usize = 256 * 1024;
 

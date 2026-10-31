@@ -311,7 +311,7 @@ fn a_move_to_the_same_dot_is_not_sent_again() {
     assert!(sent_item(&mut session, &move_to(10, (121, 100), 0)).is_some(), "the next dot, in the same cell");
     assert!(sent_item(&mut session, &move_to(10, (121, 100), 1)).is_some(), "a button held is news");
     let select = event::Select::new(0x200, 0x3F7F).unwrap();
-    assert!(sent_item(&mut session, &Item::Event(Event::Select(select))).is_some());
+    assert!(sent_item(&mut session, &Item::Event(Event::Select(select, ""))).is_some());
     assert!(sent_item(&mut session, &move_to(10, (121, 100), 1)).is_some(), "the first move on another page");
 }
 

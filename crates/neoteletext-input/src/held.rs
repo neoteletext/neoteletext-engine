@@ -119,7 +119,7 @@ impl Held {
                 }
             }
             Event::FocusOut => self.release_all(released),
-            Event::Select(select) if self.selected != Some(*select) => {
+            Event::Select(select, _) if self.selected != Some(*select) => {
                 self.selected = Some(*select);
                 self.release_all(released);
             }
@@ -233,7 +233,7 @@ mod tests {
     #[test]
     fn a_change_of_selection_releases_everything() {
         let other = Stamp { page: 0x200, sub: 0 };
-        let select = |page, sub| Item::Event(Event::Select(Select::new(page, sub).unwrap()));
+        let select = |page, sub| Item::Event(Event::Select(Select::new(page, sub).unwrap(), ""));
         let at = Point { column: 1, row: 1, pixels: None, mods: 0 };
         let press = Mouse { on: ON, action: MouseAction::Press, button: 0, at, device: Device::Mouse };
         let contact = Touch { on: ON, action: MouseAction::Press, id: 2, column: 1, row: 1, pixels: None };
