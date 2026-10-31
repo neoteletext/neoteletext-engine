@@ -302,6 +302,9 @@ pub struct UserAgent<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES
     pending_descriptor: Option<(Url, bool, bool)>,
     /// The open channel's folder (REQ-WEB-018), when a channel is open.
     channel: Option<Url>,
+    /// The address the channel was opened at, when it has a query, which its
+    /// push connection carries to the channel's program (REQ-1674).
+    opened_as: Option<Url>,
     /// The page file extension to try first in the channel: the one that
     /// last answered (REQ-WEB-019).
     t42_first: bool,
@@ -410,6 +413,7 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             descriptor: None,
             pending_descriptor: None,
             channel: None,
+            opened_as: None,
             t42_first: false,
             second_try: None,
             front_door: None,

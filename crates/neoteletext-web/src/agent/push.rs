@@ -15,28 +15,46 @@ use crate::cookie::Site;
 use crate::descriptor::PushMethod;
 use crate::http::{self, BodyDecoder, MediaType, Method};
 use crate::port::{ConnectionId, RandomSource, Security};
-use crate::url::{IpAddress, Url};
+use crate::url::{IpAddress, Url, UrlError};
 use crate::ws::{self, FrameReader};
 
 impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'_, R, SLOTS, COOKIE_BYTES> {
-    /// The push address with the server-sent events subscription query.
+    /// The push address, with the query the channel was opened at
+    /// (REQ-1674) and, for server-sent events, the subscription's.
     fn push_address(&self) -> Option<Url> {
         let url = self.push.url?;
-        if self.push.method == PushMethod::WebSocket {
+        let opened = self.opened_as.as_ref().and_then(Url::query);
+        if self.push.method == PushMethod::WebSocket && opened.is_none() {
             return Some(url);
         }
         let mut buffer = [0u8; MAX_URL_LENGTH];
         let mut writer = Writer::new(&mut buffer);
         writer.put(url.as_str().as_bytes()).ok()?;
-        writer.byte(if url.query().is_some() { b'&' } else { b'?' }).ok()?;
-        writer.put(SUBSCRIBE_QUERY).ok()?;
-        self.write_subscription(&mut writer, b',').ok()?;
+        let mut queried = url.query().is_some();
+        let mut next = |writer: &mut Writer<'_>| {
+            let mark = if queried { b'&' } else { b'?' };
+            queried = true;
+            writer.byte(mark)
+        };
+        if let Some(query) = opened {
+            next(&mut writer).ok()?;
+            writer.put(query.as_bytes()).ok()?;
+        }
+        if self.push.method != PushMethod::WebSocket {
+            next(&mut writer).ok()?;
+            writer.put(SUBSCRIBE_QUERY).ok()?;
+            self.write_subscription(&mut writer, b',').ok()?;
+        }
         Url::parse(core::str::from_utf8(writer.written()).ok()?).ok()
     }
 
     pub(super) fn push_connect(&mut self, now: Instant, sink: &mut Sink<'_>) {
         let Some(url) = self.push_address() else {
             self.push.phase = PushPhase::Idle;
+            // A push address with no room left for the query it carries
+            // (REQ-1674) is said, not dropped.
+            let too_long = PushProblem::Failure(Failure::Address(UrlError::TooLong));
+            self.push_lost(now, Some(too_long), false, sink);
             return;
         };
         if let Some(failure) = self.refusal(now, &url) {

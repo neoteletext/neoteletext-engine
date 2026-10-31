@@ -136,7 +136,12 @@ fn an_encoded_separator_after_the_folder_is_outside_it() {
 /// other address as a service's descriptor.
 #[test]
 fn an_address_says_whether_it_is_a_channel() {
-    for channel in ["https://h.example/demosite/", "https://h.example", "http://h.example/a/channel.json"] {
+    for channel in [
+        "https://h.example/demosite/",
+        "https://h.example",
+        "http://h.example/a/channel.json",
+        "https://h.example/a/?id=7",
+    ] {
         assert!(is_channel_address(channel), "{channel}");
     }
     for service in ["https://h.example/service.json", "https://h.example/a/b", "wss://h.example/a/"] {

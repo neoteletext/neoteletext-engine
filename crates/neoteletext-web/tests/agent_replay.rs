@@ -1605,6 +1605,52 @@ fn a_push_handshake_cookie_stays_in_its_channel_folder() {
     assert_eq!(header_value(&last, "Cookie"), None, "not sent to another channel's folder");
 }
 
+/// The target of the push connection of a channel at `address`, whose
+/// settings name `push`.
+#[cfg(feature = "push")]
+fn push_target(address: &str, push: &str) -> String {
+    let mut harness = site_harness(Config::default());
+    let settings = format!(r#"{{"push":{{"address":"{push}","method":"websocket"}}}}"#);
+    harness.replay().reply("site.example:80", json_response(settings.as_bytes()));
+    harness.replay().reply("site.example:80", not_found());
+    harness.open_channel(address);
+    let last = harness.replay().requests_to("site.example:80").last().unwrap().clone();
+    request_path(&last)
+}
+
+/// REQ-1674 item 1: an address's query goes, as written, on the upgrade
+/// request to the push address, and an address with none sends none.
+#[test]
+#[cfg(feature = "push")]
+fn a_channels_query_goes_on_its_push_connection() {
+    let push = "ws://site.example/a/push";
+    assert_eq!(push_target("http://site.example/a/?id=7&b=%20x", push), "/a/push?id=7&b=%20x");
+    assert_eq!(push_target("http://site.example/a/", push), "/a/push");
+    let own = "ws://site.example/a/push?key=1";
+    assert_eq!(push_target("http://site.example/a/?id=7", own), "/a/push?key=1&id=7");
+}
+
+/// REQ-1674 item 3: the longest query the address limit allows arrives
+/// whole, and one with no room left is said, not dropped.
+#[test]
+#[cfg(feature = "push")]
+fn a_query_as_long_as_an_address_may_be() {
+    let push = "ws://site.example/a/push";
+    let room = neoteletext_web::consts::MAX_URL_LENGTH - "ws://site.example/a/push?".len();
+    let longest = "q".repeat(room);
+    let target = push_target(&format!("http://site.example/a/?{longest}"), push);
+    assert_eq!(target, format!("/a/push?{longest}"));
+
+    let mut harness = site_harness(Config::default());
+    let settings = format!(r#"{{"push":{{"address":"{push}","method":"websocket"}}}}"#);
+    harness.replay().reply("site.example:80", json_response(settings.as_bytes()));
+    let records = harness.open_channel(&format!("http://site.example/a/?{longest}qq"));
+    assert!(
+        records.iter().any(|record| matches!(record, Rec::Event(event) if event.contains("TooLong"))),
+        "{records:?}"
+    );
+}
+
 /// Finding F-42 (decision E.114 item 2): a response from outside the
 /// channel's folder, here a page redirected to another origin, stores no
 /// cookies; it was stored under the channel's folder on that origin. A

@@ -46,6 +46,7 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
     /// descriptor.
     pub(super) fn leave_channel(&mut self) {
         self.channel = None;
+        self.opened_as = None;
         self.front_door = None;
         self.contents = None;
         self.second_try = None;

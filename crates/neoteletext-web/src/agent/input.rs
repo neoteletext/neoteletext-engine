@@ -28,8 +28,13 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
                 Ok(_) => event(sink, Event::DescriptorFailed(Failure::Address(UrlError::Scheme))),
                 Err(error) => event(sink, Event::DescriptorFailed(Failure::Address(error))),
             },
-            Input::OpenChannel(address) => match channel::parse_address(address) {
-                Ok(found) => self.open_channel(&found.folder, false),
+            Input::OpenChannel(address) => match channel::parse_address(channel::without_query(address)) {
+                Ok(found) => {
+                    self.open_channel(&found.folder, false);
+                    // REQ-1674: the query goes with the push connection, so
+                    // it needs the address parsed whole.
+                    self.opened_as = Url::parse(address).ok().filter(|url| url.query().is_some());
+                }
                 Err(channel::ChannelError::Address(error)) => {
                     event(sink, Event::DescriptorFailed(Failure::Address(error)));
                 }

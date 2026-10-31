@@ -278,7 +278,15 @@ pub fn parse_address(text: &str) -> Result<ChannelAddress, ChannelError> {
 /// channels' addresses says.
 #[must_use]
 pub fn is_channel_address(text: &str) -> bool {
-    parse_address(text).is_ok()
+    parse_address(without_query(text)).is_ok()
+}
+
+/// An address without its query. A viewer's address may have one, which
+/// goes to a live channel's program (REQ-1674, DEC-1665): a channel's folder
+/// is the address without it.
+#[must_use]
+pub fn without_query(text: &str) -> &str {
+    text.split_once('?').map_or(text, |(address, _)| address)
 }
 
 /// The percent-encoded separators a server may decode into a path: `.`,
