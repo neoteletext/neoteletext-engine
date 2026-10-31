@@ -351,6 +351,16 @@ impl Url {
         Self::parse(joined)
     }
 
+    /// The same address under another scheme.
+    pub fn with_scheme(&self, scheme: Scheme) -> Result<Self, UrlError> {
+        let mut buffer = [0u8; MAX_URL_LENGTH];
+        let mut writer = Writer::new(&mut buffer);
+        let whole = self.text.as_bytes();
+        let rest = whole.get(self.scheme.name().len()..).unwrap_or(&[]);
+        writer.put(scheme.name()).and_then(|()| writer.put(rest)).map_err(|_| UrlError::TooLong)?;
+        Self::parse(core::str::from_utf8(writer.written()).map_err(|_| UrlError::BadCharacter)?)
+    }
+
     /// The normalised address without its fragment: what is requested,
     /// and what names a channel.
     #[must_use]

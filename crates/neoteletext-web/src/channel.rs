@@ -25,6 +25,9 @@ pub const SETTINGS_FILE: &str = "channel.json";
 pub const BUNDLE_FILE: &str = "index.t42";
 /// The channel's contents (REQ-WEB-025).
 pub const CONTENTS_FILE: &str = "contents.txt";
+/// The channel's live connection, always at this name in its folder
+/// (neoteletext-common's REQ-1693 item 2).
+pub const PUSH_NAME: &str = "push";
 /// The extension of a page file in TTI (REQ-INP-013).
 pub const TTI_EXTENSION: &str = ".tti";
 /// The extension of a page file in T42 (REQ-INP-002).
@@ -336,6 +339,17 @@ pub fn file_url(folder: &Url, file: ChannelFile) -> Result<Url, UrlError> {
     write_file_name(&mut writer, file).map_err(|_| UrlError::TooLong)?;
     let name = core::str::from_utf8(writer.written()).map_err(|_| UrlError::BadCharacter)?;
     folder.join(name)
+}
+
+/// The channel's live connection, from any address in its folder: `wss` or
+/// `ws` for a WebSocket, `https` or `http` for server-sent events, as the
+/// folder's own security says.
+pub fn push_url(folder: &Url, websocket: bool) -> Result<Url, UrlError> {
+    let url = folder.join(PUSH_NAME)?;
+    if !websocket {
+        return Ok(url);
+    }
+    url.with_scheme(if url.is_secure() { Scheme::Wss } else { Scheme::Ws })
 }
 
 /// A TTI page file must have at least one `PN` line (REQ-WEB-027).

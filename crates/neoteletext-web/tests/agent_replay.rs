@@ -1587,7 +1587,7 @@ fn a_channel_cookie_set_for_the_whole_host_stays_in_its_folder() {
 #[cfg(all(feature = "push", feature = "cookies"))]
 fn a_push_handshake_cookie_stays_in_its_channel_folder() {
     let mut harness = site_harness(Config::default());
-    let settings = br#"{"push":{"address":"http://site.example/a/events","method":"sse"}}"#;
+    let settings = br#"{"push":{"method":"sse"}}"#;
     harness.replay().reply("site.example:80", json_response(settings));
     let head = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nSet-Cookie: s=1; Path=/\r\n\
                 Transfer-Encoding: chunked\r\n\r\n";
@@ -1605,13 +1605,11 @@ fn a_push_handshake_cookie_stays_in_its_channel_folder() {
     assert_eq!(header_value(&last, "Cookie"), None, "not sent to another channel's folder");
 }
 
-/// The target of the push connection of a channel at `address`, whose
-/// settings name `push`.
+/// The target of the push connection of the channel at `address`.
 #[cfg(feature = "push")]
-fn push_target(address: &str, push: &str) -> String {
+fn push_target(address: &str) -> String {
     let mut harness = site_harness(Config::default());
-    let settings = format!(r#"{{"push":{{"address":"{push}","method":"websocket"}}}}"#);
-    harness.replay().reply("site.example:80", json_response(settings.as_bytes()));
+    harness.replay().reply("site.example:80", json_response(br#"{"push":{"method":"websocket"}}"#));
     harness.replay().reply("site.example:80", not_found());
     harness.open_channel(address);
     let last = harness.replay().requests_to("site.example:80").last().unwrap().clone();
@@ -1619,15 +1617,15 @@ fn push_target(address: &str, push: &str) -> String {
 }
 
 /// REQ-1674 item 1: an address's query goes, as written, on the upgrade
-/// request to the push address, and an address with none sends none.
+/// request to the push address, and an address with none sends none. What
+/// follows `#` is never sent (REQ-1693 item 1).
 #[test]
 #[cfg(feature = "push")]
 fn a_channels_query_goes_on_its_push_connection() {
-    let push = "ws://site.example/a/push";
-    assert_eq!(push_target("http://site.example/a/?id=7&b=%20x", push), "/a/push?id=7&b=%20x");
-    assert_eq!(push_target("http://site.example/a/", push), "/a/push");
-    let own = "ws://site.example/a/push?key=1";
-    assert_eq!(push_target("http://site.example/a/?id=7", own), "/a/push?key=1&id=7");
+    assert_eq!(push_target("http://site.example/a/?id=7&b=%20x"), "/a/push?id=7&b=%20x");
+    assert_eq!(push_target("http://site.example/a/"), "/a/push");
+    assert_eq!(push_target("http://site.example/a/#302"), "/a/push");
+    assert_eq!(push_target("http://site.example/a/?id=7#302?page=1"), "/a/push?id=7");
 }
 
 /// REQ-1674 item 3: the longest query the address limit allows arrives
@@ -1635,15 +1633,13 @@ fn a_channels_query_goes_on_its_push_connection() {
 #[test]
 #[cfg(feature = "push")]
 fn a_query_as_long_as_an_address_may_be() {
-    let push = "ws://site.example/a/push";
     let room = neoteletext_web::consts::MAX_URL_LENGTH - "ws://site.example/a/push?".len();
     let longest = "q".repeat(room);
-    let target = push_target(&format!("http://site.example/a/?{longest}"), push);
+    let target = push_target(&format!("http://site.example/a/?{longest}"));
     assert_eq!(target, format!("/a/push?{longest}"));
 
     let mut harness = site_harness(Config::default());
-    let settings = format!(r#"{{"push":{{"address":"{push}","method":"websocket"}}}}"#);
-    harness.replay().reply("site.example:80", json_response(settings.as_bytes()));
+    harness.replay().reply("site.example:80", json_response(br#"{"push":{"method":"websocket"}}"#));
     let records = harness.open_channel(&format!("http://site.example/a/?{longest}qq"));
     assert!(
         records.iter().any(|record| matches!(record, Rec::Event(event) if event.contains("TooLong"))),

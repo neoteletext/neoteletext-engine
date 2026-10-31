@@ -244,16 +244,28 @@ fn channel_settings() {
         Descriptor::parse_channel(br#"{"page_template":"/{mpp}.t42"}"#, &base).err(),
         Some(DescriptorError::NotForChannels(Member::PageTemplate))
     );
+    // REQ-1693 item 2: the push address is fixed, and no member can name
+    // another.
     assert_eq!(
-        Descriptor::parse_channel(br#"{"push":{"address":"wss://other.example/push","method":"websocket"}}"#, &base)
-            .err(),
-        Some(DescriptorError::Invalid(Member::PushAddress))
+        Descriptor::parse_channel(
+            br#"{"push":{"address":"wss://example.org/ceefax/push","method":"websocket"}}"#,
+            &base
+        )
+        .err(),
+        Some(DescriptorError::Unknown)
     );
-    assert!(
-        Descriptor::parse_channel(br#"{"push":{"address":"wss://example.org/live/push","method":"websocket"}}"#, &base)
-            .is_ok(),
-        "push may be in any folder of the origin"
-    );
+    let push = |json: &[u8], base: &Url| {
+        let descriptor = Descriptor::parse_channel(json, base).unwrap();
+        let (url, method) = descriptor.push().unwrap();
+        (std::string::String::from(url.as_str()), *method)
+    };
+    let websocket = br#"{"push":{"method":"websocket"}}"#;
+    let events = br#"{"push":{"method":"sse"}}"#;
+    let plain = Url::parse("http://example.org/ceefax/channel.json").unwrap();
+    assert_eq!(push(websocket, &base), ("wss://example.org/ceefax/push".into(), PushMethod::WebSocket));
+    assert_eq!(push(websocket, &plain), ("ws://example.org/ceefax/push".into(), PushMethod::WebSocket));
+    assert_eq!(push(events, &base), ("https://example.org/ceefax/push".into(), PushMethod::ServerSentEvents));
+    assert_eq!(push(events, &plain), ("http://example.org/ceefax/push".into(), PushMethod::ServerSentEvents));
     let both = br#"{"services":[{"name":"w","display_name":"W","channel":"https://w.example/","descriptor":"https://w.example/d.json"}]}"#;
     assert!(Descriptor::parse_channel(both, &base).is_err());
     let file = br#"{"services":[{"name":"w","display_name":"W","channel":"https://w.example/100.tti"}]}"#;

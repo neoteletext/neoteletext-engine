@@ -165,18 +165,14 @@ impl Descriptor {
         Ok(())
     }
 
-    /// Reads the `push` member and checks its origin.
+    /// Reads the `push` member and checks its origin. A channel's is always
+    /// at its folder's `push` (neoteletext-common's REQ-1693 item 2), so it
+    /// names no address.
     fn read_push(&mut self, reader: &mut JsonReader<'_>, base: &Url, channel: bool) -> Result<(), DescriptorError> {
-        let (url, method, input) = Self::parse_push(reader, base)?;
-        // A channel's push is on its own origin, in any folder
-        // (REQ-WEB-024); ws and wss count as http and https.
-        let own_origin = url.origin().same(&base.origin());
-        if channel && !own_origin {
-            return Err(DescriptorError::Invalid(Member::PushAddress));
-        }
+        let (url, method, input) = Self::parse_push(reader, base, channel)?;
         // Keys go back only to the descriptor's own origin, for a
         // service as for a channel (INPUT.md section 4, finding F-90).
-        if input && !own_origin {
+        if input && !url.origin().same(&base.origin()) {
             return Err(DescriptorError::Invalid(Member::PushInput));
         }
         self.push = Some((url, method));
@@ -184,7 +180,11 @@ impl Descriptor {
         Ok(())
     }
 
-    fn parse_push(reader: &mut JsonReader<'_>, base: &Url) -> Result<(Url, PushMethod, bool), DescriptorError> {
+    fn parse_push(
+        reader: &mut JsonReader<'_>,
+        base: &Url,
+        channel: bool,
+    ) -> Result<(Url, PushMethod, bool), DescriptorError> {
         if reader.next_token()? != Some(Token::BeginObject) {
             return Err(DescriptorError::Invalid(Member::Push));
         }
@@ -197,7 +197,7 @@ impl Descriptor {
                 Token::EndObject => break,
                 _ => return Err(DescriptorError::Invalid(Member::Push)),
             };
-            if key.equals(b"address") {
+            if key.equals(b"address") && !channel {
                 if url.is_some() {
                     return Err(DescriptorError::Duplicate(Member::PushAddress));
                 }
@@ -228,8 +228,13 @@ impl Descriptor {
                 return Err(DescriptorError::Unknown);
             }
         }
-        let url = url.ok_or(DescriptorError::Missing(Member::PushAddress))?;
         let method = method.ok_or(DescriptorError::Missing(Member::PushMethod))?;
+        let url = if channel {
+            crate::channel::push_url(base, method == PushMethod::WebSocket)
+                .map_err(|error| DescriptorError::Address(Member::PushAddress, error))?
+        } else {
+            url.ok_or(DescriptorError::Missing(Member::PushAddress))?
+        };
         // The scheme must suit the method.
         if url.scheme().is_websocket() != (method == PushMethod::WebSocket) {
             return Err(DescriptorError::Invalid(Member::PushAddress));

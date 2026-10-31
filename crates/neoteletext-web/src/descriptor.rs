@@ -27,10 +27,10 @@
 //!
 //! A channel's `channel.json` (REQ-WEB-024, decision E.70) is read by
 //! [`Descriptor::parse_channel`], with three differences: every member is
-//! optional, `page_template` is refused because a channel's files have
-//! fixed names, and a linked service may be a channel, given by its
-//! folder's address in a member `channel`. Its push address must be on the
-//! channel's own origin.
+//! optional, `page_template` and `push.address` are refused because a
+//! channel's names are fixed, and a linked service may be a channel, given
+//! by its folder's address in a member `channel`. Its push address is always
+//! its folder's `push` (neoteletext-common's REQ-1693 item 2).
 
 mod links;
 mod parse;
