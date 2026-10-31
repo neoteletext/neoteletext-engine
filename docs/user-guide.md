@@ -74,7 +74,8 @@ The toolchain is pinned in `rust-toolchain.toml`. `scripts/check.sh full` runs e
 - `-` for standard input;
 - `zxnet:NAME` for a live zxnet feed. The names are `teefax`, `nms-ceefax`, `chunkytext`, `spark`, `ch4` and `test`. A `wss://` channel address also works;
 - an `https://` or `http://` address of a channel, its folder ending in `/`, or its `channel.json`, such as `https://app.neottx.com/demosite/`;
-- any other `https://` or `http://` address, of a web teletext service descriptor (REQUIREMENTS.md area WEB).
+- any other `https://` or `http://` address, of a web teletext service descriptor (REQUIREMENTS.md area WEB);
+- a `neoteletext://` link, which opens the `https://` or `http://` address it wraps, as in `neoteletext://https://app.neottx.com/demosite/`. `neottx` registers nothing with the operating system: the browser does that. A fragment after the address, which names a page in the browser, is refused here.
 
 The format of a file is detected from its content. `--format` overrides detection:
 

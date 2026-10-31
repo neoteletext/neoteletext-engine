@@ -56,6 +56,30 @@ impl Kept {
 
 const SECOND: u64 = 1_000_000;
 
+/// REQ-1672 items 1 and 2: a link holds an `http` or `https` address, its
+/// scheme in either case, and nothing else.
+#[test]
+fn a_link_from_outside_unwraps_to_its_address() {
+    use crate::input::{is_live, link_address};
+    assert_eq!(link_address("neoteletext://https://a.example/demo/"), Ok("https://a.example/demo/"));
+    assert_eq!(link_address("neoteletext://http://a.example/demo/?id=7"), Ok("http://a.example/demo/?id=7"));
+    assert_eq!(link_address("NeoTeletext://HTTPS://a.example/demo/"), Ok("HTTPS://a.example/demo/"));
+    assert_eq!(link_address("pages.t42"), Ok("pages.t42"));
+    for refused in [
+        "neoteletext://home",
+        "neoteletext://",
+        "neoteletext://file:///etc/passwd",
+        "neoteletext://web:https://a.example/",
+        "neoteletext://neoteletext://https://a.example/",
+        "neoteletext://wss://a.example/",
+    ] {
+        assert!(link_address(refused).is_err(), "{refused}");
+    }
+    assert!(is_live("neoteletext://https://a.example/demo/"));
+    assert!(is_live("NEOTELETEXT://home"), "a refused link is refused, not read as a file");
+    assert!(!is_live("neoteletext:home"));
+}
+
 #[test]
 fn a_new_service_keeps_the_records_the_viewer_asked_for() {
     // The viewer asks once, before the fetcher announces the service; had

@@ -19,7 +19,8 @@ pub struct Cli {
 pub struct Common {
     /// Input: a file, `-` for standard input, `zxnet:<name>` for a live feed,
     /// or an `http` or `https` address: a folder ending in `/` is a channel,
-    /// and any other address a service's descriptor.
+    /// and any other address a service's descriptor. A `neoteletext://`
+    /// link opens the address it wraps.
     pub input: String,
     /// Input format, overriding detection.
     #[arg(long, value_enum)]

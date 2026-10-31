@@ -51,3 +51,16 @@ fn a_channels_own_settings_open_as_a_channel() {
 fn any_other_address_is_a_descriptor() {
     assert_eq!(first_request("/service.json"), "/service.json");
 }
+
+/// REQ-1672 item 2: `neottx` refuses a link that wraps no address, saying
+/// why, and opens nothing.
+#[test]
+fn a_link_that_wraps_no_address_is_refused() {
+    let output = Command::new(env!("CARGO_BIN_EXE_neottx"))
+        .args(["text", "neoteletext://home", "100"])
+        .stdin(Stdio::null())
+        .output()
+        .expect("run neottx");
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("wraps an http or https address"));
+}

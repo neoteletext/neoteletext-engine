@@ -8,10 +8,39 @@ use crate::source::{Finished, Source};
 use neoteletext_core::fsm::PageState;
 use neoteletext_core::types::PageAddress;
 
+/// What begins a link from outside: the address it wraps follows
+/// (DEC-1663, DEC-1666).
+const LINK_SCHEME: &str = "neoteletext://";
+/// The schemes a link may wrap (REQ-1672 item 2).
+const LINK_TARGETS: [&str; 2] = ["http://", "https://"];
+
+/// Whether `text` starts with `prefix`, whatever the letters' case, as a
+/// URI's scheme may (RFC 3986 section 3.1); and what follows it.
+fn after_prefix<'a>(text: &'a str, prefix: &str) -> Option<&'a str> {
+    let start = text.get(..prefix.len())?;
+    start.eq_ignore_ascii_case(prefix).then(|| text.get(prefix.len()..)).flatten()
+}
+
+/// The address to open for `input`: a `neoteletext://` link's wrapped
+/// address, which then goes as a plain address does, and any other input
+/// as it is (REQ-1672, TODO-1679).
+///
+/// # Errors
+/// A link that wraps no `http` or `https` address.
+pub fn link_address(input: &str) -> Result<&str, String> {
+    let Some(wrapped) = after_prefix(input, LINK_SCHEME) else { return Ok(input) };
+    if LINK_TARGETS.iter().any(|scheme| after_prefix(wrapped, scheme).is_some()) {
+        Ok(wrapped)
+    } else {
+        Err(format!("{LINK_SCHEME} wraps an http or https address, as in {LINK_SCHEME}https://example.org/channel/"))
+    }
+}
+
 /// True for inputs that are live feeds or web services.
 #[must_use]
 pub fn is_live(input: &str) -> bool {
     input.starts_with("zxnet:")
+        || after_prefix(input, LINK_SCHEME).is_some()
         || input.starts_with("wss://")
         || input.starts_with("http://")
         || input.starts_with("https://")
