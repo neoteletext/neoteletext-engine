@@ -4,12 +4,13 @@
 use super::decoder_link::{page_request, send};
 use super::transport::{READ_CHUNK, StdTransport, SystemRandom, web_address};
 use super::wakes::{Wake, Wakes};
-use super::{CHANNEL_PREFIX, clock, neottx};
+use super::{clock, neottx};
 use crate::pipe::{self, Frame, Notice};
 use neoteletext_core::types::Instant;
 use neoteletext_web::agent::{
     Config, Event, Failure, Input, InputMessage, Output, PageBytes, Source as Came, Storage, UserAgent,
 };
+use neoteletext_web::channel::is_channel_address;
 use neoteletext_web::descriptor::Descriptor;
 use neoteletext_web::http::MediaType;
 use neoteletext_web::port::{ConnectionId, Pump};
@@ -35,8 +36,8 @@ pub(super) fn run_web(
     proxy: Option<Proxy>,
 ) {
     let mut storage = Box::new(Storage::default());
-    let channel = address.strip_prefix(CHANNEL_PREFIX);
-    let config = agent_config(channel.is_some(), allow_local, proxy.is_some());
+    let channel = is_channel_address(address);
+    let config = agent_config(channel, allow_local, proxy.is_some());
     let mut agent: Box<Agent<'_>> = Box::new(UserAgent::new(config, storage.buffers(), SystemRandom));
     let mut pump = Pump::new(StdTransport::new(allow_local, wake, proxy));
     let start = StdInstant::now();
@@ -59,7 +60,7 @@ pub(super) fn run_web(
             broken.set(true);
         }
     };
-    let open = channel.map_or(Input::OpenService(address), Input::OpenChannel);
+    let open = if channel { Input::OpenChannel(address) } else { Input::OpenService(address) };
     agent.handle(clock(start), open, &mut |output| sink(output, &mut pump, &mut next_tick));
     while !broken.get() && !wakes.ended() {
         wakes.turn();

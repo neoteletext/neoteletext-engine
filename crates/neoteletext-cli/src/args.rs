@@ -17,7 +17,9 @@ pub struct Cli {
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Args, Debug, Clone)]
 pub struct Common {
-    /// Input: a file, `-` for standard input, or `zxnet:<name>` for a live feed.
+    /// Input: a file, `-` for standard input, `zxnet:<name>` for a live feed,
+    /// or an `http` or `https` address: a folder ending in `/` is a channel,
+    /// and any other address a service's descriptor.
     pub input: String,
     /// Input format, overriding detection.
     #[arg(long, value_enum)]

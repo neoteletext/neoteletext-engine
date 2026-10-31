@@ -131,3 +131,15 @@ fn an_encoded_separator_after_the_folder_is_outside_it() {
     assert!(is_inside(&one, &at("http://h.example/one/100.tti?x=%2F")), "a query is not the path");
     assert!(is_inside(&one, &at("http://h.example/one/a%20b")), "other encodings are not separators");
 }
+
+/// DEC-1710: a folder or a channel's own file opens as a channel, and any
+/// other address as a service's descriptor.
+#[test]
+fn an_address_says_whether_it_is_a_channel() {
+    for channel in ["https://h.example/demosite/", "https://h.example", "http://h.example/a/channel.json"] {
+        assert!(is_channel_address(channel), "{channel}");
+    }
+    for service in ["https://h.example/service.json", "https://h.example/a/b", "wss://h.example/a/"] {
+        assert!(!is_channel_address(service), "{service}");
+    }
+}

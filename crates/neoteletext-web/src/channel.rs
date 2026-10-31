@@ -273,6 +273,14 @@ pub fn parse_address(text: &str) -> Result<ChannelAddress, ChannelError> {
     Ok(ChannelAddress { folder, file })
 }
 
+/// Whether an address opens as a channel, a folder or a channel's own file,
+/// rather than as a service's descriptor (DEC-1710): the one reader of
+/// channels' addresses says.
+#[must_use]
+pub fn is_channel_address(text: &str) -> bool {
+    parse_address(text).is_ok()
+}
+
 /// The percent-encoded separators a server may decode into a path: `.`,
 /// `/` and `\` (RFC 3986 section 2.1; hexadecimal digits in either case).
 const ENCODED_SEPARATORS: [&[u8; PERCENT_ENCODED_LENGTH]; 3] = [b"%2E", b"%2F", b"%5C"];

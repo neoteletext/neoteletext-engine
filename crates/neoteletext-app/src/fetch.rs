@@ -21,10 +21,6 @@ pub use wakes::Wake;
 /// Directories the fetcher may read to resolve names (decision 28).
 const RESOLVER_PATHS: [&str; 6] = ["/etc", "/run/systemd/resolve", "/usr/lib", "/lib", "/usr/lib64", "/lib64"];
 
-/// The prefix of a fetcher address that names a channel's folder rather
-/// than a descriptor (REQ-WEB-018).
-pub const CHANNEL_PREFIX: &str = "channel:";
-
 /// Runs the fetcher for `address` until the decoder process goes away.
 pub fn run(address: &str, no_sandbox: bool, allow_local: &[IpAddr], proxy: Option<&str>) -> Result<(), (u8, String)> {
     let proxy = proxy.map(Proxy::parse).transpose().map_err(|message| (crate::exit::USAGE, message))?;

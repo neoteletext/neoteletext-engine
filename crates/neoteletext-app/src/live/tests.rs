@@ -57,12 +57,6 @@ impl Kept {
 const SECOND: u64 = 1_000_000;
 
 #[test]
-fn a_channel_address_is_live() {
-    // Without this, `neottx view channel:...` looked for a file of that name.
-    assert!(crate::input::is_live("channel:https://s.example/demo/"));
-}
-
-#[test]
 fn a_new_service_keeps_the_records_the_viewer_asked_for() {
     // The viewer asks once, before the fetcher announces the service; had
     // the announcement forgotten, no WELCOME would reach it and keys would

@@ -73,7 +73,8 @@ The toolchain is pinned in `rust-toolchain.toml`. `scripts/check.sh full` runs e
 - a file;
 - `-` for standard input;
 - `zxnet:NAME` for a live zxnet feed. The names are `teefax`, `nms-ceefax`, `chunkytext`, `spark`, `ch4` and `test`. A `wss://` channel address also works;
-- an `https://` or `http://` address of a web teletext service descriptor (REQUIREMENTS.md area WEB).
+- an `https://` or `http://` address of a channel, its folder ending in `/`, or its `channel.json`, such as `https://app.neottx.com/demosite/`;
+- any other `https://` or `http://` address, of a web teletext service descriptor (REQUIREMENTS.md area WEB).
 
 The format of a file is detected from its content. `--format` overrides detection:
 
@@ -221,6 +222,7 @@ neottx text zxnet:teefax 100
 neottx render recording.t42 all -o pages/
 neottx convert broadcast.ts --to t42 -o broadcast.t42
 neottx view https://example.org/service.json
+neottx view https://app.neottx.com/demosite/
 neottx check pages/*.tti --descriptor service.json
 neottx sound --page 100 chime.wav chime.t42 && cat pages.t42 chime.t42 > channel.t42
 ```
