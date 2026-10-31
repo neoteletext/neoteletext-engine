@@ -167,7 +167,7 @@ const ZOOM_ROWS: usize = 12;
 /// (REQ-RND-022), the reference caller of REQ-RND-021. `rows` is a bitmask
 /// of rows to draw. Each row is [`PAGE_WIDTH`] pixels wide from the start of
 /// the framebuffer's lines; filling any border beyond it with
-/// [`border_index`] is for the caller.
+/// [`border_index`](super::border_index) is for the caller.
 pub fn render_screen(
     grid: &Grid,
     rows: u32,
