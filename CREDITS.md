@@ -53,12 +53,11 @@ These programs are run as separate programs or test oracles, in containers with 
   comparison with `neoteletext-opus`.
 - *Licence:* BSD-3-Clause; nothing of the build is kept in the repository.
 
-**vhs-teletext** — Alistair Buxton, <https://github.com/ali1234/vhs-teletext>
 **vbit2** — Peter Kwan and contributors, <https://github.com/peterkvt80/vbit2>
 **QTeletextMaker** — gkthemac, <https://github.com/gkthemac/QTeletextMaker>
 - *What they provide:* independent test oracles and fuzzing inputs (REQ-TST-001).
-- *Licence:* vhs-teletext and QTeletextMaker are GPL-3.0; vbit2's repository states no licence
-  identifier. All three are run as external programs only.
+- *Licence:* QTeletextMaker is GPL-3.0; vbit2's repository states no licence identifier. Both are
+  run as external programs only.
 
 ## Formats and services neoteletext reads
 

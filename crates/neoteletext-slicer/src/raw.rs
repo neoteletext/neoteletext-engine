@@ -5,9 +5,8 @@
 //! fixed number of samples. [`RawReader`] is fed the file in chunks of any
 //! size, splits it into lines and passes each used line to the [`Slicer`].
 //!
-//! The presets follow the capture devices that the vhs-teletext tool reads.
-//! The "lines used" of a preset are zero-based indices within a field, as
-//! that tool counts them.
+//! The presets follow the capture devices they are named for. The "lines
+//! used" of a preset are zero-based indices within a field.
 
 use neoteletext_core::consts::FIELD_PERIOD_US;
 use neoteletext_core::packet::{Packet, PacketMeta};

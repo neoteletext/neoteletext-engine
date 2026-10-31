@@ -145,7 +145,6 @@ Done and verified by `NEOTELETEXT_REMOTE=oldvga scripts/check.sh full`: formatti
 | Size check (REQ-GEN-009), symbol check of the linked microcontroller image (REQ-GEN-019), WebAssembly isolation at run time (REQ-SEC-019), core tests under QEMU system emulation on Cortex-M4 and RV32IMAC | Every target now compiles (decision 39), but these checks need firmware images and system emulation that do not exist yet. |
 | kitty and Sixel graphics | Deferred by decision 3. |
 | macOS and Windows sandboxes (REQ-SEC-017 Phase 2) | Phase 2; `neottx` says so when it runs unsandboxed. |
-| vhs-teletext comparisons (REQ-TST-021 second half, REQ-SLC-014, REQ-TST-061) | vhs-teletext is not installed and its sample captures have not been fetched. |
 | Release items of REQ-SEC-014: bill of materials, signing, reproducible builds | No release has been made. |
 | Phase 2 items not started: request-mode page store (REQ-ACQ-006), pre-fetching (REQ-NAV-004), the glyph line cache (REQ-RND-026), other formats (REQ-INP-021), device-bound sessions (REQ-WEB-017) | Phase 2. |
 

@@ -48,11 +48,9 @@
 **Sources of real teletext data** (decision E.28 and REQ-TST-022; checked 1 October 2026):
 - the FFmpeg sample archive, `https://samples.ffmpeg.org/ffmpeg-bugs/trac/ticket2086/`, for off-air DVB transport streams with teletext;
 - the Teletext Archaeologist archive, `https://archive.teletextarchaeologist.org`, for recovered services in T42 form;
-- the zxnet online teletext viewer, `https://zxnet.co.uk/teletext/viewer/`, and its WebSocket feeds (REQ-INP-022);
-- the vhs-teletext sample captures, for raw sampled video.
+- the zxnet online teletext viewer, `https://zxnet.co.uk/teletext/viewer/`, and its WebSocket feeds (REQ-INP-022).
 
 **Community resources used as test oracles:**
-- vhs-teletext;
 - vbit2 and raspi-teletext;
 - QTeletextMaker;
 - the edit.tf and zxnet editors;

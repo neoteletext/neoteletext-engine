@@ -12,7 +12,6 @@ Abbreviations for sources:
 - [KSLICED] https://docs.kernel.org/userspace-api/media/v4l/dev-sliced-vbi.html
 - [KRAW] https://docs.kernel.org/userspace-api/media/v4l/dev-raw-vbi.html
 - [VDEV2] linux include/uapi/linux/videodev2.h (torvalds/linux master, fetched 2026-10-01)
-- [VHS] github.com/ali1234/vhs-teletext (master)
 - [VBIT2] github.com/peterkvt80/vbit2 (master) and its wiki page "Page-files"
 - [RASPI] github.com/ali1234/raspi-teletext (master)
 - [WIKI-T42] https://teletext.wiki.zxnet.co.uk/wiki/T42_packet_stream
@@ -48,10 +47,9 @@ Abbreviations for sources:
 T42 bytes are stored LSB-first: bit 0 of each byte is the first bit transmitted. Odd parity is kept in bit 7 and Hamming bytes are stored as transmitted.
 
 Evidence:
-- vhs-teletext slicer: `Packet(np.packbits(result.reshape(-1,8)[:,::-1]))` reverses each group of 8 received bits before packing MSB-first. The first received bit therefore becomes bit 0. ([VHS] teletext/vbi/line.py, `slice()`, ~line 285)
 - raspi-teletext reads 42-byte packets from stdin and serialises each byte with `*dest++ = b&1; b = b>>1;`, i.e. LSB first ([RASPI] buffer.c `copy_packet`). Its README says: "The packet format is 42 byte raw binary packets, without the clock run-in."
   - Its filler packet `{0xd0, 0xa1, 0x20 ...}` is commented "Magazine 8, packet 25". So MRAG bytes are raw Hamming 8/4 codewords and text bytes carry odd parity (0x20 has odd parity).
-- vhs-teletext's DVB reader byte-reverses DVB bytes to obtain T42 bytes (`byte_reverse(b) for b in data[pos+4:pos+4+42]`, [VHS] teletext/ts.py). vbit2's DVB writer does the reverse (`ReverseByteTab[...] // bits are reversed in PES stream`, [VBIT2] service.cpp ~line 481). Both confirm that T42 order is the opposite of DVB order.
+- vbit2's DVB writer byte-reverses T42 bytes to obtain DVB bytes (`ReverseByteTab[...] // bits are reversed in PES stream`, [VBIT2] service.cpp ~line 481), which confirms that T42 order is the opposite of DVB order.
 - The Linux sliced VBI payload uses the same convention: "Last 42 of the 45 byte Teletext packet, that is without clock run-in and framing code, lsb first transmitted." [KSLICED] §4.7.3.2
 
 ### Variants
@@ -165,7 +163,7 @@ data_field() {                         // EBU teletext
   > "txt_data_block: this 336-bit field corresponds to the 42 bytes following the clock-run-in and framing-code sequence of an EBU or Inverted Teletext data packet as defined in EN 300 706 [3]. ... Data bits are inserted in the same order, as they would appear in the VBI."
 - **Consequence:** bslbf fields are sent MSB first, so the first bit on air is the MSB of each PES byte. Each PES byte is the bit-reverse of the LSB-first T42 byte.
   - To get T42 from a data unit, bit-reverse bytes [4..45] of the unit, counting from data_unit_id at [0].
-  - This is exactly what [VHS] ts.py does (`data[pos+4:pos+4+42]`, keeping units whose data_unit_id is in {2,3} and stepping 46 bytes). [VBIT2] does the inverse.
+  - [VBIT2] does the inverse.
 - **Other EN 301 775 data fields** ([EN775] §4.6-4.9). All start with the same 1-byte header (reserved 2 bits = "11", field_parity 1 bit, line_offset 5 bits) except monochrome.
   - VPS (0xC3): field_parity='1', line_offset=16, vps_data_block = 104 bits = 13 bytes (EN 300 231 bytes 3..15, run-in and start code excluded). Bits are in VBI order. §4.6
   - WSS (0xC4): field_parity='1', line_offset=23, wss_data_block = 14 bits followed by 2 reserved bits "11". "WSS bit 0 corresponds to the left-most bit". §4.7
@@ -225,9 +223,9 @@ data_field() {                         // EBU teletext
   | 3 | bits 5-4 | adaptation_field_control (01 = payload only, 10 = adaptation only, 11 = adaptation then payload, 00 = reserved) |
   | 3 | bits 3-0 | continuity_counter |
 
-  (Wikipedia, same page.) The same masks appear in [VHS] ts.py: `p&0x1fff` PID, `p & 0x4000` PUSI, `c & 0x20` adaptation present, payload offset `4 + packet[4] + 1`.
-- **Adaptation field:** the first byte is adaptation_field_length, the number of bytes that follow. The payload starts at offset 4 + 1 + adaptation_field_length ([VHS] ts.py; Wikipedia).
-- **PUSI on a PES PID:** a new PES packet starts at the first payload byte (00 00 01 start code). ([VHS] ts.py collects payloads from each PUSI to the next.)
+  (Wikipedia, same page.)
+- **Adaptation field:** the first byte is adaptation_field_length, the number of bytes that follow. The payload starts at offset 4 + 1 + adaptation_field_length (Wikipedia).
+- **PUSI on a PES PID:** a new PES packet starts at the first payload byte (00 00 01 start code).
 - **Reserved PIDs:** PID 0x0000 = PAT; 0x1FFF = null packets (Wikipedia MPEG TS).
 - **PSI:** PAT table_id 0x00 and PMT table_id 0x02 (https://en.wikipedia.org/wiki/Program-specific_information).
   - PAT entry: program_number(16), reserved(3), PID(13).
@@ -308,10 +306,10 @@ struct v4l2_vbi_format {
 
 ---------------------------------------------------------------------------------------------------
 
-## 4. Raw VBI capture files (vhs-teletext)
+## 4. Raw VBI capture files
 
-- The file is headerless: a concatenation of raw V4L2 VBI frames as read from /dev/vbiN. `teletext record -d /dev/vbi0 > capture.vbi` reads chunks of `line_length*field_lines*2` bytes and writes them unchanged. ([VHS] README; teletext/cli/teletext.py `record()`)
-- **Card presets** ([VHS] teletext/vbi/config.py `Config.cards`; default card = 'bt8x8'):
+- The file is headerless: a concatenation of raw V4L2 VBI frames as read from /dev/vbiN, in chunks of `line_length*field_lines*2` bytes, written unchanged.
+- **Card presets** (default card = 'bt8x8'):
 
   | card | sample_rate (Hz) | line_length (samples) | dtype | field_lines | field_range (lines used) | line_start_range |
   |---|---|---|---|---|---|---|
@@ -327,9 +325,8 @@ struct v4l2_vbi_format {
   - The clock run-in + framing pattern used for alignment is `crifc = 1,-1 ×8, then 1,1,1,-1,-1,1,-1,-1` (CRI 16 bits then FC 11100100).
 - **bt8x8 frame:** 2 × 16 × 2048 = 65536 bytes.
   - Kernel bttv PAL defaults: `VBI_BPL 2048`, `VBI_DEFLINES 16`, `Fsc = 35468950` (sampling_rate), `vbistart = {7, 320}`, `VBI_OFFSET 244`. So field 1 = lines 7-22 and field 2 = lines 320-335, 8-bit GREY. (torvalds/linux drivers/media/pci/bt8xx/bttvp.h, bttv-vbi.c, bttv-driver.c tvnorm PAL entry)
-  - The last 4 bytes of each frame buffer are overwritten with the frame sequence number (little-endian u32 in vhs-teletext's reading: `struct.unpack('<I', chunk[-4:])`). This happens only with read() I/O. Kernel comment: "Ugly hack for backwards compatibility. Some applications expect that the last 4 bytes of the VBI data contains the sequence number." (bttv-driver.c ~line 2776; [VHS] cli/teletext.py record())
+  - The last 4 bytes of each frame buffer are overwritten with the frame sequence number (little-endian u32). This happens only with read() I/O. Kernel comment: "Ugly hack for backwards compatibility. Some applications expect that the last 4 bytes of the VBI data contains the sequence number." (bttv-driver.c ~line 2776)
   - Consequence: the last 4 samples of line 335 are corrupt. This is outside the teletext data window (derived).
-- FileChunker reads `size`-byte lines. Per field it skips `field_range.start` lines, uses `len(field_range)` lines, and skips the rest. ([VHS] teletext/file.py)
 - **The "old sliced" capture format.** Per frame:
   1. ASCII text of the time delta since the previous frame (`"%f\n"`, seconds).
   2. One byte `n_lines` (+1 if a raw block follows).
@@ -540,11 +537,11 @@ Sources: [EDITTF] README "All frame data is kept in the URL"; teletext-editor.js
 ---------------------------------------------------------------------------------------------------
 
 ## Gaps / UNVERIFIED list
-1. ISO/IEC 13818-1 itself was not consulted. TS/PES/PSI/M2TS details come from Wikipedia and from vbit2/vhs-teletext code. The M2TS TP_extra_header byte order is unverified.
+1. ISO/IEC 13818-1 itself was not consulted. TS/PES/PSI/M2TS details come from Wikipedia and from vbit2 code. The M2TS TP_extra_header byte order is unverified.
 2. TTI commands DS, SP and others outside the MRG/vbit2 set have no primary definition. The order of C12-C14 within PS bits 7-9 conflicts between vbit2 and edit.tf.
 3. The TTA index endianness is not stated.
 4. CEBRA .ttx has no official spec; only the zxnet writer was examined.
 5. The BBC MODE 7 dump layout is conventional, based on the zxnet exporter, not an Acorn document.
 6. The SMPTE 2031 UDW layout was not read from the standard.
 7. The sliced format's teletext payload bit order was inferred, not read from a document.
-8. The byte order of vhs-teletext 'tbc' uint16 samples was not confirmed.
+8. The byte order of 'tbc' uint16 samples was not confirmed.
