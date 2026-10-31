@@ -126,8 +126,7 @@ const LINK_DEFAULT_FIRST: usize = 6;
 const LINK_DEFAULT_SECOND: usize = 8;
 
 /// The side panels a fallback value selects (Table 21, byte N+4 bits 3 and
-/// 2): none, left 16, right 16, or both 8, in the X/28 field form whose
-/// width table (decision E.49) gives those widths.
+/// 2): none, left 16, right 16, or both 8, in the X/28 field form.
 const fn fallback_panels(bits: u8) -> SidePanelFields {
     let (left, right, left_columns) = match bits & MOT_FALLBACK_PANELS_MASK {
         0b00 => (false, false, 0),

@@ -225,7 +225,7 @@ fn authored_stream_lands_in_the_stores() {
     ] {
         assert!(classes.contains(&class), "{class:?}");
     }
-    assert!(streams::display_pages().unwrap().len() >= 30);
+    assert!(streams::display_pages().unwrap().len() >= 27);
 }
 
 /// REQ-INP-024: the stream follows Annex B.7, enhancement pages send their

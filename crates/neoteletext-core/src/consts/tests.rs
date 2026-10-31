@@ -37,7 +37,6 @@ fn transparent_indices_agree() {
     assert_eq!(COLOUR_TRANSPARENT, PALETTE_TRANSPARENT);
     assert_eq!(usize::from(COLOUR_TRANSPARENT), CLUT_ENTRIES);
     assert_eq!(COLOUR_MAP_ENTRIES, 1 << (CLUT_SHIFT + 2));
-    assert_eq!(usize::from(SIDE_PANEL_MAX_COLUMNS) * 2 + COLUMNS, 72);
 }
 
 #[test]

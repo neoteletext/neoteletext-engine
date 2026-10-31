@@ -3,19 +3,15 @@
 //! found through X/27/4 and the Magazine Organization Table, and run by the
 //! enhancement processor.
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects, missing_docs)]
-#![cfg_attr(
-    not(all(feature = "side-panels")),
-    allow(dead_code, unused_imports, reason = "helpers of the tests whose capability is compiled out (decision E.71)")
-)]
 
 mod common;
 
 use common::{
     DISPLAY, Mot, ObjectDef, Receiver, build, build_25, build_35, char_of, define, display_page, end, g0, invoke, link,
     local_data, local_number, mot_packets, null_link, object_link, object_page, object_page_data, object_page_packets,
-    origin, page_grid, public_number, row_0, set_position, text, text_at, x26, x27, x28,
+    origin, page_grid, public_number, set_position, text, text_at, x26, x27, x28,
 };
-use neoteletext_core::colour::{SidePanels, colour_index};
+use neoteletext_core::colour::colour_index;
 use neoteletext_core::config::{Config, PresentationLevel};
 use neoteletext_core::consts::{
     LINK_FUNCTION_GPOP, LINK_FUNCTION_POP, OBJECT_INVOCATIONS_PER_TYPE, OBJECTS_OPEN_AT_ONCE, PAGE_FUNCTION_DRCS,
@@ -186,20 +182,12 @@ mod attributes {
     }
 }
 
-/// REQ-OBJ-002, REQ-OBJ-014, REQ-L25-041: the Origin Modifier places an
-/// object, also in the side panels (the worked modifier of
-/// `research/notes-level25-objects.md` section 13.2: row +2, column +56),
-/// the position returns after the object, and elements beyond the object's
-/// display area are discarded.
-// Needs its capability compiled in (decision E.71).
-#[cfg(feature = "side-panels")]
+/// REQ-OBJ-002, REQ-OBJ-014, REQ-1644: the Origin Modifier places an object
+/// (the worked modifier of `research/notes-level25-objects.md` section
+/// 13.2: row +2, column +56), the position returns after the object, and
+/// elements past column 39 are discarded while the object continues.
 #[test]
-fn origin_modifier_and_side_panels() {
-    // The left panel only, n = 0: 16 columns, 56 to 71 (decision E.49).
-    let panels = PresentationFields {
-        side_panels: Some(SidePanelFields { left: true, right: false, status_flag: true, left_columns: 0 }),
-        ..PresentationFields::default()
-    };
+fn origin_modifier_and_elements_past_column_39() {
     let object = local_object(ObjectKind::Passive, 1, &[g0(0, b'P'), g0(11, b'Q'), g0(12, b'R')]);
     let local = [
         set_position(3, 4),
@@ -212,42 +200,37 @@ fn origin_modifier_and_side_panels() {
         g0(30, b'S'),
         invoke(ObjectSource::Local, ObjectKind::Passive, local_number(1, 0)),
     ];
-    let mut packets = page_with_objects(&[], &local, &[object]);
-    packets.insert(1, x28(0, &panels));
-    let (grid, report) = build(&packets, L25);
-    assert_eq!(grid.side_panels, SidePanels { left: 16, right: 0 });
-    let panel = |row: usize, column: usize| char_of(grid.panel_cell(row, column).unwrap());
-    assert_eq!((panel(5, 60), panel(5, 71)), ('P', 'Q'), "origin row 3 + 2, column 4 + 56");
+    let (grid, report) = build(&page_with_objects(&[], &local, &[object]), L25);
     assert_eq!((char_of(&grid.cells[3][4]), char_of(&grid.cells[3][15])), ('P', 'Q'));
-    assert_eq!(char_of(&grid.cells[3][16]), 'R', "within the main page");
+    assert_eq!(char_of(&grid.cells[3][16]), 'R', "within the page");
     assert_eq!(char_of(&grid.cells[3][30]), 'P', "placed at 3,30, over the local 'S'");
-    // R of the first object at column 72 is discarded, and so are the Q and
-    // R of the third object at 41 and 42, which would cross into the panel
-    // area.
-    assert_eq!(report.unwrap().faults.discarded_writes, 3);
+    // All three elements of the first object fall at columns 60, 71 and 72,
+    // and the Q and R of the third at 41 and 42.
+    assert_eq!(report.unwrap().faults.discarded_writes, 5);
+    assert!(grid.cells[5].iter().all(|cell| char_of(cell) == ' '), "nothing from the first object wraps");
 }
 
-/// REQ-L25-040, REQ-L25-041, REQ-TST-016: the three side-panel layouts of
-/// clause 12.5.3, the panel defaults, and writes to row 0 discarded.
-// Needs its capability compiled in (decision E.71).
-#[cfg(feature = "side-panels")]
+/// REQ-1644, REQ-1643: a page that enables side panels, at any width and
+/// with either status flag, and places objects in columns 40 to 71, shows
+/// exactly what it shows with that data removed, at Levels 2.5 and 3.5.
 #[test]
-fn side_panel_layouts_of_clause_12_5_3() {
-    let layouts = [
-        // Full right panel 40 to 55; full left panel 56 to 71; 8 + 8.
-        (SidePanelFields { left: false, right: true, status_flag: true, left_columns: 0 }, (0, 16), [40, 55]),
-        (SidePanelFields { left: true, right: false, status_flag: true, left_columns: 0 }, (16, 0), [56, 71]),
-        (SidePanelFields { left: true, right: true, status_flag: true, left_columns: 8 }, (8, 8), [64, 47]),
-    ];
+fn side_panel_data_is_read_past() {
     let colours = neoteletext_core::types::DefaultColourFields {
-        screen: 0,
+        screen: colour_index(3, 1),
         row: colour_index(3, 2),
         black_background_substitution: false,
         remapping: 0,
     };
-    for (fields, widths, columns) in layouts {
-        let presentation =
-            PresentationFields { side_panels: Some(fields), colours: Some(colours), ..PresentationFields::default() };
+    let object = local_object(ObjectKind::Active, 1, &[g0(0, b'K')]);
+    let on_the_page = [set_position(8, 3), invoke(ObjectSource::Local, ObjectKind::Active, local_number(1, 0))];
+    let plain = PresentationFields { colours: Some(colours), ..PresentationFields::default() };
+    let layouts = [
+        (SidePanelFields { left: false, right: true, status_flag: true, left_columns: 0 }, [40, 55]),
+        (SidePanelFields { left: true, right: false, status_flag: true, left_columns: 0 }, [56, 71]),
+        (SidePanelFields { left: true, right: true, status_flag: true, left_columns: 8 }, [64, 47]),
+        (SidePanelFields { left: true, right: true, status_flag: false, left_columns: 8 }, [64, 47]),
+    ];
+    for (fields, columns) in layouts {
         let mut local = vec![];
         for column in columns {
             local.extend([
@@ -256,33 +239,14 @@ fn side_panel_layouts_of_clause_12_5_3() {
                 invoke(ObjectSource::Local, ObjectKind::Active, local_number(1, 0)),
             ]);
         }
-        local.extend([
-            row_0(0, 0b01),
-            origin(0, columns[0]),
-            invoke(ObjectSource::Local, ObjectKind::Active, local_number(1, 0)),
-        ]);
-        let object = local_object(ObjectKind::Active, 1, &[g0(0, b'K')]);
-        let mut packets = page_with_objects(&[], &local, &[object]);
-        packets.insert(1, x28(0, &presentation));
-        let grid = build_25(&packets);
-        assert_eq!((grid.side_panels.left, grid.side_panels.right), widths);
-        for column in columns {
-            let cell = grid.panel_cell(6, usize::from(column)).unwrap();
-            assert_eq!(char_of(cell), 'K', "{fields:?} column {column}");
-        }
-        let blank = grid.panel_cell(7, usize::from(columns[0])).unwrap();
-        assert_eq!((char_of(blank), blank.background, blank.foreground), (' ', colour_index(3, 2), WHITE));
-        assert!(grid.panel_cell(0, usize::from(columns[0])).is_none(), "row 0 has no panel content");
+        local.extend(on_the_page);
+        let mut panels = page_with_objects(&[(2, b"MAIN PAGE")], &local, core::slice::from_ref(&object));
+        panels.insert(1, x28(0, &PresentationFields { side_panels: Some(fields), ..plain }));
+        let mut removed = page_with_objects(&[(2, b"MAIN PAGE")], &on_the_page, core::slice::from_ref(&object));
+        removed.insert(1, x28(0, &plain));
+        assert_eq!(build_25(&panels), build_25(&removed), "{fields:?} at Level 2.5");
+        assert_eq!(build_35(&panels), build_35(&removed), "{fields:?} at Level 3.5");
     }
-    // The status flag: at Level 2.5 a flag of 0 shows no panels.
-    let fields = SidePanelFields { left: true, right: true, status_flag: false, left_columns: 8 };
-    let packets = display_page(
-        0,
-        &[],
-        vec![x28(0, &PresentationFields { side_panels: Some(fields), ..PresentationFields::default() })],
-    );
-    assert_eq!(build_25(&packets).side_panels, SidePanels::NONE);
-    assert_eq!(build_35(&packets).side_panels, SidePanels { left: 8, right: 8 });
 }
 
 /// REQ-OBJ-008, REQ-TST-017: every pair of invoker and type, and local
@@ -542,10 +506,7 @@ fn compositional_links_by_role() {
 
 /// The table of magazine 1 linking page 100 to POP link 1.
 fn table(level_25: bool, level_35: bool, omit: &[u8]) -> Mot {
-    let fallback = FallbackFields {
-        side_panels: SidePanelFields { left: true, right: false, status_flag: true, left_columns: 0 },
-        black_background_substitution: true,
-    };
+    let fallback = FallbackFields { side_panels: SidePanelFields::default(), black_background_substitution: true };
     let mut mot = Mot {
         entries: vec![(0x00, MotPageEntry { global_objects: false, pop_link: 1 })],
         gpop: Some(object_link(0x3A1, FallbackFields::default(), [None; 2])),
@@ -711,17 +672,12 @@ fn worst_case_page_is_bounded() {
 
 /// REQ-OBJ-020, REQ-TST-016: the open area of Figure A.1 runs in scan
 /// order from the invocation to the last position the object addresses,
-/// across rows and through the side-panel columns: an object invoked at
-/// row 2 and placed in the right panel down to row 6 is open at row 4, so
-/// only fourteen more objects can be opened there.
-// Needs its capability compiled in (decision E.71).
-#[cfg(feature = "side-panels")]
+/// across rows and through the columns past the page: an object invoked
+/// at row 2 and placed past column 39 down to row 6 is open at row 4, though
+/// nothing of it is drawn, so only fourteen more objects can be opened
+/// there.
 #[test]
 fn open_area_of_figure_a1() {
-    let panels = PresentationFields {
-        side_panels: Some(SidePanelFields { left: false, right: true, status_flag: true, left_columns: 0 }),
-        ..PresentationFields::default()
-    };
     // X/26/2: the wide object, writing at its origin and one row down, three
     // columns on. X/26/3: a small object writing at its origin.
     let wide =
@@ -736,11 +692,9 @@ fn open_area_of_figure_a1() {
     ];
     local.extend(core::iter::repeat_n(small_invocation, 9));
     let more: Vec<TripletFunction> = core::iter::repeat_n(small_invocation, 6).collect();
-    let others = vec![x28(0, &panels), x26(0, &local), x26(1, &more), x26(2, &wide), x26(3, &small)];
+    let others = vec![x26(0, &local), x26(1, &more), x26(2, &wide), x26(3, &small)];
     let (grid, report) = build(&display_page(0, &[], others), L25);
     let report = report.unwrap();
-    assert_eq!(char_of(grid.panel_cell(5, 42).unwrap()), 'W', "origin 2 + 3, 30 + 12");
-    assert_eq!(char_of(grid.panel_cell(6, 45).unwrap()), 'W', "the last position addressed");
     assert_eq!(char_of(&grid.cells[4][5]), 's');
     assert_eq!((report.objects, report.faults.limited_invocations), (1 + 14, 1));
 }

@@ -49,7 +49,6 @@ The project keeps the first kind and leaves out the second. The second kind is n
 | Capability | What it would do to the page | Feature |
 |---|---|---|
 | The 32-colour palette | Lets a page redefine its colours from 4,096, which allows photographic shading and brand colours in place of the eight. | `level25-32colors`, `level35-32colors` |
-| Side panels | Widens the page beyond its 40 columns, to as many as 72. | `side-panels` |
 | Additional Flash Functions (Table 29) | Flash in several modes, rates and phases, with "apparent movement" across the page, beyond the single slow flash of Level 1. | `additional-flash-functions` |
 
 When a capability is compiled out, pages that use it still display. Its data is ignored and the page shows as it would on a receiver without that capability. That is how teletext was always meant to degrade, since every page must also work on a Level 1 television.
@@ -68,11 +67,10 @@ Each capability is a Cargo feature of `neoteletext-core`:
 | `level25-32colors` | `level25` | The Colour Map of Level 2.5 (clause 12.4): CLUTs 2 and 3, redefined by X/28/0 Format 1 and M/29/0 |
 | `level35-32colors` | `level25-32colors` | The Colour Map of Level 3.5: as Level 2.5, and CLUTs 0 and 1 redefined by X/28/4 and M/29/4, never CLUT 1 entry 0 |
 | `objects` | `level25` | Active, Adaptive and Passive objects, and default objects |
-| `side-panels` | `level25` | Side panels |
 | `additional-flash-functions` | `nonspacing-attributes` | The Additional Flash Functions of Table 29, column mode 00111 |
 | `modern-classic` | — | The profile: `level15`, `level25`, `nonspacing-attributes`, `render`, `bedstead`, `viewer` and `objects` |
 
-**The default build** (decision E.105, the owner's instruction of 22 October 2026, amending decision E.61's rule that every feature is on): Levels 1.0 and 1.5, and of Levels 2.5 and 3.5 the non-spacing attributes and the Colour Map of both levels: `level15`, `level25`, `nonspacing-attributes`, `level25-32colors`, `level35-32colors`, with `render`, `bedstead`, `viewer` and `extended-sets`. Objects, side panels and the Additional Flash Functions are not default: a build names them, as the conformance tests do (the gate runs them with every feature). `neottx` uses the default. A port chooses the profile by turning the defaults off:
+**The default build** (decision E.105, the owner's instruction of 22 October 2026, amending decision E.61's rule that every feature is on): Levels 1.0 and 1.5, and of Levels 2.5 and 3.5 the non-spacing attributes and the Colour Map of both levels: `level15`, `level25`, `nonspacing-attributes`, `level25-32colors`, `level35-32colors`, with `render`, `bedstead`, `viewer` and `extended-sets`. Objects and the Additional Flash Functions are not default: a build names them, as the conformance tests do (the gate runs them with every feature). `neottx` uses the default. A port chooses the profile by turning the defaults off:
 
 ```toml
 neoteletext-core = { version = "...", default-features = false, features = ["modern-classic"] }
@@ -87,7 +85,6 @@ A capability is decided in one place in the decoder and, where it is drawn diffe
 | Feature | Where the decoder decides | Where the renderer decides |
 |---|---|---|
 | `objects` | Object invocations and default objects in the enhancement walk | — |
-| `side-panels` | The side panel fields of X/28 and M/29 | The width of each row |
 | `level25-32colors` | The colour words of X/28/0 and M/29/0, and CLUTs 2 and 3 apart from 0 and 1 | — (the Colour Map itself) |
 | `level35-32colors` | The colour words of X/28/4 and M/29/4 | — (the Colour Map itself) |
 | `additional-flash-functions` | The Additional Flash Functions triplet | — |
@@ -99,7 +96,6 @@ Each test is a constant such as `cfg!(feature = "additional-flash-functions")`. 
 | Feature compiled out | The page's data | What the viewer sees |
 |---|---|---|
 | `objects` | Invocations and default objects ignored | The page without its objects; its own enhancement data still applies |
-| `side-panels` | No side panels | A 40-column page; anything placed in a panel is outside the page |
 | `level25-32colors` | No redefinition; tables 2 and 3 are copies of tables 0 and 1 | At most the sixteen default colours, with the eight classic colours as the default |
 | `level35-32colors` (with `level25-32colors`) | Tables 0 and 1 keep their defaults; tables 2 and 3 are redefined | The eight classic colours as the default, and sixteen of the page's own |
 | `additional-flash-functions` | The triplet ignored | Steady text, except Level 1 flash, which still flashes |

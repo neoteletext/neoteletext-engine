@@ -15,7 +15,7 @@ use crate::consts::{
     ALPHA_BLACK, ALPHA_WHITE, ATTRIBUTE_LAST, BLACK_BACKGROUND, CLUT_ENTRY_MASK, COLOUR_BLACK, COLOUR_WHITE, COLUMNS,
     CONCEAL, CONTIGUOUS_MOSAICS, DOUBLE_HEIGHT, DOUBLE_HEIGHT_FIRST_ROW, DOUBLE_HEIGHT_LAST_ROW, DOUBLE_SIZE,
     DOUBLE_WIDTH, END_BOX, ESC, FLASH, HOLD_MOSAICS, MOSAIC_BIT5, MOSAIC_BLACK, MOSAIC_WHITE, NEW_BACKGROUND,
-    NORMAL_SIZE, RELEASE_MOSAICS, SCREEN_COLUMNS, SEPARATED_MOSAICS, SIDE_PANEL_FIRST_ROW, SPACE, START_BOX, STEADY,
+    NORMAL_SIZE, RELEASE_MOSAICS, SEPARATED_MOSAICS, SPACE, START_BOX, STEADY,
 };
 use crate::level1::{Cell, CellAttributes, CharSource, Glyph, Size, row_codes};
 use crate::types::FixedVec;
@@ -238,39 +238,36 @@ pub(super) fn cell_of(glyph: Glyph, attrs: &Attrs, source: CharSource, column: u
     }
 }
 
-/// A cell of a row segment: what the walk put there and, in the main page,
-/// the Level 1 byte.
+/// What a row holds besides the walk's events.
 struct Segment<'c> {
-    first: usize,
-    end: usize,
-    /// The Level 1 codes and parity failures, `None` in side panels and in
-    /// the row below spacing double height (REQ-L25-026).
+    /// The Level 1 codes and parity failures, `None` in the row below
+    /// spacing double height (REQ-L25-026).
     codes: Option<(&'c [u8; COLUMNS], u64)>,
     /// The row below spacing double height: cells without enhancement
     /// characters keep the fill of the cell above.
     lower: Option<&'c [Cell]>,
 }
 
-/// Resolves the cells of one row segment (REQ-FSM-012 steps 1 to 7).
+/// Resolves the cells of one row (REQ-FSM-012 steps 1 to 7).
 /// `report` counts undefined characters.
 fn resolve_segment(
     segment: &Segment<'_>,
     context: &RowContext,
     start: RowState,
     out: &Collector,
-    resolved: &mut [Option<Resolved>; SCREEN_COLUMNS],
+    resolved: &mut [Option<Resolved>; COLUMNS],
     report: &mut EnhancementReport,
 ) -> RowState {
     let mut state = start;
     let mut overlays: FixedVec<Overlay, RANGES> =
         FixedVec::new(Overlay { range: Range { slot: 0, first: 0, last: 0 }, change: AttrChange::default() });
     for range in out.ranges.as_slice() {
-        if usize::from(range.first) >= segment.first && usize::from(range.last) < segment.end {
+        if usize::from(range.last) < COLUMNS {
             let _ = overlays.push(Overlay { range: *range, change: AttrChange::default() });
         }
     }
     let mut pending: Option<u8> = None;
-    for column in segment.first..segment.end {
+    for column in 0..COLUMNS {
         let slot = out.slots.get(column).copied().unwrap_or_default();
         let code = segment.codes.and_then(|(codes, _)| codes.get(column).copied()).unwrap_or(SPACE);
         // Steps 1 and 2: the Level 1 set-after and set-at attributes.
@@ -392,7 +389,7 @@ impl Rows<'_, '_> {
         }
     }
 
-    /// Resolves and places one row and its side panels (REQ-FSM-012).
+    /// Resolves and places one row (REQ-FSM-012).
     /// `lower` is true for the row below spacing double height, whose
     /// cells without enhancement characters show `fill`. Returns true when
     /// a spacing double height or double size code acted in the row.
@@ -415,30 +412,9 @@ impl Rows<'_, '_> {
         let context = self.context(row);
         let (codes, failed) =
             row_codes(row, Some(self.inputs.page), self.config, self.options, self.config.parity_policy);
-        let main = Segment {
-            first: 0,
-            end: COLUMNS,
-            codes: (!lower).then_some((&codes, failed)),
-            lower: lower.then_some(&fill[..]),
-        };
+        let main = Segment { codes: (!lower).then_some((&codes, failed)), lower: lower.then_some(&fill[..]) };
         let state = resolve_segment(&main, &context, RowState::start(&context), &events, &mut cells.resolved, report);
-        cells.place(0, COLUMNS, context.double_allowed);
-        // REQ-L25-041: each panel starts from the start-of-row defaults with
-        // the row colour as its background, and no attribute crosses into or
-        // out of it.
-        if row >= SIDE_PANEL_FIRST_ROW {
-            let panels = self.inputs.panels;
-            let panel_start = RowState::start(&RowContext { substitution: true, ..context });
-            let right = (COLUMNS, COLUMNS.saturating_add(usize::from(panels.right)));
-            let left = (panels.left_first_column(), SCREEN_COLUMNS);
-            for (first, end) in [right, left] {
-                if first < end {
-                    let segment = Segment { first, end, codes: None, lower: None };
-                    let _ = resolve_segment(&segment, &context, panel_start, &events, &mut cells.resolved, report);
-                    cells.place(first, end, context.double_allowed);
-                }
-            }
-        }
+        cells.place(context.double_allowed);
         state.spacing_double
     }
 }

@@ -28,11 +28,11 @@ neoteletext-formats = { version = "...", default-features = false }  # T42 only
 
 | Crate | Features |
 |---|---|
-| `neoteletext-core` | `level15`, `level25`, `render`, `bedstead`, `viewer`; the capabilities of Levels 2.5 and 3.5 `nonspacing-attributes`, `level25-32colors`, `level35-32colors` (default, decision E.105), `objects`, `side-panels`, `additional-flash-functions` (not default); and the profile `modern-classic` |
+| `neoteletext-core` | `level15`, `level25`, `render`, `bedstead`, `viewer`; the capabilities of Levels 2.5 and 3.5 `nonspacing-attributes`, `level25-32colors`, `level35-32colors` (default, decision E.105), `objects`, `additional-flash-functions` (not default); and the profile `modern-classic` |
 | `neoteletext-formats` | `transport`, `sliced`, `pages`, `tti`, `ep1`, `edittf`, `dump`, `check`, and `std` |
 | `neoteletext-web` | `push`, `cookies` |
 
-`level25` alone gives the enhancement processor's non-spacing attributes and characters. Each other capability of Levels 2.5 and 3.5 is a feature of its own (decision E.71); a capability left out is ignored in the page data, never an error. [capabilities.md](capabilities.md) explains the mechanism, which capabilities the profile keeps and why. The `modern-classic` profile keeps the classic display with objects, and leaves out the 32-colour palette, side panels and the additional flash functions:
+`level25` alone gives the enhancement processor's non-spacing attributes and characters. Each other capability of Levels 2.5 and 3.5 is a feature of its own (decision E.71); a capability left out is ignored in the page data, never an error. [capabilities.md](capabilities.md) explains the mechanism, which capabilities the profile keeps and why. The `modern-classic` profile keeps the classic display with objects, and leaves out the 32-colour palette and the additional flash functions:
 
 ```toml
 neoteletext-core = { version = "...", default-features = false, features = ["modern-classic"] }
@@ -61,7 +61,7 @@ All state lives in memory you provide (REQ-GEN-003):
 
 - The page store is a slice of `StoredPage` you allocate: `[StoredPage::EMPTY; N]` in a `static`, or on the heap. Each slot is about 2.7 kilobytes.
 - For Levels 2.5 and 3.5, the enhancement store is two more slices: `EnhancementSubPage::EMPTY` entries of 160 bytes, and `EnhancementPacket::EMPTY` slots of 42 bytes, one per packet. Annex E.8 bounds a service at 500 packets at Level 2.5 and 1200 at Level 3.5, about 21 and 50 kilobytes, plus 24 packets for each magazine's Magazine Organization Table. Pass them to `Decoder::with_enhancement_store`; `Decoder::new` keeps no enhancement pages.
-- A `Grid` is 1000 cells of 16 bytes plus, by default, a side-panel area of 768 cells: 28,392 bytes, measured on 20 October 2026. A port that shows only Levels 1 and 1.5 can use `Grid<0>`, 16,104 bytes. Build it in place with `build_grid(&mut grid, ...)`.
+- A `Grid` is 1000 cells of 16 bytes and the page-wide state: 16,100 bytes, measured on 31 October 2026. Build it in place with `build_grid(&mut grid, ...)`.
 - A rendered text row at 480 by 20 needs 9.6 kilobytes at 8 bits per pixel or 4.8 kilobytes at 4 bits.
 
 ## Pixels and colour

@@ -38,8 +38,8 @@ fn stored_row(page: &StoredPage, row: usize, policy: ParityPolicy) -> ([u8; COLU
 
 /// Builds the grid for a page (REQ-ARCH-006). With no page, only row 0's
 /// status area and rolling header are shown.
-pub fn build_grid<const PANEL_ROWS: usize>(
-    out: &mut Grid<PANEL_ROWS>,
+pub fn build_grid(
+    out: &mut Grid,
     page: Option<&StoredPage>,
     magazine: &MagazineData,
     config: &Config,
@@ -186,7 +186,7 @@ pub fn row_24_shown(page: &StoredPage, config: &Config) -> bool {
 
 /// Blanks row 0 for a page with C7 set, keeping the status area when asked
 /// (REQ-L1-014).
-fn hide_header<const PANEL_ROWS: usize>(grid: &mut Grid<PANEL_ROWS>, keep_status: bool) {
+fn hide_header(grid: &mut Grid, keep_status: bool) {
     if let Some(cells) = grid.cells.get_mut(0) {
         for (column, cell) in cells.iter_mut().enumerate() {
             if !(keep_status && column <= STATUS_ATTRIBUTE_COLUMN) {
@@ -197,7 +197,7 @@ fn hide_header<const PANEL_ROWS: usize>(grid: &mut Grid<PANEL_ROWS>, keep_status
 }
 
 /// Fills the row below a double-height row (decision E.15).
-fn fill_lower_row<const PANEL_ROWS: usize>(grid: &mut Grid<PANEL_ROWS>, row: usize) {
+fn fill_lower_row(grid: &mut Grid, row: usize) {
     let Some(upper) = grid.cells.get(row).copied() else { return };
     let Some(lower) = grid.cells.get_mut(row.saturating_add(1)) else { return };
     for (below, above) in lower.iter_mut().zip(upper.iter()) {

@@ -3,10 +3,9 @@
 //! REQ-RND-036) with the display planes of Annex C.1, and the palette.
 
 use super::flash::{FlashPhase, flash_shown};
-use super::row::{row_columns, source_cell, source_columns};
 use crate::consts::{
-    ADJACENT_CLUT_FLIP, COLOUR_MAP_ENTRIES, COLOUR_TRANSPARENT, COLOURS, COLUMNS, PALETTE_CONCEAL_BASE,
-    PALETTE_FLASH_BASE, PALETTE_SIZE, PALETTE_TRANSPARENT, RECEIVER_COLUMNS, ROWS,
+    ADJACENT_CLUT_FLIP, COLOUR_MAP_ENTRIES, COLOUR_TRANSPARENT, COLOURS, PALETTE_CONCEAL_BASE, PALETTE_FLASH_BASE,
+    PALETTE_SIZE, PALETTE_TRANSPARENT, RECEIVER_COLUMNS, ROWS,
 };
 use crate::level1::{Cell, FlashMode, FlashRate, Grid};
 
@@ -24,7 +23,7 @@ const fn displayed_colours(cell: &Cell) -> (u8, u8) {
 /// The palette index of a cell's foreground pixels in the palette mode
 /// (REQ-RND-023).
 #[must_use]
-pub fn foreground_index<const PANEL_ROWS: usize>(cell: &Cell, grid: &Grid<PANEL_ROWS>, reveal: bool) -> u8 {
+pub fn foreground_index(cell: &Cell, grid: &Grid, reveal: bool) -> u8 {
     if grid.boxed_mode && !cell.boxed {
         return PALETTE_TRANSPARENT;
     }
@@ -41,7 +40,7 @@ pub fn foreground_index<const PANEL_ROWS: usize>(cell: &Cell, grid: &Grid<PANEL_
 
 /// The palette index of a cell's background pixels in the palette mode.
 #[must_use]
-pub fn background_index<const PANEL_ROWS: usize>(cell: &Cell, grid: &Grid<PANEL_ROWS>) -> u8 {
+pub fn background_index(cell: &Cell, grid: &Grid) -> u8 {
     if grid.mix || (grid.boxed_mode && !cell.boxed) { PALETTE_TRANSPARENT } else { displayed_colours(cell).1 }
 }
 
@@ -52,14 +51,7 @@ pub fn background_index<const PANEL_ROWS: usize>(cell: &Cell, grid: &Grid<PANEL_
 /// makes backgrounds picture (REQ-L1-020). Row colours never colour row 0,
 /// columns 0 to 7 (decision E.45).
 #[allow(clippy::too_many_arguments)] // The pixel's colour, role, cell and position.
-fn plane<const PANEL_ROWS: usize>(
-    index: u8,
-    background: bool,
-    cell: &Cell,
-    grid: &Grid<PANEL_ROWS>,
-    row: usize,
-    column: usize,
-) -> u8 {
+fn plane(index: u8, background: bool, cell: &Cell, grid: &Grid, row: usize, column: usize) -> u8 {
     if (grid.boxed_mode && !cell.boxed) || (background && grid.mix) {
         return COLOUR_TRANSPARENT;
     }
@@ -78,9 +70,9 @@ fn plane<const PANEL_ROWS: usize>(
 /// flash, then conceal, then the display planes. Returns the dots' index
 /// and the gaps' index.
 #[inline(never)]
-pub(super) fn resolved_colours<const PANEL_ROWS: usize>(
+pub(super) fn resolved_colours(
     cell: &Cell,
-    grid: &Grid<PANEL_ROWS>,
+    grid: &Grid,
     row: usize,
     column: usize,
     flash: FlashPhase,
@@ -110,28 +102,23 @@ fn palette_cell_allowed(cell: &Cell) -> bool {
     colours && flash
 }
 
-/// The index of the screen colour, for the borders around the rows and the
-/// side-panel area of row 0 (decision E.45): the picture on a boxed page
-/// and in mix mode.
+/// The index of the screen colour, for the borders around the rows
+/// (decision E.45): the picture on a boxed page and in mix mode.
 #[must_use]
-pub fn border_index<const PANEL_ROWS: usize>(grid: &Grid<PANEL_ROWS>) -> u8 {
+pub fn border_index(grid: &Grid) -> u8 {
     if grid.boxed_mode || grid.mix { COLOUR_TRANSPARENT } else { grid.screen_colour & COLOUR_INDEX_MASK }
 }
 
 /// True when the palette mode can draw the whole grid (decision E.55,
 /// REQ-RND-031): every cell uses CLUT 0 colours only and no flash mode of
-/// Level 2.5, and the screen colour is of CLUT 0 when side panels show it.
+/// Level 2.5.
 #[must_use]
-pub fn palette_mode_allowed<const PANEL_ROWS: usize>(grid: &Grid<PANEL_ROWS>) -> bool {
+pub fn palette_mode_allowed(grid: &Grid) -> bool {
     (0..ROWS).all(|row| palette_row_allowed(grid, row))
 }
 
-pub(super) fn palette_row_allowed<const PANEL_ROWS: usize>(grid: &Grid<PANEL_ROWS>, row: usize) -> bool {
-    let panels = row_columns(grid) > COLUMNS;
-    source_columns(grid).all(|column| match source_cell(grid, row, column) {
-        Some(cell) => palette_cell_allowed(cell),
-        None => !panels || border_index(grid) <= CLUT0_LAST || border_index(grid) == PALETTE_TRANSPARENT,
-    })
+pub(super) fn palette_row_allowed(grid: &Grid, row: usize) -> bool {
+    grid.cells.get(row).is_none_or(|cells| cells.iter().all(palette_cell_allowed))
 }
 
 /// Fills a 144-entry palette for a flash phase and reveal setting

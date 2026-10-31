@@ -495,8 +495,7 @@ pub const DESIGNATIONS: usize = DESIGNATION_CODES;
 /// The worst-case page of REQ-TST-019: page 100 invoking, from all sixteen
 /// packets X/26, an Active object of its GPOP 1A1 at 100 positions; each
 /// object writes its cell, invokes the next type twice (Active, Adaptive,
-/// Passive) and is padded so that the three fill the object page; both side
-/// panels are on.
+/// Passive) and is padded so that the three fill the object page.
 pub fn worst_case_page() -> Vec<Packet> {
     const GPOP: u16 = 0x1A1;
     let pad = |count: usize| {
@@ -527,18 +526,9 @@ pub fn worst_case_page() -> Vec<Packet> {
         local.push(g0(index % 39, 0x10));
         local.push(invoke(ObjectSource::Global, ObjectKind::Active, public_number(0, 0)));
     }
-    let panels = PresentationFields {
-        side_panels: Some(neoteletext_core::types::SidePanelFields {
-            left: true,
-            right: true,
-            status_flag: true,
-            left_columns: 8,
-        }),
-        ..PresentationFields::default()
-    };
     let none = |function| null_link(function);
     let links = x27(4, [link(0b00, 0b11, GPOP), none(0b01), none(0b10), none(0b11), none(0), none(0)]);
-    let mut others = vec![links, x28(0, &panels)];
+    let mut others = vec![links];
     let data = local_data(&local);
     assert_eq!(data.len(), 16, "all sixteen packets X/26");
     others.extend(data);

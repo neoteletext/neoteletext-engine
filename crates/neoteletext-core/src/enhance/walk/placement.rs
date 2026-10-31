@@ -6,24 +6,19 @@ use super::super::{Collector, Frame, Walker};
 use super::super::AttrChange;
 use super::super::attributes::{ATTRIBUTES, Flash, flash_of};
 use super::super::characters::EnhChar;
-use super::super::planes::{Area, Plane, area_of};
+use super::super::planes::Plane;
 use crate::charset::{self, G0Set, G2Set};
-use crate::consts::{RECEIVER_COLUMNS, ROWS, TRIPLET_AT_SIGN_CODE, TRIPLET_FIRST_CHARACTER};
+use crate::consts::{COLUMNS, RECEIVER_COLUMNS, ROWS, TRIPLET_AT_SIGN_CODE, TRIPLET_FIRST_CHARACTER};
 use crate::packet::TripletFunction;
 
 impl<'s> Walker<'_, 's> {
     /// The cell of the active position, when an element may be placed there
-    /// (REQ-OBJ-014, REQ-L25-041, REQ-L25-050).
+    /// (REQ-OBJ-014, REQ-L25-050, REQ-1644): an element outside rows 0 to
+    /// 24 or columns 0 to 39 is discarded, and the source continues.
     fn placeable(&mut self, frame: &Frame<'s>) -> Option<(usize, usize)> {
         let (row, column) = frame.position();
-        let area = area_of(column, self.inputs.panels);
         let receiver = row == 0 && column < RECEIVER_COLUMNS;
-        let panel_row_0 = row == 0 && area != Area::Main;
-        // Decision E.49: panel columns that are not enabled, and columns
-        // beyond 71, are no display area, even for an object whose origin
-        // lies there.
-        let outside = area == Area::Outside;
-        if row >= ROWS || area != frame.area || outside || receiver || panel_row_0 {
+        if row >= ROWS || column >= COLUMNS || receiver {
             self.report.faults.discarded_writes = self.report.faults.discarded_writes.saturating_add(1);
             return None;
         }

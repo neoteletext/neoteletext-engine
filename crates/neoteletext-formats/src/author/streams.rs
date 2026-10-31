@@ -1,7 +1,6 @@
 //! The authored Level 2.5 and 3.5 test stream (REQ-TST-024), written with
 //! the builder of REQ-INP-025. Between them its pages use every triplet
-//! mode of Tables 28 and 29, the Colour Map, side panels of each width,
-//! every size, underline, invert, conceal, boxing, flash at each rate and
+//! mode of Tables 28 and 29, the Colour Map, every size, underline, invert, conceal, boxing, flash at each rate and
 //! phase, the G1, G2 and G3 sets, Local, Public and Global
 //! objects of each type and priority reached through the Magazine
 //! Organization Table and through X/27/4 and X/27/5, default objects, the
@@ -79,8 +78,8 @@ const GERMAN: u8 = 0b000_0001;
 const SWATCH_COLUMNS: u8 = 4;
 /// The first column of the swatches, after a label.
 const SWATCH_COLUMN: u8 = 8;
-/// The Origin Modifier column offsets of the right and left side-panel
-/// areas (clause 12.5.3: columns 40 to 55 and 56 to 71).
+/// Origin Modifier column offsets past the page, where a page with side
+/// panels places their text (clause 12.5.3: columns 40 to 55 and 56 to 71).
 const RIGHT_PANEL_COLUMN: u8 = 40;
 const LEFT_PANEL_COLUMN: u8 = 56;
 

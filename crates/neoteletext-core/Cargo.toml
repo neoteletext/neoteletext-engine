@@ -14,8 +14,8 @@ publish.workspace = true
 # Decision E.61: each optional area of the core is a feature. The default
 # is Levels 1.0 and 1.5, and of Levels 2.5 and 3.5 the non-spacing
 # attributes and the 32-colour Colour Map of both levels (decision E.105);
-# objects, side panels and the Additional Flash Functions are named by a
-# build that wants them. Ports turn the defaults off and name what they use.
+# objects and the Additional Flash Functions are named by a build that
+# wants them. Ports turn the defaults off and name what they use.
 default = [
     "level15",
     "level25",
@@ -43,8 +43,6 @@ level25 = []
 nonspacing-attributes = ["level25"]
 # Active, Adaptive and Passive objects, and default objects (area OBJ).
 objects = ["level25"]
-# Side panels (clause 12.5).
-side-panels = ["level25"]
 # The Colour Map of Level 2.5 (clause 12.4): CLUTs 2 and 3, redefined by
 # X/28/0 Format 1 and M/29/0 (Tables 4 and 11). Without it they are copies
 # of CLUTs 0 and 1 (decision E.105).
@@ -111,7 +109,6 @@ required-features = [
     "level15",
     "level25",
     "objects",
-    "side-panels",
     "level35-32colors",
 ]
 
@@ -124,7 +121,6 @@ required-features = [
     "level15",
     "level25",
     "objects",
-    "side-panels",
     "level35-32colors",
 ]
 

@@ -1,9 +1,6 @@
 //! Colours (Table 30): the Level 1 colours of CLUT 0, the Colour Map of
-//! Levels 2.5 and 3.5 (decision E.43), Colour Table Re-mapping, the side
-//! panels (clause 12.5, decision E.49) and the screen's columns.
-
-use super::object_pages::SIDE_PANEL_MAX_COLUMNS;
-use super::pages::{COLUMNS, ROWS};
+//! Levels 2.5 and 3.5 (decision E.43), Colour Table Re-mapping and the
+//! columns of scan order.
 
 /// Colour number of black.
 pub const COLOUR_BLACK: u8 = 0;
@@ -69,25 +66,11 @@ pub const PRIMARY_4_TO_8: u8 = 17;
 /// value 0 to 7.
 pub const REMAPPING_CLUTS: [[u8; 2]; 8] = [[0, 0], [0, 1], [0, 2], [1, 1], [1, 2], [2, 1], [2, 2], [2, 3]];
 
-// ---------------------------------------------------------------------------
-// Side panels (clause 12.5, decision E.49)
-// ---------------------------------------------------------------------------
-
-/// The first column of the side-panel area, where the right panel starts
-/// (clause 12.5.3).
-pub const SIDE_PANEL_FIRST_COLUMN: usize = COLUMNS;
-/// Columns of the side-panel area, 40 to 71; the left panel ends at 71.
-pub const SIDE_PANEL_AREA_COLUMNS: usize = 2 * SIDE_PANEL_MAX_COLUMNS as usize;
-/// The first row of the side panels; row 0 has no panel content (clause
-/// 12.5.2).
-pub const SIDE_PANEL_FIRST_ROW: usize = 1;
-/// Rows of the side panels, 1 to 24.
-pub const SIDE_PANEL_ROWS: usize = ROWS - SIDE_PANEL_FIRST_ROW;
-
 /// Adjacent-CLUT flash exclusive-ORs a Colour Map index with 8: the same
 /// entry of the neighbouring CLUT (decision E.48).
 pub const ADJACENT_CLUT_FLIP: u8 = 1 << CLUT_SHIFT;
 
-/// The columns of a screen row in scan order: the 40 of the main page,
-/// then the side-panel area of columns 40 to 71 (clause 12.5.3, Annex A.4).
-pub const SCREEN_COLUMNS: usize = COLUMNS + SIDE_PANEL_AREA_COLUMNS;
+/// The columns an object's position can name in scan order (Annex A.4):
+/// the 40 of the page, then 32 that are never shown, so that an object
+/// reaching past the page still has its place in the order of Annex A.8.
+pub const ADDRESS_COLUMNS: usize = 72;

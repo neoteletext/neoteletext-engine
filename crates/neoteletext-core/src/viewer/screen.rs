@@ -17,12 +17,7 @@ impl Viewer {
     /// once `context` no longer borrows the decoder (REQ-L25-051); the
     /// decoder counts each build once however often the page is redrawn.
     #[must_use]
-    pub fn compose<const PANEL_ROWS: usize>(
-        &self,
-        grid: &mut Grid<PANEL_ROWS>,
-        page: Option<&StoredPage>,
-        context: &ComposeContext<'_>,
-    ) -> Composed {
+    pub fn compose(&self, grid: &mut Grid, page: Option<&StoredPage>, context: &ComposeContext<'_>) -> Composed {
         let ComposeContext { magazine, config, rolling_header, store, row24, lookup } = *context;
         // REQ-NAV-006: while held, new receptions do not reach the screen.
         if self.state == ViewerState::Holding {

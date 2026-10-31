@@ -67,9 +67,9 @@ pub struct EnhancementLinks {
     pub gpop: Option<PageLink>,
     /// The Public Object Page.
     pub pop: Option<PageLink>,
-    /// The fallback bits of the page's POP link in the table, for side
-    /// panels and Black Background Colour Substitution; `None` without a POP
-    /// link (decision E.53).
+    /// The fallback bits of the page's POP link in the table, for Black
+    /// Background Colour Substitution; `None` without a POP link (decision
+    /// E.53).
     pub fallback: Option<FallbackFields>,
     /// The default objects in the order of Annex G.5: GPOP 1, GPOP 2, POP 1,
     /// POP 2 (decision E.53).

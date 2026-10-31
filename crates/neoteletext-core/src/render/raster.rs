@@ -206,9 +206,8 @@ fn g3_line(glyphs: &GlyphSet, code: u8, source: usize, mode: CellMode) -> u16 {
 }
 
 /// The cell raster (REQ-RND-016): line `line` of the cell at text row `row`
-/// and column `column` (0 to 39 on the main page, 40 to 71 in the
-/// side-panel area), where `line` is 0 to 19 in the 12-by-20 mode and 0 to
-/// 9 in the 12-by-10 mode. Size, glyphs, mosaics, G3, underline and, in
+/// and column `column`, where `line` is 0 to 19 in the 12-by-20 mode and 0
+/// to 9 in the 12-by-10 mode. Size, glyphs, mosaics, G3, underline and, in
 /// the resolved mode, invert, flash, conceal and the display planes are
 /// all applied here.
 #[must_use]
@@ -216,9 +215,9 @@ fn g3_line(glyphs: &GlyphSet, code: u8, source: usize, mode: CellMode) -> u16 {
 // its loop it measured 2 times faster (REQ-TST-050, `tests/performance.rs`).
 #[allow(clippy::inline_always)]
 #[inline(always)]
-pub fn cell_line<const PANEL_ROWS: usize>(
+pub fn cell_line(
     cell: &Cell,
-    grid: &Grid<PANEL_ROWS>,
+    grid: &Grid,
     row: usize,
     column: usize,
     line: usize,

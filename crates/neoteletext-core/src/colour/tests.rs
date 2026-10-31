@@ -1,7 +1,6 @@
-//! Tests of the Colour Map, re-mapping, side panels and the precedence of
-//! decision E.44.
+//! Tests of the Colour Map, re-mapping and the precedence of decision E.44.
 #![cfg_attr(
-    not(all(feature = "side-panels", feature = "level35-32colors")),
+    not(feature = "level35-32colors"),
     allow(dead_code, unused_imports, reason = "helpers of the tests whose capability is compiled out (decision E.71)")
 )]
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
@@ -151,45 +150,32 @@ fn remapping_follows_table_4() {
     }
 }
 
-/// REQ-L25-040: every row of the width table of decision E.49, the
-/// status flag at each level, and the table's fallback values.
-// Needs its capability compiled in (decision E.71).
-#[cfg(feature = "side-panels")]
+/// REQ-1644: the side-panel fields of every source have no effect at any
+/// level, nor do the fallback bits of the table's POP link.
 #[test]
-fn side_panel_widths() {
-    let panels = |left, right, status_flag, left_columns, level| {
-        SidePanels::from_fields(SidePanelFields { left, right, status_flag, left_columns }, level)
-    };
-    let l35 = PresentationLevel::Level35;
-    let widths = |p: SidePanels| (p.left, p.right);
-    assert_eq!(widths(panels(false, false, true, 5, l35)), (0, 0));
-    assert_eq!(widths(panels(true, false, true, 0, l35)), (16, 0));
-    assert_eq!(widths(panels(true, false, true, 5, l35)), (5, 0));
-    assert_eq!(widths(panels(false, true, true, 0, l35)), (0, 16));
-    assert_eq!(widths(panels(false, true, true, 5, l35)), (0, 11));
-    assert_eq!(widths(panels(true, true, true, 5, l35)), (5, 11));
-    assert_eq!(widths(panels(true, true, true, 0, l35)), (0, 16));
-    assert_eq!(widths(panels(true, true, false, 8, l35)), (8, 8), "Level 3.5 ignores the status flag");
-    assert_eq!(widths(panels(true, true, false, 8, PresentationLevel::Level25)), (0, 0));
-    assert_eq!(widths(panels(true, true, true, 8, PresentationLevel::Level25)), (8, 8));
-    assert_eq!(widths(panels(true, true, true, 8, PresentationLevel::Level15)), (0, 0));
-    let both = panels(true, true, true, 6, l35);
-    assert_eq!((both.left_first_column(), both.display_columns()), (66, 56));
-    // The fallback values of Table 21.
-    let fallback = |bits| SidePanels::from_fields(crate::packet::mot_fallback(bits).side_panels, l35);
-    assert_eq!(widths(fallback(0b0000)), (0, 0));
-    assert_eq!(widths(fallback(0b0010)), (16, 0));
-    assert_eq!(widths(fallback(0b0100)), (0, 16));
-    assert_eq!(widths(fallback(0b0110)), (8, 8));
-    assert_eq!(widths(fallback(0b0111)), (0, 0), "bit 1 set: no side panels");
-    // Precedence: X/28/0's panels, then the fallback.
-    let page = fields(None, 4);
-    let sources = PresentationSources {
-        page: Some(&page),
-        fallback: Some(crate::packet::mot_fallback(0b0010)),
-        ..PresentationSources::default()
-    };
-    assert_eq!(widths(resolve(&sources, l35, &ColourMap::DEFAULT).side_panels), (4, 12));
-    let sources = PresentationSources { page: None, ..sources };
-    assert_eq!(widths(resolve(&sources, l35, &ColourMap::DEFAULT).side_panels), (16, 0));
+fn side_panel_fields_have_no_effect() {
+    let enabled = SidePanelFields { left: true, right: true, status_flag: true, left_columns: 8 };
+    let with = fields(None, 4);
+    let without = PresentationFields { side_panels: None, ..with };
+    let panels = PresentationFields { side_panels: Some(enabled), ..with };
+    let fallback = |side_panels| FallbackFields { side_panels, black_background_substitution: true };
+    for level in
+        [PresentationLevel::Level1, PresentationLevel::Level15, PresentationLevel::Level25, PresentationLevel::Level35]
+    {
+        let plain = PresentationSources {
+            page: Some(&without),
+            page_level_35: Some(&without),
+            magazine: Some(&without),
+            magazine_level_35: Some(&without),
+            fallback: Some(fallback(SidePanelFields::default())),
+        };
+        let carried = PresentationSources {
+            page: Some(&panels),
+            page_level_35: Some(&panels),
+            magazine: Some(&panels),
+            magazine_level_35: Some(&panels),
+            fallback: Some(fallback(enabled)),
+        };
+        assert_eq!(resolve(&carried, level, &ColourMap::DEFAULT), resolve(&plain, level, &ColourMap::DEFAULT));
+    }
 }

@@ -1,6 +1,5 @@
 //! The Colour Map and the page-level presentation data of Levels 2.5 and
-//! 3.5 (layer L3; decisions E.43 to E.45 and E.49; REQ-L25-030,
-//! REQ-L25-031 and REQ-L25-040).
+//! 3.5 (layer L3; decisions E.43 to E.45; REQ-L25-030 and REQ-L25-031).
 //!
 //! Every colour of the grid is a Colour Map index, 0 to 31, equal to
 //! 8 × CLUT + entry; the Level 1 colours are CLUT 0, so their numbers keep
@@ -17,10 +16,8 @@ use crate::consts::{
 use crate::types::{ColourWords, Rgb12};
 
 mod presentation;
-mod side_panels;
 
 pub use presentation::{PagePresentation, PresentationSources, colour_words, resolve};
-pub use side_panels::SidePanels;
 
 /// A Colour Map index, 0 to 31: 8 × CLUT + entry (decision E.43).
 pub type ColourIndex = u8;

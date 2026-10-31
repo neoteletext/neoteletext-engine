@@ -1,14 +1,11 @@
 //! Magazine 7: magazine packets M/29.
 
-use neoteletext_core::types::SidePanelFields;
-
 use crate::author::{MagazinePackets, Result, Stream, colour, neutral_fields, neutral_fields_level_35};
 
 use super::{magazine, page, swatches, words};
 
 pub(super) fn magazine_packets(stream: &mut Stream) -> Result<()> {
     let mut data = neutral_fields(0);
-    data.side_panels = Some(SidePanelFields { left: true, right: true, status_flag: true, left_columns: 8 });
     data.colour_words = Some(words([
         0x0F0, 0x0E1, 0x0D2, 0x0C3, 0x0B4, 0x0A5, 0x096, 0x087, //
         0x00F, 0x11E, 0x22D, 0x33C, 0x44B, 0x55A, 0x669, 0x778,

@@ -50,8 +50,8 @@
 | MOT | Magazine Organization Table: page mFE of each magazine, linking each page to its object and DRCS pages (clause 10.6). |
 | MIP | Magazine Inventory Page: page mFD, an optional list of the page types of a magazine (clause 11.3). |
 | Non-spacing attribute | An attribute set by an enhancement triplet. It occupies no character cell, unlike the spacing attributes of Level 1. |
-| Origin Modifier | A triplet that offsets the position of the next object invoked, which is how objects reach the side panels. |
-| Side panel | Up to 16 extra columns to the left or right of the 40-column page at Levels 2.5 and 3.5 (clause 12.5). |
+| Origin Modifier | A triplet that offsets the position of the next object invoked. |
+| Side panel | Up to 16 extra columns to the left or right of the 40-column page that Levels 2.5 and 3.5 define (clause 12.5). NeoTeletext never shows them: a page is always 40 columns (decision DEC-1636). |
 | Presentation level | One of Levels 1, 1.5, 2.5 and 3.5 of EN 300 706 clause 12; a configuration setting of this receiver (REQ-PRF-006). |
 | Channel | A folder on a web server that serves teletext pages, identified by its origin and folder path (REQ-WEB-018, decision E.70). What earlier documents call a site. |
 | Channel folder | The address of a channel: an `http` or `https` address whose path ends in `/` (REQ-WEB-023). |

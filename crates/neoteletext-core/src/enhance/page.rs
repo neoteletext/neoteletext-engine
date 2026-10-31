@@ -3,14 +3,12 @@
 
 use super::{Collector, Inputs, RowCells, Rows, Walker};
 
-use super::planes::{Area, area_of};
 use crate::acq::{EnhancementKey, EnhancementLookup, EnhancementReport, MagazineData, PageBuild, StoredPage};
-use crate::colour::{self, ColourIndex, ColourMap, PagePresentation, PresentationSources, SidePanels};
+use crate::colour::{self, ColourIndex, ColourMap, PagePresentation, PresentationSources};
 use crate::config::{Config, PresentationLevel};
 use crate::consts::{
     C5_NEWSFLASH, C6_SUBTITLE, C7_SUPPRESS_HEADER, C10_INHIBIT_DISPLAY, COLUMNS, PAGE_FUNCTION_DRCS,
     PAGE_FUNCTION_GDRCS, PAGE_FUNCTION_GPOP, PAGE_FUNCTION_MOT, PAGE_FUNCTION_POP, PAGE_MOT, RECEIVER_COLUMNS, ROWS,
-    SIDE_PANEL_ROWS,
 };
 use crate::level1::{Cell, DisplayOptions, Grid, Size, resolve_designation, row_24_shown};
 use crate::objects::{self, EnhancementLinks};
@@ -44,8 +42,8 @@ fn is_enhancement_page(page: &StoredPage, lookup: &EnhancementLookup<'_>) -> boo
 /// 0 keeps the receiver's status area, and rows the Level 1 grid does not
 /// show (a suppressed header, inhibited display, a row 24 that is not
 /// displayed or that the receiver draws) keep their Level 1 cells.
-pub fn apply<const PANEL_ROWS: usize>(
-    grid: &mut Grid<PANEL_ROWS>,
+pub fn apply(
+    grid: &mut Grid,
     page: &StoredPage,
     magazine: &MagazineData,
     lookup: &EnhancementLookup<'_>,
@@ -59,8 +57,8 @@ pub fn apply<const PANEL_ROWS: usize>(
 /// of the page-level run of the walk to `trace` (REQ-FSM-010). A fault the
 /// walk meets (REQ-L25-051) is named as the action of the transition that
 /// met it.
-pub fn apply_traced<const PANEL_ROWS: usize>(
-    grid: &mut Grid<PANEL_ROWS>,
+pub fn apply_traced(
+    grid: &mut Grid,
     page: &StoredPage,
     magazine: &MagazineData,
     lookup: &EnhancementLookup<'_>,
@@ -72,8 +70,8 @@ pub fn apply_traced<const PANEL_ROWS: usize>(
 }
 
 /// [`apply`], with `trace` `None` when tracing is off.
-fn process<const PANEL_ROWS: usize>(
-    grid: &mut Grid<PANEL_ROWS>,
+fn process(
+    grid: &mut Grid,
     page: &StoredPage,
     magazine: &MagazineData,
     lookup: &EnhancementLookup<'_>,
@@ -100,17 +98,8 @@ fn process<const PANEL_ROWS: usize>(
     grid.designation = designation;
 
     let presentation = presentation(page, magazine, &links, level);
-    // Panels need every panel row of the grid.
-    let panels = if PANEL_ROWS >= SIDE_PANEL_ROWS { presentation.side_panels } else { SidePanels::NONE };
-    let inputs = Inputs {
-        page,
-        lookup,
-        links: &links,
-        build,
-        level,
-        panels,
-        default_sets: (designation.g0.set, designation.g2),
-    };
+    let default_sets = (designation.g0.set, designation.g2);
+    let inputs = Inputs { page, lookup, links: &links, build, level, default_sets };
     let row_24_shown = row_24_shown(page, &config) && options.row24.is_none();
     let last_colour_row = if row_24_shown { ROWS.saturating_sub(1) } else { ROWS.saturating_sub(2) };
 
@@ -136,12 +125,12 @@ fn process<const PANEL_ROWS: usize>(
     };
     rebuild_rows(grid, &rows, row_24_shown, &mut report);
 
-    store_presentation(grid, &presentation, screen, row_colours, panels);
+    store_presentation(grid, &presentation, screen, row_colours);
     report
 }
 
-/// The page's presentation (REQ-L25-030, REQ-L25-031, REQ-L25-040): from
-/// the page-level data of the page and its magazine.
+/// The page's presentation (REQ-L25-030, REQ-L25-031): from the page-level
+/// data of the page and its magazine.
 fn presentation(
     page: &StoredPage,
     magazine: &MagazineData,
@@ -172,19 +161,17 @@ fn page_colours(page_level: &Collector, presentation: &PagePresentation) -> (Col
     (screen, row_colours)
 }
 
-/// Stores the page's colours and panels in the grid, and marks the rows
-/// the rebuilt cells make double height.
-fn store_presentation<const PANEL_ROWS: usize>(
-    grid: &mut Grid<PANEL_ROWS>,
+/// Stores the page's colours in the grid, and marks the rows the rebuilt
+/// cells make double height.
+fn store_presentation(
+    grid: &mut Grid,
     presentation: &PagePresentation,
     screen: ColourIndex,
     row_colours: [ColourIndex; ROWS],
-    panels: SidePanels,
 ) {
     grid.colour_map = presentation.colour_map;
     grid.screen_colour = screen;
     grid.row_colours = row_colours;
-    grid.side_panels = panels;
     grid.double_height_rows = 0;
     for (row, cells) in grid.cells.iter().enumerate() {
         if cells.iter().any(|cell| cell.size == Size::DoubleTop) {
@@ -195,12 +182,7 @@ fn store_presentation<const PANEL_ROWS: usize>(
 
 /// Rebuilds the rows the page shows, top to bottom, so that each row knows
 /// the row above it (REQ-L25-025, REQ-L25-026).
-fn rebuild_rows<const PANEL_ROWS: usize>(
-    grid: &mut Grid<PANEL_ROWS>,
-    rows: &Rows<'_, '_>,
-    row_24_shown: bool,
-    report: &mut EnhancementReport,
-) {
+fn rebuild_rows(grid: &mut Grid, rows: &Rows<'_, '_>, row_24_shown: bool, report: &mut EnhancementReport) {
     let page = rows.inputs.page;
     let control = page.control.0;
     let inhibit = control & C10_INHIBIT_DISPLAY != 0 || !page.is_text_page();
@@ -229,7 +211,7 @@ fn rebuild_rows<const PANEL_ROWS: usize>(
             Cell { foreground: upper.foreground, background: upper.background, boxed: upper.boxed, ..Cell::BLANK }
         });
         let spacing_double = rows.row(row, lower, &fill, &mut cells, report);
-        for (column, cell) in cells.cells.iter().enumerate().take(COLUMNS) {
+        for (column, cell) in cells.cells.iter().enumerate() {
             let mut cell = cell.unwrap_or_else(|| fill.get(column).copied().unwrap_or(Cell::BLANK));
             // REQ-L25-050: row 0 columns 0 to 7 stay the receiver's.
             if row == 0
@@ -241,16 +223,8 @@ fn rebuild_rows<const PANEL_ROWS: usize>(
                 *target = cell;
             }
         }
-        for (column, cell) in cells.cells.iter().enumerate().skip(COLUMNS) {
-            if let (Some(target), Some(cell)) = (grid.panel_cell_mut(row, column), cell)
-                && area_of(column, rows.inputs.panels) != Area::Outside
-            {
-                *target = *cell;
-            }
-        }
         for (column, slot) in cells.above.iter_mut().enumerate() {
-            *slot =
-                if column < COLUMNS { grid.cell(row, column).copied() } else { grid.panel_cell(row, column).copied() };
+            *slot = grid.cell(row, column).copied();
         }
         lower = spacing_double && !lower;
     }

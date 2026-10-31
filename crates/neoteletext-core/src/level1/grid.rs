@@ -1,25 +1,19 @@
-//! The grid of 25 by 40 cells with the side-panel area and the page-wide
-//! display state (REQ-L1-001, decision E.42), and the display options.
+//! The grid of 25 by 40 cells and the page-wide display state (REQ-L1-001, decision E.42), and the display options.
 
 use super::Cell;
 use crate::charset::{self, Designation, G0};
-use crate::colour::{ColourIndex, ColourMap, SidePanels};
-use crate::consts::{
-    CLOCK_BYTES, COLOUR_BLACK, COLUMNS, HEADER_DISPLAY_BYTES, ROWS, SIDE_PANEL_AREA_COLUMNS, SIDE_PANEL_FIRST_COLUMN,
-    SIDE_PANEL_FIRST_ROW, SIDE_PANEL_ROWS, SPACE, STATUS_COLUMNS,
-};
+use crate::colour::{ColourIndex, ColourMap};
+use crate::consts::{CLOCK_BYTES, COLOUR_BLACK, COLUMNS, HEADER_DISPLAY_BYTES, ROWS, SPACE, STATUS_COLUMNS};
 
 /// The decoded page (REQ-L1-001): 25 rows by 40 columns, plus page-wide
 /// display state. It is the core's primary output; every renderer works
 /// from it (REQ-RND-001).
 ///
-/// The caller sets one capacity (REQ-GEN-003): `PANEL_ROWS`, the rows of
-/// the side-panel area, which is 24 for side panels and may be 0 for a
-/// port that presents at Levels 1 and 1.5 only. [`Grid`] without a
-/// parameter holds every panel row. Everything a row needs travels in the
-/// grid, so a row is rendered from the grid alone (decision E.29).
+/// Everything a row needs travels in the grid, so a row is rendered from
+/// the grid alone (decision E.29). It is 40 columns at every level
+/// (REQ-1644).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct Grid<const PANEL_ROWS: usize = SIDE_PANEL_ROWS> {
+pub struct Grid {
     /// The cells, row by row.
     pub cells: [[Cell; COLUMNS]; ROWS],
     /// Bit r set when row r contains double height.
@@ -31,14 +25,6 @@ pub struct Grid<const PANEL_ROWS: usize = SIDE_PANEL_ROWS> {
     pub mix: bool,
     /// The character sets the page uses, for Level 1.5 and the port.
     pub designation: Designation,
-    /// The side-panel area, columns 40 to 71 of rows 1 to 24 (clause
-    /// 12.5.3, decision E.49): `panels[row − 1][column − 40]`. The right
-    /// panel is columns 40 to 40 + right width − 1, the left panel columns
-    /// 72 − left width to 71; [`Grid::panel_cell`] addresses it by screen
-    /// position.
-    pub panels: [[Cell; SIDE_PANEL_AREA_COLUMNS]; PANEL_ROWS],
-    /// The widths of the enabled side panels; none at Levels 1 and 1.5.
-    pub side_panels: SidePanels,
     /// The page's Colour Map (REQ-L25-030); Table 30 at Levels 1 and 1.5.
     pub colour_map: ColourMap,
     /// The screen colour, for the borders around the rows (decision E.45).
@@ -55,14 +41,12 @@ const DEFAULT_DESIGNATION: Designation = Designation {
 };
 
 impl Grid {
-    /// An empty grid with every panel row.
+    /// An empty grid.
     pub const EMPTY: Self = Self::empty();
-}
 
-impl<const PANEL_ROWS: usize> Grid<PANEL_ROWS> {
-    /// An empty grid: blank cells, no side panels, the Table 30 Colour
-    /// Map, and black screen and rows. To empty an existing
-    /// grid without a temporary copy, use [`Grid::clear`].
+    /// An empty grid: blank cells, the Table 30 Colour Map, and black
+    /// screen and rows. To empty an existing grid without a temporary
+    /// copy, use [`Grid::clear`].
     // The grid is the value being built, so its arrays are as large as it
     // is; in a constant such as `Grid::EMPTY` it is built at compile time,
     // and ports with small stacks build grids in place with `clear`.
@@ -75,8 +59,6 @@ impl<const PANEL_ROWS: usize> Grid<PANEL_ROWS> {
             boxed_mode: false,
             mix: false,
             designation: DEFAULT_DESIGNATION,
-            panels: [[Cell::BLANK; SIDE_PANEL_AREA_COLUMNS]; PANEL_ROWS],
-            side_panels: SidePanels::NONE,
             colour_map: ColourMap::DEFAULT,
             screen_colour: COLOUR_BLACK,
             row_colours: [COLOUR_BLACK; ROWS],
@@ -88,14 +70,10 @@ impl<const PANEL_ROWS: usize> Grid<PANEL_ROWS> {
         for row in &mut self.cells {
             row.fill(Cell::BLANK);
         }
-        for row in &mut self.panels {
-            row.fill(Cell::BLANK);
-        }
         self.double_height_rows = 0;
         self.boxed_mode = false;
         self.mix = false;
         self.designation = DEFAULT_DESIGNATION;
-        self.side_panels = SidePanels::NONE;
         self.colour_map = ColourMap::DEFAULT;
         self.screen_colour = COLOUR_BLACK;
         self.row_colours = [COLOUR_BLACK; ROWS];
@@ -110,20 +88,6 @@ impl<const PANEL_ROWS: usize> Grid<PANEL_ROWS> {
     /// The cell at a position, mutably.
     pub fn cell_mut(&mut self, row: usize, column: usize) -> Option<&mut Cell> {
         self.cells.get_mut(row).and_then(|cells| cells.get_mut(column))
-    }
-
-    /// The side-panel cell at a screen position: row 1 to 24, column 40 to
-    /// 71. `None` elsewhere, including row 0, which has no panel content.
-    #[must_use]
-    pub fn panel_cell(&self, row: usize, column: usize) -> Option<&Cell> {
-        let row = row.checked_sub(SIDE_PANEL_FIRST_ROW)?;
-        self.panels.get(row)?.get(column.checked_sub(SIDE_PANEL_FIRST_COLUMN)?)
-    }
-
-    /// The side-panel cell at a screen position, mutably.
-    pub fn panel_cell_mut(&mut self, row: usize, column: usize) -> Option<&mut Cell> {
-        let row = row.checked_sub(SIDE_PANEL_FIRST_ROW)?;
-        self.panels.get_mut(row)?.get_mut(column.checked_sub(SIDE_PANEL_FIRST_COLUMN)?)
     }
 
     /// True when row `row` contains double height.

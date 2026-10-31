@@ -2,14 +2,12 @@
 //! palette-index raster (REQ-RND-007), for `neottx` and any other front
 //! end.
 //!
-//! Text: rows are composed with their side panels, and G3 characters
-//! convert as REQ-CHR-011 says.
+//! Text: G3 characters convert as REQ-CHR-011 says.
 //! Every character written passes the allow-list of REQ-SEC-010.
 
 use neoteletext_core::charset::{compose, mosaic_to_unicode, to_unicode};
 use neoteletext_core::level1::{Cell, Glyph, Grid, Size, Width};
 use neoteletext_core::policy::is_safe_output_char;
-use neoteletext_core::render::{source_cell, source_columns};
 
 mod raster;
 mod receiver_page;
@@ -68,24 +66,14 @@ pub fn cell_text(cell: &Cell, grid: &Grid, reveal: bool, mosaics: MosaicStyle, o
     }
 }
 
-/// The cells of row `row` in display order: the left panel, the main page
-/// and the right panel (REQ-RND-033). `None` is the screen colour, where
-/// the panel area has no content.
-pub fn row_cells(grid: &Grid, row: usize) -> impl Iterator<Item = Option<&Cell>> {
-    source_columns(grid).map(move |column| source_cell(grid, row, column))
-}
-
 /// The page as 25 lines of UTF-8 (REQ-RND-008, REQ-RND-041).
 #[must_use]
 pub fn plain(grid: &Grid, reveal: bool, mosaics: MosaicStyle) -> String {
     let mut out = String::new();
-    for row in 0..grid.cells.len() {
+    for cells in &grid.cells {
         let mut line = String::new();
-        for cell in row_cells(grid, row) {
-            match cell {
-                Some(cell) => cell_text(cell, grid, reveal, mosaics, &mut line),
-                None => line.push(' '),
-            }
+        for cell in cells {
+            cell_text(cell, grid, reveal, mosaics, &mut line);
         }
         out.push_str(line.trim_end());
         out.push('\n');

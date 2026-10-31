@@ -20,12 +20,12 @@
 use neoteletext_core::acq::{Decoder, EnhancementPacket, EnhancementStore, EnhancementSubPage, StoredPage};
 use neoteletext_core::compose::compose_level;
 use neoteletext_core::config::{CellMode, Config, PresentationLevel};
-use neoteletext_core::consts::{ENHANCEMENT_PACKETS_LEVEL_35, MAGAZINES, MOT_PACKETS, ROWS};
+use neoteletext_core::consts::{ENHANCEMENT_PACKETS_LEVEL_35, MAGAZINES, MOT_PACKETS, PAGE_WIDTH, ROWS};
 use neoteletext_core::glyphs::GlyphSet;
 use neoteletext_core::level1::{DisplayOptions, Grid, build_grid};
 use neoteletext_core::packet::PacketMeta;
 use neoteletext_core::render::{
-    ALL_ROWS, ColourMode, FlashPhase, IndexBuffer, IndexFormat, RenderOptions, render_screen, row_width,
+    ALL_ROWS, ColourMode, FlashPhase, IndexBuffer, IndexFormat, RenderOptions, render_screen,
 };
 use neoteletext_core::types::{Instant, SubCode};
 use neoteletext_formats::author::streams;
@@ -34,7 +34,7 @@ use std::path::PathBuf;
 
 /// Raise when the stream, enhancement or rendering changes on purpose
 /// (REQ-TST-030).
-const FORMAT_VERSION: u32 = 8;
+const FORMAT_VERSION: u32 = 9;
 /// One line period between packets, as the command-line program uses.
 const LINE_US: u64 = 64;
 /// The flash units of decision E.48 a still page is drawn at: the start of
@@ -97,7 +97,7 @@ fn checksums() -> String {
                         colour: ColourMode::Resolved(FlashPhase::at_unit(unit)),
                         underline: true,
                     };
-                    let width = row_width(&grid);
+                    let width = PAGE_WIDTH;
                     let height = ROWS * options.row_height();
                     let mut indices = vec![0u8; width * height];
                     let mut buffer = IndexBuffer { format: IndexFormat::Bits8, data: &mut indices, stride: width };

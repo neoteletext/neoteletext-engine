@@ -95,9 +95,7 @@ pub const MOT_FALLBACK_PANELS_SHIFT: u32 = 1;
 pub const MOT_FALLBACK_PANELS_MASK: u8 = 0x03;
 /// Byte N+4 bit 4: black background replaced by the full row colour.
 pub const MOT_FALLBACK_SUBSTITUTION: u8 = 0x08;
-/// The full width of one side panel (clause 12.5.2).
-pub const SIDE_PANEL_MAX_COLUMNS: u8 = 16;
-/// The width of each panel when both are used by the MOT fallback.
+/// The width Table 21 gives each side panel when a fallback selects both.
 pub const SIDE_PANEL_HALF_COLUMNS: u8 = 8;
 /// Shift of the second default object's type, bits 4 and 3 of byte N+5
 /// (clause 10.6.4.1).

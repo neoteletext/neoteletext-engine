@@ -15,7 +15,6 @@ use crate::level1::{Cell, Glyph, Grid, Zoom};
 use crate::types::Instant;
 
 use super::raster::{CELL_MASK, SEPARATED_COLUMNS, font_line_20, glyph_line_20, mosaic_block, mosaic_line, widen};
-use super::row::PANEL_AREA_END;
 use crate::charset::{CharRef, CharSet, G0, G0Set, NationalOption};
 use crate::consts::{COLOUR_BLUE_BIT, COLOUR_RED_BIT, PAGE_WIDTH};
 use std::vec;

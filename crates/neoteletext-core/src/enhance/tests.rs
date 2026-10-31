@@ -46,7 +46,7 @@ use crate::types::{
 use super::attributes::{ATTRIBUTES, Flash, Rate, flash_of, flash_rate};
 use super::characters::{enhancement_glyph, is_text};
 use super::machine::traced_action;
-use super::planes::{area_of, scan_index};
+use super::planes::scan_index;
 use super::row::cell_of;
 #[cfg(feature = "additional-flash-functions")]
 use crate::consts::FLASH_MODE_STEADY;
@@ -78,25 +78,12 @@ fn additional_flash_values() {
     assert_eq!(flash_rate(Rate::Incremental, 10, 9), FlashRate::FastPhase1, "left of the start");
 }
 
-/// Decision E.49: the display areas of a row.
+/// Annex A.4 and A.8: scan order counts every column a position can name,
+/// those past the page included.
 #[test]
-fn display_areas() {
-    let panels = SidePanels { left: 6, right: 10 };
-    let areas = [0, 39, 40, 49, 50, 65, 66, 71, 72].map(|column| area_of(column, panels));
-    let expected = [
-        Area::Main,
-        Area::Main,
-        Area::Right,
-        Area::Right,
-        Area::Outside,
-        Area::Outside,
-        Area::Left,
-        Area::Left,
-        Area::Outside,
-    ];
-    assert_eq!(areas, expected);
-    assert_eq!(area_of(40, SidePanels::NONE), Area::Outside);
-    assert_eq!(scan_index(1, 0), SCREEN_COLUMNS);
+fn scan_order_counts_every_column_a_position_names() {
+    assert_eq!(scan_index(0, 71) + 1, scan_index(1, 0));
+    assert_eq!(scan_index(1, 0), crate::consts::ADDRESS_COLUMNS);
 }
 
 /// REQ-OBJ-008, REQ-OBJ-013: the nesting table and the planes that set
@@ -248,16 +235,16 @@ fn changes_at_one_cell() {
     assert_eq!((both.foreground, both.background), (Some(3), Some(2)));
 }
 
-/// REQ-L25-025: Annex C.3 on one segment: lower halves claimed for the
+/// REQ-L25-025: Annex C.3 on one row: lower halves claimed for the
 /// next row, and no doubling where it cannot be shown.
 #[test]
-fn sizes_on_a_segment() {
+fn sizes_on_a_row() {
     let attrs = Attrs { double_height: true, double_width: true, ..Attrs::PASSIVE };
     let resolved = cell_of(Glyph::Space, &attrs, CharSource::Local, 0);
     let mut cells = RowCells::new();
     cells.resolved[38] = Some(resolved);
     cells.resolved[39] = Some(resolved);
-    cells.place(38, 40, true);
+    cells.place(true);
     let placed = |cells: &RowCells, column: usize| cells.cells[column].unwrap();
     assert_eq!(placed(&cells, 38).size, Size::DoubleTop);
     assert_eq!(placed(&cells, 38).attributes.width(), Width::LeftHalf);
@@ -265,7 +252,7 @@ fn sizes_on_a_segment() {
     assert!(cells.claims[38] && cells.claims[39]);
     let mut cells = RowCells::new();
     cells.resolved[39] = Some(resolved);
-    cells.place(0, 40, false);
+    cells.place(false);
     assert_eq!((placed(&cells, 39).size, placed(&cells, 39).attributes.width()), (Size::Normal, Width::Normal));
 }
 
@@ -1121,13 +1108,12 @@ fn invoke_local(kind: ObjectKind, number: ObjectNumber) -> TripletFunction {
     TripletFunction::ObjectInvocation { source: ObjectSource::Local, kind, number }
 }
 
-/// REQ-OBJ-014, decision E.49: an element of an object that falls outside
-/// every enabled display area, in panel columns that are not enabled or
-/// beyond column 71, is discarded and counted, as one that crosses from
-/// the main page is.
+/// REQ-OBJ-014, REQ-1644: an element of an object that falls outside
+/// columns 0 to 39 is discarded and counted, whether its origin lies on the
+/// page or past it.
 #[cfg(feature = "objects")]
 #[test]
-fn object_writes_outside_every_display_area_are_discarded() {
+fn object_writes_past_column_39_are_discarded() {
     let number = local_number(1, 0);
     let objects = x26(1, &[define(ObjectKind::Passive, number), g0_at(0, b'P'), g0_at(30, b'Q'), END]);
     let at = |column_offset: u8| {
@@ -1138,8 +1124,7 @@ fn object_writes_outside_every_display_area_are_discarded() {
     others.push(objects);
     let (grid, report) = build_25(&page(0, &[(2, b"ROW 2")], others));
     assert_eq!((shown(&grid.cells[2][10]), grid.cells[2][10].attributes.source()), ('P', CharSource::Passive));
-    // Column 40 from the main page; columns 45, 75, 71 and 101 with no
-    // side panel enabled.
+    // Column 40 from the page; columns 45, 75, 71 and 101 past it.
     assert_eq!(report.faults.discarded_writes, 5);
 }
 

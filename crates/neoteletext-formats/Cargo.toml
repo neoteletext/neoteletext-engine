@@ -43,10 +43,10 @@ std = []
 [dev-dependencies]
 proptest = "1.7.0"
 # The golden tests compose and render pages, with every capability the
-# golden rasters were taken with: objects, side panels and the Additional
-# Flash Functions, which are not default (decision E.105), so a build of
+# golden rasters were taken with: objects and the Additional Flash
+# Functions, which are not default (decision E.105), so a build of
 # this crate alone renders the same.
-neoteletext-core = { workspace = true, features = ["default", "objects", "side-panels", "additional-flash-functions"] }
+neoteletext-core = { workspace = true, features = ["default", "objects", "additional-flash-functions"] }
 
 [lints]
 workspace = true

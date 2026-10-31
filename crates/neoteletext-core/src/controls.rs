@@ -173,7 +173,7 @@ pub enum Look {
 
 /// Gives the cells of `area` on `grid` the look, before the grid is
 /// rendered.
-pub fn apply_look<const PANEL_ROWS: usize>(grid: &mut Grid<PANEL_ROWS>, area: Control, look: Look) {
+pub fn apply_look(grid: &mut Grid, area: Control, look: Look) {
     for row in grid.cells.iter_mut().skip(usize::from(area.row)).take(usize::from(area.height)) {
         for cell in row.iter_mut().skip(usize::from(area.column)).take(usize::from(area.width)) {
             cell.foreground ^= ADJACENT_CLUT_FLIP;

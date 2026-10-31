@@ -6,12 +6,7 @@
 // The helpers serve only the tests of capabilities compiled out, so in a
 // build with every capability they are unused.
 #![cfg_attr(
-    all(
-        feature = "objects",
-        feature = "side-panels",
-        feature = "level35-32colors",
-        feature = "additional-flash-functions"
-    ),
+    all(feature = "objects", feature = "level35-32colors", feature = "additional-flash-functions"),
     allow(dead_code, unused_imports, reason = "every capability is compiled in, so no test here runs")
 )]
 
@@ -46,6 +41,14 @@ fn the_default_features_are_decision_e105() {
     assert_eq!(features, expected);
 }
 
+/// REQ-1644: no feature adds columns; read from the manifest, whatever this
+/// build's features.
+#[test]
+fn no_feature_adds_columns() {
+    let manifest = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml")).unwrap();
+    assert!(!manifest.contains("side-panels"), "DEC-1636: side panels are never built");
+}
+
 /// Page 100 with Level 1 rows and local enhancement data.
 fn page(rows: &[(u8, &[u8])], local: &[TripletFunction]) -> Vec<Packet> {
     display_page(0, rows, local_data(local))
@@ -67,21 +70,6 @@ fn objects_compiled_out_are_ignored() {
     let packets = display_page(0, &[], vec![x26(0, &data), x26(1, &object)]);
     let (grid, _) = build(&packets, neoteletext_core::config::PresentationLevel::Level35);
     assert_ne!(char_of(&grid.cells[3][4]), 'P');
-}
-
-/// Without side panels, a page is always 40 columns (decision E.71).
-#[cfg(not(feature = "side-panels"))]
-#[test]
-fn side_panels_compiled_out_are_never_shown() {
-    use common::{build_35, x28};
-    use neoteletext_core::colour::SidePanels;
-    use neoteletext_core::types::{PresentationFields, SidePanelFields};
-    let panels = PresentationFields {
-        side_panels: Some(SidePanelFields { left: true, right: true, status_flag: true, left_columns: 8 }),
-        ..PresentationFields::default()
-    };
-    let grid = build_35(&display_page(0, &[(1, b"A")], vec![x28(0, &panels)]));
-    assert_eq!(grid.side_panels, SidePanels { left: 0, right: 0 });
 }
 
 /// Without the Colour Map of Level 2.5, nothing redefines a CLUT, and CLUTs

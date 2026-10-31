@@ -23,10 +23,10 @@ Every part below is on by default. A smaller program leaves parts out (decision 
 cargo build --release -p neoteletext-cli --no-default-features --features view
 ```
 
-Three capabilities of Levels 2.5 and 3.5 are off by default (decision E.105) and are named to build them in: `objects`, `side-panels` and `additional-flash-functions`:
+Two capabilities of Levels 2.5 and 3.5 are off by default (decision E.105) and are named to build them in: `objects` and `additional-flash-functions`:
 
 ```sh
-cargo build --release -p neoteletext-cli --features objects,side-panels,additional-flash-functions
+cargo build --release -p neoteletext-cli --features objects,additional-flash-functions
 ```
 
 That program with `--no-default-features --features view` reads files, shows and converts pages, and is about half the size, with no TLS code. Every command stays in the help text. A command whose part is left out exits with status 2 and says the build does not include it. Without `view`, `show` draws images at scale 1 unless `--scale` is given.
@@ -118,15 +118,15 @@ A live input runs in two processes (REQ-SEC-018). A fetcher process does the net
 
 ### Images
 
-`render` writes PNG (the default, with alpha for transparent cells) or PPM with `--image ppm`. The picture is 480 by 500 pixels at scale 1, or 480 by 250 in the 12-by-10 cell mode of the `saa5246a` profile. A page with side panels at Levels 2.5 and 3.5 is wider: 672 pixels for 56 columns. The palette is the page's 32-entry Colour Map.
+`render` writes PNG (the default, with alpha for transparent cells) or PPM with `--image ppm`. The picture is 480 by 500 pixels at scale 1, or 480 by 250 in the 12-by-10 cell mode of the `saa5246a` profile. The palette is the page's 32-entry Colour Map.
 
 ### Text
 
-`text` writes the page as UTF-8, one line per row. Mosaics become Unicode block mosaics and national characters their Unicode equivalents. At Levels 2.5 and 3.5 rows include their side panels, and G3 smooth mosaics and line-drawing characters become the Unicode characters for them (REQ-CHR-011).
+`text` writes the page as UTF-8, one line per row. Mosaics become Unicode block mosaics and national characters their Unicode equivalents. At Levels 2.5 and 3.5 G3 smooth mosaics and line-drawing characters become the Unicode characters for them (REQ-CHR-011).
 
 ### Levels 2.5 and 3.5
 
-At the default level, 3.5, `neottx` also keeps the enhancement pages a service sends (object pages and the Magazine Organization Table) and the magazine packets M/29, and draws each page with them: the page's own Colour Map of 32 colours (CLUTs 2 and 3 from X/28/0 and M/29/0, and at Level 3.5 CLUTs 0 and 1 from X/28/4 and M/29/4), screen and row colours, the non-spacing attributes (colours, double width and double size, underline, invert and the rest of Table 27) and the G3 set. Objects, side panels and the Additional Flash Functions are drawn by a build that names them (above). Downloadable characters (DRCS) are not drawn: the Level 1 character beneath shows (decision E.95). Nor are the Level 3.5 font styles, bold, italic and proportional spacing (decision E.96). A fault in any of these removes only what depends on it; the Level 1 page always shows. `--level 1.5` shows a page as a Level 1.5 receiver would, without re-acquiring anything. `cargo xtask level25-stream FILE.t42` writes a test stream with a page for each feature, indexed on page 100.
+At the default level, 3.5, `neottx` also keeps the enhancement pages a service sends (object pages and the Magazine Organization Table) and the magazine packets M/29, and draws each page with them: the page's own Colour Map of 32 colours (CLUTs 2 and 3 from X/28/0 and M/29/0, and at Level 3.5 CLUTs 0 and 1 from X/28/4 and M/29/4), screen and row colours, the non-spacing attributes (colours, double width and double size, underline, invert and the rest of Table 27) and the G3 set. Objects and the Additional Flash Functions are drawn by a build that names them (above). Side panels are never drawn: a page is always 40 columns (decision DEC-1636). Downloadable characters (DRCS) are not drawn: the Level 1 character beneath shows (decision E.95). Nor are the Level 3.5 font styles, bold, italic and proportional spacing (decision E.96). A fault in any of these removes only what depends on it; the Level 1 page always shows. `--level 1.5` shows a page as a Level 1.5 receiver would, without re-acquiring anything. `cargo xtask level25-stream FILE.t42` writes a test stream with a page for each feature, indexed on page 100.
 
 ## The viewer
 

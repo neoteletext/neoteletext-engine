@@ -1,12 +1,11 @@
 //! The palette-index raster of a page (REQ-RND-007): the rendered
 //! indices and the palette they index, scaled as REQ-RND-004 asks.
 
-use neoteletext_core::consts::ROWS;
+use neoteletext_core::consts::{PAGE_WIDTH, ROWS};
 use neoteletext_core::glyphs::GlyphSet;
 use neoteletext_core::level1::Grid;
 use neoteletext_core::render::{
     ALL_ROWS, ColourMode, FlashPhase, IndexBuffer, IndexFormat, RenderOptions, palette_mode_allowed, render_screen,
-    row_width,
 };
 use neoteletext_image::palette::{Rgba, clut0_of, colour_map_palette, palette};
 use neoteletext_image::scale::{scale_indices, scaled_size};
@@ -52,7 +51,7 @@ pub fn raster(
     if options.colour == ColourMode::Palette && !palette_mode_allowed(grid) {
         options.colour = ColourMode::Resolved(FlashPhase::STEADY);
     }
-    let width = row_width(grid);
+    let width = PAGE_WIDTH;
     let height = ROWS.saturating_mul(options.row_height());
     let mut indices = vec![0u8; width.saturating_mul(height)];
     let mut buffer = IndexBuffer { format: IndexFormat::Bits8, data: &mut indices, stride: width };

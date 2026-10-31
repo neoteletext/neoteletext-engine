@@ -4,8 +4,7 @@
 //! At Levels 1 and 1.5 a raster holds the indices of the palette mode and
 //! the 144-entry palette of one flash phase (REQ-RND-023); at Levels 2.5
 //! and 3.5 it holds Colour Map indices and the page's 32 colours
-//! (REQ-RND-030, REQ-RND-031). Rows are as wide as the page's side panels
-//! make them (REQ-RND-033).
+//! (REQ-RND-030, REQ-RND-031).
 
 use crate::frame::Frame;
 use neoteletext_app::present;
@@ -104,23 +103,16 @@ pub fn iterm2_inline(png: &[u8], width: usize, height: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(feature = "side-panels")]
-    use neoteletext_core::colour::SidePanels;
-    #[cfg(feature = "side-panels")]
     use neoteletext_core::config::{Config, PresentationLevel};
 
-    /// REQ-RND-033, REQ-RND-030: a page with side panels is wider, and at
-    /// Level 2.5 its palette is the page's 32 colours; at Level 1.5 the
-    /// 144-entry palette of the palette mode.
-    #[cfg(feature = "side-panels")]
+    /// REQ-RND-030: at Level 2.5 the palette is the page's 32 colours; at
+    /// Level 1.5 the 144-entry palette of the palette mode.
     #[test]
-    fn rasters_follow_the_level_and_the_panels() {
-        let mut grid = Grid::EMPTY;
-        grid.side_panels = SidePanels { left: 6, right: 10 };
+    fn rasters_follow_the_level() {
         let scale = Scale { x: 2, y: 1, aspect: false };
         let enhanced = Config { level: PresentationLevel::Level25, ..Config::default() };
-        let image = raster(&grid, Frame::still(&enhanced, false), scale, Rgba::TRANSPARENT);
-        assert_eq!((image.width, image.height, image.palette.len()), (56 * 12 * 2, 500, 32));
+        let image = raster(&Grid::EMPTY, Frame::still(&enhanced, false), scale, Rgba::TRANSPARENT);
+        assert_eq!((image.width, image.height, image.palette.len()), (960, 500, 32));
         let level15 = Config { level: PresentationLevel::Level15, ..Config::default() };
         let image = raster(&Grid::EMPTY, Frame::still(&level15, false), scale, Rgba::TRANSPARENT);
         assert_eq!((image.width, image.palette.len()), (960, 144));

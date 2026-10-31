@@ -1,7 +1,7 @@
 //! Magazine 4: default objects.
 
 use neoteletext_core::packet::{DefaultObject, MotPageEntry, ObjectKind};
-use neoteletext_core::types::{FallbackFields, PageNumber, SidePanelFields};
+use neoteletext_core::types::{FallbackFields, PageNumber};
 
 use crate::author::{
     Mot, MotLevel, ObjectPage, ObjectRef, Result, Stream, Triplets, address, object_link, row_address,
@@ -34,11 +34,8 @@ pub(super) fn default_objects(stream: &mut Stream) -> Result<()> {
     let mut pop_link = object_link(pop.address(), 0);
     pop_link.default_objects = [Some(default_object(pop_1)), Some(default_object(pop_2))];
     // The fallback of a POP link applies to pages with no X/28 or M/29
-    // data: both side panels, eight columns each, and substitution.
-    pop_link.fallback = FallbackFields {
-        side_panels: SidePanelFields { left: true, right: true, status_flag: true, left_columns: 8 },
-        black_background_substitution: true,
-    };
+    // data: substitution.
+    pop_link.fallback = FallbackFields { black_background_substitution: true, ..FallbackFields::default() };
     mot.object_link(MotLevel::Both, 0, global_link)?;
     mot.object_link(MotLevel::Both, 1, pop_link)?;
     for page in [0x00u8, 0x01, 0x02] {

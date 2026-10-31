@@ -7,13 +7,12 @@
 //!
 //! - finds the enhancement pages the page uses (`objects::links`) and
 //!   builds the page-level presentation data with `colour::resolve`: the
-//!   Colour Map, the default screen and row colours, re-mapping,
-//!   substitution and side panels (REQ-L25-030 to REQ-L25-041);
+//!   Colour Map, the default screen and row colours, re-mapping and
+//!   substitution (REQ-L25-030, REQ-L25-031);
 //! - walks the page's local enhancement data, the objects it invokes and
 //!   the default objects, as the machine of REQ-FSM-011 describes;
 //! - resolves each row from its Level 1 bytes and the events of the walk
-//!   that fall on it, cell by cell, as REQ-FSM-012 describes, and then the
-//!   cells of each side panel.
+//!   that fall on it, cell by cell, as REQ-FSM-012 describes.
 //!
 //! **How the walk and the rows meet.** The walk is run once for the
 //! page-level data (screen and row colours) and then once for each row,
@@ -31,11 +30,9 @@
 
 use crate::acq::{EnhancementLookup, EnhancementReport, PageBuild, StoredPage};
 use crate::charset::{G0, G0Set, G2Set};
-use crate::colour::{ColourIndex, PagePresentation, SidePanels};
+use crate::colour::{ColourIndex, PagePresentation};
 use crate::config::{Config, PresentationLevel};
-use crate::consts::{
-    LOCAL_TRIPLETS, OBJECT_BODY_TRIPLETS, OBJECT_INVOCATIONS_PER_TYPE, OBJECT_TYPES, ROWS, SCREEN_COLUMNS,
-};
+use crate::consts::{COLUMNS, LOCAL_TRIPLETS, OBJECT_BODY_TRIPLETS, OBJECT_INVOCATIONS_PER_TYPE, OBJECT_TYPES, ROWS};
 use crate::level1::{Cell, DisplayOptions};
 use crate::objects::{Body, EnhancementLinks};
 use crate::packet::DisplayAttributes;
@@ -54,7 +51,7 @@ mod walk;
 
 use attributes::Flash;
 use characters::EnhChar;
-use planes::{Area, Plane};
+use planes::Plane;
 use row::Resolved;
 
 pub use machine::{
@@ -124,9 +121,6 @@ struct Frame<'s> {
     /// The active position, relative to the origin.
     row: u8,
     column: u8,
-    /// The display area of the origin; elements elsewhere are discarded
-    /// (REQ-OBJ-014, decision E.49).
-    area: Area,
     /// The invocation's number, in walk order: later is latest invoked.
     slot: u16,
     /// The Modified G0 and G2 designation of an Adaptive or Passive object,
@@ -182,7 +176,7 @@ struct Collector {
     /// Bit r set when an event falls on row r: rows without events need no
     /// run of their own.
     event_rows: u32,
-    slots: [Slot; SCREEN_COLUMNS],
+    slots: [Slot; COLUMNS],
     ranges: FixedVec<Range, RANGES>,
 }
 
@@ -193,7 +187,6 @@ struct Inputs<'a, 's> {
     build: PageBuild,
     links: &'a EnhancementLinks,
     level: PresentationLevel,
-    panels: SidePanels,
     /// The page's default G0 and G2 sets.
     default_sets: (G0Set, G2Set),
 }
@@ -214,17 +207,17 @@ struct Walker<'a, 's> {
 /// The cells of the row being placed, and what passes between rows.
 struct RowCells {
     /// What each cell resolved to, before sizes.
-    resolved: [Option<Resolved>; SCREEN_COLUMNS],
+    resolved: [Option<Resolved>; COLUMNS],
     /// The cells placed; `None` keeps the fill of the row below spacing
     /// double height.
-    cells: [Option<Cell>; SCREEN_COLUMNS],
+    cells: [Option<Cell>; COLUMNS],
     /// The cells of the row above, for its lower halves.
-    above: [Option<Cell>; SCREEN_COLUMNS],
+    above: [Option<Cell>; COLUMNS],
     /// The cells of this row that enlarged characters of the row above
     /// cover.
-    claimed: [bool; SCREEN_COLUMNS],
+    claimed: [bool; COLUMNS],
     /// The cells of the next row that this row's enlarged characters cover.
-    claims: [bool; SCREEN_COLUMNS],
+    claims: [bool; COLUMNS],
 }
 
 /// What rebuilding the rows of a page needs.

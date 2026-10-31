@@ -15,9 +15,7 @@
 //!   reveal setting, and the indices are Colour Map indices 0 to 31, index 8
 //!   transparent. The port's palette is the grid's Colour Map.
 //!
-//! A row is composed of the left side panel, the 40 columns of the main
-//! page and the right side panel (decision E.49, REQ-RND-033); without side
-//! panels it is 40 columns wide, as at Levels 1 and 1.5.
+//! A row is 40 columns wide at every level (REQ-1644).
 //!
 //! Renderers start from the cell grid and never decode packets
 //! (REQ-RND-001). The raster uses integer arithmetic only, so the same grid
@@ -40,7 +38,7 @@ pub use flash::{FlashPhase, flash_on, flash_unit, flash_visible};
 pub use options::{ColourMode, RenderOptions};
 use raster::CELL_LAST_HALF_DOT;
 pub use raster::cell_line;
-pub use row::{render_line, render_row, render_screen, row_columns, row_width, source_cell, source_columns};
+pub use row::{render_line, render_row, render_screen};
 
 /// One line of one cell (REQ-RND-016).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

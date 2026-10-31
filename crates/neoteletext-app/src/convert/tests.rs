@@ -49,7 +49,7 @@ fn authored_stream_converts_to_tti_and_back() {
 
     let (left, right) = (first.pages(), second.pages());
     assert_eq!(left.len(), right.len());
-    assert!(left.len() >= 30);
+    assert!(left.len() >= 27);
     for (a, b) in left.iter().zip(&right) {
         let name = a.key.address.mpp();
         assert_eq!(a.key, b.key);

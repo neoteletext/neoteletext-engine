@@ -9,8 +9,7 @@ use crate::image::{iterm2_inline, png, raster};
 use crate::terminal::{self, Display};
 use neoteletext_app::input::{self, Options};
 use neoteletext_app::{Failure, exit};
-use neoteletext_core::consts::ROWS;
-use neoteletext_core::render::row_width;
+use neoteletext_core::consts::{PAGE_WIDTH, ROWS};
 use neoteletext_image::palette::Rgba;
 use std::io::{IsTerminal, Write};
 
@@ -42,9 +41,7 @@ pub fn show(
     let mut out = std::io::stdout().lock();
     match display {
         Display::Iterm2 => {
-            // A page with side panels is wider (REQ-RND-033).
-            let scale =
-                scale_for(raster_args, area, (row_width(&grid), ROWS.saturating_mul(frame.options.row_height())));
+            let scale = scale_for(raster_args, area, (PAGE_WIDTH, ROWS.saturating_mul(frame.options.row_height())));
             let image = raster(&grid, frame, scale, Rgba::opaque(0, 0, 0));
             let encoded = png(&image).map_err(|error| (exit::INPUT, error.to_string()))?;
             let _ = out.write_all(iterm2_inline(&encoded, image.width, image.height).as_bytes());

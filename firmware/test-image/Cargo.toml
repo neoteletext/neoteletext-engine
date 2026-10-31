@@ -23,7 +23,6 @@ level25 = ["neoteletext-core/level25"]
 capabilities = [
     "level25",
     "neoteletext-core/objects",
-    "neoteletext-core/side-panels",
     "neoteletext-core/level35-32colors",
     "neoteletext-core/additional-flash-functions",
 ]

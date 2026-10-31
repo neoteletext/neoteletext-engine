@@ -1,13 +1,9 @@
 //! Tests of the rendering of Levels 2.5 and 3.5: the resolved colour mode,
-//! side panels, double width and size, underline, invert, flash and
+//! double width and size, underline, invert, flash and
 //! conceal, G3 drawing and the flash timing
 //! (REQ-RND-030 to REQ-RND-040). Every grid is built by hand, so these
 //! tests depend on nothing but the grid (REQ-RND-001).
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
-#![cfg_attr(
-    not(feature = "side-panels"),
-    allow(dead_code, unused_imports, reason = "helpers of the tests whose capability is compiled out (decision E.71)")
-)]
 
 // The module is compiled for tests only (see `render/tests.rs`); the attribute
 // also marks this file as test code for `cargo xtask check-layers`.
@@ -15,11 +11,10 @@
 use super::*;
 
 use crate::charset::{CharRef, CharSet, G0, G0Set, NationalOption};
-use crate::colour::SidePanels;
 use crate::config::{CellMode, Config};
 use crate::consts::{
     ADJACENT_CLUT_FLIP, CELL_HEIGHT, CELL_WIDTH, COLOUR_TRANSPARENT, COLUMNS, FLASH_UNITS, G3_CODES, G3_FIRST_CODE,
-    PAGE_WIDTH, PALETTE_SIZE, RECEIVER_COLUMNS, SIDE_PANEL_FIRST_COLUMN,
+    PAGE_WIDTH, PALETTE_SIZE, RECEIVER_COLUMNS,
 };
 use crate::glyphs::GlyphSet;
 use crate::level1::{Cell, CellAttributes, FlashMode, FlashRate, Glyph, Grid, Size, Width, Zoom};
@@ -71,7 +66,7 @@ fn line_of(grid: &Grid, cell: &Cell, row: usize, column: usize, line: usize, opt
 
 /// A whole screen at the grid's row width.
 fn screen(grid: &Grid, options: RenderOptions) -> Vec<u8> {
-    let width = row_width(grid);
+    let width = PAGE_WIDTH;
     let mut out = vec![0u8; width * ROWS * options.row_height()];
     let mut buffer = IndexBuffer { format: IndexFormat::Bits8, data: &mut out, stride: width };
     render_screen(grid, ALL_ROWS, &GlyphSet::bedstead(), options, &mut buffer).unwrap();
@@ -211,8 +206,8 @@ fn palette_mode_is_refused_where_it_cannot_draw() {
         underline: true,
     };
     let refused = |grid: &Grid| {
-        let mut out = vec![0u8; row_width(grid) * CELL_HEIGHT];
-        let mut buffer = IndexBuffer { format: IndexFormat::Bits8, data: &mut out, stride: row_width(grid) };
+        let mut out = vec![0u8; PAGE_WIDTH * CELL_HEIGHT];
+        let mut buffer = IndexBuffer { format: IndexFormat::Bits8, data: &mut out, stride: PAGE_WIDTH };
         let row = render_row(grid, 2, Field::Both, &glyphs, palette, &mut buffer);
         let line = render_line(grid, 2 * CELL_HEIGHT, Zoom::Off, &glyphs, palette, IndexFormat::Bits8, &mut out);
         assert_eq!(row, line);
@@ -220,7 +215,7 @@ fn palette_mode_is_refused_where_it_cannot_draw() {
         row == Err(RenderError::NeedsResolvedMode)
     };
     assert!(!refused(&level1_grid()), "a Level 1 page draws in the palette mode");
-    let cases: [RefusalCase; 7] = [
+    let cases: [RefusalCase; 6] = [
         ("foreground outside CLUT 0", |grid| grid.cells[2][5].foreground = 9),
         ("background outside CLUT 0", |grid| grid.cells[2][5].background = 31),
         ("fast flash", |grid| {
@@ -239,15 +234,8 @@ fn palette_mode_is_refused_where_it_cannot_draw() {
             grid.cells[2][5].flash = true;
             grid.cells[2][5].attributes = CellAttributes::DEFAULT.with_flash_mode(FlashMode::AdjacentClut);
         }),
-        ("a side-panel cell outside CLUT 0", |grid| {
-            grid.side_panels = SidePanels { left: 4, right: 0 };
-            grid.panel_cell_mut(2, 70).unwrap().background = 12;
-        }),
     ];
-    // A build without a capability cannot draw it, so does not refuse it
-    // (decision E.71).
-    let compiled = |name: &&str| cfg!(feature = "side-panels") || *name != "a side-panel cell outside CLUT 0";
-    for (name, case) in cases.into_iter().filter(|(name, _)| compiled(name)) {
+    for (name, case) in cases {
         let mut grid = level1_grid();
         case(&mut grid);
         assert!(refused(&grid), "{name}");
@@ -397,149 +385,32 @@ fn resolved_indices_are_colour_map_indices() {
     assert_eq!((raster.foreground, raster.background), (31, 31));
 }
 
-/// A grid whose cells say where they are: the cell of source column c
-/// shows the contiguous mosaic c mod 64 in white on colour c / 64, so
-/// the renderer's choice of source column can be read back from its pixels.
-/// The screen colour is cyan, which no label uses.
-fn labelled_grid(left: u8, right: u8) -> Grid {
+/// REQ-RND-017: whole screen, row by row and line by line agree, and a
+/// buffer one pixel short of a row is refused.
+#[test]
+fn rows_render_identically_in_any_order() {
     let mut grid = Grid::EMPTY;
-    grid.side_panels = SidePanels { left, right };
-    grid.screen_colour = CYAN;
-    let label = |column: usize| Cell {
-        glyph: Glyph::Mosaic { pattern: (column % 64) as u8, separated: false },
-        foreground: WHITE,
-        background: (column / 64) as u8,
-        ..Cell::BLANK
-    };
-    for row in 0..ROWS {
-        for column in 0..COLUMNS {
-            grid.cells[row][column] = label(column);
-        }
-        for column in SIDE_PANEL_FIRST_COLUMN..PANEL_AREA_END {
-            if let Some(cell) = grid.panel_cell_mut(row, column) {
-                *cell = label(column);
-            }
-        }
+    grid.screen_colour = 3;
+    grid.cells[4][0].glyph = text(b'A');
+    grid.cells[9][39].glyph = g3(0x25);
+    let width = PAGE_WIDTH;
+    let options = large(5);
+    let whole = screen(&grid, options);
+    let glyphs = GlyphSet::bedstead();
+    for row in (0..ROWS).rev() {
+        let mut single = vec![0u8; width * CELL_HEIGHT];
+        let mut buffer = IndexBuffer { format: IndexFormat::Bits8, data: &mut single, stride: width };
+        render_row(&grid, row, Field::Both, &glyphs, options, &mut buffer).unwrap();
+        assert_eq!(&whole[row * CELL_HEIGHT * width..(row + 1) * CELL_HEIGHT * width], &single[..]);
     }
-    grid
-}
-
-/// The source column each display slot of a row shows, read back from the
-/// labels of [`labelled_grid`], or `None` for the screen colour. The row is
-/// drawn by the row renderer in the palette mode.
-fn columns_shown(grid: &Grid, row: usize) -> Vec<Option<usize>> {
-    let width = row_width(grid);
-    let mut out = vec![0u8; width * CELL_HEIGHT];
-    let palette = RenderOptions {
-        mode: CellMode::Saa5050,
-        rounding: true,
-        reveal: false,
-        colour: ColourMode::Palette,
-        underline: true,
-    };
-    let mut buffer = IndexBuffer { format: IndexFormat::Bits8, data: &mut out, stride: width };
-    render_row(grid, row, Field::Both, &GlyphSet::bedstead(), palette, &mut buffer).unwrap();
-    (0..width / CELL_WIDTH)
-        .map(|slot| {
-            let pixel = |line: usize, dot: usize| out[line * width + slot * CELL_WIDTH + dot];
-            if pixel(0, 0) == CYAN {
-                return None;
-            }
-            // Block rows start on lines 0, 6 and 14 (decision E.14); the
-            // left block is dot 0 and the right block dot 11.
-            let (mut pattern, mut high) = (0usize, 0usize);
-            for (block, line) in [0, 6, 14].into_iter().enumerate() {
-                for (side, dot) in [0, 11].into_iter().enumerate() {
-                    if pixel(line, dot) == WHITE {
-                        pattern |= 1 << (2 * block + side);
-                    } else {
-                        high = usize::from(pixel(line, dot));
-                    }
-                }
-            }
-            Some(pattern + 64 * high)
-        })
-        .collect()
-}
-
-/// REQ-RND-033, decision E.49, clause 12.5.3 (REQ-TST-016): the row is
-/// composed of the left panel, the main page and the right panel, for every
-/// width; row 0's panel area shows the screen colour.
-// Needs its capability compiled in (decision E.71).
-#[cfg(feature = "side-panels")]
-#[test]
-fn side_panels_compose_each_row() {
-    for (left, right) in [(0u8, 0u8), (16, 0), (0, 16), (8, 8), (5, 11), (11, 5), (1, 0), (0, 1), (16, 16)] {
-        let grid = labelled_grid(left, right);
-        let (left, right) = (usize::from(left), usize::from(right));
-        assert_eq!(row_columns(&grid), 40 + left + right);
-        assert_eq!(row_width(&grid), (40 + left + right) * CELL_WIDTH);
-        let expected: Vec<Option<usize>> = (72 - left..72).chain(0..40).chain(40..40 + right).map(Some).collect();
-        for row in [1, 12, 24] {
-            assert_eq!(columns_shown(&grid, row), expected, "{left} {right} row {row}");
-        }
-        let row0: Vec<Option<usize>> =
-            (0..left).map(|_| None).chain((0..40).map(Some)).chain((0..right).map(|_| None)).collect();
-        assert_eq!(columns_shown(&grid, 0), row0, "row 0, {left} {right}");
+    for y in 0..ROWS * CELL_HEIGHT {
+        let mut line = vec![0u8; width];
+        render_line(&grid, y, Zoom::Off, &glyphs, options, IndexFormat::Bits8, &mut line).unwrap();
+        assert_eq!(&whole[y * width..(y + 1) * width], &line[..]);
     }
-    // Widths are clamped at 16 columns each.
-    let grid = labelled_grid(200, 17);
-    assert_eq!(row_columns(&grid), 72);
-}
-
-/// REQ-RND-033: the three layouts of clause 12.5.3 at their widest, drawn
-/// in the resolved mode at full width, with REQ-RND-017's independence:
-/// whole screen, row by row and line by line agree.
-// Needs its capability compiled in (decision E.71).
-#[cfg(feature = "side-panels")]
-#[test]
-fn panel_rows_render_identically_in_any_order() {
-    for (left, right) in [(16u8, 0u8), (0, 16), (8, 8)] {
-        let mut grid = Grid::EMPTY;
-        grid.side_panels = SidePanels { left, right };
-        grid.screen_colour = 3;
-        grid.cells[4][0].glyph = text(b'A');
-        grid.panel_cell_mut(4, 71).unwrap().glyph = text(b'L');
-        grid.panel_cell_mut(4, 40).unwrap().glyph = text(b'R');
-        grid.panel_cell_mut(9, 50).unwrap().glyph = g3(0x25);
-        let width = row_width(&grid);
-        assert_eq!(width, 672);
-        let options = large(5);
-        let whole = screen(&grid, options);
-        let glyphs = GlyphSet::bedstead();
-        for row in (0..ROWS).rev() {
-            let mut single = vec![0u8; width * CELL_HEIGHT];
-            let mut buffer = IndexBuffer { format: IndexFormat::Bits8, data: &mut single, stride: width };
-            render_row(&grid, row, Field::Both, &glyphs, options, &mut buffer).unwrap();
-            assert_eq!(&whole[row * CELL_HEIGHT * width..(row + 1) * CELL_HEIGHT * width], &single[..]);
-        }
-        for y in 0..ROWS * CELL_HEIGHT {
-            let mut line = vec![0u8; width];
-            render_line(&grid, y, Zoom::Off, &glyphs, options, IndexFormat::Bits8, &mut line).unwrap();
-            assert_eq!(&whole[y * width..(y + 1) * width], &line[..]);
-        }
-        // Row 0's panel area is the screen colour on every line.
-        let left_pixels = usize::from(left) * CELL_WIDTH;
-        assert!(whole[..left_pixels].iter().all(|&pixel| pixel == 3));
-        // A buffer of only 480 pixels is too small.
-        let mut narrow = vec![0u8; PAGE_WIDTH];
-        let result = render_line(&grid, 0, Zoom::Off, &glyphs, options, IndexFormat::Bits8, &mut narrow);
-        assert_eq!(result, Err(RenderError::BufferTooSmall));
-    }
-}
-
-/// A grid without panel rows shows the screen colour in its panel area.
-// Needs its capability compiled in (decision E.71).
-#[cfg(feature = "side-panels")]
-#[test]
-fn panels_without_storage_show_the_screen_colour() {
-    let mut grid: Grid<0> = Grid::empty();
-    grid.side_panels = SidePanels { left: 2, right: 0 };
-    grid.screen_colour = CYAN;
-    let mut out = vec![0u8; 42 * CELL_WIDTH];
-    render_line(&grid, 100, Zoom::Off, &GlyphSet::bedstead(), large(0), IndexFormat::Bits8, &mut out).unwrap();
-    assert!(out[..2 * CELL_WIDTH].iter().all(|&pixel| pixel == CYAN));
-    assert!(out[2 * CELL_WIDTH..].iter().all(|&pixel| pixel == 0));
+    let mut narrow = vec![0u8; width - 1];
+    let result = render_line(&grid, 0, Zoom::Off, &glyphs, options, IndexFormat::Bits8, &mut narrow);
+    assert_eq!(result, Err(RenderError::BufferTooSmall));
 }
 
 /// The screen colour is the picture on a boxed page and in mix mode
@@ -595,44 +466,6 @@ fn double_width_and_double_size() {
                 }
             }
         }
-    }
-}
-
-/// REQ-RND-034, REQ-L25-025: the renderer draws each half where the grid
-/// puts it; a pair split by the panel boundary still shows its halves, and
-/// a double-width cell in a side panel is drawn like one on the page.
-// Needs its capability compiled in (decision E.71).
-#[cfg(feature = "side-panels")]
-#[test]
-fn double_width_halves_beside_the_panel_boundary() {
-    let mut grid = Grid::EMPTY;
-    grid.side_panels = SidePanels { left: 0, right: 16 };
-    let left =
-        Cell { glyph: text(b'M'), attributes: CellAttributes::DEFAULT.with_width(Width::LeftHalf), ..Cell::BLANK };
-    let right = Cell { attributes: CellAttributes::DEFAULT.with_width(Width::RightHalf), ..left };
-    grid.cells[3][39] = left;
-    *grid.panel_cell_mut(3, 40).unwrap() = right;
-    *grid.panel_cell_mut(3, 44).unwrap() = left;
-    *grid.panel_cell_mut(3, 45).unwrap() = right;
-    let options = large(0);
-    let width = row_width(&grid);
-    for line in 0..CELL_HEIGHT {
-        let mut out = vec![0u8; width];
-        render_line(
-            &grid,
-            3 * CELL_HEIGHT + line,
-            Zoom::Off,
-            &GlyphSet::bedstead(),
-            options,
-            IndexFormat::Bits8,
-            &mut out,
-        )
-        .unwrap();
-        let normal = normal_mask(&grid, left, line, options);
-        let expected: Vec<u8> =
-            (0..2 * CELL_WIDTH).rev().map(|bit| if (doubled(normal) >> bit) & 1 == 1 { WHITE } else { 0 }).collect();
-        assert_eq!(&out[39 * CELL_WIDTH..41 * CELL_WIDTH], &expected[..], "across the boundary, line {line}");
-        assert_eq!(&out[44 * CELL_WIDTH..46 * CELL_WIDTH], &expected[..], "inside the panel, line {line}");
     }
 }
 
@@ -895,10 +728,7 @@ fn change_tracking_in_the_resolved_mode() {
     // A changed cell changes only its row.
     grid.cells[20][5].glyph = text(b'D');
     assert_eq!(tracker.changed_rows(&grid, large(0)), 1 << 20, "the cell changed");
-    // A side-panel cell and a row colour belong to their rows.
-    grid.side_panels = SidePanels { left: 4, right: 0 };
-    assert_eq!(tracker.changed_rows(&grid, large(0)), ALL_ROWS, "the page layout changed");
-    grid.panel_cell_mut(9, 70).unwrap().foreground = 3;
+    // A row colour belongs to its row.
     grid.row_colours[11] = 5;
-    assert_eq!(tracker.changed_rows(&grid, large(0)), 1 << 9 | 1 << 11);
+    assert_eq!(tracker.changed_rows(&grid, large(0)), 1 << 11);
 }

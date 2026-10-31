@@ -59,7 +59,8 @@ pub struct Designations {
     pub second: u8,
 }
 
-/// The side-panel fields of Table 4, triplet 2 bits 4 to 10.
+/// The side-panel fields of Table 4, triplet 2 bits 4 to 10, kept only so
+/// that the packets round-trip; they have no effect (REQ-1644).
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, Default)]
 pub struct SidePanelFields {
     /// Bit 4: the left side panel is displayed.
@@ -69,8 +70,7 @@ pub struct SidePanelFields {
     /// Bit 6, the Side Panel Status Flag: 1 when side panels are required
     /// at Levels 2.5 and 3.5, 0 when at Level 3.5 only.
     pub status_flag: bool,
-    /// Bits 7 to 10: the number of columns of the left panel, 0 to 15
-    /// (decision E.49 gives the widths).
+    /// Bits 7 to 10: the number of columns of the left panel, 0 to 15.
     pub left_columns: u8,
 }
 
@@ -106,13 +106,13 @@ pub struct PresentationFields {
     pub colours: Option<DefaultColourFields>,
 }
 
-/// The side-panel and substitution defaults that the fallback bits of a
-/// Magazine Organization Table POP link give (Table 21, byte N+4), in the
-/// form of the X/28 fields they stand in for (decision E.53).
+/// The defaults that the fallback bits of a Magazine Organization Table
+/// POP link give (Table 21, byte N+4), in the form of the X/28 fields they
+/// stand in for (decision E.53).
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, Default)]
 pub struct FallbackFields {
-    /// The side panels, with the status flag set: the link belongs to the
-    /// level whose packets carry it.
+    /// The side panels, with the status flag set, kept only so that the
+    /// packets round-trip; they have no effect (REQ-1644).
     pub side_panels: SidePanelFields,
     /// Black Background Colour Substitution.
     pub black_background_substitution: bool,

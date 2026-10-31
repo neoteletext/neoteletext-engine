@@ -9,8 +9,7 @@
 //! The [`Cell`] and [`Grid`] also hold what Levels 2.5 and 3.5 add
 //! (decision E.42, REQ-L25-006): Colour Map colours, size in two parts,
 //! underline, invert, flash modes, which source wrote each
-//! character, the side-panel area, the Colour Map, and the screen and row
-//! colours. The Level 1 decoding leaves all of them at their defaults.
+//! character, the Colour Map, and the screen and row colours. The Level 1 decoding leaves all of them at their defaults.
 
 mod cell;
 mod designation;

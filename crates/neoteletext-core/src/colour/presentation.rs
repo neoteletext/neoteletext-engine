@@ -1,8 +1,8 @@
 //! The page-level presentation data of Levels 2.5 and 3.5 (decision E.44):
 //! its sources, and their resolution into the Colour Map, the default
-//! colours, re-mapping, substitution and side panels.
+//! colours, re-mapping and substitution.
 
-use super::{ColourIndex, ColourMap, Remapping, SidePanels};
+use super::{ColourIndex, ColourMap, Remapping};
 use crate::config::PresentationLevel;
 use crate::consts::{
     CLUT_ENTRIES, CLUT_LEVEL_25_FIRST, CLUT_LEVEL_35_FIRST, COLOUR_BLACK, COLOUR_MAP_ENTRIES, COLOUR_WORDS,
@@ -30,8 +30,7 @@ pub struct PresentationSources<'a> {
 }
 
 /// The page-level presentation data of a page at Level 2.5 or 3.5, as data
-/// that the enhancement processor applies (REQ-L25-030, REQ-L25-031,
-/// REQ-L25-040).
+/// that the enhancement processor applies (REQ-L25-030, REQ-L25-031).
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub struct PagePresentation {
     /// The page's Colour Map.
@@ -46,13 +45,11 @@ pub struct PagePresentation {
     pub black_background_substitution: bool,
     /// Colour Table Re-mapping.
     pub remapping: Remapping,
-    /// The side-panel widths.
-    pub side_panels: SidePanels,
 }
 
 impl PagePresentation {
     /// The defaults of Annex D.2.1 over a base Colour Map: black screen and
-    /// rows, no re-mapping, no substitution and no side panels.
+    /// rows, no re-mapping and no substitution.
     #[must_use]
     pub const fn defaults(colour_map: ColourMap) -> Self {
         Self {
@@ -61,22 +58,22 @@ impl PagePresentation {
             default_row: COLOUR_BLACK,
             black_background_substitution: false,
             remapping: Remapping::NONE,
-            side_panels: SidePanels::NONE,
         }
     }
 }
 
-/// Builds the page-level presentation data (decisions E.43, E.44 and
-/// E.49). `base` is the Colour Map before page data: Table 30, or the
+/// Builds the page-level presentation data (decisions E.43 and E.44).
+/// `base` is the Colour Map before page data: Table 30, or the
 /// user's replacement colours (REQ-RND-030).
 ///
 /// - CLUTs 2 and 3 come from the first of X/28/0 and M/29/0 whose colour
 ///   words are valid; CLUTs 0 and 1, at Level 3.5 only, from the first of
 ///   X/28/4 and M/29/4. CLUT 1 entry 0 always stays transparent.
-/// - The side panels, the default colours, substitution and re-mapping come
-///   from the first source, in the order X/28/0, X/28/4 (Level 3.5),
-///   M/29/0, M/29/4 (Level 3.5), whose field group is valid; the side
-///   panels and substitution then fall back to the table's POP link.
+/// - The default colours, substitution and re-mapping come from the first
+///   source, in the order X/28/0, X/28/4 (Level 3.5), M/29/0, M/29/4
+///   (Level 3.5), whose field group is valid; substitution then falls back
+///   to the table's POP link.
+/// - The sources' side-panel fields have no effect (REQ-1644).
 /// - At Levels 1 and 1.5 the result is the defaults over `base`.
 #[must_use]
 pub fn resolve(sources: &PresentationSources<'_>, level: PresentationLevel, base: &ColourMap) -> PagePresentation {
@@ -120,15 +117,6 @@ pub fn resolve(sources: &PresentationSources<'_>, level: PresentationLevel, base
         out.black_background_substitution = fallback.black_background_substitution;
     }
 
-    let panels = first(|fields| fields.side_panels.is_some())
-        .and_then(|fields| fields.side_panels)
-        .or(sources.fallback.map(|fallback| fallback.side_panels));
-    // Without side panels compiled in, a page is 40 columns (decision E.71).
-    if cfg!(feature = "side-panels")
-        && let Some(panels) = panels
-    {
-        out.side_panels = SidePanels::from_fields(panels, level);
-    }
     out
 }
 

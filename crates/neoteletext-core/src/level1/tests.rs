@@ -11,23 +11,22 @@ use crate::charset;
 use crate::acq::{MagazineData, StoredPage};
 use crate::charset::{G0, second_g0};
 use crate::config::Config;
-use crate::consts::{DESIGNATION_GROUP_SHIFT, DOUBLE_HEIGHT, ESC, NORMAL_SIZE, PAGE_FUNCTION_BASIC};
+use crate::consts::{COLUMNS, DESIGNATION_GROUP_SHIFT, DOUBLE_HEIGHT, ESC, NORMAL_SIZE, PAGE_FUNCTION_BASIC, ROWS};
 
-/// REQ-L25-006: the side-panel area is addressed by screen position,
-/// columns 40 to 71 of rows 1 to 24, and a grid is cleared in place
-/// to the empty grid.
+/// REQ-1644: the grid holds 40 columns by 25 rows and no other cells: what
+/// it holds besides them is smaller than one row of cells.
 #[test]
-fn side_panel_area_and_clearing() {
-    let mut grid: Grid = Grid::empty();
-    let small: Grid<0> = Grid::empty();
-    assert!(small.panel_cell(1, 40).is_none(), "a grid without panel rows");
-    assert!(grid.panel_cell(0, 40).is_none(), "row 0 has no panel content");
-    assert!(grid.panel_cell(1, 39).is_none() && grid.panel_cell(1, 72).is_none() && grid.panel_cell(25, 40).is_none());
-    grid.panel_cell_mut(24, 71).unwrap().foreground = 20;
-    assert_eq!(grid.panels[23][31].foreground, 20);
+fn the_grid_has_no_panel_storage() {
+    use core::mem::size_of;
+    let others = size_of::<Grid>() - size_of::<[[Cell; COLUMNS]; ROWS]>();
+    assert!(others < size_of::<[Cell; COLUMNS]>(), "{others} bytes beside the cells");
+}
+
+/// REQ-L25-006: a grid is cleared in place to the empty grid.
+#[test]
+fn clearing_a_grid_empties_it() {
+    let mut grid = Grid::empty();
     let attributes = CellAttributes::DEFAULT.with_invert(true);
-    grid.panel_cell_mut(1, 40).unwrap().attributes = attributes;
-    assert!(grid.panels[0][0].attributes.invert());
     grid.cells[3][4].attributes = attributes.with_underline(true);
     grid.row_colours[5] = 17;
     grid.clear();

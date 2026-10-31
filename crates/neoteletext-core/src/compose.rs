@@ -15,8 +15,8 @@ use crate::trace::TraceSink;
 /// level is read on every build, so changing it never re-acquires a page.
 /// At Levels 2.5 and 3.5 it returns the processor's report of the faults it
 /// met, for the caller's statistics and trace (REQ-L25-051).
-pub fn compose_level<const PANEL_ROWS: usize>(
-    grid: &mut Grid<PANEL_ROWS>,
+pub fn compose_level(
+    grid: &mut Grid,
     page: &StoredPage,
     magazine: &MagazineData,
     lookup: &EnhancementLookup<'_>,
@@ -49,8 +49,8 @@ pub fn compose_level<const PANEL_ROWS: usize>(
 /// transitions of the walk of the level to `trace` (REQ-FSM-010): the
 /// Level 1.5 triplet walk (REQ-FSM-007), or the page-level run of the
 /// enhancement walk (REQ-FSM-011).
-pub fn compose_level_traced<const PANEL_ROWS: usize>(
-    grid: &mut Grid<PANEL_ROWS>,
+pub fn compose_level_traced(
+    grid: &mut Grid,
     page: &StoredPage,
     magazine: &MagazineData,
     lookup: &EnhancementLookup<'_>,

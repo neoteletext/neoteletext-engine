@@ -8,11 +8,11 @@ use super::Attrs;
 use super::machine::{
     Ended, WalkAction, WalkEvent, WalkState, traced_action, walk_event_name, walk_state_name, walk_transition,
 };
-use super::planes::{Area, Plane};
+use super::planes::Plane;
 use crate::acq::{EnhancementFaults, EnhancementReport, StoredPage};
 use crate::consts::{
-    COLUMNS, LOCAL_TRIPLETS, OBJECT_TYPES, ROW_COLOUR_DOWN_TO_BOTTOM, ROW_COLOUR_THIS_ROW, ROWS, SCREEN_COLUMNS,
-    TRIPLETS_PER_PACKET, WALK_DEPTH,
+    COLUMNS, LOCAL_TRIPLETS, OBJECT_TYPES, ROW_COLOUR_DOWN_TO_BOTTOM, ROW_COLOUR_THIS_ROW, ROWS, TRIPLETS_PER_PACKET,
+    WALK_DEPTH,
 };
 use crate::objects::{Body, Fetch};
 use crate::packet::{ColourData, TripletFunction};
@@ -34,7 +34,6 @@ impl Frame<'_> {
             origin: (0, 0),
             row: 0,
             column: 0,
-            area: Area::Main,
             slot: 0,
             designation: None,
             passive: Attrs::PASSIVE,
@@ -44,6 +43,12 @@ impl Frame<'_> {
     /// The absolute active position.
     fn position(&self) -> (usize, usize) {
         (self.origin.0.saturating_add(usize::from(self.row)), self.origin.1.saturating_add(usize::from(self.column)))
+    }
+
+    /// True when the source's origin is on the page: an object placed
+    /// beyond column 39 sets no colours (REQ-OBJ-013).
+    const fn on_the_page(&self) -> bool {
+        self.origin.1 < COLUMNS
     }
 }
 
@@ -55,7 +60,7 @@ impl Collector {
             screen: None,
             row_colours: [None; ROWS],
             event_rows: 0,
-            slots: [Slot::default(); SCREEN_COLUMNS],
+            slots: [Slot::default(); COLUMNS],
             ranges: FixedVec::new(Range { slot: 0, first: 0, last: 0 }),
         }
     }
@@ -259,18 +264,18 @@ impl<'a, 's> Walker<'a, 's> {
     fn act_on_frame(&mut self, action: WalkAction, frame: &mut Frame<'s>, out: &mut Collector) {
         // REQ-OBJ-013: Full Screen Colour, Full Row Colour and Address
         // Display Row 0 act only in local data and Active objects, and the
-        // colours only in the main page.
+        // colours only from the page.
         let restricted = !frame.plane.sets_colours();
         match action {
             WalkAction::ScreenColour(colour) => {
-                if !restricted && frame.area == Area::Main && colour.is_defined() && out.row.is_none() {
+                if !restricted && frame.on_the_page() && colour.is_defined() && out.row.is_none() {
                     out.screen = Some(colour.index);
                 }
             }
             WalkAction::RowColour { row, colour } if !restricted => {
                 (frame.row, frame.column) = (row, 0);
                 let (row, _) = frame.position();
-                if frame.area == Area::Main && row < ROWS {
+                if frame.on_the_page() && row < ROWS {
                     out.row_colour(row, colour);
                 }
             }

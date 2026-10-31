@@ -59,8 +59,7 @@ pub const fn text_area() -> Option<TextArea> {
 
 /// The largest whole-number scale at which a page of `page_width` by
 /// `page_height` pixels fits the text area, keeping one text row free for
-/// the prompt (REQ-RND-029). At least 1. Pages with side panels are wider
-/// (REQ-RND-033).
+/// the prompt (REQ-RND-029). At least 1.
 #[must_use]
 pub fn fit_scale(area: Option<TextArea>, page_width: usize, page_height: usize, aspect: bool) -> usize {
     let Some(area) = area else { return 1 };
@@ -77,13 +76,12 @@ pub fn fit_scale(area: Option<TextArea>, page_width: usize, page_height: usize, 
 mod tests {
     use super::*;
 
-    /// REQ-RND-029: the scale fits the wider pages of REQ-RND-033 too.
+    /// REQ-RND-029: the scale fits the width and the height.
     #[test]
     fn scale_fits_width_and_height() {
         let area = Some(TextArea { width: 1500, height: 1300, rows: 50 });
         assert_eq!(fit_scale(area, 480, 500, false), 2);
-        assert_eq!(fit_scale(area, 672, 500, false), 2);
-        assert_eq!(fit_scale(area, 864, 500, false), 1);
+        assert_eq!(fit_scale(Some(TextArea { width: 700, height: 1300, rows: 50 }), 480, 500, false), 1);
         assert_eq!(fit_scale(area, 480, 500, true), 2);
         assert_eq!(fit_scale(None, 480, 500, false), 1);
         assert_eq!(fit_scale(Some(TextArea { width: 100, height: 100, rows: 5 }), 480, 500, false), 1);

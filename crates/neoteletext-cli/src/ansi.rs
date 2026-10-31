@@ -1,13 +1,12 @@
 //! Plain text (REQ-RND-008) and ANSI terminal output (REQ-RND-009), at
-//! every level (REQ-RND-041): rows are composed with their side panels,
-//! G3 characters convert as REQ-CHR-011 says, and colours come from the
-//! page's Colour Map.
+//! every level (REQ-RND-041): G3 characters convert as REQ-CHR-011 says,
+//! and colours come from the page's Colour Map.
 //!
 //! Every character written passes the allow-list of REQ-SEC-010, and the
 //! only escape sequences are the fixed ones built here.
 
+use neoteletext_app::present::cell_text;
 pub use neoteletext_app::present::{MosaicStyle, plain};
-use neoteletext_app::present::{cell_text, row_cells};
 use neoteletext_core::colour::{ColourIndex, ColourMap};
 use neoteletext_core::consts::PRIMARY_FULL;
 use neoteletext_core::glyphs::{CharClass, class};
@@ -49,14 +48,9 @@ struct Style {
 }
 
 impl Style {
-    /// The style of a cell, or of the screen colour where a panel has no
-    /// content. Invert swaps the colours (decision E.47).
-    fn of(cell: Option<&Cell>, grid: &Grid) -> Self {
+    /// The style of a cell. Invert swaps the colours (decision E.47).
+    fn of(cell: &Cell, grid: &Grid) -> Self {
         let screen = grid.screen_colour;
-        let Some(cell) = cell else {
-            let colour = colour_of(&grid.colour_map, screen, screen);
-            return Self { foreground: colour, background: colour, flash: false, underline: false };
-        };
         let (foreground, background) = if cell.attributes.invert() {
             (cell.background, cell.foreground)
         } else {
@@ -109,18 +103,15 @@ impl Style {
 #[must_use]
 pub fn ansi(grid: &Grid, reveal: bool, mosaics: MosaicStyle, depth: ColourDepth) -> String {
     let mut out = String::new();
-    for row in 0..grid.cells.len() {
+    for cells in &grid.cells {
         let mut previous: Option<Style> = None;
-        for cell in row_cells(grid, row) {
+        for cell in cells {
             let style = Style::of(cell, grid);
             if previous != Some(style) {
                 style.write(depth, &mut out);
                 previous = Some(style);
             }
-            match cell {
-                Some(cell) => cell_text(cell, grid, reveal, mosaics, &mut out),
-                None => out.push(' '),
-            }
+            cell_text(cell, grid, reveal, mosaics, &mut out);
         }
         out.push_str("\x1b[0m\n");
     }
@@ -132,7 +123,7 @@ pub fn ansi(grid: &Grid, reveal: bool, mosaics: MosaicStyle, depth: ColourDepth)
 mod tests {
     use super::*;
     use neoteletext_core::charset::{CharRef, CharSet, G0, G0Set, NationalOption};
-    use neoteletext_core::colour::{SidePanels, colour_index};
+    use neoteletext_core::colour::colour_index;
     use neoteletext_core::consts::COLOUR_TRANSPARENT;
     use neoteletext_core::level1::CellAttributes;
     use neoteletext_core::types::Rgb12;
@@ -159,24 +150,6 @@ mod tests {
                 assert!(byte >= 0x20 || byte == b'\n', "control byte {byte:#x} written");
             }
         }
-    }
-
-    /// REQ-RND-041 with REQ-RND-033: rows are written with their side
-    /// panels, left, main, right; row 0's panel area is blank.
-    #[cfg(feature = "side-panels")]
-    #[test]
-    fn plain_text_composes_side_panels() {
-        let mut grid = grid_with("MAIN");
-        grid.side_panels = SidePanels { left: 3, right: 2 };
-        let g0 = CharSet::G0(G0 { set: G0Set::Latin, national: Some(NationalOption::English) });
-        for (column, byte) in [(69, b'L'), (70, b'E'), (71, b'F'), (40, b'R'), (41, b'T')] {
-            grid.panel_cell_mut(1, column).unwrap().glyph = Glyph::Char(CharRef::new(g0, byte));
-        }
-        grid.cells[0][0].glyph = Glyph::Char(CharRef::new(g0, b'0'));
-        let text = plain(&grid, false, MosaicStyle::Unicode16);
-        let expected = format!("LEFMAIN{}RT", " ".repeat(36));
-        assert_eq!(text.lines().nth(1), Some(expected.as_str()));
-        assert_eq!(text.lines().next(), Some("   0"));
     }
 
     /// REQ-RND-041: 24-bit colours come from the page's Colour Map, the
@@ -206,15 +179,6 @@ mod tests {
         cell.attributes = CellAttributes::DEFAULT.with_invert(true).with_underline(true);
         let text = ansi(&grid, false, MosaicStyle::Unicode16, ColourDepth::Eight);
         assert!(text.lines().nth(1).unwrap().starts_with("\x1b[0;4;34;41mA"));
-        // A side panel's empty row 0 is the screen colour, in a build that
-        // has side panels (decision E.105).
-        if !cfg!(feature = "side-panels") {
-            return;
-        }
-        grid.side_panels = SidePanels { left: 1, right: 0 };
-        let text = ansi(&grid, false, MosaicStyle::Unicode16, ColourDepth::Eight);
-        let screen_fg = 30 + u16::from(nearest_of_eight(screen));
-        assert!(text.starts_with(&format!("\x1b[0;{screen_fg};{screen_eight}m ")), "{text:?}");
     }
 
     /// The nearest Level 1 colour of every Table 30 entry of CLUT 0 is the

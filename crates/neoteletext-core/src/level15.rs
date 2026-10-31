@@ -174,20 +174,14 @@ pub type EnhancementPackets = [[Option<Triplet>; crate::consts::TRIPLETS_PER_PAC
 /// REQ-L15-001: at Level 1 the packets are stored but not applied, so the
 /// pass does nothing. Choosing between this pass (Level 1.5) and the
 /// enhancement processor (Levels 2.5 and 3.5) is the caller's dispatch.
-pub fn apply<const PANEL_ROWS: usize>(
-    grid: &mut Grid<PANEL_ROWS>,
-    packets: &EnhancementPackets,
-    present: u16,
-    config: &Config,
-    include_row_0: bool,
-) {
+pub fn apply(grid: &mut Grid, packets: &EnhancementPackets, present: u16, config: &Config, include_row_0: bool) {
     walk(grid, packets, present, config, include_row_0, None);
 }
 
 /// As [`apply`], and when `Config::trace` is on, reports every transition
 /// of the walk to `trace` (REQ-FSM-010).
-pub fn apply_traced<const PANEL_ROWS: usize>(
-    grid: &mut Grid<PANEL_ROWS>,
+pub fn apply_traced(
+    grid: &mut Grid,
     packets: &EnhancementPackets,
     present: u16,
     config: &Config,
@@ -199,8 +193,8 @@ pub fn apply_traced<const PANEL_ROWS: usize>(
 
 /// The walk of [`apply`]; `trace` is `None` when tracing is off, so that
 /// each transition costs one test of it.
-fn walk<const PANEL_ROWS: usize>(
-    grid: &mut Grid<PANEL_ROWS>,
+fn walk(
+    grid: &mut Grid,
     packets: &EnhancementPackets,
     present: u16,
     config: &Config,
@@ -246,13 +240,7 @@ fn walk<const PANEL_ROWS: usize>(
 /// Places one overwrite under decision E.5 (REQ-L15-008). Rule (a) holds
 /// because the Level 1 pass is complete before [`apply`] runs, and rule (h)
 /// because later triplets simply overwrite earlier ones.
-fn write<const PANEL_ROWS: usize>(
-    grid: &mut Grid<PANEL_ROWS>,
-    row: u8,
-    column: u8,
-    character: CharRef,
-    include_row_0: bool,
-) {
+fn write(grid: &mut Grid, row: u8, column: u8, character: CharRef, include_row_0: bool) {
     let (row, column) = (usize::from(row), usize::from(column));
     // (j): row 0 columns 0 to 7 belong to the receiver (REQ-SEC-005).
     if row == 0 && (column < RECEIVER_COLUMNS || !include_row_0) {

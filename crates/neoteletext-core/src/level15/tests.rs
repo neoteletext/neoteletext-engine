@@ -288,8 +288,7 @@ fn the_walk_reports_every_transition_when_tracing() {
 }
 
 /// REQ-L15-008, clause 12.3.4: a Level 1.5 overwrite has the 40 columns of
-/// the page; a column beyond them writes nothing, not even into a grid's
-/// side-panel cells, which belong to Level 2.5.
+/// the page; a column beyond them writes nothing.
 #[test]
 fn overwrites_beyond_column_39_write_nothing() {
     let mut grid = Grid::EMPTY;

@@ -4,7 +4,7 @@ use super::ALL_ROWS;
 use super::colours::resolved_colours;
 use super::flash::FlashPhase;
 use super::options::{ColourMode, RenderOptions};
-use crate::consts::{ROWS, SIDE_PANEL_FIRST_COLUMN};
+use crate::consts::ROWS;
 use crate::glyphs::{CharClass, class};
 use crate::level1::{Cell, Glyph, Grid};
 
@@ -50,9 +50,9 @@ impl core::hash::Hasher for Fnv {
 /// True when a flashing cell looks different in phases `old` and `new`
 /// (REQ-RND-032): its rate changes phase, it can show dots, and the dots'
 /// colour differs between the two phases.
-fn flash_changes<const PANEL_ROWS: usize>(
+fn flash_changes(
     cell: &Cell,
-    grid: &Grid<PANEL_ROWS>,
+    grid: &Grid,
     row: usize,
     column: usize,
     (old, new): (FlashPhase, FlashPhase),
@@ -84,8 +84,8 @@ impl ChangeTracker {
 
     /// Rows that changed since the last call, as a bitmask (bit r for row
     /// r), for drawing with `options`. A row changes when its cells, its
-    /// side-panel cells, its row colour or the page-wide presentation data
-    /// change, and the row below a changed double-height row changes too.
+    /// row colour or the page-wide presentation data change, and the row
+    /// below a changed double-height row changes too.
     ///
     /// - In the palette mode (REQ-RND-023), a change of reveal marks the
     ///   rows holding flashing concealed cells; other flash and reveal
@@ -94,31 +94,20 @@ impl ChangeTracker {
     ///   rows holding concealed cells, and a change of flash phase marks
     ///   exactly the rows holding a cell that looks different in the two
     ///   phases.
-    pub fn changed_rows<const PANEL_ROWS: usize>(&mut self, grid: &Grid<PANEL_ROWS>, options: RenderOptions) -> u32 {
+    pub fn changed_rows(&mut self, grid: &Grid, options: RenderOptions) -> u32 {
         let reveal = options.reveal;
         let reveal_changed = reveal != self.reveal;
         let mut page = Fnv(FNV_OFFSET);
-        core::hash::Hash::hash(
-            &(grid.boxed_mode, grid.mix, grid.side_panels, grid.colour_map, grid.screen_colour),
-            &mut page,
-        );
+        core::hash::Hash::hash(&(grid.boxed_mode, grid.mix, grid.colour_map, grid.screen_colour), &mut page);
         let page = core::hash::Hasher::finish(&page);
         let mut changed = 0u32;
         for (row, stored) in self.hashes.iter_mut().enumerate() {
-            let panel_row = row.checked_sub(1).and_then(|index| grid.panels.get(index));
-            let cells = grid.cells.get(row).into_iter().flat_map(|cells| cells.iter().enumerate()).chain(
-                panel_row.into_iter().flat_map(|cells| {
-                    cells.iter().enumerate().map(|(index, cell)| (index.saturating_add(SIDE_PANEL_FIRST_COLUMN), cell))
-                }),
-            );
+            let cells = grid.cells.get(row).into_iter().flat_map(|cells| cells.iter().enumerate());
             let mut hasher = Fnv(page);
             if let Some(cells) = grid.cells.get(row) {
                 core::hash::Hash::hash(cells, &mut hasher);
             }
             core::hash::Hash::hash(&grid.row_colours.get(row), &mut hasher);
-            if let Some(panel) = panel_row {
-                core::hash::Hash::hash(panel, &mut hasher);
-            }
             let hash = core::hash::Hasher::finish(&hasher);
             let sensitive = match options.colour {
                 ColourMode::Palette => reveal_changed && cells.clone().any(|(_, cell)| cell.flash && cell.conceal),

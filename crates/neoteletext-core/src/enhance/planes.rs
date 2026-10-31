@@ -1,8 +1,6 @@
-//! The display planes of clause 13.2 and the display areas of clause
-//! 12.5.3 (decision E.49), in which the walk places its events.
+//! The display planes of clause 13.2, in which the walk places its events.
 
-use crate::colour::SidePanels;
-use crate::consts::{COLUMNS, SCREEN_COLUMNS};
+use crate::consts::ADDRESS_COLUMNS;
 use crate::level1::CharSource;
 use crate::packet::ObjectKind;
 
@@ -65,33 +63,8 @@ pub(super) const fn type_index(kind: ObjectKind) -> usize {
     }
 }
 
-/// The display area of a column (clause 12.5.3, decision E.49).
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(super) enum Area {
-    /// Columns 0 to 39.
-    Main,
-    /// The right panel, columns 40 to 40 + right width − 1.
-    Right,
-    /// The left panel, columns 72 − left width to 71.
-    Left,
-    /// Panel columns that are not enabled, and beyond column 71.
-    Outside,
-}
-
-pub(super) fn area_of(column: usize, panels: SidePanels) -> Area {
-    if column < COLUMNS {
-        Area::Main
-    } else if column < COLUMNS.saturating_add(usize::from(panels.right)) {
-        Area::Right
-    } else if column >= panels.left_first_column() && column < SCREEN_COLUMNS {
-        Area::Left
-    } else {
-        Area::Outside
-    }
-}
-
 /// A position in scan order, for the open area of Annex A.8: row-major over
 /// the 72 columns of Annex A.4.
 pub(super) fn scan_index(row: usize, column: usize) -> usize {
-    row.saturating_mul(SCREEN_COLUMNS).saturating_add(column.min(SCREEN_COLUMNS))
+    row.saturating_mul(ADDRESS_COLUMNS).saturating_add(column.min(ADDRESS_COLUMNS))
 }

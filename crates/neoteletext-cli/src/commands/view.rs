@@ -25,14 +25,12 @@ pub fn view(
     legacy_mosaics: bool,
     colours8: bool,
 ) -> Result<(), Failure> {
-    use neoteletext_core::consts::{CELL_WIDTH, COLUMNS, SIDE_PANEL_MAX_COLUMNS};
+    use neoteletext_core::consts::PAGE_WIDTH;
     let (mut session, mut source) = input::open_live(options)?;
     let (display, _) = terminal::detect(display(graphics), std::io::stdout().is_terminal());
     let area = if display == Display::Iterm2 { terminal::text_area() } else { None };
-    // Fit the widest page, 56 columns with side panels (decision E.49).
-    let widest = COLUMNS.saturating_add(usize::from(SIDE_PANEL_MAX_COLUMNS)).saturating_mul(CELL_WIDTH);
     let height = ROWS.saturating_mul(Frame::still(session.decoder().config(), false).options.row_height());
-    let scale = scale_for(raster_args, area, (widest, height));
+    let scale = scale_for(raster_args, area, (PAGE_WIDTH, height));
     sandbox_closed(options.no_sandbox)?;
     let depth = if colours8 { ColourDepth::Eight } else { ColourDepth::TrueColour };
     crate::view::run(&mut session, source.as_mut(), display, scale, depth, mosaic_style(legacy_mosaics))

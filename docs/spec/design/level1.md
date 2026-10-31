@@ -381,7 +381,7 @@ The standard gives no exact pixel geometry for characters or mosaics. It says th
 Clause 12 defines the levels:
 - **Level 1** is "the basic Teletext page, characterized by the use of spacing attributes only and a limited alphanumeric and mosaics repertoire".
 - **Level 1.5** is where the "decoder responds as Level 1 but the character repertoire is extended via packets X/26".
-- **Level 2.5 and Level 3.5** add non-spacing attributes, colour tables, objects, redefinable characters, side panels and more.
+- **Level 2.5 and Level 3.5** add non-spacing attributes, colour tables, objects, redefinable characters, side panels and more; NeoTeletext draws no side panels and no redefinable characters (decisions DEC-1636, E.95).
 
 Level 2.5 and Level 3.5 were out of scope when this walkthrough was written. They were brought into scope on 10 October 2026 (decision E.40), and are specified in areas L25, OBJ and DRC of Part F. Level 1.0 does not include:
 - the black foreground codes;

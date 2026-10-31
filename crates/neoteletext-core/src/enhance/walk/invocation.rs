@@ -4,7 +4,7 @@
 use super::super::{Frame, Walker};
 
 use super::super::Attrs;
-use super::super::planes::{Plane, area_of, scan_index, type_index};
+use super::super::planes::{Plane, scan_index, type_index};
 use crate::consts::{
     OBJECT_BODY_TRIPLETS, OBJECT_INVOCATIONS_PER_TYPE, OBJECTS_OPEN_AT_ONCE, OBJECTS_OPENED_IN_SUCCESSION,
 };
@@ -137,7 +137,6 @@ impl<'s> Walker<'_, 's> {
             origin,
             row: 0,
             column: 0,
-            area: area_of(origin.1, self.inputs.panels),
             slot,
             designation: None,
             passive: Attrs::PASSIVE,

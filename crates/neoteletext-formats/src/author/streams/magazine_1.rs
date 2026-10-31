@@ -1,7 +1,7 @@
 //! Magazine 1: the features one by one. This file holds the magazine's
 //! objects and table, the index, the Colour Map pages, screen and row
-//! colours and the side panels, and pushes every page of the magazine in
-//! its order.
+//! colours and the page that shows side-panel data read past, and pushes
+//! every page of the magazine in its order.
 
 use neoteletext_core::consts::{ALPHA_BLACK, ALPHA_RED, ALPHA_WHITE, BLACK_BACKGROUND, NEW_BACKGROUND};
 use neoteletext_core::packet::{MotPageEntry, MotTotals, ObjectKind};
@@ -29,16 +29,7 @@ pub(super) fn magazine_1(stream: &mut Stream) -> Result<()> {
     stream.push(colour_map()?.build()?);
     stream.push(colour_map_level_35()?.build()?);
     stream.push(screen_and_row_colours()?.build()?);
-    let panels = [
-        (0x104, true, false, 0, true),
-        (0x105, false, true, 4, true),
-        (0x106, true, true, 6, true),
-        (0x107, true, true, 0, true),
-        (0x108, true, false, 0, false),
-    ];
-    for (mpp, left, right, columns, status) in panels {
-        stream.push(side_panels(mpp, left, right, columns, status)?.build()?);
-    }
+    stream.push(side_panels_read_past()?.build()?);
     stream.push(sizes_and_attributes()?.build()?);
     stream.push(flash()?.build()?);
     stream.push(g3_and_g1()?.build()?);
@@ -102,7 +93,7 @@ fn index() -> Result<DisplayPage> {
     let mut page = page(0x100, b"LEVEL 2.5 AND 3.5 AUTHORED PAGES")?;
     let lines: [&[u8]; 19] = [
         b"101 COLOUR MAP     102 CLUTS 0 AND 1",
-        b"103 SCREEN, ROWS   104-108 SIDE PANELS",
+        b"103 SCREEN, ROWS   104 SIDE PANELS",
         b"109 SIZES, ATTRS   110 FLASH",
         b"112 G3 AND G1 SETS",
         b"113 EVERY MODE     117 CLAUSE 13.9",
@@ -195,45 +186,14 @@ fn screen_and_row_colours() -> Result<DisplayPage> {
     Ok(page)
 }
 
-/// 104 to 108: side panels (decision E.49), with text placed in both
-/// panel areas by a Local Passive Object and Origin Modifiers; writes to
-/// a panel that is not enabled are discarded.
-fn side_panels(mpp: u16, left: bool, right: bool, columns: u8, status: bool) -> Result<DisplayPage> {
-    let mut page = page(mpp, b"SIDE PANELS")?;
+/// 104: the packet fields of both side panels, and objects placed in the
+/// columns they would have used; the fields are read past and those
+/// elements discarded, so the page shows its 40 columns (REQ-1644).
+fn side_panels_read_past() -> Result<DisplayPage> {
+    let mut page = page(0x104, b"SIDE PANELS READ PAST")?;
     let mut fields = neutral_fields(0);
-    fields.side_panels = Some(SidePanelFields { left, right, status_flag: status, left_columns: columns });
+    fields.side_panels = Some(SidePanelFields { left: true, right: true, status_flag: true, left_columns: 8 });
     page.page_data(fields);
-    let title = [
-        b'L',
-        b'E',
-        b'F',
-        b'T',
-        b' ',
-        if left { b'Y' } else { b'N' },
-        b' ',
-        b'R',
-        b'I',
-        b'G',
-        b'H',
-        b'T',
-        b' ',
-        if right { b'Y' } else { b'N' },
-        b' ',
-        b'N',
-        b'=',
-        b'0'.saturating_add(columns / 10),
-        b'0'.saturating_add(columns % 10),
-        b' ',
-        b'S',
-        b'T',
-        b'A',
-        b'T',
-        b'U',
-        b'S',
-        b' ',
-        b'0'.saturating_add(u8::from(status)),
-    ];
-    page.text(2, 1, &title)?;
     let mut body = Triplets::new();
     body.background(0, colour(2, 3)).text(0, b"PANEL 0123456789");
     let panel = page.local_object(ObjectKind::Passive, BOTH, body);
@@ -243,8 +203,8 @@ fn side_panels(mpp: u16, left: bool, right: bool, columns: u8, status: bool) -> 
         page.local().origin(0, RIGHT_PANEL_COLUMN).invoke_local(panel);
         page.local().origin(0, LEFT_PANEL_COLUMN).invoke_local(panel);
     }
-    // An object element that would cross from the page into a panel is
-    // discarded (decision E.49).
+    // An object element past column 39 is discarded, and the object
+    // continues (REQ-OBJ-014).
     page.local().position(20, 0)?.origin(0, 36).invoke_local(panel);
     Ok(page)
 }

@@ -22,14 +22,15 @@ use libfuzzer_sys::fuzz_target;
 use neoteletext_core::acq::{Decoder, EnhancementPacket, EnhancementStore, EnhancementSubPage, StoredPage};
 use neoteletext_core::config::{CellMode, Config, PresentationLevel};
 use neoteletext_core::consts::{
-    DATA_BYTES, ENHANCEMENT_PACKETS_LEVEL_35, HEADER_DISPLAY_BYTES, MAGAZINES, MOT_PACKETS, ROWS, TRIPLETS_PER_PACKET,
+    DATA_BYTES, ENHANCEMENT_PACKETS_LEVEL_35, HEADER_DISPLAY_BYTES, MAGAZINES, MOT_PACKETS, PAGE_WIDTH, ROWS,
+    TRIPLETS_PER_PACKET,
 };
 use neoteletext_core::enhance::MAX_WALK_STEPS;
 use neoteletext_core::glyphs::GlyphSet;
 use neoteletext_core::level1::{DisplayOptions, Grid, build_grid};
 use neoteletext_core::packet::{Packet, PacketMeta, Triplet, encode};
 use neoteletext_core::render::{
-    ALL_ROWS, ColourMode, FlashPhase, IndexBuffer, IndexFormat, RenderOptions, render_screen, row_width,
+    ALL_ROWS, ColourMode, FlashPhase, IndexBuffer, IndexFormat, RenderOptions, render_screen,
 };
 use neoteletext_core::types::{ControlBits, Instant, Magazine, PageAddress, PageNumber, SubCode};
 
@@ -135,8 +136,7 @@ fuzz_target!(|input: &[u8]| {
         colour: ColourMode::Resolved(FlashPhase::at_unit(settings >> 4)),
         underline: settings & 0x80 != 0,
     };
-    let width = row_width(&grid);
-    let mut pixels = vec![0u8; width * ROWS * options.row_height()];
-    let mut buffer = IndexBuffer { format: IndexFormat::Bits8, data: &mut pixels, stride: width };
+    let mut pixels = vec![0u8; PAGE_WIDTH * ROWS * options.row_height()];
+    let mut buffer = IndexBuffer { format: IndexFormat::Bits8, data: &mut pixels, stride: PAGE_WIDTH };
     let _ = render_screen(&grid, ALL_ROWS, &GlyphSet::bedstead(), options, &mut buffer);
 });
