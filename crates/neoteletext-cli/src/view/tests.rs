@@ -211,6 +211,19 @@ fn a_key_is_stamped_with_the_page_drawn() {
     assert_eq!(source.0[0][2..5], [0x80, 0x02, 0x00], "page 100 is still on screen");
 }
 
+/// An ordinary terminal's `Control-]` is the byte 0x1D, which reaches the
+/// viewer as Control and 5; a viewer it did not free could not leave at all.
+#[test]
+fn control_right_bracket_leaves_as_any_terminal_reports_it() {
+    use super::keys::leaves_typing;
+    assert!(leaves_typing(KeyEvent::new(KeyCode::Char(']'), KeyModifiers::CONTROL)));
+    assert!(leaves_typing(KeyEvent::new(KeyCode::Char('5'), KeyModifiers::CONTROL)));
+    assert!(!leaves_typing(KeyEvent::new(KeyCode::Char('5'), KeyModifiers::NONE)));
+    assert!(!leaves_typing(KeyEvent::new(KeyCode::Char(']'), KeyModifiers::NONE)));
+    let release = KeyEvent::new_with_kind(KeyCode::Char(']'), KeyModifiers::CONTROL, KeyEventKind::Release);
+    assert!(!leaves_typing(release));
+}
+
 /// REQ-1554, REQ-207: after `Control-]` no key goes, `FOCUS_OUT` has gone, and
 /// the selection stays; a held key goes first, lost, where the terminal
 /// reports releases.

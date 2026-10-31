@@ -183,8 +183,7 @@ impl Source for Live {
                 Frame::Tti(page) => self.receive(session, Format::Tti, &page, now),
                 Frame::T42(page) => self.receive(session, Format::T42(T42Variant::Plain), &page, now),
                 Frame::Notice(Notice::Service(names)) => {
-                    // A new service: its page numbers are its own.
-                    *session = Session::new(*session.decoder().config(), session.capacity());
+                    session.restart();
                     self.extras.clear();
                     self.last_bytes.clear();
                     self.services = names;

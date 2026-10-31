@@ -1,12 +1,25 @@
 //! The viewer's keys: a terminal key as a viewer key, and the key that
 //! leaves a channel's keys.
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use neoteletext_core::viewer::Key;
 
 /// The key that leaves a channel's keys, as telnet's escape character
 /// leaves its host's: Control and the right square bracket.
-pub(super) const LEAVE_TYPING: char = ']';
+const LEAVE_TYPING: char = ']';
+
+/// The same key on a terminal without the Kitty keyboard protocol: it sends
+/// the control byte 0x1D, which crossterm reads as Control and 5, naming
+/// 0x1C to 0x1F Control-4 to Control-7. Control and 5 itself cannot be told
+/// from it there, and leaves on every terminal.
+const LEAVE_TYPING_AS_READ: char = '5';
+
+/// Whether `key` leaves a channel's keys, or takes them back.
+pub(super) fn leaves_typing(key: KeyEvent) -> bool {
+    key.modifiers.contains(KeyModifiers::CONTROL)
+        && matches!(key.code, KeyCode::Char(LEAVE_TYPING | LEAVE_TYPING_AS_READ))
+        && key.kind != KeyEventKind::Release
+}
 
 pub(super) fn map_key(key: KeyEvent) -> Option<Key> {
     let alt = key.modifiers.contains(KeyModifiers::ALT);

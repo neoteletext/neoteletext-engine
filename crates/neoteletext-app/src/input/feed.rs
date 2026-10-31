@@ -12,6 +12,7 @@ use neoteletext_core::types::PageAddress;
 #[must_use]
 pub fn is_live(input: &str) -> bool {
     input.starts_with("zxnet:")
+        || input.starts_with(crate::fetch::CHANNEL_PREFIX)
         || input.starts_with("wss://")
         || input.starts_with("http://")
         || input.starts_with("https://")

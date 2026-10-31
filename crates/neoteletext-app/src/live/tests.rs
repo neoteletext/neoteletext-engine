@@ -56,6 +56,27 @@ impl Kept {
 
 const SECOND: u64 = 1_000_000;
 
+#[test]
+fn a_channel_address_is_live() {
+    // Without this, `neottx view channel:...` looked for a file of that name.
+    assert!(crate::input::is_live("channel:https://s.example/demo/"));
+}
+
+#[test]
+fn a_new_service_keeps_the_records_the_viewer_asked_for() {
+    // The viewer asks once, before the fetcher announces the service; had
+    // the announcement forgotten, no WELCOME would reach it and keys would
+    // never go to the channel.
+    let (sender, frames) = mpsc::channel();
+    let mut live = routed(frames, Box::new(std::io::sink()));
+    let mut session = Session::new(neoteletext_core::config::Config::default(), 1);
+    session.keep(|_| true);
+    sender.send(Frame::Notice(Notice::Service(Vec::new()))).unwrap();
+    sender.send(Frame::Packet([0; 42])).unwrap();
+    live.poll(&mut session, Instant(0));
+    assert_eq!(session.take_kept().len(), 1);
+}
+
 /// REQ-WEB-020, concept decision 13: a service's refresh interval
 /// brings the page on screen again sooner than the stale timeout would.
 #[test]

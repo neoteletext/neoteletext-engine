@@ -77,6 +77,15 @@ impl Session {
         self.keep = Some(wanted);
     }
 
+    /// Starts again for a new service, whose page numbers are its own. What
+    /// [`Session::keep`] asked for still holds: the new service's input
+    /// records come to the same program.
+    pub fn restart(&mut self) {
+        let keep = self.keep;
+        *self = Self::new(*self.decoder.config(), self.capacity);
+        self.keep = keep;
+    }
+
     /// The packets kept since the last take, oldest first.
     pub fn take_kept(&mut self) -> VecDeque<Packet> {
         std::mem::take(&mut self.kept)

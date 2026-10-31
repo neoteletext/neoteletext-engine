@@ -1,7 +1,7 @@
 //! The terminal's events in a turn: a paste and the focus, and each key,
 //! whether the channel's or the viewer's.
 
-use super::keys::{LEAVE_TYPING, map_key};
+use super::keys::{leaves_typing, map_key};
 use super::typing::input_of;
 use super::{Shown, ViewState};
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -50,11 +50,7 @@ impl ViewState {
         clock_ms: u32,
     ) -> ControlFlow<()> {
         let control = key.modifiers.contains(KeyModifiers::CONTROL);
-        if self.typing.may_leave()
-            && control
-            && key.code == KeyCode::Char(LEAVE_TYPING)
-            && key.kind != KeyEventKind::Release
-        {
+        if self.typing.may_leave() && leaves_typing(key) {
             self.leave_or_return_to_typing(source, clock_ms);
             return ControlFlow::Continue(());
         }
