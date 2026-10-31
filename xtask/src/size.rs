@@ -23,7 +23,8 @@ const DEFAULT_TARGET: &str = "thumbv6m-none-eabi";
 
 /// REQ-GEN-009: the flash budget of the core, which "shall start at 64
 /// kilobytes". It applies to the Level 1.5 build, the minimum
-/// configuration REQ-GEN-009 describes; the other builds are reported.
+/// configuration REQ-GEN-009 describes, on [`DEFAULT_TARGET`], the target
+/// it names; the other builds and targets are reported.
 const FLASH_BUDGET: u64 = 64 * 1024;
 
 /// One build of the test image: its name, the image features it enables,
@@ -113,6 +114,7 @@ pub fn run(root: &Path, args: &[String]) -> Result<(), String> {
         let budget = build.budget.map_or_else(String::new, |budget| format!("{budget}"));
         println!("{:<14} {:>10} {:>10}  {budget}", build.name, image.flash(), image.ram());
         if let Some(budget) = build.budget
+            && target == DEFAULT_TARGET
             && image.flash() > budget
         {
             failures.push(format!("{}: flash {} bytes is over the budget of {budget}", build.name, image.flash()));

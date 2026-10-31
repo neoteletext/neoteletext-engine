@@ -337,7 +337,15 @@ impl<const SLOTS: usize, const BYTES: usize> CookieJar<SLOTS, BYTES> {
         let len = record.total_len();
         let end = start.saturating_add(len);
         if let Some(region) = self.arena.get_mut(start..self.used) {
-            region.copy_within(len.min(region.len()).., 0);
+            // REQ-GEN-019: a loop, not `copy_within`, whose range check links
+            // a panic path into the image.
+            for to in 0..region.len().saturating_sub(len) {
+                if let Some(&byte) = region.get(to.saturating_add(len))
+                    && let Some(place) = region.get_mut(to)
+                {
+                    *place = byte;
+                }
+            }
         }
         self.used = self.used.saturating_sub(len);
         let shift = u32::try_from(len).unwrap_or(0);

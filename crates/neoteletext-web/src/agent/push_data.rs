@@ -165,7 +165,12 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
                 self.push.log_lines = 0;
             }
             invalid = invalid.saturating_add(self.read_record(now, &packet, sink));
-            self.buffers.push_message.copy_within(start..end, kept);
+            // REQ-GEN-019: not `copy_within`, whose range check links a panic
+            // path into the image.
+            let place = self.buffers.push_message.get_mut(kept..kept.saturating_add(T42_PACKET));
+            if let Some(place) = place.and_then(|place| <&mut [u8; T42_PACKET]>::try_from(place).ok()) {
+                *place = packet.bytes;
+            }
             kept = kept.saturating_add(T42_PACKET);
         }
         if kept > 0 {

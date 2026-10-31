@@ -12,7 +12,7 @@
 use neoteletext_core::types::Instant;
 
 use super::{Event, HeldMove, InputMessage, Output, PushPhase, Sink, Subscription, UserAgent, event};
-use crate::bytes::{Overflow, Writer};
+use crate::bytes::{Overflow, Writer, copy_prefix};
 use crate::consts::{
     INPUT_MESSAGE_MAX, MAX_SUBSCRIBED_PAGES, OPCODE_BINARY, OPCODE_CLOSE, OPCODE_TEXT, PUSH_MOVE_MAX, PUSH_MOVE_SLOTS,
     PUSH_UNSENT_BOUND, SUBSCRIBE, SUBSCRIBE_ALL,
@@ -152,9 +152,7 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
             };
             if self.push.unsent >= PUSH_UNSENT_BOUND {
                 let mut held = HeldMove { bytes: [0; PUSH_MOVE_MAX], length };
-                if let Some(room) = held.bytes.get_mut(..length) {
-                    room.copy_from_slice(message.bytes);
-                }
+                copy_prefix(&mut held.bytes, message.bytes);
                 *slot = Some(held);
                 return;
             }
