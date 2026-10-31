@@ -162,8 +162,12 @@ impl Channel {
     }
 
     /// Text the phone committed, without control characters (section 5.3),
-    /// in messages of whole characters.
+    /// in messages of whole characters. Like a key, it waits for a page
+    /// (section 3.4).
     fn text(&mut self, text: &str) -> Result<(), Failure> {
+        if self.on.is_none() {
+            return Ok(());
+        }
         let clean: String = text.chars().filter(|&character| neoteletext_input::event::printable(character)).collect();
         let mut start = 0;
         while start < clean.len() {
