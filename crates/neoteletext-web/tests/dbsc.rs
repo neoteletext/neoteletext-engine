@@ -56,7 +56,9 @@ impl DeviceKeys for Keys {
 }
 
 struct Harness {
-    agent: UserAgent<'static, Counter, 100, 32768>,
+    // Boxed, as a port keeps it: it holds many addresses of 8,000 octets
+    // (REQ-1661), and a test thread has 2 MB of stack.
+    agent: Box<UserAgent<'static, Counter, 100, 32768>>,
     pump: Pump<Replay>,
     now: Instant,
     events: Vec<String>,
@@ -66,7 +68,7 @@ struct Harness {
 impl Harness {
     fn new() -> Self {
         let storage: &'static mut Storage = Box::leak(Box::new(Storage::new()));
-        let mut agent = UserAgent::new(Config::default(), storage.buffers(), Counter(0));
+        let mut agent = Box::new(UserAgent::new(Config::default(), storage.buffers(), Counter(0)));
         let keys = Rc::new(RefCell::new(KeyLog::default()));
         agent.set_device_keys(Box::leak(Box::new(Keys(Rc::clone(&keys)))));
         let replay = Replay::new(&[("news.example", PUBLIC)]);
