@@ -1,16 +1,26 @@
 //! The input stream's reader, from arbitrary bytes (REQ-INT-101,
 //! REQ-INT-102, REQ-TST-040): a message it accepts is read alike whole and
 //! split anywhere, and what the writer writes of it reads back the same.
-//! Every stamp it accepts is one a channel accepts (REQ-1555), and held
-//! input fed from it ends with nothing held (REQ-207).
+//! Every stamp and SELECT it accepts is one a channel accepts (REQ-1555,
+//! REQ-INT-140), and held input fed from it ends with nothing held
+//! (REQ-207).
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
 use neoteletext_input::MAX_MESSAGE;
-use neoteletext_input::event::{Event, Item, MAX_STREAM_ITEM, Stamp, StreamDecoder, read_message, write};
+use neoteletext_input::event::{Event, Item, MAX_STREAM_ITEM, Select, Stamp, StreamDecoder, read_message, write};
 use neoteletext_input::held::Held;
 
 fuzz_target!(|data: &[u8]| {
+    // SELECT built from the input reads back as it was, at any value.
+    if let [a, b, c, d, ..] = *data
+        && let Some(select) = Select::new(u16::from_le_bytes([a, b]), u16::from_le_bytes([c, d]))
+    {
+        let item = Item::Event(Event::Select(select));
+        let mut out = [0_u8; MAX_MESSAGE];
+        let length = write(&item, &mut out).expect("a SELECT in bounds is written");
+        read_message(&out[..length], &mut |back| assert_eq!(back, item)).expect("what was written is read");
+    }
     let mut whole = Vec::new();
     let whole_result = read_message(data, &mut |item| whole.push(format!("{item:?}")));
     if whole_result.is_err() {
@@ -29,6 +39,9 @@ fuzz_target!(|data: &[u8]| {
             };
             if let Some(on) = on {
                 assert_eq!(Stamp::new(on.page, on.sub), Some(on), "a stamp a channel would refuse");
+            }
+            if let Event::Select(select) = event {
+                assert_eq!(Select::new(select.page, select.sub), Some(*select), "a SELECT a channel would refuse");
             }
         }
         held.take(&item, &mut |_, _| {});
