@@ -127,12 +127,16 @@ pub fn from_page(page: &PageFile, services: &[String]) -> PageExtras {
         ));
     }
     for link in page.number_links.as_slice() {
-        if let Some(destination) = links::resolve(&link.destination, services, false).and_then(destination) {
+        if let Some(destination) =
+            links::resolve(&link.destination, &page.link_text, services, false).and_then(destination)
+        {
             extras.number_links.push((link.number, destination));
         }
     }
     for link in page.text_links.as_slice() {
-        if let Some(destination) = links::resolve(&link.destination, services, false).and_then(destination) {
+        if let Some(destination) =
+            links::resolve(&link.destination, &page.link_text, services, false).and_then(destination)
+        {
             extras.text_links.push(TextLinkExtras {
                 row: link.row,
                 column: link.column,
@@ -169,7 +173,7 @@ mod tests {
         let mut reader = neoteletext_formats::tti::TtiReader::new();
         let mut keep = |item: neoteletext_formats::Item<'_>| {
             if let neoteletext_formats::Item::Page(page) = item {
-                pages.push(*page);
+                pages.push(page.clone());
             }
         };
         neoteletext_formats::Reader::feed(&mut reader, tti, &mut keep);

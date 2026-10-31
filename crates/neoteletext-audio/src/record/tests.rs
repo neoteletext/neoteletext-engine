@@ -3,7 +3,7 @@
 // Tests of REQ-AUD-002, REQ-AUD-003, REQ-AUD-004 and REQ-AUD-006.
 use super::*;
 use crate::crc::crc32;
-use crate::{MAX_BODY, PROFILE_VERSION};
+use crate::{MAX_FRAMED_BODY, PROFILE_VERSION};
 use std::vec::Vec;
 
 fn frame(kind: u8, body: &[u8]) -> Vec<u8> {
@@ -165,6 +165,6 @@ fn damaged_and_malformed_frames_are_refused() {
     version.extend_from_slice(&crc.to_be_bytes());
     assert_eq!(parse(&version), Err(RecordError::Version(1)));
     let mut too_long = std::vec![PROFILE_VERSION, TYPE_DATA];
-    too_long.extend_from_slice(&u16::try_from(MAX_BODY + 1).unwrap().to_be_bytes());
+    too_long.extend_from_slice(&u16::try_from(MAX_FRAMED_BODY + 1).unwrap().to_be_bytes());
     assert_eq!(framed_length(&too_long), Err(RecordError::TooLong));
 }

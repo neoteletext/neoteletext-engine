@@ -11,6 +11,8 @@ fuzz_target!(|data: &[u8]| {
     let (first, reference) = text.split_once('\n').unwrap_or((text, ""));
     if let Ok(url) = Url::parse(first) {
         core::hint::black_box((url.host_text(), url.port(), url.path(), url.query(), url.origin()));
+        // REQ-WEB-016: nothing of a fragment reaches what is requested.
+        assert!(!url.as_str().contains('#') && !url.target().contains('#'));
         if let Ok(joined) = url.join(reference) {
             core::hint::black_box(joined.as_str());
         }

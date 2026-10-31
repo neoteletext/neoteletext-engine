@@ -15,7 +15,7 @@ LN,key,target,label
   - an address: a channel's folder, or a page file in a channel's folder, such as `https://weather.example/300.t42` (decisions E.64 and E.70);
   - `web:` followed by an `http` or `https` address, such as `web:https://www.example.com/story`: a page on the web, for a receiver to open outside teletext (decision E.88). The address obeys the rules below. Allowed in `LN` and `LT`, never in `LK`: typing a page number never leaves teletext.
 
-  A target containing `://` is an address; any other target is a page or a named service. An address shall use `http` or `https`, shall be printable ASCII with no spaces or commas, and shall be at most 256 bytes. A target that breaks these rules makes the link invalid. An address that is a page file in the page's own channel folder is a page of the current channel; any other address leads to another channel (REQ-WEB-026).
+  A target containing `://` is an address; any other target is a page or a named service. An address shall use `http` or `https`, shall be printable ASCII with no spaces or commas, and shall be at most 8,000 bytes, the longest address anywhere (REQ-1661, DEC-1668), not counting a `web:` mark. A target that breaks these rules makes the link invalid. An address that is a page file in the page's own channel folder is a page of the current channel; any other address leads to another channel (REQ-WEB-026).
 - **`label`** is the prompt text. It is at most 9 characters for a link in the same service and 8 for a link to another service, using characters the page's G0 set can show. It is ignored for `I`.
 
 `LN` lines apply to the page or sub-page of the most recent `PN` line.

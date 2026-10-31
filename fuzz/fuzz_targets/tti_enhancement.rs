@@ -31,7 +31,7 @@ fn read(text: &[u8]) -> Vec<Box<PageFile>> {
     let mut reader = Box::new(TtiReader::new());
     let mut collect = |item: Item<'_>| {
         if let Item::Page(page) = item {
-            pages.push(Box::new(*page));
+            pages.push(Box::new(page.clone()));
         }
     };
     reader.feed(text, &mut collect);

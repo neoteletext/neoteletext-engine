@@ -10,8 +10,8 @@
 //! server can never send what a receiver refuses. [`RecordReader`]
 //! reassembles a push stream's fragments and reads the records it carries.
 
-use neoteletext_audio::MAX_RECORD;
-use neoteletext_audio::idl::{FRAGMENT_DATA, Reassembler, fragment, packet};
+use neoteletext_audio::MAX_FRAMED_RECORD;
+use neoteletext_audio::idl::{FRAGMENT_DATA, MAX_FRAGMENTS, Reassembler, fragment, packet};
 use neoteletext_audio::record::{RecordError, record_length, split, write};
 use neoteletext_core::packet::Packet;
 
@@ -53,7 +53,7 @@ pub const fn fragments(body: usize) -> usize {
 /// fragment 0 first. Returns the packets written, or `None` when the body
 /// is over the frame's largest.
 pub fn write_packets(kind: u8, body: &[u8], service: u8, record_id: u8, out: &mut dyn FnMut(Packet)) -> Option<usize> {
-    let mut record = [0_u8; MAX_RECORD];
+    let mut record = [0_u8; MAX_FRAMED_RECORD];
     let length = write(kind, body, &mut record)?;
     let bytes = record.get(..length)?;
     let count = bytes.len().div_ceil(FRAGMENT_DATA);
@@ -108,7 +108,7 @@ pub enum Read<'a> {
 /// cursor and control records, which other readers take, are never copied
 /// here.
 pub struct RecordReader {
-    reassembler: Reassembler<1>,
+    reassembler: Reassembler<1, { MAX_FRAGMENTS * FRAGMENT_DATA }>,
     /// The service and record id of the record being reassembled.
     following: Option<(u8, u8)>,
 }

@@ -2,39 +2,68 @@
 //! in flight, the oldest incomplete one replaced by a further record.
 
 use super::{FRAGMENT_DATA, Fragment, MAX_FRAGMENTS};
+use crate::MAX_RECORD;
 use crate::record::framed_length;
 
-/// Bytes of a reassembly slot.
-const SLOT_BYTES: usize = MAX_FRAGMENTS * FRAGMENT_DATA;
+/// Bytes of a slot of the audio profile: its largest record, in whole
+/// fragments.
+pub const AUDIO_SLOT_BYTES: usize = MAX_RECORD.div_ceil(FRAGMENT_DATA) * FRAGMENT_DATA;
+/// Bits a word of the map of fragments received holds.
+const WORD_BITS: usize = u32::BITS as usize;
+/// Words of the map of fragments received, one bit a fragment.
+const RECEIVED_WORDS: usize = MAX_FRAGMENTS.div_ceil(WORD_BITS);
+
+/// One bit for each fragment received.
+#[derive(Clone, Copy, Default)]
+struct Received([u32; RECEIVED_WORDS]);
+
+impl Received {
+    fn mark(&mut self, index: u8) {
+        let index = usize::from(index);
+        if let Some(word) = self.0.get_mut(index / WORD_BITS) {
+            *word |= 1_u32 << (index % WORD_BITS);
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.0.iter().all(|&word| word == 0)
+    }
+
+    /// Whether fragments 0 to `needed` - 1 are all here.
+    fn holds(&self, needed: u8) -> bool {
+        (0..usize::from(needed))
+            .all(|index| self.0.get(index / WORD_BITS).is_some_and(|word| word & (1_u32 << (index % WORD_BITS)) != 0))
+    }
+}
 
 #[derive(Clone, Copy)]
-struct Slot {
+struct Slot<const BYTES: usize> {
     service: u8,
     record: u8,
-    /// One bit for each fragment received.
-    received: u32,
+    received: Received,
     /// The fragments the record needs, once fragment 0 has said.
     needed: Option<u8>,
     /// Fragments received for this slot, for choosing the oldest.
     stamp: u32,
-    bytes: [u8; SLOT_BYTES],
+    bytes: [u8; BYTES],
 }
 
-/// Reassembles records from fragments: at most `SLOTS` records in flight;
-/// a fragment of a further record replaces the oldest incomplete one
-/// (REQ-AUD-007).
-pub struct Reassembler<const SLOTS: usize> {
-    slots: [Option<Slot>; SLOTS],
+/// Reassembles records from fragments: at most `SLOTS` records in flight,
+/// each of at most `BYTES` bytes, a whole number of fragments; a fragment
+/// of a further record replaces the oldest incomplete one (REQ-AUD-007). A
+/// record longer than a slot is never completed.
+pub struct Reassembler<const SLOTS: usize, const BYTES: usize = AUDIO_SLOT_BYTES> {
+    slots: [Option<Slot<BYTES>>; SLOTS],
     clock: u32,
 }
 
-impl<const SLOTS: usize> Default for Reassembler<SLOTS> {
+impl<const SLOTS: usize, const BYTES: usize> Default for Reassembler<SLOTS, BYTES> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<const SLOTS: usize> Reassembler<SLOTS> {
+impl<const SLOTS: usize, const BYTES: usize> Reassembler<SLOTS, BYTES> {
     /// An empty reassembler.
     #[must_use]
     pub const fn new() -> Self {
@@ -55,7 +84,7 @@ impl<const SLOTS: usize> Reassembler<SLOTS> {
         slot.stamp = self.clock;
         let start = usize::from(fragment.index).saturating_mul(FRAGMENT_DATA);
         slot.bytes.get_mut(start..start.saturating_add(FRAGMENT_DATA))?.copy_from_slice(&fragment.data);
-        slot.received |= 1_u32.checked_shl(u32::from(fragment.index)).unwrap_or(0);
+        slot.received.mark(fragment.index);
         if fragment.index == 0 {
             let length = framed_length(&fragment.data).ok()?;
             slot.needed = u8::try_from(length.div_ceil(FRAGMENT_DATA)).ok();
@@ -66,15 +95,14 @@ impl<const SLOTS: usize> Reassembler<SLOTS> {
             *self.slots.get_mut(index)? = None;
             return None;
         }
-        let all = 1_u32.checked_shl(u32::from(needed)).map_or(u32::MAX, |bit| bit.wrapping_sub(1));
-        if slot.received & all != all {
+        if !slot.received.holds(needed) {
             return None;
         }
         let length = framed_length(&slot.bytes).ok()?;
         let service = slot.service;
         // The slot is free for the next record; its bytes stay readable
         // until then.
-        slot.received = 0;
+        slot.received = Received::default();
         slot.needed = None;
         let bytes = self.slots.get(index)?.as_ref()?.bytes.get(..length)?;
         Some((service, bytes))
@@ -84,7 +112,8 @@ impl<const SLOTS: usize> Reassembler<SLOTS> {
     /// oldest incomplete record when every slot is busy.
     fn slot_for(&mut self, service: u8, record: u8) -> Option<usize> {
         if let Some(found) = self.slots.iter().position(|slot| {
-            slot.as_ref().is_some_and(|slot| slot.service == service && slot.record == record && slot.received != 0)
+            slot.as_ref()
+                .is_some_and(|slot| slot.service == service && slot.record == record && !slot.received.is_empty())
         }) {
             return Some(found);
         }
@@ -93,7 +122,7 @@ impl<const SLOTS: usize> Reassembler<SLOTS> {
         let index = self
             .slots
             .iter()
-            .position(|slot| slot.as_ref().is_none_or(|slot| slot.received == 0 || slot.service == service))
+            .position(|slot| slot.as_ref().is_none_or(|slot| slot.received.is_empty() || slot.service == service))
             .or_else(|| {
                 self.slots
                     .iter()
@@ -101,8 +130,14 @@ impl<const SLOTS: usize> Reassembler<SLOTS> {
                     .min_by_key(|(_, slot)| slot.as_ref().map_or(0, |slot| slot.stamp))
                     .map(|(index, _)| index)
             })?;
-        *self.slots.get_mut(index)? =
-            Some(Slot { service, record, received: 0, needed: None, stamp: self.clock, bytes: [0; SLOT_BYTES] });
+        *self.slots.get_mut(index)? = Some(Slot {
+            service,
+            record,
+            received: Received::default(),
+            needed: None,
+            stamp: self.clock,
+            bytes: [0; BYTES],
+        });
         Some(index)
     }
 }

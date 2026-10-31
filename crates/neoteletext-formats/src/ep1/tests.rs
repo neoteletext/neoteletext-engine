@@ -48,7 +48,7 @@ fn reads_a_plain_file_of_1008_bytes() {
     assert_eq!(file.len(), 1008);
     let items = same_in_any_chunks(Ep1Reader::new, &file);
     assert_eq!(diagnostics(&items), []);
-    let page = pages(&items)[0];
+    let page = pages(&items)[0].clone();
     assert_eq!(page.control().national_index(), 1);
     assert_eq!(page.region, None);
     assert_eq!(page.row(0).unwrap()[0], b'A');
@@ -63,7 +63,7 @@ fn reads_enhancements_and_the_stored_terminator() {
     triplets[1] = (2, MODE_G0_NO_DIACRITIC, b'q');
     let file = ep1_file(0x14, &[(0, triplets), (1, triplets)]);
     let items = same_in_any_chunks(Ep1Reader::new, &file);
-    let page = pages(&items)[0];
+    let page = pages(&items)[0].clone();
     assert_eq!(page.enhancements.len(), 2);
     let stored = page.enhancements.as_slice()[1];
     assert_eq!(stored.designation, 1);

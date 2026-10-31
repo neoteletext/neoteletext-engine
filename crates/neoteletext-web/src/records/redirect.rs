@@ -14,7 +14,8 @@
 //!              what follows, which the receiver's address rules judge
 //! ```
 
-use neoteletext_audio::MAX_BODY;
+use neoteletext_audio::MAX_FRAMED_BODY;
+use neoteletext_core::limits::MAX_URL_LENGTH;
 use neoteletext_core::limits::{LAST_SUBPAGE_CODE, SUBCODE_ANY, SUBCODE_MASK, is_reserved_page};
 use neoteletext_core::packet::Packet;
 use neoteletext_core::types::{PageAddress, SubCode};
@@ -30,13 +31,14 @@ const FORM_ADDRESS: u8 = 1;
 const FORM: usize = 1;
 /// The page form's body: the form, the page and the sub-code.
 const PAGE_BODY: usize = FORM + 2 + 2;
-/// The longest address a record carries: the frame's largest body less the
-/// `form` byte. An address may be longer elsewhere; a server refuses one
-/// too long for this record.
-pub const MAX_ADDRESS: usize = MAX_BODY - FORM;
+/// The longest address a record carries: the longest of all (REQ-1661),
+/// its fragment included.
+pub const MAX_ADDRESS: usize = MAX_URL_LENGTH;
+/// The largest body of this record.
+const MAX_BODY: usize = FORM + MAX_ADDRESS;
 /// What ends an address and begins its fragment (RFC 3986 section 3.5).
 const FRAGMENT: u8 = b'#';
-const _: () = assert!(PAGE_BODY <= MAX_BODY);
+const _: () = assert!(PAGE_BODY <= MAX_BODY && MAX_BODY <= MAX_FRAMED_BODY);
 
 /// A REDIRECT record, checked.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

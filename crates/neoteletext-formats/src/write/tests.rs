@@ -94,7 +94,7 @@ fn t42_round_trips_and_filters() {
     assert_eq!(got, expected);
 
     // Pass-through with a page filter keeps the page's own packets only.
-    let mut other = pages[0];
+    let mut other = pages[0].clone();
     other.address = PageAddress::from_mpp(0x1B0).unwrap();
     let mut other_packets = Vec::new();
     encode_page(&other, &mut |packet| other_packets.push(packet));

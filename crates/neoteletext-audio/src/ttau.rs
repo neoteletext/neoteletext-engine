@@ -10,6 +10,7 @@
 //! a field) is still handed out, for the receiver to refuse as on any
 //! carriage; the file goes on after it.
 
+use crate::MAX_RECORD;
 use crate::record::{RecordError, framed_length};
 
 /// Why a file's records ended.
@@ -62,6 +63,9 @@ impl<'a> Iterator for Records<'a> {
             return None;
         }
         match framed_length(self.rest) {
+            // The frame also carries a channel's longer records, which a
+            // sound file never holds.
+            Ok(length) if length > MAX_RECORD => self.finish(End::BadLength),
             Ok(length) => {
                 if let Some((record, after)) = self.rest.split_at_checked(length) {
                     self.rest = after;
@@ -90,7 +94,7 @@ mod tests {
     fn file(bodies: &[&[u8]]) -> Vec<u8> {
         let mut bytes = Vec::new();
         for body in bodies {
-            let mut record = [0_u8; crate::MAX_RECORD];
+            let mut record = [0_u8; MAX_RECORD];
             let length = write(TYPE_CONTROL, body, &mut record).unwrap();
             bytes.extend_from_slice(&record[..length]);
         }

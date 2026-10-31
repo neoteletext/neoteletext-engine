@@ -2,7 +2,9 @@
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects, clippy::panic)]
 
 use super::*;
-use crate::page::{EnhancementPacket, FastextLink, LinkKey, LinkLine, PageFile, PageFunction, RawBody, RawPacket};
+use crate::page::{
+    AddressSpan, EnhancementPacket, FastextLink, LinkKey, LinkLine, PageFile, PageFunction, RawBody, RawPacket,
+};
 use crate::text::Text;
 use neoteletext_core::charset::{CharRef, CharSet, G2Set, designation, to_unicode};
 use neoteletext_core::consts::{
@@ -198,7 +200,7 @@ fn page_triplets_in_row_24_give_way_to_the_link_row() {
         service,
         address: PageAddress::from_mpp(0x300).unwrap(),
         subcode: None,
-        url: Text::new(),
+        url: AddressSpan::NONE,
         label,
         label_truncated: false,
         line: 1,
@@ -236,7 +238,7 @@ fn labels_cannot_carry_attributes() {
         service: Text::new(),
         address: PageAddress::from_mpp(0x101).unwrap(),
         subcode: None,
-        url: Text::new(),
+        url: AddressSpan::NONE,
         label,
         label_truncated: false,
         line: 1,

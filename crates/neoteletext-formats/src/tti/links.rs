@@ -47,7 +47,7 @@ impl TtiReader {
             [letter] => LinkKey::from_letter(*letter),
             _ => None,
         };
-        let (Some(key), Some(destination)) = (key, link_destination(target)) else {
+        let (Some(key), Some(destination)) = (key, link_destination(target, &mut self.page.link_text)) else {
             self.issue(IssueKind::BadLinkTarget, out);
             return;
         };
@@ -75,7 +75,7 @@ impl TtiReader {
     pub(super) fn number_link_line(&mut self, args: &[u8], out: &mut dyn FnMut(Item<'_>)) {
         let mut fields = Args::new(args);
         let number = page_address(fields.next().trim_ascii());
-        let destination = link_destination(fields.rest());
+        let destination = link_destination(fields.rest(), &mut self.page.link_text);
         // Typing a page number never leaves teletext (decision E.88).
         let (Some(number), Some(destination)) = (number, destination.filter(|destination| !destination.is_web()))
         else {
@@ -117,7 +117,7 @@ impl TtiReader {
         let row = number(fields.next());
         let column = number(fields.next());
         let length = number(fields.next());
-        let destination = link_destination(fields.rest());
+        let destination = link_destination(fields.rest(), &mut self.page.link_text);
         let columns = u8::try_from(COLUMNS).unwrap_or(u8::MAX);
         let fits = |row: u8, column: u8, length: u8| {
             (1..=TEXT_LINK_LAST_ROW).contains(&row)

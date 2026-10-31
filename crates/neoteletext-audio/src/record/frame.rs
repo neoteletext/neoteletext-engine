@@ -3,7 +3,7 @@
 //! of a body's fields.
 
 use crate::crc::crc32_parts;
-use crate::{MAX_BODY, MAX_RECORD, PROFILE_VERSION, RECORD_CRC, RECORD_HEADER};
+use crate::{MAX_FRAMED_BODY, MAX_FRAMED_RECORD, PROFILE_VERSION, RECORD_CRC, RECORD_HEADER};
 
 /// Why a record was refused. A refused record is discarded whole.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -12,7 +12,7 @@ pub enum RecordError {
     Truncated,
     /// Longer than its length says.
     TrailingBytes,
-    /// A body longer than [`MAX_BODY`].
+    /// A body longer than [`MAX_FRAMED_BODY`], or than its type allows.
     TooLong,
     /// A version this receiver does not read.
     Version(u8),
@@ -34,7 +34,7 @@ pub fn framed_length(bytes: &[u8]) -> Result<usize, RecordError> {
     let header = bytes.get(..RECORD_HEADER).ok_or(RecordError::Truncated)?;
     let body =
         usize::from(u16::from_be_bytes([header.get(2).copied().unwrap_or(0), header.get(3).copied().unwrap_or(0)]));
-    if body > MAX_BODY {
+    if body > MAX_FRAMED_BODY {
         return Err(RecordError::TooLong);
     }
     Ok(record_length(body))
@@ -53,7 +53,7 @@ pub const fn record_length(body: usize) -> usize {
 /// # Errors
 /// The frame's failures of REQ-AUD-003: the length, the CRC or the version.
 pub fn split(bytes: &[u8]) -> Result<(u8, &[u8]), RecordError> {
-    if bytes.len() > MAX_RECORD {
+    if bytes.len() > MAX_FRAMED_RECORD {
         return Err(RecordError::TooLong);
     }
     let length = framed_length(bytes)?;
@@ -77,10 +77,11 @@ pub fn split(bytes: &[u8]) -> Result<(u8, &[u8]), RecordError> {
 }
 
 /// Writes a record of type `kind` around `body` into `out` and returns its
-/// length, or `None` when the body is over [`MAX_BODY`] or `out` is short.
+/// length, or `None` when the body is over [`MAX_FRAMED_BODY`] or `out` is
+/// short.
 /// It allocates nothing.
 pub fn write(kind: u8, body: &[u8], out: &mut [u8]) -> Option<usize> {
-    if body.len() > MAX_BODY {
+    if body.len() > MAX_FRAMED_BODY {
         return None;
     }
     let length = record_length(body.len());

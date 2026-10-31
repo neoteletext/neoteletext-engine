@@ -4,7 +4,7 @@
 use crate::consts::TTI_COMMAND_BYTES;
 use crate::item::{Item, Reader};
 use crate::lines::Lines;
-use crate::page::PageFile;
+use crate::page::{LINK_TARGET_BYTES, PageFile};
 use crate::text::Text;
 
 mod commands;
@@ -17,11 +17,12 @@ mod targets;
 pub use row_text::{DecodedText, decode_text};
 /// A link target of Appendix E, read as an `LN`, `LK` or `LT` line's is:
 /// also how a LINKS record's targets are read (`INPUT.md` section 7.8).
-pub use targets::link_destination;
+pub use targets::{link_destination, parse_target};
 
 /// The longest line read; longer lines are cut and reported. An `OL` line
-/// in the escape form needs at most 6 + 80 bytes.
-pub const LINE_BYTES: usize = 512;
+/// in the escape form needs at most 6 + 80 bytes, and a link line room for
+/// its target (REQ-1661) beside its other fields, as a line always had.
+pub const LINE_BYTES: usize = LINK_TARGET_BYTES + 512;
 
 /// The commands that belong to a page (REQ-INP-013, Appendix E, `CK` of
 /// REQ-CLI-006, and `TF`, withdrawn by decision E.111). The lines of the

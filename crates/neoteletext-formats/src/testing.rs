@@ -26,7 +26,7 @@ impl Owned {
     fn from_item(item: Item<'_>) -> Self {
         match item {
             Item::Packet { packet, meta } => Self::Packet(packet, meta),
-            Item::Page(page) => Self::Page(Box::new(*page)),
+            Item::Page(page) => Self::Page(Box::new(page.clone())),
             Item::Diagnostic(diagnostic) => Self::Diagnostic(diagnostic),
             other => Self::Other(std::format!("{other:?}")),
         }
@@ -60,7 +60,7 @@ pub fn packets(items: &[Owned]) -> Vec<Packet> {
 
 /// The pages among the items.
 pub fn pages(items: &[Owned]) -> Vec<PageFile> {
-    items.iter().filter_map(|item| if let Owned::Page(page) = item { Some(**page) } else { None }).collect()
+    items.iter().filter_map(|item| if let Owned::Page(page) = item { Some((**page).clone()) } else { None }).collect()
 }
 
 /// The diagnostics among the items.

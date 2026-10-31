@@ -12,22 +12,23 @@
 //! then       texts: 0 to 8, then each: row, column, length, target
 //! ```
 //!
-//! A target is a `u16` length and 1 to 256 bytes of printable ASCII, read
+//! A target is a `u16` length and 1 to 8,004 bytes of printable ASCII, read
 //! by the TTI reader's own parser; a label a `u8` length and 0 to 9 bytes.
 //! The reader gives the links as the TTI reader gives `LN`, `LK` and `LT`
-//! lines ([`LinkLine`], [`NumberLink`], [`TextLink`]).
+//! lines ([`LinkLine`], [`NumberLink`], [`TextLink`]), with each address's
+//! place in the record, which [`LinksRecord::address`] reads.
 
-use neoteletext_audio::MAX_BODY;
+use neoteletext_audio::MAX_FRAMED_BODY as MAX_BODY;
 use neoteletext_core::consts::COLUMNS;
 use neoteletext_core::limits::LAST_SUBPAGE_CODE;
 use neoteletext_core::packet::Packet;
 use neoteletext_core::types::{PageAddress, SubCode};
 use neoteletext_formats::page::{
-    LINK_ADDRESS_BYTES, LINK_LINES, LinkDestination, LinkKey, LinkLine, NUMBER_LINKS, NumberLink, PageFile, TEXT_LINKS,
-    TextLink,
+    AddressSpan, LINK_LINES, LINK_TARGET_BYTES, LinkDestination, LinkKey, LinkLine, LinkText, MAX_LINKS, NUMBER_LINKS,
+    NumberLink, PageFile, SERVICE_NAME_BYTES, TEXT_LINKS, TextLink,
 };
 use neoteletext_formats::text::Text;
-use neoteletext_formats::tti::link_destination;
+use neoteletext_formats::tti::parse_target;
 
 use super::{RecordFault, TYPE_LINKS, take_u16, write_packets};
 use crate::bytes::{Overflow, Writer};
@@ -39,7 +40,7 @@ pub const MAX_OTHER_LABEL: usize = 8;
 /// The most coloured key links (Appendix E.2 rule 1).
 const MAX_COLOURED: usize = 4;
 /// The most records one sub-page's links take: one a link at the most.
-pub const MAX_PARTS: usize = LINK_LINES + NUMBER_LINKS + TEXT_LINKS;
+pub const MAX_PARTS: usize = MAX_LINKS;
 /// The last row a text link may be on: rows 1 to 23 are the page's text.
 const TEXT_LINK_LAST_ROW: u8 = 23;
 /// The fixed fields: page, sub-code, part and parts, and the three counts.
@@ -48,6 +49,13 @@ const FIXED: usize = 2 + 2 + 1 + 1 + 3;
 const SUBCODE_DIGITS: u32 = 4;
 /// What separates a target's parts.
 const TARGET_SEPARATOR: u8 = b':';
+/// The longest target that is not an address: `name:mpp:ssss`.
+const NAMED_TARGET_BYTES: usize = SERVICE_NAME_BYTES + 1 + 3 + 1 + 4;
+/// A key link's fields other than its target: its key, the target's
+/// length, and the label's length and bytes.
+const KEY_LINK_FIELDS: usize = 1 + 2 + 1 + MAX_LABEL;
+// The longest link must fit one record: a link is never split (section 7.8).
+const _: () = assert!(FIXED + KEY_LINK_FIELDS + LINK_TARGET_BYTES <= MAX_BODY);
 
 /// One LINKS record, checked.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -61,7 +69,7 @@ pub struct LinksRecord<'a> {
     pub part: u8,
     /// The records of the sending.
     pub parts: u8,
-    /// The links' bytes, checked.
+    /// The links' bytes, checked, which each link's address lies in.
     links: &'a [u8],
 }
 
@@ -81,7 +89,13 @@ impl LinksRecord<'_> {
     /// links, then text links.
     #[must_use]
     pub fn links(&self) -> Links<'_> {
-        Links { bytes: self.links, kind: 0, left: 0 }
+        Links { bytes: self.links, whole: self.links.len(), kind: 0, left: 0 }
+    }
+
+    /// The address of a link of this record.
+    #[must_use]
+    pub fn address(&self, span: AddressSpan) -> &[u8] {
+        span.of(self.links)
     }
 
     /// The record's key links, as `LN` lines give them.
@@ -104,6 +118,8 @@ impl LinksRecord<'_> {
 #[derive(Clone, Debug)]
 pub struct Links<'a> {
     bytes: &'a [u8],
+    /// The bytes of all the links, which an address's place counts from.
+    whole: usize,
     /// 0 before the key links' count is read, then 1, 2 and 3 for key,
     /// page-number and text links.
     kind: u8,
@@ -126,30 +142,36 @@ impl Iterator for Links<'_> {
             self.kind = self.kind.saturating_add(1);
         }
         self.left = self.left.saturating_sub(1);
-        let (link, rest) = read_link(self.kind, self.bytes).ok()?;
+        let (link, rest) = read_link(self.kind, self.bytes, self.whole).ok()?;
         self.bytes = rest;
         Some(link)
     }
 }
 
-fn take_target(bytes: &[u8]) -> Result<(LinkDestination, &[u8]), RecordFault> {
+/// Reads a target at the front of `bytes`, which are the last of `whole`
+/// bytes of links, and what follows it.
+fn take_target(bytes: &[u8], whole: usize) -> Result<(LinkDestination, &[u8]), RecordFault> {
     let (length, rest) = take_u16(bytes)?;
+    let start = whole.saturating_sub(rest.len());
     let (text, rest) = rest.split_at_checked(usize::from(length)).ok_or(RecordFault::Length)?;
     let printable = text.iter().all(|&byte| byte.is_ascii_graphic() && byte != b',');
-    if text.is_empty() || text.len() > LINK_ADDRESS_BYTES || !printable {
+    if text.is_empty() || text.len() > LINK_TARGET_BYTES || !printable {
         return Err(RecordFault::BadValue("link target"));
     }
-    let destination = link_destination(text).ok_or(RecordFault::BadValue("link target"))?;
+    let (mut destination, address) = parse_target(text).ok_or(RecordFault::BadValue("link target"))?;
+    if let Some(address) = address {
+        destination.url = AddressSpan::at(start, address).ok_or(RecordFault::BadValue("link target"))?;
+    }
     Ok((destination, rest))
 }
 
-fn read_link(kind: u8, bytes: &[u8]) -> Result<(Link, &[u8]), RecordFault> {
+fn read_link(kind: u8, bytes: &[u8], whole: usize) -> Result<(Link, &[u8]), RecordFault> {
     match kind {
         1 => {
             let (&letter, rest) = bytes.split_first().ok_or(RecordFault::Length)?;
             let key = if letter.is_ascii_uppercase() { LinkKey::from_letter(letter) } else { None }
                 .ok_or(RecordFault::BadValue("link key"))?;
-            let (destination, rest) = take_target(rest)?;
+            let (destination, rest) = take_target(rest, whole)?;
             let (&length, rest) = rest.split_first().ok_or(RecordFault::Length)?;
             let (label, rest) = rest.split_at_checked(usize::from(length)).ok_or(RecordFault::Length)?;
             let other = !destination.service.is_empty() || !destination.url.is_empty();
@@ -171,7 +193,7 @@ fn read_link(kind: u8, bytes: &[u8]) -> Result<(Link, &[u8]), RecordFault> {
         2 => {
             let (number, rest) = take_u16(bytes)?;
             let number = PageAddress::from_mpp(number).ok_or(RecordFault::BadValue("link number"))?;
-            let (destination, rest) = take_target(rest)?;
+            let (destination, rest) = take_target(rest, whole)?;
             // Typing a page number never leaves teletext (decision E.88).
             if destination.is_web() {
                 return Err(RecordFault::BadValue("link number target"));
@@ -188,7 +210,7 @@ fn read_link(kind: u8, bytes: &[u8]) -> Result<(Link, &[u8]), RecordFault> {
             if !fits {
                 return Err(RecordFault::BadValue("text link place"));
             }
-            let (destination, rest) = take_target(rest)?;
+            let (destination, rest) = take_target(rest, whole)?;
             Ok((Link::Text(TextLink { row, column, length, destination, line: 0 }), rest))
         }
     }
@@ -224,7 +246,7 @@ pub fn read(body: &[u8]) -> Result<LinksRecord<'_>, RecordFault> {
             return Err(RecordFault::BadValue("links count"));
         }
         for index in 0..usize::from(count) {
-            let (link, rest) = read_link(kind, walk)?;
+            let (link, rest) = read_link(kind, walk, links.len())?;
             walk = rest;
             match link {
                 Link::Key(link) => {
@@ -257,53 +279,54 @@ pub fn read(body: &[u8]) -> Result<LinksRecord<'_>, RecordFault> {
 }
 
 /// Writes a link's target in the form Appendix E.1 gives it.
-fn write_target(destination: &LinkDestination, writer: &mut Writer<'_>) -> Result<(), Overflow> {
-    let mut text = [0_u8; LINK_ADDRESS_BYTES];
+fn write_target(destination: &LinkDestination, addresses: &LinkText, writer: &mut Writer<'_>) -> Result<(), Overflow> {
+    if !destination.url.is_empty() {
+        let address = addresses.address(destination.url);
+        writer.put(&u16::try_from(address.len()).map_err(|_| Overflow)?.to_be_bytes())?;
+        return writer.put(address);
+    }
+    let mut text = [0_u8; NAMED_TARGET_BYTES];
     let mut inner = Writer::new(&mut text);
-    if destination.url.is_empty() {
-        if !destination.service.is_empty() {
-            inner.put(destination.service.as_bytes())?;
-            inner.byte(TARGET_SEPARATOR)?;
-        }
-        inner.put(&destination.address.ascii())?;
-        if let Some(subcode) = destination.subcode {
-            inner.byte(TARGET_SEPARATOR)?;
-            inner.hex(u32::from(subcode.value()), SUBCODE_DIGITS)?;
-        }
-    } else {
-        inner.put(destination.url.as_bytes())?;
+    if !destination.service.is_empty() {
+        inner.put(destination.service.as_bytes())?;
+        inner.byte(TARGET_SEPARATOR)?;
+    }
+    inner.put(&destination.address.ascii())?;
+    if let Some(subcode) = destination.subcode {
+        inner.byte(TARGET_SEPARATOR)?;
+        inner.hex(u32::from(subcode.value()), SUBCODE_DIGITS)?;
     }
     let length = inner.len();
     writer.put(&u16::try_from(length).map_err(|_| Overflow)?.to_be_bytes())?;
     writer.put(text.get(..length).ok_or(Overflow)?)
 }
 
-fn write_link(link: &Link, writer: &mut Writer<'_>) -> Result<(), Overflow> {
+fn write_link(link: &Link, addresses: &LinkText, writer: &mut Writer<'_>) -> Result<(), Overflow> {
     match link {
         Link::Key(link) => {
             writer.byte(link.key.letter())?;
             let LinkLine { service, address, subcode, url, .. } = *link;
-            write_target(&LinkDestination { service, address, subcode, url }, writer)?;
+            write_target(&LinkDestination { service, address, subcode, url }, addresses, writer)?;
             let label = if link.key == LinkKey::Index { &[][..] } else { link.label.as_bytes() };
             writer.byte(u8::try_from(label.len()).map_err(|_| Overflow)?)?;
             writer.put(label)
         }
         Link::Number(link) => {
             writer.put(&link.number.mpp().to_be_bytes())?;
-            write_target(&link.destination, writer)
+            write_target(&link.destination, addresses, writer)
         }
         Link::Text(link) => {
             writer.put(&[link.row, link.column, link.length])?;
-            write_target(&link.destination, writer)
+            write_target(&link.destination, addresses, writer)
         }
     }
 }
 
 /// The bytes a link takes in a record.
-fn link_bytes(link: &Link) -> Option<usize> {
+fn link_bytes(link: &Link, addresses: &LinkText) -> Option<usize> {
     let mut scratch = [0_u8; MAX_BODY];
     let mut writer = Writer::new(&mut scratch);
-    write_link(link, &mut writer).ok()?;
+    write_link(link, addresses, &mut writer).ok()?;
     Some(writer.len())
 }
 
@@ -316,6 +339,8 @@ pub struct SubPageLinks<'a> {
     pub numbers: &'a [NumberLink],
     /// Its `LT` links: at most eight.
     pub texts: &'a [TextLink],
+    /// The addresses their spans lie in.
+    pub addresses: &'a LinkText,
 }
 
 /// What [`encode`] wrote.
@@ -348,7 +373,7 @@ pub fn encode(
     first_record_id: u8,
     out: &mut dyn FnMut(Packet),
 ) -> Result<Sent, RecordFault> {
-    let SubPageLinks { keys, numbers, texts } = links;
+    let SubPageLinks { keys, numbers, texts, addresses } = links;
     if keys.len() > LINK_LINES || numbers.len() > NUMBER_LINKS || texts.len() > TEXT_LINKS {
         return Err(RecordFault::BadValue("links count"));
     }
@@ -367,7 +392,7 @@ pub fn encode(
     let mut parts: usize = 0;
     let mut used = FIXED;
     for (index, link) in all().enumerate() {
-        let bytes = link_bytes(&link).ok_or(RecordFault::Length)?;
+        let bytes = link_bytes(&link, addresses).ok_or(RecordFault::Length)?;
         if used.saturating_add(bytes) > MAX_BODY && used > FIXED {
             parts = parts.saturating_add(1);
             used = FIXED;
@@ -396,7 +421,7 @@ pub fn encode(
                 for (from, to) in [(0, keys.len()), (keys.len(), number_end), (number_end, usize::MAX)] {
                     writer.byte(count(from, to))?;
                     for link in all().enumerate().take(end.min(to)).skip(start.max(from)).map(|(_, link)| link) {
-                        write_link(&link, &mut writer)?;
+                        write_link(&link, addresses, &mut writer)?;
                     }
                 }
                 Ok::<(), Overflow>(())
@@ -429,6 +454,14 @@ pub fn encode_page(
     out: &mut dyn FnMut(Packet),
 ) -> Result<Sent, RecordFault> {
     let keys = if page.links_valid { page.links.as_slice() } else { &[] };
-    let links = SubPageLinks { keys, numbers: page.number_links.as_slice(), texts: page.text_links.as_slice() };
+    let links = SubPageLinks {
+        keys,
+        numbers: page.number_links.as_slice(),
+        texts: page.text_links.as_slice(),
+        addresses: &page.link_text,
+    };
     encode(page.address, page.subcode, links, service, first_record_id, out)
 }
+
+#[cfg(test)]
+mod tests;

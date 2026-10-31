@@ -12,7 +12,7 @@
 use neoteletext_core::types::{PageAddress, SubCode};
 
 use crate::encode::{LinkRow, Prompt, draw_link_row, key_colour};
-use crate::page::{LinkDestination, LinkKey, PageFile, WEB_MARK};
+use crate::page::{AddressSpan, LinkDestination, LinkKey, LinkText, PageFile};
 
 /// The coloured keys and Index: red, green, yellow, cyan and Index, in
 /// that order in [`ReceiverLinks::keys`].
@@ -52,10 +52,16 @@ impl Destination<'_> {
 /// Where `target` leads, or `None` when the link is null: it names a
 /// service that `services`, the descriptor's linked services in order,
 /// does not hold (Appendix E.2 rule 2), or it is a web page and `web` is
-/// false, for a port that opens only teletext (decision E.88).
+/// false, for a port that opens only teletext (decision E.88). `addresses`
+/// is the link text of the sub-page `target` is on.
 #[must_use]
-pub fn resolve<'a, S: AsRef<str>>(target: &'a LinkDestination, services: &[S], web: bool) -> Option<Destination<'a>> {
-    resolve_parts(target.service.as_bytes(), target.address, target.subcode, target.url.as_bytes(), services, web)
+pub fn resolve<'a, S: AsRef<str>>(
+    target: &LinkDestination,
+    addresses: &'a LinkText,
+    services: &[S],
+    web: bool,
+) -> Option<Destination<'a>> {
+    resolve_parts(target.service.as_bytes(), target.address, target.subcode, target.url, addresses, services, web)
 }
 
 /// [`resolve`] of a destination's parts, as an `LN`, `LK` or `LT` line
@@ -64,15 +70,16 @@ fn resolve_parts<'a, S: AsRef<str>>(
     service: &[u8],
     address: PageAddress,
     subcode: Option<SubCode>,
-    url: &'a [u8],
+    url: AddressSpan,
+    addresses: &'a LinkText,
     services: &[S],
     web: bool,
 ) -> Option<Destination<'a>> {
-    if url.starts_with(WEB_MARK) {
-        return web.then_some(Destination::Web(url));
+    if url.is_web() {
+        return web.then_some(Destination::Web(addresses.address(url)));
     }
     if !url.is_empty() {
-        return Some(Destination::Address(url));
+        return Some(Destination::Address(addresses.address(url)));
     }
     let service = if service.is_empty() {
         None
@@ -119,8 +126,15 @@ pub fn receiver_links<'a, S: AsRef<str>>(page: &'a PageFile, services: &[S], web
     let mut keys = [None; KEYS_WITH_INDEX];
     for line in page.links.as_slice() {
         if let Some(slot) = keys.get_mut(key_place(line.key)) {
-            *slot =
-                resolve_parts(line.service.as_bytes(), line.address, line.subcode, line.url.as_bytes(), services, web);
+            *slot = resolve_parts(
+                line.service.as_bytes(),
+                line.address,
+                line.subcode,
+                line.url,
+                &page.link_text,
+                services,
+                web,
+            );
         }
     }
     let row = draw_link_row(page, |line| {

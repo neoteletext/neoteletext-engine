@@ -84,7 +84,7 @@ mod tests {
         let mut page = None;
         let mut diagnostics = Vec::new();
         let mut out = |item: Item<'_>| match item {
-            Item::Page(found) => page = Some(*found),
+            Item::Page(found) => page = Some(found.clone()),
             Item::Diagnostic(diagnostic) => diagnostics.push(diagnostic),
             _ => {}
         };

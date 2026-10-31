@@ -1,6 +1,10 @@
 //! The records of the TTI Link Extension (Appendix E, decision E.88) and of
 //! the web-native concept's page-number and text links.
 
+#[cfg(feature = "alloc")]
+use alloc::vec::Vec;
+
+use neoteletext_core::limits::MAX_URL_LENGTH;
 use neoteletext_core::types::{PageAddress, SubCode};
 
 use crate::text::Text;
@@ -13,18 +17,134 @@ pub const SERVICE_NAME_BYTES: usize = 32;
 /// Link Extension links per page: four coloured keys and Index
 /// (Appendix E.1).
 pub const LINK_LINES: usize = 5;
-/// The longest address a link may name (the web-native concept
-/// section 3): longer addresses make the link invalid.
-pub const LINK_ADDRESS_BYTES: usize = 256;
 /// What marks a link to a web page, to open outside teletext, rather than
 /// a teletext channel (Appendix E.1, decision E.88).
 pub const WEB_MARK: &[u8] = b"web:";
+/// The longest address a link's target may hold: the longest address of
+/// all (REQ-1661, DEC-1668), with its `web:` mark, so that any address can
+/// be a web link. Longer makes the link invalid.
+pub const LINK_TARGET_BYTES: usize = MAX_URL_LENGTH + WEB_MARK.len();
 /// `LK` lines per page: page numbers linked elsewhere (concept section 5
 /// item 3).
 pub const NUMBER_LINKS: usize = 8;
 /// `LT` lines per page: runs of text linked elsewhere (concept section 5
 /// item 2).
 pub const TEXT_LINKS: usize = 8;
+
+/// The links of one sub-page at the most: `LN`, `LK` and `LT` lines.
+pub const MAX_LINKS: usize = LINK_LINES + NUMBER_LINKS + TEXT_LINKS;
+/// The bytes of all one sub-page's link addresses together (DEC-1708):
+/// every link at its longest on the heap, and one link at its longest in a
+/// build that allocates nothing, so that every build follows any one link.
+#[cfg(feature = "alloc")]
+pub const LINK_TEXT_BYTES: usize = MAX_LINKS * LINK_TARGET_BYTES;
+/// The bytes of all one sub-page's link addresses together (DEC-1708):
+/// every link at its longest on the heap, and one link at its longest in a
+/// build that allocates nothing, so that every build follows any one link.
+#[cfg(not(feature = "alloc"))]
+pub const LINK_TEXT_BYTES: usize = LINK_TARGET_BYTES;
+
+/// Where a link's address lies: in its sub-page's [`LinkText`], or in the
+/// body of the LINKS record it came in. Empty for a link with no address.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Hash)]
+pub struct AddressSpan {
+    start: u32,
+    length: u16,
+    web: bool,
+}
+
+impl AddressSpan {
+    /// No address.
+    pub const NONE: Self = Self { start: 0, length: 0, web: false };
+
+    /// The address `address` at `start` of whatever holds it, or `None`
+    /// when it could not be one.
+    #[must_use]
+    pub fn at(start: usize, address: &[u8]) -> Option<Self> {
+        if address.len() > LINK_TARGET_BYTES {
+            return None;
+        }
+        Some(Self {
+            start: u32::try_from(start).ok()?,
+            length: u16::try_from(address.len()).ok()?,
+            web: address.starts_with(WEB_MARK),
+        })
+    }
+
+    /// True when there is no address.
+    #[must_use]
+    pub const fn is_empty(self) -> bool {
+        self.length == 0
+    }
+
+    /// True when the address is a web page's, with its `web:` mark.
+    #[must_use]
+    pub const fn is_web(self) -> bool {
+        self.web
+    }
+
+    /// The address in `text`, the bytes that hold it.
+    #[must_use]
+    pub fn of(self, text: &[u8]) -> &[u8] {
+        let start = usize::try_from(self.start).unwrap_or(usize::MAX);
+        text.get(start..start.saturating_add(usize::from(self.length))).unwrap_or(&[])
+    }
+}
+
+/// One sub-page's link addresses, held out of line (DEC-1708): a link
+/// holds an [`AddressSpan`] into these, so that a page pays for the
+/// addresses it has, not for the longest it could have.
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
+pub struct LinkText {
+    #[cfg(feature = "alloc")]
+    bytes: Vec<u8>,
+    #[cfg(not(feature = "alloc"))]
+    bytes: Text<LINK_TEXT_BYTES>,
+}
+
+impl LinkText {
+    /// No addresses.
+    #[must_use]
+    pub const fn new() -> Self {
+        #[cfg(feature = "alloc")]
+        let bytes = Vec::new();
+        #[cfg(not(feature = "alloc"))]
+        let bytes = Text::new();
+        Self { bytes }
+    }
+
+    /// Adds an address and says where it lies, or `None`, adding nothing,
+    /// when it is too long or does not fit.
+    pub fn add(&mut self, address: &[u8]) -> Option<AddressSpan> {
+        let start = self.as_bytes().len();
+        let span = AddressSpan::at(start, address)?;
+        if start.saturating_add(address.len()) > LINK_TEXT_BYTES {
+            return None;
+        }
+        #[cfg(feature = "alloc")]
+        self.bytes.extend_from_slice(address);
+        #[cfg(not(feature = "alloc"))]
+        for &byte in address {
+            self.bytes.push(byte);
+        }
+        Some(span)
+    }
+
+    /// The address at `span`.
+    #[must_use]
+    pub fn address(&self, span: AddressSpan) -> &[u8] {
+        span.of(self.as_bytes())
+    }
+
+    /// Every address held, one after another.
+    #[must_use]
+    pub fn as_bytes(&self) -> &[u8] {
+        #[cfg(feature = "alloc")]
+        return self.bytes.as_slice();
+        #[cfg(not(feature = "alloc"))]
+        return self.bytes.as_bytes();
+    }
+}
 
 /// The keys of the TTI Link Extension (Appendix E.1).
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
@@ -100,7 +220,7 @@ pub struct LinkLine {
     pub subcode: Option<SubCode>,
     /// The address of another site's page file, when the target is an
     /// address (the web-native concept section 3); empty otherwise.
-    pub url: Text<LINK_ADDRESS_BYTES>,
+    pub url: AddressSpan,
     /// The prompt text, as written.
     pub label: Text<LINK_LABEL_BYTES>,
     /// True when the label in the file was longer than this record keeps.
@@ -120,8 +240,8 @@ impl LinkLine {
     /// True when the target is a web page, to open outside teletext
     /// (decision E.88).
     #[must_use]
-    pub fn is_web(&self) -> bool {
-        self.url.as_bytes().starts_with(WEB_MARK)
+    pub const fn is_web(&self) -> bool {
+        self.url.is_web()
     }
 }
 
@@ -138,15 +258,15 @@ pub struct LinkDestination {
     pub subcode: Option<SubCode>,
     /// The address, when the target is one, as written: a web page's keeps
     /// its `web:` mark (decision E.88).
-    pub url: Text<LINK_ADDRESS_BYTES>,
+    pub url: AddressSpan,
 }
 
 impl LinkDestination {
     /// True when the target is a web page, to open outside teletext
     /// (decision E.88).
     #[must_use]
-    pub fn is_web(&self) -> bool {
-        self.url.as_bytes().starts_with(WEB_MARK)
+    pub const fn is_web(&self) -> bool {
+        self.url.is_web()
     }
 }
 

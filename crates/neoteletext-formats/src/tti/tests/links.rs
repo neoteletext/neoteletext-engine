@@ -98,15 +98,18 @@ LK,300,https://weather.example/300.t42\nLK,400,sport:100\nLT,4,0,7,http://w.exam
     assert_eq!(diagnostics, []);
     let page = &pages[0];
     let red = page.links.as_slice()[0];
-    assert_eq!(red.url.as_bytes(), b"https://weather.example/300.t42");
+    assert_eq!(page.link_text.address(red.url), b"https://weather.example/300.t42");
     assert!(red.is_other_service(), "an address leads to another site");
     let numbers: Vec<_> = page.number_links.as_slice().iter().map(|link| link.number.mpp()).collect();
     assert_eq!(numbers, [0x300, 0x400]);
-    assert_eq!(page.number_links.as_slice()[0].destination.url.as_bytes(), b"https://weather.example/300.t42");
+    assert_eq!(
+        page.link_text.address(page.number_links.as_slice()[0].destination.url),
+        b"https://weather.example/300.t42"
+    );
     assert_eq!(page.number_links.as_slice()[1].destination.service.as_bytes(), b"sport");
     let text_link = page.text_links.as_slice()[0];
     assert_eq!((text_link.row, text_link.column, text_link.length), (4, 0, 7));
-    assert_eq!(text_link.destination.url.as_bytes(), b"http://w.example/");
+    assert_eq!(page.link_text.address(text_link.destination.url), b"http://w.example/");
     // The writer keeps every link.
     #[cfg(feature = "std")]
     writer_keeps_links(page);
@@ -121,7 +124,7 @@ LT,4,0,5,web:https://www.example/story\nLK,300,web:https://www.example/\nLT,5,0,
     let (pages, diagnostics) = read(text);
     let page = &pages[0];
     let green = page.links.as_slice()[0];
-    assert_eq!(green.url.as_bytes(), b"web:https://www.example/story");
+    assert_eq!(page.link_text.address(green.url), b"web:https://www.example/story");
     assert!(green.is_web() && green.is_other_service());
     let text_link = page.text_links.as_slice()[0];
     assert!(text_link.destination.is_web());
@@ -133,7 +136,10 @@ LT,4,0,5,web:https://www.example/story\nLK,300,web:https://www.example/\nLT,5,0,
         let mut written = Vec::new();
         crate::write::write_tti(&[page], &mut written).unwrap();
         let (again, _) = read(&written);
-        assert_eq!(again[0].text_links.as_slice()[0].destination.url.as_bytes(), b"web:https://www.example/story");
+        assert_eq!(
+            again[0].link_text.address(again[0].text_links.as_slice()[0].destination.url),
+            b"web:https://www.example/story"
+        );
     }
 }
 
@@ -157,7 +163,7 @@ fn writer_keeps_links(page: &PageFile) {
 
 #[test]
 fn bad_addresses_and_text_links_are_refused() {
-    let long = [b"LK,300,https://a.example/".as_slice(), &[b'x'; 300], b"\n"].concat();
+    let long = [b"LK,300,https://a.example/".as_slice(), &[b'x'; 8004], b"\n"].concat();
     for line in [
         b"LK,300,javascript://alert(1)\n".as_slice(),
         b"LK,300,ftp://a.example/\n",
@@ -188,4 +194,81 @@ fn a_pages_link_lines_are_its_own() {
     assert_eq!((pages[0].number_links.len(), pages[0].text_links.len()), (1, 1));
     assert!(pages[1].number_links.is_empty(), "{:?}", pages[1].number_links.as_slice());
     assert!(pages[1].text_links.is_empty());
+}
+
+/// The one page of `file`.
+fn page_of(file: &[u8]) -> PageFile {
+    read(file).0.swap_remove(0)
+}
+
+/// An address of `length` octets.
+fn long_address(length: usize) -> Vec<u8> {
+    let mut address = b"https://a.example/".to_vec();
+    address.resize(length, b'a');
+    address
+}
+
+/// REQ-1661: a link's target of 8,000 octets is kept, with a `web:` mark
+/// too, and one octet more makes the link invalid.
+#[test]
+fn a_target_is_as_long_as_an_address() {
+    let line = |command: &[u8], target: &[u8]| [command, target, b"\r\n"].concat();
+    let longest = long_address(8000);
+    let web = [b"web:", longest.as_slice()].concat();
+    let file = [b"PN,10000\r\n".to_vec(), line(b"LK,150,", &longest)].concat();
+    let page = page_of(&file);
+    assert_eq!(page.link_text.address(page.number_links.as_slice()[0].destination.url), longest.as_slice());
+    let file = [b"PN,10000\r\n".to_vec(), line(b"LT,2,0,4,", &web)].concat();
+    let page = page_of(&file);
+    let destination = page.text_links.as_slice()[0].destination;
+    assert!(destination.is_web());
+    assert_eq!(page.link_text.address(destination.url), web.as_slice());
+    let over = [b"web:", long_address(8001).as_slice()].concat();
+    let file = [b"PN,10000\r\n".to_vec(), line(b"LT,2,0,4,", &over)].concat();
+    assert_eq!(page_of(&file).text_links.as_slice().len(), 0, "one octet over the bound");
+}
+
+/// DEC-1708: without a heap, one link may be at the bound, and a link that
+/// no longer fits beside it is invalid.
+#[cfg(not(feature = "alloc"))]
+#[test]
+fn a_small_build_follows_any_one_link() {
+    let longest = long_address(8000);
+    let file = [b"PN,10000\r\nLK,150,", longest.as_slice(), b"\r\nLK,151,https://b.example/x/y/z\r\n"].concat();
+    let page = page_of(&file);
+    assert_eq!(page.number_links.as_slice().len(), 1);
+    assert_eq!(page.link_text.address(page.number_links.as_slice()[0].destination.url), longest.as_slice());
+}
+
+/// DEC-1708: with a heap, every link of a sub-page may be at the bound.
+#[cfg(feature = "alloc")]
+#[test]
+fn every_link_of_a_page_may_be_at_the_bound() {
+    let mut file = b"PN,10000\r\n".to_vec();
+    let target = |index: usize| {
+        let mut address = long_address(8000);
+        address[20] = b'a' + u8::try_from(index).unwrap();
+        address
+    };
+    for (index, key) in "RGYCI".chars().enumerate() {
+        file.extend_from_slice(std::format!("LN,{key},").as_bytes());
+        file.extend_from_slice(&[&target(index), b",\r\n".as_slice()].concat());
+    }
+    for index in 0..8 {
+        file.extend_from_slice(
+            &[std::format!("LK,{}", 150 + index).as_bytes(), b",", &target(5 + index), b"\r\n"].concat(),
+        );
+    }
+    for index in 0..8 {
+        file.extend_from_slice(
+            &[std::format!("LT,{},0,4,", index + 2).as_bytes(), &target(13 + index), b"\r\n"].concat(),
+        );
+    }
+    let page = page_of(&file);
+    assert_eq!(page.link_text.as_bytes().len(), 21 * 8000);
+    for (index, link) in page.links.as_slice().iter().enumerate() {
+        assert_eq!(page.link_text.address(link.url), target(index).as_slice());
+    }
+    let last = page.text_links.as_slice()[7].destination;
+    assert_eq!(page.link_text.address(last.url), target(20).as_slice());
 }

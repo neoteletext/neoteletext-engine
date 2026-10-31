@@ -3,7 +3,9 @@
 
 use neoteletext_core::types::{PageAddress, SubCode};
 
-use crate::page::{DEFAULT_ADDRESS, LINK_ADDRESS_BYTES, LinkDestination, SERVICE_NAME_BYTES, WEB_MARK};
+use crate::page::{
+    AddressSpan, DEFAULT_ADDRESS, LINK_TARGET_BYTES, LinkDestination, LinkText, SERVICE_NAME_BYTES, WEB_MARK,
+};
 use crate::text::Text;
 
 use super::fields::{page_address, service_name, subcode};
@@ -15,33 +17,46 @@ const ADDRESS_MARK: &[u8] = b"://";
 /// The schemes an address in a page may use.
 const ADDRESS_SCHEMES: [&[u8]; 2] = [b"https://", b"http://"];
 
-/// A link target: `mpp`, `mpp:ssss`, `name:mpp` or `name:mpp:ssss`
-/// (Appendix E.1).
 /// An address as a link target: `http` or `https`, printable ASCII
 /// without spaces or commas, and short enough to keep; or `web:` and such
 /// an address, kept whole with its mark (decision E.88).
-fn link_address(text: &[u8]) -> Option<Text<LINK_ADDRESS_BYTES>> {
+fn is_link_address(text: &[u8]) -> bool {
     let address = text.strip_prefix(WEB_MARK).unwrap_or(text);
     let lower_scheme =
         |scheme: &[u8]| address.get(..scheme.len()).is_some_and(|start| start.eq_ignore_ascii_case(scheme));
-    let valid = ADDRESS_SCHEMES.iter().any(|scheme| lower_scheme(scheme))
-        && text.iter().all(|&byte| byte.is_ascii_graphic() && byte != b',');
-    let (url, truncated) = Text::from_bytes(text);
-    (valid && !truncated).then_some(url)
+    ADDRESS_SCHEMES.iter().any(|scheme| lower_scheme(scheme))
+        && text.len() <= LINK_TARGET_BYTES
+        && text.iter().all(|&byte| byte.is_ascii_graphic() && byte != b',')
 }
 
-/// A link target of Appendix E, or an address (concept section 3).
+/// A link target of Appendix E, or an address (concept section 3), read
+/// for a caller that holds the address itself: the destination, with no
+/// address in it yet, and the address when it is one.
 #[must_use]
-pub fn link_destination(text: &[u8]) -> Option<LinkDestination> {
+pub fn parse_target(text: &[u8]) -> Option<(LinkDestination, Option<&[u8]>)> {
     let text = text.trim_ascii();
     if text.starts_with(WEB_MARK) || text.windows(ADDRESS_MARK.len()).any(|window| window == ADDRESS_MARK) {
-        let url = link_address(text)?;
-        return Some(LinkDestination { service: Text::new(), address: DEFAULT_ADDRESS, subcode: None, url });
+        let destination =
+            LinkDestination { service: Text::new(), address: DEFAULT_ADDRESS, subcode: None, url: AddressSpan::NONE };
+        return is_link_address(text).then_some((destination, Some(text)));
     }
     let (service, address, subcode) = link_target(text)?;
-    Some(LinkDestination { service, address, subcode, url: Text::new() })
+    Some((LinkDestination { service, address, subcode, url: AddressSpan::NONE }, None))
 }
 
+/// A link target of Appendix E, or an address (concept section 3) kept in
+/// `addresses`, the sub-page's link text.
+#[must_use]
+pub fn link_destination(text: &[u8], addresses: &mut LinkText) -> Option<LinkDestination> {
+    let (mut destination, address) = parse_target(text)?;
+    if let Some(address) = address {
+        destination.url = addresses.add(address)?;
+    }
+    Some(destination)
+}
+
+/// A link target: `mpp`, `mpp:ssss`, `name:mpp` or `name:mpp:ssss`
+/// (Appendix E.1).
 fn link_target(text: &[u8]) -> Option<(Text<SERVICE_NAME_BYTES>, PageAddress, Option<SubCode>)> {
     let mut parts = text.trim_ascii().split(|&byte| byte == b':');
     let first = parts.next()?;

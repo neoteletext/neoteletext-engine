@@ -52,7 +52,7 @@ fn reads_the_24_row_form_after_a_web_address() {
     text.extend_from_slice(b":unknown=1\n");
     let items = same_in_any_chunks(EditTfReader::new, &text);
     assert_eq!(diagnostics(&items), []);
-    let read = pages(&items)[0];
+    let read = pages(&items)[0].clone();
     assert_eq!(&read.row(23).unwrap()[..8], b"Last row");
     assert!(!read.has_row(24));
     // Metadata 3 is Italian, national option index 3.

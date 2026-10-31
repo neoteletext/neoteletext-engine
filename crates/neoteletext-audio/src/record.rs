@@ -3,7 +3,7 @@
 //! [`MAX_RECORD`](crate::MAX_RECORD) bytes and is checked against every bound before anything
 //! in it is used.
 
-use crate::{CHANNELS, Codec, DUCK_PERCENT, MAX_FADE_MS, MAX_GAIN, SERVICE_SCOPE, sample_rate};
+use crate::{CHANNELS, Codec, DUCK_PERCENT, MAX_BODY, MAX_FADE_MS, MAX_GAIN, SERVICE_SCOPE, sample_rate};
 use frame::Fields;
 
 mod frame;
@@ -195,6 +195,9 @@ pub enum Record<'a> {
 /// or any field.
 pub fn parse(bytes: &[u8]) -> Result<Record<'_>, RecordError> {
     let (kind, body) = split(bytes)?;
+    if body.len() > MAX_BODY {
+        return Err(RecordError::TooLong);
+    }
     let mut fields = Fields::new(body);
     match kind {
         TYPE_OBJECT => object(&mut fields).map(Record::Object),

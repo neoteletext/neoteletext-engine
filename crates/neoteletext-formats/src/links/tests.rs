@@ -138,9 +138,14 @@ LN,I,100,\r\n";
 fn destinations_resolve_alike() {
     read(b"PN,10000\r\nLK,150,weather:400\r\nLT,2,0,4,web:https://example.org/\r\n", |file| {
         let number = &file.number_links.as_slice()[0].destination;
-        assert!(matches!(resolve(number, &SERVICES, false), Some(Destination::Page { service: Some(1), .. })));
+        assert!(matches!(
+            resolve(number, &file.link_text, &SERVICES, false),
+            Some(Destination::Page { service: Some(1), .. })
+        ));
         let text = &file.text_links.as_slice()[0].destination;
-        assert_eq!(resolve(text, &SERVICES, false), None, "a port that opens only teletext");
-        assert!(resolve(text, &SERVICES, true).is_some_and(|destination| destination.leaves_service()));
+        assert_eq!(resolve(text, &file.link_text, &SERVICES, false), None, "a port that opens only teletext");
+        assert!(
+            resolve(text, &file.link_text, &SERVICES, true).is_some_and(|destination| destination.leaves_service())
+        );
     });
 }

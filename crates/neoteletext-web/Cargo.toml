@@ -50,6 +50,8 @@ required-features = ["dbsc"]
 
 [dev-dependencies]
 proptest = "1.7.0"
+# A page with every link at the longest an address may be (DEC-1708).
+neoteletext-formats = { workspace = true, features = ["tti", "alloc"] }
 
 [lints]
 workspace = true

@@ -21,8 +21,8 @@ mod packets;
 pub use interaction::CursorLine;
 pub use issues::{IssueKind, PAGE_ISSUES, PageIssue, Warning};
 pub use links::{
-    LINK_ADDRESS_BYTES, LINK_LABEL_BYTES, LINK_LINES, LinkDestination, LinkKey, LinkLine, NUMBER_LINKS, NumberLink,
-    SERVICE_NAME_BYTES, TEXT_LINKS, TextLink, WEB_MARK,
+    AddressSpan, LINK_LABEL_BYTES, LINK_LINES, LINK_TARGET_BYTES, LINK_TEXT_BYTES, LinkDestination, LinkKey, LinkLine,
+    LinkText, MAX_LINKS, NUMBER_LINKS, NumberLink, SERVICE_NAME_BYTES, TEXT_LINKS, TextLink, WEB_MARK,
 };
 pub use packets::{EnhancementPacket, FASTEXT_LINKS, FastextLink, RAW_PACKETS, RawBody, RawPacket};
 
@@ -40,7 +40,7 @@ pub struct PageFunction {
 }
 
 /// One sub-page read from a page file.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct PageFile {
     /// Magazine and page number.
     pub address: PageAddress,
@@ -79,6 +79,8 @@ pub struct PageFile {
     pub number_links: FixedVec<NumberLink, NUMBER_LINKS>,
     /// `LT` lines.
     pub text_links: FixedVec<TextLink, TEXT_LINKS>,
+    /// The addresses of the `LN`, `LK` and `LT` lines' targets.
+    pub link_text: LinkText,
     /// The last `CU` line (REQ-INT-006).
     pub cursor: Option<CursorLine>,
     /// Problems found while reading.
@@ -105,13 +107,13 @@ impl PageFile {
             service: Text::new(),
             address: DEFAULT_ADDRESS,
             subcode: None,
-            url: Text::new(),
+            url: AddressSpan::NONE,
             label: Text::new(),
             label_truncated: false,
             line: 0,
         };
         let destination =
-            LinkDestination { service: Text::new(), address: DEFAULT_ADDRESS, subcode: None, url: Text::new() };
+            LinkDestination { service: Text::new(), address: DEFAULT_ADDRESS, subcode: None, url: AddressSpan::NONE };
         Self {
             address: DEFAULT_ADDRESS,
             subpage: 0,
@@ -131,6 +133,7 @@ impl PageFile {
             links_valid: true,
             number_links: FixedVec::new(NumberLink { number: DEFAULT_ADDRESS, destination, line: 0 }),
             text_links: FixedVec::new(TextLink { row: 0, column: 0, length: 0, destination, line: 0 }),
+            link_text: LinkText::new(),
             cursor: None,
             issues: FixedVec::new(PageIssue { kind: IssueKind::BadCursorLine, line: 0 }),
             considered: 0,

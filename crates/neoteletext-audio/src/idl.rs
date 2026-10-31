@@ -16,14 +16,16 @@ use neoteletext_core::consts::{
 use neoteletext_core::ecc::{hamming84, hamming84_encode};
 use neoteletext_core::packet::Packet;
 
-use crate::MAX_RECORD;
+use crate::MAX_FRAMED_RECORD;
 use crate::crc::crc16_idl;
 
 /// Bytes of a record in one fragment: the 38 audio bytes less the record
 /// id, the fragment index and the CRC-16.
 pub const FRAGMENT_DATA: usize = IDL_AUDIO_DATA_BYTES - 2 - 2;
-/// The most fragments of one record: enough for [`MAX_RECORD`].
-pub const MAX_FRAGMENTS: usize = MAX_RECORD.div_ceil(FRAGMENT_DATA);
+/// The most fragments of one record: enough for [`MAX_FRAMED_RECORD`].
+pub const MAX_FRAGMENTS: usize = MAX_FRAMED_RECORD.div_ceil(FRAGMENT_DATA);
+// REQ-AUD-007: a fragment's index is one byte.
+const _: () = assert!(MAX_FRAGMENTS <= u8::MAX as usize + 1);
 /// Control Byte message bit 1: the first fragment of a record.
 pub const CONTROL_FIRST: u8 = 0b0001;
 /// Control Byte message bit 2: the last fragment of a record.
@@ -161,7 +163,7 @@ fn read(packet: &Packet) -> Result<Fragment, IdlError> {
 
 mod reassembler;
 
-pub use reassembler::Reassembler;
+pub use reassembler::{AUDIO_SLOT_BYTES, Reassembler};
 
 #[cfg(test)]
 mod tests;

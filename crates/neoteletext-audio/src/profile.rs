@@ -4,15 +4,23 @@
 
 /// The profile version every record carries (REQ-AUD-003).
 pub const PROFILE_VERSION: u8 = 2;
-/// The largest record, header and CRC included (REQ-AUD-003): 1 KB keeps
-/// the reassembly buffer of a microcontroller small.
+/// The largest record of the audio profile, header and CRC included
+/// (REQ-AUD-003): 1 KB keeps the reassembly buffer of a microcontroller
+/// small.
 pub const MAX_RECORD: usize = 1024;
+/// The largest record of any profile in this frame, header and CRC
+/// included: a channel's records carry an address of 8,000 octets with the
+/// fields around it (REQ-1661, `INPUT.md` section 7.10), and each of its
+/// 241 fragments keeps the one-byte index of REQ-AUD-007.
+pub const MAX_FRAMED_RECORD: usize = 8192;
 /// Record header: version, type and a two-byte body length.
 pub const RECORD_HEADER: usize = 4;
 /// The CRC-32 after the body.
 pub const RECORD_CRC: usize = 4;
-/// The largest body.
+/// The largest body of an audio record.
 pub const MAX_BODY: usize = MAX_RECORD - RECORD_HEADER - RECORD_CRC;
+/// The largest body of any record in this frame.
+pub const MAX_FRAMED_BODY: usize = MAX_FRAMED_RECORD - RECORD_HEADER - RECORD_CRC;
 /// Channels, each with one voice (REQ-AUD-010).
 pub const CHANNELS: u8 = 4;
 /// No level changes faster than this (REQ-AUD-015): tellyboy measured a

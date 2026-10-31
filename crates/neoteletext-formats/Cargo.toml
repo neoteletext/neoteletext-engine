@@ -35,10 +35,14 @@ dump = ["pages"]
 check = ["tti"]
 # The reader of 12 by 10 BDF fonts (REQ-FNT-002, decision E.72).
 bdf = []
+# A sub-page's link addresses on the heap, so that all its links may be as
+# long as an address may be (REQ-1661, DEC-1708). Without it they share a
+# fixed 8,004 bytes. Not a default because the crate allocates nothing.
+alloc = []
 # REQ-GEN-010: the writers need `std::io`. It is not a default because the
 # crate is `no_std`. The page writers also need `pages`, the TTI writer and
 # the authoring module `tti`.
-std = []
+std = ["alloc"]
 
 [dev-dependencies]
 proptest = "1.7.0"

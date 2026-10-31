@@ -57,6 +57,8 @@
     clippy::unimplemented
 )]
 
+#[cfg(feature = "alloc")]
+extern crate alloc;
 #[cfg(any(test, feature = "std"))]
 extern crate std;
 

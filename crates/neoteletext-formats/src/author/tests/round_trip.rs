@@ -16,7 +16,7 @@ fn read_tti(text: &[u8]) -> Vec<PageFile> {
     let mut reader = crate::tti::TtiReader::new();
     let mut collect = |item: crate::Item<'_>| {
         if let crate::Item::Page(page) = item {
-            read.push(*page);
+            read.push(page.clone());
         }
     };
     reader.feed(text, &mut collect);
@@ -100,7 +100,7 @@ fn authored_stream_round_trips_through_tti() {
 
 fn authored_page(mpp: u16) -> PageFile {
     let stream = streams::stream().unwrap();
-    *stream.pages().into_iter().find(|page| page.address.mpp() == mpp).unwrap()
+    stream.pages().into_iter().find(|page| page.address.mpp() == mpp).unwrap().clone()
 }
 
 /// REQ-TST-016, Annex C.2: in the third example foreground blue is the

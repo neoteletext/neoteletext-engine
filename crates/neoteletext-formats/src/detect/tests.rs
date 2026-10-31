@@ -232,7 +232,7 @@ fn auto_reader_encodes_pages_when_asked() {
     let text = b"PN,40001\nDE,Contact\nPS,8000\nOL,1,CONTACT US\nOL,3,Name:\n".as_slice();
     let config = AutoConfig { encode_pages: true, source: Some(3), ..AutoConfig::default() };
     let items = same_in_any_chunks(|| AutoReader::new(config), text);
-    let page = pages(&items)[0];
+    let page = pages(&items)[0].clone();
     let mut expected = Vec::new();
     encode_page(&page, &mut |packet| expected.push(packet));
     assert_eq!(packets(&items), expected);

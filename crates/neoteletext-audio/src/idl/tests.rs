@@ -105,3 +105,33 @@ fn a_further_record_replaces_the_oldest_incomplete_one() {
         .find_map(|packet| reassembler.push(&fragment(packet).unwrap().unwrap()).map(|(_, b)| b.to_vec()));
     assert_eq!(done, Some(three));
 }
+
+/// INPUT.md section 7.10: a record of the frame's largest length, in its 241
+/// fragments, is reassembled whole, whatever order they come in.
+#[test]
+fn the_longest_record_is_reassembled() {
+    let long = record(MAX_FRAMED_RECORD - crate::record::record_length(0));
+    assert_eq!(long.len(), MAX_FRAMED_RECORD);
+    let written = packets(4, &long);
+    assert_eq!(written.len(), MAX_FRAGMENTS);
+    let mut reassembler = Reassembler::<1, { MAX_FRAGMENTS * FRAGMENT_DATA }>::new();
+    let done = written
+        .iter()
+        .rev()
+        .find_map(|packet| reassembler.push(&fragment(packet).unwrap().unwrap()).map(|(_, bytes)| bytes.to_vec()));
+    assert_eq!(done, Some(long));
+}
+
+/// A record longer than a slot of the audio profile is never completed, and
+/// the slot takes the next record.
+#[test]
+fn a_record_longer_than_a_slot_is_not_completed() {
+    let mut reassembler = Reassembler::<1>::new();
+    let long = packets(5, &record(2_000));
+    assert!(long.iter().all(|packet| reassembler.push(&fragment(packet).unwrap().unwrap()).is_none()));
+    let short = record(20);
+    let done = packets(6, &short)
+        .iter()
+        .find_map(|packet| reassembler.push(&fragment(packet).unwrap().unwrap()).map(|(_, bytes)| bytes.to_vec()));
+    assert_eq!(done, Some(short));
+}
