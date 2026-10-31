@@ -188,6 +188,8 @@ mod formats {
 mod web {
     use super::{Instant, black_box};
     use neoteletext_web::agent::{Input, UserAgent};
+    use neoteletext_web::bytes::Writer;
+    use neoteletext_web::map::MapAddress;
     use neoteletext_web::port::RandomSource;
 
     /// A stand-in for the port's random source.
@@ -212,6 +214,16 @@ mod web {
 
     #[used]
     static HANDLE: fn(&mut Agent<'_>, Instant, Input<'_>) = handle;
+
+    /// An address read and written back in its canonical form (REQ-1693).
+    fn normalise(address: &str, output: &mut [u8]) {
+        if let Ok(address) = MapAddress::read(address) {
+            black_box(address.write(&mut Writer::new(output)).is_ok());
+        }
+    }
+
+    #[used]
+    static NORMALISE: fn(&str, &mut [u8]) = normalise;
 }
 
 /// The Opus decoder (decision E.123, REQ-AUD-024): a packet decoded, or a loss concealed, into a

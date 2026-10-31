@@ -35,7 +35,9 @@ use crate::bytes::{TextBuf, Writer};
 use crate::consts::{IPV4_OCTETS, IPV6_GROUPS, MAX_HOST_TEXT_LENGTH, MAX_URL_LENGTH, PORT_HTTP, PORT_HTTPS};
 
 /// What starts a fragment (RFC 3986 section 3.5).
-const FRAGMENT_MARK: u8 = b'#';
+pub(crate) const FRAGMENT_MARK: u8 = b'#';
+/// What starts a query (RFC 3986 section 3.4).
+pub(crate) const QUERY_MARK: u8 = b'?';
 
 /// Why an address was rejected.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -180,6 +182,11 @@ struct Parts<'a> {
     fragment: Option<&'a [u8]>,
 }
 
+/// RFC 3986 section 3.5: a fragment takes the characters a query does.
+pub(crate) fn check_fragment(text: &[u8]) -> Result<(), UrlError> {
+    check_path(text, true)
+}
+
 impl Url {
     /// Parses an absolute address.
     pub fn parse(text: &str) -> Result<Self, UrlError> {
@@ -196,9 +203,8 @@ impl Url {
         if let Some(query) = parts.query {
             check_path(query, true)?;
         }
-        // RFC 3986 section 3.5: a fragment takes the characters a query does.
         if let Some(fragment) = parts.fragment {
-            check_path(fragment, true)?;
+            check_fragment(fragment)?;
         }
         if parts.host.len() > MAX_HOST_TEXT_LENGTH {
             return Err(UrlError::Host);
@@ -237,7 +243,7 @@ impl Url {
         }
         let query_start = match parts.query {
             Some(query) => {
-                writer.byte(b'?').map_err(too_long)?;
+                writer.byte(QUERY_MARK).map_err(too_long)?;
                 let start = writer.len();
                 writer.put(query).map_err(too_long)?;
                 Some(start)
@@ -307,7 +313,7 @@ impl Url {
         } else {
             writer.put(b"//").map_err(too_long)?;
             writer.put(self.authority()).map_err(too_long)?;
-            let (path, query) = match bytes.iter().position(|&b| b == b'?') {
+            let (path, query) = match bytes.iter().position(|&b| b == QUERY_MARK) {
                 Some(mark) => (bytes.get(..mark).unwrap_or(&[]), Some(bytes.get(mark..).unwrap_or(&[]))),
                 None => (bytes, None),
             };
@@ -317,7 +323,7 @@ impl Url {
                     Some(query) => writer.put(query).map_err(too_long)?,
                     None => {
                         if let Some(own) = self.query() {
-                            writer.byte(b'?').map_err(too_long)?;
+                            writer.byte(QUERY_MARK).map_err(too_long)?;
                             writer.put(own.as_bytes()).map_err(too_long)?;
                         }
                     }

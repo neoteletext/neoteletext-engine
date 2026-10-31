@@ -28,7 +28,7 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
                 Ok(_) => event(sink, Event::DescriptorFailed(Failure::Address(UrlError::Scheme))),
                 Err(error) => event(sink, Event::DescriptorFailed(Failure::Address(error))),
             },
-            Input::OpenChannel(address) => match channel::parse_address(channel::without_query(address)) {
+            Input::OpenChannel(address) => match channel::parse_address(channel::location(address)) {
                 Ok(found) => {
                     self.open_channel(&found.folder, false);
                     // REQ-1674: the query goes with the push connection, so

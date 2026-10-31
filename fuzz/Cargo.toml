@@ -92,6 +92,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "url_map"
+path = "fuzz_targets/url_map.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "address"
 path = "fuzz_targets/address.rs"
 test = false

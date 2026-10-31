@@ -3,7 +3,7 @@
 //! to, and an absolute address split into its scheme, host, port, path and
 //! query.
 
-use super::{FRAGMENT_MARK, Parts, Scheme, UrlError};
+use super::{FRAGMENT_MARK, Parts, QUERY_MARK, Scheme, UrlError};
 use crate::bytes::parse_decimal;
 use crate::consts::{MAX_PORT_DIGITS, MAX_URL_LENGTH};
 
@@ -40,7 +40,7 @@ pub(super) fn split_parts(text: &[u8]) -> Result<Parts<'_>, UrlError> {
     let rest = rest.strip_prefix(b"//").ok_or(UrlError::Scheme)?;
     // REQ-WEB-016: the host ends at the first `/`, `?` or `#`, so nothing
     // after a `#` can pose as the host.
-    let authority_end = rest.iter().position(|&b| matches!(b, b'/' | b'?' | FRAGMENT_MARK)).unwrap_or(rest.len());
+    let authority_end = rest.iter().position(|&b| matches!(b, b'/' | QUERY_MARK | FRAGMENT_MARK)).unwrap_or(rest.len());
     let (authority, tail) = rest.split_at(authority_end);
     if authority.contains(&b'@') {
         return Err(UrlError::UserInfo);
@@ -72,7 +72,7 @@ pub(super) fn split_parts(text: &[u8]) -> Result<Parts<'_>, UrlError> {
         Some(mark) => (tail.get(..mark).unwrap_or(&[]), tail.get(mark.saturating_add(1)..)),
         None => (tail, None),
     };
-    let (path, query) = match tail.iter().position(|&b| b == b'?') {
+    let (path, query) = match tail.iter().position(|&b| b == QUERY_MARK) {
         Some(mark) => (tail.get(..mark).unwrap_or(&[]), Some(tail.get(mark.saturating_add(1)..).unwrap_or(&[]))),
         None => (tail, None),
     };

@@ -17,7 +17,7 @@ use neoteletext_core::ecc::hamming84;
 use neoteletext_core::types::{PageAddress, SubCode};
 
 use crate::bytes::{Overflow, Writer};
-use crate::url::{Scheme, Url, UrlError};
+use crate::url::{FRAGMENT_MARK, QUERY_MARK, Scheme, Url, UrlError};
 
 /// The channel's settings (REQ-WEB-024).
 pub const SETTINGS_FILE: &str = "channel.json";
@@ -44,7 +44,7 @@ pub const MAX_SEGMENT: usize = 64;
 /// The longest folder path, slashes included.
 pub const MAX_FOLDER_PATH: usize = 256;
 /// Digits of a page number in a file name.
-const PAGE_DIGITS: usize = 3;
+pub(crate) const PAGE_DIGITS: usize = 3;
 /// The command that starts a page in a TTI file (REQ-INP-013).
 const TTI_PAGE_COMMAND: &[u8] = b"PN,";
 
@@ -145,7 +145,7 @@ pub(crate) const fn is_capital_hex(byte: u8) -> bool {
 
 /// A page number in a file name: three capital hexadecimal digits, the
 /// magazine 1 to 8 first.
-fn page_of(digits: &[u8]) -> Option<PageAddress> {
+pub(crate) fn page_of(digits: &[u8]) -> Option<PageAddress> {
     if digits.len() != PAGE_DIGITS || !digits.iter().all(|&byte| is_capital_hex(byte)) {
         return None;
     }
@@ -278,15 +278,15 @@ pub fn parse_address(text: &str) -> Result<ChannelAddress, ChannelError> {
 /// channels' addresses says.
 #[must_use]
 pub fn is_channel_address(text: &str) -> bool {
-    parse_address(without_query(text)).is_ok()
+    parse_address(location(text)).is_ok()
 }
 
-/// An address without its query. A viewer's address may have one, which
-/// goes to a live channel's program (REQ-1674, DEC-1665): a channel's folder
-/// is the address without it.
+/// An address without its query and its fragment. A viewer's address may
+/// have both (REQ-1693): a channel's folder is the address without them.
 #[must_use]
-pub fn without_query(text: &str) -> &str {
-    text.split_once('?').map_or(text, |(address, _)| address)
+pub fn location(text: &str) -> &str {
+    let end = text.as_bytes().iter().position(|&byte| matches!(byte, QUERY_MARK | FRAGMENT_MARK));
+    end.and_then(|end| text.get(..end)).unwrap_or(text)
 }
 
 /// The percent-encoded separators a server may decode into a path: `.`,
