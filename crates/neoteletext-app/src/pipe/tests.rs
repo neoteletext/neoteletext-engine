@@ -8,6 +8,8 @@ fn frames_round_trip_and_bad_frames_are_rejected() {
         Frame::Tti(PageData { secure: true, origin: Origin::Page, bytes: b"PN,10000\n".to_vec() }),
         Frame::T42(PageData { secure: false, origin: Origin::Push, bytes: vec![1, 2, 3] }),
         Frame::Notice(Notice::InitialPage(0x100)),
+        Frame::Notice(Notice::Region(Some(neoteletext_core::consts::NIBBLE_MASK))),
+        Frame::Notice(Notice::Region(None)),
         Frame::Notice(Notice::Unencrypted),
         Frame::Notice(Notice::Input(true)),
         Frame::Input(vec![0x61, 0xFF, 0x01, 0x04, 0x02]),
@@ -44,6 +46,9 @@ fn frames_round_trip_and_bad_frames_are_rejected() {
         &[b'P', 0, 0, 0, 1, 0],
         &[b'S', 0, 0, 0, 2, 0, 9],
         &[b'L', 0, 0, 0, 8, 1, 0, 0xFF, 0xFF, 0, 0, 0, 9],
+        // A region is four bits, and one.
+        &[b'r', 0, 0, 0, 1, 16],
+        &[b'r', 0, 0, 0, 2, 1, 2],
         // Retired kinds are unknown now: the glyph choice, the browser's
         // input and screen, and a form's confirmation and outcome.
         &[b'Z', 0, 0, 0, 1, 0],

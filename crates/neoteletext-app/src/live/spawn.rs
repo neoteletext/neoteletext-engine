@@ -16,6 +16,7 @@ pub fn open(
     no_sandbox: bool,
     allow_local: &[std::net::IpAddr],
     proxy: Option<&str>,
+    region_named: bool,
 ) -> Result<Box<dyn Source>, Failure> {
     let address = crate::input::link_address(address).map_err(|message| (exit::USAGE, message))?;
     let program = std::env::current_exe().map_err(|error| (exit::INPUT, error.to_string()))?;
@@ -34,7 +35,7 @@ pub fn open(
     let requests = child.stdin.take().ok_or((exit::INPUT, "no pipe to the fetcher".to_string()))?;
     let mut output = child.stdout.take().ok_or((exit::INPUT, "no pipe from the fetcher".to_string()))?;
     let (sender, frames) = mpsc::channel();
-    let live = Live::new(Some(child), Box::new(requests), frames);
+    let live = Live::new(Some(child), Box::new(requests), frames, region_named);
     let wake = live.wake.clone();
     std::thread::spawn(move || read_frames(&mut output, &sender, &wake));
     Ok(Box::new(live))

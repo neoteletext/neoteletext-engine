@@ -93,7 +93,13 @@ pub fn is_live(input: &str) -> bool {
 /// Starts the fetcher process for a live input (REQ-SEC-018).
 #[cfg(feature = "live")]
 fn live_source(options: &Options) -> Result<Box<dyn Source>, Failure> {
-    crate::live::open(&options.input, options.no_sandbox, &options.allow_local, options.proxy.as_deref())
+    crate::live::open(
+        &options.input,
+        options.no_sandbox,
+        &options.allow_local,
+        options.proxy.as_deref(),
+        options.region.is_some(),
+    )
 }
 
 /// A build without the `live` feature has no web module to fetch with.

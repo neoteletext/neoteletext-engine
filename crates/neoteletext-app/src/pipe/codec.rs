@@ -2,6 +2,7 @@
 //! and writing and reading one frame (decision 26 of IMPLEMENTATION-LOG.md).
 
 use super::{Frame, MAX_FRAME, MAX_INPUT_MESSAGE, Notice, Origin, PageData};
+use neoteletext_core::consts::NIBBLE_MASK;
 use std::io::{self, Read, Write};
 
 const PACKET: u8 = b'P';
@@ -31,6 +32,7 @@ const DENIED: u8 = b'd';
 const PUSH_STOPPED: u8 = b's';
 const KEY: u8 = b'y';
 const INPUT: u8 = b'n';
+const REGION: u8 = b'r';
 /// The most strings one frame may carry.
 const MAX_STRINGS: usize = 256;
 
@@ -136,6 +138,7 @@ pub fn write(out: &mut dyn Write, frame: &Frame) -> io::Result<()> {
             }
             put(out, SERVICE, &buffer)
         }
+        Frame::Notice(Notice::Region(region)) => put(out, REGION, region.as_slice()),
         Frame::Notice(Notice::Current(mpp)) => put(out, CURRENT, &mpp.to_be_bytes()),
         Frame::Notice(Notice::Offline(mpp)) => put(out, OFFLINE, &mpp.to_be_bytes()),
         Frame::Request(mpp, sub) => put(out, REQUEST, &[mpp.to_be_bytes(), sub.to_be_bytes()].concat()),
@@ -202,6 +205,11 @@ pub fn read(input: &mut dyn Read) -> io::Result<Option<Frame>> {
             payload.as_slice().try_into().map_err(|_| invalid())?,
         ))),
         UNENCRYPTED if payload.is_empty() => Frame::Notice(Notice::Unencrypted),
+        REGION => match payload.as_slice() {
+            [] => Frame::Notice(Notice::Region(None)),
+            [region] if *region <= NIBBLE_MASK => Frame::Notice(Notice::Region(Some(*region))),
+            _ => return Err(invalid()),
+        },
         MESSAGE => Frame::Notice(Notice::Message(String::from_utf8_lossy(&payload).into_owned())),
         SERVICE => {
             let count = usize::from(cursor.u16()?);

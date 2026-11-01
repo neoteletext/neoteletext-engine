@@ -55,6 +55,12 @@ pub struct Live {
     /// Called by the pipe reader as each frame arrives, once the viewer
     /// asks (REQ-INT-008).
     wake: Arc<OnceLock<Wake>>,
+    /// The user named a region for this run, which a service does not
+    /// replace.
+    region_named: bool,
+    /// The receiver's own region, from before a service gave one, for a
+    /// service that gives none.
+    receiver_region: Option<u8>,
 }
 
 /// Bounds of a service's refresh interval, in seconds (concept decision 13).
@@ -68,7 +74,7 @@ const MICROSECONDS_PER_SECOND: u64 = 1_000_000;
 const OFFLINE_RETRY_US: u64 = 10_000_000;
 
 impl Live {
-    fn new(child: Option<Child>, requests: Box<dyn Write + Send>, frames: Receiver<Frame>) -> Self {
+    fn new(child: Option<Child>, requests: Box<dyn Write + Send>, frames: Receiver<Frame>, region_named: bool) -> Self {
         Self {
             child,
             requests,
@@ -85,7 +91,22 @@ impl Live {
             refresh_us: None,
             asked: std::collections::HashSet::new(),
             wake: Arc::default(),
+            region_named,
+            receiver_region: None,
         }
+    }
+
+    /// Takes a new service's default region (REQ-WEB-002): the group of a
+    /// page that designates none, above the receiver's own and below the
+    /// user's `--region` (decision E.4).
+    fn take_region(&mut self, session: &mut Session, region: Option<u8>) {
+        if self.region_named {
+            return;
+        }
+        let mut config = *session.decoder().config();
+        let own = *self.receiver_region.get_or_insert(config.default_region);
+        config.default_region = region.unwrap_or(own);
+        session.decoder_mut().set_config(config);
     }
 
     /// Decodes page bytes into the session, keeping each page's extension
@@ -182,6 +203,7 @@ impl Source for Live {
                 Frame::Packet(bytes) => session.push_at(&Packet { bytes }, &PacketMeta::default(), now),
                 Frame::Tti(page) => self.receive(session, Format::Tti, &page, now),
                 Frame::T42(page) => self.receive(session, Format::T42(T42Variant::Plain), &page, now),
+                Frame::Notice(Notice::Region(region)) => self.take_region(session, region),
                 Frame::Notice(Notice::Service(names)) => {
                     session.restart();
                     self.extras.clear();

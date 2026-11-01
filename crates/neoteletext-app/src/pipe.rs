@@ -71,6 +71,9 @@ pub enum Notice {
     /// A new service is ready; its linked services' short names in
     /// descriptor order (Appendix E).
     Service(Vec<String>),
+    /// A new service's default character set region, or none: then the
+    /// receiver's own (REQ-WEB-002, decision E.4). Read before its pages.
+    Region(Option<u8>),
     /// The server confirmed page `0xMPP` unchanged (REQ-WEB-004): the
     /// stored copy is current (REQ-WEB-009).
     Current(u16),

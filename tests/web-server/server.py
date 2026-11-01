@@ -30,6 +30,12 @@ def esc(code):
     return "\x1b" + chr(code + 0x40)
 
 
+# A channel that gives its pages' group (REQ-WEB-002): Greek, group 6, and a
+# page that holds option 7 in its header and names no group of its own.
+REGIONAL_CHANNEL = '{"name":"Regional","initial_page":"100","region":6}'
+REGIONAL_PAGE = "PN,10000\r\nPS,8380\r\nOL,1,abc\r\n"
+
+
 RED, GREEN, YELLOW, CYAN, WHITE = 1, 2, 3, 6, 7
 DOUBLE_HEIGHT = 0x0D
 
@@ -162,6 +168,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if path == "/other.json":
             other = DESCRIPTOR.format(port=port).replace("Test service", "Other service")
             return self.send(200, other, "application/json", cookies)
+        if path == "/regional/channel.ttx":
+            return self.send(200, REGIONAL_CHANNEL, "application/json", cookies)
+        if path == "/regional/100.tti":
+            return self.send(200, REGIONAL_PAGE, "text/x-teletext-tti", cookies)
         if path.startswith("/pages/") and path.endswith(".tti"):
             page = path[len("/pages/"):-len(".tti")]
             if page not in PAGES:

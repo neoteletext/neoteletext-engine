@@ -57,6 +57,22 @@ fn page_is_fetched_from_a_web_service() {
     assert!(row24.contains("Weather") && row24.contains("News"), "row 24: {row24:?}");
 }
 
+/// REQ-WEB-002: a channel's `region` gives the group of a page that names
+/// none, here Greek, whose option the page's header holds; the user's own
+/// `--region` stands above it.
+#[test]
+fn a_channels_region_is_the_group_of_its_pages() {
+    let Some(server) = server() else { return };
+    let url = format!("http://127.0.0.1:{}/regional/", server.port);
+    let page = ["text", &url, "100", "--allow-local", "127.0.0.1", "--duration", "15"];
+    let (ok, text, errors) = neottx(&page);
+    assert!(ok, "neottx failed: {errors}");
+    assert!(text.contains("\u{03B1}"), "group 6 reads a as alpha: {text}");
+    let (ok, text, errors) = neottx(&[&page[..], &["--region", "0"]].concat());
+    assert!(ok, "neottx failed: {errors}");
+    assert!(!text.contains("\u{03B1}"), "the user's region stands: {text}");
+}
+
 #[test]
 fn local_addresses_are_blocked_unless_named() {
     let Some(server) = server() else { return };

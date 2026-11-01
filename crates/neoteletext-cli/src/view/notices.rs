@@ -42,6 +42,7 @@ impl ViewState {
             | Notice::ServiceName(_)
             | Notice::Bundle(_)
             | Notice::Aliases(_)
+            | Notice::Region(_)
             | Notice::Refresh(_) => {}
             Notice::RedirectToOtherChannel(address) => self.messages.push(format!("redirected to {address}")),
             Notice::PageRedirect(mpp, sub, query) => self.typing.redirected(mpp, sub, query),

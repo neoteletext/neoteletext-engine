@@ -6,7 +6,30 @@ use neoteletext_core::consts::LINK_SCHEME;
 /// A live source fed `frames` from a channel, writing its requests to
 /// `requests`, for the tests.
 fn routed(frames: Receiver<Frame>, requests: Box<dyn Write + Send>) -> Live {
-    Live::new(None, requests, frames)
+    Live::new(None, requests, frames, false)
+}
+
+/// REQ-WEB-002: a service's region stands in for the receiver's own, a
+/// service that gives none has the receiver's back, and the user's `--region`
+/// stands above both.
+#[test]
+fn a_services_region_sets_the_default_unless_the_user_named_one() {
+    const OWN: u8 = 3;
+    const SERVICE: u8 = 6;
+    let regions = |region_named: bool| {
+        let (sender, frames) = mpsc::channel();
+        let mut live = Live::new(None, Box::new(std::io::sink()), frames, region_named);
+        let config = neoteletext_core::config::Config { default_region: OWN, ..Default::default() };
+        let mut session = Session::new(config, 8);
+        [Some(SERVICE), None].map(|region| {
+            sender.send(Frame::Notice(Notice::Region(region))).unwrap();
+            sender.send(Frame::Notice(Notice::Service(Vec::new()))).unwrap();
+            live.poll(&mut session, Instant(0));
+            session.decoder().config().default_region
+        })
+    };
+    assert_eq!(regions(false), [SERVICE, OWN]);
+    assert_eq!(regions(true), [OWN, OWN]);
 }
 
 #[test]

@@ -253,6 +253,7 @@ fn announce_service(descriptor: Option<&Descriptor>) -> std::io::Result<()> {
     if let Some(seconds) = refresh {
         send(&Frame::Notice(Notice::Refresh(seconds)))?;
     }
+    send(&Frame::Notice(Notice::Region(descriptor.and_then(|descriptor| descriptor.region))))?;
     send(&Frame::Notice(Notice::Service(names)))?;
     send(&Frame::Notice(Notice::Aliases(aliases)))
 }
