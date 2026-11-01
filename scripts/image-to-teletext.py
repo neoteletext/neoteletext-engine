@@ -8,14 +8,18 @@ the chosen presentation level offers.
     uv run scripts/image-to-teletext.py picture.png page.tti [--level 3.5]
         [--hold-mosaics] [--no-objects] [--t42 page.t42]
 
-The picture is cropped to the shape rows 1 to 24 have on the display
-(--display: square on neottx's own output, or 4:3 television) and reduced to
-80 x 72 mosaic pixels (sixels), two by three per cell; row 0 is the header.
+The picture fills the whole page, rows 0 to 24: it is cropped to the shape
+the 25 rows have on the display (--display: square on neottx's own output,
+or 4:3 television) and reduced to 80 x 75 mosaic pixels (sixels), two by
+three per cell. Row 0 is the header: its columns 0 to 7 belong to the
+receiver, which shows the page number there (clause 9.3.1; neoteletext
+REQ-SEC-005), so those 16 x 3 sixels are not drawn and count for nothing;
+columns 8 to 39 are the header's 32 display bytes, written as OL,0.
 Sixels are not square and not equal: as neottx draws a cell (decision E.13)
 they are 6 dots wide and 6, 8 and 6 lines high, so each sixel is the average
 of the area it covers on screen, and its error counts by its height. A
-picture of exactly 80 x 72 to 75 is taken as drawn sixel for sixel (pixel
-art), losing its top rows.
+picture of exactly 80 x 75 is taken as drawn sixel for sixel (pixel art);
+one 80 x 72 to 74 is too, on black rows at the top.
 Row 24 is shown because the page carries X/27/0 Fastext links (to itself),
 as Annex H requires.
 
@@ -37,9 +41,11 @@ Levels 2.5 and 3.5 (clause 12.4, Tables 4, 10, 27 and 30):
   fitted and 31 are used. At Level 3.5 CLUT 0 entries 0 and 7 stay black
   and white for the header, and the other 29 are fitted;
 - colour changes are non-spacing X/26 attributes, so every column is
-  picture: column 0 holds Graphics colour and an X/26 mosaic over it;
+  picture: column 0 (row 0: column 8) holds Graphics colour and an X/26
+  mosaic over it;
 - each row starts on its Full Row Colour, with Black Background Colour
-  Substitution set;
+  Substitution set; row 0 is reached by Address Display Row 0 (Table 28),
+  and its column triplets address columns 8 to 39 only;
 - by default the row data is carried in Active objects on a Public Object
   Page, magazine page 1A0, linked by X/27/4, and the page's own X/26 only
   invokes them. With --no-objects it is in the page's own X/26, at most
@@ -56,9 +62,10 @@ the palette is then refitted at the change cost the 208-triplet budget
 sets. On the ten test pictures this lowers the error 6 to 8 per cent over
 a single median-cut fit, at about four times the time.
 
-Render with `neottx render page.t42 100 --level <level>`. The Level 2.5 and
-3.5 colour changes take effect only in a neottx built with the core feature
-`nonspacing-attributes`.
+Render with `neottx render page.t42 100 --level <level>`. The default neottx
+(decision E.105) shows Levels 1.5 and, with --no-objects, 2.5 and 3.5; pages
+that carry their rows in objects need a neottx built with `--features
+objects`.
 """
 
 import argparse
@@ -68,22 +75,27 @@ import sys
 import numpy as np
 from PIL import Image
 
-# Page geometry (clause 12.2): rows 1 to 24 of 40 cells, two by three
+# Page geometry (clause 12.2): rows 0 to 24 of 40 cells, two by three
 # sixels per cell.
-ROWS = 24
+ROWS = 25
 COLUMNS = 40
 SIXELS_ACROSS = 2
 SIXELS_DOWN = 3
 SIXELS_PER_CELL = SIXELS_ACROSS * SIXELS_DOWN
 WIDTH = COLUMNS * SIXELS_ACROSS
 HEIGHT = ROWS * SIXELS_DOWN
-# A picture this tall also fits: rows 0 to 24, of which row 0 is dropped.
-HEIGHT_WITH_HEADER = (ROWS + 1) * SIXELS_DOWN
+# A picture of WIDTH and at least this many sixels high is pixel art,
+# drawn sixel for sixel on black rows at the top: rows 1 to 24.
+SHORTEST_PIXEL_ART = (ROWS - 1) * SIXELS_DOWN
+# Row 0 columns 0 to 7 are the receiver's (clause 9.3.1: the header's first
+# eight bytes are its address and control bits; Table 28 Address Display
+# Row 0: column triplets address columns 8 to 39 only).
+RECEIVER_COLUMNS = 8
 PATTERNS = 1 << SIXELS_PER_CELL
 
 # The cell as neottx draws it (decision E.13, from the SAA5050 drawing):
 # 12 dots by 20 lines, sixels 6 dots wide and, from top to bottom, 6, 8 and
-# 6 lines high. Rows 1 to 24 are 480 by 480 raster pixels, square on
+# 6 lines high. Rows 0 to 24 are 480 by 500 raster pixels, square on
 # neottx's own output; a 4:3 television widens them by 16/13 (the core's
 # ASPECT_NUMERATOR / ASPECT_DENOMINATOR).
 CELL_DOTS = 12
@@ -136,10 +148,18 @@ DATA_SHIFT = 11
 TRIPLET_BITS = 18
 TRIPLETS_PER_PACKET = 13
 LOCAL_TRIPLETS = 16 * TRIPLETS_PER_PACKET  # X/26/0 to X/26/15
+# Clause 12.3.3: the last triplet in use is a Termination Marker, so the
+# data itself has one fewer.
+LOCAL_DATA_TRIPLETS = LOCAL_TRIPLETS - 1
 ROW_ADDRESS_ROW_24 = 40  # row addresses 41 to 63 are rows 1 to 23
-ROW_ADDRESS_LAST = 63
+ROW_ADDRESS_LAST = 63  # also Address Display Row 0's address (Table 28)
 MODE_FULL_ROW_COLOUR = 0x01  # data bits 6 and 7 zero: this row only
+MODE_ADDRESS_ROW_0 = 0x07  # as Full Row Colour, for row 0 (Table 28)
 MODE_TERMINATION = 0x1F
+# Termination Marker data bits D2-D0 at Levels 2.5 and 3.5 (Table 28).
+END_LOCAL_DATA = 0b111  # local enhancement data, no Local Object definitions follow
+END_LAST_OBJECT_INTERMEDIATE_SUBPAGE = 0b001  # intermediate (G)POP sub-page, last object on it
+END_LAST_OBJECT_LAST_SUBPAGE = 0b011  # last (G)POP sub-page, last object on it
 MODE_RESERVED_ROW = 0x02  # filler after a Termination Marker
 MODE_FOREGROUND = 0x00
 MODE_G1 = 0x01
@@ -168,6 +188,8 @@ LINK_UNITS_SHIFT = 6
 LINK_MARKER_SHIFT = 10
 LINK_TENS_SHIFT = 14
 LINK_SUBPAGES_SHIFT = 2
+# Table 15: a link naming no page carries page FF and every sub-code flag.
+NO_PAGE = 0xFF
 ALL_SUBPAGES = 0xFFFF
 LINKS_IN_PACKET = 6
 DESIGNATION_LINKS = 4
@@ -203,15 +225,17 @@ INFINITY = 1 << 60
 
 
 def load(path, display="neottx", smooth="area"):
-    """The picture as 80 x 72 sixel colours. A picture of exactly 80 x 72
-    to 75 is taken as drawn sixel for sixel. Any other is cropped to the
-    shape rows 1 to 24 have on the display, scaled to the raster, and each
-    sixel is the average of the raster pixels it covers: 6 dots by 6, 8 or
-    6 lines."""
+    """The picture as 80 x 75 sixel colours, rows 0 to 24. A picture 80
+    wide and 72 to 75 high is taken as drawn sixel for sixel, at the
+    bottom, on black. Any other is cropped to the shape rows 0 to 24 have
+    on the display, scaled to the raster, and each sixel is the average of
+    the raster pixels it covers: 6 dots by 6, 8 or 6 lines."""
     image = Image.open(path).convert("RGB")
     width, height = image.size
-    if width == WIDTH and HEIGHT <= height <= HEIGHT_WITH_HEADER:
-        return np.asarray(image, dtype=np.int64)[height - HEIGHT :]
+    if width == WIDTH and SHORTEST_PIXEL_ART <= height <= HEIGHT:
+        out = np.zeros((HEIGHT, WIDTH, 3), dtype=np.int64)
+        out[HEIGHT - height :] = np.asarray(image, dtype=np.int64)
+        return out
     target = RASTER_WIDTH * DISPLAY_WIDEN[display] / RASTER_HEIGHT
     if width / height > target:
         keep = round(height * target)
@@ -233,12 +257,77 @@ def load(path, display="neottx", smooth="area"):
 
 def sixel_weights():
     """Each sixel's share of the screen: its height in lines, so the taller
-    middle sixels count for more (6, 8, 6)."""
+    middle sixels count for more (6, 8, 6). The receiver's columns of row 0
+    are not the page's to draw, and count for nothing."""
     per_row = np.array([SIXEL_LINES[y % SIXELS_DOWN] for y in range(HEIGHT)], dtype=np.int64)
-    return np.repeat(per_row, WIDTH)
+    weights = np.repeat(per_row, WIDTH).reshape(HEIGHT, WIDTH)
+    weights[:SIXELS_DOWN, : RECEIVER_COLUMNS * SIXELS_ACROSS] = 0
+    return weights.reshape(-1)
+
+
+def first_column(row):
+    """The first column a row's picture can use: row 0 starts after the
+    receiver's columns."""
+    return RECEIVER_COLUMNS if row == 0 else 0
 
 
 WEIGHTS = sixel_weights()
+
+
+# OKLab (Björn Ottosson, "A perceptual color space for image processing",
+# 2020): sRGB is made linear (IEC 61966-2-1), then taken to cone responses,
+# a cube root, and Lab. The matrices are the published ones.
+SRGB_KNEE = 0.04045
+SRGB_LINEAR_SLOPE = 12.92
+SRGB_OFFSET = 0.055
+SRGB_GAMMA = 2.4
+LINEAR_TO_LMS = np.array([
+    [0.4122214708, 0.5363325363, 0.0514459929],
+    [0.2119034982, 0.6806995451, 0.1073969566],
+    [0.0883024619, 0.2817188376, 0.6299787005],
+])
+LMS_TO_OKLAB = np.array([
+    [0.2104542553, 0.7936177850, -0.0040720468],
+    [1.9779984951, -2.4285922050, 0.4505937099],
+    [0.0259040371, 0.7827717662, -0.8086757660],
+])
+OKLAB_TO_LMS = np.linalg.inv(LMS_TO_OKLAB)
+LMS_TO_LINEAR = np.linalg.inv(LINEAR_TO_LMS)
+# OKLab distances are scaled so that they stay whole numbers with the
+# precision of the RGB ones: L runs 0 to 1, so 1000 steps across it.
+OKLAB_SCALE = 1000
+# The colour space errors are measured in (--colour-space).
+COLOUR_SPACE = {"name": "rgb"}
+
+
+def oklab(rgb):
+    v = np.asarray(rgb, dtype=np.float64) / 255
+    linear = np.where(v <= SRGB_KNEE, v / SRGB_LINEAR_SLOPE, ((v + SRGB_OFFSET) / (1 + SRGB_OFFSET)) ** SRGB_GAMMA)
+    return np.cbrt(linear @ LINEAR_TO_LMS.T) @ LMS_TO_OKLAB.T
+
+
+def from_oklab(lab):
+    linear = np.clip((np.asarray(lab, dtype=np.float64) @ OKLAB_TO_LMS.T) ** 3 @ LMS_TO_LINEAR.T, 0, 1)
+    v = np.where(linear <= SRGB_KNEE / SRGB_LINEAR_SLOPE, linear * SRGB_LINEAR_SLOPE,
+                 (1 + SRGB_OFFSET) * linear ** (1 / SRGB_GAMMA) - SRGB_OFFSET)
+    return v * 255
+
+
+def colour_distance(pixels, colours):
+    """Squared distance of every pixel to every colour, as whole numbers:
+    in RGB, or in OKLab scaled by OKLAB_SCALE."""
+    if COLOUR_SPACE["name"] == "rgb":
+        return ((pixels[:, None, :] - colours[None, :, :]) ** 2).sum(-1)
+    p, c = oklab(pixels) * OKLAB_SCALE, oklab(colours) * OKLAB_SCALE
+    return np.rint(((p[:, None, :] - c[None, :, :]) ** 2).sum(-1)).astype(np.int64)
+
+
+def centre(colours, weights=None):
+    """The colour nearest the colours given in the chosen space: their mean
+    there, back in RGB."""
+    if COLOUR_SPACE["name"] == "rgb":
+        return np.average(colours, axis=0, weights=weights)
+    return from_oklab(np.average(oklab(colours), axis=0, weights=weights))
 
 
 def to_12_bit(colours):
@@ -281,12 +370,14 @@ def encode_level_1(pixels, cells, hold):
     count = len(palette)
     held_states = PATTERNS if hold else 1
     bits = pattern_bits()[:held_states]
-    distance = ((pixels.reshape(-1, 3)[:, None, :] - palette[None, :, :]) ** 2).sum(-1) * WEIGHTS[:, None]
-    first_free = 2 if hold else 1
+    distance = colour_distance(pixels.reshape(-1, 3), palette) * WEIGHTS[:, None]
     rows = []
     for row in range(ROWS):
-        # Column 0 (and 1 with hold) show the space of the row start, black.
-        lead = sum(distance[cells[row, column]][:, BLACK].sum() for column in range(first_free))
+        start = first_column(row)
+        first_free = start + (2 if hold else 1)
+        # The first column (and the next with hold) show the space of the
+        # row start, black.
+        lead = sum(distance[cells[row, column]][:, BLACK].sum() for column in range(start, first_free))
         current = np.full((count, count, held_states), INFINITY, dtype=np.int64)
         for colour in LEVEL_1_COLOURS:
             current[colour, BLACK, 0] = lead
@@ -403,29 +494,30 @@ def encode_enhanced(pixels, palette, cells, change_cost):
     column 0 needs a G1 character, by dynamic programming over the pair."""
     colours = palette.colours
     count = len(colours)
-    distance = ((pixels.reshape(-1, 3)[:, None, :] - colours[None, :, :]) ** 2).sum(-1) * WEIGHTS[:, None]
+    distance = colour_distance(pixels.reshape(-1, 3), colours) * WEIGHTS[:, None]
     per_cell = distance[cells]  # rows, columns, sixels, colours
     cost = np.minimum(per_cell[..., :, None], per_cell[..., None, :]).sum(2)
     # Column 0 holds the Graphics colour code: a space in the background,
     # unless an enhancement G1 character is placed there.
-    space = per_cell[:, 0].sum(1)
     foreground, background = np.meshgrid(np.arange(count), np.arange(count), indexing="ij")
     free = np.isin(np.arange(count), list(palette.free))
     rows = []
     for row in range(ROWS):
-        with_character = cost[row, 0] + change_cost
+        start = first_column(row)
+        space = per_cell[row, start].sum(0)
+        with_character = cost[row, start] + change_cost
         start_cost = np.where(np.arange(count) == palette.start, 0, change_cost)[:, None]
-        current = np.minimum(with_character, space[row][None, :]) + start_cost
+        current = np.minimum(with_character, space[None, :]) + start_cost
         back = []
-        for column in range(1, COLUMNS):
+        for column in range(start + 1, COLUMNS):
             best_for_b = current.min(0)
             from_f = current.argmin(0)
             best_for_f = current.min(1)
             from_b = current.argmin(1)
             best = current.min()
             best_pair = np.unravel_index(current.argmin(), current.shape)
-            if column == 1:
-                # The code at column 0 sets any free colour; another
+            if column == start + 1:
+                # The code at the first column sets any free colour; another
                 # foreground costs a triplet even if unchanged.
                 set_f = np.where(free, 0, change_cost)[:, None]
                 options = np.stack(
@@ -458,7 +550,7 @@ def encode_enhanced(pixels, palette, cells, change_cost):
             f, b = previous_f[f, b], previous_b[f, b]
             states.append((int(f), int(b)))
         states.reverse()
-        rows.append((states, bool(with_character[states[0]] < space[row][states[0][1]])))
+        rows.append((states, bool(with_character[states[0]] < space[states[0][1]])))
     return rows, distance
 
 
@@ -466,9 +558,10 @@ def drawn(rows, distance, cells):
     """For each pixel, the palette entry it is drawn in."""
     out = np.zeros(len(distance), dtype=np.int64)
     for row, (states, character) in enumerate(rows):
-        for column, (f, b) in enumerate(states):
+        start = first_column(row)
+        for column, (f, b) in enumerate(states, start=start):
             for pixel in cells[row, column]:
-                if column == 0 and not character:
+                if column == start and not character:
                     out[pixel] = b
                 else:
                     out[pixel] = f if distance[pixel, f] < distance[pixel, b] else b
@@ -478,7 +571,7 @@ def drawn(rows, distance, cells):
 def column_1_use(rows, count):
     use = np.zeros(count)
     for states, _ in rows:
-        use[states[1][0]] += 1
+        use[states[1][0]] += 1  # the row's first picture column after the code
     return use
 
 
@@ -486,7 +579,11 @@ def triplet(address, mode, data):
     return address | mode << MODE_SHIFT | data << DATA_SHIFT
 
 
-TERMINATION = triplet(ROW_ADDRESS_LAST, MODE_TERMINATION, 0)
+def termination(kind):
+    return triplet(ROW_ADDRESS_LAST, MODE_TERMINATION, kind)
+
+
+# The reserved first triplet of a pointer packet (clause 10.5.1.2).
 FILLER = triplet(ROW_ADDRESS_ROW_24 + 1, MODE_RESERVED_ROW, 0)
 
 
@@ -494,26 +591,29 @@ def enhanced_content(rows, palette, distance, cells):
     """The Level 1 rows and each row's triplets."""
 
     def pattern(row, column):
-        f, b = rows[row][0][column]
+        f, b = rows[row][0][column - first_column(row)]
         return sum(1 << k for k, pixel in enumerate(cells[row, column]) if distance[pixel, f] < distance[pixel, b])
 
     level_1 = []
     row_triplets = []
     slot = palette.slot
     for row, (states, character) in enumerate(rows):
-        page_row = row + 1
-        address = ROW_ADDRESS_ROW_24 if page_row == ROWS else ROW_ADDRESS_ROW_24 + page_row
+        start = first_column(row)
+        if row == 0:
+            out = [triplet(ROW_ADDRESS_LAST, MODE_ADDRESS_ROW_0, slot[states[0][1]])]
+        else:
+            address = ROW_ADDRESS_ROW_24 if row == ROWS - 1 else ROW_ADDRESS_ROW_24 + row
+            out = [triplet(address, MODE_FULL_ROW_COLOUR, slot[states[0][1]])]
         f0, b0 = states[0]
-        out = [triplet(address, MODE_FULL_ROW_COLOUR, slot[b0])]
         if f0 != palette.start:
-            out.append(triplet(0, MODE_FOREGROUND, slot[f0]))
+            out.append(triplet(start, MODE_FOREGROUND, slot[f0]))
         if character:
-            out.append(triplet(0, MODE_G1, sextant_code(pattern(row, 0))))
+            out.append(triplet(start, MODE_G1, sextant_code(pattern(row, start))))
         code = None
         previous_f, previous_b = f0, b0
-        for column in range(1, COLUMNS):
-            f, b = states[column]
-            if column == 1:
+        for column in range(start + 1, COLUMNS):
+            f, b = states[column - start]
+            if column == start + 1:
                 if f in palette.free:
                     code = GRAPHICS_COLOUR_BASE + slot[f]
                 else:
@@ -525,7 +625,7 @@ def enhanced_content(rows, palette, distance, cells):
                 out.append(triplet(column, MODE_BACKGROUND, slot[b]))
             previous_f, previous_b = f, b
         row_triplets.append(out)
-        level_1.append([code] + [sextant_code(pattern(row, column)) for column in range(1, COLUMNS)])
+        level_1.append([code] + [sextant_code(pattern(row, column)) for column in range(start + 1, COLUMNS)])
     return level_1, row_triplets
 
 
@@ -541,9 +641,9 @@ def fit(pixels, palette, cells, redefinable, change_cost):
         who = drawn(rows, distance, cells)
         moved = palette.fitted.copy()
         for index in range(len(moved)):
-            mask = who == fixed_count + index
+            mask = (who == fixed_count + index) & (WEIGHTS > 0)
             if mask.any():
-                moved[index] = to_12_bit(np.average(flat[mask], axis=0, weights=WEIGHTS[mask]))
+                moved[index] = to_12_bit(centre(flat[mask], WEIGHTS[mask]))
         moved = np.unique(moved, axis=0)
         if len(moved) == len(palette.fitted) and (moved == palette.fitted).all():
             return palette, rows, distance
@@ -580,7 +680,7 @@ def split_worst(pixels, palette, rows, distance, cells, redefinable, drop_least_
     if drop_least_used:
         use = np.bincount(who, minlength=len(palette.colours))[len(palette.fixed) :]
         fitted = np.delete(fitted, int(np.argmin(use)), axis=0)
-    fitted = np.unique(np.vstack([fitted, to_12_bit(far.mean(0))[None, :]]), axis=0)
+    fitted = np.unique(np.vstack([fitted, to_12_bit(centre(far))[None, :]]), axis=0)
     return Palette(palette.fixed, fitted, redefinable)
 
 
@@ -626,7 +726,7 @@ def within_budget(pixels, palette, cells, redefinable):
         trial = palette.with_use(column_1_use(rows, len(palette.colours)), redefinable)
         rows, distance = encode_enhanced(pixels, trial, cells, middle)
         _, row_triplets = enhanced_content(rows, trial, distance, cells)
-        if local_triplet_count(row_triplets) <= LOCAL_TRIPLETS:
+        if local_triplet_count(row_triplets) <= LOCAL_DATA_TRIPLETS:
             high = middle
             best = (trial, rows, distance, middle)
         else:
@@ -694,9 +794,14 @@ def padded(values, fill):
 
 
 def row_lines(level_1):
+    """OL,0 to OL,24. Each row's codes start at its first column; OL,0
+    carries spaces in the receiver's eight columns, which no decoder shows
+    from the page."""
     lines = []
-    for row, codes in enumerate(level_1, start=1):
-        text = "".join(ESCAPE + chr(code + PACKED_BASE) if code < SEXTANT_BASE else chr(code) for code in codes)
+    for row, codes in enumerate(level_1):
+        text = " " * first_column(row) + "".join(
+            ESCAPE + chr(code + PACKED_BASE) if code < SEXTANT_BASE else chr(code) for code in codes
+        )
         lines.append(f"OL,{row},{text}")
     return lines
 
@@ -719,15 +824,21 @@ def enhanced_lines(level, palette, level_1, row_triplets, use_objects):
         lines.append("OL,28," + packed(DESIGNATION_LEVEL_35, colour_packet(colour_map[: 2 * CLUT_ENTRIES])))
     objects = objects_of(row_triplets) if use_objects else []
     if use_objects:
-        pop_link = [
-            LINK_FUNCTION_POP
-            | LINK_VALID_BOTH << LINK_VALIDITY_SHIFT
-            | (POP_MAGAZINE_PAGE & 0xF) << LINK_UNITS_SHIFT
-            | 1 << LINK_MARKER_SHIFT
-            | (POP_MAGAZINE_PAGE >> 4) << LINK_TENS_SHIFT,
-            ALL_SUBPAGES << LINK_SUBPAGES_SHIFT,
-        ]
-        links = [0, 0] + pop_link + [0, 0] * (LINKS_IN_PACKET - 2) + [0]
+
+        def link(function, validity, page, subpages):
+            return [
+                function
+                | validity << LINK_VALIDITY_SHIFT
+                | (page & 0xF) << LINK_UNITS_SHIFT
+                | 1 << LINK_MARKER_SHIFT
+                | (page >> 4) << LINK_TENS_SHIFT,
+                subpages << LINK_SUBPAGES_SHIFT,
+            ]
+
+        no_link = link(0, 0, NO_PAGE, ALL_SUBPAGES)
+        # Link 1 names the POP and exactly the sub-pages sent.
+        pop_link = link(LINK_FUNCTION_POP, LINK_VALID_BOTH, POP_MAGAZINE_PAGE, (1 << len(objects)) - 1)
+        links = no_link + pop_link + no_link * (LINKS_IN_PACKET - 2) + [0]
         lines.append("OL,27," + packed(DESIGNATION_LINKS, links))
         local = [
             triplet(OBJECT_ADDRESS_BIT | SOURCE_PUBLIC << OBJECT_SOURCE_SHIFT, MODE_INVOKE_ACTIVE, subpage)
@@ -735,9 +846,9 @@ def enhanced_lines(level, palette, level_1, row_triplets, use_objects):
         ]
     else:
         local = [t for row in row_triplets for t in row]
-    if len(local) < LOCAL_TRIPLETS:
-        local.append(TERMINATION)
-    local = padded(local, FILLER)
+    # Clause 12.3.3: the marker ends the data, and the rest of the last
+    # packet repeats it.
+    local = padded([*local, termination(END_LOCAL_DATA)], termination(END_LOCAL_DATA))
     for designation in range(len(local) // TRIPLETS_PER_PACKET):
         lines.append("OL,26," + packed(designation, local[designation * TRIPLETS_PER_PACKET :][:TRIPLETS_PER_PACKET]))
     lines += row_lines(level_1)
@@ -754,7 +865,11 @@ def enhanced_lines(level, palette, level_1, row_triplets, use_objects):
         lines.append("OL,1," + packed(1, pointers))
         lines.append("OL,2," + packed(1, [FILLER] + [unused] * (TRIPLETS_PER_PACKET - 1)))
         definition = triplet(OBJECT_ADDRESS_BIT | USAGE_BOTH_LEVELS << OBJECT_SOURCE_SHIFT, MODE_DEFINE_ACTIVE, subpage)
-        definitions = padded([definition, *body, TERMINATION], TERMINATION)
+        # Clause 10.5.1.3 and Table 28: one object per sub-page, so its
+        # marker says last object, on an intermediate or the last sub-page.
+        last = subpage == len(objects) - 1
+        end = termination(END_LAST_OBJECT_LAST_SUBPAGE if last else END_LAST_OBJECT_INTERMEDIATE_SUBPAGE)
+        definitions = padded([definition, *body, end], end)
         for k in range(len(definitions) // TRIPLETS_PER_PACKET):
             chunk = definitions[k * TRIPLETS_PER_PACKET :][:TRIPLETS_PER_PACKET]
             if k < DEFINITION_ROW_PACKETS:
@@ -805,9 +920,16 @@ def main():
         "--smooth", choices=["area", "lanczos"], default="area",
         help="scaling to the raster: area averaging (the least squared error) or Lanczos (crisper)",
     )
+    parser.add_argument(
+        "--colour-space", choices=["rgb", "oklab"], default="rgb",
+        help="where colour error is measured: RGB, or OKLab (perceptual); the report is RGB either way",
+    )
     parser.add_argument("--t42", help="also write T42 with `neottx convert`")
     parser.add_argument("--neottx", default="neottx", help="the neottx program, for --t42")
-    parser.add_argument("--expected", help="write the sixels the page should show, 80 x 72, to this PNG")
+    parser.add_argument(
+        "--expected",
+        help="write the sixels the page should show, 80 x 75, to this PNG (the receiver's 16 x 3 in row 0 black)",
+    )
     args = parser.parse_args()
     enhanced = args.level in ("2.5", "3.5")
     if args.hold_mosaics and enhanced:
@@ -815,6 +937,7 @@ def main():
     if (args.no_objects or args.palette_from) and not enhanced:
         parser.error("--no-objects and --palette-from are for Levels 2.5 and 3.5")
 
+    COLOUR_SPACE["name"] = args.colour_space
     pixels = load(args.picture, args.display, args.smooth)
     cells = cell_pixel_indices()
     flat = pixels.reshape(-1, 3)
@@ -836,7 +959,7 @@ def main():
         bits = pattern_bits()
         shown = np.zeros_like(flat)
         for row, cells_of_row in enumerate(rows):
-            for column, (_, pattern, f, b) in enumerate(cells_of_row):
+            for column, (_, pattern, f, b) in enumerate(cells_of_row, start=first_column(row)):
                 for k, pixel in enumerate(cells[row, column]):
                     shown[pixel] = palette[f] if bits[pattern, k] else palette[b]
         attributes = sum(code < SEXTANT_BASE for cells_of_row in rows for code, *_ in cells_of_row)
