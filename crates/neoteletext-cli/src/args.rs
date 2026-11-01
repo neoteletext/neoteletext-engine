@@ -300,6 +300,23 @@ pub(crate) enum Command {
         #[command(flatten)]
         common: Common,
     },
+    /// Write a static channel's pages for a web browser into its folder:
+    /// `index.html`, and `NNN/index.html` for each page. A page shows nothing
+    /// of itself unless `--public` names it.
+    Html {
+        /// Common options; the input is the channel's folder.
+        #[command(flatten)]
+        common: Common,
+        /// The channel's address on the web, ending in `/`: what the "Open
+        /// in NeoTeletext" links name.
+        #[arg(long)]
+        address: String,
+        /// A page to show the web: its title, its picture, and its text
+        /// hidden and declared for search engines, all readable by anyone.
+        /// Give it once for each page.
+        #[arg(long)]
+        public: Vec<String>,
+    },
     /// Check TTI page files for authoring problems.
     Check {
         /// TTI files.

@@ -34,6 +34,11 @@ pub fn png(raster: &Raster) -> std::io::Result<Vec<u8>> {
     neoteletext_image::raster::png(raster).map_err(|error| std::io::Error::other(format!("{error:?}")))
 }
 
+/// A page's still picture, as PNG bytes.
+pub fn png_picture(grid: &Grid) -> std::io::Result<Vec<u8>> {
+    neoteletext_image::raster::picture(grid).map_err(|error| std::io::Error::other(format!("{error:?}")))
+}
+
 /// Encodes a raster as PPM bytes, transparent areas in `fill`.
 pub fn ppm(raster: &Raster, fill: Rgba) -> std::io::Result<Vec<u8>> {
     let mut out = Vec::new();

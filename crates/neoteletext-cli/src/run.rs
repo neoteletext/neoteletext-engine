@@ -46,6 +46,7 @@ pub fn run() -> ExitCode {
             commands::font_sets(&font, library_line.as_deref(), no_sandbox)
         }
         Command::Contents { common } => commands::contents(&common.options()),
+        Command::Html { common, address, public } => commands::html(&common.options(), &address, &public),
         Command::WriteText { set, page, input, output, no_sandbox } => {
             commands::write_text(&set, &page, &input, &output, no_sandbox)
         }

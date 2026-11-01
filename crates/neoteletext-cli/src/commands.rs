@@ -22,6 +22,7 @@ mod convert;
 mod fetch;
 mod font;
 #[cfg(feature = "keyboard")]
+mod html;
 mod keyboard;
 mod list;
 mod probe;
@@ -42,6 +43,7 @@ pub use contents::contents;
 pub use convert::convert;
 pub use fetch::fetch;
 pub use font::{convert_font, font_sets};
+pub use html::html;
 #[cfg(feature = "keyboard")]
 pub use keyboard::{KeyboardOptions, keyboard};
 pub use list::list;
