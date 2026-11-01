@@ -94,9 +94,14 @@ impl<R: RandomSource> ZxnetFeed<'_, R> {
         // they are skipped, not taken as a broken connection.
         self.frames = FrameReader::skipping_oversized();
         let mut writer = Writer::new(self.buffers.request);
-        let written =
-            ws::write_handshake_headers(&mut writer, self.channel.address(), &self.key, self.user_agent.as_bytes())
-                .and_then(|()| writer.put(crate::consts::CRLF));
+        let written = ws::write_handshake_headers(
+            &mut writer,
+            self.channel.address(),
+            &self.key,
+            self.user_agent.as_bytes(),
+            None,
+        )
+        .and_then(|()| writer.put(crate::consts::CRLF));
         if written.is_err() {
             self.dropped(now, true, sink);
             return;
@@ -135,7 +140,7 @@ impl<R: RandomSource> ZxnetFeed<'_, R> {
                     if complete {
                         let head = self.buffers.head.get(..self.head.len()).unwrap_or(&[]);
                         let accepted = http::parse_head(head, &mut |_| {})
-                            .is_ok_and(|head| ws::check_handshake(&head, &self.key).is_ok());
+                            .is_ok_and(|head| ws::check_handshake(&head, &self.key, None).is_ok());
                         if !accepted {
                             self.dropped(now, true, sink);
                             return;

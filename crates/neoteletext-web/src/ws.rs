@@ -10,7 +10,7 @@ mod handshake;
 mod reader;
 
 pub use frame::{write_close, write_frame, write_frame_with_mask};
-pub use handshake::{accept_for, check_handshake, new_key, write_handshake_headers};
+pub use handshake::{accept_for, check_handshake, new_key, offers_subprotocol, write_handshake_headers};
 pub use reader::FrameReader;
 
 /// Why a WebSocket connection failed.

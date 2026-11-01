@@ -181,7 +181,7 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
         self.cache = [None; CACHE_ENTRIES];
         self.forget_catalogues();
         self.navigation_pending = via_link;
-        if self.push.phase != PushPhase::Idle {
+        if !matches!(self.push.phase, PushPhase::Idle | PushPhase::Stopped) {
             self.close_push(sink);
         }
         self.forget_push_writes();

@@ -8,9 +8,10 @@ use super::{clock, neottx};
 use crate::pipe::{self, Frame, Notice};
 use neoteletext_core::types::Instant;
 use neoteletext_web::agent::{
-    Config, Event, Failure, Input, InputMessage, Output, PageBytes, Source as Came, Storage, UserAgent,
+    Config, Event, Failure, Input, InputMessage, Output, PageBytes, PushStop, Source as Came, Storage, UserAgent,
 };
 use neoteletext_web::channel::is_channel_address;
+use neoteletext_web::consts::PUSH_SUBPROTOCOL;
 use neoteletext_web::descriptor::Descriptor;
 use neoteletext_web::http::MediaType;
 use neoteletext_web::port::{ConnectionId, Pump};
@@ -116,6 +117,15 @@ fn agent_config(channel: bool, allow_local: &[IpAddr], proxied: bool) -> Config 
     config
 }
 
+/// Why a push connection ended for good, in words.
+fn stopped(stop: PushStop) -> String {
+    match stop {
+        PushStop::Closed(code) => format!("the channel closed the connection with stop code {code}"),
+        PushStop::Refused(status) => format!("the server refused the connection with status {status}"),
+        PushStop::WrongProtocol => format!("the server does not speak {PUSH_SUBPROTOCOL}"),
+    }
+}
+
 /// Acts on one of the agent's outputs that is not for the network: a timer
 /// moves the next tick, pages and notices go to the decoder, and a new
 /// service or a push connection's change is noted for the loop.
@@ -147,8 +157,7 @@ fn forward(
             send(&Frame::Notice(Notice::RedirectToOtherChannel(address.to_string())))
         }
         Output::Event(Event::Denied(denied)) => {
-            let place = if denied.place.is_empty() { "the channel" } else { denied.place };
-            send(&Frame::Notice(Notice::Message(format!("{place} was refused: status {}", denied.status))))
+            send(&Frame::Notice(Notice::Denied(denied.status, denied.place.to_owned())))
         }
         Output::Event(Event::BundleFailed(failure)) => {
             send(&Frame::Notice(Notice::Message(format!("index.t42 was not used: {failure:?}"))))
@@ -157,6 +166,10 @@ fn forward(
         Output::Event(Event::PushConnected) => {
             push_state.set(Some(true));
             Ok(())
+        }
+        Output::Event(Event::PushStopped(stop)) => {
+            push_state.set(Some(false));
+            send(&Frame::Notice(Notice::PushStopped(stopped(stop))))
         }
         // A bad message keeps the connection and says so with no wait.
         Output::Event(Event::PushLost { retry_in_us, .. }) if retry_in_us > 0 => {

@@ -116,7 +116,7 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
             PushPhase::Backoff { until } => Some(until),
             PushPhase::Connecting { deadline } | PushPhase::Handshake { deadline } => Some(deadline),
             PushPhase::Open { .. } => [self.heartbeat_due(), self.round_trip_due()].into_iter().flatten().min(),
-            PushPhase::Idle => None,
+            PushPhase::Idle | PushPhase::Stopped => None,
         };
         let queue =
             (self.fetch.exchange.is_none() && self.queue.iter().any(Option::is_some)).then_some(self.next_fetch_at);

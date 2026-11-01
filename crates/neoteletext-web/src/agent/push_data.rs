@@ -8,7 +8,7 @@ use neoteletext_core::packet::{Packet, decode_address, is_valid_stream_packet};
 use neoteletext_core::types::Instant;
 
 use super::cookies::cookie_store;
-use super::{Event, Output, PageBytes, PushProblem, Sink, Source, T42_PACKET, UserAgent, event};
+use super::{Event, Output, PageBytes, PushProblem, PushStop, Sink, Source, T42_PACKET, UserAgent, event};
 use crate::bytes::copy_prefix;
 use crate::consts::OPCODE_PONG;
 use crate::cookie::CookieRejected;
@@ -55,7 +55,10 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
             Some(WsMessage::Close(code)) => {
                 // RFC 6455 section 5.5.1: answer with a close, then end.
                 self.send_push_close(code.unwrap_or(crate::consts::CLOSE_NORMAL), sink);
-                self.push_lost(now, None, true, sink);
+                match code.filter(|&code| crate::consts::close_says_stop(code)) {
+                    Some(code) => self.push_stop(PushStop::Closed(code), sink),
+                    None => self.push_lost(now, None, true, sink),
+                }
                 return None;
             }
         }

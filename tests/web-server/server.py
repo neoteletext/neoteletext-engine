@@ -20,6 +20,9 @@ import time
 # REQ-WEB-012: the session lives in a cookie whose value starts with a
 # format version.
 SESSION_VERSION = "v1"
+# The push connection's subprotocol: PUSH_SUBPROTOCOL in the engine, which
+# the client insists on (INPUT.md section 5.1).
+SUBPROTOCOL = "neottx.7"
 
 
 def esc(code):
@@ -183,6 +186,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header("Upgrade", "websocket")
         self.send_header("Connection", "Upgrade")
         self.send_header("Sec-WebSocket-Accept", accept)
+        self.send_header("Sec-WebSocket-Protocol", SUBPROTOCOL)
         self.end_headers()
         # DEC-1459: a channel's receiver is sent T42 packets in binary
         # frames, never TTI text.

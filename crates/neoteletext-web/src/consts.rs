@@ -84,6 +84,8 @@ pub const STATUS_PERMANENT_REDIRECT: u16 = 308;
 pub const STATUS_NOT_FOUND: u16 = 404;
 /// 410 Gone: a site that removed its descriptor has none (RFC 9110 section 15.5.11).
 pub const STATUS_GONE: u16 = 410;
+/// `Too Many Requests` (RFC 6585 section 4): a limit, which passes.
+pub const STATUS_TOO_MANY_REQUESTS: u16 = 429;
 /// Statuses from 100 to 199 are informational and carry no body.
 pub const STATUS_INFORMATIONAL_FIRST: u16 = 100;
 /// The first successful status.
@@ -92,6 +94,8 @@ pub const STATUS_SUCCESS_FIRST: u16 = 200;
 pub const STATUS_REDIRECT_FIRST: u16 = 300;
 /// The first client error status.
 pub const STATUS_CLIENT_ERROR_FIRST: u16 = 400;
+/// The first server error status.
+pub const STATUS_SERVER_ERROR_FIRST: u16 = 500;
 /// One past the last valid status code (RFC 9110 section 15).
 pub const STATUS_LIMIT: u16 = 600;
 /// At most this many redirects are followed (REQ-WEB-003).
@@ -310,9 +314,45 @@ pub const SUBSCRIBE_ALL: &[u8] = b"all";
 /// The owner's instruction of 30 October 2026: "accumulate for N seconds
 /// (say 20) before logging at the client console".
 pub const INVALID_PACKET_REPORT_SECONDS: u64 = 20;
-/// The first reconnection delay (REQ-WEB-005).
+/// The WebSocket subprotocol of a channel's push connection (`INPUT.md`
+/// section 5.1, DEC-1759 lesson 14): `neottx.` and the input protocol's
+/// version, `neoteletext_input::VERSION`. The wire vectors' test asserts
+/// that the two agree, and the server imports this one.
+pub const PUSH_SUBPROTOCOL: &str = "neottx.7";
+/// The first of the close codes that say stop (`INPUT.md` section 5.1,
+/// DEC-1759 lesson 10): the fault will be there on the next attempt, so a
+/// receiver does not try again. A code of this range nobody has defined yet
+/// means stop too, so a new one needs no change in a receiver.
+pub const CLOSE_STOP_FIRST: u16 = 4000;
+/// The last of the close codes that say stop.
+pub const CLOSE_STOP_LAST: u16 = 4099;
+/// Stop: the receiver broke the WebSocket or the input protocol (`INPUT.md`
+/// section 8 rule 5).
+pub const CLOSE_BROKE_PROTOCOL: u16 = CLOSE_STOP_FIRST;
+/// Stop: HELLO named an input protocol the channel does not speak
+/// (section 6.1).
+pub const CLOSE_WRONG_VERSION: u16 = 4001;
+/// The first of the close codes that say try again.
+pub const CLOSE_RETRY_FIRST: u16 = 4100;
+/// The last of the close codes that say try again.
+pub const CLOSE_RETRY_LAST: u16 = 4199;
+/// Try again: the server is restarting (REQ-1036).
+pub const CLOSE_RESTARTING: u16 = CLOSE_RETRY_FIRST;
+// The two ranges, and the codes in them, are the ones `INPUT.md` names.
+const _: () = assert!(CLOSE_WRONG_VERSION <= CLOSE_STOP_LAST && CLOSE_STOP_LAST < CLOSE_RETRY_FIRST);
+/// Whether a close code says stop (`INPUT.md` section 5.1). Every other
+/// close, a code of the retry range, any other code or none at all, is
+/// tried again.
+#[must_use]
+pub const fn close_says_stop(code: u16) -> bool {
+    code >= CLOSE_STOP_FIRST && code <= CLOSE_STOP_LAST
+}
+/// The first reconnection delay's ceiling (REQ-WEB-005). The delay itself is
+/// drawn at random from the upper half of the ceiling
+/// ([`crate::agent`]): a server that restarts is not met by all its
+/// viewers in the same instant, and a delay is never close to nothing.
 pub const PUSH_RETRY_FIRST_US: u64 = MICROSECONDS_PER_SECOND;
-/// The longest reconnection delay (REQ-WEB-005).
+/// The highest reconnection delay's ceiling (REQ-WEB-005).
 pub const PUSH_RETRY_MAX_US: u64 = 60 * MICROSECONDS_PER_SECOND;
 /// REQ-WEB-005's heartbeat: a push WebSocket silent this long is pinged.
 /// 25 seconds is below the idle timeout of about 30 seconds common on NATs

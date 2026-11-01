@@ -4,7 +4,7 @@
 use super::*;
 use crate::base64;
 use crate::bytes::Writer;
-use crate::consts::{OPCODE_BINARY, OPCODE_CONTINUATION, OPCODE_PING, OPCODE_TEXT, WS_FIN};
+use crate::consts::{OPCODE_BINARY, OPCODE_CONTINUATION, OPCODE_PING, OPCODE_TEXT, PUSH_SUBPROTOCOL, WS_FIN};
 use crate::http;
 use crate::port::RandomSource;
 use crate::url::Url;
@@ -39,7 +39,7 @@ fn handshake_request_has_only_profile_headers() {
     let key = *b"dGhlIHNhbXBsZSBub25jZQ==";
     let mut buffer = [0u8; 512];
     let mut writer = Writer::new(&mut buffer);
-    write_handshake_headers(&mut writer, &url, &key, b"NeoTeletext/0.1 (macOS)").unwrap();
+    write_handshake_headers(&mut writer, &url, &key, b"NeoTeletext/0.1 (macOS)", None).unwrap();
     writer.put(crate::consts::CRLF).unwrap();
     let text = core::str::from_utf8(writer.written()).unwrap();
     assert_eq!(
@@ -49,13 +49,64 @@ fn handshake_request_has_only_profile_headers() {
     );
 }
 
+/// DEC-1759 lesson 14: a push connection asks for its subprotocol by name,
+/// and never sends `Origin`, which only a web page's script does.
+#[test]
+fn a_push_handshake_names_its_subprotocol_and_no_origin() {
+    let url = Url::parse("ws://tt.example/news/push").unwrap();
+    let key = *b"dGhlIHNhbXBsZSBub25jZQ==";
+    let mut buffer = [0u8; 512];
+    let mut writer = Writer::new(&mut buffer);
+    write_handshake_headers(&mut writer, &url, &key, b"NeoTeletext/0.1 (macOS)", Some(PUSH_SUBPROTOCOL)).unwrap();
+    let text = core::str::from_utf8(writer.written()).unwrap();
+    assert!(text.ends_with("Sec-WebSocket-Protocol: neottx.7\r\n"), "{text}");
+    assert!(!text.to_ascii_lowercase().contains("origin"), "{text}");
+}
+
+/// DEC-1759 lesson 14: the answer must name exactly what was asked for: a
+/// missing name, another version, and a name nobody asked for all fail.
+#[test]
+fn a_handshake_must_name_the_subprotocol_asked_for() {
+    let key = *b"dGhlIHNhbXBsZSBub25jZQ==";
+    let head_naming = |name: &str| {
+        let text = accepting_head(name);
+        let head = http::parse_head(text.as_bytes(), &mut |_| {}).unwrap();
+        (check_handshake(&head, &key, Some(PUSH_SUBPROTOCOL)), check_handshake(&head, &key, None))
+    };
+    assert_eq!(head_naming("Sec-WebSocket-Protocol: neottx.7\r\n"), (Ok(()), Err(WsError::Handshake)));
+    assert_eq!(head_naming(""), (Err(WsError::Handshake), Ok(())));
+    assert_eq!(head_naming("Sec-WebSocket-Protocol: neottx.6\r\n").0, Err(WsError::Handshake));
+    assert_eq!(head_naming("Sec-WebSocket-Protocol: NEOTTX.7\r\n").0, Err(WsError::Handshake));
+    let long = "Sec-WebSocket-Protocol: neottx.7 and a good deal more\r\n";
+    assert_eq!(head_naming(long), (Err(WsError::Handshake), Err(WsError::Handshake)));
+}
+
+/// A response head that accepts the test's key, with these header lines.
+fn accepting_head(headers: &str) -> std::string::String {
+    std::format!(
+        "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n{headers}\
+         Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n"
+    )
+}
+
+/// RFC 6455 section 4.2.2: a client may offer several, and a name is
+/// matched exactly.
+#[test]
+fn a_server_reads_what_a_client_offers() {
+    assert!(offers_subprotocol(b"neottx.7", PUSH_SUBPROTOCOL));
+    assert!(offers_subprotocol(b"chat, neottx.7 ,other", PUSH_SUBPROTOCOL));
+    for refused in [&b""[..], b"neottx.6", b"NEOTTX.7", b"neottx.70", b"neottx.7x", b"chat"] {
+        assert!(!offers_subprotocol(refused, PUSH_SUBPROTOCOL), "{refused:?}");
+    }
+}
+
 #[test]
 fn handshake_response_checks() {
     let key = *b"dGhlIHNhbXBsZSBub25jZQ==";
     let good = b"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\
                      Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n";
     let head = http::parse_head(good, &mut |_| {}).unwrap();
-    assert_eq!(check_handshake(&head, &key), Ok(()));
+    assert_eq!(check_handshake(&head, &key, None), Ok(()));
     let bad: [&[u8]; 5] = [
             b"HTTP/1.1 200 OK\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\nContent-Length: 0\r\n\r\n",
             b"HTTP/1.1 101 OK\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n",
@@ -65,7 +116,7 @@ fn handshake_response_checks() {
         ];
     for text in bad {
         let head = http::parse_head(text, &mut |_| {}).unwrap();
-        assert_eq!(check_handshake(&head, &key), Err(WsError::Handshake));
+        assert_eq!(check_handshake(&head, &key, None), Err(WsError::Handshake));
     }
 }
 

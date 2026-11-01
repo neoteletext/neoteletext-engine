@@ -45,6 +45,11 @@ impl ViewState {
             | Notice::Refresh(_) => {}
             Notice::RedirectToOtherChannel(address) => self.messages.push(format!("redirected to {address}")),
             Notice::PageRedirect(mpp, sub) => self.typing.redirected(mpp, sub),
+            Notice::Denied(status, place) => {
+                let place = if place.is_empty() { "the channel" } else { place.as_str() };
+                self.messages.push(format!("{place} was refused: status {status}"));
+            }
+            Notice::PushStopped(why) => self.messages.push(why),
         }
     }
 }

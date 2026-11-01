@@ -83,6 +83,12 @@ pub enum Notice {
     /// The channel's program sent the viewer to page `0xMPP`, at this
     /// sub-code (`INPUT.md` section 7.11).
     PageRedirect(u16, u16),
+    /// A selection ended with this HTTP status, for this place, or for the
+    /// whole channel when empty (`INPUT.md` section 7.12).
+    Denied(u16, String),
+    /// The push connection ended for good and is not tried again, and why
+    /// (`INPUT.md` section 5.1).
+    PushStopped(String),
     /// The service's name, from its descriptor or its host.
     ServiceName(String),
     /// The descriptor's aliases: page numbers, `0xMPP`, and their targets,

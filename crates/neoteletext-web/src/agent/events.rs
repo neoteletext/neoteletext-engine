@@ -210,6 +210,19 @@ pub enum PushProblem {
     Base64,
 }
 
+/// Why the push connection ended for good (`INPUT.md` section 5.1): trying
+/// again would meet the same fault.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum PushStop {
+    /// The channel closed it with this stop code.
+    Closed(u16),
+    /// The server refused the upgrade with this HTTP status.
+    Refused(u16),
+    /// The upgrade was accepted without the push subprotocol: another
+    /// server, or another version of this protocol.
+    WrongProtocol,
+}
+
 /// An event for the viewer and the application.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Event<'a> {
@@ -376,6 +389,8 @@ pub enum Event<'a> {
         /// What went wrong, if known.
         problem: Option<PushProblem>,
     },
+    /// The push connection ended for good: it is not tried again.
+    PushStopped(PushStop),
     /// A link named a service the descriptor does not list: the link is
     /// null (Appendix E.2 rule 2).
     LinkUnknown,

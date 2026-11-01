@@ -27,6 +27,8 @@ const SERVICE_NAME: u8 = b'M';
 const BUNDLE: u8 = b'b';
 const ALIASES: u8 = b'a';
 const REFRESH: u8 = b'e';
+const DENIED: u8 = b'd';
+const PUSH_STOPPED: u8 = b's';
 const KEY: u8 = b'y';
 const INPUT: u8 = b'n';
 /// The most strings one frame may carry.
@@ -153,6 +155,12 @@ pub fn write(out: &mut dyn Write, frame: &Frame) -> io::Result<()> {
         Frame::Notice(Notice::PageRedirect(mpp, sub)) => {
             put(out, PAGE_REDIRECT, &[mpp.to_be_bytes(), sub.to_be_bytes()].concat())
         }
+        Frame::Notice(Notice::Denied(status, place)) => {
+            let mut buffer = status.to_be_bytes().to_vec();
+            put_string(&mut buffer, place);
+            put(out, DENIED, &buffer)
+        }
+        Frame::Notice(Notice::PushStopped(why)) => put(out, PUSH_STOPPED, why.as_bytes()),
         Frame::Notice(Notice::ServiceName(name)) => put(out, SERVICE_NAME, name.as_bytes()),
         Frame::Notice(Notice::Bundle(mpp)) => put(out, BUNDLE, &mpp.to_be_bytes()),
         Frame::Notice(Notice::Aliases(aliases)) => {
@@ -236,6 +244,12 @@ fn notice_frame(kind: u8, payload: &[u8]) -> io::Result<Frame> {
             cursor.end()?;
             Frame::Notice(Notice::PageRedirect(mpp, sub))
         }
+        DENIED => {
+            let (status, place) = (cursor.u16()?, cursor.string()?);
+            cursor.end()?;
+            Frame::Notice(Notice::Denied(status, place))
+        }
+        PUSH_STOPPED => Frame::Notice(Notice::PushStopped(String::from_utf8(payload.to_vec()).map_err(|_| invalid())?)),
         SERVICE_NAME => Frame::Notice(Notice::ServiceName(String::from_utf8(payload.to_vec()).map_err(|_| invalid())?)),
         BUNDLE => Frame::Notice(Notice::Bundle(u16::from_be_bytes(payload.try_into().map_err(|_| invalid())?))),
         ALIASES => {

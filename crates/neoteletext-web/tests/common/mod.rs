@@ -24,6 +24,8 @@ pub enum Reply {
     WebSocketWith { interim: Vec<u8>, headers: String },
     /// Accept a WebSocket handshake with a wrong accept value.
     BadWebSocket,
+    /// Accept a WebSocket handshake naming this subprotocol, or none.
+    WebSocketNamed(Option<&'static str>),
     /// Say nothing.
     Silent,
     /// Close without answering.
@@ -39,6 +41,13 @@ struct Connection {
     close_when_drained: bool,
     request: Vec<u8>,
     upgraded: bool,
+}
+
+/// The header line that echoes the subprotocol `request` asked for, if any.
+fn echoed(request: &[u8]) -> String {
+    header_value(request, "Sec-WebSocket-Protocol")
+        .map(|name| format!("Sec-WebSocket-Protocol: {name}\r\n"))
+        .unwrap_or_default()
 }
 
 /// The replaying transport.
@@ -155,8 +164,9 @@ impl Replay {
             Reply::WebSocket(frames) => {
                 let key = header_value(&request, "Sec-WebSocket-Key").unwrap();
                 let accept = neoteletext_web::ws::accept_for(key.as_bytes());
+                let named = echoed(&request);
                 let head = format!(
-                    "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {}\r\n\r\n",
+                    "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n{named}Sec-WebSocket-Accept: {}\r\n\r\n",
                     core::str::from_utf8(&accept).unwrap()
                 );
                 conn.inbox.extend(head.as_bytes());
@@ -166,8 +176,9 @@ impl Replay {
             Reply::WebSocketWith { interim, headers } => {
                 let key = header_value(&request, "Sec-WebSocket-Key").unwrap();
                 let accept = neoteletext_web::ws::accept_for(key.as_bytes());
+                let named = echoed(&request);
                 let head = format!(
-                    "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n{headers}Sec-WebSocket-Accept: {}\r\n\r\n",
+                    "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n{named}{headers}Sec-WebSocket-Accept: {}\r\n\r\n",
                     core::str::from_utf8(&accept).unwrap()
                 );
                 conn.inbox.extend(interim);
@@ -175,9 +186,22 @@ impl Replay {
                 conn.upgraded = true;
             }
             Reply::BadWebSocket => {
-                conn.inbox.extend(
-                    b"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: AAAAAAAAAAAAAAAAAAAAAAAAAAA=\r\n\r\n",
+                let named = echoed(&request);
+                let head = format!(
+                    "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n{named}Sec-WebSocket-Accept: AAAAAAAAAAAAAAAAAAAAAAAAAAA=\r\n\r\n"
                 );
+                conn.inbox.extend(head.as_bytes());
+                conn.upgraded = true;
+            }
+            Reply::WebSocketNamed(subprotocol) => {
+                let key = header_value(&request, "Sec-WebSocket-Key").unwrap();
+                let accept = neoteletext_web::ws::accept_for(key.as_bytes());
+                let named = subprotocol.map(|name| format!("Sec-WebSocket-Protocol: {name}\r\n")).unwrap_or_default();
+                let head = format!(
+                    "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n{named}Sec-WebSocket-Accept: {}\r\n\r\n",
+                    core::str::from_utf8(&accept).unwrap()
+                );
+                conn.inbox.extend(head.as_bytes());
                 conn.upgraded = true;
             }
             Reply::Silent => {}

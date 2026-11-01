@@ -49,7 +49,8 @@ mod service;
 
 pub use config::{Buffers, Config, Storage};
 pub use events::{
-    BoundChange, Event, Failure, Input, InputMessage, Output, PageBytes, PushProblem, Sink, Source, Subscription,
+    BoundChange, Event, Failure, Input, InputMessage, Output, PageBytes, PushProblem, PushStop, Sink, Source,
+    Subscription,
 };
 
 /// The bytes of one T42 packet (REQ-INP-002).
@@ -210,6 +211,8 @@ struct CacheEntry {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum PushPhase {
     Idle,
+    /// It ended for good: nothing reconnects (`INPUT.md` section 5.1).
+    Stopped,
     Backoff {
         until: Instant,
     },

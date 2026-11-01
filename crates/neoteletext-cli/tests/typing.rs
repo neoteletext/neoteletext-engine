@@ -20,6 +20,7 @@ use neoteletext_formats::item::{Item as ReadItem, Reader};
 use neoteletext_formats::tti::TtiReader;
 use neoteletext_input::MAX_MESSAGE;
 use neoteletext_input::event::{Item, write};
+use neoteletext_web::consts::PUSH_SUBPROTOCOL;
 use neoteletext_web::ws::accept_for;
 
 /// Keys typed, a twentieth of a second apart (the browser's design,
@@ -175,7 +176,7 @@ fn serve(listener: &TcpListener) {
                     let accept = accept_for(key.as_bytes());
                     let _ = write!(
                         stream,
-                        "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {}\r\n\r\n",
+                        "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Protocol: {PUSH_SUBPROTOCOL}\r\nSec-WebSocket-Accept: {}\r\n\r\n",
                         String::from_utf8_lossy(&accept)
                     );
                     let mut keys = 0;

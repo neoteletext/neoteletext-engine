@@ -18,6 +18,9 @@ use neoteletext_web::agent::InputMessage;
 use neoteletext_web::agent::{Config, Input, Output, Source, Storage, Subscription, UserAgent};
 use neoteletext_web::bytes::Writer;
 use neoteletext_web::channel::SETTINGS_FILE;
+use neoteletext_web::consts::{
+    CLOSE_BROKE_PROTOCOL, CLOSE_RESTARTING, CLOSE_RETRY_LAST, CLOSE_STOP_FIRST, CLOSE_STOP_LAST, CLOSE_WRONG_VERSION,
+};
 use neoteletext_web::cookie::{CookieJar, Cookies};
 #[cfg(feature = "cookies")]
 use neoteletext_web::cookie::{CookieRejected, Site};
@@ -720,26 +723,112 @@ fn a_channels_redirect_reaches_the_application() {
     assert!(!has_event(&records, "InvalidPackets"), "{records:?}");
 }
 
+/// The delay each `PushLost` among `records` gave.
+fn retries(records: &[Rec]) -> Vec<u64> {
+    let lost = events(records);
+    lost.iter()
+        .filter_map(|event| event.strip_prefix("PushLost { retry_in_us: "))
+        .map(|rest| rest.split_once(',').unwrap().0.parse().unwrap())
+        .collect()
+}
+
+/// Whether a `PushLost` among `records` names `problem`.
+fn lost_for(records: &[Rec], problem: &str) -> bool {
+    events(records).iter().any(|event| event.starts_with("PushLost") && event.contains(problem))
+}
+
+/// `INPUT.md` section 5.1, DEC-1759 lesson 10: each delay is in the upper
+/// half of a ceiling that starts at a second and doubles to a minute.
 #[test]
 #[cfg(feature = "push")]
-fn websocket_push_reconnects_with_doubling_delays() {
+fn websocket_push_reconnects_at_random_under_a_doubling_ceiling() {
     let mut harness = push_service("ws://tt.example/push");
     harness.replay().reply("tt.example:80", Reply::WebSocket(server_frame(0x8, &1000u16.to_be_bytes())));
     harness.replay().reply("tt.example:80", Reply::Close);
     harness.replay().reply("tt.example:80", Reply::Close);
     let records = harness.open("http://tt.example/service.json");
-    assert!(has_event(&records, "PushLost { retry_in_us: 1000000, problem: None }"), "{records:?}");
+    let within = |delay: u64, ceiling: u64| {
+        let range = ceiling * SECOND / 2..=ceiling * SECOND;
+        assert!(range.contains(&delay), "{delay} outside {range:?}");
+    };
+    let delays = retries(&records);
+    assert_eq!(delays.len(), 1, "{records:?}");
+    within(delays[0], 1);
     let (_, close) = harness.replay().sent.last().unwrap().clone();
     assert_eq!(client_frames(&close).last(), Some(&(0x8, 1000u16.to_be_bytes().to_vec())), "close answered");
     harness.advance(SECOND);
-    assert!(has_event(&harness.take(), "PushLost { retry_in_us: 2000000"));
+    let second = retries(&harness.take());
+    assert_eq!(second.len(), 1);
+    within(second[0], 2);
     harness.advance(2 * SECOND);
-    assert!(has_event(&harness.take(), "PushLost { retry_in_us: 4000000"));
+    let third = retries(&harness.take());
+    assert_eq!(third.len(), 1);
+    within(third[0], 4);
+    assert_ne!(third[0], 4 * SECOND / 2, "drawn, not the bottom of the range");
     for _ in 0..8 {
         harness.replay().reply("tt.example:80", Reply::Close);
         harness.advance(60 * SECOND);
     }
-    assert!(has_event(&harness.take(), "PushLost { retry_in_us: 60000000"), "capped at 60 seconds");
+    let last = *retries(&harness.take()).last().unwrap();
+    within(last, 60);
+}
+
+/// `INPUT.md` section 5.1, DEC-1759 lesson 10: a stop code ends the
+/// connection for good, and a retry code, or a code nobody defined outside
+/// the stop range, is tried again.
+#[test]
+#[cfg(feature = "push")]
+fn a_stop_code_stops_and_a_retry_code_retries() {
+    for stop in [CLOSE_BROKE_PROTOCOL, CLOSE_WRONG_VERSION, CLOSE_STOP_LAST] {
+        let mut harness = push_service("ws://tt.example/push");
+        harness.replay().reply("tt.example:80", Reply::WebSocket(server_frame(0x8, &stop.to_be_bytes())));
+        let records = harness.open("http://tt.example/service.json");
+        assert!(has_event(&records, &format!("PushStopped(Closed({stop}))")), "{records:?}");
+        assert!(!has_event(&records, "PushLost"), "{records:?}");
+        let connects = harness.replay().connects.len();
+        harness.advance(120 * SECOND);
+        assert_eq!(harness.replay().connects.len(), connects, "no reconnection after {stop}");
+    }
+    for retry in [CLOSE_RESTARTING, CLOSE_RETRY_LAST, 1000, 1012, 1006, CLOSE_STOP_FIRST - 1, 4200, 4999] {
+        let mut harness = push_service("ws://tt.example/push");
+        harness.replay().reply("tt.example:80", Reply::WebSocket(server_frame(0x8, &retry.to_be_bytes())));
+        harness.replay().reply("tt.example:80", Reply::Close);
+        let records = harness.open("http://tt.example/service.json");
+        assert!(has_event(&records, "PushLost"), "{retry}: {records:?}");
+        assert!(!has_event(&records, "PushStopped"), "{retry}: {records:?}");
+        let connects = harness.replay().connects.len();
+        harness.advance(2 * SECOND);
+        assert_eq!(harness.replay().connects.len(), connects + 1, "reconnected after {retry}");
+    }
+}
+
+/// DEC-1759 lesson 14: a server that answers with no subprotocol, or
+/// another's, is the wrong server or the wrong version, and refuses are
+/// final; a limit or a server's own fault may pass, so they are tried again.
+#[test]
+#[cfg(feature = "push")]
+fn a_handshake_refused_stops_and_a_passing_fault_retries() {
+    for named in [None, Some("neottx.6")] {
+        let mut harness = push_service("ws://tt.example/push");
+        harness.replay().reply("tt.example:80", Reply::WebSocketNamed(named));
+        let records = harness.open("http://tt.example/service.json");
+        assert!(has_event(&records, "PushStopped(WrongProtocol)"), "{records:?}");
+    }
+    for status in [400_u16, 403, 404, 426] {
+        let mut harness = push_service("ws://tt.example/push");
+        let response = format!("HTTP/1.1 {status} No\r\nContent-Length: 0\r\n\r\n").into_bytes();
+        harness.replay().reply("tt.example:80", Reply::Bytes(response));
+        let records = harness.open("http://tt.example/service.json");
+        assert!(has_event(&records, &format!("PushStopped(Refused({status}))")), "{records:?}");
+    }
+    for status in [429_u16, 500, 503] {
+        let mut harness = push_service("ws://tt.example/push");
+        let response = format!("HTTP/1.1 {status} No\r\nContent-Length: 0\r\n\r\n").into_bytes();
+        harness.replay().reply("tt.example:80", Reply::Bytes(response));
+        let records = harness.open("http://tt.example/service.json");
+        assert!(has_event(&records, "PushLost"), "{status}: {records:?}");
+        assert!(!has_event(&records, "PushStopped"), "{status}: {records:?}");
+    }
 }
 
 #[test]
@@ -752,13 +841,13 @@ fn websocket_push_protocol_errors() {
     let records = harness.open("http://tt.example/service.json");
     // REQ-1462: a ragged message is discarded and counted, ⌈41 ÷ 42⌉ = 1.
     assert!(has_event(&records, "InvalidPackets { total: 1 }"), "{records:?}");
-    assert!(has_event(&records, "PushLost { retry_in_us: 1000000, problem: Some(WebSocket(Protocol))"), "{records:?}");
+    assert!(lost_for(&records, "Some(WebSocket(Protocol))"), "{records:?}");
     let (_, close) = harness.replay().sent.last().unwrap().clone();
     assert_eq!(client_frames(&close).last(), Some(&(0x8, 1002u16.to_be_bytes().to_vec())));
     // A wrong accept value fails the handshake.
     harness.replay().reply("tt.example:80", Reply::BadWebSocket);
     harness.advance(SECOND);
-    assert!(has_event(&harness.take(), "PushLost { retry_in_us: 2000000, problem: Some(WebSocket(Handshake))"));
+    assert!(lost_for(&harness.take(), "Some(WebSocket(Handshake))"));
 }
 
 #[test]
@@ -770,7 +859,7 @@ fn websocket_push_oversize_message() {
     let config = Config { push_limit: 200, ..Config::default() };
     let mut harness = Harness::new(config, replay);
     let records = harness.open("http://tt.example/service.json");
-    assert!(has_event(&records, "PushLost { retry_in_us: 1000000, problem: Some(WebSocket(TooBig))"), "{records:?}");
+    assert!(lost_for(&records, "Some(WebSocket(TooBig))"), "{records:?}");
 }
 
 #[test]
@@ -1730,7 +1819,7 @@ fn a_silent_websocket_is_pinged_then_given_up() {
     harness.advance(9 * SECOND);
     assert!(!has_event(&harness.take(), "PushLost"));
     harness.advance(SECOND);
-    assert!(has_event(&harness.take(), "PushLost { retry_in_us: 1000000, problem: Some(Failure(Timeout)) }"));
+    assert!(lost_for(&harness.take(), "Some(Failure(Timeout))"));
 }
 
 /// REQ-WEB-035, REQ-RCH-010, decision E.133: messages given together leave in one send,

@@ -152,7 +152,7 @@ impl WebSocket {
         let mut writer = Writer::new(&mut buffer);
         // The relay is not a channel: the engine names itself (REQ-WEB-031).
         let user_agent = neoteletext_web::user_agent::UserAgentString::default();
-        ws::write_handshake_headers(&mut writer, url, &key, user_agent.as_bytes())
+        ws::write_handshake_headers(&mut writer, url, &key, user_agent.as_bytes(), None)
             .map_err(|_| Error::Limit("the handshake"))?;
         writer.put(b"\r\n").map_err(|_| Error::Limit("the handshake"))?;
         let length = writer.len();
@@ -179,7 +179,8 @@ impl WebSocket {
         if parsed.status != neoteletext_web::consts::STATUS_SWITCHING_PROTOCOLS {
             return Err(Error::Status(parsed.status));
         }
-        ws::check_handshake(&parsed, &key).map_err(|_| Error::Protocol("a WebSocket handshake that does not check"))?;
+        ws::check_handshake(&parsed, &key, None)
+            .map_err(|_| Error::Protocol("a WebSocket handshake that does not check"))?;
         // Decrypted bytes the handshake's last read left in the TLS
         // connection stay there, and are read before the socket's next.
         let (socket, tls) = match stream {

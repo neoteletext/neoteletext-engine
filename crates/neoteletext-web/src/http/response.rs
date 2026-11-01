@@ -66,6 +66,10 @@ impl HeadCollector {
     }
 }
 
+/// The longest `Sec-WebSocket-Protocol` kept of a response: the name of the
+/// push connection's, which is the only one this client asks for.
+const MAX_SUBPROTOCOL_LENGTH: usize = crate::consts::PUSH_SUBPROTOCOL.len();
+
 /// What the profile reads from a response head (REQ-WEB-014).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 // Each flag is a separate header fact of REQ-WEB-014's table.
@@ -101,9 +105,12 @@ pub struct ResponseHead {
     pub connection_upgrade: bool,
     /// `Sec-WebSocket-Accept`.
     pub websocket_accept: Option<[u8; WEBSOCKET_ACCEPT_TEXT]>,
-    /// `Sec-WebSocket-Extensions` or `Sec-WebSocket-Protocol` present,
-    /// neither of which this client asks for (RFC 6455 section 4.1).
-    pub websocket_extras: bool,
+    /// `Sec-WebSocket-Extensions` present, which this client never asks
+    /// for (RFC 6455 section 4.1).
+    pub websocket_extensions: bool,
+    /// `Sec-WebSocket-Protocol`, as the server named it; empty when longer
+    /// than any name this client asks for, so that it matches none.
+    pub websocket_protocol: Option<TextBuf<MAX_SUBPROTOCOL_LENGTH>>,
     /// `Clear-Site-Data` names `"cookies"` or `"*"` (decision E.104).
     pub clear_cookies: bool,
 }
@@ -186,8 +193,10 @@ fn read_header(
         head.upgrade_websocket = value.eq_ignore_ascii_case(UPGRADE_WEBSOCKET);
     } else if is(header::SEC_WEBSOCKET_ACCEPT) {
         head.websocket_accept = value.try_into().ok();
-    } else if is(header::SEC_WEBSOCKET_EXTENSIONS) || is(header::SEC_WEBSOCKET_PROTOCOL) {
-        head.websocket_extras = true;
+    } else if is(header::SEC_WEBSOCKET_EXTENSIONS) {
+        head.websocket_extensions = true;
+    } else if is(header::SEC_WEBSOCKET_PROTOCOL) {
+        head.websocket_protocol = Some(TextBuf::from_bytes(value).unwrap_or_default());
     } else if is(header::SET_COOKIE) {
         on_set_cookie(raw_value);
     } else if is(header::CLEAR_SITE_DATA) {
@@ -257,7 +266,8 @@ pub fn parse_head(bytes: &[u8], on_set_cookie: &mut dyn FnMut(&[u8])) -> Result<
         upgrade_websocket: false,
         connection_upgrade: false,
         websocket_accept: None,
-        websocket_extras: false,
+        websocket_extensions: false,
+        websocket_protocol: None,
         clear_cookies: false,
     };
     let mut framing = FramingHeaders::default();

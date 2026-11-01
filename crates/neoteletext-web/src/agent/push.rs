@@ -4,17 +4,35 @@
 use neoteletext_core::types::Instant;
 
 use super::cookies::{cookie_store, store_response_cookies, write_cookie_header};
-use super::{Event, Failure, Output, PushPhase, PushProblem, Sink, UserAgent, event};
+use super::{Event, Failure, Output, PushPhase, PushProblem, PushStop, Sink, UserAgent, event};
 use crate::bytes::{Overflow, Writer};
 use crate::consts::{
     CRLF, OPCODE_PING, PUSH_PING_AFTER_US, PUSH_PONG_WITHIN_US, PUSH_RETRY_FIRST_US, PUSH_RETRY_MAX_US,
-    ROUND_TRIP_EVERY_US,
+    PUSH_SUBPROTOCOL, ROUND_TRIP_EVERY_US, STATUS_CLIENT_ERROR_FIRST, STATUS_SERVER_ERROR_FIRST,
+    STATUS_SWITCHING_PROTOCOLS, STATUS_TOO_MANY_REQUESTS,
 };
 use crate::cookie::Site;
-use crate::http;
+use crate::http::{self, ResponseHead};
 use crate::port::{ConnectionId, RandomSource, Security};
 use crate::url::{IpAddress, Url};
 use crate::ws::{self, FrameReader};
+
+/// Why a handshake's answer means no attempt will ever do better (`INPUT.md`
+/// section 5.1), or `None` when it may: a client error but for a limit, or
+/// an upgrade to something other than the push subprotocol, which is another
+/// server or another version (DEC-1759 lesson 14).
+fn handshake_stop(head: &ResponseHead) -> Option<PushStop> {
+    match head.status {
+        STATUS_SWITCHING_PROTOCOLS => {
+            let named = head.websocket_protocol.as_ref().map(crate::bytes::TextBuf::as_bytes);
+            (named != Some(PUSH_SUBPROTOCOL.as_bytes())).then_some(PushStop::WrongProtocol)
+        }
+        STATUS_TOO_MANY_REQUESTS => None,
+        status => (STATUS_CLIENT_ERROR_FIRST..STATUS_SERVER_ERROR_FIRST)
+            .contains(&status)
+            .then_some(PushStop::Refused(status)),
+    }
+}
 
 impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'_, R, SLOTS, COOKIE_BYTES> {
     pub(super) fn push_connect(&mut self, now: Instant, sink: &mut Sink<'_>) {
@@ -60,7 +78,8 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
         let mut writer = Writer::new(self.buffers.push_request);
         self.push.key = ws::new_key(&mut self.random);
         let written = (|| -> Result<bool, Overflow> {
-            ws::write_handshake_headers(&mut writer, &url, &self.push.key, self.named_as.as_bytes())?;
+            let subprotocol = Some(PUSH_SUBPROTOCOL);
+            ws::write_handshake_headers(&mut writer, &url, &self.push.key, self.named_as.as_bytes(), subprotocol)?;
             // Cookies go with the upgrade too (REQ-WEB-006).
             let path = folder.as_ref().map_or(url.path(), Url::path);
             let truncated = write_cookie_header(
@@ -88,8 +107,9 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
         sink(Output::Send { connection: ConnectionId::Push, bytes });
     }
 
-    /// The push connection failed or closed: wait, then reconnect with a
-    /// doubling delay (REQ-WEB-005).
+    /// The push connection failed or closed: wait, then reconnect, with a
+    /// ceiling that doubles and a random delay under it (REQ-WEB-005,
+    /// `INPUT.md` section 5.1).
     pub(super) fn push_lost(&mut self, now: Instant, problem: Option<PushProblem>, close: bool, sink: &mut Sink<'_>) {
         if self.push.url.is_none() || self.push.phase == PushPhase::Idle && problem.is_none() {
             return;
@@ -101,11 +121,34 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
         if self.push.healthy {
             self.push.delay_us = PUSH_RETRY_FIRST_US;
         }
-        let delay = self.push.delay_us;
-        self.push.delay_us = delay.saturating_mul(2).min(PUSH_RETRY_MAX_US);
+        let ceiling = self.push.delay_us;
+        self.push.delay_us = ceiling.saturating_mul(2).min(PUSH_RETRY_MAX_US);
+        let delay = self.spread(ceiling);
         self.push.phase = PushPhase::Backoff { until: Instant(now.0.saturating_add(delay)) };
         self.push.healthy = false;
         event(sink, Event::PushLost { retry_in_us: delay, problem });
+    }
+
+    /// A delay in the upper half of `ceiling`, at random: viewers a restart
+    /// sent away together do not all come back at once, and none comes back
+    /// at once. At most the ceiling, so `RESUME_HOLD_MS`, which counts the
+    /// ceilings of the first five retries, still covers them.
+    fn spread(&mut self, ceiling: u64) -> u64 {
+        let mut drawn = [0_u8; size_of::<u64>()];
+        self.random.fill(&mut drawn);
+        let half = ceiling / 2;
+        let above = u64::from_le_bytes(drawn).checked_rem(ceiling.saturating_sub(half).saturating_add(1));
+        half.saturating_add(above.unwrap_or(0))
+    }
+
+    /// The push connection ended for good (`INPUT.md` section 5.1): no
+    /// reconnection follows, and only opening the channel again starts one.
+    pub(super) fn push_stop(&mut self, stop: PushStop, sink: &mut Sink<'_>) {
+        self.close_push(sink);
+        self.forget_push_writes();
+        self.push.phase = PushPhase::Stopped;
+        self.push.healthy = false;
+        event(sink, Event::PushStopped(stop));
     }
 
     pub(super) fn push_received(&mut self, now: Instant, mut input: &[u8], sink: &mut Sink<'_>) {
@@ -140,7 +183,9 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
                         _ => return,
                     }
                 }
-                PushPhase::Idle | PushPhase::Backoff { .. } | PushPhase::Connecting { .. } => return,
+                PushPhase::Idle | PushPhase::Stopped | PushPhase::Backoff { .. } | PushPhase::Connecting { .. } => {
+                    return;
+                }
             }
         }
     }
@@ -173,9 +218,12 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
                 return false;
             }
         };
-        let accepted = ws::check_handshake(&head, &self.push.key).map_err(PushProblem::WebSocket);
-        if let Err(problem) = accepted {
-            self.push_lost(now, Some(problem), true, sink);
+        let accepted = ws::check_handshake(&head, &self.push.key, Some(PUSH_SUBPROTOCOL));
+        if let Err(problem) = accepted.map_err(PushProblem::WebSocket) {
+            match handshake_stop(&head) {
+                Some(stop) => self.push_stop(stop, sink),
+                None => self.push_lost(now, Some(problem), true, sink),
+            }
             return false;
         }
         self.push.phase = PushPhase::Open { heard: now, pinged: None };
