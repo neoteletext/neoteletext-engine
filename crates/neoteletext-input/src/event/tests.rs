@@ -575,3 +575,97 @@ fn a_query_is_the_maps_pairs() {
         assert!(!is_page_parameters(select, query), "{query}");
     }
 }
+
+/// Every item of `bytes`, read whole, or the fault.
+fn items(bytes: &[u8]) -> Result<Vec<std::string::String>, InputError> {
+    let mut read = Vec::new();
+    read_message(bytes, &mut |item| read.push(format!("{item:?}")))?;
+    Ok(read)
+}
+
+/// `bytes` through a [`StreamDecoder`], one byte at a time, and what it holds.
+fn streamed(bytes: &[u8]) -> (Result<Vec<std::string::String>, InputError>, Vec<u8>) {
+    let mut decoder = StreamDecoder::<MAX_STREAM_ITEM>::default();
+    let mut read = Vec::new();
+    for byte in bytes {
+        if let Err(error) = decoder.push(&[*byte], &mut |item| read.push(format!("{item:?}"))) {
+            return (Err(error), decoder.holding().to_vec());
+        }
+    }
+    (Ok(read), decoder.holding().to_vec())
+}
+
+/// DEC-1759 lesson 17: a character cut by an event can never be finished, so
+/// it is refused there. It was held as text waiting for more, and every
+/// event after it with it, until the buffer filled.
+#[test]
+fn a_character_cut_by_an_event_is_refused_at_once() {
+    const FOCUS: [u8; 2] = [EVENT, FOCUS_IN];
+    for cut in [&[0xE2, 0x82][..], &[0xC3], &[0xF0, 0x9F, 0x98]] {
+        let message = [cut, &FOCUS].concat();
+        assert_eq!(items(&message), Err(InputError::Wire(WireError::Utf8)), "{message:02X?}");
+        let (read, held) = streamed(&message);
+        assert_eq!(read, Err(InputError::Wire(WireError::Utf8)), "{message:02X?}");
+        assert_eq!(held, [cut, &FOCUS[..1]].concat(), "stopped at the event, not waiting past it");
+        let after_text = [b"ok", cut, &FOCUS].concat();
+        assert_eq!(items(&after_text), Err(InputError::Wire(WireError::Utf8)));
+    }
+    // At the end of what has come a character may still be finished.
+    let (read, held) = streamed(&[b'o', b'k', 0xE2, 0x82]);
+    assert_eq!(read, Ok(std::vec!["Text(\"ok\")".to_owned()]));
+    assert_eq!(held, [0xE2, 0x82]);
+}
+
+/// DEC-1759 lessons 16 and 17: an unknown extension's payload is skipped by
+/// its length whatever it holds, event bytes included, and the stream goes
+/// on at the next item; an unknown core or reserved type is a protocol error
+/// and nothing after it is read.
+#[test]
+fn a_payload_is_never_read_as_commands() {
+    let forged = [EVENT, FOCUS_OUT, EVENT, KEY, 0xFF, 0xFF, 0x00];
+    let mut message = std::vec![EVENT, 0x7F, u8::try_from(forged.len()).unwrap()];
+    message.extend_from_slice(&forged);
+    message.extend_from_slice(&[EVENT, FOCUS_IN]);
+    let expected = Ok(std::vec![
+        format!("{:?}", Item::Event(Event::Extension { kind: 0x7F, payload: &forged })),
+        format!("{:?}", Item::Event(Event::FocusIn))
+    ]);
+    assert_eq!(items(&message), expected);
+    assert_eq!(streamed(&message).0, expected);
+    for reserved in [0x00, 0x0B, 0x3F, 0x80, 0xFE, 0xFF] {
+        let message = [EVENT, reserved, EVENT, FOCUS_IN];
+        assert_eq!(items(&message), Err(InputError::Type(reserved)), "{reserved:02X}");
+        assert_eq!(streamed(&message).0, Err(InputError::Type(reserved)), "{reserved:02X}");
+    }
+}
+
+/// DEC-1759 lesson 17: text cannot forge an event, since `0xFF` is no byte
+/// of UTF-8: `\u{FF}` is two other bytes.
+#[test]
+fn text_cannot_forge_an_event() {
+    let mut out = [0; 16];
+    let length = write(&Item::Text("\u{FF}\u{FF}"), &mut out).unwrap();
+    assert!(!out[..length].contains(&EVENT));
+    assert_eq!(items(&out[..length]), Ok(std::vec!["Text(\"\u{ff}\u{ff}\")".to_owned()]));
+}
+
+/// DEC-1759 lesson 17: whatever arrives, what is held is an event begun or
+/// the start of one character: every short sequence of the bytes that matter.
+#[test]
+fn a_decoder_never_holds_anything_past_a_cut_character() {
+    const BYTES: [u8; 8] = [EVENT, FOCUS_IN, 0x40, 0x7F, 0xC3, 0xE2, 0x82, b'a'];
+    for first in BYTES {
+        for second in BYTES {
+            for third in BYTES {
+                for fourth in BYTES {
+                    let (read, held) = streamed(&[first, second, third, fourth]);
+                    if read.is_ok() && !held.is_empty() {
+                        let event = held.first() == Some(&EVENT);
+                        let character = held.len() < 4 && !held.contains(&EVENT);
+                        assert!(event || character, "held {held:02X?}");
+                    }
+                }
+            }
+        }
+    }
+}

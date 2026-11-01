@@ -28,6 +28,8 @@ use neoteletext_web::http::MediaType;
 use neoteletext_web::port::{ConnectionId, Pump, Security};
 #[cfg(feature = "push")]
 use neoteletext_web::records::redirect::{RedirectRecord, encode};
+#[cfg(feature = "push")]
+use neoteletext_web::records::write_packets;
 use neoteletext_web::url::IpAddress;
 
 const PUBLIC: IpAddress = IpAddress::V4([93, 184, 216, 34]);
@@ -848,6 +850,25 @@ fn websocket_push_protocol_errors() {
     harness.replay().reply("tt.example:80", Reply::BadWebSocket);
     harness.advance(SECOND);
     assert!(lost_for(&harness.take(), "Some(WebSocket(Handshake))"));
+}
+
+/// DEC-1759 lesson 16, `INPUT.md` section 7.10: a record of a type nobody
+/// defined yet is skipped: not counted as invalid, and the connection stays,
+/// so the next record is read.
+#[test]
+#[cfg(feature = "push")]
+fn an_unknown_record_type_is_skipped() {
+    const UNKNOWN_RECORD_TYPE: u8 = 200;
+    let mut harness = push_service("ws://tt.example/push");
+    let mut message = Vec::new();
+    let mut packet = |packet: neoteletext_core::packet::Packet| message.extend_from_slice(&packet.bytes);
+    write_packets(UNKNOWN_RECORD_TYPE, &[1, 2, 3], 3, 1, &mut packet).unwrap();
+    encode(RedirectRecord::Address("https://elsewhere.example/channel/302"), 3, 2, &mut packet).unwrap();
+    harness.replay().reply("tt.example:80", Reply::WebSocket(server_frame(0x2, &message)));
+    let records = harness.open("http://tt.example/service.json");
+    assert!(has_event(&records, "Redirect(Address(\"https://elsewhere.example/channel/302\"))"), "{records:?}");
+    assert!(!has_event(&records, "InvalidPackets"), "{records:?}");
+    assert!(!has_event(&records, "PushLost"), "{records:?}");
 }
 
 #[test]

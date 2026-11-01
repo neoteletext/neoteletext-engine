@@ -43,8 +43,10 @@ fn read_text(bytes: &[u8]) -> Result<(Item<'_>, usize), InputError> {
     let text = match core::str::from_utf8(run) {
         Ok(text) => text,
         // A character cut by the end of the bytes so far: the whole ones
-        // before it, or wait for more.
-        Err(error) if error.error_len().is_none() => {
+        // before it, or wait for more. Cut by an event it is malformed: no
+        // later byte can finish it, and waiting would hold every command
+        // after it as text (DEC-1759 lesson 17, `INPUT.md` section 5.3).
+        Err(error) if error.error_len().is_none() && end == bytes.len() => {
             let whole = run.get(..error.valid_up_to()).unwrap_or(&[]);
             if whole.is_empty() {
                 return Err(InputError::Wire(WireError::Incomplete));
@@ -368,6 +370,13 @@ impl<const N: usize> Default for StreamDecoder<N> {
 }
 
 impl<const N: usize> StreamDecoder<N> {
+    /// The bytes held of an item not yet whole: an event begun, or the
+    /// start of one character, never anything after it.
+    #[must_use]
+    pub fn holding(&self) -> &[u8] {
+        self.held.get(..self.length).unwrap_or(&[])
+    }
+
     /// Takes `bytes`, passing each whole item to `each`, and keeps what is
     /// not yet whole.
     ///

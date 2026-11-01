@@ -3,17 +3,49 @@
 //! split anywhere, and what the writer writes of it reads back the same.
 //! Every stamp and SELECT it accepts is one a channel accepts (REQ-1555,
 //! REQ-INT-140), and held input fed from it ends with nothing held
-//! (REQ-207).
+//! (REQ-207). The `0xFF` escape never loses its place (DEC-1759 lesson 17).
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
 use neoteletext_input::MAX_MESSAGE;
 use neoteletext_input::event::{
-    Event, Item, MAX_STREAM_ITEM, Select, Stamp, StreamDecoder, is_page_parameters, read_message, write,
+    EVENT, Event, FOCUS_IN, Item, MAX_STREAM_ITEM, Select, Stamp, StreamDecoder, is_page_parameters, read_message,
+    write,
 };
 use neoteletext_input::held::Held;
 
+/// An extension type no protocol version has used.
+const UNKNOWN_EXTENSION: u8 = 0x7F;
+/// The longest payload wrapped: its length is one varint byte.
+const UNKNOWN_PAYLOAD: usize = 127;
+
+/// What a decoder may hold: an event begun, or the start of one character.
+/// Anything else is commands waiting as text (DEC-1759 lesson 17).
+fn holds_one_item(held: &[u8]) -> bool {
+    held.is_empty() || held.first() == Some(&EVENT) || (held.len() < 4 && !held.contains(&EVENT))
+}
+
 fuzz_target!(|data: &[u8]| {
+    // DEC-1759 lesson 17: fed anything in any pieces, a decoder stops at a
+    // fault or holds at most one item's start, and a stream's position is
+    // never lost: whatever the input's bytes, they are an unknown
+    // extension's payload and the event after them is read as an event.
+    let mut decoder = StreamDecoder::<MAX_STREAM_ITEM>::default();
+    for piece in data.chunks(data.first().map_or(1, |&byte| usize::from(byte % 7) + 1)) {
+        if decoder.push(piece, &mut |_| {}).is_err() {
+            break;
+        }
+        assert!(holds_one_item(decoder.holding()), "held {:02X?}", decoder.holding());
+    }
+    if let Some(payload) = data.get(..data.len().min(UNKNOWN_PAYLOAD)) {
+        let mut wrapped = vec![EVENT, UNKNOWN_EXTENSION, payload.len() as u8];
+        wrapped.extend_from_slice(payload);
+        wrapped.extend_from_slice(&[EVENT, FOCUS_IN]);
+        let mut read = Vec::new();
+        read_message(&wrapped, &mut |item| read.push(format!("{item:?}"))).expect("a whole extension and an event");
+        let skipped = format!("{:?}", Item::Event(Event::Extension { kind: UNKNOWN_EXTENSION, payload }));
+        assert_eq!(read, [skipped, format!("{:?}", Item::Event(Event::FocusIn))]);
+    }
     // SELECT built from the input reads back as it was, at any value.
     if let [a, b, c, d, ..] = *data
         && let Some(select) = Select::new(u16::from_le_bytes([a, b]), u16::from_le_bytes([c, d]))
