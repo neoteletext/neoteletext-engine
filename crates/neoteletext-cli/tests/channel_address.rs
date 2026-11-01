@@ -1,6 +1,9 @@
 //! The addresses `neottx` opens live (DEC-1710, TODO-1657): a program asked
 //! for a channel's folder fetches the channel's settings, and one asked for
-//! anything else fetches that address as a descriptor.
+//! anything else fetches that address as a descriptor. Only a build with
+//! live feeds opens addresses: any other says so and connects to nothing, so
+//! `first_request` would wait for ever.
+#![cfg(feature = "live")]
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 
 use std::io::{BufRead, BufReader, Write};
