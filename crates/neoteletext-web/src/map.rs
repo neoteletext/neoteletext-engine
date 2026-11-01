@@ -22,8 +22,10 @@ pub const CONTENTS: &str = "contents";
 pub const WALL: &str = "wall";
 /// Between a page and its sub-page in a place (REQ-1693 item 1).
 const SUBPAGE_MARK: u8 = b'/';
-/// The length of `://` in an address.
-const SCHEME_MARK_LENGTH: usize = 3;
+/// What ends a scheme (RFC 3986 section 3).
+const SCHEME_MARK: &str = "://";
+/// What separates the segments of a path (RFC 3986 section 3.3).
+const SLASH: u8 = b'/';
 /// Between the pairs of page parameters (REQ-1693 item 5).
 const PAIR_MARK: u8 = b'&';
 /// Between a parameter's name and its value (REQ-1693 item 5).
@@ -118,13 +120,15 @@ impl<'a> Place<'a> {
 /// place is ignored, so a folder named as a place belongs to the channel
 /// above it (rule 2).
 fn named_place(location: &str) -> Option<(&str, Place<'_>)> {
-    let after_scheme = location.find("://")?.checked_add(SCHEME_MARK_LENGTH)?;
-    let path = location.get(after_scheme..)?.find('/')?.checked_add(after_scheme)?;
+    let bytes = location.as_bytes();
+    let scheme_end = bytes.windows(SCHEME_MARK.len()).position(|window| window == SCHEME_MARK.as_bytes())?;
+    let after_scheme = scheme_end.checked_add(SCHEME_MARK.len())?;
+    let path = bytes.get(after_scheme..)?.iter().position(|&byte| byte == SLASH)?.checked_add(after_scheme)?;
     let trimmed = location.strip_suffix('/').unwrap_or(location);
-    let last = trimmed.rfind('/').filter(|&slash| slash >= path)?;
+    let last = last_slash(trimmed).filter(|&slash| slash >= path)?;
     let last_start = last.checked_add(1)?;
     // A sub-page is two segments, so it is tried before its last alone.
-    if let Some(previous) = trimmed.get(..last)?.rfind('/').filter(|&slash| slash >= path) {
+    if let Some(previous) = last_slash(trimmed.get(..last)?).filter(|&slash| slash >= path) {
         let start = previous.checked_add(1)?;
         let place = Place::read(trimmed.get(start..)?).filter(Place::names_sub_page);
         if let Some(place) = place {
@@ -132,6 +136,13 @@ fn named_place(location: &str) -> Option<(&str, Place<'_>)> {
         }
     }
     Some((location.get(..last_start)?, Place::read(trimmed.get(last_start..)?)?))
+}
+
+/// Where the last `/` of `text` is. Scanned byte by byte, as the address
+/// parser does, because the standard library's text searches carry panic
+/// paths (REQ-GEN-019).
+fn last_slash(text: &str) -> Option<usize> {
+    text.as_bytes().iter().rposition(|&byte| byte == SLASH)
 }
 
 /// `text` split around the first `mark`, which is left out of both. Scanned
