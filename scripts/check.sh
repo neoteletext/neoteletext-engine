@@ -62,6 +62,23 @@ check_no_panic_lists() {
 }
 
 
+# DEC-1726 item 5: the owner expects to change the entry file's name and the
+# link scheme, and documents name them literally, so they must say what the
+# constants say.
+check_document_names() {
+    local entry_file link_scheme named
+    entry_file="$(sed -n 's/^pub const SETTINGS_FILE: &str = "\(.*\)";$/\1/p' crates/neoteletext-web/src/channel.rs)"
+    link_scheme="$(sed -n 's/^pub const LINK_SCHEME: &str = "\(.*\)";$/\1/p' crates/neoteletext-core/src/consts/link.rs)"
+    [[ -n "$entry_file" && -n "$link_scheme" ]] || { echo "the constants were not found" >&2; return 1; }
+    for named in docs/user-guide.md ../neoteletext-common/SERVER.md; do
+        grep -qF "\`$link_scheme\`" "$named" || { echo "$named does not name $link_scheme" >&2; return 1; }
+    done
+    for named in docs/user-guide.md ../neoteletext-common/CHANNEL.md ../neoteletext-common/SERVER.md; do
+        grep -qF "$entry_file\`" "$named" || { echo "$named does not name $entry_file" >&2; return 1; }
+    done
+    echo "ok: the documents name $entry_file and $link_scheme"
+}
+
 commit_steps() {
     step "rustfmt (REQ-GEN-006)"
     cargo fmt --all --check
@@ -71,6 +88,9 @@ commit_steps() {
 
     step "the no-panic lint list is the same in every crate root (REQ-SEC-003, DEVELOPMENT.md section 6)"
     check_no_panic_lists
+
+    step "the documents name the entry file and the link scheme the code does (DEC-1726)"
+    check_document_names
 }
 
 push_steps() {
