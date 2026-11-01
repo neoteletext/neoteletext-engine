@@ -131,7 +131,7 @@ The implementation follows the requirements in rdm:
 - **Optional modules:**
   - input format readers and writers;
   - the software data slicer;
-  - the web-native module (area WEB, section F.19). It is written sans-IO. It reads pages from web servers over HTTP or HTTPS, WebSockets and server-sent events, keeps cookie sessions, runs forms, and includes the zxnet live feed (REQ-INP-022). Web pages arrive as TTI or T42 and go through the same decoder. The port supplies the network transport through `embedded-io`-style traits.
+  - the web-native module (area WEB, section F.19). It is written sans-IO. It reads pages from web servers over HTTP or HTTPS and WebSockets, keeps cookie sessions, runs forms, and includes the zxnet live feed (REQ-INP-022). Web pages arrive as TTI or T42 and go through the same decoder. The port supplies the network transport through `embedded-io`-style traits.
   - the pixel-format helpers;
   - the image writers;
   - the command-line program `neottx`.

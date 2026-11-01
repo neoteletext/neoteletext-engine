@@ -2,8 +2,8 @@
 """A local web teletext test server (REQ-WEB-013, REQ-WEB-012).
 
 Test code, not part of the library. Serves a service descriptor, TTI pages
-with ETag validators, a versioned session cookie, server-sent event and
-WebSocket push, and fault injection. Standard library only.
+with ETag validators, a versioned session cookie, WebSocket push, and fault
+injection. Standard library only.
 
 Usage: server.py PORT
 """
@@ -117,7 +117,7 @@ DESCRIPTOR = """{{
   "name": "Test service",
   "initial_page": "100",
   "page_template": "/pages/{{mpp}}.tti",
-  "push": {{"address": "/push", "method": "sse"}},
+  "push": {{"address": "ws://127.0.0.1:{port}/push", "method": "websocket"}},
   "services": [{{"name": "other", "display_name": "Other service", "descriptor": "http://127.0.0.1:{port}/other.json"}}]
 }}"""
 
@@ -173,27 +173,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return None
             return self.send(200, body, "text/x-teletext-tti", cookies + [("ETag", etag)])
         if path == "/push":
-            return self.push_sse()
-        if path == "/ws":
             return self.push_websocket()
         return self.fault(path)
-
-    def push_sse(self):
-        self.send_response(200)
-        self.send_header("Content-Type", "text/event-stream")
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        page = PAGES["200"].replace("Sunny, 21 degrees.", "Pushed: rain, 15 degrees.")
-        try:
-            for _ in range(3):
-                lines = "".join("data: " + line + "\n" for line in page.split("\r\n") if line)
-                self.wfile.write(("event: page\nid: 1\n" + lines + "\n").encode("latin-1"))
-                self.wfile.flush()
-                time.sleep(1)
-        except (BrokenPipeError, ConnectionResetError):
-            pass
-        self.close_connection = True
-        return None
 
     def push_websocket(self):
         key = self.headers.get("Sec-WebSocket-Key", "")
@@ -205,7 +186,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         # DEC-1459: a channel's receiver is sent T42 packets in binary
         # frames, never TTI text.
-        payload = t42_page(PAGES["200"])
+        page = PAGES["200"].replace("Sunny, 21 degrees.", "Pushed: rain, 15 degrees.")
+        payload = t42_page(page)
         header = bytes([0x82, 126]) + len(payload).to_bytes(2, "big") if len(payload) >= 126 else bytes([0x82, len(payload)])
         try:
             self.wfile.write(header + payload)
