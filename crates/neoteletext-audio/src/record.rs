@@ -50,6 +50,11 @@ pub const TYPE_SUBPAGES: u8 = 10;
 /// leaves it alone.
 pub const TYPE_REDIRECT: u8 = 11;
 
+/// Record type: a selection refused, or a program not answering (`INPUT.md`
+/// section 7.12, REQ-1481, DEC-1730), read by the web agent; this receiver
+/// leaves it alone.
+pub const TYPE_DENIED: u8 = 12;
+
 /// Whether a record type belongs to the input profile, which shares this
 /// profile's carriage and is left alone by the audio receiver.
 #[must_use]
@@ -70,6 +75,7 @@ pub const fn is_channel_type(kind: u8) -> bool {
         || kind == TYPE_LINKS
         || kind == TYPE_SUBPAGES
         || kind == TYPE_REDIRECT
+        || kind == TYPE_DENIED
 }
 
 /// OBJECT's fixed fields: handle, generation, id, codec, rate, block bytes,

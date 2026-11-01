@@ -711,11 +711,11 @@ fn a_channels_redirect_reaches_the_application() {
     let mut message = Vec::new();
     let mut packet = |packet: neoteletext_core::packet::Packet| message.extend_from_slice(&packet.bytes);
     encode(RedirectRecord::Page { page, subcode: SubCode::ANY }, 3, 1, &mut packet).unwrap();
-    encode(RedirectRecord::Address("https://elsewhere.example/channel/#302"), 3, 2, &mut packet).unwrap();
+    encode(RedirectRecord::Address("https://elsewhere.example/channel/302"), 3, 2, &mut packet).unwrap();
     harness.replay().reply("tt.example:80", Reply::WebSocket(server_frame(0x2, &message)));
     let records = harness.open("http://tt.example/service.json");
     assert!(has_event(&records, "Redirect(Page {"), "{records:?}");
-    assert!(has_event(&records, "Redirect(Address(\"https://elsewhere.example/channel/#302\"))"), "{records:?}");
+    assert!(has_event(&records, "Redirect(Address(\"https://elsewhere.example/channel/302\"))"), "{records:?}");
     assert!(!has_event(&records, "InvalidPackets"), "{records:?}");
 }
 
@@ -1561,42 +1561,27 @@ fn push_target(address: &str) -> String {
 /// ignored, so nothing is fetched for the address.
 #[test]
 fn an_address_with_a_refused_fragment_opens_nothing() {
-    for address in ["http://site.example/a/#G02", "http://site.example/a/302.tti#303", "http://site.example/a/#WALL"] {
+    for address in ["http://site.example/a/#302", "http://site.example/a/302.tti#303", "http://site.example/a/#wall"] {
         let mut harness = site_harness(Config::default());
         assert!(has_event(&harness.open_channel(address), "DescriptorFailed(Address(Fragment))"), "{address}");
         assert!(harness.replay().requests_to("site.example:80").is_empty(), "{address}");
     }
 }
 
-/// REQ-1674 item 1: an address's query goes, as written, on the upgrade
-/// request to the push address, and an address with none sends none. What
-/// follows `#` is never sent (REQ-1693 item 1).
+/// DEC-1730: a query goes with the selection, in SELECT, and never on the
+/// push connection, whose address is the same for every page of a channel.
 #[test]
 #[cfg(feature = "push")]
-fn a_channels_query_goes_on_its_push_connection() {
-    assert_eq!(push_target("http://site.example/a/?id=7&b=%20x"), "/a/push?id=7&b=%20x");
-    assert_eq!(push_target("http://site.example/a/"), "/a/push");
-    assert_eq!(push_target("http://site.example/a/#302"), "/a/push");
-    assert_eq!(push_target("http://site.example/a/?id=7#302?page=1"), "/a/push?id=7");
-}
-
-/// REQ-1674 item 3: the longest query the address limit allows arrives
-/// whole, and one with no room left is said, not dropped.
-#[test]
-#[cfg(feature = "push")]
-fn a_query_as_long_as_an_address_may_be() {
-    let room = neoteletext_web::consts::MAX_URL_LENGTH - "ws://site.example/a/push?".len();
-    let longest = "q".repeat(room);
-    let target = push_target(&format!("http://site.example/a/?{longest}"));
-    assert_eq!(target, format!("/a/push?{longest}"));
-
-    let mut harness = site_harness(Config::default());
-    harness.replay().reply("site.example:80", json_response(br#"{"push":{"method":"websocket"}}"#));
-    let records = harness.open_channel(&format!("http://site.example/a/?{longest}qq"));
-    assert!(
-        records.iter().any(|record| matches!(record, Rec::Event(event) if event.contains("TooLong"))),
-        "{records:?}"
-    );
+fn the_push_connection_carries_no_query_and_no_page() {
+    for address in [
+        "http://site.example/a/",
+        "http://site.example/a/?id=7",
+        "http://site.example/a/302",
+        "http://site.example/a/302?page=1",
+        "http://site.example/a/302/0002",
+    ] {
+        assert_eq!(push_target(address), "/a/push", "{address}");
+    }
 }
 
 /// Finding F-42 (decision E.114 item 2): a response from outside the

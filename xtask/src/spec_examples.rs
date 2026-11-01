@@ -106,10 +106,10 @@ fn select() -> Result<Example, String> {
         fields: vec![
             Field { offset: 0, length: 1, bits: None, name: "event marker", value: "0xFF".to_owned() },
             Field { offset: 1, length: 1, bits: None, name: "SELECT", value: "0x40".to_owned() },
-            Field { offset: 2, length: 1, bits: None, name: "payload length", value: "6".to_owned() },
-            Field { offset: 3, length: 2, bits: None, name: "page", value: "0x302".to_owned() },
-            Field { offset: 5, length: 1, bits: None, name: "sub-code", value: "0x0002".to_owned() },
-            Field { offset: 6, length: 3, bits: None, name: "page parameters", value: EXAMPLE_PARAMETERS.to_owned() },
+            Field { offset: 2, length: 1, bits: None, name: "payload length", value: "12".to_owned() },
+            Field { offset: 3, length: 8, bits: None, name: "page and sub-page", value: "302/0002".to_owned() },
+            Field { offset: 11, length: 1, bits: None, name: "query mark", value: "?".to_owned() },
+            Field { offset: 12, length: 3, bits: None, name: "page parameters", value: EXAMPLE_PARAMETERS.to_owned() },
         ],
         bytes,
     })
@@ -180,7 +180,7 @@ mod tests {
     #[test]
     fn the_select_example_is_what_the_input_protocol_writes() {
         let example = select().expect("the example encodes");
-        assert_eq!(example.bytes, [0xFF, 0x40, 0x06, 0x82, 0x06, 0x02, 0x61, 0x3D, 0x31]);
+        assert_eq!(example.bytes, [&[0xFF, 0x40, 12][..], b"302/0002?a=1"].concat());
     }
 
     #[test]
@@ -196,6 +196,6 @@ mod tests {
     fn the_file_names_its_examples_and_producer() {
         let text = document("abc", &[select().expect("it encodes")]).expect("it writes");
         assert!(text.contains("\"commit\": \"abc\""), "{text}");
-        assert!(text.contains("\"bytes\": \"FF 40 06 82 06 02 61 3D 31\""), "{text}");
+        assert!(text.contains("\"bytes\": \"FF 40 0C 33 30 32 2F 30 30 30 32 3F 61 3D 31\""), "{text}");
     }
 }

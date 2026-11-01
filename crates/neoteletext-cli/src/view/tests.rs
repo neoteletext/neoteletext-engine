@@ -236,7 +236,7 @@ fn opening_a_page_sends_select_and_never_page() {
     typing.tell_selection(&mut source, 0x100, 0x0002, 0);
     assert_eq!(
         source.0,
-        [vec![0xFF, 0x40, 0x04, 0x80, 0x02, 0xFF, 0x7E], vec![0xFF, 0x40, 0x03, 0x80, 0x02, 0x02]],
+        [[&[0xFF, 0x40, 3][..], b"100"].concat(), [&[0xFF, 0x40, 8][..], b"100/0002"].concat()],
         "the page, then its sub-page, and no message of type 0x0A"
     );
 }

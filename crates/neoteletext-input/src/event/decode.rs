@@ -10,6 +10,7 @@ use super::{
     NEVER_UTF8, NEVER_UTF8_FROM, PASTE, Point, RESIZE, RESUME, Resume, SELECT, Select, Stamp, TOUCH, TOUCH_RESERVED,
     Touch, WHEEL, WHEEL_RESERVED, Wheel, check_text, is_page_parameters, printable,
 };
+use super::{PAGE_DIGITS, QUERY_MARK, SUB_DIGITS, SUB_MARK, SUBCODE_ANY};
 use crate::caps::{AGENT, RETIRED_PAGE_BIT};
 use crate::keys::is_code;
 use crate::wire::{Reader, WireError};
@@ -220,18 +221,55 @@ fn read_touch(payload: &[u8]) -> Result<Event<'static>, InputError> {
     Ok(Event::Touch(Touch { on, action: read_action(flags), id, column, row, pixels }))
 }
 
-/// SELECT's payload (REQ-INT-140, DEC-1527, DEC-1715): `page` uv and `sub`
-/// uv, then the page parameters to its end; every bound of [`Select::new`]
-/// and of [`is_page_parameters`] a protocol error.
+/// The radix of a hexadecimal digit.
+const HEX_RADIX: u32 = 16;
+
+/// SELECT's payload (INPUT.md section 5.4, DEC-1730): the place as text, in
+/// the URL map's one spelling, with capitals: `302`, `302/0002`, `302?a=1`.
+/// Empty means no page. Anything else is a protocol error, and so is every
+/// bound of [`Select::new`] and of [`is_page_parameters`].
 fn read_select(payload: &[u8]) -> Result<Event<'_>, InputError> {
     let refused = InputError::BadValue("select");
-    let mut reader = Reader::new(payload);
-    let (page, sub) = (reader.uv()?, reader.uv()?);
-    let narrow = |value: u32| u16::try_from(value).map_err(|_| refused);
-    let select = Select::new(narrow(page)?, narrow(sub)?).ok_or(refused)?;
-    let parameters = payload.get(reader.used()..).unwrap_or(&[]);
-    let parameters = core::str::from_utf8(parameters).map_err(|_| refused)?;
+    let text = core::str::from_utf8(payload).map_err(|_| refused)?;
+    if text.is_empty() {
+        let none = Select::new(0, SUBCODE_ANY).ok_or(refused)?;
+        return Ok(Event::Select(none, ""));
+    }
+    let (selection, parameters) = match text.as_bytes().iter().position(|&byte| byte == QUERY_MARK) {
+        Some(at) => {
+            let (selection, rest) = text.split_at(at);
+            let parameters = rest.get(1..).ok_or(refused)?;
+            if parameters.is_empty() {
+                return Err(refused);
+            }
+            (selection, parameters)
+        }
+        None => (text, ""),
+    };
+    let (page, sub) = match selection.as_bytes().iter().position(|&byte| byte == SUB_MARK) {
+        Some(at) => {
+            let (page, rest) = selection.split_at(at);
+            (page, hex::<SUB_DIGITS>(rest.get(1..).ok_or(refused)?).filter(|&sub| sub != SUBCODE_ANY).ok_or(refused)?)
+        }
+        None => (selection, SUBCODE_ANY),
+    };
+    let page = hex::<PAGE_DIGITS>(page).filter(|&page| page != 0).ok_or(refused)?;
+    let select = Select::new(page, sub).ok_or(refused)?;
     if is_page_parameters(select, parameters) { Ok(Event::Select(select, parameters)) } else { Err(refused) }
+}
+
+/// Exactly `N` hexadecimal digits in capitals, the map's one spelling.
+fn hex<const N: usize>(text: &str) -> Option<u16> {
+    if text.len() != N {
+        return None;
+    }
+    text.bytes().try_fold(0_u16, |value, digit| {
+        let nibble = match digit {
+            b'0'..=b'9' | b'A'..=b'F' => char::from(digit).to_digit(HEX_RADIX)?,
+            _ => return None,
+        };
+        value.checked_mul(16)?.checked_add(u16::try_from(nibble).ok()?)
+    })
 }
 
 /// RESUME's payload (REQ-RCH-013): the token and the acknowledgement, big-endian, exactly.

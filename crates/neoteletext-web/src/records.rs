@@ -1,7 +1,7 @@
 //! The channel's records on its push connection beside its pages
 //! (`neoteletext-common/INPUT.md` section 7): the index (type 6), LOG
-//! (type 7), `SET_COOKIE` (type 8), LINKS (type 9), SUBPAGES (type 10) and
-//! REDIRECT (type 11), in the audio profile's record frame
+//! (type 7), `SET_COOKIE` (type 8), LINKS (type 9), SUBPAGES (type 10),
+//! REDIRECT (type 11) and DENIED (type 12), in the audio profile's record frame
 //! (REQ-AUD-003) on data channel 12, packet 4/31, cut into as many
 //! fragments as a record needs (section 7.10).
 //!
@@ -16,13 +16,16 @@ use neoteletext_audio::record::{RecordError, record_length, split, write};
 use neoteletext_core::packet::Packet;
 
 pub mod cookie;
+pub mod denied;
 pub mod index;
 pub mod links;
 pub mod log;
 pub mod redirect;
 pub mod subpages;
 
-pub use neoteletext_audio::record::{TYPE_INDEX, TYPE_LINKS, TYPE_LOG, TYPE_REDIRECT, TYPE_SET_COOKIE, TYPE_SUBPAGES};
+pub use neoteletext_audio::record::{
+    TYPE_DENIED, TYPE_INDEX, TYPE_LINKS, TYPE_LOG, TYPE_REDIRECT, TYPE_SET_COOKIE, TYPE_SUBPAGES,
+};
 
 /// Why a record was refused: it is discarded whole, and its packets are
 /// counted as invalid (REQ-1462, `INPUT.md` section 7.10).
@@ -87,6 +90,8 @@ pub enum ChannelRecord<'a> {
     SubPages(subpages::SubPagesRecord<'a>),
     /// A channel's redirect (section 7.11).
     Redirect(redirect::RedirectRecord<'a>),
+    /// A selection refused, or a program not answering (section 7.12).
+    Denied(denied::DeniedRecord<'a>),
 }
 
 /// What one packet gave the reader.
@@ -102,7 +107,7 @@ pub enum Read<'a> {
     Invalid(usize),
 }
 
-/// Reassembles the index, LOG, `SET_COOKIE`, LINKS, SUBPAGES and REDIRECT records from a push stream's
+/// Reassembles the index, LOG, `SET_COOKIE`, LINKS, SUBPAGES, REDIRECT and DENIED records from a push stream's
 /// packets (section 7.10). A record is followed from its fragment 0, which
 /// names its type, so the audio profile's records and the one-fragment
 /// cursor and control records, which other readers take, are never copied
@@ -138,7 +143,10 @@ impl RecordReader {
         let Ok(fragment) = result else { return Read::Invalid(1) };
         if fragment.index == 0 {
             let kind = fragment.data.get(1).copied().unwrap_or(0);
-            if !matches!(kind, TYPE_INDEX | TYPE_LOG | TYPE_SET_COOKIE | TYPE_LINKS | TYPE_SUBPAGES | TYPE_REDIRECT) {
+            if !matches!(
+                kind,
+                TYPE_INDEX | TYPE_LOG | TYPE_SET_COOKIE | TYPE_LINKS | TYPE_SUBPAGES | TYPE_REDIRECT | TYPE_DENIED
+            ) {
                 return Read::Nothing;
             }
             self.reassembler.clear();
@@ -156,7 +164,7 @@ impl RecordReader {
     }
 }
 
-/// Reads one whole record of the six types, frame and CRC included.
+/// Reads one whole record of the seven types, frame and CRC included.
 ///
 /// # Errors
 /// The frame's failures, another record type, or any field of the
@@ -170,6 +178,7 @@ pub fn read_record(bytes: &[u8]) -> Result<ChannelRecord<'_>, RecordFault> {
         TYPE_LINKS => links::read(body).map(ChannelRecord::Links),
         TYPE_SUBPAGES => subpages::read(body).map(ChannelRecord::SubPages),
         TYPE_REDIRECT => redirect::read(body).map(ChannelRecord::Redirect),
+        TYPE_DENIED => denied::read(body).map(ChannelRecord::Denied),
         _ => Err(RecordFault::BadValue("record type")),
     }
 }

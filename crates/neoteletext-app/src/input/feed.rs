@@ -67,7 +67,9 @@ pub fn opening(input: &str) -> Result<Opening, String> {
             page: Some((page, subcode.unwrap_or(SubCode::ANY))),
             parameters: parameters.unwrap_or_default().to_owned(),
         },
-        Some(Place::Contents | Place::Wall) | None => Opening::default(),
+        // DEC-1730: an address's query goes with the selection it arrives at.
+        None => Opening { page: None, parameters: read.query.unwrap_or_default().to_owned() },
+        Some(Place::Contents | Place::Wall) => Opening::default(),
     })
 }
 

@@ -276,16 +276,16 @@ pub fn parse_address(text: &str) -> Result<ChannelAddress, ChannelError> {
     Ok(ChannelAddress { folder, file })
 }
 
-/// Whether an address opens as a channel, a folder or a channel's own file,
-/// rather than as a service's descriptor (DEC-1710): the one reader of
-/// channels' addresses says.
+/// Whether an address opens as a channel, by the URL map, rather than as a
+/// service's descriptor (DEC-1710): the one reader of channels' addresses
+/// says. Its query and fragment are left out, so that a fragment the map
+/// refuses is refused by the reader that opens it and not sent to a service.
 #[must_use]
 pub fn is_channel_address(text: &str) -> bool {
-    parse_address(location(text)).is_ok()
+    crate::map::MapAddress::read_opened(location(text)).is_ok()
 }
 
-/// An address without its query and its fragment. A viewer's address may
-/// have both (REQ-1693): a channel's folder is the address without them.
+/// An address without its query and its fragment.
 #[must_use]
 pub fn location(text: &str) -> &str {
     let end = text.as_bytes().iter().position(|&byte| matches!(byte, QUERY_MARK | FRAGMENT_MARK));

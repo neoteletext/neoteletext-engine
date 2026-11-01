@@ -8,6 +8,7 @@ use crate::cookie::CookieRejected;
 use crate::descriptor::DescriptorError;
 use crate::http::{HttpError, MediaType, Method};
 use crate::port::{ConnectionId, NetInput, NetOutput, Security};
+use crate::records::denied::DeniedRecord;
 use crate::records::index::IndexRecord;
 use crate::records::links::LinksRecord;
 use crate::records::redirect::RedirectRecord;
@@ -358,6 +359,9 @@ pub enum Event<'a> {
     /// or to an address. The application moves the viewer: it alone can
     /// judge an address by its own rules. Nothing else moves a viewer.
     Redirect(RedirectRecord<'a>),
+    /// A selection was refused, or the channel's program is not answering
+    /// (`INPUT.md` section 7.12, REQ-1481).
+    Denied(DeniedRecord<'a>),
     /// A live channel (its `channel.json` names a push connection,
     /// REQ-WEB-018) is opening its connection: it asks for no bundle, page
     /// file or `contents.txt`, and is connecting, never a page not found,

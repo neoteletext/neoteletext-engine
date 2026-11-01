@@ -45,6 +45,18 @@ const FRAGMENT_MARK: u8 = b'#';
 /// page and sub-page the connection has selected; a channel that does not know it
 /// skips it.
 pub const SELECT: u8 = 0x40;
+/// Digits of a page in SELECT's text (`SERVER.md` section 4.5).
+const PAGE_DIGITS: usize = 3;
+/// Digits of a sub-code in SELECT's text (`SERVER.md` section 4.5).
+const SUB_DIGITS: usize = 4;
+/// Between a page and its sub-page in SELECT's text.
+const SUB_MARK: u8 = b'/';
+/// Before the page parameters in SELECT's text.
+const QUERY_MARK: u8 = b'?';
+/// The longest place in SELECT's text, before any parameters: `302/0002`.
+pub(crate) const SELECT_PLACE: usize = PAGE_DIGITS + 1 + SUB_DIGITS;
+/// The sub-code that names no particular sub-page (EN 300 706 clause 9.6.1).
+const SUBCODE_ANY: u16 = neoteletext_core::limits::SUBCODE_ANY;
 /// HOVER's type, an extension (INPUT.md section 5.4, decision E.129): a
 /// channel that does not know it skips it.
 pub const HOVER: u8 = 0x43;

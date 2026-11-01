@@ -1,6 +1,5 @@
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic, reason = "a test")]
 
-use neoteletext_core::limits::SUBCODE_ANY;
 use neoteletext_core::packet::Packet;
 use neoteletext_core::types::{PageAddress, SubCode};
 
@@ -35,10 +34,10 @@ fn page(mpp: u16) -> PageAddress {
     PageAddress::from_mpp(mpp).unwrap()
 }
 
-/// INPUT.md section 7.11, REQ-1688: the page form is one fragment, for the
-/// page and for one of its sub-pages.
+/// INPUT.md section 7.11, REQ-1688: a place is one fragment, for the page
+/// and for one of its sub-pages.
 #[test]
-fn the_page_form_reaches_a_receiver_in_one_fragment() {
+fn a_place_reaches_a_receiver_in_one_fragment() {
     for subcode in [SubCode::ANY, SubCode::new(0), SubCode::new(0x0002)] {
         let redirect = RedirectRecord::Page { page: page(0x1A0), subcode };
         let written = packets(redirect);
@@ -54,7 +53,7 @@ fn the_longest_address_reaches_a_receiver_whole() {
     let mut address = String::from("https://news.example/");
     address.extend(core::iter::repeat_n('a', MAX_ADDRESS - address.len()));
     let written = packets(RedirectRecord::Address(&address));
-    assert_eq!(written.len(), fragments(MAX_ADDRESS + 1));
+    assert_eq!(written.len(), fragments(MAX_ADDRESS));
     received(&written, |read| assert_eq!(read, RedirectRecord::Address(&address)));
 }
 
@@ -67,16 +66,20 @@ fn an_address_too_long_for_the_record_is_refused() {
     assert_eq!(refused, Err(RecordFault::Length));
 }
 
-/// INPUT.md section 7.11: a channel's address, with a page after it.
+/// DEC-1730 item 6: the body is the address itself, as a `Location` is, and
+/// a page is a place.
 #[test]
-fn an_address_may_name_a_page() {
+fn the_body_is_the_address_itself() {
     for address in
-        ["http://news.example/teletext/", "https://news.example/teletext/#302", "https://news.example/#302:0002"]
+        ["http://news.example/teletext/", "https://news.example/teletext/302", "https://news.example/302/0002"]
     {
-        let mut body = std::vec![1];
-        body.extend_from_slice(address.as_bytes());
-        assert_eq!(read(&body), Ok(RedirectRecord::Address(address)));
+        assert_eq!(read(address.as_bytes()), Ok(RedirectRecord::Address(address)));
     }
+    assert_eq!(read(b"302"), Ok(RedirectRecord::Page { page: page(0x302), subcode: SubCode::ANY }));
+    assert_eq!(read(b"302/0002"), Ok(RedirectRecord::Page { page: page(0x302), subcode: SubCode::new(2) }));
+    assert!(read(b"302?a=1").is_err(), "a place carries no parameters");
+    assert!(read(b"contents").is_err(), "only a page");
+    assert!(read(b"https://news.example/#302").is_err(), "no fragment");
 }
 
 /// REQ-1688 item 3: only an `http` or `https` address, as the engine's
@@ -97,24 +100,19 @@ fn only_http_and_https_addresses_are_read() {
         "https://news.example/\u{e9}",
         "https://news.example/#",
     ] {
-        let mut body = std::vec![1];
-        body.extend_from_slice(address.as_bytes());
-        assert_eq!(read(&body), Err(RecordFault::BadValue("redirect address")), "{address}");
+        if !address.is_empty() {
+            assert_eq!(read(address.as_bytes()), Err(RecordFault::BadValue("redirect address")), "{address}");
+        }
     }
 }
 
-/// INPUT.md section 7.11 and 7.10: a field outside its range is refused
-/// whole, and so are bytes after the last field.
+/// INPUT.md section 7.11 and 7.10: what is neither is refused whole.
 #[test]
 fn a_record_that_breaks_a_rule_is_refused() {
-    let any = SUBCODE_ANY.to_be_bytes();
     assert_eq!(read(&[]), Err(RecordFault::Length));
-    assert_eq!(read(&[2, 1, 0, any[0], any[1]]), Err(RecordFault::BadValue("redirect form")));
-    assert_eq!(read(&[0, 1, 0]), Err(RecordFault::Length));
-    assert_eq!(read(&[0, 1, 0, any[0], any[1], 0]), Err(RecordFault::Length));
-    assert_eq!(read(&[0, 9, 0, any[0], any[1]]), Err(RecordFault::BadValue("redirect page")));
-    assert_eq!(read(&[0, 0, 0xFF, any[0], any[1]]), Err(RecordFault::BadValue("redirect page")));
-    assert_eq!(read(&[0, 1, 0xFF, any[0], any[1]]), Err(RecordFault::BadValue("redirect page")), "a reserved number");
-    assert_eq!(read(&[0, 1, 0, 0x40, 0]), Err(RecordFault::BadValue("redirect sub-code")));
-    assert_eq!(read(&[0, 1, 0, 0, 0x80]), Err(RecordFault::BadValue("redirect sub-code")), "outside the thirteen bits");
+    assert_eq!(read(b"900"), Err(RecordFault::BadValue("redirect address")));
+    assert_eq!(read(b"1FF"), Err(RecordFault::BadValue("redirect page")), "a reserved number");
+    assert_eq!(read(b"302/3F7F"), Err(RecordFault::BadValue("redirect address")));
+    assert_eq!(read(b"302/0080"), Err(RecordFault::BadValue("redirect address")), "outside the thirteen bits");
+    assert_eq!(read(&[0xFF, 0xFE]), Err(RecordFault::BadValue("redirect address")), "not text");
 }

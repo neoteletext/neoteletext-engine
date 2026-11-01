@@ -49,11 +49,11 @@ fn the_size_examples_of_section_5_8() {
     );
     assert_eq!(
         bytes(&Item::Event(Event::Select(Select { page: 0x100, sub: 0x3F7F }, ""))),
-        [0xFF, 0x40, 0x04, 0x80, 0x02, 0xFF, 0x7E]
+        [&[0xFF, 0x40, 3][..], b"100"].concat()
     );
     assert_eq!(
         bytes(&Item::Event(Event::Select(Select { page: 0x302, sub: 0x0002 }, "a=1"))),
-        [0xFF, 0x40, 0x06, 0x82, 0x06, 0x02, 0x61, 0x3D, 0x31]
+        [&[0xFF, 0x40, 12][..], b"302/0002?a=1"].concat()
     );
     let at = Point { column: 10, row: 5, pixels: None, mods: 0 };
     let dot = |x| Point { column: 10, row: 5, pixels: Some((x, 100)), mods: 0 };
@@ -465,18 +465,20 @@ fn select_round_trips_at_every_bound() {
         assert_eq!(read(&written), Ok(Some((item, written.len()))), "{page:#X} {sub:#X}");
     }
     let any = Item::Event(Event::Select(Select::new(0x100, 0x3F7F).unwrap(), ""));
-    assert_eq!(bytes(&any), [0xFF, 0x40, 0x04, 0x80, 0x02, 0xFF, 0x7E]);
+    assert_eq!(bytes(&any), [&[0xFF, 0x40, 3][..], b"100"].concat());
+    let none = Item::Event(Event::Select(Select::new(0, 0x3F7F).unwrap(), ""));
+    assert_eq!(bytes(&none), [0xFF, 0x40, 0], "no page is an empty place");
 }
 
-// DEC-1715: page parameters follow the two numbers, up to the bound, and
-// reach a channel fed a byte at a time.
+// DEC-1715, DEC-1730: page parameters follow the place after `?`, up to the
+// bound, and reach a channel fed a byte at a time.
 #[test]
 fn select_carries_page_parameters_up_to_the_bound() {
     let select = Select::new(0x302, 0x0002).unwrap();
     let short = Item::Event(Event::Select(select, "a=1&b=%20"));
     let written = bytes(&short);
-    assert_eq!(written[..6], [0xFF, 0x40, 12, 0x82, 0x06, 0x02]);
-    assert_eq!(&written[6..], b"a=1&b=%20");
+    assert_eq!(written[..3], [0xFF, 0x40, 18]);
+    assert_eq!(&written[3..], b"302/0002?a=1&b=%20");
     assert_eq!(read(&written), Ok(Some((short, written.len()))));
 
     let longest = "x".repeat(crate::MAX_PAGE_PARAMETERS);
@@ -513,22 +515,30 @@ fn select_refuses_one_past_each_bound() {
     assert_eq!(Select::new(0x100, 0x4000), None, "a bit above the thirteen");
     assert_eq!(Select::new(0x100, 0x0080), None, "a bit between the thirteen");
     assert_eq!(Select::new(0, 0), None, "no page names no sub-code");
-    for bad in [
-        [0xFF, 0x40, 3, 0xFF, 0x01, 0x00].as_slice(),
-        &[0xFF, 0x40, 3, 0x80, 0x12, 0x00],
-        &[0xFF, 0x40, 5, 0x80, 0x02, 0x80, 0x80, 0x01],
-        &[0xFF, 0x40, 4, 0x80, 0x02, 0x80, 0x01],
-        &[0xFF, 0x40, 2, 0x00, 0x00],
-        &[0xFF, 0x40, 5, 0x80, 0x02, 0xFF, 0x7E, 0x00],
-        &[0xFF, 0x40, 5, 0x80, 0x02, 0xFF, 0x7E, b'#'],
-        &[0xFF, 0x40, 5, 0x80, 0x02, 0xFF, 0x7E, b' '],
-        &[0xFF, 0x40, 5, 0x80, 0x02, 0xFF, 0x7E, 0x80],
-        &[0xFF, 0x40, 5, 0x00, 0xFF, 0x7E, b'a', b'='],
-        &[0xFF, 0x40, 3, 0x80, 0x02, 0xFF, 0x7E],
-        &[0xFF, 0x40, 5, 0x80, 0x02, 0xFF, 0x7E],
-    ] {
-        assert!(read_message(bad, &mut |_| {}).is_err(), "{bad:?}");
+    let select = |text: &[u8]| [&[0xFF, 0x40, u8::try_from(text.len()).unwrap()][..], text].concat();
+    let bad: [&[u8]; 16] = [
+        b"30",
+        b"3021",
+        b"0FF",
+        b"900",
+        b"1fe",
+        b"302/2",
+        b"302/3F7F",
+        b"302/0080",
+        b"302/3f7e",
+        b"/0002",
+        b"302/",
+        b"302?",
+        b"?a=1",
+        b"302?a#1",
+        b"302? ",
+        b"contents",
+    ];
+    for text in bad {
+        assert!(read_message(&select(text), &mut |_| {}).is_err(), "{text:?}");
     }
+    assert!(read_message(&select(&[0x80, 0x81, 0x82]), &mut |_| {}).is_err(), "not text");
+    assert!(read_message(&[0xFF, 0x40, 5, b'3', b'0', b'2'], &mut |_| {}).is_err(), "a length past the end");
 }
 
 // REQ-INT-140: a channel fed SELECT a byte at a time reads it once, and it

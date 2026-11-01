@@ -26,7 +26,7 @@ fn page(mpp: u16) -> PageAddress {
 }
 
 #[test]
-fn each_fragment_reads_as_the_map_says() {
+fn each_place_reads_as_the_map_says() {
     let plain = |mpp, code: Option<u16>, parameters| Place::Page {
         page: page(mpp),
         subcode: code.map(SubCode::new),
@@ -51,7 +51,7 @@ fn every_page_the_standard_defines_is_accepted() {
 }
 
 #[test]
-fn every_other_fragment_is_refused() {
+fn every_other_place_is_refused() {
     let refused = [
         "",
         "30",
@@ -86,55 +86,73 @@ fn every_other_fragment_is_refused() {
         "302?a=%G0",
         "302?a=\u{e9}",
     ];
-    for fragment in refused {
-        assert_eq!(Place::read(fragment), None, "#{fragment}");
+    for place in refused {
+        assert_eq!(Place::read(place), None, "{place}");
     }
 }
 
 #[test]
 fn digits_are_normalised_to_capitals_and_parameters_are_left_alone() {
-    let cases = [("#1fe", "#1FE"), ("#302/3f7e", "#302/3F7E"), ("#1fe?B=%2f&a=1", "#1FE?B=%2f&a=1")];
+    let cases = [("1fe", "1FE"), ("302/3f7e", "302/3F7E"), ("1fe?B=%2f&a=1", "1FE?B=%2f&a=1")];
     for (given, expected) in cases {
         assert_eq!(canonical(&format!("{CHANNEL}{given}")), Ok(format!("{CHANNEL}{expected}")));
     }
 }
 
 #[test]
-fn a_page_file_name_becomes_its_fragment() {
-    let cases = [("302.tti", "#302"), ("302.t42", "#302"), ("302-0002.t42", "#302/0002")];
+fn a_page_file_name_becomes_its_place() {
+    let cases = [("302.tti", "302"), ("302.t42", "302"), ("302-0002.t42", "302/0002"), ("302.tti?a=1", "302?a=1")];
     for (given, expected) in cases {
         assert_eq!(canonical(&format!("{CHANNEL}{given}")), Ok(format!("{CHANNEL}{expected}")));
     }
-    assert_eq!(canonical(&format!("{CHANNEL}302.tti?a=1")), Ok(format!("{CHANNEL}?a=1#302")));
+}
+
+/// DEC-1694 rules 1 and 2: where a channel ends is read from the end of the
+/// path, and a folder named as a place belongs to the channel above it.
+#[test]
+fn the_end_of_the_path_says_where_the_channel_ends() {
+    let read = MapAddress::read("https://h.example/news/302/0002").unwrap();
+    assert_eq!(read.folder.as_str(), "https://h.example/news/");
+    assert_eq!(read.place, Some(Place::Page { page: page(0x302), subcode: Some(SubCode::new(2)), parameters: None }));
+    let root = MapAddress::read("https://h.example/302").unwrap();
+    assert_eq!(root.folder.as_str(), "https://h.example/");
+    let numbered = MapAddress::read("https://h.example/123/").unwrap();
+    assert_eq!(numbered.folder.as_str(), "https://h.example/", "a numbered folder is a page of the channel above");
+    let middle = MapAddress::read("https://h.example/123/news/").unwrap();
+    assert_eq!(middle.folder.as_str(), "https://h.example/123/news/", "only the end of the path is read");
+    assert_eq!(middle.place, None);
+    assert_eq!(MapAddress::read("https://h.example/302/0002").unwrap().folder.as_str(), "https://h.example/");
 }
 
 #[test]
-fn channel_parameters_stay_in_the_channel_and_page_parameters_in_the_fragment() {
-    let address = format!("{CHANNEL}?c=1#302?p=2");
-    let read = MapAddress::read(&address).unwrap();
-    assert_eq!(read.folder.as_str(), CHANNEL);
-    assert_eq!(read.query, Some("c=1"));
-    assert_eq!(read.place, Some(Place::Page { page: page(0x302), subcode: None, parameters: Some("p=2") }));
-    assert_eq!(canonical(&address), Ok(address.clone()));
+fn a_query_goes_with_its_page_and_an_address_with_no_place_keeps_it() {
+    let with_place = format!("{CHANNEL}302?p=2");
+    let read = MapAddress::read(&with_place).unwrap();
+    let place = Place::Page { page: page(0x302), subcode: None, parameters: Some("p=2") };
+    assert_eq!((read.query, read.place), (None, Some(place)));
+    let with_no_place = format!("{CHANNEL}?c=1");
+    let bare = MapAddress::read(&with_no_place).unwrap();
+    assert_eq!((bare.query, bare.place), (Some("c=1"), None));
+    assert_eq!(canonical(&format!("{CHANNEL}?c=1")), Ok(format!("{CHANNEL}?c=1")));
 }
 
 #[test]
-fn an_address_with_no_fragment_arrives_at_the_initial_page() {
+fn an_address_with_no_place_arrives_at_the_initial_page() {
     assert_eq!(MapAddress::read(CHANNEL).unwrap().place, None);
 }
 
 #[test]
 fn what_is_outside_the_map_is_refused() {
     assert_eq!(canonical(&format!("{CHANNEL}#")), Err(MapError::Place));
-    assert_eq!(canonical(&format!("{CHANNEL}#302:0002")), Err(MapError::Place));
-    assert_eq!(canonical(&format!("{CHANNEL}302.tti#303")), Err(MapError::TwoPlaces));
+    assert_eq!(canonical(&format!("{CHANNEL}#302")), Err(MapError::Place));
+    assert_eq!(canonical(&format!("{CHANNEL}302.tti#303")), Err(MapError::Place));
     for name in ["channel.json", "index.t42", "contents.txt", "302.sub"] {
         assert_eq!(canonical(&format!("{CHANNEL}{name}")), Err(MapError::ReceiverFile), "{name}");
         let address = format!("{CHANNEL}{name}");
         let opened = MapAddress::read_opened(&address).unwrap();
         assert_eq!((opened.folder.as_str(), opened.place), (CHANNEL, None), "DEC-1710: {name}");
         let with_page = format!("{address}#302");
-        assert_eq!(MapAddress::read_opened(&with_page), Err(MapError::ReceiverFile), "{name}");
+        assert_eq!(MapAddress::read_opened(&with_page), Err(MapError::Place), "{name}");
     }
     assert!(matches!(canonical("https://h.example/home"), Err(MapError::Channel(_))));
     assert!(matches!(canonical("ftp://h.example/home/"), Err(MapError::Channel(_))));
@@ -149,8 +167,8 @@ fn a_hash_cannot_hide_the_real_host() {
 #[test]
 fn the_whole_address_obeys_the_general_limit() {
     let name = "a=";
-    let longest = MAX_URL_LENGTH - CHANNEL.len() - "#302?".len() - name.len();
-    let address = format!("{CHANNEL}#302?{name}{}", "x".repeat(longest));
+    let longest = MAX_URL_LENGTH - CHANNEL.len() - "302?".len() - name.len();
+    let address = format!("{CHANNEL}302?{name}{}", "x".repeat(longest));
     assert_eq!(canonical(&address), Ok(address.clone()));
     let over = format!("{address}x");
     assert!(matches!(canonical(&over), Err(MapError::Channel(_))));
@@ -169,7 +187,6 @@ fn the_conformance_table_holds() {
             ["refuse", address, why] => {
                 let refused = match MapAddress::read(address) {
                     Err(MapError::Place) => "place",
-                    Err(MapError::TwoPlaces) => "two-places",
                     Err(MapError::ReceiverFile) => "receiver-file",
                     Err(MapError::Channel(_)) => "channel",
                     Ok(read) => panic!("{line}: opened as {read:?}"),

@@ -146,6 +146,10 @@ fn forward(
         Output::Event(Event::Redirect(RedirectRecord::Address(address))) => {
             send(&Frame::Notice(Notice::RedirectToOtherChannel(address.to_string())))
         }
+        Output::Event(Event::Denied(denied)) => {
+            let place = if denied.place.is_empty() { "the channel" } else { denied.place };
+            send(&Frame::Notice(Notice::Message(format!("{place} was refused: status {}", denied.status))))
+        }
         Output::Event(Event::BundleFailed(failure)) => {
             send(&Frame::Notice(Notice::Message(format!("index.t42 was not used: {failure:?}"))))
         }

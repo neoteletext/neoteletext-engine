@@ -4,7 +4,7 @@
 use crate::{control, wire};
 
 /// The protocol version HELLO and WELCOME carry (section 6.1).
-pub const VERSION: u32 = 5;
+pub const VERSION: u32 = 6;
 /// The most bytes in one binary message (section 5.1, REQ-INT-101): room
 /// for a SELECT with the longest page parameters (DEC-1715).
 pub const MAX_MESSAGE: usize = 8192;
@@ -56,9 +56,9 @@ pub const RESEND_BYTES: usize = 2 * MAX_MESSAGE;
 const _: () = assert!(MAX_CONTACTS > 1 && MAX_CONTACTS <= 1 + u8::MAX as usize);
 // A PASTE, its event byte, type, stamp and length, fits a message.
 const _: () = assert!(MAX_PASTE + 2 + crate::event::STAMP_BYTES + wire::MAX_VARINT <= MAX_MESSAGE);
-// A SELECT, its event byte, type and length, its page and sub-code and the
-// longest parameters, fits a message.
-const _: () = assert!(MAX_PAGE_PARAMETERS + 2 + 3 * wire::MAX_VARINT <= MAX_MESSAGE);
+// A SELECT, its event byte, type and length, its place and the longest
+// parameters, fits a message.
+const _: () = assert!(MAX_PAGE_PARAMETERS + 2 + wire::MAX_VARINT + crate::event::SELECT_PLACE < MAX_MESSAGE);
 // Section 7.2: a control message is at most 26 bytes, so its record, with
 // the frame's 8, is the 34 bytes of one fragment.
 const _: () = assert!(control::MAX_BODY == 26);

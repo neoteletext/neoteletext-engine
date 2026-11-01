@@ -7,36 +7,19 @@ use super::cookies::{cookie_store, store_response_cookies, write_cookie_header};
 use super::{Event, Failure, Output, PushPhase, PushProblem, Sink, UserAgent, event};
 use crate::bytes::{Overflow, Writer};
 use crate::consts::{
-    CRLF, MAX_URL_LENGTH, OPCODE_PING, PUSH_PING_AFTER_US, PUSH_PONG_WITHIN_US, PUSH_RETRY_FIRST_US, PUSH_RETRY_MAX_US,
+    CRLF, OPCODE_PING, PUSH_PING_AFTER_US, PUSH_PONG_WITHIN_US, PUSH_RETRY_FIRST_US, PUSH_RETRY_MAX_US,
     ROUND_TRIP_EVERY_US,
 };
 use crate::cookie::Site;
 use crate::http;
 use crate::port::{ConnectionId, RandomSource, Security};
-use crate::url::{IpAddress, Url, UrlError};
+use crate::url::{IpAddress, Url};
 use crate::ws::{self, FrameReader};
 
 impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'_, R, SLOTS, COOKIE_BYTES> {
-    /// The push address, with the query the channel was opened at
-    /// (REQ-1674).
-    fn push_address(&self) -> Option<Url> {
-        let url = self.push.url?;
-        let Some(query) = self.opened_as.as_ref().and_then(Url::query) else { return Some(url) };
-        let mut buffer = [0u8; MAX_URL_LENGTH];
-        let mut writer = Writer::new(&mut buffer);
-        writer.put(url.as_str().as_bytes()).ok()?;
-        writer.byte(if url.query().is_some() { b'&' } else { b'?' }).ok()?;
-        writer.put(query.as_bytes()).ok()?;
-        Url::parse(core::str::from_utf8(writer.written()).ok()?).ok()
-    }
-
     pub(super) fn push_connect(&mut self, now: Instant, sink: &mut Sink<'_>) {
-        let Some(url) = self.push_address() else {
+        let Some(url) = self.push.url else {
             self.push.phase = PushPhase::Idle;
-            // A push address with no room left for the query it carries
-            // (REQ-1674) is said, not dropped.
-            let too_long = PushProblem::Failure(Failure::Address(UrlError::TooLong));
-            self.push_lost(now, Some(too_long), false, sink);
             return;
         };
         if let Some(failure) = self.refusal(now, &url) {
@@ -56,7 +39,7 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
         if !matches!(self.push.phase, PushPhase::Connecting { .. }) {
             return;
         }
-        let Some(url) = self.push_address() else { return };
+        let Some(url) = self.push.url else { return };
         if self.peer_blocked(peer) {
             event(sink, Event::Blocked { connection: ConnectionId::Push, host: url.host_text() });
             self.push_lost(now, Some(PushProblem::Failure(Failure::Blocked)), true, sink);
@@ -163,7 +146,7 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
     }
 
     fn push_head_complete(&mut self, now: Instant, sink: &mut Sink<'_>) -> bool {
-        let Some(url) = self.push_address() else { return false };
+        let Some(url) = self.push.url else { return false };
         let (seconds, calendar) = self.seconds(now);
         let head_len = self.push.head.len();
         let Self { buffers, jar, port_cookies, channel, .. } = self;

@@ -7,6 +7,7 @@ use super::{
     LOST, MOUSE, MouseAction, PASTE, Point, RESIZE, RESUME, SELECT, STAMP_BYTES, Select, Stamp, TOUCH, Touch, WHEEL,
     check_text, is_page_parameters,
 };
+use super::{PAGE_DIGITS, QUERY_MARK, SELECT_PLACE, SUB_DIGITS, SUB_MARK, SUBCODE_ANY};
 use crate::caps::AGENT;
 use crate::wire::{MAX_VARINT, ONE_BYTE_MAX, Writer};
 use crate::{MAX_AGENT, MAX_COLUMNS, MAX_COMPOSE, MAX_KEY_TEXT, MAX_PASTE, MAX_ROWS, TOKEN_BYTES};
@@ -16,8 +17,6 @@ const HOVER_PAYLOAD: usize = STAMP_BYTES + 1 + 2 * MAX_VARINT;
 /// TOUCH's payload at its longest: the stamp, the flags, the id and four
 /// varints.
 pub(super) const TOUCH_PAYLOAD: usize = STAMP_BYTES + 2 + 4 * MAX_VARINT;
-/// SELECT's payload before its page parameters: two varints.
-const SELECT_HEAD: usize = 2 * MAX_VARINT;
 /// RESUME's payload: the token and the acknowledgement, big-endian.
 pub(super) const RESUME_PAYLOAD: usize = TOKEN_BYTES + 2;
 /// The bytes of a cell's column or row: every one is under 128, one
@@ -80,22 +79,49 @@ fn write_stamp(on: Stamp, writer: &mut Writer<'_>) -> Result<(), InputError> {
     Ok(())
 }
 
-/// SELECT, its head first (INPUT.md section 5.4): the parameters are the
-/// longest thing in the protocol, so they are not copied to learn the length.
+/// SELECT (INPUT.md section 5.4, DEC-1730): the address's place as text,
+/// the same text the URL map reads: `302`, `302/0002` or `302?a=1`, and
+/// nothing when the tab shows no page.
 fn write_select(select: Select, parameters: &str, writer: &mut Writer<'_>) -> Result<(), InputError> {
     if !is_page_parameters(select, parameters) {
         return Err(InputError::BadValue("select"));
     }
-    let mut head = [0_u8; SELECT_HEAD];
-    let mut inner = Writer::new(&mut head);
-    inner.uv(u32::from(select.page))?;
-    inner.uv(u32::from(select.sub))?;
-    let used = inner.len();
-    let length = used.saturating_add(parameters.len());
+    let names_sub = select.sub != SUBCODE_ANY;
+    let mut place = [0_u8; SELECT_PLACE];
+    let used = if select.page == 0 {
+        0
+    } else {
+        write_hex::<PAGE_DIGITS>(select.page, &mut place)?;
+        if names_sub {
+            let (_, rest) = place.split_at_mut(PAGE_DIGITS);
+            let (mark, digits) = rest.split_first_mut().ok_or(InputError::Message)?;
+            *mark = SUB_MARK;
+            write_hex::<SUB_DIGITS>(select.sub, digits)?;
+            SELECT_PLACE
+        } else {
+            PAGE_DIGITS
+        }
+    };
+    let query = if parameters.is_empty() { 0 } else { parameters.len().saturating_add(1) };
     writer.byte(SELECT)?;
-    writer.uv(u32::try_from(length).map_err(|_| InputError::Message)?)?;
-    writer.bytes(head.get(..used).unwrap_or(&[]))?;
-    writer.bytes(parameters.as_bytes())?;
+    writer.uv(u32::try_from(used.saturating_add(query)).map_err(|_| InputError::Message)?)?;
+    writer.bytes(place.get(..used).unwrap_or(&[]))?;
+    if !parameters.is_empty() {
+        writer.byte(QUERY_MARK)?;
+        writer.bytes(parameters.as_bytes())?;
+    }
+    Ok(())
+}
+
+/// `value`'s last `N` hexadecimal digits, as capitals, into `out`.
+fn write_hex<const N: usize>(value: u16, out: &mut [u8]) -> Result<(), InputError> {
+    const DIGITS: &[u8; 16] = b"0123456789ABCDEF";
+    let mut rest = usize::from(value);
+    for at in (0..N).rev() {
+        let digit = rest.checked_rem(DIGITS.len()).and_then(|digit| DIGITS.get(digit));
+        *out.get_mut(at).ok_or(InputError::Message)? = *digit.ok_or(InputError::Message)?;
+        rest = rest.checked_div(DIGITS.len()).ok_or(InputError::Message)?;
+    }
     Ok(())
 }
 
