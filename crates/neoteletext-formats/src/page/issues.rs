@@ -23,6 +23,8 @@ pub enum IssueKind {
     BadLogLine(crate::log::LogRefused),
     /// More `LG` lines than a page may carry (REQ-INP-026).
     TooManyLogLines,
+    /// An `OL` row longer than the page; it was cut at the last column.
+    RowTooLong,
 }
 
 /// The warnings, which a page may mark as considered with

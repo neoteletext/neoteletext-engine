@@ -51,6 +51,8 @@ pub enum Problem {
     BadLogLine(crate::log::LogRefused),
     /// More `LG` lines than a page may carry (REQ-INP-026).
     TooManyLogLines,
+    /// A row longer than the page, which a reader cuts.
+    RowTooLong,
     /// A warning.
     Warning(Warning),
 }
@@ -166,6 +168,7 @@ pub fn check_page(page: &PageFile, options: &CheckOptions<'_>, out: &mut dyn FnM
             IssueKind::BadCursorLine => Problem::BadCursorLine,
             IssueKind::BadLogLine(why) => Problem::BadLogLine(why),
             IssueKind::TooManyLogLines => Problem::TooManyLogLines,
+            IssueKind::RowTooLong => Problem::RowTooLong,
         };
         report(Severity::Error, problem, issue.line);
     }

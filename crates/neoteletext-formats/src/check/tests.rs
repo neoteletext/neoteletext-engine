@@ -3,6 +3,7 @@
 
 use super::*;
 use crate::tti::tests::read;
+use neoteletext_core::consts::COLUMNS;
 use std::vec::Vec;
 
 fn findings(text: &[u8], options: &CheckOptions<'_>) -> Vec<(Severity, Problem, u32)> {
@@ -52,6 +53,19 @@ fn considered_warnings_are_not_reported() {
     let mut text = E3_EXAMPLE.to_vec();
     text.extend_from_slice(b"CK,considered,page-number-not-shown\nCK,considered,no-other-route\n");
     assert_eq!(check(&text), []);
+}
+
+/// REQ-CLI-006: a reader cuts a row at the page's width, so a row over it
+/// is an error on its own line, each one, and one that fits is none; an
+/// escape counts as the one cell it writes.
+#[test]
+fn rows_over_the_page_width_are_errors() {
+    let row = |number: usize, text: &str| std::format!("OL,{number},{text}\n");
+    let (full, over) = ("x".repeat(COLUMNS), "x".repeat(COLUMNS + 1));
+    let escaped = "\u{1B}A".repeat(COLUMNS);
+    let page = std::format!("PN,10000\n{}{}{}{}", row(1, &full), row(2, &over), row(3, &escaped), row(23, &over));
+    let error = |line| (Severity::Error, Problem::RowTooLong, line);
+    assert_eq!(check(page.as_bytes()), [error(3), error(5)]);
 }
 
 #[test]

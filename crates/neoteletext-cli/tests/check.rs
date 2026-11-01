@@ -6,6 +6,7 @@ mod common;
 
 use common::neottx;
 use neoteletext_app::exit::CHECK_ERRORS;
+use neoteletext_core::consts::COLUMNS;
 use std::fs;
 use std::path::Path;
 use std::process::Output;
@@ -20,6 +21,10 @@ fn folder_of(name: &str, files: &[(&str, &str)]) -> std::path::PathBuf {
         fs::write(folder.join(file), text).expect("write a test file");
     }
     folder
+}
+
+fn check(file: &Path) -> Output {
+    neottx(&["check", file.to_str().unwrap()])
 }
 
 fn check_with(folder: &Path, descriptor: &str, page: &str) -> Output {
@@ -51,4 +56,19 @@ fn any_other_file_is_a_services_descriptor() {
     let folder = folder_of("check-service", &files);
     assert!(check_with(&folder, "service.json", "page.tti").status.success());
     assert!(!check_with(&folder, "short.json", "page.tti").status.success());
+}
+
+/// A row longer than the page is cut by a reader, so its author is told, on
+/// the line it is on; a row that fills the page is no fault.
+#[test]
+fn a_row_over_the_page_width_is_an_error() {
+    let text = |columns: usize| format!("PN,10000\nOL,1,{}\n", "x".repeat(columns));
+    let folder = folder_of("check-rows", &[("full.tti", &text(COLUMNS)), ("over.tti", &text(COLUMNS + 1))]);
+    assert!(check(&folder.join("full.tti")).status.success());
+    let over = check(&folder.join("over.tti"));
+    assert_eq!(over.status.code(), Some(i32::from(CHECK_ERRORS)), "{over:?}");
+    assert!(
+        String::from_utf8_lossy(&over.stdout).contains("over.tti:2: page 100 sub-page 0: error: RowTooLong"),
+        "{over:?}"
+    );
 }

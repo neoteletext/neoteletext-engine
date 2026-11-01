@@ -197,6 +197,10 @@ impl TtiReader {
                 let decoded = decode_text(text, true, COLUMNS);
                 if decoded.overflow {
                     self.diagnostic(DiagnosticKind::RowTooLong { row }, out);
+                    // The checker reads a page's issues, not the diagnostics.
+                    if !self.page.add_issue(IssueKind::RowTooLong, self.lines.number()) {
+                        self.diagnostic(DiagnosticKind::CapacityExceeded { what: Capacity::Issues }, out);
+                    }
                 }
                 if decoded.bad_escape {
                     self.diagnostic(DiagnosticKind::BadEscape, out);
