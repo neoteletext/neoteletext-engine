@@ -1,5 +1,5 @@
-//! `cargo xtask check-noto` (REQ-FNT-012, decision E.77): every converted
-//! font in `third_party/noto/` is the file its provenance record names, by
+//! `cargo xtask check-noto` (REQ-FNT-001, REQ-FNT-012): every Noto Teletext
+//! file in `third_party/noto/` is the file its provenance record names, by
 //! SHA-256, and every font the record names is there.
 
 use std::collections::BTreeMap;

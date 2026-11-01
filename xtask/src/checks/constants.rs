@@ -11,7 +11,7 @@ const CORE_SRC: &str = "crates/neoteletext-core/src";
 /// of code points or glyphs, where the literal values are characters, not
 /// teletext constants. A path ending in `/` is a directory and covers
 /// every file under it.
-const DATA_FILES: &[&str] = &["consts.rs", "consts/", "limits.rs", "charset/", "glyphs/bedstead.rs"];
+const DATA_FILES: &[&str] = &["consts.rs", "consts/", "limits.rs", "charset/", "glyphs/noto.rs"];
 /// Teletext values that must only appear in the constants module
 /// (REQ-GEN-014), and the numbers of area NUM, which only `limits` writes
 /// (REQ-NUM-031): the null sub-code, the last sub-page's and the last
@@ -92,7 +92,7 @@ mod tests {
     #[test]
     fn data_files_are_matched_by_prefix() {
         for exempt in
-            ["consts.rs", "consts/signal.rs", "charset/tables.rs", "charset/arabic_script.rs", "glyphs/bedstead.rs"]
+            ["consts.rs", "consts/signal.rs", "charset/tables.rs", "charset/arabic_script.rs", "glyphs/noto.rs"]
         {
             assert!(is_data_file(exempt), "{exempt} is a data file");
         }

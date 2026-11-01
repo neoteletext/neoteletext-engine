@@ -28,8 +28,8 @@
 #   scripts           the scripts that draw them
 
 [script latin]
-# Latin, Cyrillic, Greek and symbols: Bedstead's metrics, capitals from
-# line 2 to line 15 as the engine draws Bedstead's.
+# Latin, Cyrillic, Greek and symbols: capitals from line 2 to line 15, with
+# the baseline on line 16, ten pixels wide.
 sources = mono sans symbols symbols2 math
 weight = 600
 hinting = auto
@@ -109,8 +109,9 @@ mark_row = yes
 [font noto-teletext]
 family = Noto Teletext
 copyright = Copyright 2022 The Noto Project Authors
-# Required, and Vietnamese precomposed letters (REQ-CHR-014).
-characters = required range:1EA0-1EF9 except:G0_Thai,G0_Lao,G2_Thai,G2_Lao,G0_Persian,G0_Urdu,G0_Pashto,G0_Sindhi,G0_Sorani,G0_Uyghur,G0_Balochi,G0_ArabicPlain
+# Required, and Vietnamese precomposed letters (REQ-CHR-014). The letters
+# that exist only as a base and a mark are in noto-teletext-composed.
+characters = required range:1EA0-1EF9 except:G0_Thai,G0_Lao,G2_Thai,G2_Lao,G0_Persian,G0_Urdu,G0_Pashto,G0_Sindhi,G0_Sorani,G0_Uyghur,G0_Balochi,G0_ArabicPlain,Composed
 scripts = latin hebrew arabic georgian armenian tifinagh
 
 [font noto-teletext-arabic]
@@ -127,3 +128,13 @@ family = Noto Teletext Thai
 copyright = Copyright 2022 The Noto Project Authors
 characters = uses:G0_Thai uses:G0_Lao uses:G2_Thai uses:G2_Lao uses:G0_Latin_English
 scripts = latin thai lao
+
+[font noto-teletext-composed]
+# Every precomposed letter a base and a diacritical mark can make (decision
+# E.26, REQ-CHR-014), so that the compiled font never overlays a spacing mark
+# on a letter Unicode composes. Apart from the main file because a font file
+# holds at most 1,024 characters (REQ-FNT-002).
+family = Noto Teletext Composed
+copyright = Copyright 2022 The Noto Project Authors
+characters = uses:Composed
+scripts = latin

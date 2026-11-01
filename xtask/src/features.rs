@@ -33,7 +33,7 @@ const BUILDS: &[Build] = &[
     Build { package: "neoteletext-core", features: "level15,level25,level25-32colors" },
     Build { package: "neoteletext-core", features: "classic" },
     Build { package: "neoteletext-core", features: "render" },
-    Build { package: "neoteletext-core", features: "bedstead" },
+    Build { package: "neoteletext-core", features: "extended-sets" },
     Build { package: "neoteletext-core", features: "viewer" },
     Build { package: "neoteletext-formats", features: "" },
     Build { package: "neoteletext-formats", features: "transport" },

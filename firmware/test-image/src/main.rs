@@ -116,14 +116,17 @@ mod render {
     static RENDER: fn(&Grid, usize, &GlyphSet, RenderOptions, &mut IndexBuffer<'_>) = render;
 }
 
-/// Bedstead, the one bundled font, as a port that uses it links it.
-#[cfg(feature = "bedstead")]
-mod bedstead {
+/// Noto Teletext, the one compiled font, as a port that draws links it. The
+/// glyph set's address is passed on so that the tables stay in the image.
+#[cfg(feature = "font")]
+mod font {
     use super::black_box;
     use neoteletext_core::glyphs::GlyphSet;
 
+    static GLYPHS_IN_IMAGE: GlyphSet<'static> = GlyphSet::noto_teletext();
+
     fn glyphs() {
-        black_box(GlyphSet::bedstead());
+        black_box(black_box(&GLYPHS_IN_IMAGE).lookup('A'));
     }
 
     #[used]

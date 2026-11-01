@@ -1,8 +1,8 @@
 //! Tests of drawing loaded fonts (REQ-FNT-005, REQ-FNT-008): a 12 by 10
 //! glyph drawn as given, each line twice in the 12-by-20 cell, never
 //! rounded, enlarged by double width and height, with every attribute,
-//! and the fallback from the font in use to the user's font to the bundled
-//! glyphs. The test fonts are patterns made here, not typefaces.
+//! and the fallback from the font in use to the user's font to the compiled
+//! font. The test fonts are patterns made here, not typefaces.
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 
 // The module is compiled for tests only (see `render/tests.rs`); the attribute
@@ -58,7 +58,7 @@ fn for_set(name: &str, font: LoadedFont<'static>) -> [Option<LoadedFont<'static>
 /// The font in use, and the user's font for G0 Latin with the English
 /// option, the set `text` draws.
 fn fonts() -> GlyphSet<'static> {
-    GlyphSet::bedstead().with_fonts(
+    GlyphSet::noto_teletext().with_fonts(
         Some(LoadedFont::new(&IN_USE).unwrap()),
         for_set("G0-Latin-English", LoadedFont::new(&FALLBACK).unwrap()),
     )
@@ -128,7 +128,7 @@ const TALL_PATTERN: [u16; CELL_HEIGHT] = {
 #[test]
 fn a_tall_glyph_draws_line_for_line() {
     let table = [FontGlyph::tall(u32::from('A'), TALL_PATTERN)];
-    let tall = GlyphSet::bedstead().with_fonts(Some(LoadedFont::new(&table).unwrap()), NONE);
+    let tall = GlyphSet::noto_teletext().with_fonts(Some(LoadedFont::new(&table).unwrap()), NONE);
     let a = cell(text(b'A'));
     assert_eq!(lines(&a, &tall, CellMode::Saa5050), TALL_PATTERN.to_vec());
     let upper: Vec<u16> = (0..CELL_FIELD_LINES).map(|line| TALL_PATTERN[2 * line]).collect();
@@ -173,32 +173,36 @@ fn double_width_and_double_size() {
 }
 
 /// REQ-FNT-005: a character the font in use lacks comes from the user's
-/// font, then from the bundled glyphs; a character in both comes from the
+/// font, then from the compiled font; a character in both comes from the
 /// font in use.
 #[test]
 fn fallback_order() {
-    let bedstead = GlyphSet::bedstead();
+    let compiled = GlyphSet::noto_teletext();
     assert_eq!(lines(&cell(text(b'A')), &fonts(), CellMode::Saa5246a), PATTERN.to_vec(), "the font in use wins");
     assert_eq!(lines(&cell(text(b'B')), &fonts(), CellMode::Saa5246a), OTHER.to_vec(), "then the user's font");
     let c = cell(text(b'C'));
-    assert_eq!(lines(&c, &fonts(), CellMode::Saa5050), lines(&c, &bedstead, CellMode::Saa5050), "then Bedstead");
-    let only_user = bedstead.with_fonts(None, for_set("G0-Latin-English", LoadedFont::new(&FALLBACK).unwrap()));
+    assert_eq!(
+        lines(&c, &fonts(), CellMode::Saa5050),
+        lines(&c, &compiled, CellMode::Saa5050),
+        "then the compiled font"
+    );
+    let only_user = compiled.with_fonts(None, for_set("G0-Latin-English", LoadedFont::new(&FALLBACK).unwrap()));
     assert_eq!(lines(&cell(text(b'A')), &only_user, CellMode::Saa5246a), OTHER.to_vec());
     // The user's font for another set does not draw this set's characters.
-    let other_set = bedstead.with_fonts(None, for_set("G0-Latin-German", LoadedFont::new(&FALLBACK).unwrap()));
+    let other_set = compiled.with_fonts(None, for_set("G0-Latin-German", LoadedFont::new(&FALLBACK).unwrap()));
     let a = cell(text(b'A'));
-    assert_eq!(lines(&a, &other_set, CellMode::Saa5050), lines(&a, &bedstead, CellMode::Saa5050));
-    assert!(!bedstead.has_fonts() && fonts().has_fonts() && !fonts().without_fonts().has_fonts());
+    assert_eq!(lines(&a, &other_set, CellMode::Saa5050), lines(&a, &compiled, CellMode::Saa5050));
+    assert!(!compiled.has_fonts() && fonts().has_fonts() && !fonts().without_fonts().has_fonts());
 }
 
-/// REQ-FNT-005: row 0 is always drawn in the bundled glyphs.
+/// REQ-FNT-005, REQ-SEC-005: row 0 is always drawn in the compiled font.
 #[test]
-fn row_0_is_always_bedstead() {
+fn row_0_is_always_the_compiled_font() {
     let grid = Grid::EMPTY;
     let a = cell(text(b'A'));
     for line in 0..CELL_HEIGHT {
         let with = cell_line(&a, &grid, 0, 10, line, &fonts(), options(CellMode::Saa5050));
-        let without = cell_line(&a, &grid, 0, 10, line, &GlyphSet::bedstead(), options(CellMode::Saa5050));
+        let without = cell_line(&a, &grid, 0, 10, line, &GlyphSet::noto_teletext(), options(CellMode::Saa5050));
         assert_eq!(with, without, "line {line}");
     }
 }
@@ -228,14 +232,14 @@ fn mosaics_and_g3_are_unchanged() {
     ] {
         let c = cell(glyph);
         for mode in [CellMode::Saa5050, CellMode::Saa5246a] {
-            assert_eq!(lines(&c, &fonts(), mode), lines(&c, &GlyphSet::bedstead(), mode), "{glyph:?}");
+            assert_eq!(lines(&c, &fonts(), mode), lines(&c, &GlyphSet::noto_teletext(), mode), "{glyph:?}");
         }
     }
 }
 
 /// A character with a diacritical mark comes from the font's precomposed
-/// glyph; without one, from the bundled glyphs, which overlay the mark
-/// (decision E.26).
+/// glyph; without one, from the compiled font, which has its own
+/// precomposed glyph or overlays the mark (decision E.26).
 #[test]
 fn diacritics() {
     // Diacritic 2 is the acute accent (Table 28, mode 10010).
@@ -244,12 +248,12 @@ fn diacritics() {
     let a_acute = cell(Glyph::Char(CharRef { diacritic: 2, ..CharRef::new(latin(), b'a') }));
     assert_eq!(
         lines(&a_acute, &fonts(), CellMode::Saa5050),
-        lines(&a_acute, &GlyphSet::bedstead(), CellMode::Saa5050),
-        "not in the font: Bedstead"
+        lines(&a_acute, &GlyphSet::noto_teletext(), CellMode::Saa5050),
+        "not in the font: the compiled font"
     );
     // A G2 character is looked up like a G0 one.
     let pound_font = [FontGlyph::small('\u{A3}' as u32, OTHER)];
-    let g2 = GlyphSet::bedstead().with_fonts(Some(LoadedFont::new(&pound_font).unwrap()), NONE);
+    let g2 = GlyphSet::noto_teletext().with_fonts(Some(LoadedFont::new(&pound_font).unwrap()), NONE);
     let pound = cell(Glyph::Char(CharRef::new(CharSet::G2(G2Set::Latin), 0x23)));
     assert_eq!(lines(&pound, &g2, CellMode::Saa5246a), OTHER.to_vec());
 }
@@ -271,45 +275,6 @@ fn table_shape_is_checked() {
     assert!(LoadedFont::new(&[]).unwrap().is_empty());
 }
 
-/// Bedstead's 5 by 9 glyphs as a loaded font: below the blank top line,
-/// each dot two pixels wide, as `neottx font convert` makes them.
-fn bedstead_as_loaded(entry: &crate::glyphs::GlyphEntry) -> FontGlyph {
-    let mut rows = [0u16; CELL_FIELD_LINES];
-    for (row, &dots) in rows.iter_mut().skip(1).zip(&entry.rows) {
-        *row = widen(dots);
-    }
-    FontGlyph::small(entry.code_point, rows)
-}
-
-/// Issue #209: a doubled dot matrix is rounded as the bundled glyphs are,
-/// so Bedstead converted from its matrices draws exactly as Bedstead.
-#[test]
-fn a_doubled_dot_font_draws_as_bedstead() {
-    let entries = GlyphSet::bedstead().entries();
-    for entry in entries {
-        let loaded = bedstead_as_loaded(entry);
-        for line in 0..CELL_HEIGHT {
-            for rounding in [true, false] {
-                assert_eq!(
-                    font_line_20(&loaded.rows, line, rounding),
-                    glyph_line_20(&entry.rows, line, rounding),
-                    "U+{:04X} line {line}, rounding {rounding}",
-                    entry.code_point
-                );
-            }
-        }
-    }
-    // Through the renderer: the letter A from the loaded font and from the
-    // bundled glyphs.
-    let a = entries.iter().find(|entry| entry.code_point == u32::from('A')).unwrap();
-    let table = [bedstead_as_loaded(a)];
-    let font = LoadedFont::new(&table).unwrap();
-    assert!(font.is_dot_matrix());
-    let glyphs = GlyphSet::bedstead().with_fonts(Some(font), NONE);
-    let a_cell = cell(text(b'A'));
-    assert_eq!(lines(&a_cell, &glyphs, CellMode::Saa5050), lines(&a_cell, &GlyphSet::bedstead(), CellMode::Saa5050));
-}
-
 /// Issue #209: only a font of doubled pixels is rounded, and only with
 /// rounding on.
 #[test]
@@ -322,7 +287,7 @@ fn only_doubled_dot_fonts_are_rounded() {
     rows[1] = 0b11_0000_0000;
     rows[2] = 0b00_1100_0000;
     let table = [FontGlyph::small(u32::from('A'), rows)];
-    let glyphs = GlyphSet::bedstead().with_fonts(Some(LoadedFont::new(&table).unwrap()), NONE);
+    let glyphs = GlyphSet::noto_teletext().with_fonts(Some(LoadedFont::new(&table).unwrap()), NONE);
     let a_cell = cell(text(b'A'));
     let drawn = lines(&a_cell, &glyphs, CellMode::Saa5050);
     assert_eq!(drawn[3], 0b11_1000_0000, "the lower half of line 1 reaches toward line 2");
@@ -340,7 +305,7 @@ fn each_set_draws_from_its_own_font() {
     static G2: [FontGlyph; 1] = [FontGlyph::small('\u{A1}' as u32, OTHER)];
     let mut by_set = for_set("G0-Latin-English", LoadedFont::new(&LATIN).unwrap());
     by_set[font_set_index("G2-Latin").unwrap()] = Some(LoadedFont::new(&G2).unwrap());
-    let glyphs = GlyphSet::bedstead().with_fonts(None, by_set);
+    let glyphs = GlyphSet::noto_teletext().with_fonts(None, by_set);
     assert_eq!(lines(&cell(text(b'A')), &glyphs, CellMode::Saa5246a), PATTERN.to_vec(), "G0 from its font");
     // G2 Latin 2/1 is the inverted exclamation mark.
     let inverted = Glyph::Char(CharRef::new(CharSet::G2(G2Set::Latin), 0x21));

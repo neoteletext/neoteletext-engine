@@ -37,7 +37,7 @@ pub struct LoadedFont<'a> {
 const PAIR_RIGHT_PIXELS: u16 = 0b0101_0101_0101;
 
 /// A glyph of a loaded font, and whether the font is a doubled dot matrix,
-/// which is rounded as Bedstead is (REQ-FNT-008, issue #209).
+/// which is rounded with the rule of decision E.13 (REQ-FNT-008, issue #209).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct LoadedGlyph {
     /// The lines of 12 pixels, bit 11 the leftmost: the first ten of a 12

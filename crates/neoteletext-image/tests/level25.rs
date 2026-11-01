@@ -27,7 +27,7 @@ use std::fmt::Write as _;
 use std::path::PathBuf;
 
 /// Raise when Level 2.5 and 3.5 rendering changes on purpose (REQ-TST-030).
-const FORMAT_VERSION: u32 = 7;
+const FORMAT_VERSION: u32 = 8;
 
 const BLACK: u8 = 0;
 const RED: u8 = 1;
@@ -248,7 +248,7 @@ fn render(grid: &Grid, options: RenderOptions) -> (usize, usize, Vec<u8>) {
     let height = ROWS * options.row_height();
     let mut indices = vec![0u8; width * height];
     let mut buffer = IndexBuffer { format: IndexFormat::Bits8, data: &mut indices, stride: width };
-    render_screen(grid, ALL_ROWS, &GlyphSet::bedstead(), options, &mut buffer).unwrap();
+    render_screen(grid, ALL_ROWS, &GlyphSet::noto_teletext(), options, &mut buffer).unwrap();
     (width, height, indices)
 }
 

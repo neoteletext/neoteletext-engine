@@ -85,7 +85,7 @@ fn time(mut step: impl FnMut(FlashPhase) -> u32) -> (f64, u32) {
 #[ignore = "measurement; run in release mode"]
 fn a_flashing_page_redrawn_at_each_phase() {
     let config = Config::default();
-    let glyphs = GlyphSet::bedstead();
+    let glyphs = GlyphSet::noto_teletext();
     for flashing in [&[12_u8][..], &[3, 12, 20], &(1..=LAST_TEXT_ROW).collect::<Vec<_>>()] {
         let rows = rows(flashing);
         let borrowed: Vec<(u8, &[u8])> = rows.iter().map(|(number, codes)| (*number, codes.as_slice())).collect();

@@ -160,8 +160,8 @@ class Script:
         width = section.getint("reference_width", fallback=None)
         face = self.faces[0]
         # The em whose reference letters are `height` lines tall, then the
-        # width per line that makes them `width` pixels wide (Bedstead's
-        # proportions), or the display's true proportions.
+        # width per line that makes them `width` pixels wide, or the
+        # display's true proportions.
         self.lines = 4.0
         while self.lines < 60:
             box = extent(face.draw(reference, self.lines / DISPLAY_PIXEL_ASPECT, self.lines, self.rtl))
@@ -375,7 +375,7 @@ def characters_of(spec, required, forms):
     - `required` reads the engine's list of every character its sets need;
     - `uses:NAME` adds those of the required characters used by set NAME
       (`G0_Persian` for the uses `G0 Persian ...`);
-    - `except:NAME` leaves out characters no set but NAME uses;
+    - `except:NAME` leaves out required characters no set but NAME uses;
     - `forms:NAME` adds the joined forms of NAME's letters;
     - `range:XXXX-YYYY` adds a Unicode range; `list:` the characters that
       follow."""
@@ -387,7 +387,7 @@ def characters_of(spec, required, forms):
     def uses(line):
         return [use.strip() for use in line.split(" ", 2)[2].split(";")] if line.count(" ") >= 2 else []
 
-    found, excluded = [], set()
+    found, excluded, named = [], set(), set()
     for part in spec.split():
         if part == "required":
             found += [character(line) for line in lines]
@@ -404,10 +404,11 @@ def characters_of(spec, required, forms):
             found += [point for point, (letter, _) in forms.items() if letter in letters]
         elif part.startswith("range:"):
             first, last = (int(value, 16) for value in part[6:].split("-"))
-            found += [chr(code) for code in range(first, last + 1) if unicodedata.name(chr(code), "")]
+            named |= {chr(code) for code in range(first, last + 1) if unicodedata.name(chr(code), "")}
         elif part.startswith("list:"):
-            found += list(part[5:])
-    return [character for character in dict.fromkeys(found) if character not in excluded]
+            named |= set(part[5:])
+    found += sorted(named)
+    return [character for character in dict.fromkeys(found) if character not in excluded or character in named]
 
 
 def script_of(character, scripts, forms=None):

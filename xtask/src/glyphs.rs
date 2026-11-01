@@ -2,7 +2,9 @@
 //! REQ-RND-037). Glyphs stay data: replacing a source file and rerunning
 //! `cargo xtask glyphs` swaps a glyph set without code changes.
 //!
-//! - `crates/neoteletext-core/src/glyphs/bedstead.rs` from the Bedstead export.
+//! - `crates/neoteletext-core/src/glyphs/noto.rs` from the Noto Teletext
+//!   files in `third_party/noto/`, which `cargo xtask check-noto` checks
+//!   against their provenance record (REQ-FNT-012).
 //! - `crates/neoteletext-core/src/glyphs/g3.txt` from the G3 geometry of
 //!   [`crate::g3`], and `g3.rs` from that text.
 //! - `crates/neoteletext-core/src/glyphs/required.txt` from the core's
@@ -13,27 +15,21 @@
 //!
 //! The tests below regenerate every file in memory and compare it with the
 //! stored one, so `cargo test` fails when the data is out of date.
-//!
-//! `cargo xtask check-bedstead` checks the export against the SHA-256
-//! recorded in its provenance record (REQ-FNT-001).
 
-mod bedstead;
 mod g3_table;
+mod noto;
 mod required;
 
 use crate::g3;
-use bedstead::{SOURCE, TARGET, bedstead_source};
 use g3_table::{G3_TARGET, G3_TEXT, g3_source};
+use noto::{TARGET, noto_source, source_files};
 use required::{FORMS, REQUIRED, forms_text, required_text};
 use std::fs;
 use std::path::Path;
 
-pub use bedstead::check_bedstead;
-
 /// Regenerates every glyph table.
 pub fn generate(root: &Path) -> Result<(), String> {
-    let text = fs::read_to_string(root.join(SOURCE)).map_err(|e| format!("{SOURCE}: {e}"))?;
-    let (source, count) = bedstead_source(&text)?;
+    let (source, count) = noto_source(&source_files(root)?)?;
     fs::write(root.join(TARGET), source).map_err(|e| format!("{TARGET}: {e}"))?;
     println!("wrote {count} glyphs to {TARGET}");
     let required = required_text();

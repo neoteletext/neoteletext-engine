@@ -116,8 +116,7 @@ push_steps() {
     step "documentation, warnings as errors (REQ-DOC-001)"
     RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --quiet
 
-    step "the bundled font: Bedstead's export matches its recorded SHA-256 (REQ-FNT-001)"
-    cargo xtask check-bedstead
+    step "the compiled font: the Noto Teletext files match their recorded SHA-256 (REQ-FNT-001, REQ-FNT-012)"
     cargo xtask check-noto
 }
 

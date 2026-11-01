@@ -3,8 +3,8 @@
 //! REQ-FNT-002, only where the conversion is exact and reversible.
 //!
 //! - 5 by 10 and 6 by 10: every pixel made two pixels wide, a 5-pixel cell
-//!   in the right of the 6, leaving the blank column at the left where the
-//!   renderer leaves Bedstead's;
+//!   in the right of the 6, leaving the blank column at the left, where
+//!   the SAA5050 leaves it;
 //! - 5 by 9 and 6 by 9: the same, below one blank line, where the SAA5050
 //!   leaves it;
 //! - 12 by 20: every second line kept, to 12 by 10, when each pair of
@@ -170,7 +170,7 @@ fn cell_rows(width: usize, height: usize, glyph: &SourceGlyph) -> Result<[u16; C
 
 /// A line of `width` pixels with every pixel made two wide, ending at the
 /// right of the 12-pixel line: a 5-pixel line leaves the cell's leftmost
-/// dot blank, as the renderer's `widen` does for Bedstead (issue #206).
+/// dot blank, where the SAA5050's cell has it (issue #206).
 fn doubled(line: u16, width: usize) -> u16 {
     let mut out = 0u16;
     for source in 0..width {

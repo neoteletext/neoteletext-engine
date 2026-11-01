@@ -28,7 +28,7 @@ pub fn render(
     let table = raster_args.font.as_deref().map(read_table).transpose()?;
     let loaded =
         table.as_deref().map(LoadedFont::new).transpose().map_err(|error| (exit::INPUT, format!("{error:?}")))?;
-    let glyphs = GlyphSet::bedstead().with_fonts(loaded, [None; FONT_SET_COUNT]);
+    let glyphs = GlyphSet::noto_teletext().with_fonts(loaded, [None; FONT_SET_COUNT]);
     let pages = selected(&session, selection)?;
     let directory: PathBuf = if selection == Selection::All {
         std::fs::create_dir_all(output).map_err(|error| io_failure(output, error))?;

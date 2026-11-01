@@ -78,8 +78,8 @@ const SIX: [&str; 10] =
 const FIVE_NINE: [&str; 9] = ["..#..", ".#.#.", "#...#", "#...#", "#####", "#...#", "#...#", ".....", "....."];
 
 /// REQ-FNT-010: 6 by 10 and 5 by 10 double every pixel's width, the five
-/// pixels at the right of the six, so the blank column is at the left as
-/// Bedstead's is (issue #206); the reversal gives the source back.
+/// pixels at the right of the six, so the blank column is at the left, as
+/// the SAA5050's is (issue #206); the reversal gives the source back.
 #[test]
 fn ten_line_cells_double_the_width() {
     let six = converted(&source((6, 10), "ISO10646", &[(65, [6, 10, 0, 0], &SIX)]), None).unwrap();

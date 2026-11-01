@@ -33,7 +33,6 @@ fn the_default_features_are_decision_e105() {
         "level25-32colors",
         "level35-32colors",
         "render",
-        "bedstead",
         "viewer",
         "extended-sets",
     ];

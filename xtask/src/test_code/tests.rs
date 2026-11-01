@@ -46,7 +46,7 @@ fn new() -> Wakes {
     count(1, 2);
     Wakes { ended: false, #[cfg(test)] waits: Arc::default(), network: true }
 }
-#[cfg(all(test, feature = \"bedstead\"))]
+#[cfg(all(test, feature = \"render\"))]
 #[must_use]
 pub(crate) const fn entries(&self) -> &'static [u8] { self.entries }
 #[cfg(any(test, feature = \"std\"))]
@@ -58,7 +58,7 @@ fn production_only() {}
     for kept in ["ended: bool", "network: bool", "network: true", "fn shared", "fn production_only", "fn new"] {
         assert!(production.contains(kept), "{kept} is production code:\n{production}");
     }
-    for cut in ["waits", "count(", "entries", "bedstead"] {
+    for cut in ["waits", "count(", "entries", "render"] {
         assert!(!production.contains(cut), "{cut} is test code:\n{production}");
     }
 }

@@ -114,5 +114,5 @@ pub const ALL_ROWS: u32 = (1 << ROWS) - 1;
 /// Lines of the cell in one field (for documentation of the geometry).
 pub const FIELD_LINES: usize = CELL_FIELD_LINES;
 
-#[cfg(all(test, feature = "bedstead"))]
+#[cfg(all(test, feature = "render"))]
 mod tests;

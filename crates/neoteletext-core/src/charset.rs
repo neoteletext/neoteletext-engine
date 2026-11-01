@@ -454,6 +454,20 @@ pub fn compose(base: char, combining: char) -> Option<char> {
     composition::compose(base, combining)
 }
 
+/// Every precomposition of a Latin letter and one of the fifteen marks
+/// (decision E.26): base, mark, composed.
+#[must_use]
+pub const fn compositions() -> &'static [(char, char, char)] {
+    &composition::COMPOSITIONS
+}
+
+/// The precompositions neoteletext's own sets add (REQ-CHR-014): base, mark,
+/// composed.
+#[must_use]
+pub const fn extended_compositions() -> &'static [(char, char, char)] {
+    &composition::EXTENDED_COMPOSITIONS
+}
+
 /// Text decoded with the Latin G0 set and no national option, for data
 /// that carries no character set designation, such as the 8/30 status
 /// message (REQ-SVC-005). Control codes show as spaces.

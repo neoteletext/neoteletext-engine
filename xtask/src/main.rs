@@ -1,8 +1,8 @@
 //! Project automation (REQ-GEN-010): `cargo xtask <command>`.
 //!
-//! - `glyphs`: regenerate the core's glyph tables: Bedstead from its export,
-//!   the G3 set from the project's own geometry (REQ-RND-037), and the list
-//!   of required characters from the character set tables.
+//! - `glyphs`: regenerate the core's glyph tables: Noto Teletext from its
+//!   BDF files, the G3 set from the project's own geometry (REQ-RND-037),
+//!   and the list of required characters from the character set tables.
 //! - `corpus`: fetch and pin the real-broadcast test corpus (REQ-TST-022).
 //! - `check-layers`: enforce the module dependency table of ARCHITECTURE.md
 //!   (REQ-ARCH-011).
@@ -16,10 +16,8 @@
 //!   crate (REQ-SEC-016).
 //! - `level25-stream OUT.t42 [--tti DIR]`: write the authored Level 2.5 and
 //!   3.5 test stream (REQ-TST-024).
-//! - `check-bedstead`: check the Bedstead export against the SHA-256 in its
-//!   provenance record (REQ-FNT-001).
-//! - `check-noto`: check the Noto-derived fonts against the SHA-256s in
-//!   their provenance record (REQ-FNT-012).
+//! - `check-noto`: check the Noto Teletext files against the SHA-256s in
+//!   their provenance record (REQ-FNT-001, REQ-FNT-012).
 //! - `features`: lint and test the fixed list of feature builds of decision
 //!   E.61.
 //! - `size [--target TRIPLE]`: link the microcontroller test image for each
@@ -58,14 +56,13 @@ fn main() -> ExitCode {
         "check-constants" => checks::constants(&root),
         "check-io" => checks::io(&root),
         "level25-stream" => level25::write(&std::env::args().skip(2).collect::<Vec<_>>()),
-        "check-bedstead" => glyphs::check_bedstead(&root),
         "check-noto" => noto::check(&root),
         "features" => features::run(&root),
         "size" => size::run(&root, &std::env::args().skip(2).collect::<Vec<_>>()),
         "spec-examples" => spec_examples::write_examples(&root, &std::env::args().skip(2).collect::<Vec<_>>()),
         _ => Err(format!(
             "usage: cargo xtask <glyphs|corpus|check-layers|check-deps|check-constants|check-io|\
-             check-bedstead|check-noto|level25-stream|features|size|spec-examples> (got {command:?})"
+             check-noto|level25-stream|features|size|spec-examples> (got {command:?})"
         )),
     };
     match result {

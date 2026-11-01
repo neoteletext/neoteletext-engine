@@ -138,5 +138,5 @@ fuzz_target!(|input: &[u8]| {
     };
     let mut pixels = vec![0u8; PAGE_WIDTH * ROWS * options.row_height()];
     let mut buffer = IndexBuffer { format: IndexFormat::Bits8, data: &mut pixels, stride: PAGE_WIDTH };
-    let _ = render_screen(&grid, ALL_ROWS, &GlyphSet::bedstead(), options, &mut buffer);
+    let _ = render_screen(&grid, ALL_ROWS, &GlyphSet::noto_teletext(), options, &mut buffer);
 });

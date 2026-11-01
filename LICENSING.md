@@ -16,7 +16,7 @@ A licence is acceptable if, used the way we use it, it puts no conditions on our
 |---|---|---|---|
 | **Code compiled into our programs** | MIT, Apache-2.0 (also with the LLVM exception), BSD-2-Clause, BSD-3-Clause, Zlib, ISC, CC0-1.0: the list of REQ-GEN-017, which `deny.toml` enforces | They are permissive: they ask for a notice and nothing more of the code that uses them | Keep their notices in any binary distribution |
 | **Data compiled into our programs** | Unicode-3.0 (Unicode's tables), CDLA-Permissive-2.0 (Mozilla's root certificates) | Permissive data licences with no copyleft | Allowed one crate at a time in `deny.toml` (decision 32 of IMPLEMENTATION-LOG.md) |
-| **Fonts shipped with or converted by the project** | CC0-1.0 (Bedstead), SIL Open Font License 1.1 (Noto) | The OFL binds the font, not the program that draws it. A modified font must stay under the OFL, but the program's code is untouched | Ship the OFL text with the font; never sell the font on its own |
+| **Fonts compiled into our programs** | SIL Open Font License 1.1 (Noto Teletext, converted from Noto) | The OFL binds the font, not the program that draws it. A modified font must stay under the OFL, but the program's code is untouched | Ship the OFL text and copyright lines with any binary that holds the font (`third_party/noto/OFL.txt`); never sell the font on its own |
 | **System libraries loaded at run time and not shipped** | LGPL-2.1-or-later (glibc, ALSA's `libasound`), GPL with the GCC Runtime Library Exception (`libgcc_s`) | Linked dynamically from the user's own system, so the user can always replace them, which is all the LGPL asks. The GCC exception exists to allow any program to link the runtime | Never link them statically and never bundle them (see section 3) |
 | **A choice of licences** | For example `r-efi` (MIT, Apache-2.0 or LGPL-2.1-or-later) or `byteorder` (Unlicense or MIT) | We take it under the permissive choice | None beyond that choice's own |
 
@@ -43,5 +43,5 @@ Measured on 20 October 2026 from `cargo metadata --all-features`.
 
 - **Crates:** about 110, all under the licences of section 2: MIT or Apache-2.0 for most; `ring` (Apache-2.0 and ISC), `rustls` and `rustls-webpki` (ISC among their choices), `subtle` (BSD-3-Clause), `unicode-ident` (adds Unicode-3.0), `webpki-roots` (CDLA-Permissive-2.0). The library crates that run on a microcontroller have no dependencies at all (REQ-GEN-017).
 - **Ported code:** `neoteletext-opus` is ported from libopus 1.5.2 (BSD-3-Clause; its notice kept beside the source as `LICENSE-libopus` and in each ported file), so the crate is licensed `MIT AND BSD-3-Clause`; CREDITS.md names it (decision E.123).
-- **Fonts:** Bedstead 3.261 (CC0-1.0, `third_party/bedstead/`), and fonts converted from Noto (SIL OFL 1.1, `third_party/noto/`).
+- **Fonts:** Noto Teletext, the one font, converted from Noto and compiled into `neoteletext-core` (SIL OFL 1.1, `third_party/noto/`, DEC-1761). Its notice is compiled in with it as `GlyphSet::provenance`.
 - **System libraries:** the C library of each platform. The engine itself plays no sound; `neoteletext-audio-mix` only mixes.

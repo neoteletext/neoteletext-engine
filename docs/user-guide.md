@@ -148,7 +148,6 @@ At the default level, 3.5, `neottx` also keeps the enhancement pages a service s
 | `H` | Hold the page, so that new receptions do not update it. |
 | `m` | Mix: cell backgrounds become transparent, as when text is superimposed on the picture. |
 | `z` | Zoom: top half, bottom half, off. |
-| `G` | Glyphs: original, Bedstead, both side by side (images only). |
 | `q`, Esc or Ctrl+C | Quit. |
 
 A link to another service asks for confirmation: press the same key again.
@@ -237,11 +236,11 @@ neottx sound --page 100 chime.wav chime.t42 && cat pages.t42 chime.t42 > channel
 
 ## Glyphs
 
-Pages are drawn in Bedstead 3.261, the one bundled font (REQ-FNT-001, decision E.72), with the SAA5050's character rounding. It covers Latin with every national option, Cyrillic, Greek and Hebrew. It has no Arabic, and lacks six Latin national characters (Ă ă Ğ ğ Ƶ ₺) and two G2 characters (― ™); a character it lacks is composed from a base letter and a mark where that is possible, and otherwise drawn as a hollow box. `neottx render --font` draws in another font: a 12 × 10 or 12 × 20 BDF file (area FNT).
+Pages are drawn in Noto Teletext, the one compiled font (REQ-FNT-001, DEC-1761): the Noto fonts converted to teletext's 12 × 20 cell, drawn line for line. It holds every character of the standard's 24 sets and of neoteletext's own sets, with every letter a base and a diacritical mark compose to. A mark on a letter Unicode does not compose is laid over the letter, and a character the font does not hold is drawn as a hollow box. `neottx render --font` draws in another font: a 12 × 10 or 12 × 20 BDF file (area FNT).
 
 ## Fonts
 
-Pages are drawn in Bedstead unless another font is named. `neottx render --font FILE` draws a page's text in a loaded font: a BDF file of 12 × 10 or 12 × 20 cells, encoded in Unicode, with at most 1,024 characters (REQ-FNT-002); anything else is refused with the line at fault. A character the font lacks is drawn in Bedstead. Row 0's status area is always drawn in Bedstead. A channel or a page cannot name a font (decision E.111): `channel.ttx` refuses a `font` member, and the page checker reports a TTI `TF` line as a withdrawn command.
+Pages are drawn in Noto Teletext unless another font is named. `neottx render --font FILE` draws a page's text in a loaded font: a BDF file of 12 × 10 or 12 × 20 cells, encoded in Unicode, with at most 1,024 characters (REQ-FNT-002); anything else is refused with the line at fault. A character the font lacks is drawn in Noto Teletext. Row 0 is always drawn in Noto Teletext, so that a loaded font cannot change what the status area says. A channel or a page cannot name a font (decision E.111): `channel.ttx` refuses a `font` member, and the page checker reports a TTI `TF` line as a withdrawn command.
 
 A font library is a folder with a `fonts.txt` index listing fonts by title, each with its SHA-256 (`f`, the file name or address, the title and the checksum, separated by tabs). `third_party/noto/` is such a library. The windowed browser that chooses fonts from libraries is maintained in the separate neoteletext-browser repository.
 
@@ -260,7 +259,7 @@ A library's `fonts.txt` may state each font's conformance on a `c` line: `c`, th
 
 | Source cell | What the converter does |
 |---|---|
-| 6 × 10, 5 × 10 | Makes every pixel two pixels wide; a 5-pixel font sits at the right of the 12-pixel cell, leaving the blank column at the left, as Bedstead does. |
+| 6 × 10, 5 × 10 | Makes every pixel two pixels wide; a 5-pixel font sits at the right of the 12-pixel cell, leaving the blank column at the left, as the SAA5050 does. |
 | 6 × 9, 5 × 9 | The same, below one blank line at the top, where the SAA5050 leaves it. |
 | 12 × 20 | Keeps every second line, only when each pair of lines is identical. |
 

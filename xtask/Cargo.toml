@@ -9,10 +9,11 @@ publish.workspace = true
 [dependencies]
 # The list of required characters reads the character set tables.
 neoteletext-core = { workspace = true, features = ["render", "extended-sets"] }
-# The Bedstead export is checked by SHA-256 (REQ-FNT-001).
+# The Noto Teletext files are checked by SHA-256 (REQ-FNT-012).
 neoteletext-web = { workspace = true }
-# The authored test stream of REQ-TST-024 is built by the formats crate.
-neoteletext-formats = { workspace = true, features = ["std", "tti"] }
+# The authored test stream of REQ-TST-024 is built by the formats crate, and
+# its reader of loaded fonts reads the Noto Teletext files.
+neoteletext-formats = { workspace = true, features = ["std", "tti", "bdf"] }
 # The generated protocol document's byte examples use the input encoder.
 neoteletext-input = { workspace = true }
 # They use the audio encoder, for the audio records and their carriage.

@@ -5,7 +5,6 @@
 *.a
 *.so
 *.dylib
-/third_party/bedstead/tools/dump_glyphs
 
 # Test corpus and captures: downloaded at test time, never committed (REQ-TST-022)
 /corpus/

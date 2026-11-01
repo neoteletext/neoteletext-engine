@@ -5,3 +5,5 @@ f	noto-teletext-arabic.bdf	Noto Teletext Arabic	17cfa3817914c2a05ffadc1dd55f8343
 c	noto-teletext-arabic.bdf	G0-Arabic-Persian G0-Arabic-Urdu G0-Arabic-Pashto G0-Arabic-Sindhi G0-Arabic-Sorani G0-Arabic-Uyghur G0-Arabic-Balochi G0-Arabic-Plain
 f	noto-teletext-thai.bdf	Noto Teletext Thai	168f95b7ca735fd3a17bb5625a77ad4bf998838c9c6e6a71e378a925a030d8cb
 c	noto-teletext-thai.bdf	G0-Latin-English G0-Thai G0-Lao G2-Thai G2-Lao
+f	noto-teletext-composed.bdf	Noto Teletext Composed	e500e27361addb68119d02834192206216a3fd672c6926d082947d9f6092fe87
+c	noto-teletext-composed.bdf

@@ -11,8 +11,7 @@ name = "neottx"
 path = "src/main.rs"
 
 [dependencies]
-# Bedstead too, so that glyphs can be compared (decision E.62).
-neoteletext-core = { workspace = true, features = ["default", "bedstead"] }
+neoteletext-core = { workspace = true, features = ["default"] }
 # The program reads and writes every format, and `neottx check` runs the
 # page checker.
 neoteletext-formats = { workspace = true, features = ["default", "std"] }

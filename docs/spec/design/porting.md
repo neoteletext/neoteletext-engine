@@ -15,7 +15,7 @@ This is the whole of a port (REQ-ARCH-009, decision E.29). A port supplies the i
 | An audio sink | Implement `neoteletext_audio::port::VoiceSink`, and pass each packet to `neoteletext_audio::receiver::Receiver::push_packet` before the decoder; on a desktop, `neoteletext-audio-mix` mixes for you (area AUD, `audio-platforms.md`). | Only for sound |
 | Cookie storage | Implement the cookie storage trait of `neoteletext-web`. Store saved cookies as secrets (REQ-SEC-013). | Optional |
 
-A complete minimal port is `crates/neoteletext-core/examples/minimal_port.rs`, under 100 lines; it needs the core features `level15` and `bedstead`.
+A complete minimal port is `crates/neoteletext-core/examples/minimal_port.rs`, under 100 lines; it needs the core features `level15` and `render`.
 
 ## Choosing what to compile in
 
@@ -28,7 +28,7 @@ neoteletext-formats = { version = "...", default-features = false }  # T42 only
 
 | Crate | Features |
 |---|---|
-| `neoteletext-core` | `level15`, `level25`, `render`, `bedstead`, `viewer`; the capabilities of Levels 2.5 and 3.5 `nonspacing-attributes`, `level25-32colors`, `level35-32colors` (default, decision E.105), `objects`, `additional-flash-functions` (not default); and the profile `modern-classic` |
+| `neoteletext-core` | `level15`, `level25`, `render`, `viewer`, `extended-sets`; the capabilities of Levels 2.5 and 3.5 `nonspacing-attributes`, `level25-32colors`, `level35-32colors` (default, decision E.105), `objects`, `additional-flash-functions` (not default); and the profile `modern-classic` |
 | `neoteletext-formats` | `transport`, `sliced`, `pages`, `tti`, `ep1`, `edittf`, `dump`, `check`, and `std` |
 | `neoteletext-web` | `push`, `cookies` |
 
@@ -38,22 +38,23 @@ neoteletext-formats = { version = "...", default-features = false }  # T42 only
 neoteletext-core = { version = "...", default-features = false, features = ["modern-classic"] }
 ```
 
-Measured flash on Cortex-M0 on 12 October 2026 (`cargo xtask size`, `opt-level = "z"`, link-time optimisation):
+Measured flash on Cortex-M0 on 1 November 2026 (`cargo xtask size`, `opt-level = "z"`, link-time optimisation):
 
 | Build | Flash |
 |---|---|
-| Core with no optional area: acquisition, the Level 1 grid, composing | 26,198 bytes |
-| Level 1.5 receiver with the renderer and the viewer; your own glyphs | 43,002 bytes |
-| The same at Level 3.5, every capability | 65,758 bytes |
-| The same with the `modern-classic` profile's capabilities | 62,894 bytes |
-| Every core area, with Bedstead | 111,258 bytes |
-| Format detection reading T42 only, with the bare core | 29,126 bytes |
-| Format detection reading every format, with the bare core | 58,737 bytes |
+| Core with no optional area: acquisition, the Level 1 grid, composing | 25,870 bytes |
+| Level 1.5 receiver with the renderer and the viewer, without the font | 58,570 bytes |
+| The same with the compiled font's standard sets | 98,450 bytes |
+| The same at Level 3.5, every capability, without the font | 74,770 bytes |
+| The same with the `modern-classic` profile's capabilities, without the font | 74,606 bytes |
+| Every core area, with the whole compiled font | 147,282 bytes |
+| Format detection reading T42 only, with the bare core | 42,774 bytes |
+| Format detection reading every format, with the bare core | 56,037 bytes |
 
 Notes on the builds:
 - **A configured level that is not compiled in** falls back to the highest one that is (`PresentationLevel::available`).
-- **Glyphs:** `bedstead` is Bedstead 3.261, the bundled font (`GlyphSet::bedstead`), on by default. Without it, supply your own glyphs with `GlyphSet::from_entries`.
-- **The minimal port example** needs `level15` and `bedstead`.
+- **Glyphs:** Noto Teletext is the one compiled font (`GlyphSet::noto_teletext`). A build links it only if it calls that function, and `extended-sets` adds the part of it only neoteletext's own sets use. A port short of flash can hold a subset of the same font with `GlyphSet::from_entries`.
+- **The minimal port example** needs `level15` and `render`.
 
 ## Memory
 

@@ -154,7 +154,7 @@ pub struct RasterArgs {
     #[arg(long)]
     pub reveal: bool,
     /// Draw text in this loaded font, a 12 x 10 or 12 x 20 BDF file
-    /// (REQ-FNT-002, REQ-FNT-008), instead of Bedstead.
+    /// (REQ-FNT-002, REQ-FNT-008), instead of the compiled font.
     #[arg(long)]
     pub font: Option<PathBuf>,
 }

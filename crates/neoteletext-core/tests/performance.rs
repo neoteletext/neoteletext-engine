@@ -82,7 +82,7 @@ fn presentation_and_drawing_costs() {
         let _ = compose_level(&mut grid, page, &magazine, &decoder.enhancement_lookup(), &config, &options);
     }
     let grids = f64::from(rounds) / start.elapsed().as_secs_f64();
-    let glyphs = GlyphSet::bedstead();
+    let glyphs = GlyphSet::noto_teletext();
     let options = RenderOptions::from_config(&config, false);
     let start = Clock::now();
     let mut draws = 0u64;
@@ -125,7 +125,7 @@ fn row_renderer_cost() {
     build_grid(&mut grid, Some(page), &magazine, &config, &DisplayOptions::default());
     let _ =
         compose_level(&mut grid, page, &magazine, &decoder.enhancement_lookup(), &config, &DisplayOptions::default());
-    let glyphs = GlyphSet::bedstead();
+    let glyphs = GlyphSet::noto_teletext();
     let modes = [
         ("palette mode", RenderOptions::from_config(&config, false)),
         ("resolved mode", RenderOptions::resolved(&config, false, FlashPhase::at_unit(0))),
@@ -191,7 +191,8 @@ fn row_renderer_cost_with_a_loaded_font() {
         ]
         .map(|mode| (*font, mode))
     }) {
-        let glyphs = GlyphSet::bedstead().with_fonts(Some(LoadedFont::new(table).unwrap()), [None; FONT_SET_COUNT]);
+        let glyphs =
+            GlyphSet::noto_teletext().with_fonts(Some(LoadedFont::new(table).unwrap()), [None; FONT_SET_COUNT]);
         let rounds = 2000;
         let start = Clock::now();
         for _ in 0..rounds {

@@ -4,13 +4,14 @@
 
 use super::pages::{COLUMNS, ROWS};
 
-/// Dots across a glyph.
+/// Dots across a character in the SAA5050's matrix, the form a dot-matrix
+/// font is converted from (REQ-FNT-010).
 pub const GLYPH_DOTS: usize = 5;
-/// Lines of a glyph.
+/// Lines of a character in the SAA5050's matrix.
 pub const GLYPH_LINES: usize = 9;
-/// Dot columns of a cell: the glyph plus one blank column on the left.
+/// Dot columns of a cell: the matrix plus one blank column on the left.
 pub const CELL_DOTS: usize = 6;
-/// Lines of a cell in one field: the glyph plus one blank line.
+/// Lines of a cell in one field: the matrix plus one blank line.
 pub const CELL_FIELD_LINES: usize = 10;
 /// Half-dots across a cell in the 12-by-20 mode.
 pub const CELL_WIDTH: usize = 12;

@@ -23,12 +23,12 @@ default = [
     "level25-32colors",
     "level35-32colors",
     "render",
-    "bedstead",
     "viewer",
     "extended-sets",
 ]
 # neoteletext's own character sets at values Table 32 reserves
-# (REQ-CHR-012, decision E.78). Without it those values are reserved.
+# (REQ-CHR-012, decision E.78), and the part of the compiled font only they
+# use (REQ-FNT-001). Without it those values are reserved.
 extended-sets = []
 # The Level 1.5 pass (area L15).
 level15 = []
@@ -60,15 +60,13 @@ additional-flash-functions = ["nonspacing-attributes"]
 # A page using a later level shows as a Level 1.5 receiver showed it. Pair
 # it with `Config::saa5246a()`, or `Config::saa5050()` for Level 1.0. Used
 # with the default features off.
-classic = ["level15", "render", "bedstead", "viewer"]
+classic = ["level15", "render", "viewer"]
 # The modern-classic profile (decision E.71): Level 1.5, and of Levels 2.5
 # and 3.5 only the non-spacing attributes and objects. Used with the
 # default features off.
-modern-classic = ["level15", "level25", "nonspacing-attributes", "render", "bedstead", "viewer", "objects"]
+modern-classic = ["level15", "level25", "nonspacing-attributes", "render", "viewer", "objects"]
 # The row renderer and the generated G3 glyphs (area RND).
 render = []
-# Bedstead, the one bundled font (REQ-FNT-001, decision E.72).
-bedstead = ["render"]
 # The viewer state machine, navigation and history (area NAV).
 viewer = []
 # REQ-GEN-011 and REQ-GEN-016: `core::error::Error` for the error types,
@@ -100,7 +98,7 @@ required-features = ["level15", "level25"]
 
 [[test]]
 name = "coverage"
-required-features = ["bedstead"]
+required-features = ["render"]
 
 [[test]]
 name = "level25"
@@ -130,11 +128,11 @@ required-features = ["level25", "objects"]
 
 [[test]]
 name = "performance"
-required-features = ["level25", "bedstead"]
+required-features = ["level25", "render"]
 
 [[test]]
 name = "flash_cost"
-required-features = ["level25", "bedstead"]
+required-features = ["level25", "render"]
 
 [[test]]
 name = "reporting"
@@ -143,4 +141,4 @@ required-features = ["level15", "level25", "viewer", "objects"]
 
 [[example]]
 name = "minimal_port"
-required-features = ["level15", "bedstead"]
+required-features = ["level15", "render"]

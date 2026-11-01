@@ -28,7 +28,8 @@ capabilities = [
 ]
 modern-classic = ["level25", "neoteletext-core/objects", "neoteletext-core/nonspacing-attributes"]
 render = ["neoteletext-core/render"]
-bedstead = ["render", "neoteletext-core/bedstead"]
+font = ["render"]
+extended-sets = ["neoteletext-core/extended-sets"]
 viewer = ["neoteletext-core/viewer"]
 # The format readers through detection; formats-all adds every reader.
 formats = []

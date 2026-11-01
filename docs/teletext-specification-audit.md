@@ -57,7 +57,7 @@ Priority targets are independently sourced object/DRCS/MOT packets, cross-magazi
 
 `config.rs` deliberately changes national-option selection, row 24, black attributes, reveal and X/26 handling between profiles. This is useful compatibility behavior. It is not a complete simulation of the SAA5050 or SAA5246A hardware.
 
-G0/G2 glyphs still use the temporary Bedstead source. The SAA5050 datasheet's double-height rounding wording differs from the emulator-derived interpretation adopted by the project; REQUIREMENTS.md explicitly leaves photograph verification open. Parity recovery and several receiver details are also project decisions where hardware evidence is absent.
+G0/G2 glyphs are Noto Teletext (DEC-1761). The SAA5050 datasheet's double-height rounding wording differs from the emulator-derived interpretation adopted by the project; REQUIREMENTS.md explicitly leaves photograph verification open. Parity recovery and several receiver details are also project decisions where hardware evidence is absent.
 
 Separate specification-level semantic tests from chip-specific pixel and recovery tests. Use generated test streams with documented hardware captures to resolve the remaining chip behavior questions.
 

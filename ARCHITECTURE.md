@@ -459,7 +459,7 @@ Where each crate's code lives, one sentence per directory (the reorganisation of
 - `colour/`: the page-level presentation data beside the Colour Map.
 - `objects/`: an object's links, its definition and where its triplets come from.
 - `enhance/`: the enhancement processor's parts: its entry points, the attributes, enhancement characters, display planes, the walk's machine, row resolution and the size rules; `enhance/walk/` holds object invocation and the placement of column triplets.
-- `glyphs/`: the generated Bedstead and G3 tables, a font loaded at run time and a font's conformance per set.
+- `glyphs/`: the generated Noto Teletext and G3 tables, a font loaded at run time and a font's conformance per set.
 - `render/`: the render options, the cell raster, the row renderer, the colours, flash and change tracking.
 - `viewer/`: the viewer's keys, its screen and the status area of row 0.
 
@@ -540,7 +540,7 @@ Where each crate's code lives, one sentence per directory (the reorganisation of
 - `checks/`: the four source checks, one file each: layers, dependencies, constants and operating-system access.
 - `test_code/`: telling test code from production code, by module and by item, for the checks and the traceability table.
 - `g3/`: the G3 geometry and the Table 48 shape list.
-- `glyphs/`: the generated Bedstead table, G3 table and required-character lists.
+- `glyphs/`: the generated Noto Teletext table, G3 table and required-character lists.
 - `size/`: the ELF reader of the size check.
 
 ### Features: a build contains only the parts it uses
@@ -558,7 +558,7 @@ Decision E.61 makes each crate's optional areas Cargo features, all on by defaul
 
 | Crate | Features |
 |---|---|
-| `neoteletext-core` | Default (decision E.105): `level15`, `level25`, `nonspacing-attributes`, `level25-32colors`, `level35-32colors`, `render`, `bedstead`, `viewer`, `extended-sets` (neoteletext's own character sets and the joining pass, decision E.78). Not default: the capabilities `objects` and `additional-flash-functions` (decision E.71), and the profile `modern-classic` |
+| `neoteletext-core` | Default (decision E.105): `level15`, `level25`, `nonspacing-attributes`, `level25-32colors`, `level35-32colors`, `render`, `viewer`, `extended-sets` (neoteletext's own character sets, the joining pass and the part of the compiled font only they use, decision E.78, REQ-FNT-001). Not default: the capabilities `objects` and `additional-flash-functions` (decision E.71), and the profile `modern-classic` |
 | `neoteletext-formats` | `transport`, `sliced`, `pages`, `tti`, `ep1`, `edittf`, `dump`, `check`, `bdf` (the font reader of REQ-FNT-002), and `std` (not default) |
 | `neoteletext-web` | `push`, `cookies`; not default: `dbsc` (REQ-WEB-017, decision E.110), `error-trait` and `std` |
 | `neoteletext-app` | `live`, `slice`, `write-text` (the text-to-page writer and its `unicode-bidi` dependency) |

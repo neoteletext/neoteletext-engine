@@ -1,7 +1,7 @@
-format 3
-testcard 12x20-rounded reveal=false 0a66c2c01a9fe0db
-testcard 12x20-unrounded reveal=false 5a18d10ae33546d1
-testcard 12x10 reveal=false 22e0249d3adee0af
-testcard 12x20-rounded reveal=true 0a66c2c01a9fe0db
-testcard 12x20-unrounded reveal=true 5a18d10ae33546d1
-testcard 12x10 reveal=true 22e0249d3adee0af
+format 4
+testcard 12x20-rounded reveal=false 0ffc25ff076d4af8
+testcard 12x20-unrounded reveal=false 0ffc25ff076d4af8
+testcard 12x10 reveal=false 011bbd4c0f20492b
+testcard 12x20-rounded reveal=true 0ffc25ff076d4af8
+testcard 12x20-unrounded reveal=true 0ffc25ff076d4af8
+testcard 12x10 reveal=true 011bbd4c0f20492b

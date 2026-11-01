@@ -61,7 +61,7 @@ fn large(unit: u8) -> RenderOptions {
 }
 
 fn line_of(grid: &Grid, cell: &Cell, row: usize, column: usize, line: usize, options: RenderOptions) -> CellLine {
-    cell_line(cell, grid, row, column, line, &GlyphSet::bedstead(), options)
+    cell_line(cell, grid, row, column, line, &GlyphSet::noto_teletext(), options)
 }
 
 /// A whole screen at the grid's row width.
@@ -69,7 +69,7 @@ fn screen(grid: &Grid, options: RenderOptions) -> Vec<u8> {
     let width = PAGE_WIDTH;
     let mut out = vec![0u8; width * ROWS * options.row_height()];
     let mut buffer = IndexBuffer { format: IndexFormat::Bits8, data: &mut out, stride: width };
-    render_screen(grid, ALL_ROWS, &GlyphSet::bedstead(), options, &mut buffer).unwrap();
+    render_screen(grid, ALL_ROWS, &GlyphSet::noto_teletext(), options, &mut buffer).unwrap();
     out
 }
 
@@ -197,7 +197,7 @@ fn resolved_mode_matches_palette_mode_on_level1_pages() {
 /// that needs the resolved mode, by every drawing call.
 #[test]
 fn palette_mode_is_refused_where_it_cannot_draw() {
-    let glyphs = GlyphSet::bedstead();
+    let glyphs = GlyphSet::noto_teletext();
     let palette = RenderOptions {
         mode: CellMode::Saa5050,
         rounding: true,
@@ -396,7 +396,7 @@ fn rows_render_identically_in_any_order() {
     let width = PAGE_WIDTH;
     let options = large(5);
     let whole = screen(&grid, options);
-    let glyphs = GlyphSet::bedstead();
+    let glyphs = GlyphSet::noto_teletext();
     for row in (0..ROWS).rev() {
         let mut single = vec![0u8; width * CELL_HEIGHT];
         let mut buffer = IndexBuffer { format: IndexFormat::Bits8, data: &mut single, stride: width };
@@ -560,7 +560,7 @@ fn the_underline_option_turns_underline_off_and_leaves_separated_mosaics() {
 #[test]
 fn every_g3_position_draws() {
     let grid = Grid::EMPTY;
-    let glyphs = GlyphSet::bedstead();
+    let glyphs = GlyphSet::noto_teletext();
     for offset in 0..G3_CODES {
         let code = G3_FIRST_CODE + offset as u8;
         let data = glyphs.g3(code);
@@ -589,7 +589,7 @@ fn every_g3_position_draws() {
 /// 4/E is a disc.
 #[test]
 fn g3_shapes_match_the_figure() {
-    let glyphs = GlyphSet::bedstead();
+    let glyphs = GlyphSet::noto_teletext();
     let small = |code| glyphs.g3(code).small;
     let lower_left = small(0x25);
     assert_eq!(lower_left[9] & 0x800, 0x800, "2/5 fills the bottom-left corner");
@@ -613,7 +613,7 @@ fn g3_shapes_match_the_figure() {
 fn four_bit_format_in_the_resolved_mode() {
     let mut grid = Grid::EMPTY;
     grid.cells[2][3] = Cell { glyph: g3(0x3F), foreground: 15, background: 9, ..Cell::BLANK };
-    let glyphs = GlyphSet::bedstead();
+    let glyphs = GlyphSet::noto_teletext();
     let mut out = vec![0u8; PAGE_WIDTH / 2];
     render_line(&grid, 2 * CELL_HEIGHT, Zoom::Off, &glyphs, large(0), IndexFormat::Bits4, &mut out).unwrap();
     assert_eq!(&out[3 * 6..4 * 6], &[0xFF; 6]);

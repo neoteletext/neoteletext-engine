@@ -1,52 +1,18 @@
-//! The cell raster of REQ-RND-016 (decisions E.13 and E.14): glyph lines
-//! with rounding, mosaics, loaded fonts, underline, double width and height,
-//! and G3 characters.
+//! The cell raster of REQ-RND-016 (decision E.14): glyph lines, mosaics,
+//! loaded fonts with the rounding of decision E.13, underline, double width
+//! and height, and G3 characters.
 
 use super::CellLine;
 use super::colours::{background_index, foreground_index, resolved_colours};
 use super::options::{ColourMode, RenderOptions};
 use crate::config::CellMode;
-use crate::consts::{CELL_DOTS, CELL_HEIGHT, CELL_WIDTH, GLYPH_DOTS, GLYPH_LINES, MOSAIC_ROW_TENTHS};
-use crate::glyphs::{CharClass, GlyphSet, class};
+use crate::consts::{CELL_DOTS, CELL_HEIGHT, CELL_WIDTH, MOSAIC_ROW_TENTHS};
+use crate::glyphs::{CharClass, GlyphRows, GlyphSet, class};
 use crate::level1::{Cell, CellAttributes, Glyph, Grid, Size, Width};
-
-/// Widens a 5-dot row to 10 half-dots in a 12-half-dot cell; the leftmost
-/// dot column of the cell stays blank.
-pub(super) fn widen(dots: u8) -> u16 {
-    (0..GLYPH_DOTS).fold(
-        0u16,
-        |acc, dot| {
-            if (dots >> dot) & 1 == 1 { acc | (0b11 << dot.wrapping_mul(2)) } else { acc }
-        },
-    )
-}
-
-/// A glyph row as half-dots, empty outside the 9-row glyph (decision E.13:
-/// no rounding across the cell edge).
-fn glyph_row(glyph: &[u8; GLYPH_LINES], row: Option<usize>) -> u16 {
-    row.and_then(|row| glyph.get(row)).map_or(0, |&dots| widen(dots))
-}
 
 /// The rounding rule of decision E.13 on half-dot rows.
 const fn round(a: u16, b: u16) -> u16 {
     a | ((a >> 1) & b & !(b >> 1)) | ((a << 1) & b & !(b << 1))
-}
-
-/// Line `line` (0 to 19) of the 20-line form of a glyph. Cell line 0 is the
-/// blank line above the glyph; cell lines 1 to 9 hold glyph rows 0 to 8
-/// (REQ-RND-010: a 5 by 9 glyph in a 6 by 10 cell).
-pub(super) fn glyph_line_20(glyph: &[u8; GLYPH_LINES], line: usize, rounding: bool) -> u16 {
-    let cell_line = line / 2;
-    let row = cell_line.checked_sub(1);
-    let a = glyph_row(glyph, row);
-    if !rounding {
-        return a;
-    }
-    // Upper sub-line rounds against the row above, lower against the row
-    // below.
-    let neighbour =
-        if line.is_multiple_of(2) { row.and_then(|r| r.checked_sub(1)) } else { row.map(|r| r.saturating_add(1)) };
-    round(a, glyph_row(glyph, neighbour)) & CELL_MASK
 }
 
 /// Twelve half-dots.
@@ -101,46 +67,44 @@ pub(super) fn mosaic_line(pattern: u8, separated: bool, line: usize, height: usi
     mask
 }
 
-/// A G0 or G2 character's line (REQ-RND-016): the glyph line, with
-/// rounding in the 12-by-20 mode.
-fn text_line(glyph: &[u8; GLYPH_LINES], source: usize, options: RenderOptions) -> u16 {
-    match options.mode {
-        CellMode::Saa5050 => glyph_line_20(glyph, source, options.rounding),
-        // The 12-by-10 mode: one line per glyph row, no rounding.
-        CellMode::Saa5246a => glyph_row(glyph, source.checked_sub(1)),
-    }
+/// Line `source` of a 12 by 20 glyph: line for line in the 12-by-20 cell,
+/// and the upper line of each pair in the 12-by-10 cell (decision E.77).
+fn tall_line(rows: &GlyphRows, source: usize, mode: CellMode) -> u16 {
+    let line = match mode {
+        CellMode::Saa5050 => source,
+        CellMode::Saa5246a => source.saturating_mul(2),
+    };
+    rows.get(line).copied().unwrap_or(0) & CELL_MASK
 }
 
 /// A loaded font's character line (REQ-FNT-008): a 12 by 10 glyph drawn
 /// as given, each line twice in the 12-by-20 cell, or a 12 by 20 glyph line
-/// for line (decision E.77), and rounded as Bedstead is when the font is
-/// a doubled dot matrix (issue #209); a character no loaded font has is
-/// drawn from the bundled glyphs. Cold and out of line, so that the
-/// common case, no loaded font, costs the renderer one test (REQ-TST-050).
+/// for line (decision E.77), and rounded with the rule of decision E.13
+/// when the font is a doubled dot matrix (issue #209); a character no loaded
+/// font has is drawn from the compiled font. Cold and out of line, so that
+/// the common case, no loaded font, costs the renderer one test
+/// (REQ-TST-050).
 #[cold]
 #[inline(never)]
 fn font_or_text_line(cell: &Cell, glyphs: &GlyphSet<'_>, source: usize, options: RenderOptions) -> u16 {
     let Glyph::Char(character) = cell.glyph else { return 0 };
     let Some(loaded) = glyphs.loaded(character) else {
-        return text_line(&glyphs.glyph(character), source, options);
+        return tall_line(&glyphs.glyph(character), source, options.mode);
     };
-    let line = |index: usize| loaded.rows.get(index).copied().unwrap_or(0) & CELL_MASK;
     match (options.mode, loaded.tall) {
         // A 12 by 10 glyph doubles its lines in the 12-by-20 cell, rounded
         // when it is a doubled dot matrix (issue #209).
         (CellMode::Saa5050, false) => font_line_20(&loaded.rows, source, options.rounding && loaded.dot_matrix),
-        // A 12 by 20 glyph shows its upper line of each pair in the
-        // 12-by-10 raster.
-        (CellMode::Saa5246a, true) => line(source.saturating_mul(2)),
-        // Otherwise the glyph's own line: a 12 by 20 glyph line for line in
-        // the 12-by-20 cell (decision E.77), a 12 by 10 one in the 12-by-10.
-        (CellMode::Saa5050, true) | (CellMode::Saa5246a, false) => line(source),
+        // A 12 by 10 glyph in the 12-by-10 cell is its own line.
+        (CellMode::Saa5246a, false) => loaded.rows.get(source).copied().unwrap_or(0) & CELL_MASK,
+        (_, true) => tall_line(&loaded.rows, source, options.mode),
     }
 }
 
 /// Line `line` (0 to 19) of a 12 by 10 loaded glyph, whose lines are the
-/// first ten of `rows`, in the 12-by-20 cell: each of its ten lines twice, and with `rounding` the rule of decision E.13 as
-/// the bundled glyphs get it, never across the cell's edge.
+/// first ten of `rows`, in the 12-by-20 cell: each of its ten lines twice,
+/// and with `rounding` the rule of decision E.13, never across the cell's
+/// edge.
 #[must_use]
 pub(crate) fn font_line_20(rows: &[u16], line: usize, rounding: bool) -> u16 {
     let cell_line = line / 2;
@@ -194,7 +158,7 @@ const fn source_line(size: Size, line: usize, height: usize) -> usize {
     }
 }
 
-/// A G3 character's line (REQ-RND-037): no rounding or underline. Kept out of line, like [`styled_line`].
+/// A G3 character's line (REQ-RND-037): no underline. Kept out of line, like [`styled_line`].
 #[inline(never)]
 fn g3_line(glyphs: &GlyphSet, code: u8, source: usize, mode: CellMode) -> u16 {
     let glyph = glyphs.g3(code);
@@ -235,11 +199,12 @@ pub fn cell_line(
         Glyph::Char(character) => match class(character) {
             CharClass::Text => {
                 // REQ-FNT-005: row 0 is the receiver's, always in the
-                // bundled glyphs.
+                // compiled font, so that no loaded font can redraw what the
+                // status area says (REQ-SEC-005).
                 let mask = if glyphs.has_fonts() && row != 0 {
                     font_or_text_line(cell, glyphs, source, options)
                 } else {
-                    text_line(&glyphs.glyph(character), source, options)
+                    tall_line(&glyphs.glyph(character), source, options.mode)
                 };
                 if plain { mask } else { styled_line(mask, cell, source, height, options.underline) }
             }

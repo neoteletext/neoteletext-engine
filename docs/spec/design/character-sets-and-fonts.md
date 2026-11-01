@@ -155,13 +155,13 @@ In the 96-position grid, the empty positions are drawn as a faint dot on dark pa
 Through Unicode. A font says nothing about teletext positions: each glyph in a BDF file is labelled with a **Unicode code point** (its `ENCODING` line), for example `U+00C4` for Ä. neoteletext connects positions to those code points with the standard's own tables.
 
 1. **The character set tables, in the core.** The core holds EN 300 706 Tables 35 to 46 as data: for every character set and every position 2/0 to 7/F, the Unicode character (REQ-CHR-010). G0 Latin German 5/B is `Ä` (U+00C4), G0 Latin English 5/B is `←` (U+2190), G2 Latin 3/D is `½` (U+00BD).
-2. **Drawing a cell.** Each cell of a decoded page records which set and which position it holds, plus an accent if X/26 added one. The renderer looks the set and position up in the tables to get the Unicode character; with an accent it asks for the precomposed character first (`u` plus `¨` gives `ü`); then it finds that code point in the font chosen for the cell's set, falling back to Bedstead and then a hollow box (REQ-FNT-005, `GlyphSet::loaded`).
+2. **Drawing a cell.** Each cell of a decoded page records which set and which position it holds, plus an accent if X/26 added one. The renderer looks the set and position up in the tables to get the Unicode character; with an accent it asks for the precomposed character first (`u` plus `¨` gives `ü`); then it finds that code point in the font chosen for the cell's set, falling back to the compiled font and then a hollow box (REQ-FNT-005, `GlyphSet::loaded`).
 3. **The grid and the conformance check** (REQ-FNT-011) walk the same tables: for each of a set's 96 positions, what character belongs there, and does the font have a glyph for it.
 4. **Chip dumps** are stored by position, not by Unicode. When the font collection converts them, it uses the same tables to give each position its code point.
 
 Two consequences of going through Unicode:
 
-- **One glyph serves every set with that character.** `A` is the same code point in English, German and Cyrillic 1's Latin positions, so one glyph covers them all; that is how Bedstead conforms for 16 sets.
+- **One glyph serves every set with that character.** `A` is the same code point in English, German and Cyrillic 1's Latin positions, so one glyph covers them all; that is how one font conforms for many sets.
 - **A single font cannot draw the same character two ways in two sets.** If the German chip's `#` looked different from the English chip's, one font could not hold both. Choosing a font per character set solves this: the German set uses the German chip's font, the English set the English one.
 
 ## Beyond the standard: neoteletext's own character sets

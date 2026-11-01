@@ -55,9 +55,9 @@ The rules below about issues and requirements apply at integration: behaviour ma
 
 - **No copyrighted source material in this repository.** Do not copy standards PDFs or datasheets here. Link to them or cite them by clause.
 - **No GPL code.** vbit2 and QTeletextMaker may be run as external programs, or used as test oracles at test time. Their code and test files must never be copied into this repository.
-- **One bundled font: Bedstead** (decisions E.72 and E.77, REQ-FNT-001).
-  - `third_party/bedstead/bedstead-glyphs.txt` is the only font compiled into the receiver. Its licence and legal basis are in `third_party/bedstead/PROVENANCE.md`.
-  - The only other glyph data in the repository is the Noto-derived 12 × 20 fonts in `third_party/noto/`, with their converter (decision E.77, REQ-FNT-012). They are loaded at run time, never compiled in.
+- **One font: Noto Teletext** (DEC-1761, REQ-FNT-001).
+  - `third_party/noto/*.bdf` hold it; `cargo xtask glyphs` compiles them into `crates/neoteletext-core/src/glyphs/noto.rs`. Its licence (SIL OFL 1.1) and provenance are in `third_party/noto/`, with the converter that makes it.
+  - It is the only glyph data in the repository. Mosaics and G3 characters are drawn by rule.
   - Never add any other font, or any glyphs from character-generator ROMs, to the repository. Other fonts are 12 × 10 or 12 × 20 BDF files loaded at run time (area FNT); the owner's font collection lives in a separate repository.
   - Keep glyphs as replaceable data, never hard-coded.
 - **The test corpus is downloaded at test time and pinned by checksum** (REQ-TST-022). Local corpus files, including Dan Farrimond's recovered T42 captures in `~/devel/jellytext/dan/`, are read from `$NEOTELETEXT_CORPUS`. Never commit sample streams or captures.

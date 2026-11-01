@@ -6,15 +6,16 @@ contributes, with its licence and how neoteletext uses it.
 
 ## Bundled
 
-**Bedstead** — Ben Harris and contributors, <https://bjh21.me.uk/bedstead/>
-- *What it provides:* neoteletext's one bundled font, the default for every page and the font of
-  the receiver's own drawing (decision E.72, REQ-FNT-001). `third_party/bedstead/` holds the source
-  (version 3.261) and the glyphs exported from it.
-- *Licence:* Bedstead's own work is dedicated to the public domain under CC0 1.0. Many glyphs
-  reproduce the typeface of the **Mullard SAA5050** character generator, designed by Mullard; their
-  use as a typeface rests on section 55 of the UK Copyright, Designs and Patents Act 1988. The full
-  analysis, and Debian's view of it, is in `third_party/bedstead/PROVENANCE.md`.
-- *Effect on neoteletext's licence:* none. CC0 places no conditions on the code that uses it.
+**Noto** — the Noto Project Authors and Google, <https://github.com/notofonts>
+- *What it provides:* neoteletext's one font, Noto Teletext, the font of every page and of the
+  receiver's own drawing (DEC-1761, REQ-FNT-001). `third_party/noto/` holds the fonts converted from
+  the Noto sources to teletext's 12 by 20 cell, the converter and its settings; the sources themselves
+  are downloaded pinned by checksum and never committed.
+- *Licence:* the SIL Open Font License 1.1, which `third_party/noto/OFL.txt` reproduces with the
+  copyright line of every source. No Reserved Font Name is declared, so the converted font may keep
+  the name.
+- *Effect on neoteletext's licence:* none. The OFL binds the font, which stays under it; a binary
+  that holds the font must carry its licence and copyright lines.
 
 ## Ported
 
@@ -72,5 +73,5 @@ These programs are run as separate programs or test oracles, in containers with 
 
 ## Fonts loaded at run time
 
-Fonts other than Bedstead are not part of neoteletext: the user loads them from font libraries at
-run time (area FNT), and each keeps its own licence and record of where it came from.
+Fonts other than Noto Teletext are not part of neoteletext: the user loads them from font libraries
+at run time (area FNT), and each keeps its own licence and record of where it came from.

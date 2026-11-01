@@ -13,14 +13,14 @@ use neoteletext_core::glyphs::GlyphSet;
 use neoteletext_core::level1::Grid;
 use neoteletext_image::palette::Rgba;
 
-/// Images are drawn in Bedstead, the one bundled font (REQ-FNT-001).
-const BEDSTEAD: GlyphSet<'static> = GlyphSet::bedstead();
+/// Images are drawn in Noto Teletext, the one compiled font (REQ-FNT-001).
+const NOTO_TELETEXT: GlyphSet<'static> = GlyphSet::noto_teletext();
 
-/// Renders a grid to a scaled raster in Bedstead. `picture` is the colour
+/// Renders a grid to a scaled raster in Noto Teletext. `picture` is the colour
 /// of the picture, transparent areas (REQ-RND-006).
 #[must_use]
 pub fn raster(grid: &Grid, frame: Frame, scale: Scale, picture: Rgba) -> Raster {
-    raster_in(grid, frame, scale, picture, &BEDSTEAD)
+    raster_in(grid, frame, scale, picture, &NOTO_TELETEXT)
 }
 
 /// Renders a grid to a scaled raster in the given glyphs (`--font`).

@@ -186,11 +186,7 @@ The core stores no font; the port supplies the glyph table (`LoadedFont<'a>`). A
 
 ### Where fonts come from
 
-Bedstead has none of the new scripts and few of the African Latin letters, so every new set needs another font.
-
-The owner decided on 18 October 2026 that **the Noto-derived fonts and their converter are kept in this repository.** This amends decision E.72 items 1 and 3, REQ-FNT-001, and the rule in `CLAUDE.md` that Bedstead is the only glyph data in the repository.
-
-They are kept as Bedstead is, in a folder of their own, `third_party/noto/`:
+The owner decided on 18 October 2026 that **the Noto-derived fonts and their converter are kept in this repository** (decision E.77), and on 1 November 2026 that **Noto Teletext is the one font** (DEC-1761). They are in a folder of their own, `third_party/noto/`:
 
 | File | What it is |
 |---|---|
@@ -201,11 +197,9 @@ They are kept as Bedstead is, in a folder of their own, `third_party/noto/`:
 | `OFL.txt` | The SIL Open Font License 1.1, with each source's copyright line. Noto's licence declares no Reserved Font Name, so the converted fonts may keep "Noto" in their names. |
 | `PROVENANCE.md` | Where each source came from, when, and how the fonts were made. |
 
-`cargo xtask check-noto`, run by every gate as `check-bedstead` is, fails if a committed font differs from the checksum recorded in `PROVENANCE.md`.
+`cargo xtask check-noto`, run by every gate, fails if a committed font differs from the checksum recorded in `PROVENANCE.md`.
 
-**The fonts are not compiled into the engine.** They are loaded at run time as any loaded font is: chosen per character set (REQ-FNT-005), or named by the channel or the page (REQ-FNT-006, REQ-FNT-007). A small build therefore carries only Bedstead, and a port that wants them built in can embed the files itself.
-
-`neottx` and the receivers built on the engine use `third_party/noto/` as their default font library. A page in a new set should still name its font, so that a receiver without the library draws it too. Without a font, a set's letters show as the placeholder of REQ-CHR-004.
+**The fonts are compiled into the engine.** `cargo xtask glyphs` merges the files into the core's one font (REQ-FNT-001). The glyphs only neoteletext's own sets use are compiled with `extended-sets`, so a build without the feature carries the standard's sets alone. A user may still load another font (REQ-FNT-005).
 
 ### The converter
 
@@ -215,7 +209,7 @@ The settings below are what looked best in the prototype's comparisons. All glyp
 
 | Script | Noto font | Weight | Hinting | Size in the 12 × 20 cell |
 |---|---|---|---|---|
-| Latin, Cyrillic, Greek | Noto Sans Mono | 600 | FreeType's automatic hinter | Capitals 14 lines tall, H 10 pixels wide, baseline on line 14: Bedstead's metrics |
+| Latin, Cyrillic, Greek | Noto Sans Mono | 600 | FreeType's automatic hinter | Capitals 14 lines tall, on lines 2 to 15, H 10 pixels wide, baseline on line 16 |
 | Vietnamese | Noto Sans Mono | 600 | automatic | Capitals 13 lines, H 10 pixels wide, baseline on line 15, leaving room for stacked marks |
 | Thai, Lao | Noto Sans Thai (loopless), Noto Sans Lao | 800 | automatic | Reference consonants (กคนมบ) 10 lines tall and 10 pixels wide, baseline on line 15 |
 | Arabic script | Noto Naskh Arabic | 500 | the font's own | Fitted to the cell; joining strokes extended to the cell edges |
@@ -227,8 +221,8 @@ The settings below are what looked best in the prototype's comparisons. All glyp
 - **Weight 700 is too heavy:** the three stems of m merge in 10 pixels. Below 500, strokes break.
 - **Supersampling never helped:** neither 4× nor 8× antialiasing followed by a threshold beat hinting.
 - **Size by reference letters, not by the font's em:** sizing by em lets the tallest stacked capital shrink every letter.
-- **Widen to Bedstead's width:** the display pixel is 1.39 times wider than tall (480 × 500 on a 4:3 screen).
-- **Shrink, don't clip:** a glyph that still overflows the cell, such as an accented capital or a stacked cluster, is redrawn smaller until it fits, as Bedstead's accented capitals are.
+- **Widen to ten pixels:** the display pixel is 1.39 times wider than tall (480 × 500 on a 4:3 screen).
+- **Shrink, don't clip:** a glyph that still overflows the cell, such as an accented capital or a stacked cluster, is redrawn smaller until it fits.
 
 The converter must also produce the extra glyphs that sections 6 and 7 need:
 - the positional forms of each joining letter;

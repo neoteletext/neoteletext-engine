@@ -57,7 +57,7 @@
 | Front door, bundle | A channel's `index.t42`, which may hold any number of pages (REQ-WEB-019). |
 | Page file | The file of one page in its channel's folder, named by its number: `140.tti` or `140.t42` (REQ-WEB-019). |
 | Contents file | A channel's `contents.txt`: its sections, pages and linked channels, drawn by the receiver as an index (REQ-WEB-025, REQ-BRW-009). |
-| Font | Bedstead, the receiver's bundled font, or a BDF file of 12 × 10 cells loaded when the user, the channel or the page names it (area FNT). |
+| Font | Noto Teletext, the font compiled into the core, or a BDF file of 12 × 10 or 12 × 20 cells loaded when the user names it (area FNT). |
 | Font library | A folder with an index, `fonts.txt`, listing fonts with their checksums (REQ-FNT-004). |
 | BDF | The Glyph Bitmap Distribution Format, a text format for bitmap fonts; the form of every loaded font (REQ-FNT-002). |
 | Alias | An entry of `channel.ttx` that leads one page number to another channel on every page of the channel (REQ-WEB-020). |

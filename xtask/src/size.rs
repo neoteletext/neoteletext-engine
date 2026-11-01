@@ -40,16 +40,19 @@ const BUILDS: &[Build] = &[
     // Acquisition, the Level 1 grid and composing: the core with no
     // optional area.
     Build { name: "level1", features: "", budget: None },
-    // A Level 1.5 receiver with the renderer and the viewer; the port
-    // supplies its glyphs.
+    // A Level 1.5 receiver with the renderer and the viewer: the core's
+    // code and character tables, which the budget covers.
     Build { name: "level15", features: "level15 render viewer", budget: Some(FLASH_BUDGET) },
+    // The same with the compiled font's standard sets, as a port that
+    // draws links it (REQ-FNT-001).
+    Build { name: "level15-font", features: "level15 render font viewer", budget: None },
     // The same at Level 3.5, with every capability (decision E.71).
     Build { name: "level35", features: "level15 capabilities render viewer", budget: None },
     // The same with only the modern-classic profile's capabilities
     // (decision E.71, REQ-GEN-020).
     Build { name: "modern-classic", features: "level15 modern-classic render viewer", budget: None },
-    // Every area of the core, with Bedstead.
-    Build { name: "core-all", features: "level15 capabilities render bedstead viewer", budget: None },
+    // Every area of the core, with the whole compiled font.
+    Build { name: "core-all", features: "level15 capabilities render font extended-sets viewer", budget: None },
     // Format detection reading T42 only, then every format; the core with
     // no optional area underneath.
     Build { name: "t42", features: "formats", budget: None },

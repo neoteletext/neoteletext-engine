@@ -12,8 +12,10 @@ use crate::types::FontGlyph;
 
 #[test]
 fn glyphs_are_sorted_and_unique() {
-    let set = GlyphSet::bedstead();
-    assert!(set.entries.windows(2).all(|pair| matches!(pair, [a, b] if a.code_point < b.code_point)));
+    let set = GlyphSet::noto_teletext();
+    for table in [set.entries, set.extended] {
+        assert!(table.windows(2).all(|pair| matches!(pair, [a, b] if a.code_point < b.code_point)));
+    }
 }
 
 /// REQ-RND-020: the glyph set is data; an empty set is allowed and
@@ -21,8 +23,8 @@ fn glyphs_are_sorted_and_unique() {
 #[test]
 fn set_size_and_empty_set() {
     static NONE: [GlyphEntry; 0] = [];
-    let set = GlyphSet::bedstead();
-    assert_eq!(set.len(), set.entries.len());
+    let set = GlyphSet::noto_teletext();
+    assert_eq!(set.len(), set.entries.len() + set.extended.len());
     assert!(!set.is_empty());
     let empty = GlyphSet::from_entries(&NONE, "empty");
     assert_eq!((empty.len(), empty.is_empty(), empty.provenance), (0, true, "empty"));
@@ -33,7 +35,7 @@ fn set_size_and_empty_set() {
 
 /// REQ-RND-014, decision E.26: every one of the fifteen G2 column 4
 /// marks (Table 28, modes 10001 to 11111) has a spacing form that
-/// Bedstead draws, and with no precomposed letter the mark is overlaid.
+/// the font draws, and with no precomposed letter the mark is overlaid.
 #[test]
 fn every_diacritic_overlays_its_spacing_form() {
     // The spacing form Unicode pairs with each combining mark, in mark
@@ -44,7 +46,7 @@ fn every_diacritic_overlays_its_spacing_form() {
         '`', '\u{B4}', '\u{2C6}', '\u{2DC}', '\u{AF}', '\u{2D8}', '\u{2D9}', '\u{A8}', '.', '\u{2DA}', '\u{B8}', '_',
         '\u{2DD}', '\u{2DB}', '\u{2C7}',
     ];
-    let set = GlyphSet::bedstead();
+    let set = GlyphSet::noto_teletext();
     let latin = CharSet::G0(G0 { set: G0Set::Latin, national: None });
     // "q" has no precomposed form with any of the marks.
     let base = set.lookup('q').unwrap();
@@ -54,8 +56,8 @@ fn every_diacritic_overlays_its_spacing_form() {
         assert_eq!(spacing_mark(combining), Some(spacing), "mark {mark}");
         assert_eq!(compose('q', combining), None);
         let mark_rows = set.lookup(spacing).unwrap();
-        assert_ne!(mark_rows, [0; GLYPH_LINES], "mark {mark} draws something");
-        let overlay: [u8; GLYPH_LINES] = core::array::from_fn(|row| base[row] | mark_rows[row]);
+        assert_ne!(*mark_rows, [0; CELL_HEIGHT], "mark {mark} draws something");
+        let overlay: GlyphRows = core::array::from_fn(|row| base[row] | mark_rows[row]);
         assert_eq!(set.glyph(character), overlay, "mark {mark}");
     }
     // A combining character outside the fifteen has no spacing form.
@@ -67,10 +69,10 @@ fn every_diacritic_overlays_its_spacing_form() {
 /// one, otherwise the spacing mark's glyph overlaid on the base.
 #[test]
 fn diacritics_use_the_precomposed_glyph_or_an_overlay() {
-    const BASE: [u8; GLYPH_LINES] = [0, 0, 0x0E, 0x11, 0x1F, 0x10, 0x0E, 0, 0];
-    const MARK: [u8; GLYPH_LINES] = [0x02, 0x04, 0, 0, 0, 0, 0, 0, 0];
+    const BASE: GlyphRows = [0, 0, 0, 0, 0x7E, 0x81, 0xFF, 0x80, 0x7E, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    const MARK: GlyphRows = [0x0C, 0x30, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
     // Deliberately unlike the overlay, so the test tells them apart.
-    const PRECOMPOSED: [u8; GLYPH_LINES] = [0x04, 0x08, 0x0E, 0x11, 0x1F, 0x10, 0x0F, 0, 0];
+    const PRECOMPOSED: GlyphRows = [0x30, 0xC0, 0, 0, 0x7E, 0x81, 0xFF, 0x80, 0x7F, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
     static WITH_PRECOMPOSED: [GlyphEntry; 3] = [
         GlyphEntry { code_point: 'e' as u32, rows: BASE },
         GlyphEntry { code_point: '\u{B4}' as u32, rows: MARK },
@@ -82,7 +84,7 @@ fn diacritics_use_the_precomposed_glyph_or_an_overlay() {
     // Diacritic 2 is the acute accent (Table 28, mode 10010).
     let character = CharRef { diacritic: 2, ..CharRef::new(latin, b'e') };
     assert_eq!(GlyphSet::from_entries(&WITH_PRECOMPOSED, "test").glyph(character), PRECOMPOSED);
-    let overlay: [u8; GLYPH_LINES] = core::array::from_fn(|row| BASE[row] | MARK[row]);
+    let overlay: GlyphRows = core::array::from_fn(|row| BASE[row] | MARK[row]);
     assert_eq!(GlyphSet::from_entries(&OVERLAY_ONLY, "test").glyph(character), overlay);
 }
 
@@ -99,7 +101,7 @@ fn loaded_fonts_draw_precomposed_marks_only() {
         FontGlyph::small('\u{B4}' as u32, DOTS),
         FontGlyph::small('\u{E9}' as u32, DOTS),
     ];
-    let glyphs = GlyphSet::bedstead().with_fonts(Some(LoadedFont::new(&FONT).unwrap()), [None; FONT_SET_COUNT]);
+    let glyphs = GlyphSet::noto_teletext().with_fonts(Some(LoadedFont::new(&FONT).unwrap()), [None; FONT_SET_COUNT]);
     let latin = CharSet::G0(G0 { set: G0Set::Latin, national: None });
     // Diacritic 2 is the acute accent (Table 28, mode 10010).
     let acute = |code| CharRef { diacritic: 2, ..CharRef::new(latin, code) };
@@ -116,12 +118,31 @@ fn loaded_fonts_draw_precomposed_marks_only() {
 fn g3_glyphs_can_be_replaced() {
     const FULL: G3Glyph = G3Glyph { small: [0xFFF; CELL_FIELD_LINES], large: [0xFFF; CELL_HEIGHT] };
     static ALL_FULL: [G3Glyph; G3_CODES] = [FULL; G3_CODES];
-    let bedstead = GlyphSet::bedstead();
-    let replaced = bedstead.with_g3(&ALL_FULL, "test");
+    let shipped = GlyphSet::noto_teletext();
+    let replaced = shipped.with_g3(&ALL_FULL, "test");
     assert_eq!(replaced.g3_provenance, "test");
     assert_eq!(*replaced.g3(0x20), FULL);
-    assert_ne!(*bedstead.g3(0x20), FULL, "the shipped 2/0 differs");
+    assert_ne!(*shipped.g3(0x20), FULL, "the shipped 2/0 differs");
     assert_eq!(*replaced.g3(0x1F), G3Glyph::BLANK);
     assert_eq!(*replaced.g3(0x80), G3Glyph::BLANK);
-    assert_eq!(replaced.lookup('A'), bedstead.lookup('A'), "the text glyphs are kept");
+    assert_eq!(replaced.lookup('A'), shipped.lookup('A'), "the text glyphs are kept");
+}
+
+/// REQ-FNT-001: a build without `extended-sets` carries none of the glyphs
+/// only neoteletext's own sets use; the standard's sets are drawn either way.
+#[test]
+fn the_extended_table_follows_the_feature() {
+    let set = GlyphSet::noto_teletext();
+    assert_eq!(set.extended.is_empty(), cfg!(not(feature = "extended-sets")));
+    assert!(set.lookup('\u{0E01}').is_some() == cfg!(feature = "extended-sets"), "Thai ko kai");
+    assert!(set.lookup('A').is_some() && set.lookup('\u{00C0}').is_some(), "Latin, with the composed letters");
+}
+
+/// REQ-CHR-004: the placeholder stands where a capital does, in the cell's
+/// own twelve pixels.
+#[test]
+fn the_placeholder_is_a_visible_box() {
+    assert!(PLACEHOLDER.iter().all(|row| row >> crate::consts::CELL_WIDTH == 0));
+    assert_eq!(PLACEHOLDER.iter().filter(|&&row| row != 0).count(), 14, "lines 2 to 15");
+    assert_ne!(GlyphSet::noto_teletext().lookup('A'), Some(&PLACEHOLDER));
 }

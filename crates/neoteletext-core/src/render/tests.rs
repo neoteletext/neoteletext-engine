@@ -14,7 +14,7 @@ use crate::glyphs::GlyphSet;
 use crate::level1::{Cell, Glyph, Grid, Zoom};
 use crate::types::Instant;
 
-use super::raster::{CELL_MASK, SEPARATED_COLUMNS, font_line_20, glyph_line_20, mosaic_block, mosaic_line, widen};
+use super::raster::{CELL_MASK, SEPARATED_COLUMNS, font_line_20, mosaic_block, mosaic_line};
 use crate::charset::{CharRef, CharSet, G0, G0Set, NationalOption};
 use crate::consts::{COLOUR_BLUE_BIT, COLOUR_RED_BIT, PAGE_WIDTH};
 use std::vec;
@@ -30,18 +30,19 @@ fn options() -> RenderOptions {
     }
 }
 
+/// Decision E.13 as a doubled dot-matrix font gets it (REQ-FNT-008).
 #[test]
 fn rounding_matches_decision_e13() {
-    // A diagonal: row 0 has the dot at bit 0, row 1 at bit 1.
-    let glyph = [0b00001, 0b00010, 0, 0, 0, 0, 0, 0, 0];
-    // Lower sub-line of glyph row 0 rounds against row 1.
-    let lower = glyph_line_20(&glyph, 3, true);
-    assert_eq!(lower, widen(0b00001) | (widen(0b00001) << 1) & widen(0b00010) & !(widen(0b00010) << 1));
-    // Upper sub-line of row 0 has no neighbour above: no rounding.
-    assert_eq!(glyph_line_20(&glyph, 2, true), widen(0b00001));
-    assert_eq!(glyph_line_20(&glyph, 3, false), widen(0b00001));
-    // Cell line 0 is blank.
-    assert_eq!(glyph_line_20(&glyph, 0, true), 0);
+    // A diagonal of doubled dots: line 0 has its dot at the right, line 1
+    // one dot to the left.
+    let rows = [0b0011, 0b1100, 0, 0, 0, 0, 0, 0, 0, 0];
+    let lower = font_line_20(&rows, 1, true);
+    assert_eq!(lower, rows[0] | (rows[0] << 1) & rows[1] & !(rows[1] << 1));
+    // Upper sub-line of the first line has no neighbour above: no rounding.
+    assert_eq!(font_line_20(&rows, 0, true), rows[0]);
+    assert_eq!(font_line_20(&rows, 1, false), rows[0]);
+    // Nothing is drawn beyond the glyph's lines.
+    assert_eq!(font_line_20(&rows, 19, true), 0);
 }
 
 /// REQ-RND-013: decision E.14's geometry in both cell sizes.
@@ -81,7 +82,7 @@ fn rows_render_identically_in_any_order() {
     let g0 = CharSet::G0(G0 { set: G0Set::Latin, national: Some(NationalOption::English) });
     grid.cells[2][3].glyph = Glyph::Char(CharRef::new(g0, b'A'));
     grid.cells[2][4].glyph = Glyph::Mosaic { pattern: 0x15, separated: false };
-    let glyphs = GlyphSet::bedstead();
+    let glyphs = GlyphSet::noto_teletext();
     let mut whole = vec![0u8; PAGE_WIDTH * 500];
     let mut buffer = IndexBuffer { format: IndexFormat::Bits8, data: &mut whole, stride: PAGE_WIDTH };
     render_screen(&grid, ALL_ROWS, &glyphs, options(), &mut buffer).unwrap();
@@ -221,7 +222,7 @@ fn fields_zoom_and_bounds_of_the_row_renderer() {
         grid.cells[row][1].glyph = Glyph::Char(CharRef::new(g0, b'A' + row as u8));
         grid.cells[row][2].glyph = Glyph::Mosaic { pattern: 0x2A, separated: false };
     }
-    let glyphs = GlyphSet::bedstead();
+    let glyphs = GlyphSet::noto_teletext();
     let lines = 20;
     let row = |field| {
         let mut out = vec![0u8; PAGE_WIDTH * lines];

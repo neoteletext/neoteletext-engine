@@ -68,9 +68,9 @@ Each capability is a Cargo feature of `neoteletext-core`:
 | `level35-32colors` | `level25-32colors` | The Colour Map of Level 3.5: as Level 2.5, and CLUTs 0 and 1 redefined by X/28/4 and M/29/4, never CLUT 1 entry 0 |
 | `objects` | `level25` | Active, Adaptive and Passive objects, and default objects |
 | `additional-flash-functions` | `nonspacing-attributes` | The Additional Flash Functions of Table 29, column mode 00111 |
-| `modern-classic` | — | The profile: `level15`, `level25`, `nonspacing-attributes`, `render`, `bedstead`, `viewer` and `objects` |
+| `modern-classic` | — | The profile: `level15`, `level25`, `nonspacing-attributes`, `render`, `viewer` and `objects` |
 
-**The default build** (decision E.105, the owner's instruction of 22 October 2026, amending decision E.61's rule that every feature is on): Levels 1.0 and 1.5, and of Levels 2.5 and 3.5 the non-spacing attributes and the Colour Map of both levels: `level15`, `level25`, `nonspacing-attributes`, `level25-32colors`, `level35-32colors`, with `render`, `bedstead`, `viewer` and `extended-sets`. Objects and the Additional Flash Functions are not default: a build names them, as the conformance tests do (the gate runs them with every feature). `neottx` uses the default. A port chooses the profile by turning the defaults off:
+**The default build** (decision E.105, the owner's instruction of 22 October 2026, amending decision E.61's rule that every feature is on): Levels 1.0 and 1.5, and of Levels 2.5 and 3.5 the non-spacing attributes and the Colour Map of both levels: `level15`, `level25`, `nonspacing-attributes`, `level25-32colors`, `level35-32colors`, with `render`, `viewer` and `extended-sets`. Objects and the Additional Flash Functions are not default: a build names them, as the conformance tests do (the gate runs them with every feature). `neottx` uses the default. A port chooses the profile by turning the defaults off:
 
 ```toml
 neoteletext-core = { version = "...", default-features = false, features = ["modern-classic"] }
