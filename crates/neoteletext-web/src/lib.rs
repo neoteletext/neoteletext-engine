@@ -19,7 +19,8 @@
 //!   `dbsc`): Device Bound Session Credentials (REQ-WEB-017);
 //! - content: [`channel`], [`contents`], [`subpages`] (a page's catalogue
 //!   of sub-pages, and with `std` a page written as a channel's files),
-//!   [`descriptor`];
+//!   [`descriptor`], and `small_page` (feature `alloc`): what a web browser
+//!   is shown of a channel;
 //! - the machines: [`agent`] (the [`agent::UserAgent`]) and [`zxnet`]
 //!   (the [`zxnet::ZxnetFeed`]);
 //! - the web half of the platform interface (layer L8): [`port`].
@@ -39,6 +40,8 @@
     clippy::unimplemented
 )]
 
+#[cfg(feature = "alloc")]
+extern crate alloc;
 #[cfg(any(test, feature = "std"))]
 extern crate std;
 
@@ -65,6 +68,8 @@ pub mod contents;
 pub mod descriptor;
 pub mod map;
 pub mod records;
+#[cfg(feature = "alloc")]
+pub mod small_page;
 pub mod subpages;
 
 pub mod agent;

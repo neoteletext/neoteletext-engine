@@ -9,10 +9,9 @@ use neoteletext_core::charset::{compose, mosaic_to_unicode, to_unicode};
 use neoteletext_core::level1::{Cell, Glyph, Grid, Size, Width};
 use neoteletext_core::policy::is_safe_output_char;
 
-mod raster;
 mod receiver_page;
 
-pub use raster::{Raster, Scale, raster};
+pub use neoteletext_image::raster::{Raster, Scale, raster};
 pub use receiver_page::receiver_grid;
 
 /// How mosaics are written.

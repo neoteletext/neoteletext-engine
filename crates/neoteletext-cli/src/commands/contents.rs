@@ -26,19 +26,32 @@ const DESCRIPTION_COMMAND: &str = "DE,";
 const SECONDS_PER_DAY: u64 = 24 * 60 * 60;
 
 /// A page found, with what titles and dates it.
-struct Found {
-    title: String,
+pub(super) struct Found {
+    /// Its title, from its `DE` line or its first row that is not blank.
+    pub title: String,
     modified: Option<SystemTime>,
+    /// Which of [`Folder::loaded`] holds it.
+    pub file: usize,
+}
+
+/// A channel's folder, read and decoded before the sandbox.
+pub(super) struct Folder {
+    /// Its page files and bundle.
+    pub loaded: Vec<Loaded>,
+    /// Which pages the command wants.
+    wanted: fn(PageAddress) -> bool,
+    skipped: usize,
 }
 
 /// A file of the folder, read and decoded before the sandbox.
-struct Loaded {
+pub(super) struct Loaded {
     path: PathBuf,
     /// The page its name gives; `None` for `index.t42`.
     page: Option<PageAddress>,
     description: Option<String>,
     modified: Option<SystemTime>,
-    session: Session,
+    /// What it decoded to.
+    pub session: Session,
 }
 
 /// The civil date of a day count since 1970-01-01 (H. Hinnant's
@@ -138,19 +151,20 @@ fn load(options: &Options, path: &Path, file: ChannelFile, modified: Option<Syst
     }
 }
 
-/// `neottx contents FOLDER`.
-pub fn contents(options: &Options) -> Result<(), Failure> {
+/// Reads and decodes the page files of `wanted` and the bundle of
+/// `options.input`, the channel's folder. Only the folder's own files count:
+/// a subfolder holds no page.
+pub(super) fn read_folder(options: &Options, wanted: fn(PageAddress) -> bool) -> Result<Folder, Failure> {
     let folder = Path::new(&options.input);
     let listing = std::fs::read_dir(folder).map_err(|error| io_failure(folder, error))?;
     let mut files: Vec<(PathBuf, ChannelFile, Option<SystemTime>)> = Vec::new();
     for entry in listing.flatten() {
-        // Only the folder's own files: a subfolder is another channel.
         if !entry.file_type().is_ok_and(|kind| kind.is_file()) {
             continue;
         }
         let name = entry.file_name();
         let file = match name.to_str().and_then(ChannelFile::from_name) {
-            Some(file @ ChannelFile::Page { page, .. }) if page.page.is_decimal() => file,
+            Some(file @ ChannelFile::Page { page, .. }) if wanted(page) => file,
             Some(file @ ChannelFile::Bundle) => file,
             _ => continue,
         };
@@ -158,28 +172,33 @@ pub fn contents(options: &Options) -> Result<(), Failure> {
         files.push((entry.path(), file, modified));
     }
     files.sort_by(|a, b| a.0.cmp(&b.0));
-    let mut loaded = Vec::new();
-    let mut skipped = 0usize;
+    let mut read = Folder { loaded: Vec::new(), wanted, skipped: 0 };
     for (path, file, modified) in &files {
         match load(options, path, *file, *modified) {
-            Some(file) => loaded.push(file),
-            None => skipped = skipped.saturating_add(1),
+            Some(file) => read.loaded.push(file),
+            None => read.skipped = read.skipped.saturating_add(1),
         }
     }
-    sandbox_closed(options.no_sandbox)?;
+    Ok(read)
+}
+
+/// The pages `folder` holds that its command wants, each from its page file,
+/// or from the bundle when it has none, with their titles.
+pub(super) fn pages_of(folder: &mut Folder) -> BTreeMap<PageAddress, Found> {
     let mut pages: BTreeMap<PageAddress, Found> = BTreeMap::new();
-    for file in &mut loaded {
-        let wanted: Vec<PageAddress> = if let Some(page) = file.page {
+    let wanted = folder.wanted;
+    for (index, file) in folder.loaded.iter_mut().enumerate() {
+        let held: Vec<PageAddress> = if let Some(page) = file.page {
             vec![page]
         } else {
             let mut all: Vec<PageAddress> = file.session.pages().iter().map(|stored| stored.key.address).collect();
             all.dedup();
-            all.into_iter().filter(|page| page.page.is_decimal()).collect()
+            all
         };
-        for page in wanted {
+        for page in held.into_iter().filter(|&page| wanted(page)) {
             if !file.session.pages().iter().any(|stored| stored.key.address == page) {
                 eprintln!("neottx: {}: skipped: it does not hold its page", file.path.display());
-                skipped = skipped.saturating_add(1);
+                folder.skipped = folder.skipped.saturating_add(1);
                 continue;
             }
             let line = first_line(&mut file.session, page);
@@ -192,9 +211,25 @@ pub fn contents(options: &Options) -> Result<(), Failure> {
                 .clone()
                 .or(line)
                 .unwrap_or_else(|| format!("Page {}", String::from_utf8_lossy(&page.ascii())));
-            pages.insert(page, Found { title, modified: file.modified });
+            pages.insert(page, Found { title, modified: file.modified, file: index });
         }
     }
+    pages
+}
+
+/// The failure of a command that skipped files, if it did.
+pub(super) fn skipped_files(folder: &Folder) -> Result<(), Failure> {
+    if folder.skipped > 0 {
+        return Err((exit::CHECK_ERRORS, format!("{} file(s) skipped", folder.skipped)));
+    }
+    Ok(())
+}
+
+/// `neottx contents FOLDER`.
+pub fn contents(options: &Options) -> Result<(), Failure> {
+    let mut folder = read_folder(options, |page| page.page.is_decimal())?;
+    sandbox_closed(options.no_sandbox)?;
+    let pages = pages_of(&mut folder);
     let mut out = std::io::stdout().lock();
     let mut magazine = None;
     for (page, found) in &pages {
@@ -209,10 +244,7 @@ pub fn contents(options: &Options) -> Result<(), Failure> {
         let dated = found.modified.and_then(date).map(|date| format!("\t{date}")).unwrap_or_default();
         let _ = writeln!(out, "p\t{number}\t{}{dated}", found.title);
     }
-    if skipped > 0 {
-        return Err((exit::CHECK_ERRORS, format!("{skipped} file(s) skipped")));
-    }
-    Ok(())
+    skipped_files(&folder)
 }
 
 #[cfg(test)]
