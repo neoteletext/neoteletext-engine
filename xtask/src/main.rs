@@ -25,6 +25,8 @@
 //! - `size [--target TRIPLE]`: link the microcontroller test image for each
 //!   build of decision E.61 and check its size and symbols (REQ-GEN-009,
 //!   REQ-GEN-019).
+//! - `spec-examples OUT.json`: write the byte examples of the generated
+//!   protocol document from the engine's encoders (REQ-1734).
 
 mod checks;
 mod corpus;
@@ -34,6 +36,7 @@ mod glyphs;
 mod level25;
 mod noto;
 mod size;
+mod spec_examples;
 mod test_code;
 
 use std::path::PathBuf;
@@ -59,9 +62,10 @@ fn main() -> ExitCode {
         "check-noto" => noto::check(&root),
         "features" => features::run(&root),
         "size" => size::run(&root, &std::env::args().skip(2).collect::<Vec<_>>()),
+        "spec-examples" => spec_examples::write_examples(&root, &std::env::args().skip(2).collect::<Vec<_>>()),
         _ => Err(format!(
             "usage: cargo xtask <glyphs|corpus|check-layers|check-deps|check-constants|check-io|\
-             check-bedstead|check-noto|level25-stream|features|size> (got {command:?})"
+             check-bedstead|check-noto|level25-stream|features|size|spec-examples> (got {command:?})"
         )),
     };
     match result {

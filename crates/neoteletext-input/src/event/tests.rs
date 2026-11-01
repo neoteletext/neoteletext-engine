@@ -455,7 +455,8 @@ fn only_a_release_may_be_lost() {
     assert!(read(&[0xFF, 0x01, 0x80, 0x02, 0x00, 0x41, 0x61]).is_err(), "a repeat, lost");
 }
 
-// REQ-INT-140: SELECT at every bound, in the layout of INPUT.md section 5.4.
+// REQ-1388 (REQ-INT-140): SELECT at every bound, in the layout of INPUT.md
+// section 5.4.
 #[test]
 fn select_round_trips_at_every_bound() {
     for (page, sub) in [(0, 0x3F7F), (0x100, 0), (0x100, 0x3F7E), (0x100, 0x3F7F), (0x8FF, 0), (0x8FF, 0x3F7F)] {

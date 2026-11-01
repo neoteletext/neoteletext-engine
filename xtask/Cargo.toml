@@ -13,6 +13,8 @@ neoteletext-core = { workspace = true, features = ["render", "extended-sets"] }
 neoteletext-web = { workspace = true }
 # The authored test stream of REQ-TST-024 is built by the formats crate.
 neoteletext-formats = { workspace = true, features = ["std", "tti"] }
+# The generated protocol document's byte examples use the input encoder.
+neoteletext-input = { workspace = true }
 
 [lints]
 workspace = true

@@ -20,6 +20,8 @@ fn mag(number: u8) -> Magazine {
     Magazine::new(number).unwrap()
 }
 
+// REQ-349: the magazine and packet number come from the two Hamming 8/4
+// address bytes.
 #[test]
 fn addresses_for_every_magazine_and_packet() {
     for magazine in 1..=8 {
@@ -32,6 +34,7 @@ fn addresses_for_every_magazine_and_packet() {
     }
 }
 
+// REQ-349: a packet whose address byte cannot be corrected is discarded.
 #[test]
 fn uncorrectable_address_is_rejected() {
     let mut packet = encode::address(mag(1), 1);
