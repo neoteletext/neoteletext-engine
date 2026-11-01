@@ -28,7 +28,7 @@ mod g3;
 pub mod conformance;
 mod loaded_font;
 
-use crate::charset::{CharRef, CharSet, compose, to_unicode};
+use crate::charset::{CharRef, CharSet, compose, to_unicode, without_dot_below};
 use crate::consts::{CELL_FIELD_LINES, CELL_HEIGHT, DIACRITIC_NONE, G3_CODES, G3_FIRST_CODE};
 use conformance::{FONT_SET_COUNT, font_set_of};
 
@@ -278,12 +278,33 @@ impl<'a> GlyphSet<'a> {
         if let Some(precomposed) = compose(unicode.base, mark).and_then(|c| self.lookup(c)) {
             return *precomposed;
         }
+        if let Some(both) = self.on_dotted_letter(unicode.base, mark) {
+            return both;
+        }
         let spacing = spacing_mark(mark).and_then(|c| self.lookup(c)).copied().unwrap_or([0; CELL_HEIGHT]);
         let mut out = *base;
         for (row, mark_row) in out.iter_mut().zip(spacing.iter()) {
             *row |= *mark_row;
         }
         out
+    }
+}
+
+impl GlyphSet<'_> {
+    /// A mark on a letter with a dot below, such as Yoruba's `Ẹ̀`, which
+    /// Unicode gives no single character (TODO-1988). A spacing mark sits at
+    /// the height of a small letter, so overlaid on a capital it merges into
+    /// the capital's top lines. The font's letter with that mark makes room
+    /// for it, and the dot is what the dotted letter adds to the plain one.
+    fn on_dotted_letter(&self, dotted: char, mark: char) -> Option<GlyphRows> {
+        let letter = without_dot_below(dotted)?;
+        let mut out = *self.lookup(compose(letter, mark)?)?;
+        let plain = self.lookup(letter)?;
+        let with_dot = self.lookup(dotted)?;
+        for ((row, with_dot), plain) in out.iter_mut().zip(with_dot).zip(plain) {
+            *row |= with_dot & !plain;
+        }
+        Some(out)
     }
 }
 

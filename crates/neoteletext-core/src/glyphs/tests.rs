@@ -33,6 +33,34 @@ fn set_size_and_empty_set() {
     assert_eq!(empty.glyph(CharRef::new(latin, b'A')), PLACEHOLDER, "REQ-CHR-004: a missing glyph is visible");
 }
 
+/// REQ-RND-014, TODO-1988: Yoruba writes a tone on a letter with a dot below,
+/// a pair Unicode gives no single character. The tone is drawn as the font
+/// draws it on the plain letter, whose capital makes room for it, and the dot
+/// is kept; overlaid, a tone merged into the capital's top lines.
+#[test]
+fn a_tone_on_a_dotted_letter_keeps_the_tone_and_the_dot() {
+    // The marks' numbers (REQ-CHR-008) and how far down a tone reaches.
+    const GRAVE: u8 = 1;
+    const ACUTE: u8 = 2;
+    const TONE_LINES: usize = 4;
+    let set = GlyphSet::noto_teletext();
+    let yoruba = CharSet::G0(G0 { set: G0Set::YorubaIgbo, national: None });
+    for (code, dotted, plain) in
+        [(0x40, '\u{1EB8}', 'E'), (0x5B, '\u{1ECC}', 'O'), (0x60, '\u{1EB9}', 'e'), (0x7B, '\u{1ECD}', 'o')]
+    {
+        for (diacritic, tone) in [(GRAVE, '\u{0300}'), (ACUTE, '\u{0301}')] {
+            let drawn = set.glyph(CharRef { diacritic, ..CharRef::new(yoruba, code) });
+            let toned = set.lookup(compose(plain, tone).unwrap()).unwrap();
+            let dotted = set.lookup(dotted).unwrap();
+            let plain = set.lookup(plain).unwrap();
+            let dot: GlyphRows = core::array::from_fn(|row| dotted[row] & !plain[row]);
+            assert_ne!(dot, [0; CELL_HEIGHT], "{code:#x}");
+            assert_eq!(drawn[..TONE_LINES], toned[..TONE_LINES], "{code:#x} has its tone");
+            assert_eq!(drawn, core::array::from_fn(|row| toned[row] | dot[row]), "{code:#x} has its dot");
+        }
+    }
+}
+
 /// REQ-RND-014, decision E.26: every one of the fifteen G2 column 4
 /// marks (Table 28, modes 10001 to 11111) has a spacing form that
 /// the font draws, and with no precomposed letter the mark is overlaid.

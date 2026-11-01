@@ -454,6 +454,12 @@ pub fn compose(base: char, combining: char) -> Option<char> {
     composition::compose(base, combining)
 }
 
+/// The letter a letter with a dot below is made from, such as `E` for `Ẹ`.
+#[must_use]
+pub fn without_dot_below(letter: char) -> Option<char> {
+    composition::without_dot_below(letter)
+}
+
 /// Every precomposition of a Latin letter and one of the fifteen marks
 /// (decision E.26): base, mark, composed.
 #[must_use]

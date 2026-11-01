@@ -396,3 +396,10 @@ pub(super) fn search(table: &[(char, char, char)], base: char, combining: char) 
 pub(super) fn compose(base: char, combining: char) -> Option<char> {
     search(&COMPOSITIONS, base, combining).or_else(|| search(&EXTENDED_COMPOSITIONS, base, combining))
 }
+
+/// U+0323, the combining dot below.
+const DOT_BELOW: char = '\u{0323}';
+
+pub(super) fn without_dot_below(letter: char) -> Option<char> {
+    COMPOSITIONS.iter().find(|&&(_, mark, composed)| composed == letter && mark == DOT_BELOW).map(|&(base, ..)| base)
+}
