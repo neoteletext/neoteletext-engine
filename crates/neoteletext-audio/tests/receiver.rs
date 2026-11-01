@@ -143,6 +143,7 @@ const ARENA: usize = 64 * 1024;
 const NO_STARTS: [(u8, SoundId); 0] = [];
 const NO_CALLS: [Call; 0] = [];
 
+// Verifies REQ-AUD-012.
 #[test]
 fn a_page_sound_plays_when_its_page_is_opened() {
     let pcm = tone(4000);
@@ -177,6 +178,7 @@ fn a_page_sound_plays_when_its_page_is_opened() {
     assert_eq!(sink.starts(), [(0, id)], "already at the sink, so only started");
 }
 
+// Verifies REQ-AUD-001 and REQ-AUD-018.
 #[cfg(feature = "pcm16")]
 #[test]
 fn pcm_round_trips_exactly() {
@@ -192,6 +194,7 @@ fn pcm_round_trips_exactly() {
     assert_eq!(sink.pcm[0].1, pcm);
 }
 
+// Verifies REQ-AUD-010.
 #[cfg(feature = "pcm16")]
 #[test]
 fn a_stop_that_arrives_before_the_older_play_wins() {
@@ -287,6 +290,7 @@ fn damaged_packets_are_dropped_and_the_carousel_repeat_recovers() {
     assert_eq!(sink.starts().len(), 1);
 }
 
+// Verifies REQ-AUD-012.
 #[cfg(feature = "pcm16")]
 #[test]
 fn page_sounds_off_keeps_a_page_quiet() {
@@ -304,6 +308,7 @@ fn page_sounds_off_keeps_a_page_quiet() {
     assert_eq!(sink.starts().len(), 1);
 }
 
+// Verifies REQ-AUD-016.
 #[cfg(feature = "pcm16")]
 #[test]
 fn channels_beyond_the_sink_are_ignored_and_a_lost_sink_is_refilled() {
@@ -324,6 +329,7 @@ fn channels_beyond_the_sink_are_ignored_and_a_lost_sink_is_refilled() {
     assert!(matches!(sink.calls.first(), Some(Call::Define(..))));
 }
 
+// Verifies REQ-AUD-018.
 #[cfg(feature = "pcm16")]
 #[test]
 fn a_newer_generation_replaces_the_sound_at_the_sink() {
@@ -391,6 +397,7 @@ fn live_samples(sink: &Recorder, sound: &Sound) -> Vec<i16> {
     sink.pcm.iter().rev().find(|(sound, _)| *sound == id).unwrap().1.clone()
 }
 
+// Verifies REQ-AUD-014.
 #[cfg(feature = "pcm16")]
 #[test]
 fn a_live_sound_joins_at_its_newest_block_and_follows_in_order() {

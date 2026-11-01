@@ -22,6 +22,7 @@ fn render(mixer: &mut Mixer, samples: usize) -> Vec<i16> {
     out
 }
 
+// Verifies REQ-AUD-015.
 #[test]
 fn a_sound_ramps_in_over_its_fade_and_plays_at_its_gain() {
     let mut mixer = Mixer::new(RATE);
@@ -35,6 +36,7 @@ fn a_sound_ramps_in_over_its_fade_and_plays_at_its_gain() {
     assert!((4_900..=5_100).contains(&out[300]), "{}", out[300]);
 }
 
+// Verifies REQ-AUD-011 and REQ-AUD-015.
 #[test]
 fn a_stop_fades_out_and_ends_the_voice() {
     let mut mixer = Mixer::new(RATE);
@@ -48,6 +50,7 @@ fn a_stop_fades_out_and_ends_the_voice() {
     assert!(!mixer.active());
 }
 
+// Verifies REQ-AUD-019.
 #[test]
 fn voices_sum_and_the_sum_is_clamped() {
     let mut mixer = Mixer::new(RATE);
@@ -58,6 +61,7 @@ fn voices_sum_and_the_sum_is_clamped() {
     assert_eq!(render(&mut mixer, 500)[400], i16::MAX);
 }
 
+// Verifies REQ-AUD-015 and REQ-AUD-019.
 #[test]
 fn ducking_lowers_the_other_voices_by_table_19s_step() {
     let mut mixer = Mixer::new(RATE);
@@ -71,6 +75,7 @@ fn ducking_lowers_the_other_voices_by_table_19s_step() {
     assert!((2_400..=2_600).contains(&out[399]), "{}", out[399]);
 }
 
+// Verifies REQ-AUD-011.
 #[test]
 fn a_queued_sound_follows_the_current_one() {
     let mut mixer = Mixer::new(RATE);
@@ -83,6 +88,7 @@ fn a_queued_sound_follows_the_current_one() {
     assert!((7_800..=8_200).contains(&out[500]), "then the queued one: {}", out[500]);
 }
 
+// Verifies REQ-AUD-019.
 #[test]
 fn a_sound_is_resampled_to_the_output_rate() {
     // A 1 kHz tone at 8 kHz played at 48 kHz keeps its pitch: zero
@@ -118,6 +124,7 @@ fn buffered(mixer: &Mixer) -> i64 {
     sound.ahead(playing.whole)
 }
 
+// Verifies REQ-AUD-014.
 #[test]
 fn a_live_sound_waits_for_its_target_then_plays() {
     let mut mixer = Mixer::new(RATE);

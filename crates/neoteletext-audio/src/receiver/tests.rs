@@ -63,6 +63,7 @@ fn hear(records: &[Vec<u8>]) -> (Counter, Statistics) {
     (sink, statistics)
 }
 
+// Verifies REQ-AUD-001.
 #[test]
 fn a_pcm16_sound_plays_only_in_a_build_with_pcm16() {
     let (sink, statistics) = hear(&sound(0, &[0x10; 100], 50));
@@ -74,6 +75,7 @@ fn a_pcm16_sound_plays_only_in_a_build_with_pcm16() {
     }
 }
 
+// Verifies REQ-AUD-001.
 #[test]
 fn an_ima_adpcm_sound_plays_only_in_a_build_with_ima() {
     // Predictor 0, step index 0, then 252 bytes of codes: 505 samples.

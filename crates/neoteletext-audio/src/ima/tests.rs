@@ -3,6 +3,7 @@
 // Tests of REQ-AUD-001.
 use super::*;
 
+// Verifies REQ-AUD-001.
 #[test]
 fn a_block_decodes_from_its_own_header() {
     // Predictor 1000, step index 10 (step 19); codes 0x7 then 0xF.
@@ -14,6 +15,7 @@ fn a_block_decodes_from_its_own_header() {
     assert_eq!(out, [1000, 1034, 958]);
 }
 
+// Verifies REQ-AUD-001.
 #[test]
 fn bad_blocks_are_refused() {
     assert_eq!(decode_block(&[0, 0, 0], &mut [0; 4]), Err(ImaError::Truncated));

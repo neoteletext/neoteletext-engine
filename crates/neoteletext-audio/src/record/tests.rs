@@ -24,6 +24,7 @@ fn object_body() -> Vec<u8> {
     body
 }
 
+// Verifies REQ-AUD-004.
 #[cfg(feature = "ima")]
 #[test]
 fn an_object_with_a_label_is_read() {
@@ -38,6 +39,7 @@ fn an_object_with_a_label_is_read() {
     assert_eq!(object.label, Some(&b"Chime"[..]));
 }
 
+// Verifies REQ-AUD-004.
 #[cfg(feature = "ima")]
 #[test]
 fn a_wrong_block_count_is_refused() {
@@ -47,6 +49,7 @@ fn a_wrong_block_count_is_refused() {
     assert_eq!(parse(&frame(TYPE_OBJECT, &body)), Err(RecordError::BadValue("block count")));
 }
 
+// Verifies REQ-AUD-004.
 #[test]
 fn a_reserved_codec_is_read_and_left_for_the_receiver_to_ignore() {
     let mut body = object_body();
@@ -118,6 +121,7 @@ fn without_the_decoder_opus_is_ignored() {
     assert_eq!(object.codec, None);
 }
 
+// Verifies REQ-AUD-006.
 #[test]
 fn controls_are_read_and_their_bounds_kept() {
     let body = [1, 0, 7, 1, 3, 0, 1, 80, 0, 200, FLAG_LOOP, 2, 0x01, 0x00];
@@ -145,6 +149,7 @@ fn controls_are_read_and_their_bounds_kept() {
     assert!(matches!(parse(&frame(TYPE_CONTROL, &service)), Ok(Record::Control(Control { page: None, .. }))));
 }
 
+// Verifies REQ-AUD-003.
 #[test]
 fn damaged_and_malformed_frames_are_refused() {
     let good = frame(TYPE_OBJECT, &object_body());
@@ -167,4 +172,17 @@ fn damaged_and_malformed_frames_are_refused() {
     let mut too_long = std::vec![PROFILE_VERSION, TYPE_DATA];
     too_long.extend_from_slice(&u16::try_from(MAX_FRAMED_BODY + 1).unwrap().to_be_bytes());
     assert_eq!(framed_length(&too_long), Err(RecordError::TooLong));
+}
+
+// Verifies REQ-AUD-002: each code names its rate, and a code beyond the table
+// names none.
+#[test]
+fn every_rate_code_names_its_rate_and_no_other_code_does() {
+    let rates = [8_000, 11_025, 16_000, 22_050, 24_000, 32_000, 44_100, 48_000];
+    let mut next = 0_u8;
+    for rate in rates {
+        assert_eq!(sample_rate(next), Some(rate), "code {next}");
+        next += 1;
+    }
+    assert_eq!(sample_rate(next), None);
 }
