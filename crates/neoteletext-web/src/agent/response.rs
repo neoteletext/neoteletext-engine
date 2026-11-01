@@ -59,10 +59,14 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
             // bound_complete the bound sessions'.
             Purpose::FrontDoor | Purpose::Contents | Purpose::Register | Purpose::Refresh { .. } => {}
             Purpose::Descriptor { via_link, channel } => {
-                // A channel's settings may come as any type REQ-WEB-027
-                // accepts for them; a service's descriptor only as JSON.
-                let media_accepted = head.media == MediaType::Json
-                    || channel && matches!(head.media, MediaType::TextPlain | MediaType::OctetStream);
+                // REQ-WEB-027 (DEC-1726): no type table lists a channel's
+                // entry file's extension, so a host gives it what it gives
+                // anything unknown, which may be no type at all. The strict
+                // reader decides what the file is, and only an HTML page, a
+                // host's answer for a missing file, is refused by its type.
+                // A service's descriptor comes only as JSON.
+                let media_accepted =
+                    if channel { head.media != MediaType::Html } else { head.media == MediaType::Json };
                 if status != STATUS_OK {
                     event(sink, Event::DescriptorFailed(Failure::Status(status)));
                 } else if !media_accepted {

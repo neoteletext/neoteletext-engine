@@ -213,6 +213,9 @@ pub mod media {
     pub const FONT_BDF: &[u8] = b"application/x-font-bdf";
     /// The service descriptor (RFC 8259 section 11).
     pub const JSON: &[u8] = b"application/json";
+    /// What a host answers a missing file with, often with status 200
+    /// (REQ-WEB-027).
+    pub const HTML: &[u8] = b"text/html";
 }
 
 /// Cache-Control directives honoured (RFC 9111 section 5.2.2).

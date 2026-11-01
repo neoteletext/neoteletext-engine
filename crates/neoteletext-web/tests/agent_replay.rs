@@ -1204,6 +1204,38 @@ fn a_channel_with_settings_opens_from_its_folder() {
     assert_eq!(paths(&mut harness, "site.example:80"), [settings_path().as_str(), "/news/index.t42"]);
 }
 
+/// REQ-WEB-027 (DEC-1726): a channel's entry file opens under whatever type a
+/// host gives an extension it does not know, including none, and only an
+/// HTML page is refused by its type.
+#[test]
+fn a_channels_entry_file_opens_whatever_type_a_host_gives_it() {
+    let settings = br#"{"name":"Test"}"#;
+    for media in [
+        Some("application/json"),
+        Some("application/octet-stream"),
+        Some("text/plain; charset=utf-8"),
+        Some("binary/octet-stream"),
+        None,
+    ] {
+        let mut harness = site_harness(Config::default());
+        let header = media.map(|media| format!("Content-Type: {media}"));
+        let headers: Vec<&str> = header.iter().map(String::as_str).collect();
+        harness.replay().reply("site.example:80", Reply::Bytes(response("200 OK", &headers, settings)));
+        harness.replay().reply("site.example:80", not_found());
+        let records = harness.open_channel("http://site.example/news/");
+        assert!(has_event(&records, "ServiceReady { name: \"Test\""), "{media:?}: {records:?}");
+    }
+    let mut harness = site_harness(Config::default());
+    harness.replay().reply("site.example:80", ok("text/html; charset=utf-8", settings));
+    let records = harness.open_channel("http://site.example/news/");
+    assert!(has_event(&records, "DescriptorFailed(MediaType)"), "{records:?}");
+    // A generic type gives no pass to what is not the channel's settings.
+    let mut harness = site_harness(Config::default());
+    harness.replay().reply("site.example:80", ok("application/octet-stream", b"<html></html>"));
+    let records = harness.open_channel("http://site.example/news/");
+    assert!(has_event(&records, "DescriptorRejected"), "{records:?}");
+}
+
 /// DEC-1726: the entry file's old name is not read: a channel is never asked
 /// for it, and told to open it no channel opens.
 #[test]

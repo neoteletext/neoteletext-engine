@@ -225,7 +225,8 @@ fn size_limits() {
 fn media_types() {
     assert_eq!(MediaType::classify(b"Application/X-Teletext-T42"), MediaType::T42);
     assert_eq!(MediaType::classify(b"text/plain; charset=us-ascii"), MediaType::TextPlain);
-    assert_eq!(MediaType::classify(b"text/html"), MediaType::Other);
+    assert_eq!(MediaType::classify(b"text/html; charset=utf-8"), MediaType::Html);
+    assert_eq!(MediaType::classify(b"text/x-other"), MediaType::Other);
     assert!(!MediaType::Json.is_page());
 }
 

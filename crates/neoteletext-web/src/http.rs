@@ -114,6 +114,8 @@ pub enum MediaType {
     Json,
     /// `application/x-font-bdf`, accepted for fonts only (REQ-FNT-003).
     FontBdf,
+    /// `text/html`, which no channel's file is (REQ-WEB-027).
+    Html,
     /// Anything else, or none.
     Other,
 }
@@ -132,6 +134,7 @@ impl MediaType {
             (media::OCTET_STREAM, Self::OctetStream),
             (media::JSON, Self::Json),
             (media::FONT_BDF, Self::FontBdf),
+            (media::HTML, Self::Html),
         ];
         known.into_iter().find(|(name, _)| essence.eq_ignore_ascii_case(name)).map_or(Self::Other, |(_, kind)| kind)
     }
