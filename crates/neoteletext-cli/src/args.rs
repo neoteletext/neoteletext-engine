@@ -321,7 +321,8 @@ pub(crate) enum Command {
     Check {
         /// TTI files.
         files: Vec<PathBuf>,
-        /// Service descriptor to resolve link targets against.
+        /// A channel's `channel.ttx`, or a service's descriptor, to resolve
+        /// link targets against.
         #[arg(long)]
         descriptor: Option<PathBuf>,
     },
