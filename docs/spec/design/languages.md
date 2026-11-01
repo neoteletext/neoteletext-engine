@@ -96,7 +96,7 @@ What this design takes from them:
 
 | Group | Languages | New sets | Receiver rule |
 |---|---|---|---|
-| Already supported | About 430, including English, Spanish, French, Portuguese, German, Russian, Arabic, Indonesian, Swahili, Turkish, and Kazakh in its Latin alphabet | None | None |
+| Already supported | Those the standard's sets write, including English, Spanish, French, Portuguese, German, Russian, Arabic, Indonesian, Swahili, Turkish, and Kazakh in its Latin alphabet | None | None |
 | Latin extensions | Hausa, Fula, Akan (Twi, Fanti), Ewe, Fon, Bambara, Dyula, Mandinka, Lingala, Krio, Mende, Dinka, Nuer, Kanuri, Mossi, Kabyle, Tamazight (Latin), Azerbaijani, Yoruba and Igbo with tones, Vietnamese | 8 national options, 1 G2 set | None; tones by X/26 |
 | Cyrillic extensions | Ukrainian, Belarusian, Macedonian, Serbian, Kyrgyz, Mongolian, Tatar, Tajik | 7 | None |
 | Arabic script | Persian, Dari, Urdu, Pashto, Sindhi, Sorani Kurdish, Uyghur, Balochi | 7 | Joining |
@@ -569,13 +569,13 @@ All on 18 October 2026.
 5. **Thai and Lao follow the Philips SAA5246AP/S scheme** (section 7). The designer first chose marks that take no cell, the owner having left it to the designer. On the owner's instruction that conformance comes first as far as possible, Vietnamese moved to the standard's X/26 method, as a Latin national option (section 8.1). Then the Thai hardware sources showed that Thai itself needs no departure, so Thai and Lao use the chip's scheme.
 6. **The reserved designation values of section 3 are allocated** to neoteletext's own sets, accepting that other decoders show such pages wrongly. Decided by the owner.
 7. **The page writer reorders right-to-left text with the `unicode-bidi` crate** (section 9). The owner left this to the designer: a correct implementation of UAX #9 is a library's job, and it is used only when writing pages.
-8. **The phases run in the order of section 13.** The owner left this to the designer. Phase 1 is the foundation every later phase draws with, and improves the 430 languages already supported. Phase 2 adds the most languages for the least new behaviour, and proves the way sets are added. Phase 3 brings the largest single population, about 400 million, with one new rule. Phase 4 changes the most: how a row's codes map to its cells.
+8. **The phases run in the order of section 13.** The owner left this to the designer. Phase 1 is the foundation every later phase draws with, and improves the languages already supported. Phase 2 adds the most languages for the least new behaviour, and proves the way sets are added. Phase 3 brings the largest single population, about 400 million, with one new rule. Phase 4 changes the most: how a row's codes map to its cells.
 
 ## 13. Phases
 
 | Phase | Work | Languages gained |
 |---|---|---|
-| 1 | 12 × 20 loaded glyphs; Noto fonts for the sets that exist today | Better glyphs for the 430 already supported, Arabic and Hebrew above all |
+| 1 | 12 × 20 loaded glyphs; Noto fonts for the sets that exist today | Better glyphs for those already supported, Arabic and Hebrew above all |
 | 2 | Groups 0101, 0111 and 1011: tables, the Vietnamese and Armenian G2 sets and fonts | African Latin, Yoruba and Igbo with tones, Vietnamese, Cyrillic extensions, Georgian, Armenian, Tifinagh |
 | 3 | Group 1001 and the joining rule; the page writer's reordering | Persian, Dari, Urdu, Pashto, Sindhi, Sorani, Uyghur, Balochi |
 | 4 | Group 1100: the Thai and Lao tables, and the page writer's two-row layout | Thai, Lao |
