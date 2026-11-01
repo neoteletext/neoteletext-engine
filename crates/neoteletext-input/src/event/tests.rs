@@ -612,7 +612,7 @@ fn a_character_cut_by_an_event_is_refused_at_once() {
     }
     // At the end of what has come a character may still be finished.
     let (read, held) = streamed(&[b'o', b'k', 0xE2, 0x82]);
-    assert_eq!(read, Ok(std::vec!["Text(\"ok\")".to_owned()]));
+    assert_eq!(read, Ok(std::vec!["Text(\"o\")".to_owned(), "Text(\"k\")".to_owned()]));
     assert_eq!(held, [0xE2, 0x82]);
 }
 
