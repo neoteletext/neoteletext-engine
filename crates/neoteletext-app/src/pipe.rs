@@ -81,8 +81,8 @@ pub enum Notice {
     /// its address (REQ-WEB-021, REQ-1688).
     RedirectToOtherChannel(String),
     /// The channel's program sent the viewer to page `0xMPP`, at this
-    /// sub-code (`INPUT.md` section 7.11).
-    PageRedirect(u16, u16),
+    /// sub-code, with the query it keeps, if any (`INPUT.md` section 7.11).
+    PageRedirect(u16, u16, Option<String>),
     /// A selection ended with this HTTP status, for this place, or for the
     /// whole channel when empty (`INPUT.md` section 7.12).
     Denied(u16, String),

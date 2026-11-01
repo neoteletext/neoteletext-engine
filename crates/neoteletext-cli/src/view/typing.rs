@@ -98,8 +98,8 @@ pub(super) struct Typing {
     /// The terminal reports releases: without them nothing can be held.
     releases: bool,
     /// The page and sub-code the channel's REDIRECT record named, to open
-    /// (INPUT.md section 8 rule 8, REQ-INT-113).
-    redirect: Option<(u16, u16)>,
+    /// (INPUT.md section 8 rule 8, REQ-INT-113), and the query it kept.
+    redirect: Option<(u16, u16, Option<String>)>,
 }
 
 impl Typing {
@@ -162,13 +162,16 @@ impl Typing {
     /// The channel's REDIRECT record named a page of the channel, to open.
     /// It needs no keys to go to the channel: a selected page is active
     /// whatever its focus (INPUT.md section 7.11).
-    pub(super) fn redirected(&mut self, page: u16, sub: u16) {
-        self.redirect = Some((page, sub));
+    pub(super) fn redirected(&mut self, page: u16, sub: u16, query: Option<String>) {
+        self.redirect = Some((page, sub, query));
     }
 
-    /// The page and sub-code a REDIRECT record named, to open, once.
+    /// The page and sub-code a REDIRECT record named, to open, once. Its
+    /// query goes with that selection, as an opened address's does.
     pub(super) fn take_redirect(&mut self) -> Option<(u16, u16)> {
-        self.redirect.take()
+        let (page, sub, query) = self.redirect.take()?;
+        self.opened_with((page, sub), query.unwrap_or_default());
+        Some((page, sub))
     }
 
     /// The address opened named `selection` and these page parameters.

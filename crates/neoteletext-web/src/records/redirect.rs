@@ -4,9 +4,9 @@
 //! viewer: a cursor record never does.
 //!
 //! Its body is one address, as an HTTP `Location` is: a place of this
-//! channel, `302` or `302/0002`, or a whole `http` or `https` address, 1 to
-//! `MAX_ADDRESS` bytes of printable ASCII with no fragment. The receiver's
-//! own address rules decide whether a whole address is followed.
+//! channel, `302`, `302/0002` or either with a query, or a whole `http` or
+//! `https` address, of printable ASCII with no fragment. The receiver's own
+//! address rules decide whether a whole address is followed.
 
 use neoteletext_audio::MAX_FRAMED_BODY;
 use neoteletext_core::limits::{MAX_URL_LENGTH, is_reserved_page};
@@ -20,9 +20,14 @@ use crate::url::{Scheme, Url};
 
 /// The longest address a record carries: the longest of all (REQ-1661).
 pub const MAX_ADDRESS: usize = MAX_URL_LENGTH;
+/// The longest body: a place, `302/0002`, and the longest query a selection
+/// may carry, as long as any address, kept through a redirect (TODO-1731).
+pub const MAX_BODY: usize = MAX_PLACE_TEXT + 1 + MAX_ADDRESS;
+/// The longest place: a page and a sub-code.
+const MAX_PLACE_TEXT: usize = 8;
 /// What begins a fragment, which a record's address never has (DEC-1694).
 const FRAGMENT: u8 = b'#';
-const _: () = assert!(MAX_ADDRESS <= MAX_FRAMED_BODY);
+const _: () = assert!(MAX_BODY <= MAX_FRAMED_BODY);
 
 /// A REDIRECT record, checked.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -34,6 +39,9 @@ pub enum RedirectRecord<'a> {
         page: PageAddress,
         /// The sub-code, or [`SubCode::ANY`].
         subcode: SubCode,
+        /// The query the place keeps, without its `?`, when the program
+        /// moved a selection that had one (TODO-1731).
+        parameters: Option<&'a str>,
     },
     /// Another channel's address. The receiver's own address rules decide
     /// whether it is followed.
@@ -50,21 +58,21 @@ fn check_address(text: &str) -> bool {
 /// Reads a REDIRECT record's body.
 ///
 /// # Errors
-/// A body that is neither a place of this channel with no parameters, on a
-/// page that is not reserved, nor an address the record may carry.
+/// A body that is neither a place of this channel, on a page that is not
+/// reserved, nor an address the record may carry.
 pub fn read(body: &[u8]) -> Result<RedirectRecord<'_>, RecordFault> {
-    if body.is_empty() || body.len() > MAX_ADDRESS {
+    if body.is_empty() || body.len() > MAX_BODY {
         return Err(RecordFault::Length);
     }
     let text = core::str::from_utf8(body).map_err(|_| RecordFault::BadValue("redirect address"))?;
-    if let Some(Place::Page { page, subcode, parameters: None }) = Place::read(text) {
+    if let Some(Place::Page { page, subcode, parameters }) = Place::read(text) {
         let [magazine, number] = page.mpp().to_be_bytes();
         if is_reserved_page(magazine, number) {
             return Err(RecordFault::BadValue("redirect page"));
         }
-        return Ok(RedirectRecord::Page { page, subcode: subcode.unwrap_or(SubCode::ANY) });
+        return Ok(RedirectRecord::Page { page, subcode: subcode.unwrap_or(SubCode::ANY), parameters });
     }
-    if check_address(text) {
+    if text.len() <= MAX_ADDRESS && check_address(text) {
         return Ok(RedirectRecord::Address(text));
     }
     Err(RecordFault::BadValue("redirect address"))
@@ -81,12 +89,12 @@ pub fn encode(
     record_id: u8,
     out: &mut dyn FnMut(Packet),
 ) -> Result<usize, RecordFault> {
-    let mut buffer = [0_u8; MAX_ADDRESS];
+    let mut buffer = [0_u8; MAX_BODY];
     let body = match redirect {
-        RedirectRecord::Page { page, subcode } => {
+        RedirectRecord::Page { page, subcode, parameters } => {
             let mut writer = Writer::new(&mut buffer);
             let named = (!subcode.is_any()).then_some(subcode);
-            let place = Place::Page { page, subcode: named, parameters: None };
+            let place = Place::Page { page, subcode: named, parameters };
             place.write(&mut writer).map_err(|_| RecordFault::Length)?;
             let length = writer.written().len();
             buffer.get(..length).ok_or(RecordFault::Length)?

@@ -152,8 +152,10 @@ pub fn write(out: &mut dyn Write, frame: &Frame) -> io::Result<()> {
             put(out, FOLLOW, &buffer)
         }
         Frame::Notice(Notice::RedirectToOtherChannel(address)) => put(out, REDIRECT, address.as_bytes()),
-        Frame::Notice(Notice::PageRedirect(mpp, sub)) => {
-            put(out, PAGE_REDIRECT, &[mpp.to_be_bytes(), sub.to_be_bytes()].concat())
+        Frame::Notice(Notice::PageRedirect(mpp, sub, query)) => {
+            let mut buffer = [mpp.to_be_bytes(), sub.to_be_bytes()].concat();
+            put_string(&mut buffer, query.as_deref().unwrap_or_default());
+            put(out, PAGE_REDIRECT, &buffer)
         }
         Frame::Notice(Notice::Denied(status, place)) => {
             let mut buffer = status.to_be_bytes().to_vec();
@@ -240,9 +242,9 @@ fn notice_frame(kind: u8, payload: &[u8]) -> io::Result<Frame> {
             Frame::Notice(Notice::RedirectToOtherChannel(String::from_utf8(payload.to_vec()).map_err(|_| invalid())?))
         }
         PAGE_REDIRECT => {
-            let (mpp, sub) = (cursor.u16()?, cursor.u16()?);
+            let (mpp, sub, query) = (cursor.u16()?, cursor.u16()?, cursor.string()?);
             cursor.end()?;
-            Frame::Notice(Notice::PageRedirect(mpp, sub))
+            Frame::Notice(Notice::PageRedirect(mpp, sub, (!query.is_empty()).then_some(query)))
         }
         DENIED => {
             let (status, place) = (cursor.u16()?, cursor.string()?);

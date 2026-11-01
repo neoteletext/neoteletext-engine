@@ -150,8 +150,8 @@ fn forward(
         Output::Event(Event::RedirectToOtherChannel { location }) => {
             send(&Frame::Notice(Notice::RedirectToOtherChannel(location.to_string())))
         }
-        Output::Event(Event::Redirect(RedirectRecord::Page { page, subcode })) => {
-            send(&Frame::Notice(Notice::PageRedirect(page.mpp(), subcode.value())))
+        Output::Event(Event::Redirect(RedirectRecord::Page { page, subcode, parameters })) => {
+            send(&Frame::Notice(Notice::PageRedirect(page.mpp(), subcode.value(), parameters.map(str::to_owned))))
         }
         Output::Event(Event::Redirect(RedirectRecord::Address(address))) => {
             send(&Frame::Notice(Notice::RedirectToOtherChannel(address.to_string())))

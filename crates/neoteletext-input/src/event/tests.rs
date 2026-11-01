@@ -481,7 +481,7 @@ fn select_carries_page_parameters_up_to_the_bound() {
     assert_eq!(&written[3..], b"302/0002?a=1&b=%20");
     assert_eq!(read(&written), Ok(Some((short, written.len()))));
 
-    let longest = "x".repeat(crate::MAX_PAGE_PARAMETERS);
+    let longest = format!("a={}", "x".repeat(crate::MAX_PAGE_PARAMETERS - 2));
     let item = Item::Event(Event::Select(select, &longest));
     let written = bytes(&item);
     assert!(written.len() <= MAX_MESSAGE, "{}", written.len());
@@ -561,4 +561,17 @@ fn select_arrives_whole_and_counts_nothing() {
     assert_eq!(seen, [select]);
     assert_eq!(units(&item), 0);
     assert_eq!(needs(&Event::Select(select, "")), SELECT_CAP);
+}
+
+/// INPUT.md section 5.4, `SERVER.md` section 4.6: a query is the URL map's
+/// `name=value` pairs, so what a SELECT carries a REDIRECT can keep.
+#[test]
+fn a_query_is_the_maps_pairs() {
+    let select = Select::new(0x302, 0x3F7F).unwrap();
+    for query in ["", "a=1", "a=", "a=1&b=2", "a=%20x"] {
+        assert!(is_page_parameters(select, query), "{query}");
+    }
+    for query in ["a", "=1", "a=1&", "&a=1", "a=1&b", "a=#", "a= 1"] {
+        assert!(!is_page_parameters(select, query), "{query}");
+    }
 }

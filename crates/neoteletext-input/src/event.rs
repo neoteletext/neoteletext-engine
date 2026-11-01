@@ -41,6 +41,10 @@ pub const LAST_EXTENSION: u8 = 0x7F;
 /// What ends an address's page parameters and so never appears in them
 /// (RFC 3986 section 3.5).
 const FRAGMENT_MARK: u8 = b'#';
+/// Between a query's pairs (`SERVER.md` section 4.6).
+const PAIR_MARK: u8 = b'&';
+/// Between a pair's name and value.
+const VALUE_MARK: u8 = b'=';
 /// SELECT's type, an extension (INPUT.md section 5.4, REQ-INT-140): the
 /// page and sub-page the connection has selected; a channel that does not know it
 /// skips it.
@@ -303,12 +307,18 @@ impl Select {
 }
 
 /// True when `parameters` may go in a SELECT for `select` (INPUT.md section
-/// 5.4): within the bound, printable ASCII with no `#`, and none with page 0.
+/// 5.4): within the bound, printable ASCII with no `#`, `name=value` pairs
+/// joined by `&` as the URL map reads them (`SERVER.md` section 4.6), and
+/// none with page 0. The same text then goes in a REDIRECT record, whose
+/// place the map reads.
 #[must_use]
 pub fn is_page_parameters(select: Select, parameters: &str) -> bool {
+    let pairs = parameters.as_bytes().split(|&byte| byte == PAIR_MARK);
     parameters.len() <= crate::MAX_PAGE_PARAMETERS
         && (select.page != 0 || parameters.is_empty())
         && parameters.bytes().all(|byte| byte.is_ascii_graphic() && byte != FRAGMENT_MARK)
+        && (parameters.is_empty()
+            || pairs.into_iter().all(|pair| pair.iter().position(|&byte| byte == VALUE_MARK).is_some_and(|at| at > 0)))
 }
 
 /// A WHEEL event.

@@ -103,7 +103,7 @@ fn repeats_and_releases_where_the_terminal_reports_them() {
 fn a_redirect_names_the_page_to_open() {
     let mut typing = Typing::new();
     assert!(!typing.on());
-    typing.redirected(0x301, 0x0002);
+    typing.redirected(0x301, 0x0002, None);
     assert_eq!(typing.take_redirect(), Some((0x301, 0x0002)));
     assert_eq!(typing.take_redirect(), None);
 }

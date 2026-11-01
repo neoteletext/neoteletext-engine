@@ -714,7 +714,7 @@ fn a_channels_redirect_reaches_the_application() {
     let page = PageAddress::from_mpp(0x1A0).unwrap();
     let mut message = Vec::new();
     let mut packet = |packet: neoteletext_core::packet::Packet| message.extend_from_slice(&packet.bytes);
-    encode(RedirectRecord::Page { page, subcode: SubCode::ANY }, 3, 1, &mut packet).unwrap();
+    encode(RedirectRecord::Page { page, subcode: SubCode::ANY, parameters: None }, 3, 1, &mut packet).unwrap();
     encode(RedirectRecord::Address("https://elsewhere.example/channel/302"), 3, 2, &mut packet).unwrap();
     harness.replay().reply("tt.example:80", Reply::WebSocket(server_frame(0x2, &message)));
     let records = harness.open("http://tt.example/service.json");

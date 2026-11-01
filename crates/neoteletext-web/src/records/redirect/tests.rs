@@ -5,6 +5,7 @@ use neoteletext_core::types::{PageAddress, SubCode};
 
 use super::{MAX_ADDRESS, RedirectRecord, encode, read};
 use crate::records::{ChannelRecord, Read, RecordFault, RecordReader, fragments};
+use std::format;
 use std::string::String;
 use std::vec::Vec;
 
@@ -39,7 +40,7 @@ fn page(mpp: u16) -> PageAddress {
 #[test]
 fn a_place_reaches_a_receiver_in_one_fragment() {
     for subcode in [SubCode::ANY, SubCode::new(0), SubCode::new(0x0002)] {
-        let redirect = RedirectRecord::Page { page: page(0x1A0), subcode };
+        let redirect = RedirectRecord::Page { page: page(0x1A0), subcode, parameters: None };
         let written = packets(redirect);
         assert_eq!(written.len(), 1);
         received(&written, |read| assert_eq!(read, redirect));
@@ -75,11 +76,32 @@ fn the_body_is_the_address_itself() {
     {
         assert_eq!(read(address.as_bytes()), Ok(RedirectRecord::Address(address)));
     }
-    assert_eq!(read(b"302"), Ok(RedirectRecord::Page { page: page(0x302), subcode: SubCode::ANY }));
-    assert_eq!(read(b"302/0002"), Ok(RedirectRecord::Page { page: page(0x302), subcode: SubCode::new(2) }));
-    assert!(read(b"302?a=1").is_err(), "a place carries no parameters");
+    let place = |subcode| Ok(RedirectRecord::Page { page: page(0x302), subcode, parameters: None });
+    assert_eq!(read(b"302"), place(SubCode::ANY));
+    assert_eq!(read(b"302/0002"), place(SubCode::new(2)));
     assert!(read(b"contents").is_err(), "only a page");
     assert!(read(b"https://news.example/#302").is_err(), "no fragment");
+}
+
+/// TODO-1731 item 5: a place keeps the query of the selection it moves, up
+/// to the longest a selection may have, and a whole address keeps its own
+/// bound.
+#[test]
+fn a_place_keeps_its_query() {
+    let kept = RedirectRecord::Page { page: page(0x302), subcode: SubCode::ANY, parameters: Some("a=1") };
+    assert_eq!(read(b"302?a=1"), Ok(kept));
+    received(&packets(kept), |read| assert_eq!(read, kept));
+    let longest = format!("a={}", "x".repeat(MAX_ADDRESS - 2));
+    let kept = RedirectRecord::Page { page: page(0x302), subcode: SubCode::new(2), parameters: Some(&longest) };
+    received(&packets(kept), |read| assert_eq!(read, kept));
+    assert_eq!(read(format!("302/0002?{longest}&b=c").as_bytes()), Err(RecordFault::Length));
+    assert!(read(b"302?x").is_err(), "the map's pairs");
+    let long = format!("https://news.example/{}", "a".repeat(MAX_ADDRESS - 20));
+    assert_eq!(
+        read(long.as_bytes()),
+        Err(RecordFault::BadValue("redirect address")),
+        "only a place may pass the longest address"
+    );
 }
 
 /// REQ-1688 item 3: only an `http` or `https` address, as the engine's
