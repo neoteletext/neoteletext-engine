@@ -15,6 +15,8 @@ neoteletext-web = { workspace = true }
 neoteletext-formats = { workspace = true, features = ["std", "tti"] }
 # The generated protocol document's byte examples use the input encoder.
 neoteletext-input = { workspace = true }
+# They use the audio encoder, for the audio records and their carriage.
+neoteletext-audio = { workspace = true, features = ["default", "encode", "pcm16"] }
 
 [lints]
 workspace = true
