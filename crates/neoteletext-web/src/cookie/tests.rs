@@ -3,6 +3,7 @@
 
 use super::store::default_cookie_path;
 use super::*;
+use crate::consts::{MAX_COOKIE_ATTRIBUTE_VALUE, MAX_COOKIE_NAME_VALUE};
 
 type Jar = CookieJar<120, 65536>;
 
@@ -393,4 +394,92 @@ fn an_imported_path_with_a_control_character_is_refused() {
     let data = b"neoteletext-cookies 2\n9999999999 1 1 9 3 1 1 3 a.bx1/\r\n\n9999999999 1 1 9 3 1 1 1 a.by2/\n";
     assert_eq!(jar.import(data, NOW), 1, "the second record is restored");
     assert_eq!(header(&mut jar, "a.b", "/", true, Site::SameService), "y=2");
+}
+
+/// The fields of `header`, read as a process that keeps no cookie reads them.
+fn fields(header: &str) -> SetCookie<'_> {
+    SetCookie::parse(header.as_bytes(), true).unwrap()
+}
+
+/// The browser's DEC-1765: a header read apart and stored by its fields gives the
+/// jar what the header itself gives, refused or stored, for every attribute.
+#[test]
+fn a_header_read_apart_is_stored_as_the_header_is() {
+    for line in [
+        "a=1",
+        "lonely",
+        "a=1; Path=/dir/x; Max-Age=60; HttpOnly",
+        "a=1; Expires=Wed, 21 Oct 2026 07:28:00 GMT; Secure; SameSite=Strict",
+        "a=1; Max-Age=0",
+        "a=1; SameSite=None",
+        "a=1; SameSite=None; Secure; Partitioned",
+        "__Secure-a=1",
+        "__Secure-a=1; Secure",
+        "__Host-a=1; Secure; Path=/",
+        "__Host-a=1; Secure; Path=/; Domain=a.example",
+        "__Http-a=1; Secure; HttpOnly",
+    ] {
+        for secure in [false, true] {
+            let (mut whole, mut apart) = (Jar::new(), Jar::new());
+            let stored =
+                whole.store_within(line.as_bytes(), "a.example", "/dir/page", Some("/dir/"), secure, NOW, true);
+            assert_eq!(
+                apart.store_set_cookie(&fields(line), "a.example", "/dir/page", Some("/dir/"), secure, NOW),
+                stored,
+                "{line}"
+            );
+            let (mut one, mut other) = ([0_u8; 1024], [0_u8; 1024]);
+            let (mut one, mut other) = (Writer::new(&mut one), Writer::new(&mut other));
+            whole.export(NOW, &mut one).unwrap();
+            apart.export(NOW, &mut other).unwrap();
+            assert_eq!(one.written(), other.written(), "{line}");
+            assert_eq!(whole.len(), apart.len(), "{line}");
+        }
+    }
+}
+
+/// The browser's DEC-1765: fields no header could give are refused, so that a process
+/// that sends fields gains nothing over one that sends a header. A name or a
+/// value with a `;` or white space at its end would write a `__Host-` cookie
+/// of its own into the `Cookie` header.
+#[test]
+fn fields_no_header_could_give_are_refused() {
+    let plain = fields("a=1");
+    for (cookie, refused) in [
+        (SetCookie { value: b"1; __Host-id=evil", ..plain }, CookieRejected::NotAHeader),
+        (SetCookie { name: b"a; __Host-id", ..plain }, CookieRejected::NotAHeader),
+        (SetCookie { name: b"a=b", ..plain }, CookieRejected::NotAHeader),
+        (SetCookie { name: b" __Host-id", ..plain }, CookieRejected::NotAHeader),
+        (SetCookie { name: b"a\t", ..plain }, CookieRejected::NotAHeader),
+        (SetCookie { value: b" 1", ..plain }, CookieRejected::NotAHeader),
+        (SetCookie { path: Some(b"relative"), ..plain }, CookieRejected::NotAHeader),
+        (SetCookie { path: Some(b"/a;b"), ..plain }, CookieRejected::NotAHeader),
+        (SetCookie { path: Some(&[b'/'; MAX_COOKIE_ATTRIBUTE_VALUE + 1]), ..plain }, CookieRejected::NotAHeader),
+        (SetCookie { value: b"a\nb", ..plain }, CookieRejected::ControlCharacter),
+        (SetCookie { name: b"a\x7f", ..plain }, CookieRejected::ControlCharacter),
+        (SetCookie { path: Some(b"/\r"), ..plain }, CookieRejected::ControlCharacter),
+        (SetCookie { name: b"", value: b"", ..plain }, CookieRejected::Empty),
+        (SetCookie { value: &[b'v'; MAX_COOKIE_NAME_VALUE], ..plain }, CookieRejected::TooLarge),
+    ] {
+        let mut jar = Jar::new();
+        assert_eq!(jar.store_set_cookie(&cookie, "a.example", "/", None, true, NOW), Err(refused), "{cookie:?}");
+        assert!(jar.is_empty());
+    }
+}
+
+/// The browser's DEC-1765: the rules of the jar hold for fields as for a header:
+/// the 400 days, and a plain connection that cannot set or replace `Secure`.
+#[test]
+fn the_rules_hold_for_fields() {
+    let mut jar = Jar::new();
+    let forever = SetCookie { max_age: Some(i64::MAX), expires: Some(u64::MAX), ..fields("a=1") };
+    jar.store_set_cookie(&forever, "a.example", "/", None, true, NOW).unwrap();
+    assert_eq!(jar.cookies().next().map(|cookie| cookie.expires), Some(Some(NOW + MAX_AGE_SECONDS)), "capped");
+    let secure = fields("b=1; Secure");
+    assert_eq!(jar.store_set_cookie(&secure, "a.example", "/", None, false, NOW), Err(CookieRejected::SecureOverPlain));
+    jar.store_set_cookie(&secure, "a.example", "/", None, true, NOW).unwrap();
+    assert_eq!(
+        jar.store_set_cookie(&fields("b=2"), "a.example", "/", None, false, NOW),
+        Err(CookieRejected::WouldReplaceSecure)
+    );
 }

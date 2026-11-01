@@ -36,25 +36,61 @@ impl<'a> PathRule<'a> {
     }
 }
 
-/// The attributes parsed from one `Set-Cookie` header.
-#[allow(clippy::struct_excessive_bools)] // Each flag is one cookie attribute of REQ-WEB-006.
-struct Attributes<'a> {
-    max_age: Option<i64>,
-    expires: Option<u64>,
-    domain: bool,
-    path: Option<&'a [u8]>,
-    secure: bool,
-    http_only: bool,
-    partitioned: bool,
-    same_site: SameSite,
-}
-
 /// A `Set-Cookie` header split into its name, its value and the text of
 /// its attributes.
+#[derive(Clone, Copy)]
 struct SplitHeader<'a> {
     name: &'a [u8],
     value: &'a [u8],
     attributes: &'a [u8],
+}
+
+/// One `Set-Cookie` header read into its fields (RFC 6265bis section 5.6),
+/// judged by nothing yet: reading it can be done apart from the jar, by a
+/// process that keeps no cookie, and the jar applies every rule to the
+/// fields it is given (the browser's DEC-1765).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[allow(clippy::struct_excessive_bools)] // Each flag is one cookie attribute of REQ-WEB-006.
+pub struct SetCookie<'a> {
+    /// The cookie's name.
+    pub name: &'a [u8],
+    /// The cookie's value.
+    pub value: &'a [u8],
+    /// `Max-Age`, in seconds.
+    pub max_age: Option<i64>,
+    /// `Expires`, in seconds since 1970.
+    pub expires: Option<u64>,
+    /// A `Domain` attribute was there. Every cookie is host-only, so only
+    /// its presence counts, which breaks the `__Host-` rule.
+    pub domain: bool,
+    /// `Path`, when it starts with `/`.
+    pub path: Option<&'a [u8]>,
+    /// `Secure`.
+    pub secure: bool,
+    /// `HttpOnly`.
+    pub http_only: bool,
+    /// `Partitioned`.
+    pub partitioned: bool,
+    /// `SameSite`.
+    pub same_site: SameSite,
+}
+
+impl<'a> SetCookie<'a> {
+    /// Reads one `Set-Cookie` header value. `wall_clock` says whether the
+    /// reader's clock is calendar time, without which an `Expires` date
+    /// means nothing and the attribute is left out.
+    ///
+    /// # Errors
+    /// A control character other than tab, an empty name and value, or a
+    /// name and value over the limit: the header is ignored whole
+    /// (RFC 6265bis section 5.6).
+    pub fn parse(header: &'a [u8], wall_clock: bool) -> Result<Self, CookieRejected> {
+        // Section 5.6 step 1: control characters other than tab.
+        if has_control(header) {
+            return Err(CookieRejected::ControlCharacter);
+        }
+        Ok(parse_attributes(split_header(header)?, wall_clock))
+    }
 }
 
 impl<const SLOTS: usize, const BYTES: usize> CookieJar<SLOTS, BYTES> {
@@ -90,7 +126,33 @@ impl<const SLOTS: usize, const BYTES: usize> CookieJar<SLOTS, BYTES> {
         now: u64,
         wall_clock: bool,
     ) -> Result<(), CookieRejected> {
-        self.store_with_path(header, host, PathRule::Request { request_path, scope }, secure, now, wall_clock)
+        self.store_fields(
+            &SetCookie::parse(header, wall_clock)?,
+            host,
+            PathRule::Request { request_path, scope },
+            secure,
+            now,
+        )
+    }
+
+    /// [`Self::store_within`], for a header another process read
+    /// ([`SetCookie::parse`]). The fields are untrusted: each must be one a
+    /// header could have given, so that whoever sent them can do no more
+    /// than whoever sends a header, and every rule is applied here
+    /// (the browser's DEC-1765).
+    ///
+    /// # Errors
+    /// The rule the cookie breaks.
+    pub fn store_set_cookie(
+        &mut self,
+        cookie: &SetCookie<'_>,
+        host: &str,
+        request_path: &str,
+        scope: Option<&str>,
+        secure: bool,
+        now: u64,
+    ) -> Result<(), CookieRejected> {
+        self.store_fields(cookie, host, PathRule::Request { request_path, scope }, secure, now)
     }
 
     /// The `Set-Cookie` algorithm, with the cookie's path chosen by
@@ -98,31 +160,26 @@ impl<const SLOTS: usize, const BYTES: usize> CookieJar<SLOTS, BYTES> {
     /// names, which an import passes here rather than rebuilding it into a
     /// `Path=` attribute that the attribute limit would drop (finding F-13,
     /// decision E.114 item 1).
-    pub(super) fn store_with_path(
+    pub(super) fn store_fields(
         &mut self,
-        header: &[u8],
+        cookie: &SetCookie<'_>,
         host: &str,
         rule: PathRule<'_>,
         secure: bool,
         now: u64,
-        wall_clock: bool,
     ) -> Result<(), CookieRejected> {
-        // Section 5.6 step 1: control characters other than tab, in a saved
-        // path as in the header it once came from.
-        let saved_path = match rule {
-            PathRule::Saved(saved) => saved,
-            PathRule::Request { .. } => &[],
-        };
-        if header.iter().chain(saved_path).any(|&b| (b < 0x20 && b != b'\t') || b == 0x7F) {
-            return Err(CookieRejected::ControlCharacter);
-        }
-        let SplitHeader { name, value, attributes: attributes_text } = split_header(header)?;
-        let mut attributes = parse_attributes(attributes_text, now, wall_clock);
+        check_fields(cookie)?;
+        let mut attributes = *cookie;
         if let PathRule::Saved(saved) = rule {
+            // In a saved path as in the header it once came from.
+            if has_control(saved) {
+                return Err(CookieRejected::ControlCharacter);
+            }
             // The saved path stands as the attribute, so the prefix rules
             // see it as they did when the cookie was first stored.
             attributes.path = Some(saved);
         }
+        let SetCookie { name, value, .. } = attributes;
 
         if !policy::may_send_cookie(attributes.secure, secure) {
             return Err(CookieRejected::SecureOverPlain);
@@ -213,6 +270,43 @@ impl<const SLOTS: usize, const BYTES: usize> CookieJar<SLOTS, BYTES> {
     }
 }
 
+/// True for a control character other than horizontal tab.
+fn has_control(text: &[u8]) -> bool {
+    text.iter().any(|&b| (b < 0x20 && b != b'\t') || b == 0x7F)
+}
+
+/// True when `text` has no white space at either end, as a field read from a
+/// header has none.
+fn trimmed(text: &[u8]) -> bool {
+    trim_ows(text).len() == text.len()
+}
+
+/// Whether the fields are what [`SetCookie::parse`] could have given: a name
+/// or value holding `;`, or with white space at an end, would write into the
+/// `Cookie` header what no header sets, a `__Host-` cookie of its own for one.
+fn check_fields(cookie: &SetCookie<'_>) -> Result<(), CookieRejected> {
+    let SetCookie { name, value, path, .. } = *cookie;
+    if [name, value, path.unwrap_or_default()].into_iter().any(has_control) {
+        return Err(CookieRejected::ControlCharacter);
+    }
+    if name.is_empty() && value.is_empty() {
+        return Err(CookieRejected::Empty);
+    }
+    if name.len().saturating_add(value.len()) > MAX_COOKIE_NAME_VALUE {
+        return Err(CookieRejected::TooLarge);
+    }
+    let separator = |text: &[u8]| text.contains(&b';');
+    let well_formed = !separator(name)
+        && !separator(value)
+        && !name.contains(&b'=')
+        && trimmed(name)
+        && trimmed(value)
+        && path.is_none_or(|path| {
+            path.first() == Some(&b'/') && path.len() <= MAX_COOKIE_ATTRIBUTE_VALUE && !separator(path) && trimmed(path)
+        });
+    if well_formed { Ok(()) } else { Err(CookieRejected::NotAHeader) }
+}
+
 /// Splits a `Set-Cookie` header into its name, its value and the text of
 /// its attributes, refusing an empty or oversized pair (section 5.6).
 fn split_header(header: &[u8]) -> Result<SplitHeader<'_>, CookieRejected> {
@@ -237,7 +331,7 @@ fn split_header(header: &[u8]) -> Result<SplitHeader<'_>, CookieRejected> {
 
 /// When the cookie expires, in seconds: Max-Age takes precedence over
 /// Expires; both are capped at 400 days.
-fn expiry(attributes: &Attributes<'_>, now: u64) -> Option<u64> {
+fn expiry(attributes: &SetCookie<'_>, now: u64) -> Option<u64> {
     match (attributes.max_age, attributes.expires) {
         (Some(seconds), _) => Some(if seconds <= 0 {
             0
@@ -253,7 +347,7 @@ fn expiry(attributes: &Attributes<'_>, now: u64) -> Option<u64> {
 /// without regard to letter case. A nameless cookie whose value starts with
 /// a prefix is refused too, so it cannot pose as a prefixed cookie (RFC
 /// 6265bis section 5.7 step 19).
-fn check_prefixes(name: &[u8], value: &[u8], attributes: &Attributes<'_>, secure: bool) -> Result<(), CookieRejected> {
+fn check_prefixes(name: &[u8], value: &[u8], attributes: &SetCookie<'_>, secure: bool) -> Result<(), CookieRejected> {
     let prefixes = [PREFIX_SECURE, PREFIX_HOST, PREFIX_HTTP, PREFIX_HOST_HTTP];
     if name.is_empty() && prefixes.iter().any(|prefix| starts_with_ignore_case(value, prefix)) {
         return Err(CookieRejected::Prefix);
@@ -278,8 +372,11 @@ fn check_prefixes(name: &[u8], value: &[u8], attributes: &Attributes<'_>, secure
 /// Parses the attributes after the name-value pair (RFC 6265bis section
 /// 5.6 steps 6 to 9). Attributes whose value is over 1024 bytes are
 /// ignored.
-fn parse_attributes(text: &[u8], now: u64, wall_clock: bool) -> Attributes<'_> {
-    let mut attributes = Attributes {
+fn parse_attributes(header: SplitHeader<'_>, wall_clock: bool) -> SetCookie<'_> {
+    let SplitHeader { name, value, attributes: text } = header;
+    let mut attributes = SetCookie {
+        name,
+        value,
         max_age: None,
         expires: None,
         domain: false,
@@ -333,8 +430,6 @@ fn parse_attributes(text: &[u8], now: u64, wall_clock: bool) -> Attributes<'_> {
             };
         }
     }
-    // `now` is used only through the date comparison done by the caller.
-    let _ = now;
     attributes
 }
 

@@ -16,6 +16,7 @@ mod persist;
 mod store;
 
 pub use date::parse_cookie_date;
+pub use store::SetCookie;
 
 use crate::bytes::Writer;
 use crate::consts::{DEFAULT_COOKIES_PER_HOST, DEFAULT_COOKIES_TOTAL, MAX_COOKIE_AGE_DAYS, SECONDS_PER_DAY};
@@ -69,6 +70,8 @@ pub enum CookieRejected {
     NoRoom,
     /// This build keeps no cookies (the `cookies` feature, decision E.61).
     NotCompiledIn,
+    /// Fields no `Set-Cookie` header could give (the browser's DEC-1765).
+    NotAHeader,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
