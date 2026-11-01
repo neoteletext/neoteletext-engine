@@ -7,6 +7,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{Shutdown, TcpListener, TcpStream};
 use std::process::{Command, Output};
 
+use neoteletext_core::types::SubCode;
 use neoteletext_formats::encode::encode_page;
 use neoteletext_formats::item::{Item as ReadItem, Reader};
 use neoteletext_formats::tti::TtiReader;
@@ -16,7 +17,9 @@ use neoteletext_input::control::{Control, packet_of};
 use neoteletext_input::event::{Event, Item, read_message};
 use neoteletext_web::channel::SETTINGS_FILE;
 use neoteletext_web::consts::{CLOSE_BROKE_PROTOCOL, PUSH_SUBPROTOCOL};
+use neoteletext_web::map::Place;
 use neoteletext_web::records::denied::{DeniedRecord, STATUS_NOT_FOUND, STATUS_UNAVAILABLE, encode};
+use neoteletext_web::records::redirect::{RedirectRecord, encode as encode_redirect};
 use neoteletext_web::ws::accept_for;
 
 /// RFC 6455 section 5.2.
@@ -43,6 +46,10 @@ enum Channel {
     Unavailable,
     /// Never answers a selection.
     Silent,
+    /// Answers page 100 and moves every other selection to it.
+    Moves,
+    /// Moves every selection, for ever.
+    KeepsMoving,
 }
 
 fn page() -> Vec<u8> {
@@ -61,6 +68,15 @@ fn page() -> Vec<u8> {
 fn denied(status: u16, place: &str) -> Vec<u8> {
     let mut bytes = Vec::new();
     encode(DeniedRecord { status, place }, 0, 1, &mut |packet| bytes.extend_from_slice(&packet.bytes)).unwrap();
+    bytes
+}
+
+/// A REDIRECT record to page 100.
+fn moved() -> Vec<u8> {
+    let Some(Place::Page { page, .. }) = Place::read("100") else { panic!("a page") };
+    let redirect = RedirectRecord::Page { page, subcode: SubCode::ANY, parameters: None };
+    let mut bytes = Vec::new();
+    encode_redirect(redirect, 0, 1, &mut |packet| bytes.extend_from_slice(&packet.bytes)).unwrap();
     bytes
 }
 
@@ -118,7 +134,9 @@ fn serve_socket(channel: Channel, stream: &mut TcpStream, reader: &mut BufReader
             Item::Event(Event::Select(select, _)) => match channel {
                 Channel::Unavailable => answers.push((BINARY, denied(STATUS_UNAVAILABLE, ""))),
                 Channel::Silent => {}
+                Channel::KeepsMoving => answers.push((BINARY, moved())),
                 _ if select.page == 0x100 => answers.push((BINARY, page())),
+                Channel::Moves => answers.push((BINARY, moved())),
                 _ => answers.push((BINARY, denied(STATUS_NOT_FOUND, "8FC"))),
             },
             _ => {}
@@ -218,6 +236,18 @@ fn a_good_channel_is_reported_and_exits_zero() {
     }
 }
 
+/// DEC-1543 item 2: a program moves a viewer off a page it does not serve,
+/// which is an ending of the selection, not a silent channel.
+#[test]
+fn a_selection_moved_elsewhere_is_followed_and_is_no_fault() {
+    let output = probe(Channel::Moves);
+    let said = text(&output.stdout);
+    assert!(output.status.success(), "{said} {}", text(&output.stderr));
+    for expected in ["selection   8FC: moved to 100 in", "result      no fault"] {
+        assert!(said.contains(expected), "{expected:?} not in: {said}");
+    }
+}
+
 /// DEC-1759 lesson 20: each fault gives a non-zero exit status, and says why.
 #[test]
 fn a_fault_exits_non_zero_and_says_why() {
@@ -227,6 +257,7 @@ fn a_fault_exits_non_zero_and_says_why() {
         (Channel::Stops, "stop code 4000"),
         (Channel::Unavailable, "DENIED 503"),
         (Channel::Silent, "no page and no DENIED"),
+        (Channel::KeepsMoving, "moved more than"),
     ] {
         let output = probe(channel);
         let said = text(&output.stderr);

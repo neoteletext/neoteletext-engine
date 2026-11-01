@@ -33,7 +33,7 @@ mod run {
     use neoteletext_input::control::{FRAGMENT_DATA, from_packet};
     use neoteletext_input::event::{Event, Item, Select, read_message};
     use neoteletext_input::session::{Session as InputSession, State};
-    use neoteletext_web::consts::PUSH_SUBPROTOCOL;
+    use neoteletext_web::consts::{MAX_REDIRECTS, PUSH_SUBPROTOCOL};
     use neoteletext_web::map::Place;
     use std::time::{Duration, Instant as Clock};
 
@@ -66,6 +66,8 @@ mod run {
         initial: Option<u16>,
         /// A selection's ending, while one is awaited.
         denied: Option<(u16, String)>,
+        /// Where the channel moved the selection: an ending that is no fault.
+        moved: Option<String>,
         /// The push connection ended for good, and why.
         stopped: Option<String>,
         /// The push connection opened.
@@ -113,6 +115,11 @@ mod run {
                     }
                 }
                 Notice::Denied(status, place) => self.denied = Some((status, place)),
+                Notice::PageRedirect(mpp, sub, _) => {
+                    let place =
+                        if sub == SubCode::ANY.value() { format!("{mpp:03X}") } else { format!("{mpp:03X}/{sub:04X}") };
+                    self.moved = Some(place);
+                }
                 Notice::PushStopped(why) => self.stopped = Some(why),
                 Notice::Message(text) => println!("said        {text}"),
                 _ => {}
@@ -144,12 +151,27 @@ mod run {
             Ok(false)
         }
 
-        /// Makes the selection `place` says, and reports how it ended.
+        /// Makes the selection `place` says and follows where the channel
+        /// moves it, as a receiver does, as far as a receiver follows.
         fn select(&mut self, text: &str) -> Result<(), Failure> {
+            let mut place = text.to_owned();
+            for _ in 0..=MAX_REDIRECTS {
+                match self.selection(&place)? {
+                    Some(target) => place = target,
+                    None => return Ok(()),
+                }
+            }
+            Err(fault(format!("selection {text}: moved more than {MAX_REDIRECTS} times")))
+        }
+
+        /// One selection: reports how it ended, and where it was moved to if
+        /// it was.
+        fn selection(&mut self, text: &str) -> Result<Option<String>, Failure> {
             let Some(Place::Page { page, subcode, parameters }) = Place::read(text) else {
                 return Err((exit::USAGE, format!("{text:?} is not a page or a sub-page")));
             };
             self.denied = None;
+            self.moved = None;
             let shown = subcode.unwrap_or(SubCode::ANY);
             let began = Clock::now();
             self.source.request(page, shown);
@@ -164,7 +186,9 @@ mod run {
                 read_message(message, &mut |_| {}).map_err(|error| fault(format!("{error:?}")))?;
                 self.source.send_input(message);
             }
-            let ended = self.until(ENDING_WITHIN, |probe| probe.denied.is_some() || probe.shows(page, shown))?;
+            let ended = self.until(ENDING_WITHIN, |probe| {
+                probe.denied.is_some() || probe.moved.is_some() || probe.shows(page, shown)
+            })?;
             let elapsed = began.elapsed().as_millis();
             if !ended {
                 return Err(fault(format!(
@@ -172,17 +196,21 @@ mod run {
                     ENDING_WITHIN.as_secs()
                 )));
             }
+            if let Some(target) = self.moved.take() {
+                println!("selection   {text}: moved to {target} in {elapsed} ms");
+                return Ok(Some(target));
+            }
             match self.denied.take() {
                 Some((status, _)) if status == STATUS_UNAVAILABLE => {
                     Err(fault(format!("selection {text}: DENIED {status}: the channel's program did not answer")))
                 }
                 Some((status, place)) => {
                     println!("selection   {text}: DENIED {status} for {place:?} in {elapsed} ms");
-                    Ok(())
+                    Ok(None)
                 }
                 None => {
                     println!("selection   {text}: a page in {elapsed} ms");
-                    Ok(())
+                    Ok(None)
                 }
             }
         }
@@ -208,6 +236,7 @@ mod run {
             start: Clock::now(),
             initial: None,
             denied: None,
+            moved: None,
             stopped: None,
             pushing: false,
         };
