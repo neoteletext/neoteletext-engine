@@ -18,6 +18,7 @@ use neoteletext_web::agent::InputMessage;
 use neoteletext_web::agent::{Config, Input, Output, Source, Storage, Subscription, UserAgent};
 use neoteletext_web::bytes::Writer;
 use neoteletext_web::channel::SETTINGS_FILE;
+#[cfg(feature = "push")]
 use neoteletext_web::consts::{
     CLOSE_BROKE_PROTOCOL, CLOSE_RESTARTING, CLOSE_RETRY_LAST, CLOSE_STOP_FIRST, CLOSE_STOP_LAST, CLOSE_WRONG_VERSION,
 };
@@ -726,6 +727,7 @@ fn a_channels_redirect_reaches_the_application() {
 }
 
 /// The delay each `PushLost` among `records` gave.
+#[cfg(feature = "push")]
 fn retries(records: &[Rec]) -> Vec<u64> {
     let lost = events(records);
     lost.iter()
@@ -735,6 +737,7 @@ fn retries(records: &[Rec]) -> Vec<u64> {
 }
 
 /// Whether a `PushLost` among `records` names `problem`.
+#[cfg(feature = "push")]
 fn lost_for(records: &[Rec], problem: &str) -> bool {
     events(records).iter().any(|event| event.starts_with("PushLost") && event.contains(problem))
 }
@@ -1210,23 +1213,21 @@ fn cookies_are_saved_only_when_enabled_and_never_session_ones() {
 #[test]
 #[cfg(not(feature = "push"))]
 fn push_not_compiled_in_is_reported_and_never_connects() {
-    for (address, reported) in [("ws://tt.example/push", "PushNotCompiledIn")] {
-        let mut replay = Replay::new(&[("tt.example", PUBLIC)]);
-        let extra = format!(r#","push":{{"address":"{address}"}}"#);
-        replay.reply("tt.example:80", json_response(&descriptor(&extra)));
-        let mut harness = Harness::new(Config::default(), replay);
-        let records = harness.open("http://tt.example/service.json");
-        assert!(has_event(&records, "ServiceReady"), "{records:?}");
-        assert!(has_event(&records, reported), "{records:?}");
-        assert_eq!(records.last(), Some(&Rec::Event(reported.to_string())), "no timer for a reconnection follows");
-        harness.input(Input::Subscribe(Subscription::All));
-        harness.advance(120 * SECOND);
-        assert!(!has_event(&harness.take(), "Push"), "nothing more about push");
-        assert!(
-            !harness.replay().connects.iter().any(|(connection, ..)| *connection == ConnectionId::Push),
-            "no push connection is opened"
-        );
-    }
+    const REPORTED: &str = "PushNotCompiledIn";
+    let mut replay = Replay::new(&[("tt.example", PUBLIC)]);
+    replay.reply("tt.example:80", json_response(&descriptor(r#","push":{"address":"ws://tt.example/push"}"#)));
+    let mut harness = Harness::new(Config::default(), replay);
+    let records = harness.open("http://tt.example/service.json");
+    assert!(has_event(&records, "ServiceReady"), "{records:?}");
+    assert!(has_event(&records, REPORTED), "{records:?}");
+    assert_eq!(records.last(), Some(&Rec::Event(REPORTED.to_string())), "no timer for a reconnection follows");
+    harness.input(Input::Subscribe(Subscription::All));
+    harness.advance(120 * SECOND);
+    assert!(!has_event(&harness.take(), "Push"), "nothing more about push");
+    assert!(
+        !harness.replay().connects.iter().any(|(connection, ..)| *connection == ConnectionId::Push),
+        "no push connection is opened"
+    );
 }
 
 #[test]
