@@ -70,10 +70,10 @@ check_document_names() {
     entry_file="$(sed -n 's/^pub const SETTINGS_FILE: &str = "\(.*\)";$/\1/p' crates/neoteletext-web/src/channel.rs)"
     link_scheme="$(sed -n 's/^pub const LINK_SCHEME: &str = "\(.*\)";$/\1/p' crates/neoteletext-core/src/consts/link.rs)"
     [[ -n "$entry_file" && -n "$link_scheme" ]] || { echo "the constants were not found" >&2; return 1; }
-    for named in docs/user-guide.md ../neoteletext-common/SERVER.md; do
+    for named in docs/user-guide.md $common/SERVER.md; do
         grep -qF "\`$link_scheme\`" "$named" || { echo "$named does not name $link_scheme" >&2; return 1; }
     done
-    for named in docs/user-guide.md ../neoteletext-common/CHANNEL.md ../neoteletext-common/SERVER.md; do
+    for named in docs/user-guide.md $common/CHANNEL.md $common/SERVER.md; do
         grep -qF "$entry_file\`" "$named" || { echo "$named does not name $entry_file" >&2; return 1; }
     done
     echo "ok: the documents name $entry_file and $link_scheme"
