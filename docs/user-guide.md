@@ -47,7 +47,7 @@ The toolchain is pinned in `rust-toolchain.toml`. `scripts/check.sh full` runs e
 | `neottx slice RAW -o OUT.t42` | Slices raw sampled video into T42 packets and prints quality statistics. |
 | `neottx services INPUT` | Lists the teletext streams, languages and subtitle pages of a transport stream. |
 | `neottx service-info INPUT` | Prints the broadcast service data of packet 8/30: network, time, programme label and status message. |
-| `neottx check FILES...` | Checks TTI page files for authoring problems. `--descriptor FILE` resolves link targets against a service descriptor. |
+| `neottx check FILES...` | Checks TTI page files for authoring problems, a row longer than the page among them. `--descriptor FILE` resolves link targets against a channel's `channel.ttx` or a service's descriptor. |
 | `neottx font convert INPUT OUTPUT` | Converts a BDF font of another cell size to the 12 × 10 form `neottx render --font` loads, only where the conversion is exact. See "Fonts" below. |
 | `neottx font sets FONT` | Reports, for each of the 24 teletext character sets, whether a 12 × 10 font conforms for it (REQ-FNT-011), how many of its 96 positions it draws, and the first rule it fails; `--library-line NAME` prints the font's `c` line for a library's `fonts.txt`. |
 | `neottx sound --page PAGE IN.wav OUT.t42` | Writes a sound as the audio profile's packets, with the command that plays it on `PAGE`: IMA ADPCM by default, `--codec pcm` for 16-bit PCM. The WAVE file is 16-bit PCM at 8, 11.025, 16, 22.05, 24, 32, 44.1 or 48 kHz; stereo is mixed to mono. `--channel 0-3`, `--gain 0-100`, `--loop` and `--repeat N` set the rest. Append the output to a channel's T42 stream, and a receiver that plays sound plays it while that page is open. See `docs/spec/design/audio.md`. |
@@ -170,7 +170,7 @@ Every command accepts these options. Each one changes a setting of REQUIREMENTS.
 | Option | Setting | Default |
 |---|---|---|
 | `--profile NAME` | The compatibility profile (area PRF). | `en300706` |
-| `--region N` | The character set group of Table 32, 0 to 15, used when the page does not give one (decision E.4). | From the transport stream's language, otherwise 0 |
+| `--region N` | The character set group of Table 32, 0 to 15, used when the page does not give one (decision E.4). It stands above a channel's `region`. | From the channel's `region` or the transport stream's language, otherwise 0 |
 | `--parity keep-good\|space\|marker` | How characters that fail their parity check are shown (decision E.8). | `keep-good` |
 | `--level 1\|1.5\|2.5\|3.5` | The presentation level, overriding the profile's (REQ-CLI-007, decision E.40). | The profile's level |
 | `--no-rounding` | Turns character rounding off (REQ-RND-012). | Rounding on |
