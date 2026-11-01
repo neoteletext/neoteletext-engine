@@ -40,7 +40,7 @@ pub fn link_address(input: &str) -> Result<&str, String> {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Opening {
     /// The page and sub-code it names; `None` arrives at the channel's
-    /// initial page, as `#contents` and `#wall` do in a viewer that shows
+    /// initial page, as `contents` and `wall` do in a viewer that shows
     /// neither.
     pub page: Option<(PageAddress, SubCode)>,
     /// The page parameters that go with that selection, as written.
