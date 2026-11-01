@@ -36,7 +36,6 @@
 | Miri | The Rust interpreter that detects undefined behaviour, used here to test on 32-bit and big-endian targets. |
 | HTTP, TLS | The web's request protocol, and the encryption layer beneath HTTPS and secure WebSockets. |
 | WebSocket | A two-way message connection opened from an HTTP request. |
-| Server-sent events | A one-way stream of text events from a web server over HTTP. |
 | Cookie | A small value a web server asks the client to store and send back, used here for sessions. |
 | JSON | JavaScript Object Notation, the text format of the service descriptor. |
 | Origin | The scheme, host and port of a web address: the unit of web security (REQ-WEB-015). |

@@ -1,6 +1,6 @@
 [package]
 name = "neoteletext-web"
-description = "The neoteletext minimal web user agent: sans-IO HTTP/1.1, WebSocket, server-sent events, cookies and the zxnet live feed"
+description = "The neoteletext minimal web user agent: sans-IO HTTP/1.1, WebSocket, cookies and the zxnet live feed"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -27,7 +27,7 @@ neoteletext-formats = { workspace = true, features = ["tti"] }
 # reaches it, so the linker already leaves it out of a port that does not
 # call it.
 default = ["push", "cookies"]
-# Server push over WebSocket and server-sent events (REQ-WEB-005).
+# Server push over WebSocket (REQ-WEB-005).
 push = []
 # The cookie store's use by the agent (REQ-WEB-006).
 cookies = []

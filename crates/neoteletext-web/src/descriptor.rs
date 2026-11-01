@@ -18,7 +18,7 @@
 //! ```
 //!
 //! `name`, `initial_page` and `page_template` are required. `method` is
-//! `websocket` or `sse`. Addresses may be relative to the descriptor's own
+//! `websocket`. Addresses may be relative to the descriptor's own
 //! address. A missing required member, a duplicated or unknown member, an
 //! unknown template placeholder or a malformed address rejects the whole
 //! descriptor (REQ-WEB-014: never partly interpreted). A descriptor fetched
@@ -136,15 +136,6 @@ impl From<JsonError> for DescriptorError {
     }
 }
 
-/// How the push connection is made (REQ-WEB-005).
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum PushMethod {
-    /// RFC 6455 WebSocket.
-    WebSocket,
-    /// Server-sent events.
-    ServerSentEvents,
-}
-
 /// Another service that links may lead to (Appendix E).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct LinkedService {
@@ -168,7 +159,7 @@ pub struct Descriptor {
     pub initial_page: PageAddress,
     template: TextBuf<MAX_URL_LENGTH>,
     base: Url,
-    push: Option<(Url, PushMethod)>,
+    push: Option<Url>,
     /// The channel takes the viewer's keys on its push WebSocket (area
     /// INT, decision E.90).
     input: bool,
@@ -281,7 +272,7 @@ impl Descriptor {
 
     /// The push address and method, if the service pushes.
     #[must_use]
-    pub const fn push(&self) -> Option<&(Url, PushMethod)> {
+    pub const fn push(&self) -> Option<&Url> {
         self.push.as_ref()
     }
 

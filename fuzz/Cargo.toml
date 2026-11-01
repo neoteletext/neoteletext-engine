@@ -78,13 +78,6 @@ doc = false
 bench = false
 
 [[bin]]
-name = "sse"
-path = "fuzz_targets/sse.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
 name = "descriptor"
 path = "fuzz_targets/descriptor.rs"
 test = false

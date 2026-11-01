@@ -5,14 +5,13 @@
 use neoteletext_core::types::{Instant, PageAddress, SubCode};
 
 use crate::cookie::CookieRejected;
-use crate::descriptor::{DescriptorError, PushMethod};
+use crate::descriptor::DescriptorError;
 use crate::http::{HttpError, MediaType, Method};
 use crate::port::{ConnectionId, NetInput, NetOutput, Security};
 use crate::records::index::IndexRecord;
 use crate::records::links::LinksRecord;
 use crate::records::redirect::RedirectRecord;
 use crate::records::subpages::SubPagesRecord;
-use crate::sse::SseError;
 use crate::url::UrlError;
 use crate::ws::WsError;
 use neoteletext_formats::log::LogLine;
@@ -206,8 +205,6 @@ pub enum PushProblem {
     Failure(Failure),
     /// A WebSocket rule was broken.
     WebSocket(WsError),
-    /// A server-sent event was too big.
-    EventStream(SseError),
     /// Pushed packets were not valid base64.
     Base64,
 }
@@ -274,7 +271,7 @@ pub enum Event<'a> {
         host: &'a str,
     },
     /// The push connection is open.
-    PushConnected(PushMethod),
+    PushConnected,
     /// A request on the fetch connection was answered (REQ-WEB-033): for a
     /// developer's view of the channel's network activity, each hop of a
     /// redirect its own.
@@ -302,7 +299,7 @@ pub enum Event<'a> {
     /// The descriptor names a push address, but this build has no push
     /// (the `push` feature, decision E.61): pages are fetched on request
     /// only.
-    PushNotCompiledIn(PushMethod),
+    PushNotCompiledIn,
     /// Packets the push connection carried that were invalid
     /// (neoteletext-common's REQ-1462): a packet whose address does not
     /// decode or whose kind the stream may not carry

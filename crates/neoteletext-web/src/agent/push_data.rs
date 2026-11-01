@@ -1,14 +1,14 @@
-//! What the push connection carries (REQ-WEB-005): WebSocket frames and
-//! server-sent events read into pages of T42, every packet checked and the
-//! invalid ones discarded and counted (REQ-1462), and the channel's
-//! records read from among them (INPUT.md section 7).
+//! What the push connection carries (REQ-WEB-005): WebSocket frames read
+//! into pages of T42, every packet checked and the invalid ones discarded
+//! and counted (REQ-1462), and the channel's records read from among them
+//! (INPUT.md section 7).
 
 use neoteletext_core::consts::PACKET_HEADER;
 use neoteletext_core::packet::{Packet, decode_address, is_valid_stream_packet};
 use neoteletext_core::types::Instant;
 
 use super::cookies::cookie_store;
-use super::{Event, Failure, Output, PageBytes, PushProblem, Sink, Source, T42_PACKET, UserAgent, event};
+use super::{Event, Output, PageBytes, PushProblem, Sink, Source, T42_PACKET, UserAgent, event};
 use crate::bytes::copy_prefix;
 use crate::consts::OPCODE_PONG;
 use crate::cookie::CookieRejected;
@@ -17,7 +17,6 @@ use crate::port::RandomSource;
 use crate::records::index::Step;
 use crate::records::log::MAX_LOG_LINES_PER_PAGE;
 use crate::records::{ChannelRecord, Read};
-use crate::sse::SseEvent;
 use crate::url::Url;
 use crate::ws::WsMessage;
 
@@ -61,68 +60,6 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
             }
         }
         Some(used)
-    }
-
-    /// Reads the event stream. Returns the bytes used, or `None` when the
-    /// connection ended.
-    pub(super) fn push_events(&mut self, now: Instant, input: &[u8], sink: &mut Sink<'_>) -> Option<usize> {
-        let body = self.push.body.as_mut()?;
-        let step = match body.feed(input) {
-            Ok(step) => step,
-            Err(error) => {
-                self.push_lost(now, Some(PushProblem::Failure(Failure::Http(error))), true, sink);
-                return None;
-            }
-        };
-        // The final step can carry data too: it is read before the stream
-        // ends (finding F-77).
-        let mut data = step.data;
-        while !data.is_empty() {
-            let limit = self.config.push_limit.min(self.buffers.push_message.len());
-            let message = self.buffers.push_message.get_mut(..limit).unwrap_or(&mut []);
-            let (used, dispatched) = match self.push.sse.feed(message, data) {
-                Ok(result) => result,
-                Err(error) => {
-                    self.push_lost(now, Some(PushProblem::EventStream(error)), true, sink);
-                    return None;
-                }
-            };
-            data = data.get(used..).unwrap_or(&[]);
-            self.deliver_event(now, dispatched, sink);
-        }
-        if step.done {
-            self.push_lost(now, None, true, sink);
-            return None;
-        }
-        Some(step.consumed)
-    }
-
-    fn deliver_event(&mut self, now: Instant, dispatched: Option<SseEvent>, sink: &mut Sink<'_>) {
-        match dispatched {
-            Some(SseEvent::Page(len)) => {
-                self.push.healthy = true;
-                self.deliver_push_page(MediaType::Tti, len, sink);
-            }
-            Some(SseEvent::Packets(len)) => {
-                let message = self.buffers.push_message.get_mut(..len).unwrap_or(&mut []);
-                // Data lines are joined with line feeds; base64 has none.
-                let mut kept = 0usize;
-                for index in 0..message.len() {
-                    let byte = message.get(index).copied().unwrap_or(b'\n');
-                    if byte != b'\n'
-                        && let Some(slot) = message.get_mut(kept)
-                    {
-                        *slot = byte;
-                        kept = kept.saturating_add(1);
-                    }
-                }
-                match crate::base64::decode_in_place(message, kept) {
-                    Ok(decoded) => self.push_packets(now, decoded, sink),
-                    Err(_) => event(sink, Event::PushLost { retry_in_us: 0, problem: Some(PushProblem::Base64) }),
-                }
-            }
-            Some(SseEvent::Other) | None => {}
-        }
     }
 
     /// Counts `packets` invalid packets (REQ-1462) and tells the port the
@@ -175,7 +112,7 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
         }
         if kept > 0 {
             self.push.healthy = true;
-            self.deliver_push_page(MediaType::T42, kept, sink);
+            self.deliver_push_page(kept, sink);
         }
         if page && core::mem::take(&mut self.connecting) {
             event(sink, Event::ChannelLive);
@@ -231,13 +168,18 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
         0
     }
 
-    /// Delivers the first `len` bytes of the push message as a pushed page
-    /// of `media`.
-    fn deliver_push_page(&self, media: MediaType, len: usize, sink: &mut Sink<'_>) {
+    /// Delivers the first `len` bytes of the push message as pushed T42.
+    fn deliver_push_page(&self, len: usize, sink: &mut Sink<'_>) {
         let url = self.push.url;
         let url_text = url.as_ref().map_or("", Url::as_str);
         let secure = url.as_ref().is_some_and(Url::is_secure);
         let bytes = self.buffers.push_message.get(..len).unwrap_or(&[]);
-        sink(Output::PageBytes(PageBytes { source: Source::Push, media, url: url_text, secure, bytes }));
+        sink(Output::PageBytes(PageBytes {
+            source: Source::Push,
+            media: MediaType::T42,
+            url: url_text,
+            secure,
+            bytes,
+        }));
     }
 }

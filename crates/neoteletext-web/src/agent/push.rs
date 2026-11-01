@@ -1,5 +1,5 @@
 //! The push connection (REQ-WEB-005): connecting over WebSocket or
-//! server-sent events, the handshake, the backoff and the heartbeat.
+//! the handshake, the backoff and the heartbeat.
 
 use neoteletext_core::types::Instant;
 
@@ -7,44 +7,26 @@ use super::cookies::{cookie_store, store_response_cookies, write_cookie_header};
 use super::{Event, Failure, Output, PushPhase, PushProblem, Sink, UserAgent, event};
 use crate::bytes::{Overflow, Writer};
 use crate::consts::{
-    ACCEPT_EVENT_STREAM, CRLF, IDENTITY, MAX_URL_LENGTH, OPCODE_PING, PUSH_EVENTS_SILENCE_US, PUSH_PING_AFTER_US,
-    PUSH_PONG_WITHIN_US, PUSH_RETRY_FIRST_US, PUSH_RETRY_MAX_US, ROUND_TRIP_EVERY_US, STATUS_OK, SUBSCRIBE_QUERY,
-    header,
+    CRLF, MAX_URL_LENGTH, OPCODE_PING, PUSH_PING_AFTER_US, PUSH_PONG_WITHIN_US, PUSH_RETRY_FIRST_US, PUSH_RETRY_MAX_US,
+    ROUND_TRIP_EVERY_US,
 };
 use crate::cookie::Site;
-use crate::descriptor::PushMethod;
-use crate::http::{self, BodyDecoder, MediaType, Method};
+use crate::http;
 use crate::port::{ConnectionId, RandomSource, Security};
 use crate::url::{IpAddress, Url, UrlError};
 use crate::ws::{self, FrameReader};
 
 impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'_, R, SLOTS, COOKIE_BYTES> {
     /// The push address, with the query the channel was opened at
-    /// (REQ-1674) and, for server-sent events, the subscription's.
+    /// (REQ-1674).
     fn push_address(&self) -> Option<Url> {
         let url = self.push.url?;
-        let opened = self.opened_as.as_ref().and_then(Url::query);
-        if self.push.method == PushMethod::WebSocket && opened.is_none() {
-            return Some(url);
-        }
+        let Some(query) = self.opened_as.as_ref().and_then(Url::query) else { return Some(url) };
         let mut buffer = [0u8; MAX_URL_LENGTH];
         let mut writer = Writer::new(&mut buffer);
         writer.put(url.as_str().as_bytes()).ok()?;
-        let mut queried = url.query().is_some();
-        let mut next = |writer: &mut Writer<'_>| {
-            let mark = if queried { b'&' } else { b'?' };
-            queried = true;
-            writer.byte(mark)
-        };
-        if let Some(query) = opened {
-            next(&mut writer).ok()?;
-            writer.put(query.as_bytes()).ok()?;
-        }
-        if self.push.method != PushMethod::WebSocket {
-            next(&mut writer).ok()?;
-            writer.put(SUBSCRIBE_QUERY).ok()?;
-            self.write_subscription(&mut writer, b',').ok()?;
-        }
+        writer.byte(if url.query().is_some() { b'&' } else { b'?' }).ok()?;
+        writer.put(query.as_bytes()).ok()?;
         Url::parse(core::str::from_utf8(writer.written()).ok()?).ok()
     }
 
@@ -87,35 +69,16 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
         }
         let (seconds, _) = self.seconds(now);
         self.push.head.reset();
-        self.push.body = None;
         self.push.frames = FrameReader::new();
-        self.push.sse.restart();
         // A channel's push connection may be anywhere on its origin, and
         // carries the channel's cookies, whose paths are its folder
         // (REQ-WEB-026).
         let folder = self.channel;
         let mut writer = Writer::new(self.buffers.push_request);
-        if self.push.method == PushMethod::WebSocket {
-            self.push.key = ws::new_key(&mut self.random);
-        }
+        self.push.key = ws::new_key(&mut self.random);
         let written = (|| -> Result<bool, Overflow> {
-            match self.push.method {
-                PushMethod::WebSocket => {
-                    ws::write_handshake_headers(&mut writer, &url, &self.push.key, self.named_as.as_bytes())?;
-                }
-                PushMethod::ServerSentEvents => {
-                    http::write_request_line(&mut writer, Method::Get, url.target())?;
-                    http::write_host(&mut writer, &url)?;
-                    http::write_header(&mut writer, header::USER_AGENT, self.named_as.as_bytes())?;
-                    http::write_header(&mut writer, header::ACCEPT, ACCEPT_EVENT_STREAM)?;
-                    http::write_header(&mut writer, header::ACCEPT_ENCODING, IDENTITY)?;
-                    let last = self.push.sse.last_event_id();
-                    if !last.is_empty() {
-                        http::write_header(&mut writer, header::LAST_EVENT_ID, last)?;
-                    }
-                }
-            }
-            // Cookies go with upgrades and event streams too (REQ-WEB-006).
+            ws::write_handshake_headers(&mut writer, &url, &self.push.key, self.named_as.as_bytes())?;
+            // Cookies go with the upgrade too (REQ-WEB-006).
             let path = folder.as_ref().map_or(url.path(), Url::path);
             let truncated = write_cookie_header(
                 cookie_store(&mut self.jar, &mut self.port_cookies),
@@ -188,10 +151,7 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
                 PushPhase::Open { .. } => {
                     // Anything heard is a sign of life (REQ-WEB-005).
                     self.push.phase = PushPhase::Open { heard: now, pinged: None };
-                    let used = match self.push.method {
-                        PushMethod::WebSocket => self.push_frames(now, input, sink),
-                        PushMethod::ServerSentEvents => self.push_events(now, input, sink),
-                    };
+                    let used = self.push_frames(now, input, sink);
                     match used {
                         Some(used) if used > 0 => input = input.get(used..).unwrap_or(&[]),
                         _ => return,
@@ -230,22 +190,7 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
                 return false;
             }
         };
-        let accepted = match self.push.method {
-            PushMethod::WebSocket => ws::check_handshake(&head, &self.push.key).map_err(PushProblem::WebSocket),
-            PushMethod::ServerSentEvents => {
-                if head.status != STATUS_OK {
-                    Err(PushProblem::Failure(Failure::Status(head.status)))
-                } else if head.media != MediaType::EventStream {
-                    Err(PushProblem::Failure(Failure::MediaType))
-                } else {
-                    // Any framing is accepted for a stream; its total size
-                    // is unbounded, each event is limited by the parser.
-                    BodyDecoder::new(head.framing, usize::MAX)
-                        .map(|decoder| self.push.body = Some(decoder))
-                        .map_err(|error| PushProblem::Failure(Failure::Http(error)))
-                }
-            }
-        };
+        let accepted = ws::check_handshake(&head, &self.push.key).map_err(PushProblem::WebSocket);
         if let Err(problem) = accepted {
             self.push_lost(now, Some(problem), true, sink);
             return false;
@@ -254,10 +199,8 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
         self.push.invalid = 0;
         self.push.log_lines = 0;
         self.records.clear();
-        event(sink, Event::PushConnected(self.push.method));
-        if self.push.method == PushMethod::WebSocket {
-            self.send_subscribe(sink);
-        }
+        event(sink, Event::PushConnected);
+        self.send_subscribe(sink);
         true
     }
 
@@ -292,7 +235,6 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
     /// pong, a second after the last, or at once when none has gone.
     pub(super) fn round_trip_due(&self) -> Option<Instant> {
         let measured = self.push.round_trip.on
-            && self.push.method == PushMethod::WebSocket
             && matches!(self.push.phase, PushPhase::Open { .. })
             && self.push.round_trip.waiting.is_none();
         measured.then(|| {
@@ -331,24 +273,19 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
     }
 
     /// When the heartbeat next acts on the open push connection
-    /// (REQ-WEB-005): a ping after a silence on a WebSocket, the end of the
-    /// wait for its pong, or the end of a silent event stream.
+    /// (REQ-WEB-005): a ping after a silence, or the end of the wait for its
+    /// pong.
     pub(super) fn heartbeat_due(&self) -> Option<Instant> {
         let PushPhase::Open { heard, pinged } = self.push.phase else { return None };
         let after = |at: Instant, wait: u64| Instant(at.0.saturating_add(wait));
-        Some(match (self.push.method, pinged) {
-            (PushMethod::WebSocket, None) => after(heard, PUSH_PING_AFTER_US),
-            (PushMethod::WebSocket, Some(pinged)) => after(pinged, PUSH_PONG_WITHIN_US),
-            (PushMethod::ServerSentEvents, _) => after(heard, PUSH_EVENTS_SILENCE_US),
-        })
+        Some(pinged.map_or_else(|| after(heard, PUSH_PING_AFTER_US), |pinged| after(pinged, PUSH_PONG_WITHIN_US)))
     }
 
-    /// A silent WebSocket is pinged; one that does not answer, and a silent
-    /// event stream, are reconnected with the backoff, which sends the
-    /// subscription again.
+    /// A silent connection is pinged, and one that does not answer is
+    /// reconnected with the backoff, which sends the subscription again.
     fn heartbeat(&mut self, now: Instant, sink: &mut Sink<'_>) {
         let PushPhase::Open { heard, pinged } = self.push.phase else { return };
-        if self.push.method == PushMethod::WebSocket && pinged.is_none() {
+        if pinged.is_none() {
             self.send_push_frame(OPCODE_PING, b"", sink);
             self.push.phase = PushPhase::Open { heard, pinged: Some(now) };
             return;

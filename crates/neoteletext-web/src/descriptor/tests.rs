@@ -32,8 +32,7 @@ fn valid_descriptor() {
         "https://example.org/ttx/pages/8A5/0012?m=8&p=A5"
     );
     assert_eq!(descriptor.page_url(page, None).unwrap().as_str(), "https://example.org/ttx/pages/8A5/0000?m=8&p=A5");
-    let (push, method) = descriptor.push().unwrap();
-    assert_eq!((push.as_str(), *method), ("wss://example.org/ttx/push", PushMethod::WebSocket));
+    assert_eq!(descriptor.push().unwrap().as_str(), "wss://example.org/ttx/push");
     let weather = descriptor.service("weather").unwrap();
     assert_eq!(weather.display_name.as_str(), "Weather \u{e9}");
     assert_eq!(descriptor.service_address(weather), "https://weather.example/ttx.json");
@@ -117,10 +116,6 @@ fn input_needs_a_websocket() {
     assert_eq!(parse(r#"{"address":"ws://s.example/p","method":"websocket","input":true}"#), Ok(true));
     assert_eq!(parse(r#"{"address":"ws://s.example/p","method":"websocket","input":false}"#), Ok(false));
     assert_eq!(parse(r#"{"address":"ws://s.example/p","method":"websocket"}"#), Ok(false));
-    assert_eq!(
-        parse(r#"{"address":"http://s.example/p","method":"sse","input":true}"#),
-        Err(DescriptorError::Invalid(Member::PushInput))
-    );
     assert_eq!(
         parse(r#"{"address":"ws://s.example/p","method":"websocket","input":"yes"}"#),
         Err(DescriptorError::Invalid(Member::PushInput))
@@ -256,16 +251,17 @@ fn channel_settings() {
     );
     let push = |json: &[u8], base: &Url| {
         let descriptor = Descriptor::parse_channel(json, base).unwrap();
-        let (url, method) = descriptor.push().unwrap();
-        (std::string::String::from(url.as_str()), *method)
+        std::string::String::from(descriptor.push().unwrap().as_str())
     };
     let websocket = br#"{"push":{"method":"websocket"}}"#;
-    let events = br#"{"push":{"method":"sse"}}"#;
     let plain = Url::parse("http://example.org/ceefax/channel.json").unwrap();
-    assert_eq!(push(websocket, &base), ("wss://example.org/ceefax/push".into(), PushMethod::WebSocket));
-    assert_eq!(push(websocket, &plain), ("ws://example.org/ceefax/push".into(), PushMethod::WebSocket));
-    assert_eq!(push(events, &base), ("https://example.org/ceefax/push".into(), PushMethod::ServerSentEvents));
-    assert_eq!(push(events, &plain), ("http://example.org/ceefax/push".into(), PushMethod::ServerSentEvents));
+    assert_eq!(push(websocket, &base), "wss://example.org/ceefax/push");
+    assert_eq!(push(websocket, &plain), "ws://example.org/ceefax/push");
+    // DEC-1738: server-sent events are withdrawn, and refused as any unknown method is.
+    assert_eq!(
+        Descriptor::parse_channel(br#"{"push":{"method":"sse"}}"#, &base).err(),
+        Some(DescriptorError::Invalid(Member::PushMethod))
+    );
     let both = br#"{"services":[{"name":"w","display_name":"W","channel":"https://w.example/","descriptor":"https://w.example/d.json"}]}"#;
     assert!(Descriptor::parse_channel(both, &base).is_err());
     let file = br#"{"services":[{"name":"w","display_name":"W","channel":"https://w.example/100.tti"}]}"#;

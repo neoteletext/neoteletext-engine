@@ -27,7 +27,7 @@ Dependencies point **downward only**. A layer may use the layers below it and th
  │ L8  Platform interface        traits: DataSource · Transport · Clock ·      │  the port boundary
  │                               Keys · CookieStorage · DeviceKey              │
  ├───────────────┬───────────────────────────────────────────────────────────┤
- │ L7  Web user  │ URL parser · origin · HTTP/1.1 · WebSocket · SSE ·          │  sans-IO, no_std
+ │ L7  Web user  │ URL parser · origin · HTTP/1.1 · WebSocket ·                │  sans-IO, no_std
  │     agent     │ cookies · cache · descriptor · channels                     │
  ├───────────────┴───────────────────────────────────────────────────────────┤
  │ L6  Interaction               viewer FSM · navigation · history · input ·   │  no_std
@@ -194,7 +194,6 @@ Each module named below is one concept. Since the reorganisation of 24 October 2
   - the minimal user agent profile;
   - HTTP/1.1;
   - WebSocket;
-  - server-sent events;
   - the cookie store;
   - validators and caching;
   - the service descriptor;
@@ -419,7 +418,7 @@ Each boundary is one narrow type. Nothing reaches past its neighbour.
 | Boundary | What crosses it | Protection |
 |---|---|---|
 | Untrusted bytes into L0 readers | Files, streams, samples, page files | Strict streaming parsers, size limits, fuzzing (REQ-SEC-003, REQ-TST-040) |
-| Untrusted bytes into L7 | HTTP, WebSocket, SSE, descriptors, cookies | The user agent profile, the strict address parser, policy checks, fuzzing (REQ-WEB-014 to REQ-WEB-016, SEC-006 to SEC-011) |
+| Untrusted bytes into L7 | HTTP, WebSocket, descriptors, cookies | The user agent profile, the strict address parser, policy checks, fuzzing (REQ-WEB-014 to REQ-WEB-016, SEC-006 to SEC-011) |
 | L7 to L0 across processes | TTI or T42 bytes and framed control messages | Both sides validate; the decoder process has no rights (REQ-SEC-018) |
 | L5 to the terminal | Text and escape sequences | Allow-list sanitising (REQ-SEC-010) |
 | Fonts from a file | BDF files and library indexes | Read by strict, bounded, fuzzed readers; the decoder checks the glyph table's shape before drawing with it (REQ-FNT-002, REQ-FNT-003, REQ-FNT-008) |

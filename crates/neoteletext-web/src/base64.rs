@@ -123,33 +123,6 @@ pub fn decode(input: &[u8], output: &mut [u8]) -> Result<usize, Base64Error> {
     Ok(written)
 }
 
-/// Decodes base64 held in `buffer[..len]` in place, returning the decoded
-/// length. Each group of four characters becomes at most three bytes
-/// written at or before its own position, so no input is overwritten
-/// before it is read.
-pub fn decode_in_place(buffer: &mut [u8], len: usize) -> Result<usize, Base64Error> {
-    if !len.is_multiple_of(BASE64_GROUP_CHARS) || len > buffer.len() {
-        return Err(Base64Error::Length);
-    }
-    let groups = len / BASE64_GROUP_CHARS;
-    let mut written = 0usize;
-    for index in 0..groups {
-        let start = index.saturating_mul(BASE64_GROUP_CHARS);
-        let mut chars = [0u8; 4];
-        for (offset, slot) in chars.iter_mut().enumerate() {
-            *slot = buffer.get(start.saturating_add(offset)).copied().unwrap_or(0);
-        }
-        let (bytes, count) = decode_group(chars, index.saturating_add(1) == groups)?;
-        for &byte in bytes.get(..count).unwrap_or(&[]) {
-            if let Some(slot) = buffer.get_mut(written) {
-                *slot = byte;
-            }
-            written = written.saturating_add(1);
-        }
-    }
-    Ok(written)
-}
-
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects, clippy::panic)]
 mod tests {
@@ -175,10 +148,6 @@ mod tests {
             let mut back = [0u8; 16];
             let n = decode(encoded, &mut back).unwrap();
             assert_eq!(&back[..n], plain);
-            let mut in_place = [0u8; 16];
-            in_place[..encoded.len()].copy_from_slice(encoded);
-            let n = decode_in_place(&mut in_place, encoded.len()).unwrap();
-            assert_eq!(&in_place[..n], plain);
         }
     }
 

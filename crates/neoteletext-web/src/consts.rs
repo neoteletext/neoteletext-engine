@@ -164,8 +164,6 @@ pub mod header {
     pub const CACHE_CONTROL: &[u8] = b"Cache-Control";
     /// `Retry-After` (RFC 9110 section 10.2.3).
     pub const RETRY_AFTER: &[u8] = b"Retry-After";
-    /// `Last-Event-ID` (HTML Living Standard section 9.2.4).
-    pub const LAST_EVENT_ID: &[u8] = b"Last-Event-ID";
     /// `Upgrade` (RFC 9110 section 7.8).
     pub const UPGRADE: &[u8] = b"Upgrade";
     /// `Sec-WebSocket-Key` (RFC 6455 section 11.3.1).
@@ -183,9 +181,6 @@ pub mod header {
 /// `Accept` for pages and the descriptor: the two page media types and JSON
 /// (REQ-WEB-014).
 pub const ACCEPT_PAGES: &[u8] = b"text/x-teletext-tti, application/x-teletext-t42, application/json";
-/// `Accept` for a server-sent event stream (HTML Living Standard section
-/// 9.2.2).
-pub const ACCEPT_EVENT_STREAM: &[u8] = b"text/event-stream";
 /// The only content coding asked for and accepted (REQ-SEC-011).
 pub const IDENTITY: &[u8] = b"identity";
 /// The only transfer coding accepted (RFC 9112 section 7.1).
@@ -218,8 +213,6 @@ pub mod media {
     pub const FONT_BDF: &[u8] = b"application/x-font-bdf";
     /// The service descriptor (RFC 8259 section 11).
     pub const JSON: &[u8] = b"application/json";
-    /// A server-sent event stream.
-    pub const EVENT_STREAM: &[u8] = b"text/event-stream";
 }
 
 /// Cache-Control directives honoured (RFC 9111 section 5.2.2).
@@ -304,20 +297,9 @@ pub const SUBSCRIBE: &[u8] = b"subscribe";
 pub const SUBSCRIBE_ALL: &[u8] = b"all";
 
 // ---------------------------------------------------------------------------
-// Server-sent events (HTML Living Standard section 9.2) and push
+// Push
 // ---------------------------------------------------------------------------
 
-/// The event carrying a TTI page (REQ-WEB-005).
-pub const EVENT_PAGE: &[u8] = b"page";
-/// The event carrying base64 T42 packets (REQ-WEB-005).
-pub const EVENT_PACKETS: &[u8] = b"packets";
-/// The longest event identifier kept for `Last-Event-ID`.
-pub const MAX_EVENT_ID: usize = 256;
-/// The longest event type name kept.
-pub const MAX_EVENT_TYPE: usize = 32;
-/// The query parameter naming the pages subscribed to over server-sent
-/// events (REQ-WEB-005).
-pub const SUBSCRIBE_QUERY: &[u8] = b"subscribe=";
 /// How often a port reports the push connection's invalid packets, when
 /// there are any (neoteletext-common's REQ-1462): their cumulative count,
 /// at most once in this many seconds, since the agent has no clock of its
@@ -335,9 +317,6 @@ pub const PUSH_RETRY_MAX_US: u64 = 60 * MICROSECONDS_PER_SECOND;
 pub const PUSH_PING_AFTER_US: u64 = 25 * MICROSECONDS_PER_SECOND;
 /// A ping not answered within this long means the connection is dead.
 pub const PUSH_PONG_WITHIN_US: u64 = 10 * MICROSECONDS_PER_SECOND;
-/// An event stream silent this long is made again: the client cannot ping
-/// it.
-pub const PUSH_EVENTS_SILENCE_US: u64 = 60 * MICROSECONDS_PER_SECOND;
 /// The longest input message a receiver sends on the push WebSocket:
 /// `neoteletext_input::MAX_MESSAGE` (`neoteletext-common/INPUT.md` section
 /// 5.1, REQ-INT-101). The command-line program asserts that the two agree.

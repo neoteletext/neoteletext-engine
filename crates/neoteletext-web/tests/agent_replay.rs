@@ -209,7 +209,7 @@ fn tti_response(headers: &[&str]) -> Reply {
 /// REQ-WEB-014: every request carries only the permitted headers, never
 /// `Referer`, always `Accept-Encoding: identity`.
 fn assert_profile_headers(replay: &Replay) {
-    const PERMITTED: [&str; 16] = [
+    const PERMITTED: [&str; 15] = [
         "host",
         "user-agent",
         "accept",
@@ -219,7 +219,6 @@ fn assert_profile_headers(replay: &Replay) {
         "if-modified-since",
         "content-type",
         "content-length",
-        "last-event-id",
         "upgrade",
         "connection",
         "sec-websocket-key",
@@ -493,12 +492,11 @@ fn interim_responses_before_the_final_one_are_read_past() {
 #[test]
 #[cfg(feature = "push")]
 fn interim_responses_before_a_push_handshake_are_read_past() {
-    let mut harness = push_service("sse", "http://tt.example/events");
-    let stream = b"HTTP/1.1 103 Early Hints\r\n\r\nHTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\
-                   Transfer-Encoding: chunked\r\n\r\n";
-    harness.replay().reply("tt.example:80", Reply::Bytes(stream.to_vec()));
+    let mut harness = push_service("websocket", "ws://tt.example/push");
+    let interim = b"HTTP/1.1 103 Early Hints\r\n\r\n".to_vec();
+    harness.replay().reply("tt.example:80", Reply::WebSocketWith { interim, headers: String::new() });
     let records = harness.open("http://tt.example/service.json");
-    assert!(has_event(&records, "PushConnected(ServerSentEvents)"), "{records:?}");
+    assert!(has_event(&records, "PushConnected"), "{records:?}");
 }
 
 #[test]
@@ -674,7 +672,7 @@ fn websocket_push() {
     frames.extend(server_frame(0x9, b"hi"));
     harness.replay().reply("tt.example:80", Reply::WebSocket(frames));
     let records = harness.open("http://tt.example/service.json");
-    assert!(has_event(&records, "PushConnected(WebSocket)"), "{records:?}");
+    assert!(has_event(&records, "PushConnected"), "{records:?}");
     let delivered = pages(&records);
     // DEC-1459, REQ-1462: the text message is never read as a page; it is
     // discarded and counted as one invalid packet.
@@ -775,59 +773,6 @@ fn websocket_push_oversize_message() {
     let mut harness = Harness::new(config, replay);
     let records = harness.open("http://tt.example/service.json");
     assert!(has_event(&records, "PushLost { retry_in_us: 1000000, problem: Some(WebSocket(TooBig))"), "{records:?}");
-}
-
-#[test]
-#[cfg(feature = "push")]
-fn server_sent_events_push_and_resumption() {
-    let mut harness = push_service("sse", "http://tt.example/events?x=1");
-    let packets = [0x15u8; 42];
-    let mut encoded = [0u8; 56];
-    let n = neoteletext_web::base64::encode(&packets, &mut encoded).unwrap();
-    let body = format!(
-        "id: 5\nevent: page\ndata: PN,10000\ndata: OL,1,HELLO\n\nid: 6\nevent: packets\ndata: {}\n\n",
-        core::str::from_utf8(&encoded[..n]).unwrap()
-    );
-    let mut stream =
-        b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n".to_vec();
-    stream.extend(format!("{:x}\r\n{body}\r\n", body.len()).as_bytes());
-    harness.replay().reply("tt.example:80", Reply::BytesThenClose(stream));
-    harness.replay().reply("tt.example:80", Reply::Silent);
-    let records = harness.open("http://tt.example/service.json");
-    assert!(has_event(&records, "PushConnected(ServerSentEvents)"));
-    let delivered = pages(&records);
-    assert_eq!(delivered.len(), 2, "{records:?}");
-    assert!(matches!(delivered[0], Rec::Page { media: MediaType::Tti, bytes, .. } if bytes == b"PN,10000\nOL,1,HELLO"));
-    assert!(matches!(delivered[1], Rec::Page { media: MediaType::T42, bytes, .. } if bytes == &packets));
-    assert!(has_event(&records, "PushLost { retry_in_us: 1000000"));
-    let first = &harness.replay().requests_to("tt.example:80")[1];
-    assert!(String::from_utf8_lossy(first).starts_with("GET /events?x=1&subscribe=all HTTP/1.1"));
-    assert_eq!(header_value(first, "Accept").as_deref(), Some("text/event-stream"));
-    assert_eq!(header_value(first, "Last-Event-ID"), None);
-    harness.advance(SECOND);
-    let second = harness.replay().requests_to("tt.example:80").pop().unwrap();
-    assert_eq!(header_value(&second, "Last-Event-ID").as_deref(), Some("6"), "resumed");
-    assert_profile_headers(harness.replay());
-}
-
-/// Finding F-77 (the review's probe G): with `Content-Length` framing, the
-/// final body step's data reaches the event parser before the stream ends,
-/// so its last event is delivered and its id kept for resumption. The
-/// final step's data was dropped.
-#[test]
-#[cfg(feature = "push")]
-fn the_last_bytes_of_a_sized_event_stream_are_read() {
-    let mut harness = push_service("sse", "http://tt.example/events");
-    let body = "id: 6\nevent: page\ndata: PN,10000\n\n";
-    let head = format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\n\r\n", body.len());
-    harness.replay().chunk = 4096;
-    harness.replay().reply("tt.example:80", Reply::Bytes(format!("{head}{body}").into_bytes()));
-    harness.replay().reply("tt.example:80", Reply::Silent);
-    let records = harness.open("http://tt.example/service.json");
-    assert_eq!(pages(&records).len(), 1, "the last event is delivered: {records:?}");
-    harness.advance(SECOND);
-    let again = harness.replay().requests_to("tt.example:80").pop().unwrap();
-    assert_eq!(header_value(&again, "Last-Event-ID").as_deref(), Some("6"), "its id is kept");
 }
 
 #[test]
@@ -1160,10 +1105,7 @@ fn cookies_are_saved_only_when_enabled_and_never_session_ones() {
 #[test]
 #[cfg(not(feature = "push"))]
 fn push_not_compiled_in_is_reported_and_never_connects() {
-    for (method, address, reported) in [
-        ("websocket", "ws://tt.example/push", "PushNotCompiledIn(WebSocket)"),
-        ("sse", "http://tt.example/events", "PushNotCompiledIn(ServerSentEvents)"),
-    ] {
+    for (method, address, reported) in [("websocket", "ws://tt.example/push", "PushNotCompiledIn")] {
         let mut replay = Replay::new(&[("tt.example", PUBLIC)]);
         let extra = format!(r#","push":{{"address":"{address}","method":"{method}"}}"#);
         replay.reply("tt.example:80", json_response(&descriptor(&extra)));
@@ -1587,14 +1529,13 @@ fn a_channel_cookie_set_for_the_whole_host_stays_in_its_folder() {
 #[cfg(all(feature = "push", feature = "cookies"))]
 fn a_push_handshake_cookie_stays_in_its_channel_folder() {
     let mut harness = site_harness(Config::default());
-    let settings = br#"{"push":{"method":"sse"}}"#;
+    let settings = br#"{"push":{"method":"websocket"}}"#;
     harness.replay().reply("site.example:80", json_response(settings));
-    let head = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nSet-Cookie: s=1; Path=/\r\n\
-                Transfer-Encoding: chunked\r\n\r\n";
+    let headers = "Set-Cookie: s=1; Path=/\r\n".to_owned();
     // A live channel asks for no bundle (REQ-WEB-018).
-    harness.replay().reply("site.example:80", Reply::Bytes(head.as_bytes().to_vec()));
+    harness.replay().reply("site.example:80", Reply::WebSocketWith { interim: Vec::new(), headers });
     let records = harness.open_channel("http://site.example/a/");
-    assert!(has_event(&records, "PushConnected(ServerSentEvents)"), "{records:?}");
+    assert!(has_event(&records, "PushConnected"), "{records:?}");
     harness.replay().reply("site.example:80", not_found());
     harness.replay().reply("site.example:80", not_found());
     harness.open_channel("http://site.example/b/");
@@ -1728,7 +1669,7 @@ fn push_sends(harness: &mut Harness) -> Vec<Vec<(u8, Vec<u8>)>> {
 fn input_goes_on_the_push_websocket_only_when_declared() {
     let record = [1u8, 1, 0, 1, 0, 0, 0, 9, 0, 0x61, 0, 0, 0, 0];
     let mut harness = input_service(true);
-    assert!(has_event(&harness.open("http://tt.example/service.json"), "PushConnected(WebSocket)"));
+    assert!(has_event(&harness.open("http://tt.example/service.json"), "PushConnected"));
     harness.input(Input::Send(InputMessage::alone(&record)));
     assert_eq!(push_frames(&mut harness).last(), Some(&(0x2, record.to_vec())), "binary (REQ-RCH-017)");
     assert!(!has_event(&harness.take(), "InputDropped"));
@@ -1890,18 +1831,4 @@ fn the_push_socket_is_a_connection_of_its_own() {
             .all(|(_, bytes)| bytes[0] & 0x80 != 0),
         "after the upgrade, only WebSocket frames on the push socket: never a fetch"
     );
-}
-
-/// A silent event stream is made again after a minute.
-#[test]
-#[cfg(feature = "push")]
-fn a_silent_event_stream_is_made_again() {
-    let mut harness = push_service("sse", "http://tt.example/events");
-    let head = b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n".to_vec();
-    harness.replay().reply("tt.example:80", Reply::Bytes(head));
-    assert!(has_event(&harness.open("http://tt.example/service.json"), "PushConnected(ServerSentEvents)"));
-    harness.advance(59 * SECOND);
-    assert!(!has_event(&harness.take(), "PushLost"));
-    harness.advance(SECOND);
-    assert!(has_event(&harness.take(), "PushLost { retry_in_us: 1000000, problem: Some(Failure(Timeout)) }"));
 }

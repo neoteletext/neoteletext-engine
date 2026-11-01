@@ -15,7 +15,7 @@
 //!
 //! - Foundation: [`consts`], [`bytes`], [`base64`], [`sha1`], [`json`];
 //! - addresses and origins: [`url`];
-//! - protocols: [`http`], [`ws`], [`sse`], [`cookie`], and `dbsc` (feature
+//! - protocols: [`http`], [`ws`], [`cookie`], and `dbsc` (feature
 //!   `dbsc`): Device Bound Session Credentials (REQ-WEB-017);
 //! - content: [`channel`], [`contents`], [`subpages`] (a page's catalogue
 //!   of sub-pages, and with `std` a page written as a channel's files),
@@ -58,7 +58,6 @@ pub mod cookie;
 #[cfg(feature = "dbsc")]
 pub mod dbsc;
 pub mod http;
-pub mod sse;
 pub mod ws;
 
 pub mod channel;
@@ -90,7 +89,6 @@ mod error_trait {
         )+};
     }
     error_trait!(
-        crate::sse::SseError,
         crate::bytes::Overflow,
         crate::descriptor::DescriptorError,
         crate::http::HttpError,
@@ -107,7 +105,6 @@ mod error_trait {
 
         #[test]
         fn every_error_type_is_an_error() {
-            is_error::<crate::sse::SseError>();
             is_error::<crate::bytes::Overflow>();
             is_error::<crate::descriptor::DescriptorError>();
             is_error::<crate::http::HttpError>();

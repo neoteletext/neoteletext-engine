@@ -9,10 +9,9 @@ use super::{
 };
 use crate::channel::{self, ChannelFile};
 use crate::consts::{CACHE_ENTRIES, PAGE_QUEUE, PUSH_RETRY_FIRST_US, STATUS_GONE, STATUS_NOT_FOUND, STATUS_OK};
-use crate::descriptor::{Descriptor, PushMethod};
+use crate::descriptor::Descriptor;
 use crate::http::{MediaType, ResponseHead};
 use crate::port::RandomSource;
-use crate::sse::SseParser;
 use crate::url::Url;
 
 /// Checks a channel's page file or bundle (REQ-WEB-027): a media type
@@ -189,9 +188,7 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
         self.forget_push_writes();
         self.push.phase = PushPhase::Idle;
         self.push.delay_us = PUSH_RETRY_FIRST_US;
-        self.push.sse = SseParser::new();
-        self.push.url = descriptor.push().map(|(url, _)| *url);
-        self.push.method = descriptor.push().map_or(PushMethod::WebSocket, |(_, method)| *method);
+        self.push.url = descriptor.push().copied();
         let descriptor = self.descriptor.insert(descriptor);
         event(
             sink,
@@ -206,7 +203,7 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
             if cfg!(feature = "push") {
                 self.push_connect(now, sink);
             } else {
-                event(sink, Event::PushNotCompiledIn(self.push.method));
+                event(sink, Event::PushNotCompiledIn);
             }
         }
     }

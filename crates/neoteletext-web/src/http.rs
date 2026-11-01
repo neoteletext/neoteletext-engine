@@ -112,8 +112,6 @@ pub enum MediaType {
     OctetStream,
     /// `application/json`
     Json,
-    /// `text/event-stream`
-    EventStream,
     /// `application/x-font-bdf`, accepted for fonts only (REQ-FNT-003).
     FontBdf,
     /// Anything else, or none.
@@ -133,7 +131,6 @@ impl MediaType {
             (media::TEXT_PLAIN, Self::TextPlain),
             (media::OCTET_STREAM, Self::OctetStream),
             (media::JSON, Self::Json),
-            (media::EVENT_STREAM, Self::EventStream),
             (media::FONT_BDF, Self::FontBdf),
         ];
         known.into_iter().find(|(name, _)| essence.eq_ignore_ascii_case(name)).map_or(Self::Other, |(_, kind)| kind)

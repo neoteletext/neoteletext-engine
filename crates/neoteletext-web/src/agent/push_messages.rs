@@ -9,20 +9,18 @@
 //! timer. A pointer's move is held instead while the socket is congested
 //! (REQ-RCH-035).
 
-use neoteletext_core::types::Instant;
-
 use super::{Event, HeldMove, InputMessage, Output, PushPhase, Sink, Subscription, UserAgent, event};
 use crate::bytes::{Overflow, Writer, copy_prefix};
 use crate::consts::{
     INPUT_MESSAGE_MAX, MAX_SUBSCRIBED_PAGES, OPCODE_BINARY, OPCODE_CLOSE, OPCODE_TEXT, PUSH_MOVE_MAX, PUSH_MOVE_SLOTS,
     PUSH_UNSENT_BOUND, SUBSCRIBE, SUBSCRIBE_ALL,
 };
-use crate::descriptor::{Descriptor, PushMethod};
+use crate::descriptor::Descriptor;
 use crate::port::{ConnectionId, RandomSource};
 use crate::ws;
 
 impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'_, R, SLOTS, COOKIE_BYTES> {
-    pub(super) fn subscribe(&mut self, now: Instant, subscription: Subscription<'_>, sink: &mut Sink<'_>) {
+    pub(super) fn subscribe(&mut self, subscription: Subscription<'_>, sink: &mut Sink<'_>) {
         self.subscribed = [None; MAX_SUBSCRIBED_PAGES];
         match subscription {
             Subscription::All => self.subscribe_all = true,
@@ -34,27 +32,18 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
             }
         }
         if cfg!(feature = "push") && matches!(self.push.phase, PushPhase::Open { .. }) {
-            match self.push.method {
-                PushMethod::WebSocket => self.send_subscribe(sink),
-                PushMethod::ServerSentEvents => {
-                    // The subscription is in the address: reconnect at once.
-                    self.close_push(sink);
-                    self.push.phase = PushPhase::Idle;
-                    self.push_connect(now, sink);
-                }
-            }
+            self.send_subscribe(sink);
         }
     }
 
-    /// Writes the subscription: `all`, or page numbers separated by
-    /// `separator`.
-    pub(super) fn write_subscription(&self, writer: &mut Writer<'_>, separator: u8) -> Result<(), Overflow> {
+    /// Writes the subscription: `all`, or page numbers separated by spaces.
+    fn write_subscription(&self, writer: &mut Writer<'_>) -> Result<(), Overflow> {
         if self.subscribe_all {
             return writer.put(SUBSCRIBE_ALL);
         }
         for (index, page) in self.subscribed.iter().flatten().enumerate() {
             if index > 0 {
-                writer.byte(separator)?;
+                writer.byte(b' ')?;
             }
             writer.put(&page.ascii())?;
         }
@@ -64,10 +53,8 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
     pub(super) fn send_subscribe(&mut self, sink: &mut Sink<'_>) {
         let mut text = [0u8; 4 * MAX_SUBSCRIBED_PAGES + 16];
         let mut writer = Writer::new(&mut text);
-        let built = writer
-            .put(SUBSCRIBE)
-            .and_then(|()| writer.byte(b' '))
-            .and_then(|()| self.write_subscription(&mut writer, b' '));
+        let built =
+            writer.put(SUBSCRIBE).and_then(|()| writer.byte(b' ')).and_then(|()| self.write_subscription(&mut writer));
         if built.is_err() {
             return;
         }
@@ -137,7 +124,6 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
     pub(super) fn send_input(&mut self, message: InputMessage<'_>, sink: &mut Sink<'_>) {
         let open = cfg!(feature = "push")
             && matches!(self.push.phase, PushPhase::Open { .. })
-            && self.push.method == PushMethod::WebSocket
             && self.descriptor.as_ref().is_some_and(Descriptor::input);
         if !open || message.bytes.len() > INPUT_MESSAGE_MAX {
             event(sink, Event::InputDropped);

@@ -3,7 +3,7 @@
 //! duplicate or unknown one refusing the whole document.
 
 use super::template::check_template;
-use super::{Descriptor, DescriptorError, MAX_REFRESH_SECONDS, MIN_REFRESH_SECONDS, Member, PushMethod};
+use super::{Descriptor, DescriptorError, MAX_REFRESH_SECONDS, MIN_REFRESH_SECONDS, Member};
 use crate::bytes::TextBuf;
 use crate::consts::{MAX_REGION, MAX_URL_LENGTH};
 use crate::json::{JsonReader, JsonStr, Token, integer};
@@ -169,22 +169,18 @@ impl Descriptor {
     /// at its folder's `push` (neoteletext-common's REQ-1693 item 2), so it
     /// names no address.
     fn read_push(&mut self, reader: &mut JsonReader<'_>, base: &Url, channel: bool) -> Result<(), DescriptorError> {
-        let (url, method, input) = Self::parse_push(reader, base, channel)?;
+        let (url, input) = Self::parse_push(reader, base, channel)?;
         // Keys go back only to the descriptor's own origin, for a
         // service as for a channel (INPUT.md section 4, finding F-90).
         if input && !url.origin().same(&base.origin()) {
             return Err(DescriptorError::Invalid(Member::PushInput));
         }
-        self.push = Some((url, method));
+        self.push = Some(url);
         self.input = input;
         Ok(())
     }
 
-    fn parse_push(
-        reader: &mut JsonReader<'_>,
-        base: &Url,
-        channel: bool,
-    ) -> Result<(Url, PushMethod, bool), DescriptorError> {
+    fn parse_push(reader: &mut JsonReader<'_>, base: &Url, channel: bool) -> Result<(Url, bool), DescriptorError> {
         if reader.next_token()? != Some(Token::BeginObject) {
             return Err(DescriptorError::Invalid(Member::Push));
         }
@@ -209,13 +205,11 @@ impl Descriptor {
                     return Err(DescriptorError::Duplicate(Member::PushMethod));
                 }
                 let value = expect_string(reader.next_token()?, Member::PushMethod)?;
-                method = Some(if value.equals(b"websocket") {
-                    PushMethod::WebSocket
-                } else if value.equals(b"sse") {
-                    PushMethod::ServerSentEvents
-                } else {
+                // DEC-1738: a channel's only live connection is its WebSocket.
+                if !value.equals(b"websocket") {
                     return Err(DescriptorError::Invalid(Member::PushMethod));
-                });
+                }
+                method = Some(());
             } else if key.equals(b"input") {
                 if input.is_some() {
                     return Err(DescriptorError::Duplicate(Member::PushInput));
@@ -228,22 +222,15 @@ impl Descriptor {
                 return Err(DescriptorError::Unknown);
             }
         }
-        let method = method.ok_or(DescriptorError::Missing(Member::PushMethod))?;
+        method.ok_or(DescriptorError::Missing(Member::PushMethod))?;
         let url = if channel {
-            crate::channel::push_url(base, method == PushMethod::WebSocket)
-                .map_err(|error| DescriptorError::Address(Member::PushAddress, error))?
+            crate::channel::push_url(base).map_err(|error| DescriptorError::Address(Member::PushAddress, error))?
         } else {
             url.ok_or(DescriptorError::Missing(Member::PushAddress))?
         };
-        // The scheme must suit the method.
-        if url.scheme().is_websocket() != (method == PushMethod::WebSocket) {
+        if !url.scheme().is_websocket() {
             return Err(DescriptorError::Invalid(Member::PushAddress));
         }
-        // Keys go back only on a WebSocket (decision E.90).
-        let input = input.unwrap_or(false);
-        if input && method != PushMethod::WebSocket {
-            return Err(DescriptorError::Invalid(Member::PushInput));
-        }
-        Ok((url, method, input))
+        Ok((url, input.unwrap_or(false)))
     }
 }

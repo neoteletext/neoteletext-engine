@@ -19,6 +19,9 @@ pub enum Reply {
     /// Accept a WebSocket handshake (computing the accept value from the
     /// request's key), then send these frames.
     WebSocket(Vec<u8>),
+    /// Send these interim bytes, then accept a WebSocket handshake with
+    /// these header lines added.
+    WebSocketWith { interim: Vec<u8>, headers: String },
     /// Accept a WebSocket handshake with a wrong accept value.
     BadWebSocket,
     /// Say nothing.
@@ -158,6 +161,17 @@ impl Replay {
                 );
                 conn.inbox.extend(head.as_bytes());
                 conn.inbox.extend(frames);
+                conn.upgraded = true;
+            }
+            Reply::WebSocketWith { interim, headers } => {
+                let key = header_value(&request, "Sec-WebSocket-Key").unwrap();
+                let accept = neoteletext_web::ws::accept_for(key.as_bytes());
+                let head = format!(
+                    "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n{headers}Sec-WebSocket-Accept: {}\r\n\r\n",
+                    core::str::from_utf8(&accept).unwrap()
+                );
+                conn.inbox.extend(interim);
+                conn.inbox.extend(head.as_bytes());
                 conn.upgraded = true;
             }
             Reply::BadWebSocket => {

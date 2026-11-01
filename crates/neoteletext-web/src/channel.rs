@@ -342,13 +342,9 @@ pub fn file_url(folder: &Url, file: ChannelFile) -> Result<Url, UrlError> {
 }
 
 /// The channel's live connection, from any address in its folder: `wss` or
-/// `ws` for a WebSocket, `https` or `http` for server-sent events, as the
-/// folder's own security says.
-pub fn push_url(folder: &Url, websocket: bool) -> Result<Url, UrlError> {
+/// `ws`, as the folder's own security says.
+pub fn push_url(folder: &Url) -> Result<Url, UrlError> {
     let url = folder.join(PUSH_NAME)?;
-    if !websocket {
-        return Ok(url);
-    }
     url.with_scheme(if url.is_secure() { Scheme::Wss } else { Scheme::Ws })
 }
 

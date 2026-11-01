@@ -150,7 +150,7 @@ fn forward(
             send(&Frame::Notice(Notice::Message(format!("index.t42 was not used: {failure:?}"))))
         }
         Output::Event(Event::Unencrypted { .. }) => send(&Frame::Notice(Notice::Unencrypted)),
-        Output::Event(Event::PushConnected(_)) => {
+        Output::Event(Event::PushConnected) => {
             push_state.set(Some(true));
             Ok(())
         }

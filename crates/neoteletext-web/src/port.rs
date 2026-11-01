@@ -29,7 +29,7 @@ use crate::url::IpAddress;
 pub enum ConnectionId {
     /// Descriptor and page requests, one at a time.
     Fetch,
-    /// The push connection (WebSocket or server-sent events).
+    /// The push connection, a WebSocket.
     Push,
     /// The zxnet live feed.
     Live,

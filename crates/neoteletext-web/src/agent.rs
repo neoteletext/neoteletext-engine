@@ -1,5 +1,5 @@
 //! The user agent (ARCHITECTURE.md layer L7): one sans-IO state machine
-//! that ties the address parser, HTTP, WebSocket, server-sent events, the
+//! that ties the address parser, HTTP, WebSocket, the
 //! cookie store and the descriptor together.
 //!
 //! The application calls [`UserAgent::handle`] with an [`Input`]: a user
@@ -28,10 +28,9 @@ use crate::consts::{
     PAGE_QUEUE, PUSH_RETRY_FIRST_US, SECURE_HOSTS,
 };
 use crate::cookie::{CookieJar, Cookies, Site};
-use crate::descriptor::{Descriptor, PushMethod};
+use crate::descriptor::Descriptor;
 use crate::http::{BodyDecoder, HeadCollector, Method, ResponseHead};
 use crate::port::RandomSource;
-use crate::sse::SseParser;
 use crate::url::Url;
 use crate::ws::{FrameReader, HandshakeKey};
 
@@ -253,11 +252,8 @@ struct RoundTrip {
 struct PushConnection {
     phase: PushPhase,
     url: Option<Url>,
-    method: PushMethod,
     key: HandshakeKey,
     head: HeadCollector,
-    body: Option<BodyDecoder>,
-    sse: SseParser,
     frames: FrameReader,
     delay_us: u64,
     healthy: bool,
@@ -442,11 +438,8 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             push: PushConnection {
                 phase: PushPhase::Idle,
                 url: None,
-                method: PushMethod::WebSocket,
                 key: [0; crate::consts::WEBSOCKET_KEY_TEXT],
                 head: HeadCollector::default(),
-                body: None,
-                sse: SseParser::new(),
                 frames: FrameReader::new(),
                 delay_us: PUSH_RETRY_FIRST_US,
                 healthy: false,
