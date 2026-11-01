@@ -148,6 +148,30 @@ fn page_enhancement_packet_from_region_and_function() {
     assert!(!panels.left && !panels.right);
 }
 
+/// REQ-CHR-012: an `RE` line in one of neoteletext's own sets writes the
+/// second set the designation implies, read back the same, so that the
+/// written packet changes nothing ESC reaches: Thai for group 1100 option
+/// 000, the one designation whose second set is not Latin English, and
+/// Latin English for the others (TODO-1154).
+#[test]
+fn page_enhancement_packet_names_the_second_set_the_designation_implies() {
+    use neoteletext_core::charset::{default_second_g0, second_g0};
+    const GROUP_1100: u8 = 0xC;
+    const GROUP_0101: u8 = 0x5;
+    const THAI_SECOND: u8 = (GROUP_1100 << 3) | 2;
+    for (group, option, second) in [(GROUP_1100, 0, THAI_SECOND), (GROUP_1100, 2, 0), (GROUP_0101, 7, 0)] {
+        let mut page = PageFile::new();
+        page.region = Some(group);
+        page.set_national_index(option);
+        let packets = encode_all(&page);
+        let data = page_data(&packets);
+        let designations = data[0].fields.designations.unwrap();
+        let default = (group << 3) | option;
+        assert_eq!(designations, Designations { default, second }, "group {group:X} option {option}");
+        assert_eq!(second_g0(designations.second), default_second_g0(default), "group {group:X} option {option}");
+    }
+}
+
 /// REQ-INP-019: `PF,0,0` alone needs no X/28/0, because a page without one
 /// is a basic Level 1 page with odd parity; an explicit `OL,28` line with
 /// designation code 0 always replaces the one `RE` and `PF` would give.

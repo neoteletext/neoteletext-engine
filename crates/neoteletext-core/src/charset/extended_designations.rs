@@ -2,7 +2,7 @@
 //! decision E.78), compiled in with the feature `extended-sets`.
 
 use super::designation::{Table32Entry, latin, whole};
-use super::{G0, G0Set, G2Set, NationalOption};
+use super::{G0Set, G2Set, NationalOption};
 use crate::consts::DESIGNATION_GROUP_SHIFT as GROUP_SHIFT;
 
 /// neoteletext's own sets at values Table 32 reserves (REQ-CHR-012,
@@ -53,7 +53,8 @@ pub(super) const EXTENDED_TABLE_32: [Table32Entry; 29] = {
 };
 
 /// The second G0 sets of neoteletext's own designations that are not
-/// Latin English: an English page with Thai second (REQ-CHR-016).
+/// Latin English, as a designation and its second set's Table 33 value: an
+/// English page (group 1100, option 000) with Thai second (option 010)
+/// (REQ-CHR-016).
 #[cfg(feature = "extended-sets")]
-// Group 1100, option 000.
-pub(super) const EXTENDED_SECOND: [(u8, G0); 1] = [(0b1100 << GROUP_SHIFT, whole(G0Set::Thai))];
+pub(super) const EXTENDED_SECOND: [(u8, u8); 1] = [(0b1100 << GROUP_SHIFT, (0b1100 << GROUP_SHIFT) | 0b010)];

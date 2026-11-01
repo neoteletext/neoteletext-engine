@@ -381,10 +381,19 @@ pub fn page_mark(g2: G2Set, diacritic: u8) -> u8 {
 
 /// The second G0 set a designation value implies when no Table 33
 /// designation is received: Latin English for neoteletext's own values
-/// (REQ-CHR-012), none for the standard's.
+/// but group 1100 option 000, whose is Thai (REQ-CHR-012, REQ-CHR-016);
+/// none for the standard's.
 #[must_use]
 pub fn default_second_g0(value: u8) -> Option<G0> {
     designation::default_second_g0(value & CODE_MASK_7BIT)
+}
+
+/// The Table 33 value of [`default_second_g0`], for a writer of X/28/0: a
+/// page that names it reads as one with no packet does. `None` for the
+/// standard's designations, which imply no second set.
+#[must_use]
+pub fn default_second_value(value: u8) -> Option<u8> {
+    designation::default_second_value(value & CODE_MASK_7BIT)
 }
 
 /// Looks up Table 34 for the data of a Modified G0 and G2 Character Set

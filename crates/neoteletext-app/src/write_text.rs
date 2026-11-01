@@ -155,15 +155,12 @@ pub fn write_text(name: &str, mpp: u16, text: &str) -> Result<Written, WriteErro
         return Err(WriteError::TooManyRows(rows.len()));
     }
     let mut page = DisplayPage::new(author::address(mpp).map_err(WriteError::Author)?, SubCode::new(0));
-    // C12 to C14 and X/28/0 Format 1 carry the designation, with Latin
-    // English as the second set that ESC reaches (REQ-CHR-012).
+    // C12 to C14 and X/28/0 Format 1 carry the designation, with the second
+    // set that ESC reaches (REQ-CHR-012).
     page.national(value & NATIONAL_INDEX_MASK);
     let mut fields = neutral_fields(value);
-    let second = if sets.second.is_some() {
-        neoteletext_core::consts::DESIGNATION_LATIN_ENGLISH
-    } else {
-        neoteletext_core::consts::NO_SECOND_G0
-    };
+    let second =
+        neoteletext_core::charset::default_second_value(value).unwrap_or(neoteletext_core::consts::NO_SECOND_G0);
     fields.designations = Some(Designations { default: value, second });
     page.page_data(fields);
     let mut triplets = 0usize;

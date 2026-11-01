@@ -1,12 +1,12 @@
 //! Designation (Tables 32, 33 and 34): the G0 and G2 sets a Table 32 or 33
 //! value designates, and the Modified G0 and G2 designations of Table 34.
 
-use super::code_table::{ENGLISH_DESIGNATION, NATIONAL_BITS_MASK};
+use super::code_table::NATIONAL_BITS_MASK;
 #[cfg(feature = "extended-sets")]
 use super::extended_designations::{EXTENDED_SECOND, EXTENDED_TABLE_32};
 use super::{Designation, G0, G0Set, G2Set, NationalOption};
 use crate::consts::DESIGNATION_GROUP_SHIFT as GROUP_SHIFT;
-use crate::consts::NO_SECOND_G0;
+use crate::consts::{DESIGNATION_LATIN_ENGLISH, NO_SECOND_G0};
 
 /// One defined entry of Table 32: group (bits 3 to 6), national option
 /// index (bits 0 to 2), the G0 set with its national option, and the G2 set.
@@ -76,7 +76,7 @@ const TABLE_32: [Table32Entry; 36] = {
 };
 
 #[cfg(not(feature = "extended-sets"))]
-const EXTENDED_SECOND: [(u8, G0); 0] = [];
+const EXTENDED_SECOND: [(u8, u8); 0] = [];
 
 #[cfg(not(feature = "extended-sets"))]
 const EXTENDED_TABLE_32: [Table32Entry; 0] = [];
@@ -94,12 +94,18 @@ fn table_32_entry(value: u8) -> Option<(G0, G2Set)> {
     find_entry(&TABLE_32, value).or_else(|| find_entry(&EXTENDED_TABLE_32, value))
 }
 
-/// The second G0 set of one of neoteletext's own designations when no
-/// Table 33 designation is received: Latin with the English option, so
-/// that ESC reaches English text (REQ-CHR-012, decision E.78 item 4).
-pub(super) fn default_second_g0(value: u8) -> Option<G0> {
-    let second = EXTENDED_SECOND.iter().find(|(entry, _)| *entry == value).map_or(ENGLISH_DESIGNATION.g0, |(_, g0)| *g0);
+/// The Table 33 value of the second G0 set one of neoteletext's own
+/// designations implies when no Table 33 designation is received: Latin
+/// with the English option, so that ESC reaches English text (REQ-CHR-012,
+/// decision E.78 item 4), but for the values of [`EXTENDED_SECOND`].
+pub(super) fn default_second_value(value: u8) -> Option<u8> {
+    let second = EXTENDED_SECOND.iter().find(|(entry, _)| *entry == value).map_or(DESIGNATION_LATIN_ENGLISH, |(_, second)| *second);
     find_entry(&EXTENDED_TABLE_32, value).map(|_| second)
+}
+
+/// The set of [`default_second_value`].
+pub(super) fn default_second_g0(value: u8) -> Option<G0> {
+    default_second_value(value).and_then(second_g0)
 }
 
 pub(super) fn designation(value: u8) -> Option<Designation> {
