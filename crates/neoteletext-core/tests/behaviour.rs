@@ -129,6 +129,7 @@ fn non_text_pages_and_inhibit_display_show_no_rows() {
     assert!(grid.cells[1..24].iter().all(|row| row.iter().all(|cell| cell.glyph == Glyph::Space)), "REQ-ACQ-014");
 }
 
+// Verifies REQ-CHR-009 and REQ-L1-013.
 #[test]
 fn esc_switches_to_the_second_g0_set() {
     let mut page = decode(&body()).0;

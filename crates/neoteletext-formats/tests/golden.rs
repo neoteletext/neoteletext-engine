@@ -85,6 +85,7 @@ fn checksums() -> String {
     out
 }
 
+// Verifies REQ-RND-015.
 #[test]
 fn golden_rasters_match() {
     let path = root().join("tests/golden/raster.txt");

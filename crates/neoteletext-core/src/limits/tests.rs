@@ -24,6 +24,7 @@ fn every_sub_code() -> Vec<u16> {
 }
 
 /// REQ-NUM-003, REQ-NUM-004, REQ-NUM-010, REQ-NUM-015: the page numbers.
+// Verifies REQ-NUM-031.
 #[test]
 fn page_numbers_are_counted_by_enumeration() {
     assert_eq!(every_page().count(), PAGE_NUMBERS);
@@ -74,6 +75,7 @@ fn reserved_and_recommended_page_numbers_are_the_standards() {
 /// REQ-NUM-005, REQ-NUM-007, REQ-NUM-018, REQ-NUM-020, REQ-NUM-016,
 /// REQ-NUM-017: every count of sub-codes, by enumerating all 65,536
 /// values.
+// Verifies REQ-NUM-031.
 #[test]
 fn sub_codes_are_counted_by_enumeration() {
     let all = every_sub_code();

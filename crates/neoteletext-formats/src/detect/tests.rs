@@ -124,6 +124,7 @@ fn sliced_stream(order: ByteOrder) -> Vec<u8> {
     feature = "edittf",
     feature = "dump"
 ))]
+// Verifies REQ-INP-005.
 #[test]
 fn detection_finds_every_format() {
     let transport =
@@ -215,6 +216,7 @@ fn detects_sliced_records_in_both_byte_orders() {
     }
 }
 
+// Verifies REQ-INP-005.
 #[test]
 fn auto_reader_detects_then_reads_in_any_chunks() {
     let packets_in = sample_packets(DETECTION_PACKETS * 2);
@@ -244,6 +246,7 @@ fn auto_reader_encodes_pages_when_asked() {
     assert_eq!(pages(&items).len(), 1);
 }
 
+// Verifies REQ-INP-005.
 #[test]
 fn auto_reader_reports_unknown_input() {
     let items = same_in_any_chunks(|| AutoReader::new(AutoConfig::default()), &std::vec![uncorrectable(); 20_000]);

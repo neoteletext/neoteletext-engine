@@ -10,6 +10,7 @@ fn folder(text: &str) -> Result<std::string::String, ChannelError> {
     })
 }
 
+// Verifies REQ-WEB-023.
 #[test]
 fn folders_are_checked_as_written() {
     assert_eq!(folder("https://example.org"), Ok("https://example.org/".into()));
@@ -136,6 +137,7 @@ fn an_encoded_separator_after_the_folder_is_outside_it() {
 
 /// DEC-1710: a folder or a channel's own file opens as a channel, and any
 /// other address as a service's descriptor.
+// Verifies REQ-WEB-023.
 #[test]
 fn an_address_says_whether_it_is_a_channel() {
     let settings = std::format!("http://h.example/a/{SETTINGS_FILE}");
