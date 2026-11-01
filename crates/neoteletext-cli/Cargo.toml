@@ -15,10 +15,11 @@ neoteletext-core = { workspace = true, features = ["default"] }
 # The program reads and writes every format, and `neottx check` runs the
 # page checker.
 neoteletext-formats = { workspace = true, features = ["default", "std"] }
-neoteletext-image = { workspace = true, features = ["std"] }
+neoteletext-image = { workspace = true, features = ["std", "alloc"] }
 neoteletext-app.workspace = true
 # The channel rules and the contents format of `neottx contents` (REQ-CLI-008).
-neoteletext-web.workspace = true
+# with `neottx html`'s pages.
+neoteletext-web = { workspace = true, features = ["alloc"] }
 # Writing sounds as the audio profile's packets (REQ-CLI-011).
 neoteletext-audio = { workspace = true, features = ["encode"], optional = true }
 clap = { version = "4.5.48", features = ["derive"] }

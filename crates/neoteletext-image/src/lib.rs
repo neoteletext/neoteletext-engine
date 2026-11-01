@@ -6,8 +6,9 @@
 //! they take the palette indices it drew from the cell grid and never see
 //! packets (REQ-RND-001), and they write files, never a screen.
 //!
-//! Everything here is `no_std` and allocation-free. Writers emit bytes to a
-//! [`Sink`]; with the `std` feature any `std::io::Write` is a sink.
+//! Everything here is `no_std` and allocation-free but the `raster` module,
+//! which the `alloc` feature adds. Writers emit bytes to a [`Sink`]; with the
+//! `std` feature any `std::io::Write` is a sink.
 #![no_std]
 // REQ-SEC-015: only the C interface crate may contain unsafe code.
 #![forbid(unsafe_code)]
@@ -23,6 +24,8 @@
     clippy::unimplemented
 )]
 
+#[cfg(feature = "alloc")]
+extern crate alloc;
 #[cfg(any(test, feature = "std"))]
 extern crate std;
 
@@ -30,6 +33,8 @@ pub mod convert;
 pub mod palette;
 pub mod png;
 pub mod ppm;
+#[cfg(feature = "alloc")]
+pub mod raster;
 pub mod scale;
 
 /// A destination for encoded bytes.

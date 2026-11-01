@@ -31,27 +31,7 @@ pub fn raster_in(grid: &Grid, frame: Frame, scale: Scale, picture: Rgba, glyphs:
 
 /// Encodes a raster as PNG bytes.
 pub fn png(raster: &Raster) -> std::io::Result<Vec<u8>> {
-    let mut out = Vec::new();
-    let mut scratch = vec![0u8; raster.width.saturating_add(1).saturating_mul(2)];
-    let width = raster.width;
-    neoteletext_image::png::write(
-        &mut out,
-        raster.width,
-        raster.height,
-        &raster.palette,
-        &mut |y, row: &mut [u8]| {
-            if let Some(source) = raster.indices.get(y.saturating_mul(width)..y.saturating_add(1).saturating_mul(width))
-            {
-                row.copy_from_slice(source);
-            }
-        },
-        &mut scratch,
-    )
-    .map_err(|error| match error {
-        neoteletext_image::png::PngError::Sink(error) => error,
-        other => std::io::Error::other(format!("{other:?}")),
-    })?;
-    Ok(out)
+    neoteletext_image::raster::png(raster).map_err(|error| std::io::Error::other(format!("{error:?}")))
 }
 
 /// Encodes a raster as PPM bytes, transparent areas in `fill`.

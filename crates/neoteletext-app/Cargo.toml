@@ -12,7 +12,7 @@ publish.workspace = true
 # The renderer draws rasters (`present`).
 neoteletext-core = { workspace = true, features = ["viewer", "render"] }
 # Palettes and scaling for rasters (`present`).
-neoteletext-image.workspace = true
+neoteletext-image = { workspace = true, features = ["alloc"] }
 # Detection and `--format` reach every reader; live mode reads TTI and T42.
 neoteletext-formats = { workspace = true, features = ["std", "transport", "sliced", "pages", "tti", "ep1", "edittf", "dump", "bdf"] }
 neoteletext-slicer = { workspace = true, optional = true }

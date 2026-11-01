@@ -40,6 +40,9 @@ error-trait = []
 # every agent would carry. A bound session refreshes a cookie the agent
 # keeps, so it needs the cookie store's use.
 dbsc = ["cookies"]
+# A program with an allocator: the small page of HTML that a server and
+# `neottx` write for a web browser (neoteletext-common's REQ-1725, REQ-1728).
+alloc = []
 # A port with the standard library: the blocking proxy handshake over any
 # `std::io` stream (REQ-WEB-032).
 std = []
