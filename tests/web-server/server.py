@@ -117,7 +117,7 @@ DESCRIPTOR = """{{
   "name": "Test service",
   "initial_page": "100",
   "page_template": "/pages/{{mpp}}.tti",
-  "push": {{"address": "ws://127.0.0.1:{port}/push", "method": "websocket"}},
+  "push": {{"address": "ws://127.0.0.1:{port}/push"}},
   "services": [{{"name": "other", "display_name": "Other service", "descriptor": "http://127.0.0.1:{port}/other.json"}}]
 }}"""
 

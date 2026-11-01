@@ -9,7 +9,7 @@
 //!   "name": "Example Teletext",
 //!   "initial_page": "100",
 //!   "page_template": "https://example.org/ttx/pages/{mpp}",
-//!   "push": { "address": "wss://example.org/ttx/push", "method": "websocket" },
+//!   "push": { "address": "wss://example.org/ttx/push" },
 //!   "region": 0,
 //!   "services": [
 //!     { "name": "weather", "display_name": "Weather", "descriptor": "https://weather.example/ttx.json" }
@@ -17,13 +17,12 @@
 //! }
 //! ```
 //!
-//! `name`, `initial_page` and `page_template` are required. `method` is
-//! `websocket`. Addresses may be relative to the descriptor's own
-//! address. A missing required member, a duplicated or unknown member, an
-//! unknown template placeholder or a malformed address rejects the whole
-//! descriptor (REQ-WEB-014: never partly interpreted). A descriptor fetched
-//! over HTTPS that names a plain `http` or `ws` address is rejected
-//! (REQ-SEC-007).
+//! `name`, `initial_page` and `page_template` are required. Addresses may be
+//! relative to the descriptor's own address. A missing required member, a
+//! duplicated or unknown member, an unknown template placeholder or a
+//! malformed address rejects the whole descriptor (REQ-WEB-014: never partly
+//! interpreted). A descriptor fetched over HTTPS that names a plain `http` or
+//! `ws` address is rejected (REQ-SEC-007).
 //!
 //! A channel's `channel.json` (REQ-WEB-024, decision E.70) is read by
 //! [`Descriptor::parse_channel`], with three differences: every member is
@@ -83,8 +82,6 @@ pub enum Member {
     Push,
     /// `push.address`
     PushAddress,
-    /// `push.method`
-    PushMethod,
     /// `push.input`
     PushInput,
     /// `region`
@@ -270,7 +267,7 @@ impl Descriptor {
         self.template.as_str()
     }
 
-    /// The push address and method, if the service pushes.
+    /// The push address, if the service pushes.
     #[must_use]
     pub const fn push(&self) -> Option<&Url> {
         self.push.as_ref()

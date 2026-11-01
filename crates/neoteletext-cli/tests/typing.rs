@@ -49,7 +49,7 @@ const MASK_BYTES: usize = 4;
 /// The channel's descriptor: it pushes over a WebSocket and takes keys.
 fn descriptor(port: u16) -> String {
     format!(
-        r#"{{"name":"Typing","initial_page":"100","page_template":"/{{mpp}}.tti","push":{{"address":"ws://127.0.0.1:{port}/ws","method":"websocket","input":true}}}}"#
+        r#"{{"name":"Typing","initial_page":"100","page_template":"/{{mpp}}.tti","push":{{"address":"ws://127.0.0.1:{port}/ws","input":true}}}}"#
     )
 }
 /// The page the channel shows, and pushes again for each key.

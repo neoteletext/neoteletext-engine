@@ -167,7 +167,8 @@ impl Descriptor {
 
     /// Reads the `push` member and checks its origin. A channel's is always
     /// at its folder's `push` (neoteletext-common's REQ-1693 item 2), so it
-    /// names no address.
+    /// names no address, and the object's presence alone makes the channel
+    /// live. It is always a WebSocket (DEC-1738), so nothing names a transport.
     fn read_push(&mut self, reader: &mut JsonReader<'_>, base: &Url, channel: bool) -> Result<(), DescriptorError> {
         let (url, input) = Self::parse_push(reader, base, channel)?;
         // Keys go back only to the descriptor's own origin, for a
@@ -185,7 +186,6 @@ impl Descriptor {
             return Err(DescriptorError::Invalid(Member::Push));
         }
         let mut url = None;
-        let mut method = None;
         let mut input = None;
         while let Some(token) = reader.next_token()? {
             let key = match token {
@@ -200,16 +200,6 @@ impl Descriptor {
                 let value: TextBuf<MAX_URL_LENGTH> =
                     text(expect_string(reader.next_token()?, Member::PushAddress)?, Member::PushAddress)?;
                 url = Some(address(base, value.as_str(), Member::PushAddress)?);
-            } else if key.equals(b"method") {
-                if method.is_some() {
-                    return Err(DescriptorError::Duplicate(Member::PushMethod));
-                }
-                let value = expect_string(reader.next_token()?, Member::PushMethod)?;
-                // DEC-1738: a channel's only live connection is its WebSocket.
-                if !value.equals(b"websocket") {
-                    return Err(DescriptorError::Invalid(Member::PushMethod));
-                }
-                method = Some(());
             } else if key.equals(b"input") {
                 if input.is_some() {
                     return Err(DescriptorError::Duplicate(Member::PushInput));
@@ -222,7 +212,6 @@ impl Descriptor {
                 return Err(DescriptorError::Unknown);
             }
         }
-        method.ok_or(DescriptorError::Missing(Member::PushMethod))?;
         let url = if channel {
             crate::channel::push_url(base).map_err(|error| DescriptorError::Address(Member::PushAddress, error))?
         } else {

@@ -8,7 +8,7 @@ const VALID: &str = r#"{
         "name": "Example Teletext",
         "initial_page": "100",
         "page_template": "/ttx/pages/{mpp}/{sub}?m={m}&p={pp}",
-        "push": { "address": "wss://example.org/ttx/push", "method": "websocket" },
+        "push": { "address": "wss://example.org/ttx/push" },
         "region": 2,
         "services": [
             { "name": "weather", "display_name": "Weather é", "descriptor": "https://weather.example/ttx.json" },
@@ -53,7 +53,7 @@ fn minimal_descriptor() {
 #[test]
 fn malformed_descriptors() {
     let plain = Url::parse("http://s.example/d.json").unwrap();
-    let cases: [(&str, DescriptorError); 20] = [
+    let cases: [(&str, DescriptorError); 19] = [
         ("[]", DescriptorError::Invalid(Member::Document)),
         (r#"{"initial_page":"100","page_template":"/{mpp}"}"#, DescriptorError::Missing(Member::Name)),
         (r#"{"name":"S","page_template":"/{mpp}"}"#, DescriptorError::Missing(Member::InitialPage)),
@@ -83,12 +83,8 @@ fn malformed_descriptors() {
             DescriptorError::Invalid(Member::Region),
         ),
         (
-            r#"{"name":"S","initial_page":"100","page_template":"/{mpp}","push":{"address":"/p","method":"websocket"}}"#,
+            r#"{"name":"S","initial_page":"100","page_template":"/{mpp}","push":{"address":"/p"}}"#,
             DescriptorError::Invalid(Member::PushAddress),
-        ),
-        (
-            r#"{"name":"S","initial_page":"100","page_template":"/{mpp}","push":{"address":"ws://s.example/p","method":"poll"}}"#,
-            DescriptorError::Invalid(Member::PushMethod),
         ),
         (
             r#"{"name":"S","initial_page":"100","page_template":"/{mpp}","services":[{"name":"a b","display_name":"A","descriptor":"/a"}]}"#,
@@ -113,15 +109,15 @@ fn input_needs_a_websocket() {
     let with =
         |push: &str| std::format!(r#"{{"name":"S","initial_page":"100","page_template":"/{{mpp}}","push":{push}}}"#);
     let parse = |push: &str| Descriptor::parse(with(push).as_bytes(), &plain).map(|descriptor| descriptor.input());
-    assert_eq!(parse(r#"{"address":"ws://s.example/p","method":"websocket","input":true}"#), Ok(true));
-    assert_eq!(parse(r#"{"address":"ws://s.example/p","method":"websocket","input":false}"#), Ok(false));
-    assert_eq!(parse(r#"{"address":"ws://s.example/p","method":"websocket"}"#), Ok(false));
+    assert_eq!(parse(r#"{"address":"ws://s.example/p","input":true}"#), Ok(true));
+    assert_eq!(parse(r#"{"address":"ws://s.example/p","input":false}"#), Ok(false));
+    assert_eq!(parse(r#"{"address":"ws://s.example/p"}"#), Ok(false));
     assert_eq!(
-        parse(r#"{"address":"ws://s.example/p","method":"websocket","input":"yes"}"#),
+        parse(r#"{"address":"ws://s.example/p","input":"yes"}"#),
         Err(DescriptorError::Invalid(Member::PushInput))
     );
     assert_eq!(
-        parse(r#"{"address":"ws://s.example/p","method":"websocket","input":true,"input":true}"#),
+        parse(r#"{"address":"ws://s.example/p","input":true,"input":true}"#),
         Err(DescriptorError::Duplicate(Member::PushInput))
     );
     assert!(!Descriptor::parse(VALID.as_bytes(), &base()).unwrap().input());
@@ -137,15 +133,15 @@ fn input_goes_only_to_the_descriptors_own_origin() {
         |push: &str| std::format!(r#"{{"name":"S","initial_page":"100","page_template":"/{{mpp}}","push":{push}}}"#);
     let parse = |push: &str| Descriptor::parse(with(push).as_bytes(), &plain).map(|descriptor| descriptor.input());
     assert_eq!(
-        parse(r#"{"address":"ws://keys.example/p","method":"websocket","input":true}"#),
+        parse(r#"{"address":"ws://keys.example/p","input":true}"#),
         Err(DescriptorError::Invalid(Member::PushInput))
     );
     assert_eq!(
-        parse(r#"{"address":"ws://s.example:8080/p","method":"websocket","input":true}"#),
+        parse(r#"{"address":"ws://s.example:8080/p","input":true}"#),
         Err(DescriptorError::Invalid(Member::PushInput)),
         "another port is another origin"
     );
-    assert_eq!(parse(r#"{"address":"ws://keys.example/p","method":"websocket"}"#), Ok(false), "push alone may");
+    assert_eq!(parse(r#"{"address":"ws://keys.example/p"}"#), Ok(false), "push alone may");
 }
 
 #[test]
@@ -153,7 +149,7 @@ fn https_descriptor_cannot_name_plain_addresses() {
     let cases: [(&str, Member); 3] = [
         (r#"{"name":"S","initial_page":"100","page_template":"http://example.org/{mpp}"}"#, Member::PageTemplate),
         (
-            r#"{"name":"S","initial_page":"100","page_template":"/{mpp}","push":{"address":"ws://example.org/p","method":"websocket"}}"#,
+            r#"{"name":"S","initial_page":"100","page_template":"/{mpp}","push":{"address":"ws://example.org/p"}}"#,
             Member::PushAddress,
         ),
         (
@@ -226,6 +222,46 @@ fn a_channel_font_is_an_unknown_member() {
     assert_eq!(Descriptor::parse_channel(json.as_bytes(), &base).err(), Some(DescriptorError::Unknown));
 }
 
+/// DEC-1738 left the WebSocket as a channel's only live connection, so
+/// `push.method` could only ever repeat that and is withdrawn (TODO-1739). It
+/// is refused as every unknown member is (REQ-WEB-024), whatever its value and
+/// wherever it stands in the object.
+#[test]
+fn a_push_method_is_an_unknown_member() {
+    let channel = Url::parse("https://example.org/ceefax/channel.json").unwrap();
+    let service = Url::parse("http://s.example/service.json").unwrap();
+    for push in [
+        r#""method":"websocket""#,
+        r#""method":"websocket","input":true"#,
+        r#""input":true,"method":"websocket""#,
+        r#""method":"sse""#,
+    ] {
+        let settings = std::format!(r#"{{"push":{{{push}}}}}"#);
+        assert_eq!(
+            Descriptor::parse_channel(settings.as_bytes(), &channel).err(),
+            Some(DescriptorError::Unknown),
+            "{settings}"
+        );
+    }
+    let descriptor = br#"{"name":"S","initial_page":"100","page_template":"/{mpp}","push":{"address":"ws://s.example/p","method":"websocket"}}"#;
+    assert_eq!(Descriptor::parse(descriptor, &service).err(), Some(DescriptorError::Unknown));
+}
+
+/// A channel is live when its `channel.json` has a `push` object, and the
+/// object names nothing about the connection: its address is fixed and it is
+/// a WebSocket (TODO-1739).
+#[test]
+fn a_push_object_makes_a_channel_live() {
+    let base = Url::parse("https://example.org/ceefax/channel.json").unwrap();
+    let typing = Descriptor::parse_channel(br#"{"push":{"input":true}}"#, &base).unwrap();
+    assert_eq!(typing.push().unwrap().as_str(), "wss://example.org/ceefax/push");
+    assert!(typing.input());
+    let watching = Descriptor::parse_channel(br#"{"push":{}}"#, &base).unwrap();
+    assert_eq!(watching.push().unwrap().as_str(), "wss://example.org/ceefax/push");
+    assert!(!watching.input());
+    assert!(Descriptor::parse_channel(b"{}", &base).unwrap().push().is_none());
+}
+
 /// REQ-WEB-024: every member optional, no template, linked channels by
 /// folder, push on the channel's own origin.
 #[test]
@@ -242,26 +278,17 @@ fn channel_settings() {
     // REQ-1693 item 2: the push address is fixed, and no member can name
     // another.
     assert_eq!(
-        Descriptor::parse_channel(
-            br#"{"push":{"address":"wss://example.org/ceefax/push","method":"websocket"}}"#,
-            &base
-        )
-        .err(),
+        Descriptor::parse_channel(br#"{"push":{"address":"wss://example.org/ceefax/push"}}"#, &base).err(),
         Some(DescriptorError::Unknown)
     );
     let push = |json: &[u8], base: &Url| {
         let descriptor = Descriptor::parse_channel(json, base).unwrap();
         std::string::String::from(descriptor.push().unwrap().as_str())
     };
-    let websocket = br#"{"push":{"method":"websocket"}}"#;
+    let websocket = br#"{"push":{}}"#;
     let plain = Url::parse("http://example.org/ceefax/channel.json").unwrap();
     assert_eq!(push(websocket, &base), "wss://example.org/ceefax/push");
     assert_eq!(push(websocket, &plain), "ws://example.org/ceefax/push");
-    // DEC-1738: server-sent events are withdrawn, and refused as any unknown method is.
-    assert_eq!(
-        Descriptor::parse_channel(br#"{"push":{"method":"sse"}}"#, &base).err(),
-        Some(DescriptorError::Invalid(Member::PushMethod))
-    );
     let both = br#"{"services":[{"name":"w","display_name":"W","channel":"https://w.example/","descriptor":"https://w.example/d.json"}]}"#;
     assert!(Descriptor::parse_channel(both, &base).is_err());
     let file = br#"{"services":[{"name":"w","display_name":"W","channel":"https://w.example/100.tti"}]}"#;

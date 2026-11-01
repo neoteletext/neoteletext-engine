@@ -492,7 +492,7 @@ fn interim_responses_before_the_final_one_are_read_past() {
 #[test]
 #[cfg(feature = "push")]
 fn interim_responses_before_a_push_handshake_are_read_past() {
-    let mut harness = push_service("websocket", "ws://tt.example/push");
+    let mut harness = push_service("ws://tt.example/push");
     let interim = b"HTTP/1.1 103 Early Hints\r\n\r\n".to_vec();
     harness.replay().reply("tt.example:80", Reply::WebSocketWith { interim, headers: String::new() });
     let records = harness.open("http://tt.example/service.json");
@@ -655,9 +655,9 @@ fn links_to_other_services() {
 }
 
 #[cfg(feature = "push")]
-fn push_service(method: &str, address: &str) -> Harness {
+fn push_service(address: &str) -> Harness {
     let mut replay = Replay::new(&[("tt.example", PUBLIC)]);
-    let extra = format!(r#","push":{{"address":"{address}","method":"{method}"}}"#);
+    let extra = format!(r#","push":{{"address":"{address}"}}"#);
     replay.reply("tt.example:80", json_response(&descriptor(&extra)));
     Harness::new(Config::default(), replay)
 }
@@ -665,7 +665,7 @@ fn push_service(method: &str, address: &str) -> Harness {
 #[test]
 #[cfg(feature = "push")]
 fn websocket_push() {
-    let mut harness = push_service("websocket", "ws://tt.example/push");
+    let mut harness = push_service("ws://tt.example/push");
     let packet = [0x15u8; 42];
     let mut frames = server_frame(0x2, &[packet, packet].concat());
     frames.extend(server_frame(0x1, TTI));
@@ -706,7 +706,7 @@ fn websocket_push() {
 #[test]
 #[cfg(feature = "push")]
 fn a_channels_redirect_reaches_the_application() {
-    let mut harness = push_service("websocket", "ws://tt.example/push");
+    let mut harness = push_service("ws://tt.example/push");
     let page = PageAddress::from_mpp(0x1A0).unwrap();
     let mut message = Vec::new();
     let mut packet = |packet: neoteletext_core::packet::Packet| message.extend_from_slice(&packet.bytes);
@@ -722,7 +722,7 @@ fn a_channels_redirect_reaches_the_application() {
 #[test]
 #[cfg(feature = "push")]
 fn websocket_push_reconnects_with_doubling_delays() {
-    let mut harness = push_service("websocket", "ws://tt.example/push");
+    let mut harness = push_service("ws://tt.example/push");
     harness.replay().reply("tt.example:80", Reply::WebSocket(server_frame(0x8, &1000u16.to_be_bytes())));
     harness.replay().reply("tt.example:80", Reply::Close);
     harness.replay().reply("tt.example:80", Reply::Close);
@@ -744,7 +744,7 @@ fn websocket_push_reconnects_with_doubling_delays() {
 #[test]
 #[cfg(feature = "push")]
 fn websocket_push_protocol_errors() {
-    let mut harness = push_service("websocket", "ws://tt.example/push");
+    let mut harness = push_service("ws://tt.example/push");
     let mut frames = server_frame(0x2, &[0u8; 41]);
     frames.extend([0x82, 0x85, 0, 0, 0, 0, 1, 2, 3, 4, 5]); // masked server frame
     harness.replay().reply("tt.example:80", Reply::WebSocket(frames));
@@ -764,10 +764,7 @@ fn websocket_push_protocol_errors() {
 #[cfg(feature = "push")]
 fn websocket_push_oversize_message() {
     let mut replay = Replay::new(&[("tt.example", PUBLIC)]);
-    replay.reply(
-        "tt.example:80",
-        json_response(&descriptor(r#","push":{"address":"ws://tt.example/push","method":"websocket"}"#)),
-    );
+    replay.reply("tt.example:80", json_response(&descriptor(r#","push":{"address":"ws://tt.example/push"}"#)));
     replay.reply("tt.example:80", Reply::WebSocket(server_frame(0x2, &[0u8; 420])));
     let config = Config { push_limit: 200, ..Config::default() };
     let mut harness = Harness::new(config, replay);
@@ -779,10 +776,7 @@ fn websocket_push_oversize_message() {
 #[cfg(feature = "push")]
 fn push_to_blocked_peer_is_refused() {
     let mut replay = Replay::new(&[("tt.example", PUBLIC), ("push.example", PRIVATE)]);
-    replay.reply(
-        "tt.example:80",
-        json_response(&descriptor(r#","push":{"address":"ws://push.example/p","method":"websocket"}"#)),
-    );
+    replay.reply("tt.example:80", json_response(&descriptor(r#","push":{"address":"ws://push.example/p"}"#)));
     let mut harness = Harness::new(Config::default(), replay);
     let records = harness.open("http://tt.example/service.json");
     assert!(has_event(&records, "Blocked { connection: Push, host: \"push.example\" }"), "{records:?}");
@@ -947,7 +941,7 @@ fn clear_site_data_clears_before_the_response_sets() {
 #[cfg(all(feature = "push", feature = "cookies"))]
 fn cookies_go_with_websocket_upgrades() {
     let mut replay = Replay::new(&[("tt.example", PUBLIC)]);
-    let json = descriptor(r#","push":{"address":"ws://tt.example/push","method":"websocket"}"#);
+    let json = descriptor(r#","push":{"address":"ws://tt.example/push"}"#);
     replay.reply(
         "tt.example:80",
         Reply::Bytes(response("200 OK", &["Content-Type: application/json", "Set-Cookie: s=v1; Path=/"], &json)),
@@ -972,7 +966,7 @@ fn the_user_agent_goes_on_requests_and_the_upgrade() {
         [(Some(teefax), format!("Teefax/1 (ESP-IDF) neoteletext/{engine}")), (None, format!("neoteletext/{engine}"))]
     {
         let mut replay = Replay::new(&[("tt.example", PUBLIC)]);
-        let json = descriptor(r#","push":{"address":"ws://tt.example/push","method":"websocket"}"#);
+        let json = descriptor(r#","push":{"address":"ws://tt.example/push"}"#);
         replay.reply("tt.example:80", json_response(&json));
         replay.reply("tt.example:80", Reply::WebSocket(Vec::new()));
         let mut harness = Harness::new(Config { product, ..Config::default() }, replay);
@@ -1105,9 +1099,9 @@ fn cookies_are_saved_only_when_enabled_and_never_session_ones() {
 #[test]
 #[cfg(not(feature = "push"))]
 fn push_not_compiled_in_is_reported_and_never_connects() {
-    for (method, address, reported) in [("websocket", "ws://tt.example/push", "PushNotCompiledIn")] {
+    for (address, reported) in [("ws://tt.example/push", "PushNotCompiledIn")] {
         let mut replay = Replay::new(&[("tt.example", PUBLIC)]);
-        let extra = format!(r#","push":{{"address":"{address}","method":"{method}"}}"#);
+        let extra = format!(r#","push":{{"address":"{address}"}}"#);
         replay.reply("tt.example:80", json_response(&descriptor(&extra)));
         let mut harness = Harness::new(Config::default(), replay);
         let records = harness.open("http://tt.example/service.json");
@@ -1529,7 +1523,7 @@ fn a_channel_cookie_set_for_the_whole_host_stays_in_its_folder() {
 #[cfg(all(feature = "push", feature = "cookies"))]
 fn a_push_handshake_cookie_stays_in_its_channel_folder() {
     let mut harness = site_harness(Config::default());
-    let settings = br#"{"push":{"method":"websocket"}}"#;
+    let settings = br#"{"push":{}}"#;
     harness.replay().reply("site.example:80", json_response(settings));
     let headers = "Set-Cookie: s=1; Path=/\r\n".to_owned();
     // A live channel asks for no bundle (REQ-WEB-018).
@@ -1550,7 +1544,7 @@ fn a_push_handshake_cookie_stays_in_its_channel_folder() {
 #[cfg(feature = "push")]
 fn push_target(address: &str) -> String {
     let mut harness = site_harness(Config::default());
-    harness.replay().reply("site.example:80", json_response(br#"{"push":{"method":"websocket"}}"#));
+    harness.replay().reply("site.example:80", json_response(br#"{"push":{}}"#));
     harness.replay().reply("site.example:80", not_found());
     harness.open_channel(address);
     let last = harness.replay().requests_to("site.example:80").last().unwrap().clone();
@@ -1615,7 +1609,7 @@ fn a_response_from_outside_the_channel_stores_no_cookies() {
 #[cfg(feature = "push")]
 fn input_service(input: bool) -> Harness {
     let mut replay = Replay::new(&[("tt.example", PUBLIC)]);
-    let extra = format!(r#","push":{{"address":"ws://tt.example/push","method":"websocket","input":{input}}}"#);
+    let extra = format!(r#","push":{{"address":"ws://tt.example/push","input":{input}}}"#);
     replay.reply("tt.example:80", json_response(&descriptor(&extra)));
     replay.reply("tt.example:80", Reply::WebSocket(Vec::new()));
     Harness::new(Config::default(), replay)
