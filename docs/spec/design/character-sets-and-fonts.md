@@ -129,7 +129,7 @@ Nothing breaks; older sets show a simpler version.
 ### 6. In neoteletext
 
 - G2 is a character set like any other, so the user chooses a font for it in its row of the fonts panel (REQ-FNT-005). Cells that X/26 replaces with a G2 character are drawn in that font.
-- An accent overlay uses the precomposed letter (`ü`) when the G0 font has it; otherwise neoteletext draws the letter with the accent's own glyph on top (decision E.26).
+- An accent overlay uses the precomposed letter (`ü`) when the G0 font has it; otherwise neoteletext draws the letter with the accent's own glyph on top (decision E.26). A mark on a letter with a dot below, such as Yoruba's `Ẹ̀`, which Unicode gives no single character, is the plain letter with the mark from the font, `È`, with the dot added, since a spacing accent sits at a small letter's height and would merge into a capital.
 - G2 only appears through X/26, so a page with no enhancement data never uses its G2 font. That is why the 96-position grid shows the G2 set beside its G0 set: those are the extra characters the page can call on.
 
 ## How many glyphs a set needs
