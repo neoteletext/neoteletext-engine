@@ -25,6 +25,7 @@ pub fn run() -> ExitCode {
         Command::View { common, raster, graphics, legacy_mosaics, colours8 } => {
             commands::view(&common.options(), &raster, graphics, legacy_mosaics, colours8)
         }
+        Command::Probe { common, selections } => commands::probe(&common.options(), &selections),
         Command::Render { common, page, output, raster, image } => {
             commands::render(&common.options(), &page, &output, &raster, image)
         }

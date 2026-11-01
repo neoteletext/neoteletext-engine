@@ -40,6 +40,7 @@ The toolchain is pinned in `rust-toolchain.toml`. `scripts/check.sh full` runs e
 | `neottx list INPUT` | Lists the pages and sub-pages found, with reception counts and error statistics. |
 | `neottx show INPUT PAGE` | Shows one page in the terminal and exits. |
 | `neottx view INPUT` | Browses pages interactively. |
+| `neottx probe CHANNEL` | Opens a channel as a receiver does and reports what it found, for a channel's developer. |
 | `neottx text INPUT PAGE` | Writes one page, or `all`, as UTF-8 text on standard output. |
 | `neottx render INPUT PAGE -o FILE` | Writes one page as a PNG or PPM image; with `all`, `-o` names a directory. |
 | `neottx convert INPUT --to t42\|tti -o FILE` | Converts a recording or page files to T42 packets or TTI pages. `--page 100` keeps one page. |
@@ -155,6 +156,12 @@ A link to another service asks for confirmation: press the same key again.
 On a channel that takes input (its descriptor's `push` says `"input": true`), the viewer greets the channel when its WebSocket opens, and once the channel answers, every key goes to it, as a terminal's keys go to its host: digits, Escape and Ctrl+C included. Printable keys go as text and the rest as key events, with Shift, Control and Alt. The channel decides what they mean; videotex channels take `*nnn#` for a page, `#` for the next and `*#` for the one before. A paste goes to the channel as one paste, and the terminal's focus as the channel's, where the terminal reports them; in a terminal with the Kitty keyboard protocol, releases and repeats go too when the channel asks for them. Ctrl+] leaves the keys to the viewer, telling the channel the focus went, and gives them back. A channel that does not answer within 10 seconds is said not to take input. See `neoteletext-common/INPUT.md`.
 
 Row 0 columns 0 to 7 always belong to the receiver: they show the page number being searched for and the security indicators, which a page cannot forge (REQ-SEC-005).
+
+## Checking a channel
+
+`neottx probe CHANNEL` opens a channel the way a receiver does and says what happened at each step: the entry file, the push connection's handshake and subprotocol, the input protocol, and each sample selection and how it ended, with a page or with DENIED and its status. It selects the place the address names, or the initial page; then each `--select PLACE`; and then a page few channels have, to see a selection refused. A local server needs `--allow-local 127.0.0.1`.
+
+The exit status is 0 when nothing was wrong. It is not 0 when the entry file cannot be read, the upgrade is refused or names another subprotocol, the channel closes the connection with a stop code, HELLO is not answered, a selection is refused with status 503, or a selection has no ending within the stated deadline (`neoteletext-common/INPUT.md` sections 5.1 and 5.4).
 
 ## Options for the decoder
 

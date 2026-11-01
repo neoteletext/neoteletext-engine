@@ -200,6 +200,17 @@ pub(crate) enum Command {
         #[arg(long)]
         colours8: bool,
     },
+    /// Open a channel as a receiver does and report how it answers: the
+    /// entry file, the handshake, the input protocol and how each sample
+    /// selection ended. The exit status is non-zero on a fault.
+    Probe {
+        #[command(flatten)]
+        common: Common,
+        /// A place to select after the channel's own, such as 302 or
+        /// 302/0002?a=1; give it more than once for several.
+        #[arg(long = "select")]
+        selections: Vec<String>,
+    },
     /// Write one page, or all, as image files.
     Render {
         #[command(flatten)]

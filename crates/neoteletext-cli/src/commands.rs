@@ -24,6 +24,7 @@ mod font;
 #[cfg(feature = "keyboard")]
 mod keyboard;
 mod list;
+mod probe;
 #[cfg(feature = "keyboard")]
 mod qr;
 mod render;
@@ -44,6 +45,7 @@ pub use font::{convert_font, font_sets};
 #[cfg(feature = "keyboard")]
 pub use keyboard::{KeyboardOptions, keyboard};
 pub use list::list;
+pub use probe::probe;
 #[cfg(feature = "keyboard")]
 pub use qr::qr;
 pub use render::render;
