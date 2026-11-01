@@ -32,3 +32,19 @@ fn level_option_takes_the_four_levels() {
     }
     assert!(parse(&["list", "in.t42", "--level1-only"]).is_err());
 }
+
+/// TODO-1878: the help of `write-text` names every set the writer takes. The
+/// list stays in the doc comment, because help is the same in every build
+/// and a build without `write-text` has no table to generate it from.
+#[cfg(feature = "write-text")]
+#[test]
+fn write_text_help_names_every_set() {
+    use clap::CommandFactory as _;
+    let mut command = Cli::command();
+    let help = command.find_subcommand_mut("write-text").unwrap().render_long_help().to_string();
+    let words: Vec<&str> =
+        help.split(|character: char| !(character.is_ascii_lowercase() || character == '-')).collect();
+    for (set, ..) in neoteletext_app::write_text::SETS {
+        assert!(words.contains(&set), "{set} is not in:\n{help}");
+    }
+}

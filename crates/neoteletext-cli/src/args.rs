@@ -311,10 +311,16 @@ pub(crate) enum Command {
     /// Write a TTI page from a UTF-8 text file in one of neoteletext's own
     /// character sets (REQ-CLI-010, REQ-CHR-012).
     WriteText {
-        /// The set: hausa-fula, west-african, ewe, kabyle-tamazight,
-        /// azerbaijani, kanuri-mossi, yoruba-igbo, vietnamese, ukrainian,
-        /// belarusian, macedonian, serbian, kyrgyz-mongolian, tatar, tajik,
-        /// georgian, armenian or tifinagh.
+        /// The set: english, german, swedish-finnish-hungarian, italian,
+        /// french, portuguese-spanish, czech-slovak, polish, turkish,
+        /// serbian-croatian-slovenian, romanian, estonian,
+        /// lettish-lithuanian, cyrillic-serbian-croatian, russian-bulgarian,
+        /// cyrillic-ukrainian, greek, hebrew, hausa-fula, west-african, ewe,
+        /// kabyle-tamazight, azerbaijani, kanuri-mossi, yoruba-igbo,
+        /// vietnamese, ukrainian, belarusian, macedonian, serbian,
+        /// kyrgyz-mongolian, tatar, tajik, georgian, armenian, tifinagh,
+        /// persian, urdu, pashto, sindhi, sorani, uyghur, balochi, arabic,
+        /// thai or lao.
         #[arg(long)]
         set: String,
         /// The page number, 100 to 8FF.
