@@ -29,11 +29,14 @@ const KEYS: u16 = 20;
 const KEY_INTERVAL: Duration = Duration::from_millis(50);
 /// How long anything may take before the test gives up.
 const LIMIT: Duration = Duration::from_secs(10);
-/// The round trip's median must stay under this. When the fetcher slept
+/// The quickest round trip must stay under this. When the fetcher slept
 /// 10 ms whenever it was idle, a key waited for the sleep to end before it
 /// went and its answer waited again: medians of 17 to 21 ms in a debug
 /// build on 21 October 2026, against 0.2 to 0.5 ms once requests and
-/// sockets woke it.
+/// sockets woke it. A timer delays every key and a busy computer only adds
+/// to some, so the quickest is the fetcher's floor and the median is partly
+/// the computer's: other work on it took medians to 10.5 ms on 1 November
+/// 2026, with the quickest of those same 15 runs at most 0.37 ms.
 const WAKE_BUDGET: Duration = Duration::from_millis(2);
 
 /// RFC 6455 section 5.2: the FIN bit, the opcodes and the length forms.
@@ -251,16 +254,18 @@ fn keys_reach_the_channel_and_its_answer_comes_back_at_once() {
     let mut round_trips = Vec::new();
     for index in 0..KEYS {
         let sent = Instant::now();
-        pipe::write(&mut input, &Frame::Input(key_message('a'))).expect("send a key");
-        input.flush().expect("send a key");
+        pipe::write(&mut input, &Frame::Input(key_message('a')))
+            .and_then(|()| input.flush())
+            .unwrap_or_else(|error| panic!("key {index}: {error}; the fetcher: {:?}", fetcher.0.try_wait()));
         let pushed = wait_for(
             &|frame| matches!(frame, Frame::T42(data) if data.origin == Origin::Push && data.bytes == page_packets(index + 1)),
         );
         round_trips.push(pushed.duration_since(sent));
         std::thread::sleep(KEY_INTERVAL.saturating_sub(sent.elapsed()));
     }
+    let quickest = round_trips.iter().min().copied().unwrap_or_default();
     let worst = round_trips.iter().max().copied().unwrap_or_default();
     let middle = median(round_trips.clone());
-    eprintln!("typing over {KEYS} keys: key to pushed page median {middle:?} worst {worst:?}");
-    assert!(middle <= WAKE_BUDGET, "the fetcher waited before sending or before reading: {round_trips:?}");
+    eprintln!("typing over {KEYS} keys: key to pushed page quickest {quickest:?} median {middle:?} worst {worst:?}");
+    assert!(quickest <= WAKE_BUDGET, "the fetcher waited before sending or before reading: {round_trips:?}");
 }
