@@ -41,10 +41,10 @@ refused	reserved_type	ff80	a reserved type
 refused	retired_page	ff0a8002	PAGE, withdrawn
 refused	character_cut_by_an_event	e282ff05	malformed UTF-8
 refused	control_character	0a	a control character in text
-refused	select_small_digits	ff40033361302f	a spelling the map does not write
+refused	select_small_digits	ff4003336130	a spelling the map does not write
 refused	select_query_alone	ff4004613d3132	a query with no page
 refused	select_query_not_pairs	ff40053330323f78	a query that is not pairs
-refused	not_shortest_varint	ff098780808002	a varint longer than it need be
+refused	not_shortest_varint	ff09870080808802	a varint longer than it need be
 record	welcome	a1ead05e000002050007ff0107808088022575512100000000000000000000000000000000000000425c	welcome version=7 caps=4325376 record=0
 record	cursor_acknowledges	a1ead05e01000204000801000001ff000000b320a6b5000000000000000000000000000000000000bc7c	cursor page=100 acked=1 none record=1
 record	denied_not_found	a1ead05e0000020c000a01943330322f303030325aa8b1e400000000000000000000000000000000014c	denied 404 302/0002 record=0
