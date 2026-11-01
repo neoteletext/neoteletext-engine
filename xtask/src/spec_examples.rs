@@ -22,6 +22,8 @@ use neoteletext_core::types::{ControlBits, Magazine, PageNumber, SubCode};
 use neoteletext_input::MAX_MESSAGE;
 use neoteletext_input::event::{Event, Item, Select, write};
 
+mod wire;
+
 /// The version of the file's format.
 const FORMAT: u32 = 1;
 /// The repository named as the producer.
@@ -363,7 +365,7 @@ fn audio_packet() -> Result<Example, String> {
 
 /// Every example the document embeds.
 fn all_examples() -> Result<Vec<Example>, String> {
-    Ok(vec![
+    let mut examples = vec![
         packet_address()?,
         page_header()?,
         triplet()?,
@@ -372,7 +374,9 @@ fn all_examples() -> Result<Vec<Example>, String> {
         audio_data()?,
         audio_control()?,
         audio_packet()?,
-    ])
+    ];
+    examples.append(&mut wire::examples()?);
+    Ok(examples)
 }
 
 /// A JSON string. The examples hold no character that needs more than these.
