@@ -1459,6 +1459,7 @@ fn page_files_must_be_what_their_names_say() {
     assert!(has_event(&records, "ServiceReady"), "{records:?}");
 }
 
+// Verifies REQ-WEB-021.
 #[test]
 fn redirects_that_leave_the_channel_are_reported_not_followed() {
     let config = Config { redirects_within_channel: true, ..Config::default() };
@@ -1478,6 +1479,7 @@ fn redirects_that_leave_the_channel_are_reported_not_followed() {
     }
 }
 
+// Verifies REQ-WEB-021.
 #[test]
 fn redirects_inside_the_channel_and_upgrades_are_followed() {
     let config = Config { redirects_within_channel: true, ..Config::default() };

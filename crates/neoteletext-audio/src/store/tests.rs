@@ -22,6 +22,7 @@ fn object(handle: u8, generation: u16, samples: u32) -> Object<'static> {
 
 const IDLE: &dyn Fn(SoundId) -> bool = &|_| false;
 
+// Verifies REQ-AUD-005.
 #[test]
 fn blocks_are_stored_and_a_sound_completes() {
     let mut arena = [0_u8; 1000];
@@ -49,6 +50,7 @@ fn blocks_are_stored_and_a_sound_completes() {
     assert!(store.entry(1).unwrap().conflict);
 }
 
+// Verifies REQ-AUD-005.
 #[test]
 fn wrong_lengths_and_generations_are_discarded() {
     let mut arena = [0_u8; 1000];
@@ -60,6 +62,7 @@ fn wrong_lengths_and_generations_are_discarded() {
     assert_eq!(store.put(&Data { handle: 1, generation: 1, first_block: 3, blocks: &[0; 40] }), Stored::Malformed);
 }
 
+// Verifies REQ-AUD-009.
 #[test]
 fn generations_replace_and_conflicts_are_refused() {
     let mut arena = [0_u8; 1000];
@@ -74,6 +77,7 @@ fn generations_replace_and_conflicts_are_refused() {
     ));
 }
 
+// Verifies REQ-AUD-009.
 #[test]
 fn the_oldest_idle_sound_is_evicted_and_a_busy_one_never() {
     // Each 100-sample sound takes 200 bytes and a 1-byte bitmap.
@@ -101,6 +105,7 @@ fn live(index: u16, block: &[u8]) -> Data<'_> {
     Data { handle: 1, generation: 1, first_block: index, blocks: block }
 }
 
+// Verifies REQ-AUD-014.
 #[test]
 fn a_live_sound_keeps_its_newest_blocks_in_a_ring() {
     // A ring of 32 blocks of 100 bytes, its bitmap and its index table.
@@ -130,6 +135,7 @@ fn a_live_sound_keeps_its_newest_blocks_in_a_ring() {
     assert_eq!(store.put(&live(37, &block(9))), Stored::Conflict);
 }
 
+// Verifies REQ-AUD-014.
 #[test]
 fn a_live_index_wraps_from_the_largest_to_zero() {
     let mut arena = [0_u8; 3_300];

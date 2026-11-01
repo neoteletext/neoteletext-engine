@@ -9,6 +9,7 @@ fn all(text: &str) -> Vec<Result<Entry<'_>, LineFault>> {
     read(text.as_bytes()).unwrap().collect()
 }
 
+// Verifies REQ-WEB-025.
 #[test]
 fn each_kind_of_entry() {
     let text = "# a comment\r\ns\tNews\r\n\np\t101\tHeadlines\t2026-10-12\np\t102\tWorld\nx\tweather:100\tWeather\nx\thttps://radio.example/\tRadio\n";
@@ -25,6 +26,7 @@ fn each_kind_of_entry() {
     assert_eq!(entries.len(), 5);
 }
 
+// Verifies REQ-WEB-025.
 #[test]
 fn faults_are_ignored_and_counted() {
     let text = "q\tlater\np\t1A0\tHex\np\t100\nx\tnowhere\tNo\np\t100\tOne\np\t100\tAgain\np\t101\t\ns\tCaf\u{e9}\np\t102\tDay\t2026-13-01\nx\thttps://h.example/a/../b/\tTricks\n";
@@ -45,6 +47,7 @@ fn faults_are_ignored_and_counted() {
     );
 }
 
+// Verifies REQ-WEB-025.
 #[test]
 fn long_titles_are_cut() {
     let long = "x".repeat(MAX_TITLE + 8);
@@ -52,6 +55,7 @@ fn long_titles_are_cut() {
     assert_eq!(all(&text)[0], Ok(Entry::Section { title: &long[..MAX_TITLE] }));
 }
 
+// Verifies REQ-WEB-025.
 #[test]
 fn limits() {
     assert_eq!(read(&std::vec![b' '; MAX_BYTES + 1]).err(), Some(ContentsError::TooLarge));

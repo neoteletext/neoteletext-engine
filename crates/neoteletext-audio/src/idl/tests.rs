@@ -38,6 +38,7 @@ fn packets(id: u8, bytes: &[u8]) -> Vec<Packet> {
     chunks.iter().enumerate().map(|(n, chunk)| packet(id, n as u8, n == 0, n + 1 == count, chunk)).collect()
 }
 
+// Verifies REQ-AUD-007.
 #[test]
 fn data_channel_12_is_packet_4_31() {
     let packet = packet(0, 0, true, true, &[]);
@@ -45,6 +46,7 @@ fn data_channel_12_is_packet_4_31() {
     assert_eq!((address.magazine.number(), address.number), (4, 31));
 }
 
+// Verifies REQ-AUD-007.
 #[test]
 fn a_record_is_reassembled_from_fragments_in_any_order() {
     let whole = record(100);
@@ -60,6 +62,7 @@ fn a_record_is_reassembled_from_fragments_in_any_order() {
     assert_eq!((service, bytes), (3, whole.as_slice()));
 }
 
+// Verifies REQ-AUD-007.
 #[test]
 fn repeats_and_lost_fragments_are_handled() {
     let whole = record(200);
@@ -75,6 +78,7 @@ fn repeats_and_lost_fragments_are_handled() {
     assert_eq!(reassembler.push(&fragments[1]).map(|(_, bytes)| bytes.to_vec()), Some(whole.clone()));
 }
 
+// Verifies REQ-AUD-007.
 #[test]
 fn damaged_packets_are_dropped_and_other_channels_ignored() {
     let mut damaged = packets(0, &record(10))[0];
@@ -91,6 +95,7 @@ fn damaged_packets_are_dropped_and_other_channels_ignored() {
     assert_eq!(fragment(&bad_flag), Some(Err(IdlError::Control)), "fragment 0 must say it is first");
 }
 
+// Verifies REQ-AUD-007.
 #[test]
 fn a_further_record_replaces_the_oldest_incomplete_one() {
     let mut reassembler = Reassembler::<2>::new();
@@ -108,6 +113,7 @@ fn a_further_record_replaces_the_oldest_incomplete_one() {
 
 /// INPUT.md section 7.10: a record of the frame's largest length, in its 241
 /// fragments, is reassembled whole, whatever order they come in.
+// Verifies REQ-AUD-007.
 #[test]
 fn the_longest_record_is_reassembled() {
     let long = record(MAX_FRAMED_RECORD - crate::record::record_length(0));

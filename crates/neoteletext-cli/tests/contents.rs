@@ -11,6 +11,7 @@ fn write(folder: &Path, name: &str, text: &str) {
     std::fs::write(folder.join(name), text.replace('\n', "\r\n")).expect("write a test file");
 }
 
+// Verifies REQ-WEB-025.
 #[test]
 fn a_folder_of_page_files_gives_its_contents() {
     let folder = Path::new(env!("CARGO_TARGET_TMPDIR")).join("contents-test");
