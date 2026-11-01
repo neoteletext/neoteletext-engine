@@ -326,7 +326,7 @@ pub struct UserAgent<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES
     records: crate::records::RecordReader,
     /// The index sending in progress (INPUT.md section 7.5).
     index: crate::records::index::Progress,
-    /// The open channel is live: its `channel.json` names a push
+    /// The open channel is live: its `channel.ttx` names a push
     /// connection, so nothing is fetched but its settings (REQ-WEB-018).
     live: bool,
     /// A live channel whose first page has not yet arrived.

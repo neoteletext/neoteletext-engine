@@ -201,7 +201,7 @@ impl<'a> MapAddress<'a> {
 
     /// Reads an address a program was told to open, which differs from
     /// [`MapAddress::read`] in one way: a receiver's file with nothing after
-    /// it opens its channel (DEC-1710), as `neottx https://h.example/a/channel.json`
+    /// it opens its channel (DEC-1710), as `neottx https://h.example/a/channel.ttx`
     /// does. A fragment the map refuses is refused here as well, so no
     /// address opens with one ignored (REQ-1693 item 4).
     pub fn read_opened(text: &'a str) -> Result<Self, MapError> {

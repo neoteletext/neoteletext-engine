@@ -60,7 +60,7 @@
 | Font | Bedstead, the receiver's bundled font, or a BDF file of 12 × 10 cells loaded when the user, the channel or the page names it (area FNT). |
 | Font library | A folder with an index, `fonts.txt`, listing fonts with their checksums (REQ-FNT-004). |
 | BDF | The Glyph Bitmap Distribution Format, a text format for bitmap fonts; the form of every loaded font (REQ-FNT-002). |
-| Alias | An entry of `channel.json` that leads one page number to another channel on every page of the channel (REQ-WEB-020). |
+| Alias | An entry of `channel.ttx` that leads one page number to another channel on every page of the channel (REQ-WEB-020). |
 | Discovery | Finding the channel an ordinary web address announces, from a pointer in its answer (REQ-WEB-028, decision E.73). |
 | Pointer | A link of type `alternate` to a channel or a page file, with a teletext media type, given in a `Link` header or a `<link>` element (REQ-WEB-029). |
 | Tuning screen | The browser's receiver-drawn screen shown before anything from another channel, which the viewer confirms (REQ-NAV-014, decision E.65). Withdrawn with the browser on 18 October 2026. |

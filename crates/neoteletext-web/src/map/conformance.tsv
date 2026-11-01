@@ -64,12 +64,14 @@ refuse	https://h.example/home/302?=value	place
 refuse	https://h.example/home/302?a=1&	place
 
 # Item 2: names only receivers use.
-refuse	https://h.example/home/channel.json	receiver-file
+refuse	https://h.example/home/channel.ttx	receiver-file
 refuse	https://h.example/home/contents.txt	receiver-file
 refuse	https://h.example/home/index.t42	receiver-file
 refuse	https://h.example/home/302.sub	receiver-file
 
-# Not a channel at all: no final slash, and no place the map lists.
+# Not a channel at all: no final slash, and no place the map lists. The entry
+# file's old name (DEC-1726) is no name of a channel's.
+refuse	https://h.example/home/channel.json	channel
 refuse	https://h.example/home	channel
 refuse	https://h.example/home/30	channel
 refuse	https://h.example/home/3021	channel
@@ -99,7 +101,8 @@ answer	/home	308	/home/
 answer	/home?name=value	308	/home/?name=value
 answer	/home/302/	308	/home/302
 answer	/home/302/0002/	308	/home/302/0002
-answer	/home/channel.json	200	-
+answer	/home/channel.ttx	200	-
+answer	/home/channel.json	404	-
 answer	/home/push	426	-
 answer	/home/902	404	-
 answer	/home/302/2	404	-

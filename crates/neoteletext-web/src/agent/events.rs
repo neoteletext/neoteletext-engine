@@ -36,7 +36,7 @@ pub enum Input<'a> {
     /// Open the service whose descriptor is at this address.
     OpenService(&'a str),
     /// Open the channel whose folder, or one of whose files, is at this
-    /// address (REQ-WEB-018): its `channel.json`, or the defaults when it
+    /// address (REQ-WEB-018): its `channel.ttx`, or the defaults when it
     /// has none (404 or 410); then its bundle `index.t42`; then pages from
     /// `NNN.tti` or `NNN.t42` in its folder.
     OpenChannel(&'a str),
@@ -362,7 +362,7 @@ pub enum Event<'a> {
     /// A selection was refused, or the channel's program is not answering
     /// (`INPUT.md` section 7.12, REQ-1481).
     Denied(DeniedRecord<'a>),
-    /// A live channel (its `channel.json` names a push connection,
+    /// A live channel (its `channel.ttx` names a push connection,
     /// REQ-WEB-018) is opening its connection: it asks for no bundle, page
     /// file or `contents.txt`, and is connecting, never a page not found,
     /// until [`Event::ChannelLive`].
@@ -386,7 +386,7 @@ pub enum Event<'a> {
         /// The address the redirect leads to.
         location: &'a str,
     },
-    /// The channel has no `channel.json`: the defaults apply
+    /// The channel has no `channel.ttx`: the defaults apply
     /// (REQ-WEB-018).
     ChannelDefaults,
     /// The channel's `index.t42` could not be used: it answered with

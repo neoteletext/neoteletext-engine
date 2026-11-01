@@ -9,6 +9,7 @@ use neoteletext_core::types::{PageAddress, SubCode};
 
 use super::*;
 use crate::bytes::Writer;
+use crate::channel::SETTINGS_FILE;
 use crate::consts::MAX_URL_LENGTH;
 
 const CHANNEL: &str = "https://h.example/home/";
@@ -146,7 +147,7 @@ fn what_is_outside_the_map_is_refused() {
     assert_eq!(canonical(&format!("{CHANNEL}#")), Err(MapError::Place));
     assert_eq!(canonical(&format!("{CHANNEL}#302")), Err(MapError::Place));
     assert_eq!(canonical(&format!("{CHANNEL}302.tti#303")), Err(MapError::Place));
-    for name in ["channel.json", "index.t42", "contents.txt", "302.sub"] {
+    for name in [SETTINGS_FILE, "index.t42", "contents.txt", "302.sub"] {
         assert_eq!(canonical(&format!("{CHANNEL}{name}")), Err(MapError::ReceiverFile), "{name}");
         let address = format!("{CHANNEL}{name}");
         let opened = MapAddress::read_opened(&address).unwrap();
@@ -172,6 +173,24 @@ fn the_whole_address_obeys_the_general_limit() {
     assert_eq!(canonical(&address), Ok(address.clone()));
     let over = format!("{address}x");
     assert!(matches!(canonical(&over), Err(MapError::Channel(_))));
+}
+
+/// DEC-1726: the entry file's old name is not a receiver's file any more, as
+/// a viewer's address or as one a program was told to open.
+#[test]
+fn the_entry_files_old_name_is_not_read() {
+    let old = format!("{CHANNEL}channel.json");
+    let not_a_file = Err(MapError::Channel(ChannelError::NotChannelFile));
+    assert_eq!(MapAddress::read(&old), not_a_file);
+    assert_eq!(MapAddress::read_opened(&old), not_a_file);
+}
+
+/// The table is data, so it names the entry file literally: it must agree
+/// with the constant (DEC-1726 item 5).
+#[test]
+fn the_conformance_table_names_the_entry_file() {
+    assert!(CONFORMANCE.contains(&format!("refuse\t{CHANNEL}{SETTINGS_FILE}\treceiver-file\n")));
+    assert!(CONFORMANCE.contains(&format!("answer\t/home/{SETTINGS_FILE}\t200\t-\n")));
 }
 
 /// REQ-1693's Verification: this parser against the one table. The server

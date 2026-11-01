@@ -1,5 +1,5 @@
 //! The JSON member grammar of the descriptor (REQ-WEB-002) and of a
-//! channel's `channel.json` (REQ-WEB-024): each member read once, a
+//! channel's `channel.ttx` (REQ-WEB-024): each member read once, a
 //! duplicate or unknown one refusing the whole document.
 
 use super::template::check_template;

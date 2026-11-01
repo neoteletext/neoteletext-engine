@@ -41,7 +41,9 @@ fn file_names_are_fixed() {
     assert_eq!(ChannelFile::from_name("P100.tti"), None);
     assert_eq!(ChannelFile::from_name("index.t42"), Some(ChannelFile::Bundle));
     assert_eq!(ChannelFile::from_name("index.tti"), None);
-    assert_eq!(ChannelFile::from_name("channel.json"), Some(ChannelFile::Settings));
+    assert_eq!(ChannelFile::from_name("channel.ttx"), Some(ChannelFile::Settings));
+    assert_eq!(SETTINGS_FILE, "channel.ttx", "DEC-1726: documents and channels name the file literally");
+    assert_eq!(ChannelFile::from_name("channel.json"), None, "DEC-1726: the old name is no channel's file");
     assert_eq!(ChannelFile::from_name("contents.txt"), Some(ChannelFile::Contents));
     let address = parse_address("https://h.example/ceefax/140.tti").unwrap();
     assert_eq!(address.folder.as_str(), "https://h.example/ceefax/");
@@ -136,15 +138,18 @@ fn an_encoded_separator_after_the_folder_is_outside_it() {
 /// other address as a service's descriptor.
 #[test]
 fn an_address_says_whether_it_is_a_channel() {
-    for channel in [
-        "https://h.example/demosite/",
-        "https://h.example",
-        "http://h.example/a/channel.json",
-        "https://h.example/a/?id=7",
-    ] {
+    let settings = std::format!("http://h.example/a/{SETTINGS_FILE}");
+    for channel in ["https://h.example/demosite/", "https://h.example", settings.as_str(), "https://h.example/a/?id=7"]
+    {
         assert!(is_channel_address(channel), "{channel}");
     }
-    for service in ["https://h.example/service.json", "https://h.example/a/b", "wss://h.example/a/"] {
+    // DEC-1726: the entry file's old name is no longer a channel's.
+    for service in [
+        "https://h.example/service.json",
+        "https://h.example/a/b",
+        "wss://h.example/a/",
+        "https://h.example/a/channel.json",
+    ] {
         assert!(!is_channel_address(service), "{service}");
     }
 }

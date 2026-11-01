@@ -19,8 +19,9 @@ use neoteletext_core::types::{PageAddress, SubCode};
 use crate::bytes::{Overflow, Writer};
 use crate::url::{FRAGMENT_MARK, QUERY_MARK, Scheme, Url, UrlError};
 
-/// The channel's settings (REQ-WEB-024).
-pub const SETTINGS_FILE: &str = "channel.json";
+/// A channel's entry file: its settings, as JSON (REQ-WEB-024). The owner
+/// expects this name to change (neoteletext-common's DEC-1726 item 5).
+pub const SETTINGS_FILE: &str = "channel.ttx";
 /// The channel's bundle of pages (REQ-WEB-019).
 pub const BUNDLE_FILE: &str = "index.t42";
 /// The channel's contents (REQ-WEB-025).
@@ -37,8 +38,8 @@ pub const SUBPAGES_EXTENSION: &str = ".sub";
 /// Between a page number and a sub-code in a sub-page's file name,
 /// `NNN-SSSS.t42` (REQ-WEB-019).
 pub const SUBPAGE_SEPARATOR: u8 = b'-';
-/// The longest file name of a channel: `NNN-SSSS.t42`, `channel.json` and
-/// `contents.txt` are twelve characters.
+/// The longest file name of a channel: `NNN-SSSS.t42` and `contents.txt` are
+/// twelve characters.
 pub const MAX_FILE_NAME: usize = PAGE_DIGITS + 1 + crate::subpages::SUBCODE_DIGITS + T42_EXTENSION.len();
 /// The most segments a folder path may have (REQ-WEB-023).
 pub const MAX_SEGMENTS: usize = 8;
@@ -102,7 +103,7 @@ pub enum ChannelFile {
     },
     /// `index.t42`.
     Bundle,
-    /// `channel.json`.
+    /// [`SETTINGS_FILE`].
     Settings,
     /// `contents.txt`.
     Contents,

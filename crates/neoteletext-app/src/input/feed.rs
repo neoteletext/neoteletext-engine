@@ -5,12 +5,10 @@ use super::{Options, config, load};
 use crate::Failure;
 use crate::session::Session;
 use crate::source::{Finished, Source};
+use neoteletext_core::consts::LINK_SCHEME;
 use neoteletext_core::fsm::PageState;
 use neoteletext_core::types::{PageAddress, SubCode};
 
-/// What begins a link from outside: the address it wraps follows
-/// (DEC-1663, DEC-1666).
-const LINK_SCHEME: &str = "neoteletext://";
 /// The schemes a link may wrap (REQ-1672 item 2).
 const LINK_TARGETS: [&str; 2] = ["http://", "https://"];
 
@@ -21,7 +19,7 @@ fn after_prefix<'a>(text: &'a str, prefix: &str) -> Option<&'a str> {
     start.eq_ignore_ascii_case(prefix).then(|| text.get(prefix.len()..)).flatten()
 }
 
-/// The address to open for `input`: a `neoteletext://` link's wrapped
+/// The address to open for `input`: a link's wrapped
 /// address, which then goes as a plain address does, and any other input
 /// as it is (REQ-1672, TODO-1679).
 ///

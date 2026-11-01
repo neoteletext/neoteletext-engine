@@ -7,6 +7,9 @@ use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 use std::process::{Child, Command, Stdio};
 
+use neoteletext_core::consts::LINK_SCHEME;
+use neoteletext_web::channel::SETTINGS_FILE;
+
 /// Ends the program when the test does.
 struct Killed(Child);
 
@@ -39,12 +42,13 @@ fn first_request(path: &str) -> String {
 
 #[test]
 fn a_folder_opens_as_a_channel() {
-    assert_eq!(first_request("/tap/"), "/tap/channel.json");
+    assert_eq!(first_request("/tap/"), format!("/tap/{SETTINGS_FILE}"));
 }
 
 #[test]
 fn a_channels_own_settings_open_as_a_channel() {
-    assert_eq!(first_request("/tap/channel.json"), "/tap/channel.json");
+    let settings = format!("/tap/{SETTINGS_FILE}");
+    assert_eq!(first_request(&settings), settings);
 }
 
 #[test]
@@ -57,10 +61,25 @@ fn any_other_address_is_a_descriptor() {
 #[test]
 fn a_link_that_wraps_no_address_is_refused() {
     let output = Command::new(env!("CARGO_BIN_EXE_neottx"))
-        .args(["text", "neoteletext://home", "100"])
+        .args(["text", &format!("{LINK_SCHEME}home"), "100"])
         .stdin(Stdio::null())
         .output()
         .expect("run neottx");
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("wraps an http or https address"));
+}
+
+/// DEC-1726: the old scheme is not a link, nor any kind of address. It reads
+/// as a file's name, and no such file exists.
+#[test]
+fn the_old_link_scheme_is_not_read() {
+    let output = Command::new(env!("CARGO_BIN_EXE_neottx"))
+        .args(["text", "neoteletext://https://127.0.0.1:1/", "100"])
+        .stdin(Stdio::null())
+        .output()
+        .expect("run neottx");
+    assert!(!output.status.success());
+    let said = String::from_utf8_lossy(&output.stderr);
+    assert!(!said.contains("wraps an http or https address"), "{said}");
+    assert!(said.contains("neoteletext://"), "named as the file it was taken for: {said}");
 }

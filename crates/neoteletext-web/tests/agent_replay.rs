@@ -17,6 +17,7 @@ use neoteletext_core::types::{Instant, PageAddress, SubCode};
 use neoteletext_web::agent::InputMessage;
 use neoteletext_web::agent::{Config, Input, Output, Source, Storage, Subscription, UserAgent};
 use neoteletext_web::bytes::Writer;
+use neoteletext_web::channel::SETTINGS_FILE;
 use neoteletext_web::cookie::{CookieJar, Cookies};
 #[cfg(feature = "cookies")]
 use neoteletext_web::cookie::{CookieRejected, Site};
@@ -1186,6 +1187,11 @@ fn ok(media: &str, body: &[u8]) -> Reply {
     Reply::Bytes(response("200 OK", &[header.as_str()], body))
 }
 
+/// The path of the entry file of the channel `site_harness` serves.
+fn settings_path() -> String {
+    format!("/news/{SETTINGS_FILE}")
+}
+
 #[test]
 fn a_channel_with_settings_opens_from_its_folder() {
     let mut harness = site_harness(Config::default());
@@ -1195,7 +1201,17 @@ fn a_channel_with_settings_opens_from_its_folder() {
     assert!(has_event(&records, "ServiceReady { name: \"Test\""), "{records:?}");
     assert!(!has_event(&records, "ChannelDefaults"));
     assert!(!has_event(&records, "BundleFailed"), "a missing bundle is not a failure: {records:?}");
-    assert_eq!(paths(&mut harness, "site.example:80"), ["/news/channel.json", "/news/index.t42"]);
+    assert_eq!(paths(&mut harness, "site.example:80"), [settings_path().as_str(), "/news/index.t42"]);
+}
+
+/// DEC-1726: the entry file's old name is not read: a channel is never asked
+/// for it, and told to open it no channel opens.
+#[test]
+fn a_channels_old_entry_file_is_not_read() {
+    let mut harness = site_harness(Config::default());
+    let records = harness.open_channel("http://site.example/news/channel.json");
+    assert!(has_event(&records, "DescriptorFailed(Address(Path))"), "{records:?}");
+    assert_eq!(harness.replay().requests.len(), 0);
 }
 
 #[test]
@@ -1305,9 +1321,9 @@ fn page_files_must_be_what_their_names_say() {
 fn redirects_that_leave_the_channel_are_reported_not_followed() {
     let config = Config { redirects_within_channel: true, ..Config::default() };
     for location in [
-        "http://other.example/news/channel.json",
-        "http://site.example/sport/channel.json",
-        "https://site.example:8443/news/channel.json",
+        format!("http://other.example/news/{SETTINGS_FILE}"),
+        format!("http://site.example/sport/{SETTINGS_FILE}"),
+        format!("https://site.example:8443/news/{SETTINGS_FILE}"),
     ] {
         let mut harness = site_harness(config);
         let header = format!("Location: {location}");
@@ -1326,7 +1342,11 @@ fn redirects_inside_the_channel_and_upgrades_are_followed() {
     let mut harness = site_harness(config);
     harness.replay().reply(
         "site.example:80",
-        Reply::Bytes(response("301 Moved", &["Location: https://site.example/news/channel.json"], b"")),
+        Reply::Bytes(response(
+            "301 Moved",
+            &[format!("Location: https://site.example/news/{SETTINGS_FILE}").as_str()],
+            b"",
+        )),
     );
     harness.replay().reply("site.example:443", json_response(br#"{"name":"Secure"}"#));
     let records = harness.open_channel("http://site.example/news/");
@@ -1459,7 +1479,7 @@ fn a_page_of_8190_sub_pages_is_fetched_one_sub_page_at_a_time() {
     assert_eq!(
         paths(&mut harness, "site.example:80"),
         [
-            "/news/channel.json",
+            settings_path().as_str(),
             "/news/index.t42",
             "/news/100.sub",
             "/news/100-2345.t42",

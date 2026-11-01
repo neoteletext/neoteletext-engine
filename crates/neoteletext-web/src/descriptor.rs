@@ -24,7 +24,7 @@
 //! interpreted). A descriptor fetched over HTTPS that names a plain `http` or
 //! `ws` address is rejected (REQ-SEC-007).
 //!
-//! A channel's `channel.json` (REQ-WEB-024, decision E.70) is read by
+//! A channel's `channel.ttx` (REQ-WEB-024, decision E.70) is read by
 //! [`Descriptor::parse_channel`], with three differences: every member is
 //! optional, `page_template` and `push.address` are refused because a
 //! channel's names are fixed, and a linked service may be a channel, given
@@ -123,7 +123,7 @@ pub enum DescriptorError {
     Downgrade(Member),
     /// More entries than this build keeps.
     TooMany(Member),
-    /// A member a channel's `channel.json` may not have (REQ-WEB-024).
+    /// A member a channel's `channel.ttx` may not have (REQ-WEB-024).
     NotForChannels(Member),
 }
 
@@ -169,7 +169,7 @@ pub struct Descriptor {
     /// How often, in seconds, a page on screen is asked for again when the
     /// service has no push (concept decision 13).
     pub refresh_seconds: Option<u32>,
-    /// This is a channel's `channel.json`, or a channel's defaults.
+    /// This is a channel's `channel.ttx`, or a channel's defaults.
     channel: bool,
 }
 
@@ -191,12 +191,12 @@ impl Descriptor {
         Self::parse_with(json, base, false)
     }
 
-    /// Parses a channel's `channel.json`, fetched from `base` (REQ-WEB-024).
+    /// Parses a channel's `channel.ttx`, fetched from `base` (REQ-WEB-024).
     pub fn parse_channel(json: &[u8], base: &Url) -> Result<Self, DescriptorError> {
         Self::parse_with(json, base, true)
     }
 
-    /// A channel's settings when it has no `channel.json` (REQ-WEB-018):
+    /// A channel's settings when it has no `channel.ttx` (REQ-WEB-018):
     /// initial page 100 and nothing else, named by its host and folder.
     /// `folder` is the channel's address, ending in `/`.
     #[must_use]

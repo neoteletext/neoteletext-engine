@@ -73,9 +73,9 @@ The toolchain is pinned in `rust-toolchain.toml`. `scripts/check.sh full` runs e
 - a file;
 - `-` for standard input;
 - `zxnet:NAME` for a live zxnet feed. The names are `teefax`, `nms-ceefax`, `chunkytext`, `spark`, `ch4` and `test`. A `wss://` channel address also works;
-- an `https://` or `http://` address of a channel, its folder ending in `/`, or its `channel.json`, such as `https://app.neottx.com/demosite/`. Any address of the channel URL map opens (`neoteletext-common/SERVER.md` section 4): `#302` starts at page 302, `#302/0002` at that sub-page, and `#302?name=value` sends the channel's program those page parameters with that page, and no other. `#contents` and `#wall` start at the channel's first page, as the viewer shows neither. `302.tti` reads as `#302`. Anything else after `#` is refused;
+- an `https://` or `http://` address of a channel, its folder ending in `/`, or its `channel.ttx`, such as `https://app.neottx.com/demosite/`. Any address of the channel URL map opens (`neoteletext-common/SERVER.md` section 4): `#302` starts at page 302, `#302/0002` at that sub-page, and `#302?name=value` sends the channel's program those page parameters with that page, and no other. `#contents` and `#wall` start at the channel's first page, as the viewer shows neither. `302.tti` reads as `#302`. Anything else after `#` is refused;
 - any other `https://` or `http://` address, of a web teletext service descriptor (REQUIREMENTS.md area WEB);
-- a `neoteletext://` link, which opens the `https://` or `http://` address it wraps, as in `neoteletext://https://app.neottx.com/demosite/`. `neottx` registers nothing with the operating system: the browser does that. A fragment after the address, which names a page in the browser, is refused here.
+- a `neottx://` link, which opens the `https://` or `http://` address it wraps, as in `neottx://https://app.neottx.com/demosite/`. `neottx` registers nothing with the operating system: the browser does that. A fragment after the address, which names a page in the browser, is refused here.
 
 The format of a file is detected from its content. `--format` overrides detection:
 

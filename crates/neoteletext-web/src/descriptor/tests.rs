@@ -4,6 +4,11 @@
 use super::*;
 use neoteletext_core::types::SubCode;
 
+/// A channel's entry file's address.
+fn settings_address(scheme: &str) -> Url {
+    Url::parse(&std::format!("{scheme}://example.org/ceefax/{}", crate::channel::SETTINGS_FILE)).unwrap()
+}
+
 const VALID: &str = r#"{
         "name": "Example Teletext",
         "initial_page": "100",
@@ -216,7 +221,7 @@ fn bad_aliases_reject_the_descriptor() {
 /// and refused as every unknown member is (REQ-WEB-024).
 #[test]
 fn a_channel_font_is_an_unknown_member() {
-    let base = Url::parse("https://example.org/ceefax/channel.json").unwrap();
+    let base = settings_address("https");
     let sha = "5ee6246b7f9bd197f47ce0741ea799a55ac08af775869a08c085803e02a3f14d";
     let json = std::format!(r#"{{"font":{{"address":"teletext.bdf","sha256":"{sha}"}}}}"#);
     assert_eq!(Descriptor::parse_channel(json.as_bytes(), &base).err(), Some(DescriptorError::Unknown));
@@ -228,7 +233,7 @@ fn a_channel_font_is_an_unknown_member() {
 /// wherever it stands in the object.
 #[test]
 fn a_push_method_is_an_unknown_member() {
-    let channel = Url::parse("https://example.org/ceefax/channel.json").unwrap();
+    let channel = settings_address("https");
     let service = Url::parse("http://s.example/service.json").unwrap();
     for push in [
         r#""method":"websocket""#,
@@ -247,12 +252,12 @@ fn a_push_method_is_an_unknown_member() {
     assert_eq!(Descriptor::parse(descriptor, &service).err(), Some(DescriptorError::Unknown));
 }
 
-/// A channel is live when its `channel.json` has a `push` object, and the
+/// A channel is live when its `channel.ttx` has a `push` object, and the
 /// object names nothing about the connection: its address is fixed and it is
 /// a WebSocket (TODO-1739).
 #[test]
 fn a_push_object_makes_a_channel_live() {
-    let base = Url::parse("https://example.org/ceefax/channel.json").unwrap();
+    let base = settings_address("https");
     let typing = Descriptor::parse_channel(br#"{"push":{"input":true}}"#, &base).unwrap();
     assert_eq!(typing.push().unwrap().as_str(), "wss://example.org/ceefax/push");
     assert!(typing.input());
@@ -266,7 +271,7 @@ fn a_push_object_makes_a_channel_live() {
 /// folder, push on the channel's own origin.
 #[test]
 fn channel_settings() {
-    let base = Url::parse("https://example.org/ceefax/channel.json").unwrap();
+    let base = settings_address("https");
     let empty = Descriptor::parse_channel(b"{}", &base).unwrap();
     assert!(empty.is_channel());
     assert_eq!(empty.initial_page.mpp(), 0x100);
@@ -286,7 +291,7 @@ fn channel_settings() {
         std::string::String::from(descriptor.push().unwrap().as_str())
     };
     let websocket = br#"{"push":{}}"#;
-    let plain = Url::parse("http://example.org/ceefax/channel.json").unwrap();
+    let plain = settings_address("http");
     assert_eq!(push(websocket, &base), "wss://example.org/ceefax/push");
     assert_eq!(push(websocket, &plain), "ws://example.org/ceefax/push");
     let both = br#"{"services":[{"name":"w","display_name":"W","channel":"https://w.example/","descriptor":"https://w.example/d.json"}]}"#;

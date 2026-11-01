@@ -1,6 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::unreachable, reason = "a test")]
 use super::spawn::read_frames;
 use super::*;
+use neoteletext_core::consts::LINK_SCHEME;
 
 /// A live source fed `frames` from a channel, writing its requests to
 /// `requests`, for the tests.
@@ -56,28 +57,51 @@ impl Kept {
 
 const SECOND: u64 = 1_000_000;
 
+/// A link from outside to `address`.
+fn link(address: &str) -> String {
+    format!("{LINK_SCHEME}{address}")
+}
+
 /// REQ-1672 items 1 and 2: a link holds an `http` or `https` address, its
 /// scheme in either case, and nothing else.
 #[test]
 fn a_link_from_outside_unwraps_to_its_address() {
     use crate::input::{is_live, link_address};
-    assert_eq!(link_address("neoteletext://https://a.example/demo/"), Ok("https://a.example/demo/"));
-    assert_eq!(link_address("neoteletext://http://a.example/demo/?id=7"), Ok("http://a.example/demo/?id=7"));
-    assert_eq!(link_address("NeoTeletext://HTTPS://a.example/demo/"), Ok("HTTPS://a.example/demo/"));
+    let https = link("https://a.example/demo/");
+    assert_eq!(link_address(&https), Ok("https://a.example/demo/"));
+    let http = link("http://a.example/demo/?id=7");
+    assert_eq!(link_address(&http), Ok("http://a.example/demo/?id=7"));
+    let capitals = format!("{}HTTPS://a.example/demo/", LINK_SCHEME.to_ascii_uppercase());
+    assert_eq!(link_address(&capitals), Ok("HTTPS://a.example/demo/"));
     assert_eq!(link_address("pages.t42"), Ok("pages.t42"));
     for refused in [
-        "neoteletext://home",
-        "neoteletext://",
-        "neoteletext://file:///etc/passwd",
-        "neoteletext://web:https://a.example/",
-        "neoteletext://neoteletext://https://a.example/",
-        "neoteletext://wss://a.example/",
+        "home",
+        "",
+        "file:///etc/passwd",
+        "web:https://a.example/",
+        &format!("{LINK_SCHEME}https://a.example/"),
+        "wss://a.example/",
     ] {
-        assert!(link_address(refused).is_err(), "{refused}");
+        assert!(link_address(&link(refused)).is_err(), "{refused}");
     }
-    assert!(is_live("neoteletext://https://a.example/demo/"));
-    assert!(is_live("NEOTELETEXT://home"), "a refused link is refused, not read as a file");
-    assert!(!is_live("neoteletext:home"));
+    assert!(is_live(&https));
+    assert!(
+        is_live(&format!("{}home", LINK_SCHEME.to_ascii_uppercase())),
+        "a refused link is refused, not read as a file"
+    );
+}
+
+/// DEC-1726: the old scheme is read as nothing: it unwraps to no address, and
+/// it is not live, so it goes no further than a file's name would.
+#[test]
+fn the_old_link_scheme_is_not_read() {
+    use crate::input::{is_live, link_address};
+    for old in ["neoteletext://https://a.example/demo/", "NEOTELETEXT://https://a.example/demo/", "neoteletext://home"]
+    {
+        assert_eq!(link_address(old), Ok(old), "not unwrapped");
+        assert!(!is_live(old), "{old}");
+    }
+    assert_eq!(LINK_SCHEME, "neottx://", "DEC-1726: documents name the scheme literally");
 }
 
 #[test]
@@ -144,11 +168,12 @@ fn a_page_file_fills_only_its_page() {
 fn an_address_says_where_a_viewer_opens() {
     use crate::input::{Opening, opening};
     use neoteletext_core::types::{PageAddress, SubCode};
+    use neoteletext_web::channel::SETTINGS_FILE;
     let page = |mpp| PageAddress::from_mpp(mpp).unwrap();
     let at = |mpp, code, parameters: &str| Opening { page: Some((page(mpp), code)), parameters: parameters.to_owned() };
     for (address, opens) in [
         ("https://a.example/home/302", at(0x302, SubCode::ANY, "")),
-        ("neoteletext://https://a.example/home/302", at(0x302, SubCode::ANY, "")),
+        (&link("https://a.example/home/302"), at(0x302, SubCode::ANY, "")),
         ("https://a.example/home/1fe?id=7", at(0x1FE, SubCode::ANY, "id=7")),
         ("https://a.example/home/302/0002", at(0x302, SubCode::new(2), "")),
         ("https://a.example/home/302?a=1&b=", at(0x302, SubCode::ANY, "a=1&b=")),
@@ -158,7 +183,7 @@ fn an_address_says_where_a_viewer_opens() {
         ("https://a.example/home/", Opening::default()),
         ("https://a.example/home/contents", Opening::default()),
         ("https://a.example/home/wall", Opening::default()),
-        ("https://a.example/home/channel.json", Opening::default()),
+        (&format!("https://a.example/home/{SETTINGS_FILE}"), Opening::default()),
         ("https://a.example/service.json", Opening::default()),
         ("pages.t42", Opening::default()),
     ] {
@@ -170,8 +195,8 @@ fn an_address_says_where_a_viewer_opens() {
         "https://a.example/home/#302:0002",
         "https://a.example/home/#302/3F7F",
         "https://a.example/home/302.tti#303",
-        "https://a.example/home/channel.json#302",
-        "neoteletext://https://a.example/home/#WALL",
+        &format!("https://a.example/home/{SETTINGS_FILE}#302"),
+        &link("https://a.example/home/#WALL"),
     ] {
         assert!(opening(address).is_err(), "{address}");
     }

@@ -87,7 +87,7 @@ Each item is work in neoteletext that NeoTeletext depends on. None is started.
 ### 2.4 A default refresh schedule
 
 - **Where:** `neoteletext-web`, beside `MIN_REFRESH_SECONDS` and `MAX_REFRESH_SECONDS` in `descriptor.rs`.
-- **What:** the refresh schedule used when a channel's `channel.json` declares none.
+- **What:** the refresh schedule used when a channel's `channel.ttx` declares none.
 - **Question:** does one already exist under another name? None was found by name on 15 October 2026. If not, its value.
 
 ### 2.5 The decoder as a separate program, inside the WebAssembly interpreter
