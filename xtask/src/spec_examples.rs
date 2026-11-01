@@ -336,7 +336,7 @@ fn audio_control() -> Result<Example, String> {
     })
 }
 
-/// That CONTROL record cut into its one packet 4/31 (REQ-AUD-007).
+/// The CONTROL record cut into its one packet 4/31 (REQ-AUD-007).
 fn audio_packet() -> Result<Example, String> {
     let (written, _) = packets(AUDIO_SERVICE, 0, &[play().record()]);
     let [packet] = written.as_slice() else { return Err("the record is not one packet".to_owned()) };
@@ -347,7 +347,7 @@ fn audio_packet() -> Result<Example, String> {
     let field = |offset, length, name, value: &str| Field { offset, length, bits: None, name, value: value.to_owned() };
     Ok(Example {
         name: "audio-carriage-packet",
-        caption: "That record in one packet of data channel 12, with bytes counted from the packet's start",
+        caption: "A CONTROL record in one packet of data channel 12, with bytes counted from the packet's start",
         bytes: packet.bytes.to_vec(),
         fields: vec![
             field(0, 2, "data channel and designation code", "12 and 15"),
