@@ -71,6 +71,7 @@ pub mod agent;
 pub mod zxnet;
 
 pub mod port;
+pub mod wire_vectors;
 
 /// REQ-GEN-011: the error types implement `core::error::Error`. Their
 /// `Display` text is their `Debug` text, and both need `core::fmt`, which

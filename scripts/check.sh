@@ -80,6 +80,9 @@ check_document_names() {
 }
 
 commit_steps() {
+    step "the wire vectors are neoteletext-common's table (DEC-1759 lesson 3)"
+    cmp "$common/wire-vectors.tsv" crates/neoteletext-web/src/wire_vectors.tsv
+
     step "rustfmt (REQ-GEN-006)"
     cargo fmt --all --check
 

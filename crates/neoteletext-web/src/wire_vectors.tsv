@@ -1,0 +1,54 @@
+# The wire's own bytes, for anyone implementing a receiver or a server
+# (`INPUT.md` section 15, DEC-1759 lesson 3). The engine and the server run
+# every row; the engine keeps an exact copy of this file, which its commit
+# gate compares, as `neoteletext_web::wire_vectors::TABLE`, and the server
+# reads that copy, as both read the address map's table.
+#
+# Four columns, separated by tabs: kind, name, value, meaning.
+# version  value is what both sides must say; meaning says where.
+# close    value is a close code; meaning is what a receiver does.
+# input    value is one message of the input stream, in hexadecimal; meaning
+#          is the item it reads as. It writes back to the same bytes unless
+#          the name begins `skipped`, and a server told it does as meaning says.
+# refused  value is a message a reader must refuse: a protocol error, closed
+#          with close code 4000 (`INPUT.md` section 8 rule 5).
+# record   value is one 42-byte packet 4/31 on data channel 12, service 0,
+#          record id as meaning says, in hexadecimal; meaning is the record.
+version	input	7	HELLO's and WELCOME's version
+version	subprotocol	neottx.7	Sec-WebSocket-Protocol, asked for and echoed
+close	broke_protocol	4000	stop
+close	wrong_version	4001	stop
+close	unnamed_stop	4050	stop
+close	restarting	4100	retry
+close	unnamed_retry	4150	retry
+close	normal	1000	retry
+close	above_the_ranges	4200	retry
+input	hello	ff090780808802	hello version=7 caps=4325376
+input	select_page	ff4003333032	select 302
+input	select_sub_page	ff40083330322f30303032	select 302/0002
+input	select_query	ff40073330323f613d31	select 302?a=1
+input	select_nothing	ff4000	select
+input	key_press	ff0180020010610161	key press a text=a on=100/0000
+input	mouse_press	ff0280020000000709	mouse press button=0 at=7,9 on=100/0000
+input	focus_in	ff05	focus_in
+input	focus_out	ff06	focus_out
+input	resize	ff0728190000	resize 40x25
+input	text	6869	text hi
+input	skipped_unknown_extension	ff7f03ff0601	extension 7F
+input	skipped_extension_then_event	ff7f02ff06ff05	extension 7F, focus_in
+refused	unknown_core_type	ff0b	an unknown core event
+refused	reserved_type	ff80	a reserved type
+refused	retired_page	ff0a8002	PAGE, withdrawn
+refused	character_cut_by_an_event	e282ff05	malformed UTF-8
+refused	control_character	0a	a control character in text
+refused	select_small_digits	ff40033361302f	a spelling the map does not write
+refused	select_query_alone	ff4004613d3132	a query with no page
+refused	select_query_not_pairs	ff40053330323f78	a query that is not pairs
+refused	not_shortest_varint	ff098780808002	a varint longer than it need be
+record	welcome	a1ead05e000002050007ff0107808088022575512100000000000000000000000000000000000000425c	welcome version=7 caps=4325376 record=0
+record	cursor_acknowledges	a1ead05e01000204000801000001ff000000b320a6b5000000000000000000000000000000000000bc7c	cursor page=100 acked=1 none record=1
+record	denied_not_found	a1ead05e0000020c000a01943330322f303030325aa8b1e400000000000000000000000000000000014c	denied 404 302/0002 record=0
+record	denied_channel	a1ead05e0000020c000201f700bc6f39000000000000000000000000000000000000000000000000a49b	denied 503 record=0
+record	redirect_place	a1ead05e0000020b0003333032433dadc00000000000000000000000000000000000000000000000c629	redirect 302 record=0
+record	redirect_keeps_query	a1ead05e0000020b000c3330322f303030323f613d317d98daac00000000000000000000000000005f39	redirect 302/0002?a=1 record=0
+record	redirect_address	a1ead05e0000020b001768747470733a2f2f622e6578616d706c652f6e6577732f440e68930000007caa	redirect https://b.example/news/ record=0
