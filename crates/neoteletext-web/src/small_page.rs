@@ -26,8 +26,9 @@ use neoteletext_core::consts::LINK_SCHEME;
 
 use crate::base64;
 
-/// Where someone without the browser gets it.
-pub const GET_NEOTELETEXT: &str = "https://www.neoteletext.com/";
+/// Where someone without the browser gets it: the project's site, whose
+/// host is `www.neottx.com` (the `neoteletext.com` names only redirect).
+pub const GET_NEOTELETEXT: &str = "https://www.neottx.com/";
 /// The class of the element that holds a public page's text.
 pub const HIDDEN_TEXT_CLASS: &str = "paywall";
 /// The selector of [`HIDDEN_TEXT_CLASS`], which the JSON-LD names.

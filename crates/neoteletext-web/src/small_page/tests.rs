@@ -56,6 +56,12 @@ fn the_selector_names_the_element_the_stylesheet_hides() {
 }
 
 /// REQ-1728 verification 2: the page holds its title, the picture and the offer.
+/// The offer names the host that serves the site, not one that redirects.
+#[test]
+fn the_offer_is_on_the_sites_own_host() {
+    assert_eq!(GET_NEOTELETEXT, "https://www.neottx.com/");
+}
+
 #[test]
 fn a_public_page_holds_its_title_its_picture_and_the_offer() {
     let page = public("A title", "x");
