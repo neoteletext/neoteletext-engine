@@ -35,12 +35,22 @@ const WORKSPACE_PREFIX: &str = "neoteletext-";
 /// system (REQ-SEC-016). Each may use only the workspace crates listed for
 /// it, which keeps the shared application layer below the programs.
 const APPLICATION_CRATES: &[(&str, &[&str])] = &[
+    // The clients' sockets, threads and TLS, which neoteletext-web as a
+    // library may not hold (DEC-1905).
+    ("neoteletext-transport", &["neoteletext-web"]),
     // A phone as a keyboard through qrkeyboard's relay (decision E.93):
     // sockets, TLS and cryptography, for desktop programs only.
-    ("neoteletext-qrkeyboard", &["neoteletext-web"]),
+    ("neoteletext-qrkeyboard", &["neoteletext-web", "neoteletext-transport"]),
     (
         "neoteletext-app",
-        &["neoteletext-core", "neoteletext-formats", "neoteletext-slicer", "neoteletext-web", "neoteletext-image"],
+        &[
+            "neoteletext-core",
+            "neoteletext-formats",
+            "neoteletext-slicer",
+            "neoteletext-web",
+            "neoteletext-image",
+            "neoteletext-transport",
+        ],
     ),
     (
         "neoteletext-cli",

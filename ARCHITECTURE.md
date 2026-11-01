@@ -439,6 +439,7 @@ Each boundary is one narrow type. Nothing reaches past its neighbour.
 | `neoteletext-audio` | Audio (area AUD, section 3, "Audio"): carriage, records, store, control, PCM16, IMA ADPCM and Opus | `no_std`, no allocation; the `encode` feature allocates |
 | `neoteletext-audio-mix` | Audio: the software mixer for ports with an operating system's audio output | `no_std` with `alloc` |
 | `neoteletext-opus` | Audio: the Opus decoder of the audio profile (decision E.123) | `no_std`, no allocation, integer only |
+| `neoteletext-transport` | L9: a client's sockets: the reader thread, the TLS pump, the blocking writes and the connection through a proxy, shared by `neoteletext-app`, `neoteletext-qrkeyboard` and the browser's fetcher (DEC-1905) | `std` |
 | `neoteletext-app` | L9: the application layer of `neottx` and any other viewer program: sessions, inputs, live mode's two processes, sandboxing | `std` |
 | `neoteletext-cli` | L9 (and text output of L5) | `std` |
 | `neoteletext-ffi` | L9: the C interface (Phase 2) | The only crate with `unsafe` |
@@ -516,15 +517,20 @@ Where each crate's code lives, one sentence per directory (the reorganisation of
 - `session/`: the acknowledged count and the messages kept to send again, the filter of what goes and the rate limit.
 - `pace/`: the tests of the pointer's pace (`pace.rs`; `contacts.rs` numbers the contacts).
 
+**`neoteletext-transport`**
+- `connection`: an open connection: its reader thread, what it read taken plain or through TLS, and the blocking writes.
+- `tls`: the client configuration, Mozilla's roots and the handshake over any blocking stream.
+- `reach`: a socket within the connect limit, direct or through the proxy.
+
 **`neoteletext-qrkeyboard`**
 - `crypto/`: SPAKE2 pairing and sealed frames.
-- `net/`: the relay connection, its HTTP request and its WebSocket.
+- `net/`: the relay's HTTP request and WebSocket, over `neoteletext-transport`.
 - `screen/`: the screen's wait, the relay's control text and the phone's frames.
 
 **`neoteletext-app`**
 - `input/`: the live feed's inputs beside the file and pipe reading of the parent.
 - `pipe/`: the frames' wire form between the two processes of live mode.
-- `fetch/`: the fetcher process: the std transport, its wakes, the pipe to the decoder, and the zxnet and web loops.
+- `fetch/`: the fetcher process: the engine's network port over `neoteletext-transport`, its wakes, the pipe to the decoder, and the zxnet and web loops.
 - `live/`: the decoder side of live mode: starting the fetcher and which pages a response may fill.
 - `present/`: the palette-index raster and the receiver-drawn page.
 - `convert/`: stored pages back to page files.
@@ -564,6 +570,7 @@ Decision E.61 makes each crate's optional areas Cargo features, all on by defaul
 | `neoteletext-app` | `live`, `slice`, `write-text` (the text-to-page writer and its `unicode-bidi` dependency) |
 | `neoteletext-audio` | `idl`, `ima`, `pcm16`, `opus`, and `encode` (not default). The desktop builds name `idl` and `opus` alone: PCM16 and IMA ADPCM are compiled out of them and kept for microcontrollers (decision E.131) |
 | `neoteletext-opus` | None: the profile is the whole decoder |
+| `neoteletext-transport` | None: a program that has no network leaves the whole crate out, as `neoteletext-app` does without `live` |
 | `neoteletext-cli` | `view`, `live`, `slice`, `write-text`, `sound` |
 
 **Two checks keep this true:**

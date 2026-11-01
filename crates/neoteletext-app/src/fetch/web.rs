@@ -2,11 +2,12 @@
 //! the std transport, its pages and notices sent to the decoder.
 
 use super::decoder_link::{page_request, send};
-use super::transport::{READ_CHUNK, StdTransport, SystemRandom, web_address};
+use super::transport::{StdTransport, SystemRandom};
 use super::wakes::{Wake, Wakes};
 use super::{clock, neottx};
 use crate::pipe::{self, Frame, Notice};
 use neoteletext_core::types::Instant;
+use neoteletext_transport::{SOCKET_READ, web_address};
 use neoteletext_web::agent::{
     Config, Event, Failure, Input, InputMessage, Output, PageBytes, PushStop, Source as Came, Storage, UserAgent,
 };
@@ -42,7 +43,7 @@ pub(super) fn run_web(
     let mut agent: Box<Agent<'_>> = Box::new(UserAgent::new(config, storage.buffers(), SystemRandom));
     let mut pump = Pump::new(StdTransport::new(allow_local, wake, proxy));
     let start = StdInstant::now();
-    let mut buffer = vec![0u8; READ_CHUNK];
+    let mut buffer = vec![0u8; SOCKET_READ];
     let broken = Cell::new(false);
     let service_ready = Cell::new(false);
     // The push connection opened (true) or was lost (false), for the

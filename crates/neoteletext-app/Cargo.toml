@@ -19,8 +19,8 @@ neoteletext-slicer = { workspace = true, optional = true }
 # Under `live`: the whole user agent, with push and cookies.
 neoteletext-web = { workspace = true, optional = true, features = ["default", "std"] }
 embedded-io = { workspace = true, optional = true }
+neoteletext-transport = { workspace = true, optional = true }
 rustls = { version = "0.23.32", default-features = false, features = ["ring", "std", "tls12", "logging"], optional = true }
-webpki-roots = { version = "1.0.3", optional = true }
 # The page writer's right-to-left reordering (UAX #9, decision E.82).
 unicode-bidi = { version = "0.3.18", optional = true }
 
@@ -36,7 +36,7 @@ libc = "0.2.177"
 default = ["live", "slice", "write-text"]
 # Live feeds and web services (area WEB, REQ-INP-022): the web module, TLS
 # and the fetcher process of REQ-SEC-018. Without it no TLS code is built.
-live = ["dep:neoteletext-web", "dep:embedded-io", "dep:rustls", "dep:webpki-roots"]
+live = ["dep:neoteletext-web", "dep:embedded-io", "dep:neoteletext-transport", "dep:rustls"]
 # Raw sampled video through the software data slicer (area SLC).
 slice = ["dep:neoteletext-slicer"]
 # Writing pages from text in neoteletext's own sets (REQ-CLI-010,

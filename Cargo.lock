@@ -635,11 +635,11 @@ dependencies = [
  "neoteletext-formats",
  "neoteletext-image",
  "neoteletext-slicer",
+ "neoteletext-transport",
  "neoteletext-web",
  "rustls",
  "seccompiler",
  "unicode-bidi",
- "webpki-roots",
 ]
 
 [[package]]
@@ -716,12 +716,12 @@ dependencies = [
  "getrandom 0.2.17",
  "hkdf",
  "hmac",
+ "neoteletext-transport",
  "neoteletext-web",
  "p256",
  "qrcodegen",
  "rustls",
  "sha2",
- "webpki-roots",
 ]
 
 [[package]]
@@ -729,6 +729,15 @@ name = "neoteletext-slicer"
 version = "0.1.0"
 dependencies = [
  "neoteletext-core",
+]
+
+[[package]]
+name = "neoteletext-transport"
+version = "0.1.0"
+dependencies = [
+ "neoteletext-web",
+ "rustls",
+ "webpki-roots",
 ]
 
 [[package]]

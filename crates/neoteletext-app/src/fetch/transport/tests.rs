@@ -2,6 +2,9 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, reason = "a test")]
 
 use super::*;
+use std::io::{Read, Write};
+use std::sync::mpsc;
+use std::time::Duration;
 
 /// A proxy played on this computer: it reads the client's handshake,
 /// answers with `answer`, then sends `HOST`, as the host would.
@@ -76,7 +79,7 @@ fn the_tunnels_first_bytes_reach_the_connection() {
     let mut buffer = [0_u8; 16];
     let started = std::time::Instant::now();
     while seen.len() < b"HOST".len() && started.elapsed() < Duration::from_secs(5) {
-        match connection.receive(&mut buffer) {
+        match receive(&mut connection, &mut buffer) {
             Received::Data(count) => seen.extend_from_slice(&buffer[..count]),
             Received::Nothing => std::thread::yield_now(),
             Received::Closed => break,

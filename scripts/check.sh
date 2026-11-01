@@ -33,7 +33,8 @@ readonly NO_PANIC_ROOTS=(crates/neoteletext-core/src/lib.rs crates/neoteletext-f
     crates/neoteletext-slicer/src/lib.rs crates/neoteletext-web/src/lib.rs crates/neoteletext-image/src/lib.rs
     crates/neoteletext-audio/src/lib.rs crates/neoteletext-audio-mix/src/lib.rs crates/neoteletext-opus/src/lib.rs
     crates/neoteletext-input/src/lib.rs
-    crates/neoteletext-qrkeyboard/src/lib.rs crates/neoteletext-app/src/lib.rs crates/neoteletext-cli/src/lib.rs
+    crates/neoteletext-transport/src/lib.rs crates/neoteletext-qrkeyboard/src/lib.rs
+    crates/neoteletext-app/src/lib.rs crates/neoteletext-cli/src/lib.rs
     crates/neoteletext-cli/src/main.rs)
 
 check_no_panic_lists() {

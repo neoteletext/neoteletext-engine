@@ -1,12 +1,13 @@
 //! A connection to the relay, plain or over TLS, directly or through the
 //! proxy (REQ-WEB-032).
 
-use super::{CONNECT_TIMEOUT, tls_config};
+use super::tls_config;
 use crate::Error;
+use neoteletext_transport::{connect_within_limit, first_address, open_tunnel, start_tls};
 use neoteletext_web::proxy::Proxy;
 use neoteletext_web::url::Url;
 use std::io::{ErrorKind, Read, Write};
-use std::net::{Shutdown, TcpStream, ToSocketAddrs};
+use std::net::{Shutdown, TcpStream};
 use std::time::Duration;
 
 /// A connection, plain or over TLS.
@@ -25,50 +26,27 @@ impl Stream {
     /// out, or TLS fails.
     pub fn connect(url: &Url, proxy: Option<&Proxy>) -> Result<Self, Error> {
         let host = url.host_text();
-        let socket = if let Some(proxy) = proxy {
-            // Through the proxy the port's setting names (REQ-WEB-032),
-            // whose address the user chose.
-            let target = (proxy.host.as_str(), proxy.port)
-                .to_socket_addrs()
-                .map_err(|error| Error::Network(format!("{}: {error}", proxy.host)))?
-                .next()
-                .ok_or_else(|| Error::Network(format!("{}: no address", proxy.host)))?;
-            let mut socket = TcpStream::connect_timeout(&target, CONNECT_TIMEOUT)
-                .map_err(|error| Error::Network(format!("{}: {error}", proxy.host)))?;
-            socket.set_read_timeout(Some(CONNECT_TIMEOUT)).map_err(|error| Error::Network(error.to_string()))?;
-            socket.set_write_timeout(Some(CONNECT_TIMEOUT)).map_err(|error| Error::Network(error.to_string()))?;
-            let early = proxy.open_tunnel(&mut socket, host, url.port()).map_err(Error::Network)?;
+        let mut socket = if let Some(proxy) = proxy {
+            // Through the proxy the port's setting names (REQ-WEB-032).
+            let (socket, first) = open_tunnel(proxy, host, url.port()).map_err(Error::Network)?;
             // The relay speaks only when spoken to, over HTTP and TLS
             // alike: bytes of its before this side's first are a broken
             // protocol, not data to keep.
-            if !early.is_empty() {
+            if !first.is_empty() {
                 return Err(Error::Protocol("the relay spoke through the proxy before it was asked"));
             }
             socket
         } else {
-            let target = (host, url.port())
-                .to_socket_addrs()
-                .map_err(|error| Error::Network(format!("{host}: {error}")))?
-                .next()
-                .ok_or_else(|| Error::Network(format!("{host}: no address")))?;
-            TcpStream::connect_timeout(&target, CONNECT_TIMEOUT)
-                .map_err(|error| Error::Network(format!("{host}: {error}")))?
+            let target = first_address(host, url.port()).map_err(Error::Network)?;
+            connect_within_limit(&target, host).map_err(Error::Network)?
         };
         socket.set_nodelay(true).map_err(|error| Error::Network(error.to_string()))?;
-        socket.set_read_timeout(Some(CONNECT_TIMEOUT)).map_err(|error| Error::Network(error.to_string()))?;
-        socket.set_write_timeout(Some(CONNECT_TIMEOUT)).map_err(|error| Error::Network(error.to_string()))?;
         if !url.is_secure() {
             return Ok(Self::Plain(socket));
         }
-        let name =
-            rustls::pki_types::ServerName::try_from(host.to_owned()).map_err(|error| Error::Tls(error.to_string()))?;
         let connection =
-            rustls::ClientConnection::new(tls_config(), name).map_err(|error| Error::Tls(error.to_string()))?;
-        let mut stream = rustls::StreamOwned::new(connection, socket);
-        while stream.conn.is_handshaking() {
-            stream.conn.complete_io(&mut stream.sock).map_err(|error| Error::Tls(error.to_string()))?;
-        }
-        Ok(Self::Tls(Box::new(stream)))
+            start_tls(tls_config(), host, &[], &mut socket).map_err(|failure| Error::Tls(failure.to_string()))?;
+        Ok(Self::Tls(Box::new(rustls::StreamOwned::new(connection, socket))))
     }
 
     fn socket(&self) -> &TcpStream {

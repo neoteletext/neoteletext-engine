@@ -3,15 +3,14 @@
 
 use super::{Incoming, MAX_HEAD, OsRandom, READ_CHUNK, RESPONSE_TIMEOUT, Stream, Waker, later};
 use crate::{Error, MAX_FRAME_BYTES};
+use neoteletext_transport::{Connection, write_records};
 use neoteletext_web::bytes::Writer;
 use neoteletext_web::consts::{OPCODE_BINARY, OPCODE_CLOSE, OPCODE_PONG, OPCODE_TEXT};
 use neoteletext_web::http::{HeadCollector, parse_head};
+use neoteletext_web::port::Received;
 use neoteletext_web::proxy::Proxy;
 use neoteletext_web::url::Url;
 use neoteletext_web::ws::{self, FrameReader, WsMessage};
-use std::io::{ErrorKind, Read, Write};
-use std::net::{Shutdown, TcpStream};
-use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 /// A WebSocket frame's header: at most 14 bytes for a client's frame.
@@ -19,119 +18,27 @@ const FRAME_HEADER: usize = 14;
 /// A close frame's status code (RFC 6455 section 5.5.1), when it has one.
 const CLOSE_CODE_BYTES: usize = 2;
 
-/// Bytes the reader thread may hold before the owner takes them: with
-/// [`READ_CHUNK`], what one connection keeps in memory at most.
-const READS_AHEAD: usize = 4;
-
-/// A WebSocket's reader thread: passes on what the socket gives, waking
-/// the owner's wait each time, until the socket ends or the owner has
-/// gone.
-fn read_socket(mut socket: TcpStream, chunks: &mpsc::SyncSender<Vec<u8>>, waker: Option<&Waker>) {
-    let mut buffer = vec![0_u8; READ_CHUNK];
-    loop {
-        let count = match socket.read(&mut buffer) {
-            Ok(0) => break,
-            Ok(count) => count,
-            Err(error) if error.kind() == ErrorKind::Interrupted => continue,
-            Err(_) => break,
-        };
-        let Some(bytes) = buffer.get(..count) else { break };
-        if chunks.send(bytes.to_vec()).is_err() {
-            return;
+/// Adds what has arrived on `connection` to `unread`, waiting until `until`
+/// when nothing has: `false` when the connection has ended. A moment
+/// already past looks without waiting.
+fn read_into(connection: &mut Connection, unread: &mut Vec<u8>, until: Instant) -> Result<bool, Error> {
+    let mut plain = vec![0_u8; READ_CHUNK];
+    let received =
+        connection.take(&mut plain, Some(until), write_records).map_err(|error| Error::Tls(error.to_string()))?;
+    match received {
+        Received::Data(count) => {
+            unread.extend_from_slice(plain.get(..count).unwrap_or(&[]));
+            Ok(true)
         }
-        if let Some(waker) = waker {
-            waker.wake();
-        }
+        Received::Nothing => Ok(true),
+        Received::Closed => Ok(false),
     }
-    // The owner sees the end as the channel's: this thread's sender is the
-    // only one.
-    if let Some(waker) = waker {
-        waker.wake();
-    }
-}
-
-/// The bytes a WebSocket reads, from its reader thread, decrypted here
-/// when the connection is TLS.
-struct Reading {
-    socket: TcpStream,
-    tls: Option<Box<rustls::ClientConnection>>,
-    chunks: mpsc::Receiver<Vec<u8>>,
-}
-
-impl Reading {
-    /// Writes all of `bytes`, encrypting them first over TLS.
-    fn write_all(&mut self, bytes: &[u8]) -> Result<(), Error> {
-        let mut socket = &self.socket;
-        let written = match self.tls.as_deref_mut() {
-            None => socket.write_all(bytes).and_then(|()| socket.flush()),
-            Some(tls) => tls.writer().write_all(bytes).and_then(|()| write_records(tls, socket)),
-        };
-        written.map_err(|error| Error::Network(error.to_string()))
-    }
-
-    /// Adds what has arrived to `unread`, waiting until `until` when
-    /// nothing has: `false` when the connection has ended. A moment already
-    /// past looks without waiting.
-    fn read_into(&mut self, unread: &mut Vec<u8>, until: Instant) -> Result<bool, Error> {
-        let mut plain = vec![0_u8; READ_CHUNK];
-        loop {
-            if let Some(tls) = self.tls.as_deref_mut() {
-                match tls.reader().read(&mut plain) {
-                    // The relay's close_notify.
-                    Ok(0) => return Ok(false),
-                    Ok(count) => {
-                        unread.extend_from_slice(plain.get(..count).unwrap_or(&[]));
-                        return Ok(true);
-                    }
-                    Err(error) if error.kind() == ErrorKind::WouldBlock => {}
-                    Err(error) => return Err(Error::Tls(error.to_string())),
-                }
-            }
-            let left = until.saturating_duration_since(Instant::now());
-            let chunk = if left.is_zero() {
-                match self.chunks.try_recv() {
-                    Ok(chunk) => chunk,
-                    Err(mpsc::TryRecvError::Empty) => return Ok(true),
-                    Err(mpsc::TryRecvError::Disconnected) => return Ok(false),
-                }
-            } else {
-                match self.chunks.recv_timeout(left) {
-                    Ok(chunk) => chunk,
-                    Err(mpsc::RecvTimeoutError::Timeout) => return Ok(true),
-                    Err(mpsc::RecvTimeoutError::Disconnected) => return Ok(false),
-                }
-            };
-            let Some(tls) = self.tls.as_deref_mut() else {
-                unread.extend_from_slice(&chunk);
-                return Ok(true);
-            };
-            let mut records = chunk.as_slice();
-            while !records.is_empty() {
-                let taken = tls.read_tls(&mut records).map_err(|error| Error::Tls(error.to_string()))?;
-                tls.process_new_packets().map_err(|error| Error::Tls(error.to_string()))?;
-                if taken == 0 {
-                    break;
-                }
-            }
-            // An alert or a key update may need an answer.
-            write_records(tls, &self.socket).map_err(|error| Error::Tls(error.to_string()))?;
-        }
-    }
-}
-
-/// Writes whatever records rustls has ready, blocking, within the write
-/// limit.
-fn write_records(tls: &mut rustls::ClientConnection, mut socket: &TcpStream) -> std::io::Result<()> {
-    while tls.wants_write() {
-        tls.write_tls(&mut socket)?;
-    }
-    socket.flush()
 }
 
 /// A client WebSocket (RFC 6455) to the relay. A thread of its own reads
 /// its socket, so a wait on it ends the moment bytes arrive.
 pub struct WebSocket {
-    reading: Reading,
+    connection: Connection,
     reader: FrameReader,
     message: Vec<u8>,
     unread: Vec<u8>,
@@ -190,19 +97,14 @@ impl WebSocket {
                 (sock, Some(Box::new(conn)))
             }
         };
-        // From here the reader thread waits on the socket for as long as it
-        // is open; closing it ends the wait.
-        socket.set_read_timeout(None).map_err(|error| Error::Network(error.to_string()))?;
-        let thread_socket = socket.try_clone().map_err(|error| Error::Network(error.to_string()))?;
-        let (chunks, incoming) = mpsc::sync_channel(READS_AHEAD);
-        std::thread::spawn(move || read_socket(thread_socket, &chunks, waker.as_ref()));
-        Ok(Self {
-            reading: Reading { socket, tls, chunks: incoming },
-            reader: FrameReader::new(),
-            message: vec![0_u8; MAX_FRAME_BYTES],
-            unread,
-            random,
-        })
+        let wake = move || {
+            if let Some(waker) = &waker {
+                waker.wake();
+            }
+        };
+        let connection = Connection::start(socket, tls, Vec::new(), READ_CHUNK, wake)
+            .map_err(|error| Error::Network(error.to_string()))?;
+        Ok(Self { connection, reader: FrameReader::new(), message: vec![0_u8; MAX_FRAME_BYTES], unread, random })
     }
 
     fn send(&mut self, opcode: u8, payload: &[u8]) -> Result<(), Error> {
@@ -210,7 +112,9 @@ impl WebSocket {
         let mut writer = Writer::new(&mut buffer);
         ws::write_frame(&mut writer, opcode, payload, &mut self.random).map_err(|_| Error::Limit("a frame"))?;
         let length = writer.len();
-        self.reading.write_all(buffer.get(..length).unwrap_or(&[]))
+        self.connection
+            .write_all(buffer.get(..length).unwrap_or(&[]))
+            .map_err(|error| Error::Network(error.to_string()))
     }
 
     /// Sends a text message.
@@ -272,7 +176,7 @@ impl WebSocket {
                 }
             }
             let before = self.unread.len();
-            if !self.reading.read_into(&mut self.unread, until)? {
+            if !read_into(&mut self.connection, &mut self.unread, until)? {
                 return Ok(Some(Incoming::Closed(None)));
             }
             if self.unread.len() == before {
@@ -286,13 +190,13 @@ impl WebSocket {
         let mut code = [0_u8; CLOSE_CODE_BYTES];
         code.copy_from_slice(&neoteletext_web::consts::CLOSE_NORMAL.to_be_bytes());
         let _ = self.send(OPCODE_CLOSE, &code);
-        let _ = self.reading.socket.shutdown(Shutdown::Both);
+        self.connection.shutdown();
     }
 }
 
 impl Drop for WebSocket {
     /// Ends the reader thread's wait.
     fn drop(&mut self) {
-        let _ = self.reading.socket.shutdown(Shutdown::Both);
+        self.connection.shutdown();
     }
 }

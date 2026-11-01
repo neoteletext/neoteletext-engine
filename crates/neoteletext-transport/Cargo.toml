@@ -1,0 +1,20 @@
+[package]
+name = "neoteletext-transport"
+description = "The engine's clients' sockets: the reader thread, the TLS pump, the blocking writes and the connection through a proxy"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# A std crate for desktop programs: it holds sockets, threads and TLS, which
+# the library crates never do (REQ-SEC-016).
+[dependencies]
+neoteletext-web = { workspace = true, features = ["std"] }
+# No `logging`: the browser's fetcher builds rustls without it, and a
+# dependency here must not add to what that process links.
+rustls = { version = "0.23.32", default-features = false, features = ["ring", "std", "tls12"] }
+webpki-roots = "1.0.3"
+
+[lints]
+workspace = true

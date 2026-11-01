@@ -2,11 +2,12 @@
 //! transport in the tests.
 
 use super::decoder_link::{page_request, send};
-use super::transport::{READ_CHUNK, StdTransport, SystemRandom, web_address};
+use super::transport::{StdTransport, SystemRandom};
 use super::wakes::{Wake, Wakes};
 use super::{clock, neottx};
 use crate::pipe::{Frame, Notice};
 use neoteletext_core::types::Instant;
+use neoteletext_transport::{SOCKET_READ, web_address};
 use neoteletext_web::port::{ConnectionId, Pump, Transport};
 use neoteletext_web::proxy::Proxy;
 use neoteletext_web::zxnet::{Channel, LiveEvent, LiveInput, LiveOutput, LiveStorage, ZxnetFeed};
@@ -41,7 +42,7 @@ pub(super) fn live_loop<T: Transport>(
     let mut feed = new_feed(channel, &mut storage, allow_local, proxied);
     let mut pump = Pump::new(transport);
     let start = StdInstant::now();
-    let mut buffer = vec![0u8; READ_CHUNK];
+    let mut buffer = vec![0u8; SOCKET_READ];
     let broken = Cell::new(false);
     // The feed says, after every input, when it next needs a tick, and
     // says nothing once it has stopped: the latest it said is the deadline.

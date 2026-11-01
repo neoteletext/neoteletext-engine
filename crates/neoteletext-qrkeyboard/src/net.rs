@@ -7,6 +7,7 @@
 use std::sync::{Arc, OnceLock, mpsc};
 use std::time::{Duration, Instant};
 
+use neoteletext_transport::{client_config, mozilla_roots};
 use neoteletext_web::port::RandomSource;
 use neoteletext_web::url::Url;
 
@@ -20,8 +21,6 @@ pub use http::{MAX_BODY, request};
 pub use stream::Stream;
 pub use websocket::WebSocket;
 
-/// How long a connection and its TLS handshake may take.
-pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 /// How long an HTTP answer may take.
 pub const RESPONSE_TIMEOUT: Duration = Duration::from_secs(15);
 /// The longest response head read.
@@ -41,12 +40,7 @@ impl RandomSource for OsRandom {
 
 pub(super) fn tls_config() -> Arc<rustls::ClientConfig> {
     static CONFIG: OnceLock<Arc<rustls::ClientConfig>> = OnceLock::new();
-    CONFIG
-        .get_or_init(|| {
-            let roots: rustls::RootCertStore = webpki_roots::TLS_SERVER_ROOTS.iter().cloned().collect();
-            Arc::new(rustls::ClientConfig::builder().with_root_certificates(roots).with_no_client_auth())
-        })
-        .clone()
+    CONFIG.get_or_init(|| Arc::new(client_config(mozilla_roots()))).clone()
 }
 
 /// Parses an `http`, `https`, `ws` or `wss` address.
