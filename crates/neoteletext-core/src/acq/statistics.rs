@@ -29,6 +29,9 @@ pub struct Statistics {
     pub pages_started: u32,
     /// Pages completed.
     pub pages_completed: u32,
+    /// Pages not stored because the only slot not being received held the
+    /// latest sub-page of the page shown (REQ-NUM-030).
+    pub pages_refused: u32,
     /// Packets of enhancement pages dropped because every slot of the
     /// enhancement store belonged to a sub-page being received.
     pub enhancement_dropped: u32,

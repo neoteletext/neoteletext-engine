@@ -77,14 +77,21 @@ impl<'a> PageStore<'a> {
     /// The most recently received sub-page of an address (REQ-NAV-005's
     /// rotating display, decision E.20 "any sub-page"). Eviction takes the
     /// least recently received slot first (REQ-ACQ-005), so the latest
-    /// sub-page of a page is always the last of its sub-pages to go
-    /// (REQ-NUM-030).
+    /// sub-page of a page is always the last of its sub-pages to go, and of
+    /// the page shown never goes (REQ-NUM-030).
     #[must_use]
     pub fn latest(&self, address: PageAddress) -> Option<&StoredPage> {
+        self.latest_slot(address).and_then(|index| self.pages.get(index))
+    }
+
+    /// The slot of [`Self::latest`].
+    fn latest_slot(&self, address: PageAddress) -> Option<usize> {
         self.pages
             .iter()
-            .filter(|page| page.state != PageState::Empty && page.key.address == address)
-            .max_by_key(|page| page.last_received)
+            .enumerate()
+            .filter(|(_, page)| page.state != PageState::Empty && page.key.address == address)
+            .max_by_key(|(_, page)| page.last_received)
+            .map(|(index, _)| index)
     }
 
     /// The stored page for a request (decision E.20): a specific sub-code, or
@@ -178,19 +185,28 @@ impl<'a> PageStore<'a> {
     }
 
     /// Finds or allocates a slot for a page, evicting the least recently
-    /// received page that is not being received when the store is full.
-    pub(super) fn allocate(&mut self, key: PageKey, busy: &[Option<usize>; MAGAZINES]) -> Option<(usize, bool)> {
+    /// received page that is not being received when the store is full, and
+    /// never the latest sub-page of the page `shown` (REQ-NUM-030): with no
+    /// other slot, the new page is refused. A new sub-page of the page shown
+    /// is that page's latest, so it may replace the one before.
+    pub(super) fn allocate(
+        &mut self,
+        key: PageKey,
+        busy: &[Option<usize>; MAGAZINES],
+        shown: Option<PageAddress>,
+    ) -> Option<(usize, bool)> {
         if let Some(index) = self.find(key) {
             return Some((index, false));
         }
         if let Some(index) = self.pages.iter().position(|page| page.state == PageState::Empty) {
             return Some((index, false));
         }
+        let kept = shown.filter(|&address| address != key.address).and_then(|address| self.latest_slot(address));
         let victim = self
             .pages
             .iter()
             .enumerate()
-            .filter(|(index, _)| !busy.contains(&Some(*index)))
+            .filter(|&(index, _)| !busy.contains(&Some(index)) && kept != Some(index))
             .min_by_key(|(_, page)| page.last_received)
             .map(|(index, _)| index)?;
         Some((victim, true))

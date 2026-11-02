@@ -415,6 +415,38 @@ fn the_latest_sub_page_is_kept() {
     });
 }
 
+/// REQ-328, REQ-NUM-030: the latest sub-page of the page shown stays, however
+/// many other pages arrive; those that find no other slot are refused and
+/// counted.
+#[test]
+fn the_latest_sub_page_of_the_page_shown_is_kept_against_other_pages() {
+    with_decoder(4, |decoder| {
+        decoder.set_requested(Some(address(0x100)));
+        // A time-filling header ends page 100, so that it is not being
+        // received, which alone would have kept it.
+        let mut stream = vec![header(0x100, 7), header(0x1FF, 0)];
+        stream.extend((0..16).map(|page| header(0x200 + page, 0)));
+        feed(decoder, &stream);
+        assert_eq!(decoder.store().latest(address(0x100)).unwrap().key.subcode.value(), 7);
+        assert_eq!(decoder.statistics().pages_refused, 0, "the other three slots took them");
+    });
+}
+
+/// REQ-328: a store with no other slot refuses the new page, and counts it,
+/// rather than evict the page shown. A new sub-page of the page shown is its
+/// latest, and replaces the one before.
+#[test]
+fn a_store_with_only_the_shown_page_refuses_another() {
+    with_decoder(1, |decoder| {
+        decoder.set_requested(Some(address(0x100)));
+        feed(decoder, &[header(0x100, 7), header(0x1FF, 0), header(0x200, 0), header(0x300, 0)]);
+        assert_eq!(decoder.store().latest(address(0x100)).unwrap().key.subcode.value(), 7);
+        assert!(decoder.statistics().pages_refused > 0);
+        feed(decoder, &[header(0x100, 8), header(0x200, 0)]);
+        assert_eq!(decoder.store().latest(address(0x100)).unwrap().key.subcode.value(), 8);
+    });
+}
+
 /// REQ-NUM-017, REQ-NAV-005: sub-page entry accepts exactly the 3,199
 /// decimal sub-codes, refusing a digit that cannot stand where it is.
 #[test]

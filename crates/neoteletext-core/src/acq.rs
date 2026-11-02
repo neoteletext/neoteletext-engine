@@ -67,6 +67,8 @@ pub struct Decoder<'a> {
     stats: Statistics,
     // The page shown: the rolling header follows its magazine, and its
     // latest sub-page is not evicted (REQ-NUM-030).
+    // The page shown: the rolling header follows its magazine, and its
+    // latest sub-page is not evicted (REQ-NUM-030).
     requested: Option<PageAddress>,
     rolling: [u8; CLOCK_COLUMN - HEADER_DISPLAY_COLUMN],
     clock: [u8; COLUMNS - CLOCK_COLUMN],
@@ -248,8 +250,9 @@ impl<'a> Decoder<'a> {
         self.service.as_ref()
     }
 
-    /// Tells the decoder which page the viewer wants, for the rolling header
-    /// (decision E.11).
+    /// Tells the decoder which page the viewer wants: the rolling header
+    /// follows it (decision E.11), and its latest sub-page is not evicted
+    /// (REQ-NUM-030).
     pub fn set_requested(&mut self, requested: Option<PageAddress>) {
         self.requested = requested;
     }

@@ -69,7 +69,8 @@ impl Decoder<'_> {
         if numbering == Numbering::LatestOnly {
             self.release_other_versions(key, now, events);
         }
-        let Some((slot, evict)) = self.store.allocate(key, &self.receiving_slot) else {
+        let Some((slot, evict)) = self.store.allocate(key, &self.receiving_slot, self.requested) else {
+            self.stats.pages_refused = self.stats.pages_refused.saturating_add(1);
             return;
         };
         if evict {
