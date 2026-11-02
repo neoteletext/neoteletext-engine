@@ -38,7 +38,8 @@ fuzz_target!(|data: &[u8]| {
         assert!(holds_one_item(decoder.holding()), "held {:02X?}", decoder.holding());
     }
     if let Some(payload) = data.get(..data.len().min(UNKNOWN_PAYLOAD)) {
-        let mut wrapped = vec![EVENT, UNKNOWN_EXTENSION, payload.len() as u8];
+        let length = u8::try_from(payload.len()).expect("UNKNOWN_PAYLOAD fits an extension's length byte");
+        let mut wrapped = vec![EVENT, UNKNOWN_EXTENSION, length];
         wrapped.extend_from_slice(payload);
         wrapped.extend_from_slice(&[EVENT, FOCUS_IN]);
         let mut read = Vec::new();
