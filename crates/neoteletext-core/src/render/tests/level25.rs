@@ -624,12 +624,28 @@ fn four_bit_format_in_the_resolved_mode() {
     grid.cells[2][3].foreground = 16;
     let result = render_line(&grid, 2 * CELL_HEIGHT, Zoom::Off, &glyphs, large(0), IndexFormat::Bits4, &mut out);
     assert_eq!(result, Err(RenderError::IndexTooWide));
-    // The palette mode keeps its masking, as at Level 1.
+}
+
+/// REQ-390, DEC-2129: at 4 bits the palette mode draws the eight colours
+/// and refuses a flashing or concealed cell, whose indices of REQ-398 do not
+/// fit, rather than draw another colour.
+#[test]
+fn four_bit_format_in_the_palette_mode() {
+    let mut grid = Grid::EMPTY;
+    grid.cells[2][3] = Cell { glyph: g3(0x3F), foreground: 7, background: 1, ..Cell::BLANK };
+    let glyphs = GlyphSet::noto_teletext();
+    let mut out = vec![0u8; PAGE_WIDTH / 2];
     let palette = RenderOptions { colour: ColourMode::Palette, ..large(0) };
-    grid.cells[2][3].foreground = 7;
-    grid.cells[2][3].background = 1;
+    let draw = |grid: &Grid, out: &mut [u8]| {
+        render_line(grid, 2 * CELL_HEIGHT, Zoom::Off, &glyphs, palette, IndexFormat::Bits4, out)
+    };
+    assert_eq!(draw(&grid, &mut out), Ok(()));
+    assert_eq!(&out[3 * 6..4 * 6], &[0x77; 6], "a solid cell in its foreground");
     grid.cells[2][3].flash = true;
-    assert!(render_line(&grid, 2 * CELL_HEIGHT, Zoom::Off, &glyphs, palette, IndexFormat::Bits4, &mut out).is_ok());
+    assert_eq!(draw(&grid, &mut out), Err(RenderError::IndexTooWide), "flash");
+    grid.cells[2][3].flash = false;
+    grid.cells[2][3].conceal = true;
+    assert_eq!(draw(&grid, &mut out), Err(RenderError::IndexTooWide), "conceal");
 }
 
 /// Decisions E.12 and E.48: the Level 1 Flash code keeps the SAA5050's

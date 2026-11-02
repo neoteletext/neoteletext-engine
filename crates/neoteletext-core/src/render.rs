@@ -82,7 +82,9 @@ pub enum RenderError {
     /// mode: a colour outside CLUT 0 or a flash mode of Level 2.5 (decision
     /// E.55, REQ-RND-031).
     NeedsResolvedMode,
-    /// The 4-bit format was asked to hold a Colour Map index above 15.
+    /// The 4-bit format was asked to hold an index above 15: a Colour Map
+    /// index in the resolved mode, or a flashing or concealed cell in the
+    /// palette mode (DEC-2129).
     IndexTooWide,
 }
 
@@ -91,9 +93,9 @@ pub enum RenderError {
 pub enum IndexFormat {
     /// One index per byte.
     Bits8,
-    /// Two indices per byte, the left pixel in the high nibble. In the
-    /// palette mode only indices 0 to 15 fit, so flash and conceal use the
-    /// base colours; in the resolved mode an index above 15 is an error.
+    /// Two indices per byte, the left pixel in the high nibble. Only indices
+    /// 0 to 15 fit, and a cell that needs another is an error: in the
+    /// palette mode that is a flashing or concealed cell (DEC-2129).
     Bits4,
 }
 

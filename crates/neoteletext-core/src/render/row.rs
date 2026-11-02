@@ -22,16 +22,7 @@ fn fill_cell(target: &mut [u8; CELL_WIDTH], raster: CellLine) {
 }
 
 /// Writes one cell line at cell slot `slot` of a pixel row.
-fn write_cell(
-    out: &mut [u8],
-    slot: usize,
-    raster: CellLine,
-    format: IndexFormat,
-    check: bool,
-) -> Result<(), RenderError> {
-    if check && raster.foreground.max(raster.background) > INDEX_4BIT_MAX {
-        return Err(RenderError::IndexTooWide);
-    }
+fn write_cell(out: &mut [u8], slot: usize, raster: CellLine, format: IndexFormat) -> Result<(), RenderError> {
     match format {
         IndexFormat::Bits8 => {
             let start = slot.saturating_mul(CELL_WIDTH);
@@ -40,12 +31,17 @@ fn write_cell(
             fill_cell(target, raster);
         }
         IndexFormat::Bits4 => {
+            // Masking would draw another colour: a flashing and a concealed
+            // cell would both come out as index 12 (DEC-2129).
+            if raster.foreground.max(raster.background) > INDEX_4BIT_MAX {
+                return Err(RenderError::IndexTooWide);
+            }
             let bytes = CELL_WIDTH / 2;
             let start = slot.saturating_mul(bytes);
             let target = out.get_mut(start..start.saturating_add(bytes)).ok_or(RenderError::BufferTooSmall)?;
             for (pair, byte) in target.iter_mut().enumerate() {
-                let left = raster.index(pair.wrapping_mul(2)) & INDEX_4BIT_MAX;
-                let right = raster.index(pair.wrapping_mul(2).wrapping_add(1)) & INDEX_4BIT_MAX;
+                let left = raster.index(pair.wrapping_mul(2));
+                let right = raster.index(pair.wrapping_mul(2).wrapping_add(1));
                 *byte = (left << 4) | right;
             }
         }
@@ -72,8 +68,7 @@ fn write_line(
         return Err(RenderError::OutOfRange);
     }
     let cells = grid.cells.get(row).ok_or(RenderError::OutOfRange)?;
-    let check = format == IndexFormat::Bits4 && matches!(options.colour, ColourMode::Resolved(_));
-    if format == IndexFormat::Bits8 && !check {
+    if format == IndexFormat::Bits8 {
         // The hot path of every port: whole cells of the buffer, with no
         // per-pixel bounds checks.
         for (column, (cell, target)) in cells.iter().zip(out.as_chunks_mut::<CELL_WIDTH>().0).enumerate() {
@@ -82,7 +77,7 @@ fn write_line(
     } else {
         for (column, cell) in cells.iter().enumerate() {
             let raster = cell_line(cell, grid, row, column, line, glyphs, options);
-            write_cell(out, column, raster, format, check)?;
+            write_cell(out, column, raster, format)?;
         }
     }
     Ok(())
