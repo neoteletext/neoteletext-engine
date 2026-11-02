@@ -18,6 +18,7 @@ use neoteletext_web::http::MediaType;
 use neoteletext_web::port::{ConnectionId, Pump};
 use neoteletext_web::proxy::Proxy;
 use neoteletext_web::records::redirect::RedirectRecord;
+use neoteletext_web::subpages::PartNumber;
 use std::cell::Cell;
 use std::net::IpAddr;
 use std::sync::mpsc::Sender;
@@ -265,6 +266,13 @@ fn hand_frame(agent: &mut Agent<'_>, now: Instant, frame: Frame, more: bool, out
     match frame {
         Frame::Request(mpp, sub) => {
             if let Some((page, subcode)) = page_request(mpp, sub) {
+                // The first part of a page's list says whether its sub-pages
+                // are files in its folder, where the page's own file holds
+                // the first alone (DOC-2038). The request after it goes when
+                // it has answered, so one sub-page costs one more request.
+                if subcode.is_some_and(|code| !code.is_any()) {
+                    agent.handle(now, Input::FetchSubPages { page, part: PartNumber::FIRST }, out);
+                }
                 agent.handle(now, Input::FetchPage { page, subcode }, out);
             }
         }
