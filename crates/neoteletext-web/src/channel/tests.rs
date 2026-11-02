@@ -56,48 +56,87 @@ fn file_names_are_fixed() {
     assert_eq!(url.as_str(), "https://h.example/ceefax/1FE.t42");
 }
 
-/// REQ-1884: the names of a sub-page's file and a page's catalogue, as the engine reads them today.
+/// REQ-1884, REQ-1885, REQ-1887, REQ-1888 (DEC-2116): a sub-page's file and a
+/// part of its page's list are in a folder named for the page, and the flat
+/// names are no names of a channel's.
 #[test]
-fn a_sub_page_and_a_catalogue_have_files_of_their_own() {
-    // REQ-WEB-019: `NNN-SSSS.t42`, and DOC-2038's `NNN/P.sub`, every sub-code
-    // that names a sub-page accepted (REQ-NUM-002), in capitals.
+fn a_page_folder_holds_its_sub_pages_and_its_list() {
     let page = PageAddress::from_mpp(0x1A0).unwrap();
-    let sub_page = |value| Some(ChannelFile::SubPage { page, subcode: SubCode::new(value) });
-    assert_eq!(ChannelFile::from_name("1A0-0001.t42"), sub_page(0x0001));
-    assert_eq!(ChannelFile::from_name("1A0-3F7E.t42"), sub_page(0x3F7E));
-    assert_eq!(ChannelFile::from_name("1A0-0000.t42"), sub_page(0x0000));
+    let t42 = |value| Some(ChannelFile::SubPage { page, subcode: SubCode::new(value), t42: true });
+    let tti = |value| Some(ChannelFile::SubPage { page, subcode: SubCode::new(value), t42: false });
+    assert_eq!(ChannelFile::from_name("1A0/0001.t42"), t42(0x0001));
+    assert_eq!(ChannelFile::from_name("1A0/3F7E.t42"), t42(0x3F7E));
+    assert_eq!(ChannelFile::from_name("1A0/0000.t42"), t42(0x0000));
+    assert_eq!(ChannelFile::from_name("1A0/0001.tti"), tti(0x0001));
+    assert_eq!(ChannelFile::from_name("1A0/3F7E.tti"), tti(0x3F7E));
     let part = |number| Some(ChannelFile::SubPages { page, part: PartNumber::new(number).unwrap() });
     assert_eq!(ChannelFile::from_name("1A0/0.sub"), part(0));
     assert_eq!(ChannelFile::from_name("1A0/127.sub"), part(127));
     for refused in [
-        "1A0-3F7F.t42",
-        "1A0-0080.t42",
-        "1A0-3f7e.t42",
-        "1A0-001.t42",
+        // The flat names, which are gone (DEC-2116 item 3).
+        "1A0-0001.t42",
+        "1A0-3F7E.t42",
         "1A0-0001.tti",
         "1A0-0001.sub",
-        "1A0_0001.t42",
         "1A0.sub",
+        // 3F7F names no sub-page, and a sub-code has thirteen bits.
+        "1A0/3F7F.t42",
+        "1A0/0080.t42",
+        "1A0/3f7e.t42",
+        "1A0/001.t42",
+        "1A0/00001.t42",
+        "1a0/0001.t42",
+        "1A0/0001.sub",
+        "1A0/0001.ep1",
+        "1A0/index.html",
         "1a0/0.sub",
         "1A0/128.sub",
         "1A0/00.sub",
         "1A0/.sub",
         "1A0/0.SUB",
         "1A0/0/0.sub",
+        "1A0/0001/0002.t42",
         "/0.sub",
+        "900/0001.t42",
     ] {
         assert_eq!(ChannelFile::from_name(refused), None, "{refused}");
     }
     let folder = Url::parse("https://h.example/ceefax/").unwrap();
     for (file, name) in [
-        (ChannelFile::SubPage { page, subcode: SubCode::new(0x3F7E) }, "1A0-3F7E.t42"),
-        (ChannelFile::SubPage { page, subcode: SubCode::new(0x0012) }, "1A0-0012.t42"),
+        (ChannelFile::SubPage { page, subcode: SubCode::new(0x3F7E), t42: true }, "1A0/3F7E.t42"),
+        (ChannelFile::SubPage { page, subcode: SubCode::new(0x0012), t42: false }, "1A0/0012.tti"),
         (ChannelFile::SubPages { page, part: PartNumber::FIRST }, "1A0/0.sub"),
         (ChannelFile::SubPages { page, part: PartNumber::new(127).unwrap() }, "1A0/127.sub"),
     ] {
         let url = file_url(&folder, file).unwrap();
         assert_eq!(url.as_str(), std::format!("https://h.example/ceefax/{name}"));
-        assert_eq!(parse_address(url.as_str()).unwrap().file, Some(file));
+        let read = parse_address(url.as_str()).unwrap();
+        assert_eq!((read.folder.as_str(), read.file), ("https://h.example/ceefax/", Some(file)));
+    }
+}
+
+/// REQ-1885: `602/0101.t42` is a file of the channel above `602/`, and
+/// `other/100.tti` a file of the channel at `other/`. A folder named as a place
+/// holds no channel's other files.
+#[test]
+fn a_file_in_a_page_folder_belongs_to_the_channel_above_it() {
+    let root = parse_address("https://h.example/602/0101.t42").unwrap();
+    assert_eq!(root.folder.as_str(), "https://h.example/");
+    let page = PageAddress::from_mpp(0x602).unwrap();
+    assert_eq!(root.file, Some(ChannelFile::SubPage { page, subcode: SubCode::new(0x0101), t42: true }));
+    let other = parse_address("https://h.example/other/100.tti").unwrap();
+    assert_eq!(other.folder.as_str(), "https://h.example/other/");
+    let nested = parse_address("https://h.example/news/2FA/0.sub").unwrap();
+    assert_eq!(nested.folder.as_str(), "https://h.example/news/");
+    for refused in [
+        "https://h.example/602/100.t42",
+        "https://h.example/2fa/100.tti",
+        "https://h.example/2fa/0101.t42",
+        "https://h.example/602/channel.ttx",
+        "https://h.example/contents/100.tti",
+        "https://h.example/wall/index.t42",
+    ] {
+        assert_eq!(parse_address(refused), Err(ChannelError::NotChannelFile), "{refused}");
     }
 }
 

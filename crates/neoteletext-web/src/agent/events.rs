@@ -59,9 +59,9 @@ pub enum Input<'a> {
     /// Fetch a page of the current service (REQ-WEB-003, REQ-WEB-007).
     /// On a channel, a sub-page of a page whose list last answered
     /// ([`Input::FetchSubPages`]) is fetched from its own file,
-    /// `NNN-SSSS.t42`, and nothing else; any other request asks for the
-    /// page's file, `NNN.tti` or `NNN.t42` (REQ-WEB-019), and so does
-    /// sub-code 3F7F, "any sub-page".
+    /// `NNN/SSSS.t42` or `NNN/SSSS.tti`, and nothing else; any other request
+    /// asks for the page's file, `NNN.tti` or `NNN.t42` (REQ-WEB-019), and so
+    /// does sub-code 3F7F, "any sub-page".
     FetchPage {
         /// The page.
         page: PageAddress,

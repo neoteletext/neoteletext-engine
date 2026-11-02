@@ -64,6 +64,7 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
     pub(super) fn open_channel(&mut self, folder: &Url, via_link: bool) {
         self.leave_channel();
         self.t42_first = false;
+        self.sub_page_t42_first = true;
         // The folder is checked, so its settings' address always joins.
         if let Ok(settings) = channel::file_url(folder, ChannelFile::Settings) {
             self.pending_descriptor = Some((settings, via_link, true));

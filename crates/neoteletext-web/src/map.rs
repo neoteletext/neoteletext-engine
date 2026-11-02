@@ -202,10 +202,10 @@ pub struct MapAddress<'a> {
 
 impl<'a> MapAddress<'a> {
     /// Reads an `http` or `https` address. `<channel>302.tti` and
-    /// `<channel>302.t42` read as `<channel>302`, `<channel>302-0002.t42` as
-    /// `<channel>302/0002`, and a final slash after a place is removed. A
-    /// file only receivers use is refused: a viewer never sees one
-    /// (REQ-1693 item 2).
+    /// `<channel>302.t42` read as `<channel>302`, `<channel>302/0002.t42` and
+    /// `<channel>302/0002.tti` as `<channel>302/0002`, and a final slash after
+    /// a place is removed. A file only receivers use is refused: a viewer
+    /// never sees one (REQ-1693 item 2).
     pub fn read(text: &'a str) -> Result<Self, MapError> {
         Self::read_with(text, false)
     }
@@ -237,7 +237,7 @@ impl<'a> MapAddress<'a> {
         let place = match found.file {
             None => None,
             Some(ChannelFile::Page { page, .. }) => Some(Place::Page { page, subcode: None, parameters: query }),
-            Some(ChannelFile::SubPage { page, subcode }) => {
+            Some(ChannelFile::SubPage { page, subcode, .. }) => {
                 Some(Place::Page { page, subcode: Some(subcode), parameters: query })
             }
             Some(_) if opens_receiver_files => None,

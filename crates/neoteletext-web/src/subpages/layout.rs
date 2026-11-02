@@ -1,7 +1,7 @@
 //! A channel's pages written as its files (REQ-WEB-019, decision E.132;
 //! feature `std`): a page of one sub-page as `NNN.t42`; a page of several
-//! as `NNN.t42` holding its first sub-page, `NNN-SSSS.t42` for each
-//! sub-page and the parts `NNN/P.sub` listing them; and `index.t42` holding first
+//! as `NNN.t42` holding its first sub-page, and in its folder `NNN/SSSS.t42`
+//! for each sub-page and the parts `NNN/P.sub` listing them; and `index.t42` holding first
 //! sub-pages only, so that a channel's opening costs the same at any
 //! number of sub-pages (`STANDARD-LIMITS.md` section 4 items 7 and 8).
 //!
@@ -17,7 +17,10 @@ use std::vec::Vec;
 
 use neoteletext_core::types::{PageAddress, SubCode};
 
-use super::{MAX_BYTES, MAX_ENTRIES, PartNumber, ROWS_PER_PART, Validator, write_entry, write_header};
+use super::{
+    MAX_BYTES, MAX_ENTRIES, MAX_SUBPAGE_FILE, PartNumber, ROWS_PER_PART, SUBCODE_DIGITS, Validator, parse_subcode,
+    write_entry, write_header, write_subcode,
+};
 use crate::bytes::Writer;
 use crate::channel::{self, BUNDLE_FILE, ChannelFile, MAX_FILE_NAME};
 use crate::consts::DEFAULT_PAGE_LIMIT;
@@ -42,11 +45,13 @@ pub enum LayoutError {
     TooMany,
     /// Two sub-pages with one sub-code.
     Duplicate(SubCode),
-    /// A sub-page's T42 is larger than a page response may be
-    /// (REQ-WEB-008), or is not whole packets with valid addresses
-    /// (REQ-WEB-027): the sub-page's sub-code, or `None` for a page laid
-    /// out whole.
+    /// A sub-page's T42 is larger than its file may be (REQ-1904), or is not
+    /// whole packets with valid addresses (REQ-WEB-027): the sub-page's
+    /// sub-code, or `None` for a page laid out whole.
     Content(Option<SubCode>),
+    /// A sub-code that names no sub-page's file, such as 3F7F, on a page whose
+    /// sub-pages are files of their own: a reader would refuse its name.
+    SubCode(SubCode),
     /// The same page laid out twice.
     PageTwice(PageAddress),
 }
@@ -60,6 +65,14 @@ fn name(file: ChannelFile) -> String {
     String::from_utf8_lossy(writer.written()).into_owned()
 }
 
+/// True when a sub-page's file may have this sub-code in its name, by the
+/// reader that will read that name.
+fn names_a_file(subcode: SubCode) -> bool {
+    let mut digits = [0u8; SUBCODE_DIGITS];
+    let mut writer = Writer::new(&mut digits);
+    write_subcode(&mut writer, subcode).is_ok() && parse_subcode(writer.written()).is_some()
+}
+
 /// A page's sub-pages in the page's order, ascending by sub-code (REQ-1890),
 /// whatever order they were given in.
 fn in_page_order<'a, 'b>(sub_pages: &'a [SubPageFile<'b>]) -> Vec<&'a SubPageFile<'b>> {
@@ -69,29 +82,35 @@ fn in_page_order<'a, 'b>(sub_pages: &'a [SubPageFile<'b>]) -> Vec<&'a SubPageFil
 }
 
 /// The files of one page: `NNN.t42` for a page of one sub-page; otherwise
-/// `NNN.t42` holding the first, then each sub-page's `NNN-SSSS.t42` and
-/// the parts of its list `NNN/P.sub`, in the page's order.
+/// `NNN.t42` holding the first, then each sub-page's `NNN/SSSS.t42` and the
+/// parts of its list `NNN/P.sub`, in the page's order (REQ-1887, REQ-1888).
 pub fn page_files(page: PageAddress, sub_pages: &[SubPageFile<'_>]) -> Result<Vec<(String, Vec<u8>)>, LayoutError> {
     let sub_pages = in_page_order(sub_pages);
     let Some(first) = sub_pages.first() else { return Err(LayoutError::Empty) };
     if sub_pages.len() > MAX_ENTRIES {
         return Err(LayoutError::TooMany);
     }
+    // A page of one sub-page is one page file, with a page file's bound.
+    let in_folder = sub_pages.len() > 1;
+    let limit = if in_folder { MAX_SUBPAGE_FILE } else { DEFAULT_PAGE_LIMIT };
     let mut seen = std::collections::BTreeSet::new();
     for sub_page in &sub_pages {
         if !seen.insert(sub_page.subcode) {
             return Err(LayoutError::Duplicate(sub_page.subcode));
         }
-        if sub_page.t42.len() > DEFAULT_PAGE_LIMIT || !channel::is_t42(sub_page.t42) {
+        if in_folder && !names_a_file(sub_page.subcode) {
+            return Err(LayoutError::SubCode(sub_page.subcode));
+        }
+        if sub_page.t42.len() > limit || !channel::is_t42(sub_page.t42) {
             return Err(LayoutError::Content(Some(sub_page.subcode)));
         }
     }
     let mut files = std::vec![(name(ChannelFile::Page { page, t42: true }), first.t42.to_vec())];
-    if sub_pages.len() == 1 {
+    if !in_folder {
         return Ok(files);
     }
     for sub_page in &sub_pages {
-        let file = ChannelFile::SubPage { page, subcode: sub_page.subcode };
+        let file = ChannelFile::SubPage { page, subcode: sub_page.subcode, t42: true };
         files.push((name(file), sub_page.t42.to_vec()));
     }
     let version = Validator::of_page(sub_pages.iter().map(|sub_page| sub_page.t42));

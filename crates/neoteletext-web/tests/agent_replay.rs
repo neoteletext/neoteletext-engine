@@ -1595,7 +1595,8 @@ fn list_reply(list: &[(String, Vec<u8>)], part: usize, validator: &str) -> Reply
 /// REQ-1888 (decisions E.122, DEC-2116): a part of a page's list is asked for
 /// when wanted, conditionally once its validators are held, and then one
 /// sub-page passes the wire when it is asked for, from its own file and
-/// nothing else. A page whose part 0 is missing keeps its page file.
+/// nothing else: keying a sub-code asks for one file. A page whose part 0 is
+/// missing keeps its page file.
 #[test]
 fn a_page_of_8190_sub_pages_is_fetched_one_sub_page_at_a_time() {
     let mut harness = site_harness(Config::default());
@@ -1621,7 +1622,7 @@ fn a_page_of_8190_sub_pages_is_fetched_one_sub_page_at_a_time() {
     let records = harness.take();
     let Rec::Page { source, url, .. } = pages(&records)[0] else { unreachable!() };
     assert_eq!(*source, Source::Page { page, subcode: Some(SubCode::new(0x2345)) });
-    assert_eq!(url, "http://site.example/news/100-2345.t42");
+    assert_eq!(url, "http://site.example/news/100/2345.t42");
     // The part again: conditional, and unchanged.
     harness.replay().reply("site.example:80", Reply::Bytes(response("304 Not Modified", &["ETag: \"c1\""], b"")));
     harness.input(Input::FetchSubPages { page, part: PartNumber::FIRST });
@@ -1629,7 +1630,8 @@ fn a_page_of_8190_sub_pages_is_fetched_one_sub_page_at_a_time() {
     assert!(has_event(&harness.take(), "SubPagesCurrent"));
     let last = harness.replay().requests_to("site.example:80").last().unwrap().clone();
     assert_eq!(header_value(&last, "If-None-Match").as_deref(), Some("\"c1\""));
-    // A sub-page that has gone is not looked for elsewhere.
+    // A sub-page that has gone is not looked for but in its two files.
+    harness.replay().reply("site.example:80", not_found());
     harness.replay().reply("site.example:80", not_found());
     harness.input(Input::FetchPage { page, subcode: Some(SubCode::new(0x0124)) });
     harness.advance(interval);
@@ -1655,9 +1657,10 @@ fn a_page_of_8190_sub_pages_is_fetched_one_sub_page_at_a_time() {
             settings_path().as_str(),
             "/news/index.t42",
             "/news/100/0.sub",
-            "/news/100-2345.t42",
+            "/news/100/2345.t42",
             "/news/100/0.sub",
-            "/news/100-0124.t42",
+            "/news/100/0124.t42",
+            "/news/100/0124.tti",
             "/news/100.tti",
             "/news/200/0.sub",
             "/news/200.tti",
@@ -1696,7 +1699,97 @@ fn showing_some_rows_asks_for_the_parts_they_fall_in_alone() {
     harness.replay().reply("site.example:80", ok("application/octet-stream", &packet()));
     harness.input(Input::FetchPage { page, subcode: Some(SubCode::new(1)) });
     harness.advance(interval);
-    assert_eq!(paths(&mut harness, "site.example:80").last().unwrap(), "/news/100-0001.t42");
+    assert_eq!(paths(&mut harness, "site.example:80").last().unwrap(), "/news/100/0001.t42");
+}
+
+/// REQ-1887, DEC-2116: a page's sub-pages may be TTI files in its folder. The
+/// extension that last answered is tried first, and the result does not change.
+#[test]
+fn a_sub_page_may_be_a_tti_file_in_its_pages_folder() {
+    let mut harness = site_harness(Config::default());
+    harness.replay().reply("site.example:80", not_found());
+    harness.replay().reply("site.example:80", not_found());
+    harness.open_channel("http://site.example/news/");
+    let page = PageAddress::from_mpp(0x100).unwrap();
+    let interval = neoteletext_web::consts::DEFAULT_FETCH_INTERVAL_US;
+    harness.replay().reply("site.example:80", ok("text/plain", b"2\tv\n0001\tv\n0002\tv\n"));
+    harness.input(Input::FetchSubPages { page, part: PartNumber::FIRST });
+    harness.advance(interval);
+    harness.take();
+    harness.replay().reply("site.example:80", not_found());
+    harness.replay().reply("site.example:80", tti_response(&[]));
+    harness.input(Input::FetchPage { page, subcode: Some(SubCode::new(1)) });
+    harness.advance(interval);
+    let records = harness.take();
+    let Rec::Page { url, media, .. } = pages(&records)[0] else { unreachable!() };
+    assert_eq!(url, "http://site.example/news/100/0001.tti");
+    assert_eq!(*media, MediaType::Tti);
+    harness.replay().reply("site.example:80", tti_response(&[]));
+    harness.input(Input::FetchPage { page, subcode: Some(SubCode::new(2)) });
+    harness.advance(interval);
+    assert_eq!(pages(&harness.take()).len(), 1);
+    assert_eq!(
+        paths(&mut harness, "site.example:80")[2..],
+        ["/news/100/0.sub", "/news/100/0001.t42", "/news/100/0001.tti", "/news/100/0002.tti"]
+    );
+}
+
+/// REQ-1904: a sub-page's T42 file at its bound is read, and one packet past
+/// it is abandoned whole.
+#[test]
+fn a_sub_pages_file_has_its_bound() {
+    use neoteletext_web::subpages::MAX_SUBPAGE_FILE;
+    let mut harness = site_harness(Config::default());
+    harness.replay().reply("site.example:80", not_found());
+    harness.replay().reply("site.example:80", not_found());
+    harness.open_channel("http://site.example/news/");
+    let page = PageAddress::from_mpp(0x100).unwrap();
+    let interval = neoteletext_web::consts::DEFAULT_FETCH_INTERVAL_US;
+    harness.replay().reply("site.example:80", ok("text/plain", b"2\tv\n0001\tv\n0002\tv\n"));
+    harness.input(Input::FetchSubPages { page, part: PartNumber::FIRST });
+    harness.advance(interval);
+    harness.take();
+    let packet = packet();
+    let full = packet.repeat(MAX_SUBPAGE_FILE / packet.len());
+    assert_eq!(full.len(), MAX_SUBPAGE_FILE);
+    harness.replay().reply("site.example:80", ok("application/octet-stream", &full));
+    harness.input(Input::FetchPage { page, subcode: Some(SubCode::new(1)) });
+    harness.advance(interval);
+    assert_eq!(pages(&harness.take()).len(), 1);
+    let over = packet.repeat(MAX_SUBPAGE_FILE / packet.len() + 1);
+    harness.replay().reply("site.example:80", ok("application/octet-stream", &over));
+    harness.input(Input::FetchPage { page, subcode: Some(SubCode::new(2)) });
+    harness.advance(interval);
+    let records = harness.take();
+    assert!(pages(&records).is_empty(), "nothing of it is delivered");
+    assert!(has_event(&records, "FetchFailed"));
+}
+
+/// REQ-1896: the file is the truth. A sub-page whose file answers with a
+/// validator other than its list's is used, and a listed sub-page whose files
+/// answer 404 is not found.
+#[test]
+fn a_sub_pages_file_is_the_truth_when_it_disagrees_with_its_list() {
+    let mut harness = site_harness(Config::default());
+    harness.replay().reply("site.example:80", not_found());
+    harness.replay().reply("site.example:80", not_found());
+    harness.open_channel("http://site.example/news/");
+    let page = PageAddress::from_mpp(0x100).unwrap();
+    let interval = neoteletext_web::consts::DEFAULT_FETCH_INTERVAL_US;
+    harness.replay().reply("site.example:80", ok("text/plain", b"2\tlisted\n0001\tlisted\n0002\tlisted\n"));
+    harness.input(Input::FetchSubPages { page, part: PartNumber::FIRST });
+    harness.advance(interval);
+    harness.take();
+    let reply = response("200 OK", &["Content-Type: application/octet-stream", "ETag: \"other\""], &packet());
+    harness.replay().reply("site.example:80", Reply::Bytes(reply));
+    harness.input(Input::FetchPage { page, subcode: Some(SubCode::new(1)) });
+    harness.advance(interval);
+    assert_eq!(pages(&harness.take()).len(), 1, "the file answers, and is used");
+    harness.replay().reply("site.example:80", not_found());
+    harness.replay().reply("site.example:80", not_found());
+    harness.input(Input::FetchPage { page, subcode: Some(SubCode::new(2)) });
+    harness.advance(interval);
+    assert!(has_event(&harness.take(), "PageNotInService"), "listed, and its files say it does not exist");
 }
 
 /// REQ-WEB-027: a part of a list is text; anything else is refused, and the

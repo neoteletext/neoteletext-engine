@@ -68,8 +68,8 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
                 (Purpose::Descriptor { via_link, channel }, url, Method::Get, site)
             } else if let Some(url) = self.front_door.take() {
                 (Purpose::FrontDoor, url, Method::Get, Site::SameService)
-            } else if let Some((page, subcode, t42)) = self.second_try.take() {
-                let Some(request) = self.second_try_request(page, subcode, t42, sink) else { continue };
+            } else if let Some((page, subcode, file)) = self.second_try.take() {
+                let Some(request) = self.second_try_request(page, subcode, file, sink) else { continue };
                 request
             } else if let Some(url) = self.contents.take() {
                 (Purpose::Contents, url, Method::Get, Site::SameService)
@@ -111,25 +111,25 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
         }
     }
 
-    /// The other file of a page whose first answered 404 or 410
-    /// (REQ-WEB-019), without waiting for the rate limit: it is the same
-    /// request, completed. `None` when there is no channel or the address
+    /// The other file of a page or sub-page whose first answered 404 or 410
+    /// (REQ-WEB-019, REQ-1887), without waiting for the rate limit: it is the
+    /// same request, completed. `None` when there is no channel or the address
     /// fails, which is reported.
     fn second_try_request(
         &self,
         page: PageAddress,
         subcode: Option<SubCode>,
-        t42: bool,
+        file: PageFile,
         sink: &mut Sink<'_>,
     ) -> Option<(Purpose, Url, Method, Site)> {
         let folder = self.channel?;
-        match channel::file_url(&folder, ChannelFile::Page { page, t42 }) {
-            Ok(url) => Some((
-                Purpose::Page { page, subcode, file: PageFile::Channel { t42, second: true } },
-                url,
-                Method::Get,
-                Site::SameService,
-            )),
+        let name = match (file, subcode) {
+            (PageFile::SubPage { t42, .. }, Some(subcode)) => ChannelFile::SubPage { page, subcode, t42 },
+            (PageFile::Channel { t42, .. }, _) => ChannelFile::Page { page, t42 },
+            _ => return None,
+        };
+        match channel::file_url(&folder, name) {
+            Ok(url) => Some((Purpose::Page { page, subcode, file }, url, Method::Get, Site::SameService)),
             Err(error) => {
                 event(sink, Event::FetchFailed { page, subcode, failure: Failure::Address(error) });
                 None
@@ -166,7 +166,11 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
         }
         let (address, file) = match (self.channel, sub_page) {
             (Some(folder), Some(subcode)) => {
-                (channel::file_url(&folder, ChannelFile::SubPage { page, subcode }), PageFile::SubPage)
+                let t42 = entry.map_or(self.sub_page_t42_first, |entry| entry.t42);
+                (
+                    channel::file_url(&folder, ChannelFile::SubPage { page, subcode, t42 }),
+                    PageFile::SubPage { t42, second: false },
+                )
             }
             (Some(folder), None) => {
                 // The file that answered last time is asked again,

@@ -40,8 +40,12 @@ open	https://h.example/home/wall/	https://h.example/home/wall
 open	https://h.example/100/	https://h.example/100
 open	https://h.example/home/302.tti	https://h.example/home/302
 open	https://h.example/home/302.t42	https://h.example/home/302
-open	https://h.example/home/302-0002.t42	https://h.example/home/302/0002
+open	https://h.example/home/302/0002.t42	https://h.example/home/302/0002
+open	https://h.example/home/302/0002.tti	https://h.example/home/302/0002
+open	https://h.example/home/2FA/3F7E.t42	https://h.example/home/2FA/3F7E
+open	https://h.example/602/0101.t42	https://h.example/602/0101
 open	https://h.example/home/302.tti?a=1	https://h.example/home/302?a=1
+open	https://h.example/home/302/0002.t42?a=1	https://h.example/home/302/0002?a=1
 open	https://h.example/home/1fe?b=%41&a=1	https://h.example/home/1FE?b=%41&a=1
 
 # Item 5: a parameter's value may be empty.
@@ -73,7 +77,11 @@ refuse	https://h.example/home/302/127.sub	receiver-file
 # Not a channel at all: no final slash, and no place the map lists. The entry
 # file's old name (DEC-1726) is no name of a channel's.
 refuse	https://h.example/home/channel.json	channel
+refuse	https://h.example/home/302-0002.t42	channel
 refuse	https://h.example/home/302.sub	channel
+refuse	https://h.example/home/302/3F7F.t42	channel
+refuse	https://h.example/home/302/0080.t42	channel
+refuse	https://h.example/home/2fa/0101.t42	channel
 refuse	https://h.example/home/302/128.sub	channel
 refuse	https://h.example/home/302/00.sub	channel
 refuse	https://h.example/home/302/100.t42	channel
@@ -115,6 +123,8 @@ answer	/home/302/2	404	-
 answer	/home/302.tti	404	-
 answer	/home/302.t42	404	-
 answer	/home/302-0002.t42	404	-
+answer	/home/302/0002.t42	404	-
+answer	/home/302/0002.tti	404	-
 answer	/home/302.sub	404	-
 answer	/home/302/0.sub	404	-
 answer	/home/contents.txt	404	-

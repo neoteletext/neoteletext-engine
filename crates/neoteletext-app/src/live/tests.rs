@@ -202,7 +202,7 @@ fn an_address_says_where_a_viewer_opens() {
         ("https://a.example/home/302?a=1&b=", at(0x302, SubCode::ANY, "a=1&b=")),
         ("https://a.example/home/?id=7", Opening { page: None, parameters: "id=7".to_owned() }),
         ("https://a.example/home/302.tti", at(0x302, SubCode::ANY, "")),
-        ("https://a.example/home/302-0002.t42", at(0x302, SubCode::new(2), "")),
+        ("https://a.example/home/302/0002.t42", at(0x302, SubCode::new(2), "")),
         ("https://a.example/home/", Opening::default()),
         ("https://a.example/home/contents", Opening::default()),
         ("https://a.example/home/wall", Opening::default()),

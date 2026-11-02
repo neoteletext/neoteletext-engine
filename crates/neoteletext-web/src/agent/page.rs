@@ -17,7 +17,7 @@ use crate::subpages::PartNumber;
 /// The file a page request's validators belong to.
 pub(super) const fn cached_as(file: PageFile) -> Cached {
     match file {
-        PageFile::SubPage => Cached::SubPage,
+        PageFile::SubPage { .. } => Cached::SubPage,
         PageFile::Template | PageFile::Channel { .. } => Cached::Page,
     }
 }
@@ -90,7 +90,7 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
         let status = head.status;
         let body = self.buffers.body.get(..self.fetch.body_len).unwrap_or(&[]);
         let secure = exchange.url.is_secure();
-        let t42 = matches!(file, PageFile::Channel { t42: true, .. } | PageFile::SubPage);
+        let t42 = matches!(file, PageFile::Channel { t42: true, .. } | PageFile::SubPage { t42: true, .. });
         let key = (page, subcode, cached_as(file));
         let missing = status == STATUS_NOT_FOUND || (file != PageFile::Template && status == STATUS_GONE);
         if status == STATUS_NOT_MODIFIED {
@@ -100,10 +100,16 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
             match file {
                 // REQ-WEB-019: `NNN.tti`, then `NNN.t42`, or the
                 // other way round.
-                PageFile::Channel { t42, second: false } => self.second_try = Some((page, subcode, !t42)),
+                PageFile::Channel { t42, second: false } => {
+                    self.second_try = Some((page, subcode, PageFile::Channel { t42: !t42, second: true }));
+                }
+                // REQ-1887: a sub-page's two files, in the same way.
+                PageFile::SubPage { t42, second: false } => {
+                    self.second_try = Some((page, subcode, PageFile::SubPage { t42: !t42, second: true }));
+                }
                 // A sub-page that has gone from its page is not looked
                 // for in the page's own file, which holds the first
-                // sub-page only (REQ-WEB-019).
+                // sub-page only (REQ-1887).
                 _ => event(sink, Event::PageNotInService { page, subcode }),
             }
         } else if status != STATUS_OK {
@@ -117,8 +123,9 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
                         Err(Failure::MediaType)
                     }
                 }
-                PageFile::Channel { t42, .. } => channel_file_media(t42, head.media, body),
-                PageFile::SubPage => channel_file_media(true, head.media, body),
+                PageFile::Channel { t42, .. } | PageFile::SubPage { t42, .. } => {
+                    channel_file_media(t42, head.media, body)
+                }
             };
             match checked {
                 Ok(media) => {
@@ -129,8 +136,10 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
                         secure,
                         bytes: body,
                     }));
-                    if let PageFile::Channel { .. } = file {
-                        self.t42_first = t42;
+                    match file {
+                        PageFile::Channel { .. } => self.t42_first = t42,
+                        PageFile::SubPage { .. } => self.sub_page_t42_first = t42,
+                        PageFile::Template => {}
                     }
                     self.update_cache(now, key, head, t42);
                 }

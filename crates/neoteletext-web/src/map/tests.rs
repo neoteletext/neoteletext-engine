@@ -103,7 +103,13 @@ fn digits_are_normalised_to_capitals_and_parameters_are_left_alone() {
 
 #[test]
 fn a_page_file_name_becomes_its_place() {
-    let cases = [("302.tti", "302"), ("302.t42", "302"), ("302-0002.t42", "302/0002"), ("302.tti?a=1", "302?a=1")];
+    let cases = [
+        ("302.tti", "302"),
+        ("302.t42", "302"),
+        ("302/0002.t42", "302/0002"),
+        ("302/0002.tti", "302/0002"),
+        ("302.tti?a=1", "302?a=1"),
+    ];
     for (given, expected) in cases {
         assert_eq!(canonical(&format!("{CHANNEL}{given}")), Ok(format!("{CHANNEL}{expected}")));
     }

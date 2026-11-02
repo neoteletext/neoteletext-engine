@@ -5,7 +5,9 @@
 use neoteletext_core::types::Instant;
 
 use super::cookies::{cookie_store, store_response_cookies};
-use super::{BOUND_INSTRUCTIONS_LIMIT, Event, Exchange, Failure, Link, Output, Purpose, Sink, UserAgent, event};
+use super::{
+    BOUND_INSTRUCTIONS_LIMIT, Event, Exchange, Failure, Link, Output, PageFile, Purpose, Sink, UserAgent, event,
+};
 use crate::bytes::copy_prefix;
 use crate::consts::STATUS_SUCCESS_FIRST;
 use crate::http::{self, BodyDecoder, HttpError};
@@ -175,6 +177,11 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
             Purpose::Descriptor { .. } => self.config.descriptor_limit,
             // A front door is bounded like a page: a bundled site larger
             // than the page limit publishes page files instead.
+            // REQ-1904: a sub-page's T42 file has a bound of its own. A TTI file
+            // is text of no fixed length, so it has a page file's.
+            Purpose::Page { file: PageFile::SubPage { t42: true, .. }, .. } => {
+                self.config.page_limit.min(crate::subpages::MAX_SUBPAGE_FILE)
+            }
             Purpose::Page { .. } | Purpose::FrontDoor => self.config.page_limit,
             Purpose::Contents => crate::contents::MAX_BYTES,
             Purpose::SubPages { .. } => crate::subpages::MAX_BYTES,

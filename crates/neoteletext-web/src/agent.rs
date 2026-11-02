@@ -72,9 +72,10 @@ enum PageFile {
     /// A channel's page file (REQ-WEB-019): T42 or TTI, and whether it is
     /// the second of the two tried.
     Channel { t42: bool, second: bool },
-    /// A channel's sub-page file, `NNN-SSSS.t42`, of a page whose
-    /// catalogue says its sub-pages are files of their own (REQ-WEB-019).
-    SubPage,
+    /// A channel's sub-page file, `NNN/SSSS.t42` or `NNN/SSSS.tti`, of a page
+    /// whose list says its sub-pages are files of their own (REQ-1887): which
+    /// of the two, and whether it is the second tried.
+    SubPage { t42: bool, second: bool },
 }
 
 /// What a queued request is for.
@@ -99,7 +100,7 @@ struct Queued {
 enum Cached {
     /// The page's own file, or the descriptor's template.
     Page,
-    /// A sub-page's file, `NNN-SSSS.t42`.
+    /// A sub-page's file, `NNN/SSSS.t42` or `NNN/SSSS.tti`.
     SubPage,
     /// A part of the page's list, `NNN/P.sub`.
     SubPages(PartNumber),
@@ -306,8 +307,12 @@ pub struct UserAgent<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES
     /// The page file extension to try first in the channel: the one that
     /// last answered (REQ-WEB-019).
     t42_first: bool,
+    /// The same for a sub-page's file. It starts at T42, unlike a page's,
+    /// because a generator writes sub-pages as T42, so that keying a sub-code
+    /// on a built channel asks for one file (REQ-1887).
+    sub_page_t42_first: bool,
     /// A page whose other file is to be tried next.
-    second_try: Option<(PageAddress, Option<SubCode>, bool)>,
+    second_try: Option<(PageAddress, Option<SubCode>, PageFile)>,
     /// The channel's bundle to fetch after its settings.
     front_door: Option<Url>,
     /// The channel's contents file to fetch.
@@ -412,6 +417,7 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             pending_descriptor: None,
             channel: None,
             t42_first: false,
+            sub_page_t42_first: true,
             second_try: None,
             front_door: None,
             contents: None,

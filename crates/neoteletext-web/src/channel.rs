@@ -18,7 +18,7 @@ use neoteletext_core::types::{PageAddress, SubCode};
 
 use crate::bytes::{Overflow, Writer};
 use crate::map::SUBPAGE_MARK;
-use crate::subpages::PartNumber;
+use crate::subpages::{PartNumber, parse_subcode, write_subcode};
 use crate::url::{FRAGMENT_MARK, QUERY_MARK, Scheme, Url, UrlError};
 
 /// A channel's entry file: its settings, as JSON (REQ-WEB-024). The owner
@@ -37,14 +37,11 @@ pub const TTI_EXTENSION: &str = ".tti";
 pub const T42_EXTENSION: &str = ".t42";
 /// The extension of a part of a page's list of sub-pages (REQ-1888).
 pub const SUBPAGES_EXTENSION: &str = ".sub";
-/// Between a page number and a sub-code in a sub-page's file name,
-/// `NNN-SSSS.t42` (REQ-WEB-019).
-pub const SUBPAGE_SEPARATOR: u8 = b'-';
 /// Between a page's folder and a file in it, the same mark that stands between
 /// a page and a sub-page in an address, so that a file's path is its address
 /// (DEC-2116).
 const PAGE_FOLDER_MARK: u8 = SUBPAGE_MARK;
-/// The longest file name of a channel: `NNN-SSSS.t42` and `contents.txt` are
+/// The longest file name of a channel: `NNN/SSSS.t42` and `contents.txt` are
 /// twelve characters.
 pub const MAX_FILE_NAME: usize = PAGE_DIGITS + 1 + crate::subpages::SUBCODE_DIGITS + T42_EXTENSION.len();
 /// The most segments a folder path may have (REQ-WEB-023).
@@ -94,13 +91,16 @@ pub enum ChannelFile {
         /// The file is T42; otherwise TTI.
         t42: bool,
     },
-    /// `NNN-SSSS.t42`: one sub-page of a page whose sub-pages are files
-    /// of their own, listed by its `NNN.sub`.
+    /// `NNN/SSSS.t42` or `NNN/SSSS.tti`: one sub-page of a page whose
+    /// sub-pages are files of their own in its folder (REQ-1887), so that the
+    /// file's path is the sub-page's address (DEC-2116).
     SubPage {
         /// The page.
         page: PageAddress,
         /// The sub-page.
         subcode: SubCode,
+        /// The file is T42; otherwise TTI.
+        t42: bool,
     },
     /// `NNN/P.sub`: a part of a page's list of sub-pages (REQ-1888).
     SubPages {
@@ -118,9 +118,10 @@ pub enum ChannelFile {
 }
 
 impl ChannelFile {
-    /// Reads a file name: a page file, a sub-page's file or a catalogue,
-    /// written with capital `A` to `F`, or one of the other fixed names.
-    /// `None` for any other name.
+    /// Reads a file name, relative to the channel's folder: a page file, one
+    /// of the other fixed names, or a file in a page's folder, a sub-page's or
+    /// a part of its list, written with capital `A` to `F`. `None` for any
+    /// other name.
     #[must_use]
     pub fn from_name(name: &str) -> Option<Self> {
         match name {
@@ -132,26 +133,25 @@ impl ChannelFile {
         if let Some((folder, file)) = before(name.as_bytes(), PAGE_FOLDER_MARK) {
             return Self::in_page_folder(page_of(folder)?, file);
         }
-        let (digits, t42) = if let Some(digits) = name.strip_suffix(TTI_EXTENSION) {
-            (digits, false)
-        } else {
-            (name.strip_suffix(T42_EXTENSION)?, true)
-        };
-        let digits = digits.as_bytes();
-        match digits.split_at_checked(PAGE_DIGITS) {
-            Some((page, [])) => Some(Self::Page { page: page_of(page)?, t42 }),
-            Some((page, [SUBPAGE_SEPARATOR, code @ ..])) if t42 => {
-                let subcode = crate::subpages::parse_subcode(code)?;
-                Some(Self::SubPage { page: page_of(page)?, subcode })
-            }
-            _ => None,
-        }
+        let (digits, t42) = page_format(name.as_bytes())?;
+        Some(Self::Page { page: page_of(digits)?, t42 })
     }
 
     /// Reads a name inside a page's folder (REQ-1885).
     fn in_page_folder(page: PageAddress, name: &[u8]) -> Option<Self> {
-        let digits = name.strip_suffix(SUBPAGES_EXTENSION.as_bytes())?;
-        Some(Self::SubPages { page, part: PartNumber::parse(digits)? })
+        if let Some(digits) = name.strip_suffix(SUBPAGES_EXTENSION.as_bytes()) {
+            return Some(Self::SubPages { page, part: PartNumber::parse(digits)? });
+        }
+        let (digits, t42) = page_format(name)?;
+        Some(Self::SubPage { page, subcode: parse_subcode(digits)?, t42 })
+    }
+}
+
+/// A name without its page file's extension, and whether that says T42.
+fn page_format(name: &[u8]) -> Option<(&[u8], bool)> {
+    match name.strip_suffix(TTI_EXTENSION.as_bytes()) {
+        Some(digits) => Some((digits, false)),
+        None => Some((name.strip_suffix(T42_EXTENSION.as_bytes())?, true)),
     }
 }
 
@@ -184,11 +184,11 @@ pub fn write_file_name(writer: &mut Writer<'_>, file: ChannelFile) -> Result<(),
             writer.put(&page.ascii())?;
             writer.put(if t42 { T42_EXTENSION } else { TTI_EXTENSION }.as_bytes())
         }
-        ChannelFile::SubPage { page, subcode } => {
+        ChannelFile::SubPage { page, subcode, t42 } => {
             writer.put(&page.ascii())?;
-            writer.byte(SUBPAGE_SEPARATOR)?;
-            crate::subpages::write_subcode(writer, subcode)?;
-            writer.put(T42_EXTENSION.as_bytes())
+            writer.byte(PAGE_FOLDER_MARK)?;
+            write_subcode(writer, subcode)?;
+            writer.put(if t42 { T42_EXTENSION } else { TTI_EXTENSION }.as_bytes())
         }
         ChannelFile::SubPages { page, part } => {
             writer.put(&page.ascii())?;

@@ -68,9 +68,9 @@ fn a_page_of_8190_sub_pages_is_written_as_files_and_read_back() {
     assert_eq!(files["100.t42"], bodies[0], "100.t42 holds the first sub-page");
     assert_eq!(files["index.t42"], bodies[0], "the bundle holds first sub-pages only");
     for (code, body) in codes.iter().zip(&bodies) {
-        let name = std::format!("100-{:04X}.t42", code.value());
+        let name = std::format!("100/{:04X}.t42", code.value());
         assert_eq!(&files[&name], body, "{name}");
-        assert_eq!(ChannelFile::from_name(&name), Some(ChannelFile::SubPage { page, subcode: *code }));
+        assert_eq!(ChannelFile::from_name(&name), Some(ChannelFile::SubPage { page, subcode: *code, t42: true }));
     }
     let version = Validator::of_page(bodies.iter().map(Vec::as_slice));
     let mut read: Vec<Entry<'_>> = Vec::new();
@@ -200,6 +200,20 @@ fn what_cannot_be_laid_out_is_refused() {
     assert_eq!(page_files(address, &[broken]), Err(LayoutError::Content(Some(SubCode::new(1)))));
     let too_many = std::vec![one; MAX_ENTRIES + 1];
     assert_eq!(page_files(address, &too_many), Err(LayoutError::TooMany));
+    // REQ-1904: a sub-page's file a reader would refuse is not written, and a
+    // page of one sub-page has a page file's bound.
+    let packet = &body[..neoteletext_core::consts::PACKET_BYTES];
+    let over = packet.repeat(MAX_SUBPAGE_FILE / packet.len() + 1);
+    let fits = packet.repeat(MAX_SUBPAGE_FILE / packet.len());
+    let two = SubCode::new(2);
+    let full = SubPageFile { t42: &fits, ..one };
+    assert_eq!(page_files(address, &[full, SubPageFile { subcode: two, ..full }]).map(|files| files.len()), Ok(4));
+    let large = SubPageFile { subcode: two, t42: &over, title: "" };
+    assert_eq!(page_files(address, &[one, large]), Err(LayoutError::Content(Some(two))));
+    assert_eq!(page_files(address, &[large]).map(|files| files.len()), Ok(1));
+    // REQ-1884: 3F7F names no file, so a page of several cannot hold it.
+    let any = SubPageFile { subcode: SubCode::ANY, ..one };
+    assert_eq!(page_files(address, &[one, any]), Err(LayoutError::SubCode(SubCode::ANY)));
     let mut channel = ChannelFiles::new();
     channel.add_page(address, &[one]).unwrap();
     assert_eq!(channel.add_page(address, &[one]), Err(LayoutError::PageTwice(address)));
@@ -218,7 +232,7 @@ fn sub_pages_given_out_of_order_are_laid_out_ascending() {
         codes.iter().zip(&bodies).map(|(&subcode, t42)| SubPageFile { subcode, t42, title: "" }).collect();
     let files = page_files(address, &sub_pages).unwrap();
     let names: Vec<&str> = files.iter().map(|(name, _)| name.as_str()).collect();
-    assert_eq!(names, ["100.t42", "100-0001.t42", "100-0002.t42", "100-0003.t42", "100/0.sub"]);
+    assert_eq!(names, ["100.t42", "100/0001.t42", "100/0002.t42", "100/0003.t42", "100/0.sub"]);
     assert_eq!(files[0].1, bodies[1], "the page's file holds the lowest sub-code");
     let part = subpages::read(&files[4].1).unwrap();
     let listed: Vec<u16> = part.entries.flatten().map(|entry| entry.subcode.value()).collect();
