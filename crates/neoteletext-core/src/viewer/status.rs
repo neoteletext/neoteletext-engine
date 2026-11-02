@@ -31,6 +31,11 @@ impl Viewer {
                 *slot = byte;
             }
         };
+        if self.confirming() {
+            write(&mut status, 0, &[ALPHA_YELLOW]);
+            write(&mut status, 1, b"LEAVE?");
+            return status;
+        }
         match self.indicator {
             SecurityIndicator::None => {
                 write(&mut status, 0, b"P");
@@ -62,10 +67,6 @@ impl Viewer {
                 write(&mut status, 0, &[ALPHA_RED]);
                 write(&mut status, 1, &digits);
                 write(&mut status, 5, b"!");
-            }
-            SecurityIndicator::LeavingService => {
-                write(&mut status, 0, &[ALPHA_YELLOW]);
-                write(&mut status, 1, b"LEAVE?");
             }
         }
         status

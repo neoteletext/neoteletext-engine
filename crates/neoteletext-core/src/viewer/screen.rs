@@ -30,7 +30,7 @@ impl Viewer {
             rolling_header: if page.is_none() { Some(*rolling_header) } else { None },
             clock: clock_of(rolling_header, config),
             row24,
-            security_indicator: self.indicator != SecurityIndicator::None,
+            security_indicator: self.indicator != SecurityIndicator::None || self.confirming(),
             mix: self.mix,
             boxed: false,
         };

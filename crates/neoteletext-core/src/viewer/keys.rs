@@ -2,7 +2,7 @@
 //! Fastext, stepping, history and the confirmation of links that leave the
 //! service.
 
-use super::{Action, Key, KeyContext, SecurityIndicator, Viewer, ViewerState};
+use super::{Action, Key, KeyContext, Viewer, ViewerState};
 use crate::acq::PageStore;
 use crate::config::{RevealStyle, StepOrder};
 use crate::level1::Zoom;
@@ -81,12 +81,10 @@ impl Viewer {
             && let Some(target) = links.keys.get(usize::from(waiting)).copied().flatten()
         {
             self.state = ViewerState::Searching;
-            self.indicator = SecurityIndicator::None;
             return Action::FollowService(target);
         }
         // Any other key cancels and restores row 24.
         self.state = ViewerState::Displaying;
-        self.indicator = SecurityIndicator::None;
         Action::None
     }
 
@@ -103,7 +101,6 @@ impl Viewer {
                     Action::FollowService(target)
                 } else if self.state == ViewerState::Displaying {
                     self.state = ViewerState::ConfirmingLink(index);
-                    self.indicator = SecurityIndicator::LeavingService;
                     Action::ConfirmService(target)
                 } else {
                     Action::None

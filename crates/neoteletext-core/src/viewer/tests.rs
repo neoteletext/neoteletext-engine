@@ -241,8 +241,40 @@ fn status_area_shows_each_security_indicator() {
         viewer.status(decoder.store())
     };
     assert_eq!(status(SecurityIndicator::Unencrypted), [ALPHA_RED, b'1', b'0', b'0', b' ', b'!', b' ']);
-    assert_eq!(status(SecurityIndicator::LeavingService), [ALPHA_YELLOW, b'L', b'E', b'A', b'V', b'E', b'?']);
     assert_eq!(&status(SecurityIndicator::None), b"P100   ");
+}
+
+/// REQ-SEC-008, REQ-SEC-024: the question of leaving the service takes the
+/// status area while it is asked, in yellow, and answering it leaves what
+/// is known of the page on screen: cancelled, or told again meanwhile, a
+/// plain-HTTP page keeps its marker. A key that goes nowhere asks nothing.
+#[test]
+fn a_cancelled_question_keeps_the_unencrypted_marker() {
+    let mut slots = std::vec![StoredPage::EMPTY; 2];
+    let decoder = Decoder::new(&mut slots, Config::default());
+    let config = Config::default();
+    let away = LinkTarget { address: page(0x400), subcode: SubCode::ANY, service: Some(1) };
+    let links = PageLinks { keys: [None, None, Some(away), None], index: None };
+    let no = |_| false;
+    let keys = context(&links, decoder.store(), &config, &no);
+    let marked = [ALPHA_RED, b'1', b'0', b'0', b' ', b'!', b' '];
+    let leaving = [ALPHA_YELLOW, b'L', b'E', b'A', b'V', b'E', b'?'];
+
+    let mut viewer = displaying();
+    viewer.set_indicator(SecurityIndicator::Unencrypted);
+    assert_eq!(viewer.status(decoder.store()), marked);
+    assert_eq!(viewer.key(Key::Yellow, &keys), Action::ConfirmService(away));
+    assert_eq!(viewer.status(decoder.store()), leaving);
+    assert_eq!(viewer.key(Key::Red, &keys), Action::None);
+    assert_eq!(viewer.status(decoder.store()), marked, "cancelled, the page on screen is still plain");
+
+    // A plain page that arrives while it is asked shows when it is answered.
+    let mut viewer = displaying();
+    viewer.key(Key::Yellow, &keys);
+    viewer.set_indicator(SecurityIndicator::Unencrypted);
+    assert_eq!(viewer.status(decoder.store()), leaving, "the question stays asked");
+    viewer.key(Key::Red, &keys);
+    assert_eq!(viewer.status(decoder.store()), marked);
 }
 
 /// REQ-NAV-003, REQ-NAV-008, REQ-NAV-012, REQ-SVC-004, decision E.36: the

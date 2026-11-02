@@ -109,8 +109,6 @@ pub enum SecurityIndicator {
     None,
     /// The page on screen came over plain HTTP (REQ-SEC-008).
     Unencrypted,
-    /// Waiting for confirmation of a link to another service.
-    LeavingService,
 }
 
 /// What a key press needs to know about its surroundings.
@@ -224,6 +222,14 @@ impl Viewer {
     /// Sets the security indicator (from the web module's events).
     pub fn set_indicator(&mut self, indicator: SecurityIndicator) {
         self.indicator = indicator;
+    }
+
+    /// A link to another service waits for confirmation, whose question
+    /// takes the status area for as long as it is asked. It lives in the
+    /// state and not in the indicator: the page on screen is the same page
+    /// while it is asked, and what is known of it stands (REQ-SEC-008).
+    const fn confirming(&self) -> bool {
+        matches!(self.state, ViewerState::ConfirmingLink(_))
     }
 
     /// Sets the service the viewer is showing, for history entries.
