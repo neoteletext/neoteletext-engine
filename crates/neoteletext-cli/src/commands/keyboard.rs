@@ -15,6 +15,7 @@ use neoteletext_qrkeyboard::config::{Layout, ScreenConfig};
 use neoteletext_qrkeyboard::net::{self, Incoming, WebSocket};
 use neoteletext_qrkeyboard::qr::{Correction, Matrix};
 use neoteletext_qrkeyboard::screen::{Event as ScreenEvent, Screen};
+use neoteletext_web::consts::PUSH_SUBPROTOCOL;
 use std::time::{Duration, Instant};
 
 /// What the bridge offers in HELLO: it draws no page, no cursor and no
@@ -227,7 +228,7 @@ pub fn keyboard(options: &KeyboardOptions) -> Result<(), Failure> {
     }
     // The channel's bytes end the screen's wait as the relay's do, so one
     // wait serves both sockets (decision E.106).
-    let socket = WebSocket::connect(&url, proxy.as_ref(), Some(screen.waker()))
+    let socket = WebSocket::connect(&url, Some(PUSH_SUBPROTOCOL), proxy.as_ref(), Some(screen.waker()))
         .map_err(|error| (exit::INPUT, format!("{}: {error}", options.channel)))?;
     let mut channel = Channel::open(socket)?;
     loop {

@@ -61,7 +61,7 @@ impl Phone {
         };
         let relay =
             net::parse(resolved.get("relay").and_then(Value::as_str).ok_or(Error::Protocol("a relay address"))?)?;
-        let mut socket = WebSocket::connect(&relay, None, None)?;
+        let mut socket = WebSocket::connect(&relay, None, None, None)?;
         socket.send_text(&Value::object(&[("t", Value::string("join"))]).text())?;
         let deadline = later(PAIRING_TIMEOUT);
         let mut pairing: Option<Pairing> = None;

@@ -76,7 +76,7 @@ fn a_receive_that_may_not_wait_answers_a_ping_and_sees_the_close() {
     let port = listener.local_addr().unwrap().port();
     let (replies, answers) = mpsc::channel();
     std::thread::spawn(move || server(&listener, &replies));
-    let mut socket = WebSocket::connect(&parse(&format!("ws://127.0.0.1:{port}/")).unwrap(), None, None).unwrap();
+    let mut socket = WebSocket::connect(&parse(&format!("ws://127.0.0.1:{port}/")).unwrap(), None, None, None).unwrap();
 
     let started = Instant::now();
     let closed = loop {
@@ -93,4 +93,61 @@ fn a_receive_that_may_not_wait_answers_a_ping_and_sees_the_close() {
     assert_eq!(closed, Some(NORMAL));
     let answered: Vec<u8> = answers.iter().take(2).collect();
     assert_eq!(answered, vec![PONG, CLOSE], "the ping was answered, then the close");
+}
+
+/// The subprotocol a channel's WebSocket asks for (DOC-1794).
+const SUBPROTOCOL: &str = "neottx.7";
+
+/// Accepts one client and answers its upgrade naming `answer` as the
+/// subprotocol; reports what the client offered.
+fn upgrade(listener: &TcpListener, answer: Option<&str>, offered: &mpsc::Sender<Option<String>>) {
+    let (stream, _) = listener.accept().unwrap();
+    let mut reader = BufReader::new(stream.try_clone().unwrap());
+    let mut stream = stream;
+    let (mut key, mut protocol) = (String::new(), None);
+    loop {
+        let mut line = String::new();
+        reader.read_line(&mut line).unwrap();
+        if line == "\r\n" || line.is_empty() {
+            break;
+        }
+        if let Some((name, value)) = line.split_once(':') {
+            if name.eq_ignore_ascii_case("sec-websocket-key") {
+                value.trim().clone_into(&mut key);
+            } else if name.eq_ignore_ascii_case("sec-websocket-protocol") {
+                protocol = Some(value.trim().to_owned());
+            }
+        }
+    }
+    let named = answer.map_or(String::new(), |name| format!("Sec-WebSocket-Protocol: {name}\r\n"));
+    write!(
+        stream,
+        "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n{named}Sec-WebSocket-Accept: {}\r\n\r\n",
+        String::from_utf8_lossy(&accept_for(key.as_bytes()))
+    )
+    .unwrap();
+    offered.send(protocol).unwrap();
+}
+
+/// Connects asking for `asked`, to a server answering `answer`: whether the
+/// client took the answer, and what the server was offered.
+fn connect_asking(asked: Option<&str>, answer: Option<&'static str>) -> (bool, Option<String>) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let (offered, seen) = mpsc::channel();
+    std::thread::spawn(move || upgrade(&listener, answer, &offered));
+    let url = parse(&format!("ws://127.0.0.1:{port}/")).unwrap();
+    let connected = WebSocket::connect(&url, asked, None, None).is_ok();
+    (connected, seen.recv().unwrap())
+}
+
+// REQ-98: a channel refuses any upgrade without its subprotocol, with status
+// 426, and a client refuses an answer that does not name it; the relay takes
+// none.
+#[test]
+fn the_subprotocol_asked_for_is_sent_and_checked() {
+    let named = Some(SUBPROTOCOL.to_owned());
+    assert_eq!(connect_asking(Some(SUBPROTOCOL), Some(SUBPROTOCOL)), (true, named.clone()));
+    assert_eq!(connect_asking(Some(SUBPROTOCOL), None), (false, named), "an answer that does not name it");
+    assert_eq!(connect_asking(None, None), (true, None), "the relay");
 }

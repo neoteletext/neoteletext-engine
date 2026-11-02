@@ -219,7 +219,7 @@ impl Screen {
 
     fn connect(&mut self) -> Result<(), Error> {
         let waker = Waker::new(self.wake_sender.clone(), Wake::Network);
-        let mut socket = WebSocket::connect(&self.socket_address, self.proxy.as_ref(), Some(waker))?;
+        let mut socket = WebSocket::connect(&self.socket_address, None, self.proxy.as_ref(), Some(waker))?;
         let auth = Value::object(&[("t", Value::string("auth")), ("owner", Value::string(&self.owner))]);
         socket.send_text(&auth.text())?;
         self.socket = Some(socket);

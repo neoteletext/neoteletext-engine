@@ -46,20 +46,29 @@ pub struct WebSocket {
 }
 
 impl WebSocket {
-    /// Opens a WebSocket to `url` (`ws` or `wss`). When `waker` is given,
-    /// it is woken each time bytes arrive, and when the connection ends.
+    /// Opens a WebSocket to `url` (`ws` or `wss`), asking for `subprotocol`
+    /// where the far end needs one: a channel does (DOC-1794), the relay
+    /// does not. When `waker` is given, it is woken each time bytes arrive,
+    /// and when the connection ends.
     ///
     /// # Errors
-    /// A network failure or a refused handshake.
-    pub fn connect(url: &Url, proxy: Option<&Proxy>, waker: Option<Waker>) -> Result<Self, Error> {
+    /// A network failure, or a refused handshake: one that does not name the
+    /// subprotocol asked for among them.
+    pub fn connect(
+        url: &Url,
+        subprotocol: Option<&str>,
+        proxy: Option<&Proxy>,
+        waker: Option<Waker>,
+    ) -> Result<Self, Error> {
         let mut stream = Stream::connect(url, proxy)?;
         let mut random = OsRandom;
         let key = ws::new_key(&mut random);
         let mut buffer = vec![0_u8; MAX_HEAD];
         let mut writer = Writer::new(&mut buffer);
-        // The relay is not a channel: the engine names itself (REQ-WEB-031).
+        // The engine names itself: neither end here is a channel's page
+        // viewed (REQ-WEB-031).
         let user_agent = neoteletext_web::user_agent::UserAgentString::default();
-        ws::write_handshake_headers(&mut writer, url, &key, user_agent.as_bytes(), None)
+        ws::write_handshake_headers(&mut writer, url, &key, user_agent.as_bytes(), subprotocol)
             .map_err(|_| Error::Limit("the handshake"))?;
         writer.put(b"\r\n").map_err(|_| Error::Limit("the handshake"))?;
         let length = writer.len();
@@ -86,7 +95,7 @@ impl WebSocket {
         if parsed.status != neoteletext_web::consts::STATUS_SWITCHING_PROTOCOLS {
             return Err(Error::Status(parsed.status));
         }
-        ws::check_handshake(&parsed, &key, None)
+        ws::check_handshake(&parsed, &key, subprotocol)
             .map_err(|_| Error::Protocol("a WebSocket handshake that does not check"))?;
         // Decrypted bytes the handshake's last read left in the TLS
         // connection stay there, and are read before the socket's next.
