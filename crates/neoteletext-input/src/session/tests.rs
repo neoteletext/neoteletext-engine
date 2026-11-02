@@ -315,6 +315,21 @@ fn a_move_to_the_same_dot_is_not_sent_again() {
     assert!(sent_item(&mut session, &move_to(10, (121, 100), 1)).is_some(), "the first move on another page");
 }
 
+// REQ-205, DOC-1922, DOC-1753: SELECT goes only when both sides set it. A
+// receiver that did not is shown the program's answer for the channel's
+// initial page, so it has nothing to say.
+#[test]
+fn select_goes_only_when_both_sides_set_it() {
+    let select = Item::Event(Event::Select(event::Select::new(0x200, 0x3F7F).unwrap(), ""));
+    assert_eq!(sent_item(&mut welcomed(0), &select), None, "agreed by neither side");
+    assert_eq!(sent_item(&mut welcomed(TOUCH_CAP), &select), None, "only another capability agreed");
+    let mut offered_and_not_agreed = Session::new(SELECT_CAP);
+    offered_and_not_agreed.open(0, None, &mut [0; crate::MAX_MESSAGE]).unwrap();
+    offered_and_not_agreed.welcome(VERSION, 0, None).unwrap();
+    assert_eq!(sent_item(&mut offered_and_not_agreed, &select), None, "offered, and the channel did not agree");
+    assert!(sent_item(&mut welcomed(SELECT_CAP), &select).is_some(), "agreed by both");
+}
+
 // REQ-INT-106, decision E.125: COMPOSE and the rest always go, with or
 // without a capability.
 #[test]

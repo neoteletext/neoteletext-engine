@@ -1,11 +1,13 @@
 //! What goes: everything a receiver gives, as sent (DOC-1922,
-//! decision E.125), but HELLO and RESUME, which go once from `open`, a `base` the same as its key, and what touch
-//! adds without the TOUCH capability (REQ-RCH-041, REQ-RCH-042): TOUCH is
-//! not sent, and MOUSE goes as the mouse.
+//! decision E.125), but HELLO and RESUME, which go once from `open`, a
+//! `base` the same as its key, and an event whose capability both sides
+//! did not set (REQ-205): [`needs`] alone says which those are. Without
+//! TOUCH, a device other than the mouse goes as the mouse (REQ-RCH-041,
+//! REQ-RCH-042); nothing else is changed to fit.
 
 use super::SessionOf;
 use crate::caps::TOUCH_CAP;
-use crate::event::{Device, Event, Item, KeyCode};
+use crate::event::{Device, Event, Item, KeyCode, needs};
 
 impl<const KEPT: usize> SessionOf<KEPT> {
     /// `item` as it is sent, or `None`.
@@ -14,7 +16,7 @@ impl<const KEPT: usize> SessionOf<KEPT> {
             Item::Text(text) => return Some(Item::Text(text)),
             Item::Event(event) => event,
         };
-        let touch = self.caps() & TOUCH_CAP != 0;
+        let caps = self.caps();
         let event = match event {
             Event::Key(mut key) => {
                 if key.base.map(KeyCode::Character) == Some(key.key) {
@@ -23,15 +25,14 @@ impl<const KEPT: usize> SessionOf<KEPT> {
                 Event::Key(key)
             }
             Event::Mouse(mut mouse) => {
-                if !touch {
+                if caps & TOUCH_CAP == 0 {
                     mouse.device = Device::Mouse;
                 }
                 Event::Mouse(mouse)
             }
-            Event::Touch(_) if !touch => return None,
             Event::Hello { .. } | Event::Resume(_) => return None,
             other => other,
         };
-        Some(Item::Event(event))
+        (needs(&event) & !caps == 0).then_some(Item::Event(event))
     }
 }

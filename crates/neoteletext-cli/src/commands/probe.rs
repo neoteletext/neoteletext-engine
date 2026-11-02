@@ -182,9 +182,12 @@ mod run {
                 let mut out = [0_u8; neoteletext_input::MAX_MESSAGE];
                 let length =
                     self.input.send(&item, self.clock_ms(), &mut out).map_err(|error| fault(format!("{error:?}")))?;
-                let message = out.get(..length).unwrap_or(&[]);
-                read_message(message, &mut |_| {}).map_err(|error| fault(format!("{error:?}")))?;
-                self.source.send_input(message);
+                // A channel that did not agree SELECT is sent none (DOC-1753).
+                let message = out.get(..length).filter(|message| !message.is_empty());
+                if let Some(message) = message {
+                    read_message(message, &mut |_| {}).map_err(|error| fault(format!("{error:?}")))?;
+                    self.source.send_input(message);
+                }
             }
             let ended = self.until(ENDING_WITHIN, |probe| {
                 probe.denied.is_some() || probe.moved.is_some() || probe.shows(page, shown)

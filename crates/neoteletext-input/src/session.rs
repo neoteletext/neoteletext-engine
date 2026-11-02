@@ -340,8 +340,8 @@ impl<const KEPT: usize> SessionOf<KEPT> {
     /// Encodes `item` into `out` as DOC-1922 and DOC-1943 say, at `now_ms`, and
     /// counts it: everything goes, but a move to the dot of the last one sent
     /// on the page, an event whose
-    /// capability is not agreed (TOUCH; a device other than the mouse goes
-    /// as the mouse), and text or an event over the rate limit, which is
+    /// capability is not agreed (TOUCH, SELECT; a device other than the
+    /// mouse goes as the mouse), and text or an event over the rate limit, which is
     /// cut or dropped. Returns how many bytes to write, 0 for none.
     ///
     /// # Errors
