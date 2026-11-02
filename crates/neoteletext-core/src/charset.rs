@@ -33,7 +33,7 @@ mod mosaics;
 #[rustfmt::skip]
 mod thai_lao;
 
-use crate::consts::{CODE_MASK_7BIT, DIACRITIC_HOOK_ABOVE, DIACRITIC_LOW_LINE, DIACRITIC_NONE};
+use crate::consts::{CODE_MASK_7BIT, DIACRITIC_HOOK_ABOVE, DIACRITIC_LOW_LINE, DIACRITIC_NONE, LATIN_AT_SIGN};
 
 /// A G0 primary character set (EN 300 706 clause 15.6).
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
@@ -403,6 +403,15 @@ pub fn default_second_value(value: u8) -> Option<u8> {
 #[must_use]
 pub fn modified_designation(value: u8) -> Option<(G0Set, G2Set)> {
     designation::modified_designation(value & CODE_MASK_7BIT)
+}
+
+/// What mode 10000 of an X/26 triplet with data value 2/A shows: "@", in
+/// whichever G0 set is designated (EN 300 706 Table 29; Table 35 note 3 and
+/// the same note on Tables 38 to 40, 42, 44 and 46). Most sets hold another
+/// letter at 4/0, so this is Table 35's character and not the set's.
+#[must_use]
+pub const fn at_sign() -> CharRef {
+    CharRef::new(CharSet::G0(G0 { set: G0Set::Latin, national: None }), LATIN_AT_SIGN)
 }
 
 /// Converts a character to Unicode (REQ-CHR-010). Codes outside 0x20 to 0x7F

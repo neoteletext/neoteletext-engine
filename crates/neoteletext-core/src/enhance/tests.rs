@@ -104,6 +104,19 @@ fn planes() {
     assert!(!Plane::Adaptive.sets_colours() && !Plane::Passive.sets_colours());
 }
 
+/// REQ-L25-010: "@" in every G0 set, as at Level 1.5 (REQ-251).
+#[test]
+fn enhancement_at_sign_in_every_g0_set() {
+    use crate::consts::TRIPLET_AT_SIGN_CODE;
+    for value in 0..=u8::MAX {
+        let Some(designation) = crate::charset::designation(value) else { continue };
+        let at = EnhChar::G0 { code: TRIPLET_AT_SIGN_CODE, diacritic: 0, at: true };
+        let (glyph, _) = enhancement_glyph(at, (designation.g0.set, designation.g2), false);
+        let Glyph::Char(character) = glyph else { panic!("designation {value:#04x}") };
+        assert_eq!(to_unicode(character).base, '@', "designation {value:#04x}");
+    }
+}
+
 /// REQ-L25-010, REQ-L25-011, decision E.50: enhancement glyphs.
 #[test]
 fn enhancement_glyphs() {

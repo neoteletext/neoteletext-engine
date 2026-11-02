@@ -13,9 +13,9 @@
 use super::*;
 use crate::charset::{G0Set, G2Set, NationalOption};
 use crate::consts::{
-    MODE_ADDRESS_ROW_0, MODE_COLUMN_PDC, MODE_COLUMN_RESERVED_1, MODE_COLUMN_RESERVED_2, MODE_COLUMN_RESERVED_3,
-    MODE_DIACRITIC_MASK, MODE_FULL_ROW_COLOUR, MODE_G0_NO_DIACRITIC, MODE_G2, MODE_G3_LEVEL_15, MODE_G3_LEVEL_25,
-    MODE_SET_ACTIVE_POSITION, MODE_TERMINATION, MOSAIC_FULL,
+    LATIN_AT_SIGN, MODE_ADDRESS_ROW_0, MODE_COLUMN_PDC, MODE_COLUMN_RESERVED_1, MODE_COLUMN_RESERVED_2,
+    MODE_COLUMN_RESERVED_3, MODE_DIACRITIC_MASK, MODE_FULL_ROW_COLOUR, MODE_G0_NO_DIACRITIC, MODE_G2, MODE_G3_LEVEL_15,
+    MODE_G3_LEVEL_25, MODE_SET_ACTIVE_POSITION, MODE_TERMINATION, MOSAIC_FULL,
 };
 use crate::level1::Cell;
 use crate::trace::{TraceEntry, TraceSink};
@@ -68,6 +68,21 @@ fn character_modes_and_special_cases() {
     assert!(matches!(action, WalkAction::Write(CharRef { set: CharSet::G3, code: 0x51, .. })));
     let (_, action) = walk_transition(start, None, context(false));
     assert_eq!(action, WalkAction::None);
+}
+
+/// REQ-251: Table 29 mode 10000 shows "@" for data value 2/A, and Tables 35,
+/// 38 to 40, 42, 44 and 46 each say so of their own position 2/A, so it is
+/// "@" in every designated set, not code 4/0 of that set.
+#[test]
+fn data_value_2a_is_at_in_every_g0_set() {
+    let start = WalkState::Walking { row: 2, column: 0 };
+    for value in 0..=u8::MAX {
+        let Some(designation) = crate::charset::designation(value) else { continue };
+        let walk = WalkContext { designation, strict_row_setting: false };
+        let (_, action) = walk_transition(start, t(7, MODE_G0_NO_DIACRITIC, TRIPLET_AT_SIGN_CODE), walk);
+        let WalkAction::Write(character) = action else { panic!("designation {value:#04x}") };
+        assert_eq!(crate::charset::to_unicode(character).base, '@', "designation {value:#04x}");
+    }
 }
 
 /// REQ-L15-008, REQ-TST-014: rules (b), (e), (f), (i) and (j).

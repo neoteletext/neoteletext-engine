@@ -4,7 +4,7 @@
 use crate::charset::{CharRef, CharSet, Designation, G0};
 use crate::config::{Config, PresentationLevel};
 use crate::consts::{
-    COLUMNS, DESIGNATION_CODES, DIACRITIC_NONE, LATIN_AT_SIGN, RECEIVER_COLUMNS, ROW_ADDRESS_BASE, ROW_ADDRESS_LAST,
+    COLUMNS, DESIGNATION_CODES, DIACRITIC_NONE, RECEIVER_COLUMNS, ROW_ADDRESS_BASE, ROW_ADDRESS_LAST,
     ROW_ADDRESS_ROW_24, TRIPLET_AT_SIGN_CODE, TRIPLET_FIRST_CHARACTER,
 };
 use crate::level1::{CharSource, Glyph, Grid, Size};
@@ -153,7 +153,7 @@ fn character(function: TripletFunction, context: WalkContext) -> Option<CharRef>
         TripletFunction::G3Character { code, level_15_form: true, .. } => Some(CharRef::new(CharSet::G3, code)),
         TripletFunction::G2Character { code, .. } => Some(CharRef::new(CharSet::G2(context.designation.g2), code)),
         TripletFunction::G0Diacritic { code: TRIPLET_AT_SIGN_CODE, diacritic: DIACRITIC_NONE, .. } => {
-            Some(CharRef::new(g0, LATIN_AT_SIGN))
+            Some(crate::charset::at_sign())
         }
         TripletFunction::G0Diacritic { code, diacritic, .. } => {
             let mut character = CharRef::new(g0, code);

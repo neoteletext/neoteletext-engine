@@ -2,7 +2,7 @@
 //! placed by a triplet shows.
 
 use crate::charset::{self, CharRef, CharSet, G0, G0Set, G2Set, mosaic_pattern};
-use crate::consts::{G1_G0_COLUMNS_FIRST, G1_G0_COLUMNS_LAST, G3_UNDEFINED, LATIN_AT_SIGN, LATIN_G2_UNDEFINED};
+use crate::consts::{G1_G0_COLUMNS_FIRST, G1_G0_COLUMNS_LAST, G3_UNDEFINED, LATIN_G2_UNDEFINED};
 use crate::level1::Glyph;
 
 /// A character written by enhancement data (REQ-L25-010), before its
@@ -28,7 +28,7 @@ pub(super) enum EnhChar {
 pub(super) fn enhancement_glyph(character: EnhChar, sets: (G0Set, G2Set), separated: bool) -> (Glyph, bool) {
     let g0 = CharSet::G0(G0 { set: sets.0, national: None });
     let glyph = match character {
-        EnhChar::G0 { at: true, .. } => Glyph::Char(CharRef::new(g0, LATIN_AT_SIGN)),
+        EnhChar::G0 { at: true, .. } => Glyph::Char(charset::at_sign()),
         EnhChar::G0 { code, diacritic, .. } => {
             let mut character = CharRef::new(g0, code);
             character.diacritic = charset::page_mark(sets.1, diacritic);
