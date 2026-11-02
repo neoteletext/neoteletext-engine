@@ -18,7 +18,7 @@ const SARA_AM: char = '\u{0E33}';
 const NIKHAHIT: char = '\u{0E4D}';
 const SARA_AA: char = '\u{0E32}';
 /// The first Thai digit; Thai digits are written as Western digits, which
-/// the Thai set has (section 7.3).
+/// the Thai set has (DEC-604, REQ-85).
 const THAI_DIGIT_ZERO: char = '\u{0E50}';
 const THAI_DIGITS: core::ops::RangeInclusive<char> = '\u{0E50}'..='\u{0E59}';
 
@@ -150,7 +150,7 @@ fn mark_row(cells: &[(usize, Cell)]) -> Vec<Cell> {
     row
 }
 
-/// The rows of a Thai or Lao page (section 7.5): each line's mark row and
+/// The rows of a Thai or Lao page (DEC-604): each line's mark row and
 /// letter row, a line's lower vowels sharing the next line's mark row
 /// unless a column needs both.
 pub(super) fn marked_rows(lines: Vec<MarkedLine>) -> Vec<Vec<Cell>> {

@@ -17,7 +17,7 @@ pub(super) const THAI_G0: CodeTable = [
 ];
 
 /// Lao G0: the 1990 World System Teletext specification's Figure 33
-/// (p. 173), read from its drawings (section 7.7). Positions the figure
+/// (p. 173), read from its drawings (DEC-604, REQ-85). Positions the figure
 /// leaves unused, and those whose glyph is not yet identified (2/7 drawn
 /// as dots and read as an ellipsis, 5/D "NUL", 6/8 to 6/A, and 7/7, the
 /// ligature ຫຼ, which Unicode has no single code point for), are spaces.
@@ -89,8 +89,8 @@ const MARK_SEQUENCES: [(char, char, char); 53] = [
     ('\u{F015B}', '\u{0ECD}', '\u{0ECB}'),
 ];
 
-/// Columns 5 and 6 of the Thai G2 set: the chip's columns 8 and 9 (section
-/// 7.4). 6/D to 6/F are not yet identified.
+/// Columns 5 and 6 of the Thai G2 set: the chip's columns 8 and 9 (DEC-604,
+/// REQ-85). 6/D to 6/F are not yet identified.
 const THAI_G2_COLUMNS_5_AND_6: [char; 32] = [
     '\u{0E4A}', '\u{0E4B}', '\u{0E4C}', '\u{F0100}', '\u{F0101}', '\u{F0102}', '\u{F0103}', '\u{F0104}', '\u{F0105}', '\u{F0106}', '\u{F0107}', '\u{F0108}', '\u{F0109}', '\u{F010A}', '\u{F010B}', '\u{F010C}', '\u{F010D}', '\u{F010E}', '\u{F010F}', '\u{F0110}', '\u{F0111}', '\u{F0112}', '\u{F0113}', '\u{F0114}', '\u{F0115}', '\u{F0116}', '\u{F0117}', '\u{F0118}', '\u{0E4D}', '\u{0020}', '\u{0020}', '\u{0020}',
 ];
