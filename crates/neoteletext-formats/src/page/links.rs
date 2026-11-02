@@ -4,6 +4,7 @@
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
 
+use neoteletext_core::consts::{CODE_MASK_7BIT, SPACE};
 use neoteletext_core::limits::MAX_URL_LENGTH;
 use neoteletext_core::types::{PageAddress, SubCode};
 
@@ -242,6 +243,14 @@ impl LinkLine {
     #[must_use]
     pub const fn is_web(&self) -> bool {
         self.url.is_web()
+    }
+
+    /// True when the label draws something: a label of nothing, or of
+    /// spaces and the control codes row 24 turns into them, shows no prompt
+    /// (REQ-SEC-024).
+    #[must_use]
+    pub fn has_visible_label(&self) -> bool {
+        self.label.as_bytes().iter().any(|byte| byte & CODE_MASK_7BIT > SPACE)
     }
 }
 

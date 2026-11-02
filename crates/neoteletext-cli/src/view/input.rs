@@ -102,10 +102,9 @@ impl ViewState {
             .unwrap_or_default();
         let confirmed = |service| self.confirmed_services.contains(&service);
         // REQ-SEC-024: links work only while their prompts are on
-        // screen: row 24 drawn, not boxed away, not zoomed off.
-        let row24_shown = !self.grid.boxed_mode
-            && self.viewer.zoom() != neoteletext_core::level1::Zoom::Top
-            && self.grid.cells[24].iter().any(|cell| !cell.glyph.is_blank());
+        // screen: shown whole in row 24, and not zoomed off.
+        let zoomed_off = self.viewer.zoom() == neoteletext_core::level1::Zoom::Top;
+        let prompts_shown = if zoomed_off { Default::default() } else { self.grid.prompts_shown() };
         let key_context = KeyContext {
             links: &links,
             store: session.decoder().store(),
@@ -113,7 +112,7 @@ impl ViewState {
             config: shown.config,
             now: shown.now,
             confirmed: &confirmed,
-            row24_shown,
+            prompts_shown,
         };
         self.action = self.viewer.key(key, &key_context);
         if !matches!(self.action, Action::ConfirmService(_)) {

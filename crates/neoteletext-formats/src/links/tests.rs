@@ -24,6 +24,33 @@ fn page(address: PageAddress) -> Destination<'static> {
     Destination::Page { address, subcode: None, service: None }
 }
 
+/// REQ-SEC-024: the colours a receiver draws its prompts in are the colours
+/// the engine's test of a shown prompt looks for.
+#[test]
+fn the_prompts_are_drawn_in_the_colours_they_are_looked_for_in() {
+    use crate::encode::key_colour;
+    use crate::page::LinkKey;
+    use neoteletext_core::consts::FASTEXT_COLOURS;
+    assert_eq!([LinkKey::Red, LinkKey::Green, LinkKey::Yellow, LinkKey::Cyan].map(key_colour), FASTEXT_COLOURS);
+}
+
+/// REQ-SEC-024: a coloured key with a label that draws nothing has no link,
+/// so it cannot follow what nothing shows, the mark of leaving the service
+/// included. Index shows no prompt of its own.
+#[test]
+fn a_key_with_a_blank_label_has_no_link() {
+    let tti = b"PN,10000\r\nOL,1,TEXT\r\nLN,R,101,Shown\r\nLN,G,102,\r\nLN,Y,weather:400,   \r\nLN,C,104,\x01\x02\r\nLN,I,100,\r\n";
+    read(tti, |file| {
+        let links = receiver_links(file, &SERVICES, false).unwrap();
+        let [red, green, yellow, cyan, index] = links.keys;
+        assert!(red.is_some(), "a label shown");
+        assert_eq!((green, yellow, cyan), (None, None, None), "nothing shown, nothing followed");
+        assert!(index.is_some());
+        assert!(links.row.codes[10..].iter().all(|&code| code == SPACE), "no attribute and no mark for them");
+        assert_eq!(links.row.marks.as_slice(), []);
+    });
+}
+
 /// REQ-NAV-011 and Appendix E: each key's destination, and the row a
 /// receiver draws, in the key's colour, with the mark for leaving.
 #[test]

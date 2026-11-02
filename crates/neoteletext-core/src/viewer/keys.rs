@@ -14,7 +14,7 @@ impl Viewer {
     /// (from X/27/0 or the TTI Link Extension); `confirmed` says whether
     /// another service's origin has been confirmed this session.
     pub fn key(&mut self, key: Key, context: &KeyContext<'_>) -> Action {
-        let KeyContext { links, store, initial, config, now, confirmed, row24_shown } = *context;
+        let KeyContext { links, store, initial, config, now, confirmed, prompts_shown } = *context;
         if let ViewerState::ConfirmingLink(waiting) = self.state {
             return self.answer_confirmation(key, waiting, links);
         }
@@ -53,8 +53,14 @@ impl Viewer {
             _ if !matches!(self.state, ViewerState::Displaying | ViewerState::Searching) => Action::None,
             // REQ-SEC-024: a link may be followed only while its prompt is
             // shown whole in row 24.
-            Key::Red | Key::Green | Key::Yellow | Key::Cyan if !row24_shown => Action::None,
-            Key::Red | Key::Green | Key::Yellow | Key::Cyan => self.follow_colour_link(key, links, confirmed),
+            Key::Red | Key::Green | Key::Yellow | Key::Cyan => {
+                let index = colour_index(key).unwrap_or(0);
+                if prompts_shown.get(usize::from(index)).copied().unwrap_or(false) {
+                    self.follow_colour_link(key, links, confirmed)
+                } else {
+                    Action::None
+                }
+            }
             Key::Index => match links.index {
                 Some(target) if target.service.is_none() => self.select(target.address, target.subcode, true),
                 _ => self.select(initial, SubCode::ANY, true),

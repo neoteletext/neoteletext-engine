@@ -37,7 +37,7 @@ fn digit_entry_requests_a_page() {
         config: &config,
         now: Instant(0),
         confirmed: &no,
-        row24_shown: true,
+        prompts_shown: [true; 4],
     };
     assert_eq!(viewer.key(Key::Digit(2), &context), Action::None);
     assert_eq!(viewer.state(), ViewerState::Entering1);
@@ -67,7 +67,7 @@ fn other_service_links_need_confirmation() {
         config: &config,
         now: Instant(0),
         confirmed: &no,
-        row24_shown: true,
+        prompts_shown: [true; 4],
     };
     let action = viewer.key(Key::Yellow, &context);
     assert_eq!(action, Action::ConfirmService(target));
@@ -81,7 +81,7 @@ fn other_service_links_need_confirmation() {
     assert_eq!(viewer.key(Key::Red, &context), Action::None);
     assert_eq!(viewer.state(), ViewerState::Displaying);
     // REQ-SEC-024: with row 24 off screen the coloured keys do nothing.
-    let hidden = KeyContext { row24_shown: false, ..context };
+    let hidden = KeyContext { prompts_shown: [false; 4], ..context };
     assert_eq!(viewer.key(Key::Yellow, &hidden), Action::None);
     assert_eq!(viewer.state(), ViewerState::Displaying);
 }
@@ -104,7 +104,7 @@ fn hold_reveal_and_reveal_clearing() {
         config: &config,
         now: Instant(0),
         confirmed: &no,
-        row24_shown: true,
+        prompts_shown: [true; 4],
     };
     viewer.key(Key::Reveal, &context);
     assert!(viewer.reveal(Instant(0)));
@@ -163,7 +163,7 @@ fn context<'a>(
     config: &'a Config,
     confirmed: &'a dyn Fn(u8) -> bool,
 ) -> KeyContext<'a> {
-    KeyContext { links, store, initial: page(0x100), config, now: Instant(0), confirmed, row24_shown: true }
+    KeyContext { links, store, initial: page(0x100), config, now: Instant(0), confirmed, prompts_shown: [true; 4] }
 }
 
 /// REQ-NAV-007, REQ-FSM-005: reveal, mix and zoom are viewer settings that
@@ -275,6 +275,23 @@ fn a_cancelled_question_keeps_the_unencrypted_marker() {
     assert_eq!(viewer.status(decoder.store()), leaving, "the question stays asked");
     viewer.key(Key::Red, &keys);
     assert_eq!(viewer.status(decoder.store()), marked);
+}
+
+/// REQ-SEC-024: a coloured key whose prompt is not shown does nothing,
+/// while the others go on working.
+#[test]
+fn a_key_needs_its_own_prompt_shown() {
+    let mut slots = std::vec![StoredPage::EMPTY; 2];
+    let decoder = Decoder::new(&mut slots, Config::default());
+    let config = Config::default();
+    let here = |mpp| Some(LinkTarget { address: page(mpp), subcode: SubCode::ANY, service: None });
+    let links = PageLinks { keys: [here(0x200), here(0x300), None, None], index: None };
+    let no = |_| false;
+    let keys =
+        KeyContext { prompts_shown: [false, true, false, false], ..context(&links, decoder.store(), &config, &no) };
+    let mut viewer = displaying();
+    assert_eq!(viewer.key(Key::Red, &keys), Action::None);
+    assert_eq!(viewer.key(Key::Green, &keys), Action::Request(page(0x300), SubCode::ANY));
 }
 
 /// REQ-NAV-003, REQ-NAV-008, REQ-NAV-012, REQ-SVC-004, decision E.36: the

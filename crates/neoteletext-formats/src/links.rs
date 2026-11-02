@@ -124,7 +124,9 @@ pub fn receiver_links<'a, S: AsRef<str>>(page: &'a PageFile, services: &[S], web
         return None;
     }
     let mut keys = [None; KEYS_WITH_INDEX];
-    for line in page.links.as_slice() {
+    // REQ-SEC-024: a coloured key with no label shows no prompt, so it has
+    // no link, whatever its target. Index shows none of its own.
+    for line in page.links.as_slice().iter().filter(|line| !line.key.is_coloured() || line.has_visible_label()) {
         if let Some(slot) = keys.get_mut(key_place(line.key)) {
             *slot = resolve_parts(
                 line.service.as_bytes(),

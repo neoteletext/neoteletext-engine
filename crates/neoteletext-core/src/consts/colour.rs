@@ -74,3 +74,11 @@ pub const ADJACENT_CLUT_FLIP: u8 = 1 << CLUT_SHIFT;
 /// the 40 of the page, then 32 that are never shown, so that an object
 /// reaching past the page still has its place in the order of Annex A.8.
 pub const ADDRESS_COLUMNS: usize = 72;
+
+/// The coloured keys of Fastext.
+pub const FASTEXT_KEYS: usize = 4;
+/// The colour of each coloured key and of its prompt in row 24, in the
+/// order red, green, yellow, cyan (REQ-NAV-011; EN 300 706 clause 12.2.2
+/// names the keys by these four).
+pub const FASTEXT_COLOURS: [u8; FASTEXT_KEYS] =
+    [COLOUR_RED_BIT, COLOUR_GREEN_BIT, COLOUR_RED_BIT | COLOUR_GREEN_BIT, COLOUR_GREEN_BIT | COLOUR_BLUE_BIT];

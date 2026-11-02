@@ -312,7 +312,7 @@ fn a_page_not_following_the_sub_code_rules_keeps_its_latest_version() {
             config: &config,
             now: Instant(0),
             confirmed: &no,
-            row24_shown: true,
+            prompts_shown: [true; 4],
         };
         assert_eq!(viewer.key(Key::NextSubPage, &context), Action::None);
     });
@@ -466,7 +466,7 @@ fn a_page_of_8190_sub_pages_is_held_and_stepped() {
             config: &config,
             now: Instant(0),
             confirmed: &no,
-            row24_shown: true,
+            prompts_shown: [true; 4],
         };
         // From the rotating display, the latest (3F7E) steps on to the first.
         assert_eq!(viewer.key(Key::NextSubPage, &context), Action::Request(address(0x100), SubCode::new(0x0001)));

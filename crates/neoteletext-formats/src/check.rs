@@ -43,6 +43,9 @@ pub enum Problem {
     LabelTooLong,
     /// A label with characters the page's G0 set cannot show.
     LabelCharacters,
+    /// A coloured key's label that draws nothing, so the key has no link
+    /// (REQ-SEC-024).
+    LabelBlank,
     /// The withdrawn `TF` line (decision E.111).
     WithdrawnCommand,
     /// A `CU` line that could not be read (REQ-INT-006).
@@ -146,6 +149,9 @@ fn check_label(link: &LinkLine, report: &mut dyn FnMut(Severity, Problem, u32)) 
     }
     if link.label.as_bytes().iter().any(|byte| !(PRINTABLE_FIRST..=PRINTABLE_LAST).contains(byte)) {
         report(Severity::Error, Problem::LabelCharacters, link.line);
+    }
+    if link.key.is_coloured() && !link.has_visible_label() {
+        report(Severity::Error, Problem::LabelBlank, link.line);
     }
 }
 

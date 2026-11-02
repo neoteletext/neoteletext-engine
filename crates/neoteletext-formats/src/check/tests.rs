@@ -84,6 +84,14 @@ fn link_errors() {
     );
 }
 
+/// REQ-SEC-024: a coloured key's blank label is reported, as the key has no
+/// link; Index shows no prompt, so its label may be empty.
+#[test]
+fn a_blank_label_is_an_error() {
+    let found = check(b"PN,10000\nOL,1,101 102 103\nLN,R,101,\nLN,G,102,   \nLN,Y,103,c\nLN,I,100,\n");
+    assert_eq!(found, [(Severity::Error, Problem::LabelBlank, 3), (Severity::Error, Problem::LabelBlank, 4)]);
+}
+
 #[test]
 fn hidden_row_24_content() {
     let found = check(b"PN,10000\nOL,1,101\nOL,24,Old prompts\nLN,R,101,a\n");

@@ -4,7 +4,7 @@
 
 use crate::acq::{EnhancementLookup, MagazineData, PageStore};
 use crate::config::Config;
-use crate::consts::HEADER_DISPLAY_BYTES;
+use crate::consts::{FASTEXT_KEYS, HEADER_DISPLAY_BYTES};
 use crate::level1::Zoom;
 use crate::nav::{History, HistoryEntry, LinkTarget, PageEntry, PageLinks};
 use crate::types::{Instant, PageAddress, SubCode};
@@ -126,9 +126,10 @@ pub struct KeyContext<'a> {
     pub now: Instant,
     /// Whether another service's origin was confirmed this session.
     pub confirmed: &'a dyn Fn(u8) -> bool,
-    /// Row 24 is on screen with the link prompts. When it is not, the
-    /// coloured keys do nothing (REQ-SEC-024).
-    pub row24_shown: bool,
+    /// Which of the coloured keys' prompts are on screen, in the order red,
+    /// green, yellow, cyan ([`Grid::prompts_shown`](crate::level1::Grid::prompts_shown)):
+    /// a key whose prompt is not does nothing (REQ-SEC-024).
+    pub prompts_shown: [bool; FASTEXT_KEYS],
 }
 
 /// What composing the screen needs besides the page.

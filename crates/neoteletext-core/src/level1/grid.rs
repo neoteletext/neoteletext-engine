@@ -3,7 +3,10 @@
 use super::Cell;
 use crate::charset::{self, Designation, G0};
 use crate::colour::{ColourIndex, ColourMap};
-use crate::consts::{CLOCK_BYTES, COLOUR_BLACK, COLUMNS, HEADER_DISPLAY_BYTES, ROWS, SPACE, STATUS_COLUMNS};
+use crate::consts::{
+    CLOCK_BYTES, COLOUR_BLACK, COLUMNS, FASTEXT_COLOURS, FASTEXT_KEYS, HEADER_DISPLAY_BYTES, ROWS, SPACE,
+    STATUS_COLUMNS,
+};
 
 /// The decoded page (REQ-L1-001): 25 rows by 40 columns, plus page-wide
 /// display state. It is the core's primary output; every renderer works
@@ -41,6 +44,23 @@ const DEFAULT_DESIGNATION: Designation = Designation {
 };
 
 impl Grid {
+    /// Which of the coloured keys' prompts row 24 shows whole, in the order
+    /// red, green, yellow, cyan (REQ-SEC-024, DEC-2115). A key's prompt is
+    /// the row's cells in the key's colour that draw something: at least
+    /// one, and every one of them steady, not concealed, and not drawn on
+    /// its own colour. So a prompt a page hides, flashes or draws in part
+    /// is no prompt, and neither is a colour the row does not use. Nothing
+    /// shows while only boxed areas do. The one test of `neottx` and the
+    /// browser.
+    #[must_use]
+    pub fn prompts_shown(&self) -> [bool; FASTEXT_KEYS] {
+        let row = self.cells.last().filter(|_| !self.boxed_mode).map_or(&[][..], |row| &row[..]);
+        FASTEXT_COLOURS.map(|colour| {
+            let mut drawn = row.iter().filter(|cell| cell.foreground == colour && !cell.glyph.is_blank()).peekable();
+            drawn.peek().is_some() && drawn.all(|cell| !cell.conceal && !cell.flash && cell.background != colour)
+        })
+    }
+
     /// An empty grid.
     pub const EMPTY: Self = Self::empty();
 

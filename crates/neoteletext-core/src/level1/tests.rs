@@ -442,3 +442,40 @@ fn double_height_takes_its_top_half_and_is_normal_on_the_last_rows() {
         assert!(!grid.row_has_double_height(row), "row {row}");
     }
 }
+
+/// A grid whose row 24 has one prompt in `colour`, each of its cells as
+/// `paint` leaves it, and no other cell drawn.
+fn hostile_row(colour: u8, paint: fn(&mut Cell)) -> Grid {
+    let mut grid = Grid::EMPTY;
+    for cell in grid.cells[24].iter_mut().skip(1).take(4) {
+        cell.foreground = colour;
+        // Every sextant of a block mosaic (REQ-CHR-005).
+        cell.glyph = Glyph::Mosaic { pattern: 0b11_1111, separated: false };
+        paint(cell);
+    }
+    grid
+}
+
+/// REQ-SEC-024, DEC-2115: a prompt counts only when it can be read whole.
+/// A page that hides, conceals, flashes, partly draws or paints its prompt
+/// on its own colour leaves the key dead, and a key whose colour the row
+/// does not use is dead while the others work.
+#[test]
+fn only_a_prompt_shown_whole_keeps_its_key() {
+    use crate::consts::{COLOUR_GREEN_BIT, COLOUR_RED_BIT};
+    assert_eq!(Grid::EMPTY.prompts_shown(), [false; 4], "a row of nothing");
+    assert_eq!(hostile_row(COLOUR_RED_BIT, |_| {}).prompts_shown(), [true, false, false, false], "red alone");
+    let hidden = |paint: fn(&mut Cell)| hostile_row(COLOUR_GREEN_BIT, paint).prompts_shown();
+    assert_eq!(hidden(|cell| cell.conceal = true), [false; 4], "concealed");
+    assert_eq!(hidden(|cell| cell.flash = true), [false; 4], "flashing");
+    assert_eq!(hidden(|cell| cell.background = COLOUR_GREEN_BIT), [false; 4], "drawn on its own colour");
+    assert_eq!(hostile_row(COLOUR_BLACK, |_| {}).prompts_shown(), [false; 4], "black on black");
+    assert_eq!(hostile_row(COLOUR_WHITE, |_| {}).prompts_shown(), [false; 4], "in no key's colour");
+    let mut partly = hostile_row(COLOUR_GREEN_BIT, |_| {});
+    assert_eq!(partly.prompts_shown(), [false, true, false, false]);
+    partly.cells[24][3].conceal = true;
+    assert_eq!(partly.prompts_shown(), [false; 4], "partly concealed");
+    let mut boxed = hostile_row(COLOUR_GREEN_BIT, |_| {});
+    boxed.boxed_mode = true;
+    assert_eq!(boxed.prompts_shown(), [false; 4], "only boxed areas show");
+}
