@@ -82,13 +82,16 @@ while IFS='|' read -r target crates mode toolchain extra; do
     [ -z "$target" ] && continue
     row=$((row + 1))
     log="target/build-targets/$row.$target.$mode.log"
+    # A row that cannot run fails, as gates.md says of any step.
     if ! rustup toolchain list | grep -q "^$toolchain"; then
-        printf '%-32s %-6s %s\n' "$target" "$mode" "SKIPPED: toolchain $toolchain is not installed"
+        printf '%-32s %-6s %s\n' "$target" "$mode" "FAILED: toolchain $toolchain is not installed; rustup or espup installs it"
+        failures=$((failures + 1))
         continue
     fi
     runner_variable="CARGO_TARGET_$(tr 'a-z.-' 'A-Z__' <<<"$target")_RUNNER"
     if [ "$mode" = test ] && ! command -v "${!runner_variable%% *}" >/dev/null; then
-        printf '%-32s %-6s %s\n' "$target" "$mode" "SKIPPED: ${!runner_variable%% *} is not installed"
+        printf '%-32s %-6s %s\n' "$target" "$mode" "FAILED: ${!runner_variable%% *} is not installed; the host's package manager installs qemu-user"
+        failures=$((failures + 1))
         continue
     fi
     # shellcheck disable=SC2086 # the crate list and flags are split on purpose

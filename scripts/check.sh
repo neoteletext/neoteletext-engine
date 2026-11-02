@@ -15,7 +15,8 @@
 #                            the x86_64 Linux tests, every target
 #                            (scripts/build-targets.sh), size, coverage and
 #                            fuzzing (NEOTELETEXT_FUZZ_SECONDS each): a push
-#                            to main
+#                            to main. The tools scripts/tools.sh pins are
+#                            refused, here and on the host, before it starts
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -25,6 +26,23 @@ linux_host="${NEOTELETEXT_REMOTE:-foundintelquiet4060}"
 readonly CHECKED_PATHS=(.)
 
 . scripts/gate.sh
+
+. scripts/tools.sh
+
+# The full gate's tools, here and on the Linux host: a missing one fails before
+# anything long starts, not an hour in. The host's copy of the repository has a
+# tools/ of its own, which the copy to it leaves alone.
+check_full_tools() {
+    local missing
+    missing="$(tools_out_of_date)"
+    [[ -z "$missing" ]] || fail "tools missing or at another version here; run scripts/tools.sh to install them:
+$missing"
+    need_host
+    rsync --relative --no-times --checksum scripts/tools.sh rust-toolchain.toml "$linux_host:neoteletext-check/"
+    missing="$(ssh "$linux_host" '. ~/.cargo/env && cd neoteletext-check && . scripts/tools.sh && tools_out_of_date')"
+    [[ -z "$missing" ]] || fail "tools missing or at another version on $linux_host; run scripts/tools.sh in ~/neoteletext-check there to install them:
+$missing"
+}
 
 # DEVELOPMENT.md section 6 (REQ-SEC-003): every crate root reads input from
 # outside its process, and each carries one no-panic lint list, the same
@@ -125,7 +143,7 @@ linux_steps() {
     # Compared by content and written with the host's own times: with this
     # machine's times kept, a file edited here before the host's last build
     # looks older than that build, and Cargo reuses it.
-    rsync -a --no-times --checksum --delete --exclude target --exclude .git --exclude tmp --exclude tletxt.com \
+    rsync -a --no-times --checksum --delete --exclude target --exclude /tools --exclude .git --exclude tmp --exclude tletxt.com \
         --exclude fuzz/corpus --exclude fuzz/artifacts ./ "$linux_host:neoteletext-check/"
     # The Opus oracle's streams seed the fuzzer, which reaches the decoder's deep paths only
     # from real packets; the corpus itself is the host's and is never sent back.
@@ -142,41 +160,25 @@ linux_steps() {
     step "linked Cortex-M0 test image on $linux_host: size and symbols (REQ-GEN-009, REQ-GEN-019)"
     ssh "$linux_host" 'cd neoteletext-check && . ~/.cargo/env && cargo xtask size'
 
-    if ! command -v cargo-deny >/dev/null 2>&1; then
-        if ssh "$linux_host" '. ~/.cargo/env && command -v cargo-deny >/dev/null'; then
-            step "cargo-deny on $linux_host: licences and advisories (REQ-GEN-017, REQ-SEC-014)"
-            ssh "$linux_host" 'cd neoteletext-check && . ~/.cargo/env && cargo deny check 2>&1 | tail -1; exit ${PIPESTATUS[0]}'
-        else
-            step "cargo-deny not installed here or on $linux_host: licence and advisory checks SKIPPED"
-        fi
-    fi
-
-    if ssh "$linux_host" '. ~/.cargo/env && command -v cargo-llvm-cov >/dev/null'; then
-        step "core line coverage on $linux_host, at least 90% (REQ-TST-041)"
-        ssh "$linux_host" 'cd neoteletext-check && . ~/.cargo/env && \
-            cargo llvm-cov -p neoteletext-core --summary-only --fail-under-lines 90 2>&1 | grep -E "^TOTAL"; \
-            exit ${PIPESTATUS[0]}'
-    else
-        step "cargo-llvm-cov not installed on $linux_host: coverage SKIPPED"
-    fi
+    step "core line coverage on $linux_host, at least 90% (REQ-TST-041)"
+    ssh "$linux_host" 'cd neoteletext-check && . ~/.cargo/env && . scripts/tools.sh && \
+        cargo llvm-cov -p neoteletext-core --summary-only --fail-under-lines 90 > coverage.log 2>&1 \
+            || { tail -40 coverage.log; exit 1; }; \
+        grep -E "^TOTAL" coverage.log'
 
     # REQ-TST-040: every target for a fixed time on each change, after
     # replaying every input that has ever found a fault.
     seconds="${NEOTELETEXT_FUZZ_SECONDS:-20}"
-    if ssh "$linux_host" '. ~/.cargo/env && command -v cargo-fuzz >/dev/null'; then
-        step "fuzzing on $linux_host, $seconds seconds per target (REQ-TST-040)"
-        ssh "$linux_host" "cd neoteletext-check/fuzz && . ~/.cargo/env && \
-            cargo +nightly clippy --quiet -- -D warnings && \
-            for target in \$(cargo +nightly fuzz list); do \
-                mkdir -p corpus/\$target regressions/\$target && \
-                cargo +nightly fuzz run \$target corpus/\$target regressions/\$target -- \
-                    -max_total_time=$seconds -timeout=10 -rss_limit_mb=2048 > fuzz.log 2>&1 \
-                    || { tail -40 fuzz.log; exit 1; }; \
-                echo \"\$target: \$(tail -1 fuzz.log)\"; \
-            done"
-    else
-        step "cargo-fuzz not installed on $linux_host: fuzzing SKIPPED"
-    fi
+    step "fuzzing on $linux_host, $seconds seconds per target (REQ-TST-040)"
+    ssh "$linux_host" "cd neoteletext-check && . ~/.cargo/env && . scripts/tools.sh && cd fuzz && \
+        cargo +$FUZZ_NIGHTLY clippy --quiet -- -D warnings && \
+        for target in \$(cargo +$FUZZ_NIGHTLY fuzz list); do \
+            mkdir -p corpus/\$target regressions/\$target && \
+            cargo +$FUZZ_NIGHTLY fuzz run \$target corpus/\$target regressions/\$target -- \
+                -max_total_time=$seconds -timeout=10 -rss_limit_mb=2048 > fuzz.log 2>&1 \
+                || { tail -40 fuzz.log; exit 1; }; \
+            echo \"\$target: \$(tail -1 fuzz.log)\"; \
+        done"
 }
 
 full_steps() {
@@ -204,19 +206,13 @@ full_steps() {
         cargo test --workspace --all-features --quiet --target x86_64-apple-darwin
     fi
 
-    # REQ-SEC-014: a dependency nothing uses is supply-chain risk for
-    # nothing. cargo-machete is pinned at 0.9.2 (installed with --locked).
-    if command -v cargo-machete >/dev/null 2>&1; then
-        step "cargo-machete: no unused dependencies (REQ-SEC-014)"
-        cargo machete
-    else
-        step "cargo-machete not installed: unused dependency check SKIPPED"
-    fi
+    # REQ-SEC-014: a dependency nothing uses is supply-chain risk for nothing.
+    step "cargo-machete: no unused dependencies (REQ-SEC-014)"
+    cargo machete
 
-    if command -v cargo-deny >/dev/null 2>&1; then
-        step "cargo-deny: licences and advisories (REQ-GEN-017, REQ-SEC-014)"
-        cargo deny check
-    fi
+    step "cargo-deny: licences and advisories (REQ-GEN-017, REQ-SEC-014)"
+    cargo deny check
 }
 
+if [[ "${1:-}" == full ]]; then check_full_tools; fi
 gate_main "$@"

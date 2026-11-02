@@ -1,5 +1,4 @@
-# cargo-deny policy (REQ-GEN-017, REQ-SEC-014). Run by scripts/check.sh
-# full, locally or on the remote Linux host.
+# cargo-deny policy (REQ-GEN-017, REQ-SEC-014). Run by scripts/check.sh full.
 
 [graph]
 all-features = true

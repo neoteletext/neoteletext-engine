@@ -1,6 +1,8 @@
 # Build output
 /build/
 /target/
+# The pinned tools scripts/tools.sh installs; a link to them in a worktree.
+/tools
 *.o
 *.a
 *.so
