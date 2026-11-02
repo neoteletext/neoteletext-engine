@@ -15,6 +15,8 @@ mod mask;
 use std::fs;
 use std::path::Path;
 
+pub(crate) use mask::code_only;
+
 /// The production code of the file at `path`: empty for a test module's
 /// file; otherwise its text with each test-only part blanked, so that line
 /// numbers stay those of the file.
@@ -39,7 +41,7 @@ fn split(path: &Path, read: &dyn Fn(&Path) -> Option<String>) -> (String, String
 /// The production code and the test code of one Rust source text, by its
 /// test-only items alone.
 fn production_and_tests_of(text: &str) -> (String, String) {
-    let ranges = items::test_ranges(&mask::code_only(text));
+    let ranges = items::test_ranges(&code_only(text));
     let mut production = text.as_bytes().to_vec();
     let mut tests = text.as_bytes().to_vec();
     let mut outside = 0;
@@ -124,7 +126,7 @@ fn inside_src(dir: &Path) -> bool {
 /// `mod name {`) are all test-only, or `None` when `text` declares no such
 /// module.
 fn declaration_gated(text: &str, name: &str) -> Option<bool> {
-    let code = mask::code_only(text);
+    let code = code_only(text);
     let tests = items::test_ranges(&code);
     let mut found = None;
     for (index, _) in code.iter().enumerate().filter(|&(_, &byte)| byte == b'm') {

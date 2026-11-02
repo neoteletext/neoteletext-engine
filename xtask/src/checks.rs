@@ -4,6 +4,7 @@ mod constants;
 mod deps;
 mod io;
 mod layers;
+mod paths;
 
 use std::fs;
 use std::path::{Path, PathBuf};

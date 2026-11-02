@@ -5,7 +5,7 @@
 /// `text` with every byte of a comment, a string literal or a character
 /// literal replaced by a space, newlines kept. The result has the length of
 /// `text`, so a position in it is a position in `text`.
-pub(super) fn code_only(text: &str) -> Vec<u8> {
+pub(crate) fn code_only(text: &str) -> Vec<u8> {
     let bytes = text.as_bytes();
     let mut code = bytes.to_vec();
     let mut index = 0;
