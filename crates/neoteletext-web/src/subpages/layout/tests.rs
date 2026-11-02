@@ -91,6 +91,7 @@ fn a_page_of_one_sub_page_is_one_file() {
     assert_eq!(files, [("101.t42".to_string(), body)]);
 }
 
+/// REQ-1893: first sub-pages go into `index.t42` until the next would pass the bound.
 #[test]
 fn the_bundle_takes_first_sub_pages_while_it_has_room() {
     let mut channel = ChannelFiles::new();
@@ -135,4 +136,26 @@ fn what_cannot_be_laid_out_is_refused() {
     channel.add_page(address, &[one]).unwrap();
     assert_eq!(channel.add_page(address, &[one]), Err(LayoutError::PageTwice(address)));
     assert_eq!(channel.add_whole_page(page(0x1FE), b"x"), Err(LayoutError::Content(None)));
+}
+
+/// REQ-1890: sub-pages given out of order are laid out in ascending
+/// sub-code order: the page's file holds the lowest, its list is ascending,
+/// and the bundle takes the lowest.
+#[test]
+fn sub_pages_given_out_of_order_are_laid_out_ascending() {
+    let address = page(0x100);
+    let codes = [SubCode::new(3), SubCode::new(1), SubCode::new(2)];
+    let bodies: Vec<Vec<u8>> = codes.iter().map(|&code| sub_page_t42(address, code)).collect();
+    let sub_pages: Vec<SubPageFile<'_>> =
+        codes.iter().zip(&bodies).map(|(&subcode, t42)| SubPageFile { subcode, t42, title: "" }).collect();
+    let files = page_files(address, &sub_pages).unwrap();
+    let names: Vec<&str> = files.iter().map(|(name, _)| name.as_str()).collect();
+    assert_eq!(names, ["100.t42", "100-0001.t42", "100-0002.t42", "100-0003.t42", "100.sub"]);
+    assert_eq!(files[0].1, bodies[1], "the page's file holds the lowest sub-code");
+    let listed: Vec<u16> = subpages::read(&files[4].1).unwrap().flatten().map(|entry| entry.subcode.value()).collect();
+    assert_eq!(listed, [1, 2, 3]);
+    let mut channel = ChannelFiles::new();
+    channel.add_page(address, &sub_pages).unwrap();
+    let all = channel.finish();
+    assert_eq!(all.last().unwrap().1, bodies[1], "the bundle holds the lowest sub-code");
 }

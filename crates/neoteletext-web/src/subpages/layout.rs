@@ -59,16 +59,25 @@ fn name(file: ChannelFile) -> String {
     String::from_utf8_lossy(writer.written()).into_owned()
 }
 
+/// A page's sub-pages in the page's order, ascending by sub-code (REQ-1890),
+/// whatever order they were given in.
+fn in_page_order<'a, 'b>(sub_pages: &'a [SubPageFile<'b>]) -> Vec<&'a SubPageFile<'b>> {
+    let mut ordered: Vec<_> = sub_pages.iter().collect();
+    ordered.sort_by_key(|sub_page| sub_page.subcode);
+    ordered
+}
+
 /// The files of one page: `NNN.t42` for a page of one sub-page; otherwise
 /// `NNN.t42` holding the first, then each sub-page's `NNN-SSSS.t42` and
-/// `NNN.sub`, in the order given, which is the page's order.
+/// `NNN.sub`, in the page's order.
 pub fn page_files(page: PageAddress, sub_pages: &[SubPageFile<'_>]) -> Result<Vec<(String, Vec<u8>)>, LayoutError> {
+    let sub_pages = in_page_order(sub_pages);
     let Some(first) = sub_pages.first() else { return Err(LayoutError::Empty) };
     if sub_pages.len() > MAX_ENTRIES {
         return Err(LayoutError::TooMany);
     }
     let mut seen = std::collections::BTreeSet::new();
-    for sub_page in sub_pages {
+    for sub_page in &sub_pages {
         if !seen.insert(sub_page.subcode) {
             return Err(LayoutError::Duplicate(sub_page.subcode));
         }
@@ -82,7 +91,7 @@ pub fn page_files(page: PageAddress, sub_pages: &[SubPageFile<'_>]) -> Result<Ve
     }
     let mut catalogue = std::vec![0u8; sub_pages.len().saturating_mul(MAX_LINE)];
     let mut writer = Writer::new(&mut catalogue);
-    for sub_page in sub_pages {
+    for sub_page in &sub_pages {
         let file = ChannelFile::SubPage { page, subcode: sub_page.subcode };
         files.push((name(file), sub_page.t42.to_vec()));
         // Room for every entry was made above.
@@ -119,7 +128,7 @@ impl ChannelFiles {
         }
         let files = page_files(page, sub_pages)?;
         self.pages.insert(page);
-        self.bundle_page(sub_pages.first().map_or(&[][..], |first| first.t42));
+        self.bundle_page(in_page_order(sub_pages).first().map_or(&[][..], |first| first.t42));
         self.files.extend(files);
         Ok(())
     }
