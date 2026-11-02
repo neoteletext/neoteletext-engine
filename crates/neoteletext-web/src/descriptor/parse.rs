@@ -172,7 +172,7 @@ impl Descriptor {
     fn read_push(&mut self, reader: &mut JsonReader<'_>, base: &Url, channel: bool) -> Result<(), DescriptorError> {
         let (url, input) = Self::parse_push(reader, base, channel)?;
         // Keys go back only to the descriptor's own origin, for a
-        // service as for a channel (INPUT.md section 4, finding F-90).
+        // service as for a channel (DOC-1865, finding F-90).
         if input && !url.origin().same(&base.origin()) {
             return Err(DescriptorError::Invalid(Member::PushInput));
         }

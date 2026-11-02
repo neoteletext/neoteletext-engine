@@ -152,7 +152,7 @@ fn packet_address() -> Result<Example, String> {
 }
 
 /// A SELECT of sub-page 0002 of page 302 with page parameters, written with
-/// the input protocol's encoder (INPUT.md section 5.4).
+/// the input protocol's encoder (DOC-1753).
 fn select() -> Result<Example, String> {
     let selection = Select::new(EXAMPLE_PAGE, EXAMPLE_SUB).ok_or("the example is not a selection")?;
     let mut buffer = [0u8; MAX_MESSAGE];
@@ -513,7 +513,8 @@ mod tests {
         }
     }
 
-    /// The bytes `INPUT.md` section 7.3 gave for these four buttons.
+    /// The bytes written by hand for these four buttons before the encoder
+    /// wrote the example DOC-1844 shows, so that it cannot drift from them.
     #[test]
     fn the_control_triplets_are_the_four_buttons_of_the_input_protocol() {
         let example = controls().expect("the example encodes");

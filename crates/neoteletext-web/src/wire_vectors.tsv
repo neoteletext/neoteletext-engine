@@ -1,5 +1,5 @@
 # The wire's own bytes, for anyone implementing a receiver or a server
-# (`INPUT.md` section 15, DEC-1759 lesson 3). The engine and the server run
+# (DOC-1963, DEC-1759 lesson 3). The engine and the server run
 # every row; the engine keeps an exact copy of this file, which its commit
 # gate compares, as `neoteletext_web::wire_vectors::TABLE`, and the server
 # reads that copy, as both read the address map's table.
@@ -11,7 +11,7 @@
 #          is the item it reads as. It writes back to the same bytes unless
 #          the name begins `skipped`, and a server told it does as meaning says.
 # refused  value is a message a reader must refuse: a protocol error, closed
-#          with close code 4000 (`INPUT.md` section 8 rule 5).
+#          with close code 4000 (DOC-1919).
 # record   value is one 42-byte packet 4/31 on data channel 12, service 0,
 #          record id as meaning says, in hexadecimal; meaning is the record.
 version	input	7	HELLO's and WELCOME's version

@@ -12,7 +12,7 @@ publish.workspace = true
 neoteletext-core.workspace = true
 embedded-io.workspace = true
 # The record frame and its data-line carriage, which the channel's index,
-# LOG and SET_COOKIE records share with sound (INPUT.md section 7).
+# LOG and SET_COOKIE records share with sound (DOC-1951).
 neoteletext-audio = { workspace = true, features = ["idl"] }
 # A LOG record is checked by the rules of a TTI `LG` line (REQ-INP-026),
 # and given on as the same `LogLine`; a LINKS record's targets by the TTI

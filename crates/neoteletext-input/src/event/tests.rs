@@ -9,7 +9,7 @@ use std::borrow::ToOwned;
 use std::format;
 use std::vec::Vec;
 
-/// The stamp of INPUT.md section 5.8's examples: page 100, sub-code 0000.
+/// The stamp of DOC-1963's examples: page 100, sub-code 0000.
 const ON: Stamp = Stamp { page: 0x100, sub: 0 };
 
 fn bytes(item: &Item<'_>) -> Vec<u8> {
@@ -23,7 +23,7 @@ fn key(action: Action, key: KeyCode, mods: u8) -> Item<'static> {
 }
 
 // REQ-INT-101; REQ-RCH-029 and REQ-RCH-055 (decision E.133): every row of
-// INPUT.md section 5.8, as the encoder writes it, KEY for every key.
+// DOC-1963, as the encoder writes it, KEY for every key.
 #[test]
 fn the_size_examples_of_section_5_8() {
     let functional = |name: &str| KeyCode::Functional(code(name).unwrap());
@@ -349,7 +349,7 @@ fn resume_round_trips_and_is_checked() {
     assert_eq!(read(&short), Err(InputError::BadValue("resume")));
 }
 
-/// REQ-INT-106, REQ-INT-124, INPUT.md section 6.2: what each event needs both sides to have agreed.
+/// REQ-INT-106, REQ-INT-124, DOC-1922: what each event needs both sides to have agreed.
 #[test]
 fn each_new_event_needs_its_capability() {
     use crate::caps::{RESUME_CAP, TOUCH_CAP};
@@ -369,7 +369,7 @@ fn each_new_event_needs_its_capability() {
 /// REQ-INT-121, decision E.129: HOVER is the extension `0x43`, `flags`, `col` and `row`;
 /// it reads back, and a bad flag, a cell off the page or bytes after are
 /// refused. A receiver that does not know `0x43` skips it as any extension.
-/// REQ-1361: HOVER as `INPUT.md` section 5.4 has it.
+/// REQ-1361: HOVER as DOC-1940 has it.
 #[test]
 fn hover_round_trips_and_is_checked() {
     for event in [
@@ -458,8 +458,7 @@ fn only_a_release_may_be_lost() {
     assert!(read(&[0xFF, 0x01, 0x80, 0x02, 0x00, 0x41, 0x61]).is_err(), "a repeat, lost");
 }
 
-// REQ-1388 (REQ-INT-140): SELECT at every bound, in the layout of INPUT.md
-// section 5.4.
+// REQ-1388 (REQ-INT-140): SELECT at every bound, in the layout of DOC-1753.
 /// REQ-1090: SELECT at every bound.
 #[test]
 fn select_round_trips_at_every_bound() {
@@ -570,7 +569,7 @@ fn select_arrives_whole_and_counts_nothing() {
     assert_eq!(needs(&Event::Select(select, "")), SELECT_CAP);
 }
 
-/// INPUT.md section 5.4, `SERVER.md` section 4.6: a query is the URL map's
+/// DOC-1753, DOC-1913: a query is the URL map's
 /// `name=value` pairs, so what a SELECT carries a REDIRECT can keep.
 /// REQ-1090: a query is `name=value` pairs.
 #[test]

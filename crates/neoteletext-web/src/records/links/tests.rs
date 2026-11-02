@@ -64,7 +64,7 @@ fn read_back(packets: &[Packet]) -> Vec<(Option<LinkKey>, Vec<u8>)> {
     found
 }
 
-/// INPUT.md section 7.8: a target of 8,000 octets goes through a record.
+/// DOC-1958: a target of 8,000 octets goes through a record.
 /// REQ-1494: a key link's target goes through a record, whatever its length.
 #[test]
 fn a_target_of_8000_octets_travels() {

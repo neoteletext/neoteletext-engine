@@ -1,5 +1,5 @@
-//! Decimal digits of any script (`neoteletext-common/INPUT.md` section 5.7
-//! rule 8, REQ-INT-116): a layout that types native digits (`٣`, `३`)
+//! Decimal digits of any script (DOC-1937,
+//! REQ-INT-116): a layout that types native digits (`٣`, `३`)
 //! sends those characters, and a channel that selects pages by number takes
 //! every decimal digit, Unicode's general category `Nd`, as the digits 0 to
 //! 9.

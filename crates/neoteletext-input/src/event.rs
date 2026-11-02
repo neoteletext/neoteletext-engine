@@ -1,5 +1,5 @@
-//! The input stream, receiver to channel (`neoteletext-common/INPUT.md`
-//! section 5, REQ-INT-101 to REQ-INT-104): raw UTF-8 text, and events that
+//! The input stream, receiver to channel (DOC-1781,
+//! REQ-INT-101 to REQ-INT-104): raw UTF-8 text, and events that
 //! begin with `0xFF`, which never occurs in UTF-8.
 //!
 //! [`write()`] encodes one item and checks it with the reader, so a sender can
@@ -11,7 +11,7 @@ use crate::wire::WireError;
 /// The byte that begins every event.
 pub const EVENT: u8 = 0xFF;
 
-/// Core event types (section 5.4).
+/// Core event types (DOC-1931).
 pub const KEY: u8 = 0x01;
 /// A mouse button or move.
 pub const MOUSE: u8 = 0x02;
@@ -41,17 +41,17 @@ pub const LAST_EXTENSION: u8 = 0x7F;
 /// What ends an address's page parameters and so never appears in them
 /// (RFC 3986 section 3.5).
 const FRAGMENT_MARK: u8 = b'#';
-/// Between a query's pairs (`SERVER.md` section 4.6).
+/// Between a query's pairs (DOC-1913).
 const PAIR_MARK: u8 = b'&';
 /// Between a pair's name and value.
 const VALUE_MARK: u8 = b'=';
-/// SELECT's type, an extension (INPUT.md section 5.4, REQ-INT-140): the
+/// SELECT's type, an extension (DOC-1753, REQ-INT-140): the
 /// page and sub-page the connection has selected; a channel that does not know it
 /// skips it.
 pub const SELECT: u8 = 0x40;
-/// Digits of a page in SELECT's text (`SERVER.md` section 4.5).
+/// Digits of a page in SELECT's text (DOC-1908).
 const PAGE_DIGITS: usize = 3;
-/// Digits of a sub-code in SELECT's text (`SERVER.md` section 4.5).
+/// Digits of a sub-code in SELECT's text (DOC-1908).
 const SUB_DIGITS: usize = 4;
 /// Between a page and its sub-page in SELECT's text.
 const SUB_MARK: u8 = b'/';
@@ -61,29 +61,29 @@ const QUERY_MARK: u8 = b'?';
 pub(crate) const SELECT_PLACE: usize = PAGE_DIGITS + 1 + SUB_DIGITS;
 /// The sub-code that names no particular sub-page (EN 300 706 clause 9.6.1).
 const SUBCODE_ANY: u16 = neoteletext_core::limits::SUBCODE_ANY;
-/// HOVER's type, an extension (INPUT.md section 5.4, decision E.129): a
+/// HOVER's type, an extension (DOC-1940, decision E.129): a
 /// channel that does not know it skips it.
 pub const HOVER: u8 = 0x43;
 /// HOVER's flag bit: the pointer left the control, rather than entered it.
 pub const HOVER_LEAVE: u8 = 1;
-/// TOUCH's type, an extension (INPUT.md section 5.4, REQ-INT-124,
+/// TOUCH's type, an extension (DOC-1939, REQ-INT-124,
 /// REQ-RCH-043): a
 /// contact after the first, which goes as MOUSE; a channel that does not
 /// know it skips it.
 pub const TOUCH: u8 = 0x44;
-/// RESUME's type, an extension (INPUT.md section 6.4, REQ-INT-125,
+/// RESUME's type, an extension (DOC-1923, REQ-INT-125,
 /// REQ-RCH-013): after
 /// HELLO in a reconnection's first message, the session to resume; a
 /// channel that does not know it skips it and starts a new session.
 pub const RESUME: u8 = 0x45;
 
-/// KEY's flag bits (section 5.5).
+/// KEY's flag bits (DOC-1935).
 const ACTION: u8 = 0b11;
 const FUNCTIONAL: u8 = 1 << 2;
 const HAS_MODS: u8 = 1 << 3;
 const HAS_TEXT: u8 = 1 << 4;
 const HAS_BASE: u8 = 1 << 5;
-/// KEY's L flag (section 5.5, REQ-207): a release the page lost.
+/// KEY's L flag (DOC-1935, REQ-207): a release the page lost.
 const LOST: u8 = 1 << 6;
 const KEY_RESERVED: u8 = 0b1000_0000;
 /// The most bytes a stamp takes: a page and a sub-code, two varint bytes each.
@@ -94,7 +94,7 @@ const _: () = assert!(
         && (neoteletext_core::limits::SUBCODE_MASK as u32)
             < (crate::wire::ONE_BYTE_MAX + 1) * (crate::wire::ONE_BYTE_MAX + 1)
 );
-/// MOUSE's and WHEEL's flag bits (section 5.4).
+/// MOUSE's and WHEEL's flag bits (DOC-1938).
 const HAS_PIXELS: u8 = 1 << 2;
 /// WHEEL's reserved flag bits.
 const WHEEL_RESERVED: u8 = 0b1111_0000;
@@ -110,7 +110,7 @@ const TOUCH_RESERVED: u8 = 0b1111_1000;
 const NEVER_UTF8: [u8; 2] = [0xC0, 0xC1];
 const NEVER_UTF8_FROM: u8 = 0xF5;
 
-/// Modifier bits of `mods` (section 5.5), as the Kitty keyboard protocol.
+/// Modifier bits of `mods` (DOC-1935), as the Kitty keyboard protocol.
 pub const SHIFT: u8 = 1;
 /// Alt, which macOS calls Option.
 pub const ALT: u8 = 2;
@@ -147,7 +147,7 @@ pub enum KeyCode {
     Functional(u32),
 }
 
-/// The stamp (INPUT.md section 5.4, REQ-1555): the page and sub-code on
+/// The stamp (DOC-1934, REQ-1555): the page and sub-code on
 /// screen when an input event happened, what the viewer was looking at.
 /// Made by [`Stamp::new`], which refuses what a channel would refuse.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -267,8 +267,8 @@ pub struct Touch {
     pub pixels: Option<(u32, u32)>,
 }
 
-/// The session a reconnection asks to resume (RESUME, INPUT.md section
-/// 6.4, REQ-RCH-013).
+/// The session a reconnection asks to resume (RESUME, DOC-1923,
+/// REQ-RCH-013).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Resume {
     /// The token the channel's last WELCOME gave.
@@ -277,7 +277,7 @@ pub struct Resume {
     pub acked: u16,
 }
 
-/// A SELECT event (INPUT.md section 5.4, REQ-INT-140): the connection's
+/// A SELECT event (DOC-1753, REQ-INT-140): the connection's
 /// selection, the page and sub-page its one view shows (neoteletext-
 /// common's DEC-1527: a connection per tab, so no view number). Made by
 /// [`Select::new`], which refuses what a channel would refuse.
@@ -306,9 +306,9 @@ impl Select {
     }
 }
 
-/// True when `parameters` may go in a SELECT for `select` (INPUT.md section
-/// 5.4): within the bound, printable ASCII with no `#`, `name=value` pairs
-/// joined by `&` as the URL map reads them (`SERVER.md` section 4.6), and
+/// True when `parameters` may go in a SELECT for `select` (DOC-1753):
+/// within the bound, printable ASCII with no `#`, `name=value` pairs
+/// joined by `&` as the URL map reads them (DOC-1913), and
 /// none with page 0. The same text then goes in a REDIRECT record, whose
 /// place the map reads.
 #[must_use]
@@ -334,7 +334,7 @@ pub struct Wheel {
     pub at: Point,
 }
 
-/// An event: the core events of section 5.4 (REQ-INT-103), or an
+/// An event: the core events of DOC-1931 (REQ-INT-103), or an
 /// extension.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Event<'a> {
@@ -384,8 +384,8 @@ pub enum Event<'a> {
         /// The user agent string, present with the AGENT capability.
         agent: Option<&'a str>,
     },
-    /// The pointer entered or left a control of the open page (INPUT.md
-    /// section 7.3): the control's first cell, its top left.
+    /// The pointer entered or left a control of the open page (DOC-1940):
+    /// the control's first cell, its top left.
     Hover {
         /// The page on screen.
         on: Stamp,
@@ -460,7 +460,7 @@ fn check_text(text: &str) -> Result<(), InputError> {
     if text.chars().all(printable) { Ok(()) } else { Err(InputError::Control) }
 }
 
-/// How much of the input count an item is (INPUT.md section 7.1): a
+/// How much of the input count an item is (DOC-1943): a
 /// character of text counts one, and every event counts one, but those
 /// that are never acknowledged (REQ-RCH-012, REQ-RCH-054): a move and gone,
 /// MOUSE's and TOUCH's, HOVER, COMPOSE, RESUME and SELECT count none.
@@ -483,7 +483,7 @@ fn uncounted(event: &Event<'_>) -> bool {
     }
 }
 
-/// The capabilities `event` may be sent under (INPUT.md section 6.2): both
+/// The capabilities `event` may be sent under (DOC-1922): both
 /// sides must set every bit, so a channel that did not agree them refuses
 /// the event, and a receiver never sends it.
 #[must_use]

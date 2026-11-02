@@ -35,7 +35,7 @@ fn page(mpp: u16) -> PageAddress {
     PageAddress::from_mpp(mpp).unwrap()
 }
 
-/// INPUT.md section 7.11, REQ-1688: a place is one fragment, for the page
+/// DOC-1960, REQ-1688: a place is one fragment, for the page
 /// and for one of its sub-pages.
 #[test]
 fn a_place_reaches_a_receiver_in_one_fragment() {
@@ -47,7 +47,7 @@ fn a_place_reaches_a_receiver_in_one_fragment() {
     }
 }
 
-/// INPUT.md section 7.11: the longest address travels in as many fragments
+/// DOC-1960: the longest address travels in as many fragments
 /// as it needs, whole.
 #[test]
 fn the_longest_address_reaches_a_receiver_whole() {
@@ -128,7 +128,7 @@ fn only_http_and_https_addresses_are_read() {
     }
 }
 
-/// INPUT.md section 7.11 and 7.10: what is neither is refused whole.
+/// DOC-1960 and DOC-1952: what is neither is refused whole.
 #[test]
 fn a_record_that_breaks_a_rule_is_refused() {
     assert_eq!(read(&[]), Err(RecordFault::Length));

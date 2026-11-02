@@ -116,7 +116,7 @@ pub fn run(
 ) -> std::io::Result<()> {
     terminal::enable_raw_mode()?;
     // Releases and repeats where the terminal has the Kitty keyboard
-    // protocol, a paste as one event, and the focus (INPUT.md section 9.6).
+    // protocol, a paste as one event, and the focus (`docs/user-guide.md`, "The viewer").
     let enhanced = terminal::supports_keyboard_enhancement().unwrap_or(false);
     let guard = RawGuard::new(enhanced);
     let mut out = std::io::stdout();

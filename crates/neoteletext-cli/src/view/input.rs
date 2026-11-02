@@ -16,7 +16,7 @@ impl ViewState {
     /// A paste, while keys go to the channel, and the terminal's focus.
     pub(super) fn paste_or_focus(&mut self, woke: Option<&Event>, source: &mut dyn Source, clock_ms: u32) {
         match woke {
-            // A paste goes as one PASTE while keys go (INPUT.md section 9.6).
+            // A paste goes as one PASTE while keys go (`docs/user-guide.md`, "The viewer").
             Some(Event::Paste(text)) => {
                 let Some(on) = self.typing.stamp() else { return };
                 let mut end = text.len().min(neoteletext_input::MAX_PASTE);

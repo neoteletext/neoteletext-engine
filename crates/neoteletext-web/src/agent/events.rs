@@ -210,7 +210,7 @@ pub enum PushProblem {
     Base64,
 }
 
-/// Why the push connection ended for good (`INPUT.md` section 5.1): trying
+/// Why the push connection ended for good (DOC-1920): trying
 /// again would meet the same fault.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum PushStop {
@@ -329,7 +329,7 @@ pub enum Event<'a> {
         total: u64,
     },
     /// A log line for the channel's author from a LOG record on the push
-    /// connection (`INPUT.md` section 7.6, REQ-INP-026): the same line a
+    /// connection (DOC-1956, REQ-INP-026): the same line a
     /// TTI `LG` line gives as `Item::Log`, shown only in a developer's
     /// view. At most `MAX_LOG_LINES_PER_PAGE` for each page frame, and as
     /// many before the first.
@@ -339,7 +339,7 @@ pub enum Event<'a> {
         /// The page it concerns, if any.
         page: Option<PageAddress>,
     },
-    /// A part of a live channel's index (`INPUT.md` section 7.5): its
+    /// A part of a live channel's index (DOC-1955): its
     /// pages are shown at once, added or replacing what was there;
     /// [`IndexRecord::entries`] gives them as `contents.txt`'s entries
     /// and [`IndexRecord::pages`] with their sub-page counts. Nothing is
@@ -347,13 +347,13 @@ pub enum Event<'a> {
     Index(IndexRecord<'a>),
     /// Every part of an index sending has arrived: the pages and
     /// magazines it listed are the whole index, and every other is
-    /// removed (`INPUT.md` section 7.5).
+    /// removed (DOC-1955).
     IndexComplete {
         /// The sending's generation.
         generation: u16,
     },
     /// A sub-page's TTI Link Extension links from a LINKS record on the
-    /// push connection (`INPUT.md` section 7.8, REQ-1494), given as a TTI
+    /// push connection (DOC-1958, REQ-1494), given as a TTI
     /// file's `LN`, `LK` and `LT` lines give them
     /// ([`LinksRecord::key_links`], [`LinksRecord::number_links`],
     /// [`LinksRecord::text_links`]), for the same store. Part 0 replaces
@@ -361,19 +361,19 @@ pub enum Event<'a> {
     /// them. A sub-page sent again without one has no such links.
     Links(LinksRecord<'a>),
     /// A part of a page's list of sub-pages from a SUBPAGES record on the
-    /// push connection (`INPUT.md` section 7.9, REQ-1503), for the
+    /// push connection (DOC-1959, REQ-1503), for the
     /// sub-page list, its count, the view's place and stepping; never the
     /// sub-pages themselves. A record of another `version` of the page
     /// begins a new list; a list is whole when every part has arrived,
     /// and a partial one removes nothing.
     SubPageList(SubPagesRecord<'a>),
     /// The channel's program sent the viewer elsewhere with a REDIRECT
-    /// record (`INPUT.md` section 7.11, REQ-1688), to a page of the channel
+    /// record (DOC-1960, REQ-1688), to a page of the channel
     /// or to an address. The application moves the viewer: it alone can
     /// judge an address by its own rules. Nothing else moves a viewer.
     Redirect(RedirectRecord<'a>),
     /// A selection was refused, or the channel's program is not answering
-    /// (`INPUT.md` section 7.12, REQ-1481).
+    /// (DOC-1961, REQ-1481).
     Denied(DeniedRecord<'a>),
     /// A live channel (its `channel.ttx` names a push connection,
     /// REQ-WEB-018) is opening its connection: it asks for no bundle, page

@@ -1,4 +1,4 @@
-//! The REDIRECT record (`neoteletext-common/INPUT.md` section 7.11,
+//! The REDIRECT record (DOC-1960,
 //! DEC-1689, REQ-1688, DEC-1730): a channel's program moving a viewer to
 //! another page of the channel, or to another channel. It alone moves a
 //! viewer: a cursor record never does.

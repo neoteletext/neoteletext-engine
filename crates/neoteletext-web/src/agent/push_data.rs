@@ -1,7 +1,7 @@
 //! What the push connection carries (REQ-WEB-005): WebSocket frames read
 //! into pages of T42, every packet checked and the invalid ones discarded
 //! and counted (REQ-1462), and the channel's records read from among them
-//! (INPUT.md section 7).
+//! (DOC-1951).
 
 use neoteletext_core::consts::PACKET_HEADER;
 use neoteletext_core::packet::{Packet, decode_address, is_valid_stream_packet};
@@ -100,7 +100,7 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
             }
             if decode_address(&packet).is_ok_and(|address| address.number == PACKET_HEADER) {
                 // A page frame begins: its LOG records are counted afresh
-                // (INPUT.md section 7.6).
+                // (DOC-1956).
                 page = true;
                 self.push.log_lines = 0;
             }
@@ -124,7 +124,7 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
     }
 
     /// Reads one packet into the channel's records and acts on a record it
-    /// completes (INPUT.md sections 7.5 to 7.7). Returns the packets found
+    /// completes (DOC-1955, DOC-1956 and DOC-1957). Returns the packets found
     /// invalid.
     fn read_record(&mut self, now: Instant, packet: &Packet, sink: &mut Sink<'_>) -> usize {
         let (seconds, calendar) = self.seconds(now);
@@ -159,7 +159,7 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
                 }
                 let Some(url) = self.push.url else { return 0 };
                 // As the push handshake's own cookies: host-only, in the
-                // channel's folder (REQ-WEB-026, INPUT.md section 7.7).
+                // channel's folder (REQ-WEB-026, DOC-1957).
                 let scope = self.channel.as_ref().map(Url::path);
                 let store = cookie_store(&mut self.jar, &mut self.port_cookies);
                 if let Err(rejected) =

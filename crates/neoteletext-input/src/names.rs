@@ -1,7 +1,7 @@
 //! The W3C UI Events `KeyboardEvent.key` names (W3C, "UI Events
 //! `KeyboardEvent` key Values", sections 3.2 to 3.18), in a fixed order:
-//! the functional codes from 128 follow it (`neoteletext-common/INPUT.md`
-//! section 5.6, [`crate::keys`]), so a name is only ever added at the end.
+//! the functional codes from 128 follow it (DOC-1936,
+//! [`crate::keys`]), so a name is only ever added at the end.
 
 /// The W3C `KeyboardEvent.key` names; place 0, `Unidentified`, is a key the
 /// sender could not name.

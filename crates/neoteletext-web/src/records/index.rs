@@ -1,4 +1,4 @@
-//! The index record (`neoteletext-common/INPUT.md` section 7.5): one
+//! The index record (DOC-1955): one
 //! magazine's name and pages, a part of one sending of the channel's index
 //! (neoteletext-app-server's DEC-1482, REQ-1477), what a static channel's
 //! `contents.txt` gives (REQ-WEB-025).
@@ -51,7 +51,7 @@ const MAX_PAGE_SUBPAGES: u16 = MAX_SUBPAGES as u16;
 const _: () = assert!(MAX_SUBPAGES <= u16::MAX as usize, "a sub-page count fits its field");
 const _: () = assert!(MAX_PARTS <= u16::MAX as usize, "a part fits its field");
 // The largest page fits a record beside the fixed fields and an empty
-// name, so every index can be written (section 7.5).
+// name, so every index can be written (DOC-1955).
 const _: () = assert!(FIXED + LENGTH_BYTES + PAGE_FIXED + 2 * (LENGTH_BYTES + MAX_TEXT_BYTES) <= MAX_BODY);
 
 /// One page of the index.
@@ -183,7 +183,7 @@ const fn magazine_of(page: u16) -> u8 {
     (page >> MPP_MAGAZINE_SHIFT) as u8
 }
 
-/// Whether `page` may be listed under `magazine` (section 7.5).
+/// Whether `page` may be listed under `magazine` (DOC-1955).
 fn page_allowed(page: u16, magazine: u8) -> bool {
     (FIRST_PAGE_ADDRESS..=LAST_PAGE_ADDRESS).contains(&page)
         && magazine_of(page) == magazine
@@ -339,14 +339,14 @@ pub struct Sent {
     /// The packets written.
     pub packets: usize,
     /// The record id after the last record's, for the service's next
-    /// record (section 7.10).
+    /// record (DOC-1952).
     pub next_record_id: u8,
 }
 
 /// Writes a whole index as one sending of `generation`: its records, as
 /// packets 4/31 of audio service `service`, given to `out` in order, the
 /// first record with id `first_record_id` and each after it the next
-/// (section 7.10). An empty index is one record of magazine 1, unnamed,
+/// (DOC-1952). An empty index is one record of magazine 1, unnamed,
 /// with no pages.
 ///
 /// # Errors
@@ -396,7 +396,7 @@ pub fn encode(
 const WORD_BITS: usize = 32;
 const PART_WORDS: usize = MAX_PARTS.div_ceil(WORD_BITS);
 
-/// What one index record meant for the sending (section 7.5).
+/// What one index record meant for the sending (DOC-1955).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Step {
     /// Its pages are shown; the sending is not yet complete.
@@ -409,7 +409,7 @@ pub enum Step {
     Refused,
 }
 
-/// A receiver's sending in progress (section 7.5): which parts of which
+/// A receiver's sending in progress (DOC-1955): which parts of which
 /// generation have arrived.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Progress {

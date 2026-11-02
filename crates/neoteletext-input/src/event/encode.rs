@@ -36,7 +36,7 @@ pub const MAX_MOVE_BYTES: usize = {
 // TOUCH's length is one varint byte.
 const _: () = assert!(TOUCH_PAYLOAD <= ONE_BYTE_MAX as usize);
 
-/// The code of a pointer's action (section 5.4).
+/// The code of a pointer's action (DOC-1938).
 const fn action_code(action: MouseAction) -> u8 {
     match action {
         MouseAction::Press => 0,
@@ -72,14 +72,14 @@ fn write_extension<const N: usize>(
     Ok(())
 }
 
-/// The stamp every input event begins with (section 5.4, REQ-1555).
+/// The stamp every input event begins with (DOC-1934, REQ-1555).
 fn write_stamp(on: Stamp, writer: &mut Writer<'_>) -> Result<(), InputError> {
     writer.uv(u32::from(on.page))?;
     writer.uv(u32::from(on.sub))?;
     Ok(())
 }
 
-/// SELECT (INPUT.md section 5.4, DEC-1730): the address's place as text,
+/// SELECT (DOC-1753, DEC-1730): the address's place as text,
 /// the same text the URL map reads: `302`, `302/0002` or `302?a=1`, and
 /// nothing when the tab shows no page.
 fn write_select(select: Select, parameters: &str, writer: &mut Writer<'_>) -> Result<(), InputError> {

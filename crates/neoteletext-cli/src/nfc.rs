@@ -1,5 +1,5 @@
 //! Text as the input system sends it: in Unicode Normalization Form C
-//! (`neoteletext-common/INPUT.md` section 5.7 rule 3, REQ-INT-116), so `é`
+//! (DOC-1937, REQ-INT-116), so `é`
 //! typed on any layout or input method arrives as U+00E9 and a channel
 //! compares what it receives without normalizing it again. A paste is
 //! data and goes as it was copied.

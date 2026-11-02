@@ -1,4 +1,4 @@
-//! The milliseconds clock the input session counts in (`INPUT.md` section 6):
+//! The milliseconds clock the input session counts in (DOC-1921):
 //! time since a start, wrapping at 2^32 as the session's u32 times do.
 
 use std::time::Instant;

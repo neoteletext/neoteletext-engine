@@ -29,7 +29,7 @@ neoteletext-input.workspace = true
 # A phone as the keyboard through qrkeyboard (`neottx qr`, `neottx keyboard`).
 neoteletext-qrkeyboard = { workspace = true, optional = true }
 # MIT or Apache-2.0: typed text sent in Unicode Normalization Form C
-# (INPUT.md section 5.7 rule 3, REQ-INT-116; decision E.101). The input
+# (DOC-1937, REQ-INT-116; decision E.101). The input
 # crate is for microcontrollers too and allocates nothing, so the
 # receivers here normalize.
 unicode-normalization = { version = "=0.1.25", optional = true }

@@ -1,9 +1,9 @@
-//! The input system (area INT, `neoteletext-common/INPUT.md`, protocol
+//! The input system (area INT, DOC-1781 and DOC-1782 of `neoteletext-common/PROTOCOL.html`, protocol
 //! version 3): a receiver connected to a channel's push WebSocket sends the
 //! viewer's input as one stream of UTF-8 text and small events, and the
 //! channel answers in teletext, with records that place a cursor and
 //! acknowledge input. There are no input modes: everything is sent
-//! (section 6.3, decision E.125).
+//! (DOC-1922, decision E.125).
 //!
 //! - [`event`]: the input stream, receiver to channel, over [`wire`]'s
 //!   primitives, with [`keys`]' functional codes and [`names`]' W3C table.

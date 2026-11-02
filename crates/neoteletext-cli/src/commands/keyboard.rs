@@ -18,7 +18,7 @@ use neoteletext_qrkeyboard::screen::{Event as ScreenEvent, Screen};
 use std::time::{Duration, Instant};
 
 /// What the bridge offers in HELLO: it draws no page, no cursor and no
-/// echo, so no capability (INPUT.md section 6.2).
+/// echo, so no capability (DOC-1922).
 const OFFERED: u32 = 0;
 /// A dropped phone keeps the channel's screen this long.
 const REJOIN_SECONDS: u32 = 30;
@@ -39,7 +39,7 @@ pub struct KeyboardOptions {
     pub proxy: Option<String>,
 }
 
-/// One input session with the channel (INPUT.md section 6): HELLO, its
+/// One input session with the channel (DOC-1921): HELLO, its
 /// WELCOME, then the phone's input.
 struct Channel {
     socket: WebSocket,
@@ -47,7 +47,7 @@ struct Channel {
     started: Instant,
     /// The page and sub-code the channel last sent: the bridge draws
     /// nothing and sends no SELECT, so this is what its keys are for
-    /// (INPUT.md section 3.4).
+    /// (DOC-2029).
     on: Option<Stamp>,
 }
 
@@ -57,7 +57,7 @@ impl Channel {
     }
 
     /// Sends HELLO and waits for WELCOME, then says the bridge's size and
-    /// focus (section 6.1).
+    /// focus (DOC-1921).
     fn open(socket: WebSocket) -> Result<Self, Failure> {
         let mut channel = Self { socket, session: Session::new(OFFERED), started: Instant::now(), on: None };
         let mut out = [0_u8; MAX_MESSAGE];
@@ -136,7 +136,7 @@ impl Channel {
     }
 
     /// A key the phone pressed or let go, by its W3C name or its character
-    /// (INPUT.md sections 5.5 and 6.3): a character as KEY with its text,
+    /// (DOC-1935): a character as KEY with its text,
     /// any other key as KEY with its functional code. Nothing goes before
     /// the channel has sent a page, since a key must be stamped with one.
     fn key(&mut self, name: &str, down: bool) -> Result<(), Failure> {
@@ -161,9 +161,9 @@ impl Channel {
         self.send(&item)
     }
 
-    /// Text the phone committed, without control characters (section 5.3),
+    /// Text the phone committed, without control characters (DOC-1930),
     /// in messages of whole characters. Like a key, it waits for a page
-    /// (section 3.4).
+    /// (DOC-2029).
     fn text(&mut self, text: &str) -> Result<(), Failure> {
         if self.on.is_none() {
             return Ok(());

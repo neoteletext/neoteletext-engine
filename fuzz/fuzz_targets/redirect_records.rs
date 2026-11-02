@@ -1,4 +1,4 @@
-//! The REDIRECT record (`neoteletext-common/INPUT.md` section 7.11,
+//! The REDIRECT record (DOC-1960,
 //! REQ-1688, REQ-TST-040): whatever the reader accepts writes back to the
 //! same record, and an address it passes on is printable ASCII within the
 //! record's bound.

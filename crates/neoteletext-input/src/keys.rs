@@ -1,4 +1,4 @@
-//! Functional key codes (`neoteletext-common/INPUT.md` section 5.6,
+//! Functional key codes (DOC-1936,
 //! REQ-INT-105): one code for every key that is not a character, which
 //! never changes. Codes 1 to 127 take one byte and hold the commonest keys,
 //! teletext's colour, Teletext and channel keys among them; codes from
@@ -6,7 +6,7 @@
 //! [`KEY_NAMES`] not given a code below, in that
 //! table's fixed order. Both only ever grow.
 //!
-//! The `base` field (section 5.7) gives the character a physical key has on
+//! The `base` field (DOC-1937) gives the character a physical key has on
 //! a United States layout, from the W3C `KeyboardEvent.code` name of the
 //! key: [`us_base`].
 

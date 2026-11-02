@@ -1,6 +1,6 @@
-//! The input count the channel acknowledges (INPUT.md section 7.1), and the
+//! The input count the channel acknowledges (DOC-1943), and the
 //! messages kept until it does, to send again after a reconnection
-//! (section 6.4, REQ-RCH-013): a ring of the messages of input units not
+//! (DOC-1923, REQ-RCH-013): a ring of the messages of input units not
 //! yet acknowledged. A message of no input units, a move, gone, HOVER or
 //! COMPOSE, is never acknowledged, and so never kept (REQ-INT-126,
 //! REQ-RCH-012).

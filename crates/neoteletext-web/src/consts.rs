@@ -314,23 +314,22 @@ pub const SUBSCRIBE_ALL: &[u8] = b"all";
 /// The owner's instruction of 30 October 2026: "accumulate for N seconds
 /// (say 20) before logging at the client console".
 pub const INVALID_PACKET_REPORT_SECONDS: u64 = 20;
-/// The WebSocket subprotocol of a channel's push connection (`INPUT.md`
-/// section 5.1, DEC-1759 lesson 14): `neottx.` and the input protocol's
+/// The WebSocket subprotocol of a channel's push connection (DOC-1917,
+/// DEC-1759 lesson 14): `neottx.` and the input protocol's
 /// version, `neoteletext_input::VERSION`. The wire vectors' test asserts
 /// that the two agree, and the server imports this one.
 pub const PUSH_SUBPROTOCOL: &str = "neottx.7";
-/// The first of the close codes that say stop (`INPUT.md` section 5.1,
+/// The first of the close codes that say stop (DOC-1919,
 /// DEC-1759 lesson 10): the fault will be there on the next attempt, so a
 /// receiver does not try again. A code of this range nobody has defined yet
 /// means stop too, so a new one needs no change in a receiver.
 pub const CLOSE_STOP_FIRST: u16 = 4000;
 /// The last of the close codes that say stop.
 pub const CLOSE_STOP_LAST: u16 = 4099;
-/// Stop: the receiver broke the WebSocket or the input protocol (`INPUT.md`
-/// section 8 rule 5).
+/// Stop: the receiver broke the WebSocket or the input protocol (DOC-1919).
 pub const CLOSE_BROKE_PROTOCOL: u16 = CLOSE_STOP_FIRST;
 /// Stop: HELLO named an input protocol the channel does not speak
-/// (section 6.1).
+/// (DOC-1919).
 pub const CLOSE_WRONG_VERSION: u16 = 4001;
 /// The first of the close codes that say try again.
 pub const CLOSE_RETRY_FIRST: u16 = 4100;
@@ -338,9 +337,9 @@ pub const CLOSE_RETRY_FIRST: u16 = 4100;
 pub const CLOSE_RETRY_LAST: u16 = 4199;
 /// Try again: the server is restarting (REQ-1036).
 pub const CLOSE_RESTARTING: u16 = CLOSE_RETRY_FIRST;
-// The two ranges, and the codes in them, are the ones `INPUT.md` names.
+// The two ranges, and the codes in them, are the ones DOC-1919 names.
 const _: () = assert!(CLOSE_WRONG_VERSION <= CLOSE_STOP_LAST && CLOSE_STOP_LAST < CLOSE_RETRY_FIRST);
-/// Whether a close code says stop (`INPUT.md` section 5.1). Every other
+/// Whether a close code says stop (DOC-1919). Every other
 /// close, a code of the retry range, any other code or none at all, is
 /// tried again.
 #[must_use]
@@ -361,8 +360,8 @@ pub const PUSH_PING_AFTER_US: u64 = 25 * MICROSECONDS_PER_SECOND;
 /// A ping not answered within this long means the connection is dead.
 pub const PUSH_PONG_WITHIN_US: u64 = 10 * MICROSECONDS_PER_SECOND;
 /// The longest input message a receiver sends on the push WebSocket:
-/// `neoteletext_input::MAX_MESSAGE` (`neoteletext-common/INPUT.md` section
-/// 5.1, REQ-INT-101). The command-line program asserts that the two agree.
+/// `neoteletext_input::MAX_MESSAGE` (DOC-1918,
+/// REQ-INT-101). The command-line program asserts that the two agree.
 pub const INPUT_MESSAGE_MAX: usize = 8192;
 /// The contacts whose moves the push connection holds, one slot each
 /// (REQ-RCH-035, REQ-RCH-045): `neoteletext_input::MAX_CONTACTS`, the

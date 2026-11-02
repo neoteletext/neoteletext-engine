@@ -1,4 +1,4 @@
-//! The input control record (`neoteletext-common/INPUT.md` section 7.2,
+//! The input control record (DOC-1953,
 //! REQ-INT-111): WELCOME, a channel's answer to HELLO. It is a record of the
 //! audio profile's frame (REQ-AUD-003) of type [`TYPE_INPUT_CONTROL`], one
 //! fragment on data channel 12 as the cursor record is (decision E.91),
@@ -36,8 +36,8 @@ const SESSION_NEW: u8 = 0;
 /// resumed, and the input count it had taken follows.
 const SESSION_RESUMED: u8 = 1;
 
-/// What WELCOME says of the session when both sides set RESUME (INPUT.md
-/// section 6.4, REQ-RCH-013).
+/// What WELCOME says of the session when both sides set RESUME (DOC-1923,
+/// REQ-RCH-013).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Resumption {
     /// The token for the next reconnection, new in every WELCOME.
@@ -96,7 +96,7 @@ impl From<WireError> for ControlError {
 /// Reads a control message's body.
 ///
 /// # Errors
-/// Anything section 7.2 refuses: a body longer than [`MAX_BODY`], which
+/// Anything DOC-1953 refuses: a body longer than [`MAX_BODY`], which
 /// would not be one fragment, or bytes left over.
 pub fn read_body(body: &[u8]) -> Result<Control<'_>, ControlError> {
     if body.len() > MAX_BODY {
@@ -208,7 +208,7 @@ pub fn packet_of(control: &Control<'_>, service: u8, record_id: u8) -> Result<Pa
 ///
 /// # Errors
 /// A frame that fails REQ-AUD-003, a record of another type, or anything
-/// section 7.2 refuses.
+/// DOC-1953 refuses.
 pub fn read(record: &[u8]) -> Result<Control<'_>, ControlError> {
     let (kind, body) = split(record).map_err(ControlError::Frame)?;
     if kind != TYPE_INPUT_CONTROL {

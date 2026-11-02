@@ -17,41 +17,41 @@ pub const TYPE_DATA: u8 = 2;
 /// Record type: a command.
 pub const TYPE_CONTROL: u8 = 3;
 /// Record type: the input system's cursor record (area INT,
-/// `neoteletext-common/INPUT.md` section 7.1), carried with this profile's records on
+/// DOC-1954), carried with this profile's records on
 /// the same data channel because EN 300 708 Table 16 gives data channel 13
 /// to Datavideo. It is always one fragment; this receiver leaves it alone.
 pub const TYPE_CURSOR: u8 = 4;
 /// Record type: the input profile's control record (WELCOME and the input
-/// modes, `neoteletext-common/INPUT.md` section 7.2), carried as the cursor
+/// modes, DOC-1953), carried as the cursor
 /// record is, one fragment; this receiver leaves it alone.
 pub const TYPE_INPUT_CONTROL: u8 = 5;
 
 /// Record type: the channel's index, its magazines and pages
-/// (`neoteletext-common/INPUT.md` section 7.5), read by the web agent; one
+/// (DOC-1955), read by the web agent; one
 /// or more fragments; this receiver leaves it alone.
 pub const TYPE_INDEX: u8 = 6;
-/// Record type: a log line for the channel's author (`INPUT.md` section
-/// 7.6, REQ-INP-026), read by the web agent; this receiver leaves it alone.
+/// Record type: a log line for the channel's author (DOC-1956,
+/// REQ-INP-026), read by the web agent; this receiver leaves it alone.
 pub const TYPE_LOG: u8 = 7;
-/// Record type: a cookie set while the connection is open (`INPUT.md`
-/// section 7.7), read by the web agent; this receiver leaves it alone.
+/// Record type: a cookie set while the connection is open (DOC-1957),
+/// read by the web agent; this receiver leaves it alone.
 pub const TYPE_SET_COOKIE: u8 = 8;
 
-/// Record type: a sub-page's TTI Link Extension links (`INPUT.md` section
-/// 7.8, REQ-1494), read by the web agent; this receiver leaves it alone.
+/// Record type: a sub-page's TTI Link Extension links (DOC-1958,
+/// REQ-1494), read by the web agent; this receiver leaves it alone.
 pub const TYPE_LINKS: u8 = 9;
 
-/// Record type: a page's list of sub-pages (`INPUT.md` section 7.9,
+/// Record type: a page's list of sub-pages (DOC-1959,
 /// REQ-1503), read by the web agent; this receiver leaves it alone.
 pub const TYPE_SUBPAGES: u8 = 10;
 
 /// Record type: a channel's redirect, to another page or another channel
-/// (`INPUT.md` section 7.11, REQ-1688), read by the web agent; this receiver
+/// (DOC-1960, REQ-1688), read by the web agent; this receiver
 /// leaves it alone.
 pub const TYPE_REDIRECT: u8 = 11;
 
-/// Record type: a selection refused, or a program not answering (`INPUT.md`
-/// section 7.12, REQ-1481, DEC-1730), read by the web agent; this receiver
+/// Record type: a selection refused, or a program not answering (DOC-1961,
+/// REQ-1481, DEC-1730), read by the web agent; this receiver
 /// leaves it alone.
 pub const TYPE_DENIED: u8 = 12;
 
@@ -63,7 +63,7 @@ pub const fn is_input_type(kind: u8) -> bool {
 }
 
 /// Whether a record type is one of the channel's records beside sound
-/// (`INPUT.md` section 7): the input profile's, the index, LOG and
+/// (DOC-1951): the input profile's, the index, LOG and
 /// `SET_COOKIE`. The audio receiver leaves every one alone, and counts none
 /// as refused.
 #[must_use]

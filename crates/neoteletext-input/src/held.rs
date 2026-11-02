@@ -1,4 +1,4 @@
-//! Held input (`neoteletext-common/INPUT.md` section 8 rule 3, REQ-207):
+//! Held input (DOC-1944, REQ-207):
 //! the keys, buttons and contacts a receiver has pressed and not released.
 //! It is released whenever the page loses the input: on `FOCUS_OUT`, on a
 //! change of selection, when a pointer is gone (what it held only, without
@@ -15,7 +15,7 @@ use crate::event::{Action, Event, Item, Key, KeyCode, MouseAction, Select, Stamp
 /// beyond it is not tracked, so its release changes nothing.
 pub const MAX_HELD_KEYS: usize = 16;
 /// Mouse buttons tracked: left, middle, right, back and forward, and three
-/// more (section 5.4's `button`).
+/// more (DOC-1938's `button`).
 const BUTTONS: u8 = 8;
 
 /// What is held.
@@ -48,7 +48,7 @@ pub enum Released {
 const _: () = assert!(crate::MAX_CONTACTS <= u16::BITS as usize);
 
 /// The KEY a receiver sends for a held key the page lost: a release with
-/// the L flag, stamped with the page that held it (INPUT.md section 5.5).
+/// the L flag, stamped with the page that held it (DOC-1935).
 #[must_use]
 pub const fn lost_key(key: KeyCode, on: Stamp) -> Key<'static> {
     Key { on, action: Action::Release, key, mods: 0, text: None, base: None, lost: true }
@@ -269,7 +269,7 @@ mod tests {
         assert!(key.lost && key.action == Action::Release);
         let mut out = [0; 32];
         let length = crate::event::write(&Item::Event(Event::Key(key)), &mut out).unwrap();
-        assert_eq!(out[..length], [0xFF, 0x01, 0x80, 0x02, 0x00, 0x46, 9], "the L flag, section 5.5");
+        assert_eq!(out[..length], [0xFF, 0x01, 0x80, 0x02, 0x00, 0x46, 9], "the L flag, DOC-1935");
     }
 
     #[test]

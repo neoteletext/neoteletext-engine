@@ -211,7 +211,7 @@ struct CacheEntry {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum PushPhase {
     Idle,
-    /// It ended for good: nothing reconnects (`INPUT.md` section 5.1).
+    /// It ended for good: nothing reconnects (DOC-1920).
     Stopped,
     Backoff {
         until: Instant,
@@ -325,9 +325,9 @@ pub struct UserAgent<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES
     cache: [Option<CacheEntry>; CACHE_ENTRIES],
     cache_tick: u64,
     push: PushConnection,
-    /// The channel's records on the push connection (INPUT.md section 7).
+    /// The channel's records on the push connection (DOC-1951).
     records: crate::records::RecordReader,
-    /// The index sending in progress (INPUT.md section 7.5).
+    /// The index sending in progress (DOC-1955).
     index: crate::records::index::Progress,
     /// The open channel is live: its `channel.ttx` names a push
     /// connection, so nothing is fetched but its settings (REQ-WEB-018).

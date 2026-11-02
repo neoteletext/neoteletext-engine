@@ -1,8 +1,8 @@
 //! The United States layout's characters by W3C `KeyboardEvent.code` name
-//! (`INPUT.md` section 5.7): the `base` field of a KEY.
+//! (DOC-1937): the `base` field of a KEY.
 
 /// The character a physical key has on a United States layout, from its W3C
-/// `KeyboardEvent.code` name, for a KEY's `base` (section 5.7); `None` for a
+/// `KeyboardEvent.code` name, for a KEY's `base` (DOC-1937); `None` for a
 /// key that types no character there.
 #[must_use]
 pub fn us_base(code_name: &str) -> Option<char> {

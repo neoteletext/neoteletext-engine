@@ -21,7 +21,7 @@ import time
 # format version.
 SESSION_VERSION = "v1"
 # The push connection's subprotocol: PUSH_SUBPROTOCOL in the engine, which
-# the client insists on (INPUT.md section 5.1).
+# the client insists on (DOC-1917).
 SUBPROTOCOL = "neottx.7"
 
 

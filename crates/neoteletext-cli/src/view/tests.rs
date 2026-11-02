@@ -75,7 +75,7 @@ fn a_terminal_key_is_sent_as_the_input_stream_has_it() {
     assert_eq!(sent(KeyCode::Char('\u{1b}'), none), None, "a control character is not text");
 }
 
-/// INPUT.md section 9.6: with the Kitty keyboard protocol a key's repeat
+/// `docs/user-guide.md`, "The viewer": with the Kitty keyboard protocol a key's repeat
 /// types its text again and its release is a KEY with no text.
 #[test]
 fn repeats_and_releases_where_the_terminal_reports_them() {
@@ -109,7 +109,7 @@ fn a_redirect_names_the_page_to_open() {
     assert_eq!(typing.take_redirect(), None);
 }
 
-/// INPUT.md section 7.1 and DEC-1689: a cursor record never moves a viewer,
+/// DOC-1954 and DEC-1689: a cursor record never moves a viewer,
 /// whatever page it names, so one still in flight when the viewer selects
 /// another page cannot take them back (TODO-1656).
 /// REQ-1502: only a selection or a redirect moves a connection's viewer.

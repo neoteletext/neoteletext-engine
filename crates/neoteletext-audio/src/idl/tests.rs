@@ -111,7 +111,7 @@ fn a_further_record_replaces_the_oldest_incomplete_one() {
     assert_eq!(done, Some(three));
 }
 
-/// INPUT.md section 7.10: a record of the frame's largest length, in its 241
+/// DOC-1952: a record of the frame's largest length, in its 241
 /// fragments, is reassembled whole, whatever order they come in.
 // Verifies REQ-AUD-007.
 #[test]

@@ -1,7 +1,7 @@
-//! A receiver's side of one input session (`neoteletext-common/INPUT.md`
-//! sections 6 to 8): HELLO and WELCOME, the input count the channel
+//! A receiver's side of one input session (DOC-1921 and DOC-1943):
+//! HELLO and WELCOME, the input count the channel
 //! acknowledges, the rate limit, and, with RESUME, the messages kept to
-//! send again after a reconnection (section 6.4, REQ-INT-125, REQ-RCH-013). Every
+//! send again after a reconnection (DOC-1923, REQ-INT-125, REQ-RCH-013). Every
 //! receiver uses it alike: NeoTeletext's trusted core, `neottx view`,
 //! `neottx keyboard`, a microcontroller.
 //!
@@ -103,7 +103,7 @@ pub struct SessionOf<const KEPT: usize> {
     acked: u16,
     limiter: Limiter,
     /// The last move sent on the open page, as sent: a move to the same dot
-    /// tells the channel nothing (INPUT.md section 6.3).
+    /// tells the channel nothing (DOC-1945).
     last_move: Option<Mouse>,
     /// The token of the channel's last WELCOME with RESUME, for the next
     /// reconnection (REQ-RCH-013).
@@ -132,7 +132,7 @@ pub type Session = SessionOf<0>;
 pub type ResumableSession = SessionOf<RESEND_BYTES>;
 
 /// The input count after HELLO, which counts one in a new session
-/// (INPUT.md section 7.1).
+/// (DOC-1943).
 const AFTER_HELLO: u16 = 1;
 
 impl<const KEPT: usize> SessionOf<KEPT> {
@@ -201,7 +201,7 @@ impl<const KEPT: usize> SessionOf<KEPT> {
     /// into `out` and returns its length. It is HELLO, with the AGENT
     /// capability when `agent` is given; in a new session HELLO counts
     /// one. When the last session may be resumed, RESUME follows it, with
-    /// the token and the last acknowledgement (section 6.4), and the count
+    /// the token and the last acknowledgement (DOC-1923), and the count
     /// goes on from where it was.
     ///
     /// # Errors
@@ -245,7 +245,7 @@ impl<const KEPT: usize> SessionOf<KEPT> {
     }
 
     /// Takes the channel's WELCOME: its version, the capabilities both
-    /// sides use, and with RESUME the session (section 6.4).
+    /// sides use, and with RESUME the session (DOC-1923).
     ///
     /// # Errors
     /// When none was asked for, it names another version, capabilities
@@ -319,7 +319,7 @@ impl<const KEPT: usize> SessionOf<KEPT> {
         }
     }
 
-    /// At `now_ms`: refused when WELCOME is overdue (section 6.1).
+    /// At `now_ms`: refused when WELCOME is overdue (DOC-1921).
     pub fn tick(&mut self, now_ms: u32) {
         if let State::Waiting(since) = self.state
             && now_ms.wrapping_sub(since) >= WELCOME_TIMEOUT_MS
@@ -337,7 +337,7 @@ impl<const KEPT: usize> SessionOf<KEPT> {
         }
     }
 
-    /// Encodes `item` into `out` as sections 6.3 and 8 say, at `now_ms`, and
+    /// Encodes `item` into `out` as DOC-1922 and DOC-1943 say, at `now_ms`, and
     /// counts it: everything goes, but a move to the dot of the last one sent
     /// on the page, an event whose
     /// capability is not agreed (TOUCH; a device other than the mouse goes

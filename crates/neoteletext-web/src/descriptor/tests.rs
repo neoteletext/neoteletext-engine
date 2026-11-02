@@ -128,7 +128,7 @@ fn input_needs_a_websocket() {
     assert!(!Descriptor::parse(VALID.as_bytes(), &base()).unwrap().input());
 }
 
-/// Finding F-90 (INPUT.md section 4): keys go back only to a push
+/// Finding F-90 (DOC-1865): keys go back only to a push
 /// WebSocket on the descriptor's own origin. A service's descriptor could
 /// send them to any origin; a channel's push was already held to its own.
 #[test]

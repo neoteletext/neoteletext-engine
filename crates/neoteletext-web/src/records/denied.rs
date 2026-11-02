@@ -1,4 +1,4 @@
-//! The DENIED record (`neoteletext-common/INPUT.md` section 7.12, DEC-1730,
+//! The DENIED record (DOC-1961, DEC-1730,
 //! REQ-1481): a selection refused, or a program that did not answer in time.
 //! Its status is a real HTTP status number, so that a selection has an
 //! answer as a web request has.

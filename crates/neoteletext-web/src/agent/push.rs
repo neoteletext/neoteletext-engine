@@ -17,8 +17,8 @@ use crate::port::{ConnectionId, RandomSource, Security};
 use crate::url::{IpAddress, Url};
 use crate::ws::{self, FrameReader};
 
-/// Why a handshake's answer means no attempt will ever do better (`INPUT.md`
-/// section 5.1), or `None` when it may: a client error but for a limit, or
+/// Why a handshake's answer means no attempt will ever do better (DOC-1920),
+/// or `None` when it may: a client error but for a limit, or
 /// an upgrade to something other than the push subprotocol, which is another
 /// server or another version (DEC-1759 lesson 14).
 fn handshake_stop(head: &ResponseHead) -> Option<PushStop> {
@@ -109,7 +109,7 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
 
     /// The push connection failed or closed: wait, then reconnect, with a
     /// ceiling that doubles and a random delay under it (REQ-WEB-005,
-    /// `INPUT.md` section 5.1).
+    /// DOC-1920).
     pub(super) fn push_lost(&mut self, now: Instant, problem: Option<PushProblem>, close: bool, sink: &mut Sink<'_>) {
         if self.push.url.is_none() || self.push.phase == PushPhase::Idle && problem.is_none() {
             return;
@@ -141,7 +141,7 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
         half.saturating_add(above.unwrap_or(0))
     }
 
-    /// The push connection ended for good (`INPUT.md` section 5.1): no
+    /// The push connection ended for good (DOC-1920): no
     /// reconnection follows, and only opening the channel again starts one.
     pub(super) fn push_stop(&mut self, stop: PushStop, sink: &mut Sink<'_>) {
         self.close_push(sink);

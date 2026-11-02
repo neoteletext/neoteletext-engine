@@ -1,5 +1,5 @@
 //! Decoding the input stream: one item from bytes that may end early,
-//! one whole message, and a byte stream split anywhere (section 5.1).
+//! one whole message, and a byte stream split anywhere (DOC-1929).
 
 use super::LOST;
 use super::encode::RESUME_PAYLOAD;
@@ -22,7 +22,7 @@ use crate::{
 /// [`InputError::Wire`] of [`WireError::Incomplete`] means more is needed.
 ///
 /// # Errors
-/// Anything section 5 refuses.
+/// Anything DOC-1781 refuses.
 pub fn read(bytes: &[u8]) -> Result<Option<(Item<'_>, usize)>, InputError> {
     let Some(&first) = bytes.first() else { return Ok(None) };
     if first != EVENT {
@@ -45,7 +45,7 @@ fn read_text(bytes: &[u8]) -> Result<(Item<'_>, usize), InputError> {
         // A character cut by the end of the bytes so far: the whole ones
         // before it, or wait for more. Cut by an event it is malformed: no
         // later byte can finish it, and waiting would hold every command
-        // after it as text (DEC-1759 lesson 17, `INPUT.md` section 5.3).
+        // after it as text (DEC-1759 lesson 17, DOC-1930).
         Err(error) if error.error_len().is_none() && end == bytes.len() => {
             let whole = run.get(..error.valid_up_to()).unwrap_or(&[]);
             if whole.is_empty() {
@@ -59,7 +59,7 @@ fn read_text(bytes: &[u8]) -> Result<(Item<'_>, usize), InputError> {
     Ok((Item::Text(text), text.len()))
 }
 
-/// The stamp every input event begins with (section 5.4, REQ-1555).
+/// The stamp every input event begins with (DOC-1934, REQ-1555).
 fn read_stamp(reader: &mut Reader<'_>) -> Result<Stamp, InputError> {
     let narrow = |value: u32| u16::try_from(value).map_err(|_| InputError::BadValue("stamp"));
     let (page, sub) = (narrow(reader.uv()?)?, narrow(reader.uv()?)?);
@@ -226,7 +226,7 @@ fn read_touch(payload: &[u8]) -> Result<Event<'static>, InputError> {
 /// The radix of a hexadecimal digit.
 const HEX_RADIX: u32 = 16;
 
-/// SELECT's payload (INPUT.md section 5.4, DEC-1730): the place as text, in
+/// SELECT's payload (DOC-1753, DEC-1730): the place as text, in
 /// the URL map's one spelling, with capitals: `302`, `302/0002`, `302?a=1`.
 /// Empty means no page. Anything else is a protocol error, and so is every
 /// bound of [`Select::new`] and of [`is_page_parameters`].
@@ -330,11 +330,11 @@ fn read_key<'a>(reader: &mut Reader<'a>) -> Result<Key<'a>, InputError> {
     Ok(Key { on, action, key, mods, text, base, lost })
 }
 
-/// Decodes one whole message (section 5.1): whole items only, at most
+/// Decodes one whole message (DOC-1929): whole items only, at most
 /// [`MAX_MESSAGE`] bytes, each passed to `each` in order.
 ///
 /// # Errors
-/// Any item section 5 refuses, an item cut by the message's end, or a
+/// Any item DOC-1781 refuses, an item cut by the message's end, or a
 /// message over [`MAX_MESSAGE`].
 pub fn read_message<'a>(message: &'a [u8], each: &mut dyn FnMut(Item<'a>)) -> Result<(), InputError> {
     if message.len() > MAX_MESSAGE {
@@ -352,7 +352,7 @@ pub fn read_message<'a>(message: &'a [u8], each: &mut dyn FnMut(Item<'a>)) -> Re
 }
 
 /// Decodes a byte stream that may split items anywhere, as a serial line
-/// does (section 5.1), holding at most `N` bytes of an item not yet whole.
+/// does (DOC-1929), holding at most `N` bytes of an item not yet whole.
 /// `N` must hold the largest event: [`MAX_STREAM_ITEM`].
 pub struct StreamDecoder<const N: usize> {
     held: [u8; N],
@@ -381,7 +381,7 @@ impl<const N: usize> StreamDecoder<N> {
     /// not yet whole.
     ///
     /// # Errors
-    /// Any item section 5 refuses, or an item longer than `N`: either ends
+    /// Any item DOC-1781 refuses, or an item longer than `N`: either ends
     /// the stream.
     pub fn push(&mut self, mut bytes: &[u8], each: &mut dyn FnMut(Item<'_>)) -> Result<(), InputError> {
         while !bytes.is_empty() {

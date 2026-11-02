@@ -51,7 +51,7 @@ const EXAMPLE_DOT_X: u32 = EXAMPLE_COLUMN * 12;
 const EXAMPLE_DOT_Y: u32 = EXAMPLE_ROW * 20;
 /// One line of the wheel, in 1/120ths.
 const WHEEL_LINE: i32 = 120;
-/// The audio and input service the records use (`INPUT.md` section 7).
+/// The audio and input service the records use (DOC-1951).
 const SERVICE: u8 = 0;
 /// A token, an example value.
 const EXAMPLE_TOKEN: [u8; TOKEN_BYTES] = *b"0123456789abcdef";
@@ -681,7 +681,7 @@ fn denied_channel() -> Result<Example, String> {
 }
 
 /// A later version of a sub-page: its header without the erase bit, and the
-/// one row that changed (`SERVER.md` section 5.2).
+/// one row that changed (DOC-1949).
 fn changed_row() -> Result<Example, String> {
     let display = [with_odd_parity(b' '); HEADER_DISPLAY_BYTES];
     let magazine = Magazine::new(1).ok_or("no such magazine")?;

@@ -16,7 +16,7 @@ mod targets;
 
 pub use row_text::{DecodedText, decode_text};
 /// A link target of Appendix E, read as an `LN`, `LK` or `LT` line's is:
-/// also how a LINKS record's targets are read (`INPUT.md` section 7.8).
+/// also how a LINKS record's targets are read (DOC-1958).
 pub use targets::{link_destination, parse_target};
 
 /// The longest line read; longer lines are cut and reported. An `OL` line

@@ -1,36 +1,36 @@
-//! The input system's limits and its one page check (`INPUT.md` sections
-//! 5 to 8): every bound a message, a record or a session is held to.
+//! The input system's limits and its one page check (DOC-1781 and DOC-1782):
+//! every bound a message, a record or a session is held to.
 
 use crate::{control, wire};
 
-/// The protocol version HELLO and WELCOME carry (section 6.1), and the
+/// The protocol version HELLO and WELCOME carry (DOC-1921), and the
 /// number in the push connection's subprotocol, which the wire vectors'
 /// test asserts agrees with it.
 pub const VERSION: u32 = 7;
-/// The most bytes in one binary message (section 5.1, REQ-INT-101): room
+/// The most bytes in one binary message (DOC-1918, REQ-INT-101): room
 /// for a SELECT with the longest page parameters (DEC-1715).
 pub const MAX_MESSAGE: usize = 8192;
-/// The most bytes of a SELECT's page parameters (section 5.4, DEC-1715): no
+/// The most bytes of a SELECT's page parameters (DOC-1753, DEC-1715): no
 /// address has more, so every address the map accepts can be selected.
 pub const MAX_PAGE_PARAMETERS: usize = neoteletext_core::limits::MAX_URL_LENGTH;
-/// The most bytes of a PASTE's text (section 5.4, REQ-INT-103).
+/// The most bytes of a PASTE's text (DOC-1941, REQ-INT-103).
 pub const MAX_PASTE: usize = 4000;
-/// The most bytes of a COMPOSE preedit (section 5.4).
+/// The most bytes of a COMPOSE preedit (DOC-1941).
 pub const MAX_COMPOSE: usize = 256;
-/// The most bytes of a KEY's text (section 5.5).
+/// The most bytes of a KEY's text (DOC-1935).
 pub const MAX_KEY_TEXT: usize = 32;
-/// The most bytes of HELLO's user agent string (section 5.4).
+/// The most bytes of HELLO's user agent string (DOC-1932).
 pub const MAX_AGENT: usize = 64;
-/// Cells across a page (section 5.4): always 40 (DEC-1636, REQ-1643).
+/// Cells across a page (DOC-1942): always 40 (DEC-1636, REQ-1643).
 pub const MAX_COLUMNS: u32 = neoteletext_core::consts::COLUMNS as u32;
-/// Rows of a page: header, 23 rows and the Fastext row (section 5.4).
+/// Rows of a page: header, 23 rows and the Fastext row (DOC-1942).
 pub const MAX_ROWS: u32 = 25;
-/// The most input units a second (section 8, REQ-INT-109): qrkeyboard's
+/// The most input units a second (DOC-1943, REQ-INT-109): qrkeyboard's
 /// relay limit.
 pub const MAX_PER_SECOND: u32 = 120;
-/// How long a receiver waits for WELCOME (section 6.1).
+/// How long a receiver waits for WELCOME (DOC-1921).
 pub const WELCOME_TIMEOUT_MS: u32 = 10_000;
-/// The most contacts on the page at once (section 5.4, REQ-RCH-043): ten
+/// The most contacts on the page at once (DOC-1939, REQ-RCH-043): ten
 /// fingers. The first is MOUSE's, the others TOUCH's.
 pub const MAX_CONTACTS: usize = 10;
 /// The highest TOUCH `id`: contact 0 is MOUSE's.
@@ -40,17 +40,17 @@ pub const MAX_TOUCH_ID: u8 = (MAX_CONTACTS - 1) as u8;
 /// 2026). The period is not a whole number of microseconds, so the pacer
 /// counts it exactly ([`crate::pace`]).
 pub const MOVES_PER_SECOND: u64 = 60;
-/// The bytes of a session's token (section 6.4, REQ-RCH-013): 128 bits from
+/// The bytes of a session's token (DOC-1923, REQ-RCH-013): 128 bits from
 /// the channel's cryptographic generator, which no one can guess within
 /// the session's hold.
 pub const TOKEN_BYTES: usize = 16;
 /// How long a channel that set RESUME holds a session whose connection was
-/// lost, at least (section 6.4): longer than the push connection's first
+/// lost, at least (DOC-1923): longer than the push connection's first
 /// five retries, 1, 2, 4, 8 and 16 s (the engine's `PUSH_RETRY_FIRST_US`,
 /// doubling), so a reconnection after a short break resumes.
 pub const RESUME_HOLD_MS: u32 = 32_000;
 /// The bytes of unacknowledged messages a resumable receiver keeps to send
-/// again (section 6.4): four pastes and more. It is not four of
+/// again (DOC-1923): four pastes and more. It is not four of
 /// [`MAX_MESSAGE`], because only SELECT reaches that, and it is never kept.
 pub const RESEND_BYTES: usize = 2 * MAX_MESSAGE;
 

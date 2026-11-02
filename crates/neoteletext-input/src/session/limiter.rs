@@ -1,4 +1,4 @@
-//! The rate limit (section 8, REQ-INT-109): units counted over a sliding
+//! The rate limit (DOC-1943, REQ-INT-109): units counted over a sliding
 //! second.
 
 use super::SessionOf;
@@ -8,7 +8,7 @@ use crate::event::{Action, Event, Item, MouseAction, units};
 /// The window the rate limit counts over.
 const SECOND_MS: u32 = 1_000;
 
-/// Whether `event` is held to the rate (section 8 rule 4): every event of
+/// Whether `event` is held to the rate (DOC-1943): every event of
 /// input units, and COMPOSE, which counts none in the input count since
 /// it is never acknowledged (REQ-RCH-012) but which nothing else bounds.
 /// A move, gone and HOVER go only as the pointer moves, at most 60 a

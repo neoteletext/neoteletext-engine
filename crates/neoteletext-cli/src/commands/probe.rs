@@ -1,7 +1,7 @@
 //! `neottx probe` (DEC-1759 lesson 20): a channel as a receiver meets it,
 //! for a developer outside this project. It reads the entry file, makes the
 //! push connection, says HELLO, and makes sample selections, reporting how
-//! each ended (`INPUT.md` sections 5.1, 6.1 and 7.12).
+//! each ended (DOC-1920, DOC-1921 and DOC-1961).
 
 use neoteletext_app::Failure;
 use neoteletext_app::input::Options;
@@ -40,8 +40,8 @@ mod run {
     /// How long the entry file and the push connection have to answer:
     /// the longest the fetcher itself waits for a connection and a response.
     const OPENING_WITHIN: Duration = Duration::from_secs(30);
-    /// How long a selection has to end: the stated deadline, `INPUT.md`
-    /// section 5.4's 5,000 ms, and as long again for a held first selection
+    /// How long a selection has to end: the stated deadline, DOC-1921's
+    /// 5,000 ms, and as long again for a held first selection
     /// and the network. A channel that passes it has broken that promise.
     const ENDING_WITHIN: Duration = Duration::from_secs(10);
     /// How often the probe looks for what arrived: a developer's tool, so
@@ -49,8 +49,8 @@ mod run {
     const LOOK_EVERY: Duration = Duration::from_millis(5);
     /// A page few channels have, selected to see a selection refused.
     const UNLIKELY_PAGE: &str = "8FC";
-    /// DENIED's status for a program that did not answer (`INPUT.md` section
-    /// 7.12): the one refusal that is a fault of the channel.
+    /// DENIED's status for a program that did not answer (DOC-1961):
+    /// the one refusal that is a fault of the channel.
     const STATUS_UNAVAILABLE: u16 = neoteletext_web::records::denied::STATUS_UNAVAILABLE;
     fn fault(text: impl Into<String>) -> Failure {
         (exit::INPUT, text.into())

@@ -1,9 +1,9 @@
 //! The channel's records on its push connection beside its pages
-//! (`neoteletext-common/INPUT.md` section 7): the index (type 6), LOG
+//! (DOC-1951): the index (type 6), LOG
 //! (type 7), `SET_COOKIE` (type 8), LINKS (type 9), SUBPAGES (type 10),
 //! REDIRECT (type 11) and DENIED (type 12), in the audio profile's record frame
 //! (REQ-AUD-003) on data channel 12, packet 4/31, cut into as many
-//! fragments as a record needs (section 7.10).
+//! fragments as a record needs (DOC-1952).
 //!
 //! Each record's encoder writes its packets through a callback, so it
 //! allocates nothing, and checks what it writes with its reader, so a
@@ -28,7 +28,7 @@ pub use neoteletext_audio::record::{
 };
 
 /// Why a record was refused: it is discarded whole, and its packets are
-/// counted as invalid (REQ-1462, `INPUT.md` section 7.10).
+/// counted as invalid (REQ-1462, DOC-1952).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum RecordFault {
     /// The frame failed: its length, CRC-32 or version.
@@ -45,7 +45,7 @@ impl From<RecordError> for RecordFault {
     }
 }
 
-/// The fragments a record of `body` bytes takes (section 7.10).
+/// The fragments a record of `body` bytes takes (DOC-1952).
 #[must_use]
 pub const fn fragments(body: usize) -> usize {
     record_length(body).div_ceil(FRAGMENT_DATA)
@@ -78,19 +78,19 @@ pub(crate) fn take_u16(bytes: &[u8]) -> Result<(u16, &[u8]), RecordFault> {
 /// One record the reader accepted.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ChannelRecord<'a> {
-    /// A part of the channel's index (section 7.5).
+    /// A part of the channel's index (DOC-1955).
     Index(index::IndexRecord<'a>),
-    /// A log line for the channel's author (section 7.6).
+    /// A log line for the channel's author (DOC-1956).
     Log(log::LogRecord<'a>),
-    /// A cookie's `Set-Cookie` value (section 7.7).
+    /// A cookie's `Set-Cookie` value (DOC-1957).
     SetCookie(&'a [u8]),
-    /// A sub-page's Link Extension links (section 7.8).
+    /// A sub-page's Link Extension links (DOC-1958).
     Links(links::LinksRecord<'a>),
-    /// A part of a page's list of sub-pages (section 7.9).
+    /// A part of a page's list of sub-pages (DOC-1959).
     SubPages(subpages::SubPagesRecord<'a>),
-    /// A channel's redirect (section 7.11).
+    /// A channel's redirect (DOC-1960).
     Redirect(redirect::RedirectRecord<'a>),
-    /// A selection refused, or a program not answering (section 7.12).
+    /// A selection refused, or a program not answering (DOC-1961).
     Denied(denied::DeniedRecord<'a>),
 }
 
@@ -108,7 +108,7 @@ pub enum Read<'a> {
 }
 
 /// Reassembles the index, LOG, `SET_COOKIE`, LINKS, SUBPAGES, REDIRECT and DENIED records from a push stream's
-/// packets (section 7.10). A record is followed from its fragment 0, which
+/// packets (DOC-1952). A record is followed from its fragment 0, which
 /// names its type, so the audio profile's records and the one-fragment
 /// cursor and control records, which other readers take, are never copied
 /// here.

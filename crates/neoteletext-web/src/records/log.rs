@@ -1,4 +1,4 @@
-//! The LOG record (`neoteletext-common/INPUT.md` section 7.6, REQ-INP-026,
+//! The LOG record (DOC-1956, REQ-INP-026,
 //! decision E.109 as amended for DEC-1459): a log line for the channel's
 //! author, as a TTI `LG` line holds one, checked by the same rules.
 //!

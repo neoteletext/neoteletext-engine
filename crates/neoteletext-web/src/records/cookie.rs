@@ -1,4 +1,4 @@
-//! The `SET_COOKIE` record (`neoteletext-common/INPUT.md` section 7.7): one
+//! The `SET_COOKIE` record (DOC-1957): one
 //! `Set-Cookie` header value, as an HTTP response carries it (RFC 6265bis
 //! section 4.1), set while the push connection is open. The receiver
 //! applies it with the parser and the rules of a response's header
@@ -25,7 +25,7 @@ const SAME_SITE: &[u8] = b"SameSite=";
 const SECURE: &[u8] = b"Secure";
 const HTTP_ONLY: &[u8] = b"HttpOnly";
 
-/// Whether a byte may be in the line: printable ASCII (section 7.7).
+/// Whether a byte may be in the line: printable ASCII (DOC-1957).
 const fn is_line_byte(byte: u8) -> bool {
     matches!(byte, b' '..=b'~')
 }
@@ -51,7 +51,7 @@ pub fn read(body: &[u8]) -> Result<&[u8], RecordFault> {
     Ok(body)
 }
 
-/// A cookie as a program gives it, typed (`SERVER.md` section 8.2): what
+/// A cookie as a program gives it, typed (DOC-1924): what
 /// the server turns into the line.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct SetCookie<'a> {

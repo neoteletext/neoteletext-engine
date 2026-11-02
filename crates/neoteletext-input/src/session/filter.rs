@@ -1,4 +1,4 @@
-//! What goes: everything a receiver gives, as sent (INPUT.md section 6.3,
+//! What goes: everything a receiver gives, as sent (DOC-1922,
 //! decision E.125), but HELLO and RESUME, which go once from `open`, a `base` the same as its key, and what touch
 //! adds without the TOUCH capability (REQ-RCH-041, REQ-RCH-042): TOUCH is
 //! not sent, and MOUSE goes as the mouse.

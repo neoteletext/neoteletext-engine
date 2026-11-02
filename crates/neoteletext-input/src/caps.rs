@@ -1,7 +1,7 @@
-//! Capabilities (`neoteletext-common/INPUT.md` section 6.2, REQ-INT-106):
+//! Capabilities (DOC-1922, REQ-INT-106):
 //! what a receiver can do, offered in HELLO and agreed in WELCOME. There are
 //! no input modes: every event is sent and a channel ignores what it does
-//! not use (section 6.3, decision E.125).
+//! not use (DOC-1922, decision E.125).
 
 /// Bits 0 to 15 were the input modes until decision E.125: reserved, never
 /// set, and ignored when a peer still sets them, so an older channel's
@@ -25,10 +25,10 @@ pub const AGENT: u32 = 1 << 19;
 pub const TOUCH_CAP: u32 = 1 << 20;
 /// Capability: a lost connection's session may be resumed (REQ-RCH-013):
 /// WELCOME carries a token, and a reconnection's first message carries
-/// RESUME after HELLO (INPUT.md section 6.4).
+/// RESUME after HELLO (DOC-1923).
 pub const RESUME_CAP: u32 = 1 << 21;
 /// Capability: the receiver shows teletext pages and sends SELECT, the
-/// connection's selection (INPUT.md section 5.4, REQ-INT-140); a channel that sets it sends the
+/// connection's selection (DOC-1753, REQ-INT-140); a channel that sets it sends the
 /// one sub-page selected, never a page's sub-pages together (DEC-1500).
 pub const SELECT_CAP: u32 = 1 << 22;
 /// Every capability defined.

@@ -7,8 +7,8 @@ mod codec;
 
 pub use codec::{read, write};
 
-/// The longest input message a frame carries (`neoteletext-common/INPUT.md`
-/// section 5.1): the web module's `INPUT_MESSAGE_MAX` and the input crate's
+/// The longest input message a frame carries (DOC-1918):
+/// the web module's `INPUT_MESSAGE_MAX` and the input crate's
 /// `MAX_MESSAGE`, which this crate may be built without. The command-line
 /// program asserts that they agree.
 pub const MAX_INPUT_MESSAGE: usize = 8192;
@@ -84,13 +84,13 @@ pub enum Notice {
     /// its address (REQ-WEB-021, REQ-1688).
     RedirectToOtherChannel(String),
     /// The channel's program sent the viewer to page `0xMPP`, at this
-    /// sub-code, with the query it keeps, if any (`INPUT.md` section 7.11).
+    /// sub-code, with the query it keeps, if any (DOC-1960).
     PageRedirect(u16, u16, Option<String>),
     /// A selection ended with this HTTP status, for this place, or for the
-    /// whole channel when empty (`INPUT.md` section 7.12).
+    /// whole channel when empty (DOC-1961).
     Denied(u16, String),
     /// The push connection ended for good and is not tried again, and why
-    /// (`INPUT.md` section 5.1).
+    /// (DOC-1920).
     PushStopped(String),
     /// The service's name, from its descriptor or its host.
     ServiceName(String),

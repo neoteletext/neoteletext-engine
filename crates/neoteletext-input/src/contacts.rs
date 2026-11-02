@@ -1,5 +1,5 @@
-//! Numbering the contacts on a touch screen (`neoteletext-common/INPUT.md`
-//! section 9.8, REQ-INT-124; REQ-RCH-041, REQ-RCH-043 and REQ-RCH-053): the first contact
+//! Numbering the contacts on a touch screen (DOC-1945,
+//! REQ-INT-124; REQ-RCH-041, REQ-RCH-043 and REQ-RCH-053): the first contact
 //! down goes as MOUSE, contact 0; each further one as TOUCH, with the
 //! lowest `id` of 1 to 9 free as it begins, kept until it ends; at most
 //! [`MAX_CONTACTS`] at once, a further one sending nothing until one ends.

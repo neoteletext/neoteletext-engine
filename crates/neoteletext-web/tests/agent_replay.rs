@@ -719,7 +719,7 @@ fn websocket_push() {
     assert_profile_headers(harness.replay());
 }
 
-/// INPUT.md section 7.11, REQ-1688: a REDIRECT record on the push connection
+/// DOC-1960, REQ-1688: a REDIRECT record on the push connection
 /// reaches the application, in either form, and the agent moves nothing.
 #[test]
 #[cfg(feature = "push")]
@@ -753,7 +753,7 @@ fn lost_for(records: &[Rec], problem: &str) -> bool {
     events(records).iter().any(|event| event.starts_with("PushLost") && event.contains(problem))
 }
 
-/// `INPUT.md` section 5.1, DEC-1759 lesson 10: each delay is in the upper
+/// DOC-1920, DEC-1759 lesson 10: each delay is in the upper
 /// half of a ceiling that starts at a second and doubles to a minute.
 #[test]
 #[cfg(feature = "push")]
@@ -789,7 +789,7 @@ fn websocket_push_reconnects_at_random_under_a_doubling_ceiling() {
     within(last, 60);
 }
 
-/// `INPUT.md` section 5.1, DEC-1759 lesson 10: a stop code ends the
+/// DOC-1920, DEC-1759 lesson 10: a stop code ends the
 /// connection for good, and a retry code, or a code nobody defined outside
 /// the stop range, is tried again.
 #[test]
@@ -866,7 +866,7 @@ fn websocket_push_protocol_errors() {
     assert!(lost_for(&harness.take(), "Some(WebSocket(Handshake))"));
 }
 
-/// DEC-1759 lesson 16, `INPUT.md` section 7.10: a record of a type nobody
+/// DEC-1759 lesson 16, DOC-1952: a record of a type nobody
 /// defined yet is skipped: not counted as invalid, and the connection stays,
 /// so the next record is read.
 #[test]

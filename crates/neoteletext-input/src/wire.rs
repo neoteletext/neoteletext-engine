@@ -1,5 +1,5 @@
-//! The encoding primitives of the input protocol (`neoteletext-common/INPUT.md`
-//! section 5.2, REQ-INT-102): unsigned and signed varints, and
+//! The encoding primitives of the input protocol (DOC-1929,
+//! REQ-INT-102): unsigned and signed varints, and
 //! length-prefixed strings, over caller-provided buffers.
 
 /// The most bytes a varint takes: 32 bits in groups of 7.
@@ -157,7 +157,7 @@ impl<'a> Reader<'a> {
     /// Reads an unsigned varint, refusing one longer than it need be.
     ///
     /// # Errors
-    /// When the bytes end, or the varint breaks section 5.2.
+    /// When the bytes end, or the varint breaks DOC-1929.
     pub fn uv(&mut self) -> Result<u32, WireError> {
         let mut value: u32 = 0;
         for index in 0..MAX_VARINT {

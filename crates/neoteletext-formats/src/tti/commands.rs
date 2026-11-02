@@ -126,7 +126,7 @@ impl TtiReader {
             // `TF` named a page's font, withdrawn on 23 October 2026
             // (decision E.111): reported, and nothing of it kept.
             // `TF` was withdrawn by decision E.111, and `IM` with the input
-            // modes by decision E.125 (INPUT.md section 6.3).
+            // modes by decision E.125 (DOC-1922).
             b"TF" | b"IM" => self.issue(IssueKind::WithdrawnCommand, out),
             _ => self.diagnostic(DiagnosticKind::UnknownCommand { command: name }, out),
         }

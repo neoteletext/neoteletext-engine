@@ -1,4 +1,4 @@
-//! The LINKS record (`neoteletext-common/INPUT.md` section 7.8, DEC-1495,
+//! The LINKS record (DOC-1958, DEC-1495,
 //! REQ-1494): a sub-page's TTI Link Extension links (Appendix E), which
 //! packets cannot carry, sent straight after the sub-page's page frame.
 //!
@@ -54,7 +54,7 @@ const NAMED_TARGET_BYTES: usize = SERVICE_NAME_BYTES + 1 + 3 + 1 + 4;
 /// A key link's fields other than its target: its key, the target's
 /// length, and the label's length and bytes.
 const KEY_LINK_FIELDS: usize = 1 + 2 + 1 + MAX_LABEL;
-// The longest link must fit one record: a link is never split (section 7.8).
+// The longest link must fit one record: a link is never split (DOC-1958).
 const _: () = assert!(FIXED + KEY_LINK_FIELDS + LINK_TARGET_BYTES <= MAX_BODY);
 
 /// One LINKS record, checked.
@@ -352,7 +352,7 @@ pub struct Sent {
     /// The packets written.
     pub packets: usize,
     /// The record id after the last record's, for the service's next
-    /// record (section 7.10).
+    /// record (DOC-1952).
     pub next_record_id: u8,
 }
 

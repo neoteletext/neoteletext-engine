@@ -12,8 +12,8 @@ pub struct CursorLine {
     pub column: u8,
     /// The record's flags.
     pub flags: u8,
-    /// The input count acted on (`neoteletext-common/INPUT.md` section
-    /// 7.1), or 0.
+    /// The input count acted on (DOC-1943),
+    /// or 0.
     pub acked: u16,
     /// The line of the file.
     pub line: u32,

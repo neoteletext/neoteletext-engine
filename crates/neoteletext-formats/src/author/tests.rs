@@ -346,7 +346,7 @@ fn drcs_and_character_triplets_match_the_worked_encodings() {
     }
 }
 
-/// Decision E.127: the control triplet is written as INPUT.md section 7.3
+/// Decision E.127: the control triplet is written as DOC-1844
 /// gives it, the bytes of its worked example, and a width that does not
 /// fit is refused.
 #[test]

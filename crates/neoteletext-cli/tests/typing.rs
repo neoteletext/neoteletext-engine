@@ -203,8 +203,7 @@ fn serve(listener: &TcpListener) {
     }
 }
 
-/// A key typed, as the input stream has it: its text (INPUT.md section
-/// 5.3).
+/// A key typed, as the input stream has it: its text (DOC-1930).
 fn key_message(character: char) -> Vec<u8> {
     let mut text = [0u8; 4];
     let mut out = [0u8; MAX_MESSAGE];

@@ -301,7 +301,7 @@ fn the_mouse_and_the_wheel_always_go_with_their_dot() {
     assert!(sent_item(&mut session, &drag).is_some(), "a drag");
 }
 
-// Decision E.125, INPUT.md section 6.3: a move goes only when the dot under
+// Decision E.125, DOC-1945: a move goes only when the dot under
 // the pointer changes, and the first on another page always goes.
 #[test]
 fn a_move_to_the_same_dot_is_not_sent_again() {

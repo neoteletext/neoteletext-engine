@@ -10,7 +10,7 @@ pub const PROFILE_VERSION: u8 = 2;
 pub const MAX_RECORD: usize = 1024;
 /// The largest record of any profile in this frame, header and CRC
 /// included: a channel's records carry an address of 8,000 octets with the
-/// fields around it (REQ-1661, `INPUT.md` section 7.10), and each of its
+/// fields around it (REQ-1661, DOC-1952), and each of its
 /// 241 fragments keeps the one-byte index of REQ-AUD-007.
 pub const MAX_FRAMED_RECORD: usize = 8192;
 /// Record header: version, type and a two-byte body length.

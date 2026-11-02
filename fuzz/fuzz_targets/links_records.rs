@@ -1,4 +1,4 @@
-//! The LINKS record (`neoteletext-common/INPUT.md` section 7.8, REQ-1494,
+//! The LINKS record (DOC-1958, REQ-1494,
 //! REQ-1661, REQ-TST-040): every address the reader gives lies in the record,
 //! within the bound and printable, and links it accepts write back to the
 //! same addresses.

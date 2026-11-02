@@ -1,5 +1,5 @@
 //! The channel URL map (neoteletext-common's REQ-1693, decided by DEC-1694
-//! version 3; written out in `SERVER.md` section 4): the one place that reads
+//! version 3; written out in DOC-1779): the one place that reads
 //! and writes what an address says inside a channel.
 //!
 //! An address is a channel's folder, ending in `/`, followed by its place:

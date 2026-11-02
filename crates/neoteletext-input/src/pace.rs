@@ -1,5 +1,5 @@
-//! The pointer's moves paced at 60 a second (`neoteletext-common/INPUT.md`
-//! section 9.8, REQ-INT-122; REQ-RCH-031 to REQ-RCH-033 and REQ-RCH-045): one slot and
+//! The pointer's moves paced at 60 a second (DOC-1945,
+//! REQ-INT-122; REQ-RCH-031 to REQ-RCH-033 and REQ-RCH-045): one slot and
 //! one pace for each contact, the mouse's and each finger's, shared by
 //! every receiver so that one implementation enforces the rule.
 //!

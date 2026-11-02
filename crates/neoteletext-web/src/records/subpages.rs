@@ -1,4 +1,4 @@
-//! The SUBPAGES record (`neoteletext-common/INPUT.md` section 7.9,
+//! The SUBPAGES record (DOC-1959,
 //! DEC-1500, REQ-1503): a page's list of sub-pages, which never travel
 //! with their page, for a receiver's list, count, place and stepping.
 //!
@@ -158,7 +158,7 @@ pub struct Sent {
     /// The packets written.
     pub packets: usize,
     /// The record id after the last record's, for the service's next
-    /// record (section 7.10).
+    /// record (DOC-1952).
     pub next_record_id: u8,
 }
 

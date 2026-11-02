@@ -1,4 +1,4 @@
-//! The cursor record (`neoteletext-common/INPUT.md` section 7.1,
+//! The cursor record (DOC-1954,
 //! REQ-INT-005, REQ-INT-006, REQ-INT-110): a channel's answer to the input,
 //! saying where the cursor is and how much input it has acted on. It is
 //! optional, as the cursor is; a receiver that gets none draws no cursor.

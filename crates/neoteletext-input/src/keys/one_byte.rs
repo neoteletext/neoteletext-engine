@@ -1,8 +1,8 @@
-//! The one-byte functional key codes, 0 to 127 (`INPUT.md` section 5.6's
+//! The one-byte functional key codes, 0 to 127 (DOC-1936's
 //! table, written out).
 
 /// Codes 0 to 127: the key each names, or "" for a code not in use.
-/// INPUT.md section 5.6's table, written out.
+/// DOC-1936's table, written out.
 pub(super) const ONE_BYTE: [&str; 128] = [
     "", // 0 is not a key
     "Escape",

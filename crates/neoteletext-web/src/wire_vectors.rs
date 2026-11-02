@@ -1,5 +1,5 @@
-//! The wire's own bytes (`neoteletext-common/wire-vectors.tsv`, `INPUT.md`
-//! section 15, DEC-1759 lesson 3). Every program that speaks the protocol
+//! The wire's own bytes (`neoteletext-common/wire-vectors.tsv`, DOC-1963,
+//! DEC-1759 lesson 3). Every program that speaks the protocol
 //! runs this one table, as it runs the address map's. The master is in
 //! neoteletext-common, and the commit gate compares this copy with it.
 

@@ -1,5 +1,5 @@
 # The channel URL map's conformance table (neoteletext-common's REQ-1693,
-# written out in SERVER.md section 4). One file, read through
+# written out in DOC-1779). One file, read through
 # neoteletext_web::map::CONFORMANCE by every program that follows the map:
 # the engine's parser, the server's routes and the browser's address rules.
 # Columns are separated by one tab. A line that starts with a hash mark is a

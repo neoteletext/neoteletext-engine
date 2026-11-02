@@ -8,12 +8,12 @@ use neoteletext_core::packet::Packet;
 use neoteletext_input::event::Stamp;
 use neoteletext_input::held::{Held, MAX_HELD_KEYS, Released, lost_key};
 
-/// What `neottx view` offers in HELLO (INPUT.md section 6.2): it shows
+/// What `neottx view` offers in HELLO (DOC-1922): it shows
 /// pages and says which with SELECT; it draws no cursor and no echo.
 const OFFERED: u32 = neoteletext_input::caps::SELECT_CAP;
 
-/// A terminal key as the input stream has it (INPUT.md sections 5.3, 5.5
-/// and 6.3): every key as KEY, stamped with the page on screen, a
+/// A terminal key as the input stream has it (DOC-1930 and DOC-1935):
+/// every key as KEY, stamped with the page on screen, a
 /// character key's text with it unless Control or Alt is held or it is a
 /// release. `None` for keys a terminal cannot name.
 pub(super) fn input_of(key: KeyEvent, on: Stamp, buffer: &mut [u8; 4]) -> Option<neoteletext_input::event::Item<'_>> {
@@ -28,7 +28,7 @@ pub(super) fn input_of(key: KeyEvent, on: Stamp, buffer: &mut [u8; 4]) -> Option
     let bit = |set: bool, value: u8| if set { value } else { 0 };
     let mut control = key.modifiers.contains(KeyModifiers::CONTROL);
     let mut alt = key.modifiers.contains(KeyModifiers::ALT);
-    // AltGr is a level shift, not a modifier (INPUT.md section 5.7 rule 5,
+    // AltGr is a level shift, not a modifier (DOC-1937,
     // REQ-INT-116): a terminal on Windows reports it as Control and Alt
     // held, and a character typed so is text.
     if control && alt && matches!(key.code, KeyCode::Char(character) if printable(character)) {
@@ -82,7 +82,7 @@ pub(super) struct Typing {
     unfocused: bool,
     /// The focus the channel was last told.
     focus_told: Option<bool>,
-    /// The input session (INPUT.md section 6).
+    /// The input session (DOC-1921).
     input: neoteletext_input::session::Session,
     /// The session was welcomed and told the size and focus.
     started: bool,
@@ -98,7 +98,7 @@ pub(super) struct Typing {
     /// The terminal reports releases: without them nothing can be held.
     releases: bool,
     /// The page and sub-code the channel's REDIRECT record named, to open
-    /// (INPUT.md section 8 rule 8, REQ-INT-113), and the query it kept.
+    /// (DOC-1960, REQ-INT-113), and the query it kept.
     redirect: Option<(u16, u16, Option<String>)>,
 }
 
@@ -161,7 +161,7 @@ impl Typing {
 
     /// The channel's REDIRECT record named a page of the channel, to open.
     /// It needs no keys to go to the channel: a selected page is active
-    /// whatever its focus (INPUT.md section 7.11).
+    /// whatever its focus (DOC-1960).
     pub(super) fn redirected(&mut self, page: u16, sub: u16, query: Option<String>) {
         self.redirect = Some((page, sub, query));
     }
@@ -179,8 +179,8 @@ impl Typing {
         self.parameters = (!parameters.is_empty()).then_some((selection, parameters));
     }
 
-    /// The channel is told the page and sub-page selected (INPUT.md section
-    /// 5.4), when they changed, whatever the focus (REQ-1090): 3F7F for a
+    /// The channel is told the page and sub-page selected (DOC-1753),
+    /// when they changed, whatever the focus (REQ-1090): 3F7F for a
     /// page alone. What the channel answers 3F7F with stays the selection,
     /// so no second SELECT goes for it. The address's page parameters go
     /// with the selection it named, and any other leaves them behind
@@ -230,7 +230,7 @@ impl Typing {
     }
 
     /// Takes the channel's records; once welcomed, says the size and the
-    /// focus (section 6.1). Returns whether the channel refused input.
+    /// focus (DOC-1921). Returns whether the channel refused input.
     pub(super) fn records(
         &mut self,
         source: &mut dyn Source,
@@ -246,7 +246,7 @@ impl Typing {
                 let _ = self.input.control(&control);
             } else if let Some(Ok(cursor)) = neoteletext_input::cursor::from_packet(&packet) {
                 // A cursor record never moves a viewer, whatever page it
-                // names (INPUT.md section 7.1).
+                // names (DOC-1954).
                 self.input.acknowledged(cursor.acked);
             }
         }
@@ -263,7 +263,7 @@ impl Typing {
 
     /// Writes `item` at once, one message an item (REQ-INT-112). The event
     /// that ends the input goes after a lost release of each key held
-    /// (INPUT.md section 8 rule 3), on a terminal that reports releases.
+    /// (DOC-1944), on a terminal that reports releases.
     pub(super) fn send(&mut self, source: &mut dyn Source, item: &neoteletext_input::event::Item<'_>, clock_ms: u32) {
         use neoteletext_input::event::{Action, Event, Item};
         if matches!(item, Item::Event(Event::Key(key)) if key.action == Action::Release) {

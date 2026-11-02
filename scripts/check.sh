@@ -71,12 +71,11 @@ check_document_names() {
     entry_file="$(sed -n 's/^pub const SETTINGS_FILE: &str = "\(.*\)";$/\1/p' crates/neoteletext-web/src/channel.rs)"
     link_scheme="$(sed -n 's/^pub const LINK_SCHEME: &str = "\(.*\)";$/\1/p' crates/neoteletext-core/src/consts/link.rs)"
     [[ -n "$entry_file" && -n "$link_scheme" ]] || { echo "the constants were not found" >&2; return 1; }
-    for named in docs/user-guide.md $common/SERVER.md; do
-        grep -qF "\`$link_scheme\`" "$named" || { echo "$named does not name $link_scheme" >&2; return 1; }
-    done
-    for named in docs/user-guide.md $common/CHANNEL.md $common/SERVER.md; do
-        grep -qF "$entry_file\`" "$named" || { echo "$named does not name $entry_file" >&2; return 1; }
-    done
+    grep -qF "\`$link_scheme\`" docs/user-guide.md || { echo "docs/user-guide.md does not name $link_scheme" >&2; return 1; }
+    grep -qF "$entry_file\`" docs/user-guide.md || { echo "docs/user-guide.md does not name $entry_file" >&2; return 1; }
+    # The generated document marks a name as code with a tag, not a backtick.
+    grep -qF "<code>$link_scheme" "$common/PROTOCOL.html" || { echo "$common/PROTOCOL.html does not name $link_scheme" >&2; return 1; }
+    grep -qF "$entry_file</code>" "$common/PROTOCOL.html" || { echo "$common/PROTOCOL.html does not name $entry_file" >&2; return 1; }
     echo "ok: the documents name $entry_file and $link_scheme"
 }
 
