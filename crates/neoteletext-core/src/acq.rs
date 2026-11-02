@@ -62,7 +62,11 @@ pub struct Decoder<'a> {
     serial_active: Option<Magazine>,
     magazine_data: [MagazineData; MAGAZINES],
     service: Option<ServicePacket>,
+    // The network identification of the last format 1 packet 8/30.
+    network: Option<u16>,
     stats: Statistics,
+    // The page shown: the rolling header follows its magazine, and its
+    // latest sub-page is not evicted (REQ-NUM-030).
     requested: Option<PageAddress>,
     rolling: [u8; CLOCK_COLUMN - HEADER_DISPLAY_COLUMN],
     clock: [u8; COLUMNS - CLOCK_COLUMN],
@@ -130,6 +134,7 @@ impl<'a> Decoder<'a> {
             serial_active: None,
             magazine_data: [MagazineData::default(); MAGAZINES],
             service: None,
+            network: None,
             stats: Statistics::default(),
             requested: None,
             rolling: [SPACE; ROLLING_BYTES],
@@ -163,6 +168,7 @@ impl<'a> Decoder<'a> {
     /// of every magazine are discarded (REQ-ACQ-018).
     pub fn start_new_input(&mut self, events: &mut dyn FnMut(Event)) {
         self.discard_magazine_data(events);
+        self.network = None;
     }
 
     /// Discards every stored M/29 packet, raising an event for each

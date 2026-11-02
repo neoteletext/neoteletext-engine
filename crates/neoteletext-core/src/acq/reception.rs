@@ -110,12 +110,15 @@ impl Decoder<'_> {
     /// Takes a broadcast service data packet 8/30 (REQ-ACQ-018).
     fn service_packet(&mut self, service: ServicePacket, events: &mut dyn FnMut(Event)) {
         self.count(Magazine::from_bits(0), crate::consts::PACKET_SERVICE);
-        // REQ-ACQ-018: a new network identification in format 1
-        // means a new service, whose magazine data differs.
-        let format_1 = |packet: &ServicePacket| packet.designation & SERVICE_FORMAT_2_BIT == 0;
-        if format_1(&service) && self.service.is_some_and(|old| format_1(&old) && old.network_id != service.network_id)
-        {
-            self.discard_magazine_data(events);
+        // REQ-ACQ-018: a new network identification means a new service,
+        // whose magazine data differs. Only format 1 gives one, and a
+        // service may interleave the formats, so it is compared with the
+        // last format 1 packet and not the last packet.
+        if service.designation & SERVICE_FORMAT_2_BIT == 0 {
+            if self.network.is_some_and(|network| network != service.network_id) {
+                self.discard_magazine_data(events);
+            }
+            self.network = Some(service.network_id);
         }
         self.service = Some(service);
         events(Event::ServiceData);

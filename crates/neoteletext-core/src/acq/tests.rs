@@ -477,6 +477,43 @@ fn magazine_data_is_kept_until_the_service_changes() {
     assert_eq!(decoder.magazine_data(mag(5)), MagazineData::default());
 }
 
+/// REQ-ACQ-009, REQ-ACQ-018: a change of network identification is seen
+/// across a format 2 packet: the two formats interleave, and only format 1
+/// gives the identification.
+#[test]
+fn a_format_2_packet_does_not_hide_a_change_of_network() {
+    let mut slots = std::vec![StoredPage::EMPTY; 4];
+    let mut decoder = Decoder::new(&mut slots, Config::default());
+    let mut events = Vec::new();
+    let fields = PresentationFields {
+        colours: Some(crate::types::DefaultColourFields { screen: 3, ..Default::default() }),
+        ..PresentationFields::default()
+    };
+    let service = |format_bit: u8, network_id: u16| {
+        let mut packet = encode::address(mag(8), 30);
+        packet.bytes[2] = crate::ecc::hamming84_encode(format_bit);
+        let [high, low] = network_id.to_be_bytes();
+        packet.bytes[9] = high.reverse_bits();
+        packet.bytes[10] = low.reverse_bits();
+        packet
+    };
+    let (format_1, format_2) = (0, crate::consts::SERVICE_FORMAT_2_BIT);
+    let data = encode::magazine_enhancement(mag(5), 0, &fields);
+    feed(&mut decoder, &[service(format_1, 0x1234), data, service(format_2, 0x0000)], &mut events);
+    assert_ne!(decoder.magazine_data(mag(5)), MagazineData::default());
+    feed(&mut decoder, &[service(format_1, 0x1234), service(format_2, 0x0000)], &mut events);
+    assert_ne!(decoder.magazine_data(mag(5)), MagazineData::default(), "the same network");
+    events.clear();
+    feed(&mut decoder, &[service(format_1, 0x4321)], &mut events);
+    assert_eq!(decoder.magazine_data(mag(5)), MagazineData::default());
+    assert!(events.contains(&Event::MagazineData(mag(5))));
+    // A new input starts again: its first identification is no change.
+    feed(&mut decoder, &[data], &mut events);
+    decoder.start_new_input(&mut |_| {});
+    feed(&mut decoder, &[data, service(format_1, 0x1234)], &mut events);
+    assert_ne!(decoder.magazine_data(mag(5)), MagazineData::default());
+}
+
 /// REQ-ACQ-017: pages with hexadecimal numbers are stored at Levels 2.5
 /// and 3.5, and not at Levels 1 and 1.5.
 #[test]
