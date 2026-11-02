@@ -26,6 +26,7 @@ fn page(mpp: u16) -> PageAddress {
     PageAddress::from_mpp(mpp).unwrap()
 }
 
+/// REQ-1897: a page is the channel's address and `NNN`, a sub-page's `NNN/SSSS`.
 #[test]
 fn each_place_reads_as_the_map_says() {
     let plain = |mpp, code: Option<u16>, parameters| Place::Page {
@@ -142,6 +143,7 @@ fn an_address_with_no_place_arrives_at_the_initial_page() {
     assert_eq!(MapAddress::read(CHANNEL).unwrap().place, None);
 }
 
+/// REQ-1898: what fits no case is refused.
 #[test]
 fn what_is_outside_the_map_is_refused() {
     assert_eq!(canonical(&format!("{CHANNEL}#")), Err(MapError::Place));

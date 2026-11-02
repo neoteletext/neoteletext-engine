@@ -230,6 +230,7 @@ fn decoder_events_mark_the_page_stale_and_fresh() {
 /// shows each security indicator in the receiver's own columns, red for the
 /// plain-HTTP marker, yellow for the confirmation of leaving the service,
 /// and the page number again when it is cleared.
+/// REQ-497: an unencrypted connection shows in the status area.
 #[test]
 fn status_area_shows_each_security_indicator() {
     let mut slots = std::vec![StoredPage::EMPTY; 2];

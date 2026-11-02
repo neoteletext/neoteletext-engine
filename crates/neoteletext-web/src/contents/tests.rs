@@ -56,6 +56,7 @@ fn long_titles_are_cut() {
 }
 
 // Verifies REQ-WEB-025.
+/// REQ-1904: `contents.txt`'s bound and one past it.
 #[test]
 fn limits() {
     assert_eq!(read(&std::vec![b' '; MAX_BYTES + 1]).err(), Some(ContentsError::TooLarge));

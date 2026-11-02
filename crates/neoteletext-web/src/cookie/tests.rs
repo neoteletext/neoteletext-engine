@@ -1,5 +1,5 @@
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects, clippy::panic)]
-//! The tests of the cookie store.
+//! Tests of the cookie store, the rules of REQ-495 one by one.
 
 use super::store::default_cookie_path;
 use super::*;

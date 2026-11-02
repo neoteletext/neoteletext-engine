@@ -11,6 +11,7 @@ fn folder(text: &str) -> Result<std::string::String, ChannelError> {
 }
 
 // Verifies REQ-WEB-023.
+/// REQ-1883: a channel's address is a folder in the canonical form.
 #[test]
 fn folders_are_checked_as_written() {
     assert_eq!(folder("https://example.org"), Ok("https://example.org/".into()));
@@ -32,6 +33,7 @@ fn folders_are_checked_as_written() {
     assert_eq!(folder(&long), Err(ChannelError::LongSegment));
 }
 
+/// REQ-1884: the fixed names, in their one spelling.
 #[test]
 fn file_names_are_fixed() {
     let page = |mpp| PageAddress::from_mpp(mpp).unwrap();
@@ -54,6 +56,7 @@ fn file_names_are_fixed() {
     assert_eq!(url.as_str(), "https://h.example/ceefax/1FE.t42");
 }
 
+/// REQ-1884: the names of a sub-page's file and a page's catalogue, as the engine reads them today.
 #[test]
 fn a_sub_page_and_a_catalogue_have_files_of_their_own() {
     // REQ-WEB-019: `NNN-SSSS.t42` and `NNN.sub`, every sub-code 0000 to
@@ -82,6 +85,7 @@ fn a_sub_page_and_a_catalogue_have_files_of_their_own() {
     }
 }
 
+/// REQ-1883: origin and folder path are the channel's boundary.
 #[test]
 fn inside_means_the_same_origin_and_below_the_folder() {
     let at = |text| Url::parse(text).unwrap();
@@ -95,6 +99,7 @@ fn inside_means_the_same_origin_and_below_the_folder() {
     assert!(!redirect_keeps_channel(&one, &at("https://h.example/two/")));
 }
 
+/// REQ-1903: a file's content must be what its name says it is.
 #[test]
 fn content_must_match_the_name() {
     assert!(is_tti(b"DE,x\r\nPN,10000\r\nOL,1,HELLO\r\n"));
@@ -138,6 +143,8 @@ fn an_encoded_separator_after_the_folder_is_outside_it() {
 /// DEC-1710: a folder or a channel's own file opens as a channel, and any
 /// other address as a service's descriptor.
 // Verifies REQ-WEB-023.
+/// REQ-1883: a folder is a channel. REQ-1898: of cases 2 and 3 of the order, a folder and a channel's own file
+/// open as a channel.
 #[test]
 fn an_address_says_whether_it_is_a_channel() {
     let settings = std::format!("http://h.example/a/{SETTINGS_FILE}");

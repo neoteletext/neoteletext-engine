@@ -219,6 +219,7 @@ fn bad_aliases_reject_the_descriptor() {
 
 /// Decision E.111: `font`, which named a channel's font, is withdrawn,
 /// and refused as every unknown member is (REQ-WEB-024).
+/// REQ-1894: a withdrawn member refuses the file.
 #[test]
 fn a_channel_font_is_an_unknown_member() {
     let base = settings_address("https");
@@ -231,6 +232,7 @@ fn a_channel_font_is_an_unknown_member() {
 /// `push.method` could only ever repeat that and is withdrawn (TODO-1739). It
 /// is refused as every unknown member is (REQ-WEB-024), whatever its value and
 /// wherever it stands in the object.
+/// REQ-1894: a withdrawn member refuses the file.
 #[test]
 fn a_push_method_is_an_unknown_member() {
     let channel = settings_address("https");
@@ -255,6 +257,7 @@ fn a_push_method_is_an_unknown_member() {
 /// A channel is live when its `channel.ttx` has a `push` object, and the
 /// object names nothing about the connection: its address is fixed and it is
 /// a WebSocket (TODO-1739).
+/// REQ-1895: a channel is live only when `channel.ttx` has `push`, and its address is fixed.
 #[test]
 fn a_push_object_makes_a_channel_live() {
     let base = settings_address("https");
@@ -269,6 +272,7 @@ fn a_push_object_makes_a_channel_live() {
 
 /// REQ-WEB-024: every member optional, no template, linked channels by
 /// folder, push on the channel's own origin.
+/// REQ-1884: a `channel.ttx` with `page_template` is refused. REQ-1894: each member read, strictly.
 #[test]
 fn channel_settings() {
     let base = settings_address("https");

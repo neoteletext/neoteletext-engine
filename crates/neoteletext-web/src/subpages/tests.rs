@@ -84,6 +84,7 @@ fn every_sub_code_is_carried_and_the_count_is_bounded() {
     assert_eq!(faults, [Fault::TooMany, Fault::TooMany]);
 }
 
+/// REQ-497: a page's catalogue has its own limit. REQ-1904: the bound and one byte past it.
 #[test]
 fn a_full_catalogue_fits_and_a_larger_file_is_refused() {
     let mut buffer = std::vec![0u8; MAX_BYTES];

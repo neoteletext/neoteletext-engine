@@ -61,6 +61,7 @@ fn head_collector_finds_end_across_pieces() {
     assert_eq!(done_at, Some(response.len() - 3));
 }
 
+/// REQ-497: the headers of a response have a limit.
 #[test]
 fn head_size_limit() {
     let mut buffer = [0u8; 16];

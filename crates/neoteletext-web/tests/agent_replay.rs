@@ -264,6 +264,8 @@ fn plain_service() -> Harness {
     harness
 }
 
+/// REQ-492: a page fetched as a TTI file. REQ-493: a held validator makes the next fetch conditional, and a 304
+/// marks the page current at no cost of a body.
 #[test]
 fn descriptor_page_and_conditional_request() {
     let mut harness = plain_service();
@@ -299,6 +301,7 @@ fn descriptor_page_and_conditional_request() {
     assert_profile_headers(harness.replay());
 }
 
+/// REQ-497: a connection made without encryption is reported as an event.
 #[test]
 fn unencrypted_connection_is_reported() {
     let mut replay = Replay::new(&[("tt.example", PUBLIC)]);
@@ -308,6 +311,7 @@ fn unencrypted_connection_is_reported() {
     assert!(has_event(&records, "Unencrypted { connection: Fetch, host: \"tt.example\" }"));
 }
 
+/// REQ-493: the caching headers are honoured.
 #[test]
 fn fresh_pages_are_not_fetched_again() {
     let mut harness = plain_service();
@@ -319,6 +323,7 @@ fn fresh_pages_are_not_fetched_again() {
     assert_eq!(harness.replay().requests_to("tt.example:80").len(), 2, "no request while fresh");
 }
 
+/// REQ-492: 404 is "not in this service", and other failures are reported as events.
 #[test]
 fn not_found_and_failures_leave_pages_alone() {
     let mut harness = plain_service();
@@ -376,6 +381,8 @@ fn the_timer_is_told_on_a_change_and_after_a_tick() {
     assert_eq!(timers(&harness.take()), 1, "told again after a tick");
 }
 
+/// REQ-497: a page response over its limit is abandoned with a diagnostic. REQ-1904: a reader refuses a file
+/// past its bound.
 #[test]
 fn size_limit_abandons_the_response() {
     let mut replay = Replay::new(&[("tt.example", PUBLIC)]);
@@ -406,6 +413,7 @@ fn time_limit() {
     ));
 }
 
+/// REQ-493: fetches are held to the configured rate.
 #[test]
 fn rate_limit() {
     let mut replay = Replay::new(&[("tt.example", PUBLIC)]);
@@ -427,6 +435,7 @@ fn rate_limit() {
     assert_eq!(pages(&harness.take()).len(), 1);
 }
 
+/// REQ-492: at most five redirects are followed.
 #[test]
 fn redirects_are_followed_up_to_five() {
     let mut harness = plain_service();
@@ -456,6 +465,7 @@ fn redirects_are_followed_up_to_five() {
 /// address with the method unchanged leads nowhere, and is a fault after
 /// one request. It resolved to the request's own address and spent six
 /// requests, outside the fetch interval.
+/// REQ-492: such a redirect is a fault after that one request.
 #[test]
 fn a_redirect_to_nowhere_is_a_fault_after_one_request() {
     let empty = b"HTTP/1.1 302 Found\r\nLocation: \r\nContent-Length: 0\r\n\r\n".to_vec();
@@ -612,6 +622,7 @@ fn the_secure_host_memory_forgets_the_host_least_recently_seen() {
     assert!(!has_event(&records, "DowngradeRefused"), "the oldest host is forgotten: {records:?}");
 }
 
+/// REQ-497: without TLS an HTTPS address is unreachable.
 #[test]
 fn tls_unavailable() {
     let config = Config { tls_available: false, ..Config::default() };
@@ -874,6 +885,7 @@ fn an_unknown_record_type_is_skipped() {
     assert!(!has_event(&records, "PushLost"), "{records:?}");
 }
 
+/// REQ-497: a push message over its limit is abandoned.
 #[test]
 #[cfg(feature = "push")]
 fn websocket_push_oversize_message() {
@@ -897,6 +909,7 @@ fn push_to_blocked_peer_is_refused() {
     assert_eq!(harness.replay().requests_to("push.example:80"), Vec::<Vec<u8>>::new());
 }
 
+/// REQ-495: cookies go only to the host that set them, and the store can be wiped.
 #[test]
 #[cfg(feature = "cookies")]
 fn cookies_round_trip_and_wipe() {
@@ -993,6 +1006,7 @@ fn port_cookies() -> (&'static mut dyn Cookies, std::rc::Rc<std::cell::RefCell<P
 
 /// Decision E.104: a port that keeps the cookies is asked for each
 /// request's and given each response's; the agent keeps none.
+/// REQ-495: a port may keep the store itself.
 #[test]
 #[cfg(feature = "cookies")]
 fn a_port_keeps_the_cookies() {
@@ -1013,6 +1027,7 @@ fn a_port_keeps_the_cookies() {
 /// Decision E.104 (W3C Clear Site Data section 4.2): `Clear-Site-Data:
 /// "cookies"` over HTTPS clears the host's cookies before the same
 /// response's are stored; over plain HTTP it is ignored.
+/// REQ-495: `Clear-Site-Data`.
 #[test]
 #[cfg(feature = "cookies")]
 fn clear_site_data_clears_before_the_response_sets() {
@@ -1051,6 +1066,7 @@ fn clear_site_data_clears_before_the_response_sets() {
     assert_eq!(header_value(&last, "Cookie").as_deref(), Some("kept=1"));
 }
 
+/// REQ-495: cookies go with WebSocket upgrades.
 #[test]
 #[cfg(all(feature = "push", feature = "cookies"))]
 fn cookies_go_with_websocket_upgrades() {
@@ -1177,6 +1193,7 @@ impl neoteletext_web::port::CookieStorage for MemoryStorage {
     }
 }
 
+/// REQ-495: persistence only as REQ-SEC-013 allows.
 #[test]
 #[cfg(feature = "cookies")]
 fn cookies_are_saved_only_when_enabled_and_never_session_ones() {
@@ -1318,6 +1335,7 @@ fn a_channel_with_settings_opens_from_its_folder() {
 /// REQ-WEB-027 (DEC-1726): a channel's entry file opens under whatever type a
 /// host gives an extension it does not know, including none, and only an
 /// HTML page is refused by its type.
+/// REQ-1903: the entry file under the types a host gives it.
 #[test]
 fn a_channels_entry_file_opens_whatever_type_a_host_gives_it() {
     let settings = br#"{"name":"Test"}"#;
@@ -1349,6 +1367,7 @@ fn a_channels_entry_file_opens_whatever_type_a_host_gives_it() {
 
 /// DEC-1726: the entry file's old name is not read: a channel is never asked
 /// for it, and told to open it no channel opens.
+/// REQ-1884: a reader asks for the fixed names alone.
 #[test]
 fn a_channels_old_entry_file_is_not_read() {
     let mut harness = site_harness(Config::default());
@@ -1357,6 +1376,8 @@ fn a_channels_old_entry_file_is_not_read() {
     assert_eq!(harness.replay().requests.len(), 0);
 }
 
+/// REQ-1886: the page files in turn, the extension that last answered first, and not found after them.
+/// REQ-1895: no `push` member means no request to `push`.
 #[test]
 fn a_channel_without_settings_uses_the_defaults_its_bundle_and_page_files() {
     let mut harness = site_harness(Config::default());
@@ -1389,6 +1410,7 @@ fn a_channel_without_settings_uses_the_defaults_its_bundle_and_page_files() {
     assert!(has_event(&records, "PageNotInService"), "{records:?}");
 }
 
+/// REQ-1894: an invalid member refuses the file.
 #[test]
 fn a_broken_settings_file_is_not_replaced_by_the_defaults() {
     // Only a missing file means "no settings": a server error, an invalid
@@ -1422,6 +1444,7 @@ fn settings_may_come_as_plain_text_and_link_channels() {
     assert_eq!(descriptor.service_address(linked), "http://other.example/w/");
 }
 
+/// REQ-1903: a channel's page files are accepted by the media types of REQ-WEB-027.
 #[test]
 fn page_files_must_be_what_their_names_say() {
     let mut harness = site_harness(Config::default());
@@ -1461,6 +1484,7 @@ fn page_files_must_be_what_their_names_say() {
 }
 
 // Verifies REQ-WEB-021.
+/// REQ-492: a redirect leaving the channel is reported, not followed.
 #[test]
 fn redirects_that_leave_the_channel_are_reported_not_followed() {
     let config = Config { redirects_within_channel: true, ..Config::default() };
@@ -1639,6 +1663,7 @@ fn a_page_of_8190_sub_pages_is_fetched_one_sub_page_at_a_time() {
 
 /// REQ-WEB-027: a catalogue is text; anything else is refused, and the
 /// page's sub-pages stay in its page file.
+/// REQ-1903: a catalogue is text.
 #[test]
 fn a_catalogue_must_be_text() {
     let mut harness = site_harness(Config::default());
@@ -1729,6 +1754,7 @@ fn an_address_with_a_refused_fragment_opens_nothing() {
 
 /// DEC-1730: a query goes with the selection, in SELECT, and never on the
 /// push connection, whose address is the same for every page of a channel.
+/// REQ-1895: the live connection is the folder's `push`.
 #[test]
 #[cfg(feature = "push")]
 fn the_push_connection_carries_no_query_and_no_page() {
