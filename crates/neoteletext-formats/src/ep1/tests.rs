@@ -42,6 +42,7 @@ pub(crate) fn ep1_file(language: u8, packets: &[StoredPacket]) -> Vec<u8> {
     file
 }
 
+/// REQ-179: a file without enhancements, 1008 bytes.
 #[test]
 fn reads_a_plain_file_of_1008_bytes() {
     let file = ep1_file(0x0D, &[]);
@@ -56,6 +57,7 @@ fn reads_a_plain_file_of_1008_bytes() {
     assert!(page.has_row(24));
 }
 
+/// REQ-179: the enhancement block, with the terminator stored as address 0x7F.
 #[test]
 fn reads_enhancements_and_the_stored_terminator() {
     let mut triplets = [(EP1_TERMINATOR_ADDRESS, MODE_TERMINATION, 0); 13];
@@ -74,6 +76,7 @@ fn reads_enhancements_and_the_stored_terminator() {
     assert_eq!(page.control().national_index(), 0);
 }
 
+/// REQ-179: a file that is not an EP1 page is reported.
 #[test]
 fn reports_bad_files() {
     let mut file = ep1_file(0x09, &[]);

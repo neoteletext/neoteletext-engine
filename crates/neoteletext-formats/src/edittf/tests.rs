@@ -23,6 +23,7 @@ pub(crate) fn written(page: &PageFile) -> Vec<u8> {
     out
 }
 
+/// REQ-180: the code layout and the 1167 characters of the 25-row form.
 #[test]
 fn an_empty_page_is_the_familiar_address() {
     let mut page = PageFile::new();
@@ -37,6 +38,7 @@ fn an_empty_page_is_the_familiar_address() {
     assert_eq!(data_end - 2, EDITTF_CHARACTERS_25);
 }
 
+/// REQ-180: the 1120-character form, the metadata digit's character set, and an unknown field ignored.
 #[test]
 fn reads_the_24_row_form_after_a_web_address() {
     let mut page = PageFile::new();
@@ -59,6 +61,7 @@ fn reads_the_24_row_form_after_a_web_address() {
     assert_eq!(read.control().national_index(), 3);
 }
 
+/// REQ-180: the matching writer, with every optional field.
 #[test]
 fn write_then_read_reproduces_the_page() {
     let mut page = PageFile::new();
@@ -88,6 +91,7 @@ fn write_then_read_reproduces_the_page() {
     assert_eq!(pages(&items).as_slice(), core::slice::from_ref(&page));
 }
 
+/// REQ-180: a string of the wrong length, or outside the alphabet, is refused.
 #[test]
 fn reports_bad_data() {
     let items = same_in_any_chunks(EditTfReader::new, b"0:QIEC\n0:\n");

@@ -65,6 +65,8 @@ fn read(input: &[u8], chunk: usize) -> Vec<(Option<Packet>, Option<PacketMeta>, 
     items
 }
 
+/// REQ-172: the data units of each identifier, stuffing skipped, field parity, line offset and time stamp.
+/// REQ-173: a file that is a plain sequence of such packets.
 #[test]
 fn reads_packets_with_line_field_and_time() {
     let units = [data_unit(DATA_UNIT_TELETEXT, &sample(1), 7), data_unit(DATA_UNIT_SUBTITLE, &sample(2), 21)];
@@ -88,6 +90,7 @@ fn reads_packets_with_line_field_and_time() {
     }
 }
 
+/// REQ-172: a bad framing code and a bad data identifier refused with a diagnostic.
 #[test]
 fn rejects_bad_identifier_and_framing_and_resynchronises() {
     let mut bad_framing = data_unit(DATA_UNIT_TELETEXT, &sample(1), 7);
@@ -107,6 +110,7 @@ fn rejects_bad_identifier_and_framing_and_resynchronises() {
     assert_eq!(diagnostics[2], Diagnostic::at(identifier_at as u64, DiagnosticKind::BadDataIdentifier { value: 0x20 }));
 }
 
+/// REQ-173: other streams in the file are skipped by their length.
 #[test]
 fn skips_other_streams() {
     let mut stream = std::vec![0, 0, 1, 0xE0, 0, 3, 1, 2, 3];
@@ -116,6 +120,7 @@ fn skips_other_streams() {
     assert_eq!(got[1].0, Some(sample(9)));
 }
 
+/// REQ-172: the presentation time stamp converted.
 #[test]
 fn pts_conversion() {
     let pts = 0x1_2345_6789_u64 & ((1 << 33) - 1);

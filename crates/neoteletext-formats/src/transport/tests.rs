@@ -132,6 +132,8 @@ pub(crate) fn expected_packets() -> Vec<Packet> {
     (0..8).map(sample).collect()
 }
 
+/// REQ-171: the tables, each descriptor entry reported, the choice of stream reported and a subtitle page
+/// offered. REQ-170: packets with an adaptation field and payload.
 #[test]
 fn finds_teletext_through_pat_and_pmt() {
     let input = flatten(&stream(), 0, 0);
@@ -151,6 +153,7 @@ fn finds_teletext_through_pat_and_pmt() {
     assert_eq!(meta.timestamp_us, Some(0));
 }
 
+/// REQ-170: the 192-byte and 204-byte packets.
 #[test]
 fn reads_192_and_204_byte_packets() {
     for (size, prefix, suffix) in [(TsPacketSize::M2ts, 4, 0), (TsPacketSize::Fec, 0, 16)] {
@@ -164,6 +167,7 @@ fn reads_192_and_204_byte_packets() {
     }
 }
 
+/// REQ-170: the sync byte found again after corruption.
 #[test]
 fn resynchronises_and_reports_offsets() {
     let packets_in = stream();
@@ -180,6 +184,7 @@ fn resynchronises_and_reports_offsets() {
     assert_eq!(packets(&items), expected_packets());
 }
 
+/// REQ-170: packets with the transport-error flag discarded, and continuity breaks reported.
 #[test]
 fn discards_errors_and_reports_continuity_breaks() {
     let mut packets_in = stream();
@@ -201,6 +206,7 @@ fn discards_errors_and_reports_continuity_breaks() {
     assert_eq!(got[3..], expected[4..]);
 }
 
+/// REQ-171: a stream selected by packet identifier.
 #[test]
 fn selects_by_pid_without_tables() {
     let packets_in = stream();
@@ -213,6 +219,7 @@ fn selects_by_pid_without_tables() {
     assert_eq!(diagnostics(&unselected).last().unwrap().kind, DiagnosticKind::NoTeletextStream);
 }
 
+/// REQ-171: a stream selected by programme.
 #[test]
 fn selects_by_program() {
     let input = flatten(&stream(), 0, 0);

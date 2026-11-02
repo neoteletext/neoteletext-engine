@@ -194,6 +194,7 @@ fn tally_file(packets: &[Packet], tally: &mut Tally) {
     }
 }
 
+/// REQ-166: T42 files of the real-broadcast corpus.
 #[test]
 fn corpus_packets_and_page_checksum_order() {
     let files = t42_files();

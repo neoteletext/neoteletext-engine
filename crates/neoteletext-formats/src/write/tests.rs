@@ -51,6 +51,7 @@ fn round_trip(text: &[u8]) {
     assert_eq!(left, right);
 }
 
+/// REQ-178: reading a written file reproduces the page.
 #[test]
 fn tti_round_trips() {
     let mut every = full_page();
@@ -82,6 +83,7 @@ fn fastext_links_with_sub_codes_use_a_packed_line() {
     assert!(again[0].fastext_row_24);
 }
 
+/// REQ-182: encoded pages round trip, and received packets pass through a page filter.
 #[test]
 fn t42_round_trips_and_filters() {
     let (pages, _) = read(&full_page());
@@ -113,6 +115,7 @@ fn t42_round_trips_and_filters() {
 /// REQ-INP-023 and REQ-TST-020: object, pattern and table pages, magazine
 /// packets and the page packets of Levels 2.5 and 3.5 read, write and read
 /// back unchanged.
+/// REQ-178: enhancement packets written in the form of REQ-INP-013.
 #[test]
 fn enhancement_pages_round_trip() {
     round_trip(&crate::tti::tests::enhancement_pages());

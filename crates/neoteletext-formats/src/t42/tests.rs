@@ -45,6 +45,7 @@ fn read(variant: T42Variant, input: &[u8], chunk: usize) -> (Vec<Packet>, Vec<Di
     (packets, diagnostics)
 }
 
+/// REQ-166: a headerless sequence of 42-byte packets, in any chunks.
 #[test]
 fn every_variant_round_trips_in_any_chunk_size() {
     let packets = sample_packets(20);

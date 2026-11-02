@@ -310,6 +310,7 @@ fn sc_carries_every_sub_code() {
     }
 }
 
+/// REQ-182: packets encoded from a page follow the order of Annex B.2.
 #[test]
 fn encoded_pages_decode_to_the_same_fields() {
     let (pages, _) = read(&full_page());
