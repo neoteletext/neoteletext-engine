@@ -113,8 +113,9 @@ fn read_entry(bytes: &[u8]) -> Result<(SubPageEntry<'_>, &[u8]), RecordFault> {
 ///
 /// # Errors
 /// A page out of range, a part not below its parts, a count or parts
-/// outside 1 to 8,190, no entries, a sub-code out of range or repeated in
-/// the record, a title that breaks its rule, or a field cut short.
+/// outside 1 to 8,190, no entries, a sub-code out of range or not above the
+/// one before it in the record, a title that breaks its rule, or a field cut
+/// short.
 pub fn read(body: &[u8]) -> Result<SubPagesRecord<'_>, RecordFault> {
     let (page, rest) = take_u16(body)?;
     let page = PageAddress::from_mpp(page).ok_or(RecordFault::BadValue("sub-pages page"))?;
@@ -127,15 +128,15 @@ pub fn read(body: &[u8]) -> Result<SubPagesRecord<'_>, RecordFault> {
     }
     let mut walk = entries;
     let mut seen: usize = 0;
+    let mut last: Option<u16> = None;
     while !walk.is_empty() {
         let (entry, rest) = read_entry(walk)?;
-        // Each sub-code once: compared with the record's entries before it,
-        // at most a few hundred.
-        let before = entries.len().saturating_sub(walk.len());
-        let earlier = Entries { bytes: entries.get(..before).unwrap_or(&[]) };
-        if earlier.clone().any(|other| other.subcode == entry.subcode) {
-            return Err(RecordFault::BadValue("sub-code repeated"));
+        // Ascending, which also gives each sub-code once (REQ-1503 item 3).
+        let subcode = entry.subcode.value();
+        if last.is_some_and(|last| subcode <= last) {
+            return Err(RecordFault::BadValue("sub-codes not ascending"));
         }
+        last = Some(subcode);
         seen = seen.saturating_add(1);
         walk = rest;
     }
@@ -167,8 +168,9 @@ pub struct Sent {
 /// order.
 ///
 /// # Errors
-/// An empty list or one of more than 8,190, a sub-code out of range or
-/// given twice, or a title that breaks its rule: nothing is written then.
+/// An empty list or one of more than 8,190, a sub-code out of range or not
+/// above the one before it, or a title that breaks its rule: nothing is
+/// written then.
 pub fn encode(
     page: PageAddress,
     version: u16,
@@ -179,13 +181,13 @@ pub fn encode(
 ) -> Result<Sent, RecordFault> {
     let count = u16::try_from(entries.len()).ok().filter(|&count| count > 0 && count <= MOST);
     let count = count.ok_or(RecordFault::BadValue("sub-pages count"))?;
-    for (index, entry) in entries.iter().enumerate() {
+    for entry in entries {
         if !check_subcode(entry.subcode.value()) || !check_title(entry.title) {
             return Err(RecordFault::BadValue("sub-page entry"));
         }
-        if entries.get(..index).unwrap_or(&[]).iter().any(|other| other.subcode == entry.subcode) {
-            return Err(RecordFault::BadValue("sub-code repeated"));
-        }
+    }
+    if !entries.is_sorted_by(|before, after| before.subcode.value() < after.subcode.value()) {
+        return Err(RecordFault::BadValue("sub-codes not ascending"));
     }
     // Each record takes as many entries as fit, in order.
     let records = |each: &mut dyn FnMut(&[SubPageEntry<'_>])| {
@@ -239,3 +241,6 @@ pub fn encode(
     });
     Ok(Sent { records: parts, packets, next_record_id: record_id })
 }
+
+#[cfg(test)]
+mod tests;
