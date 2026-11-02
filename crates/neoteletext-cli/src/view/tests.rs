@@ -99,6 +99,7 @@ fn repeats_and_releases_where_the_terminal_reports_them() {
 
 /// REQ-INT-113: a REDIRECT record names the page to open, whether or not
 /// keys go to the channel, once.
+/// REQ-1502: a program's page redirect selects the page it names.
 #[test]
 fn a_redirect_names_the_page_to_open() {
     let mut typing = Typing::new();
@@ -111,6 +112,7 @@ fn a_redirect_names_the_page_to_open() {
 /// INPUT.md section 7.1 and DEC-1689: a cursor record never moves a viewer,
 /// whatever page it names, so one still in flight when the viewer selects
 /// another page cannot take them back (TODO-1656).
+/// REQ-1502: only a selection or a redirect moves a connection's viewer.
 #[test]
 fn a_cursor_record_never_moves_a_viewer() {
     let mut source = Recorded::default();
@@ -227,6 +229,7 @@ fn press(typing: &mut Typing, source: &mut Recorded, character: char, kind: KeyE
 
 /// REQ-1556, REQ-1090: opening a page sends SELECT, never 0x0A, with 3F7F
 /// for the page alone and the sub-code for a sub-page, once a change.
+/// REQ-1502: a page alone goes as 3F7F's text, and a sub-page with its sub-code.
 #[test]
 fn opening_a_page_sends_select_and_never_page() {
     let mut source = Recorded::default();

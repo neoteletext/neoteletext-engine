@@ -149,6 +149,7 @@ fn every_event_round_trips() {
 }
 
 // REQ-INT-102.
+/// REQ-1377: the input stream refuses a cell outside the page.
 #[test]
 fn what_section_5_refuses_is_refused() {
     let refuse = |bytes: &[u8]| read(bytes).is_err();
@@ -239,6 +240,7 @@ fn the_input_count_counts_characters_and_events() {
 /// REQ-INT-124, REQ-RCH-042, decision E.133: MOUSE's `flags` bits 4 and 5 give the
 /// device, 0 mouse, 1 touch, 2 pen; 3 is refused, and so are bits 6 and 7.
 /// A mouse's bytes are those of before.
+/// REQ-1371: a pen is MOUSE with device 2.
 #[test]
 fn mouse_carries_its_device() {
     let at = Point { column: 10, row: 5, pixels: None, mods: 0 };
@@ -367,6 +369,7 @@ fn each_new_event_needs_its_capability() {
 /// REQ-INT-121, decision E.129: HOVER is the extension `0x43`, `flags`, `col` and `row`;
 /// it reads back, and a bad flag, a cell off the page or bytes after are
 /// refused. A receiver that does not know `0x43` skips it as any extension.
+/// REQ-1361: HOVER as `INPUT.md` section 5.4 has it.
 #[test]
 fn hover_round_trips_and_is_checked() {
     for event in [
@@ -457,6 +460,7 @@ fn only_a_release_may_be_lost() {
 
 // REQ-1388 (REQ-INT-140): SELECT at every bound, in the layout of INPUT.md
 // section 5.4.
+/// REQ-1090: SELECT at every bound.
 #[test]
 fn select_round_trips_at_every_bound() {
     for (page, sub) in [(0, 0x3F7F), (0x100, 0), (0x100, 0x3F7E), (0x100, 0x3F7F), (0x8FF, 0), (0x8FF, 0x3F7F)] {
@@ -472,6 +476,7 @@ fn select_round_trips_at_every_bound() {
 
 // DEC-1715, DEC-1730: page parameters follow the place after `?`, up to the
 // bound, and reach a channel fed a byte at a time.
+/// REQ-1090: a query in SELECT up to its bound.
 #[test]
 fn select_carries_page_parameters_up_to_the_bound() {
     let select = Select::new(0x302, 0x0002).unwrap();
@@ -508,6 +513,7 @@ fn select_carries_page_parameters_up_to_the_bound() {
 
 // REQ-INT-140: one past each bound is refused, as is a length that disagrees
 // with the fields.
+/// REQ-1090: the refusals.
 #[test]
 fn select_refuses_one_past_each_bound() {
     assert_eq!(Select::new(0xFF, 0x3F7F), None, "below the first page");
@@ -543,6 +549,7 @@ fn select_refuses_one_past_each_bound() {
 
 // REQ-INT-140: a channel fed SELECT a byte at a time reads it once, and it
 // counts no input and needs its capability.
+/// REQ-1090: SELECT arrives whole in its message.
 #[test]
 fn select_arrives_whole_and_counts_nothing() {
     let select = Select::new(0x123, 0x0042).unwrap();
@@ -565,6 +572,7 @@ fn select_arrives_whole_and_counts_nothing() {
 
 /// INPUT.md section 5.4, `SERVER.md` section 4.6: a query is the URL map's
 /// `name=value` pairs, so what a SELECT carries a REDIRECT can keep.
+/// REQ-1090: a query is `name=value` pairs.
 #[test]
 fn a_query_is_the_maps_pairs() {
     let select = Select::new(0x302, 0x3F7F).unwrap();

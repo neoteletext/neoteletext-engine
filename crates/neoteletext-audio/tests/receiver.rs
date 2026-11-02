@@ -783,6 +783,7 @@ mod opus {
         sink.pcm.iter().rev().find(|(held, _)| *held == id).unwrap().1.clone()
     }
 
+    /// REQ-47: a stored sound arriving in reverse order equals one decoder's output, a packet at a time.
     #[test]
     fn a_stored_opus_sound_arriving_out_of_order_is_decoded_in_order() {
         let data = packets(30, 7);
@@ -805,6 +806,7 @@ mod opus {
         assert_eq!(receiver.statistics().decode_failures, 0);
     }
 
+    /// REQ-47: a progressive play is decoded as far as its blocks have arrived.
     #[test]
     fn a_progressive_opus_sound_is_decoded_as_its_blocks_arrive() {
         let data = packets(60, 11);
@@ -872,6 +874,7 @@ mod opus {
         assert_eq!(assembled(&sink, &sound), want, "whole once block 3 is here");
     }
 
+    /// REQ-47: a live sound's lost packet is concealed by the decoder that follows it.
     #[test]
     fn a_lost_live_opus_packet_is_concealed_by_the_decoder() {
         let data = packets(10, 3);
@@ -892,6 +895,7 @@ mod opus {
         assert_eq!(receiver.statistics().concealed, 1);
     }
 
+    /// REQ-47: the engine carries an encoder's packets and encodes no Opus.
     #[test]
     fn opus_is_carried_as_packets_and_not_encoded_here() {
         assert_eq!(
