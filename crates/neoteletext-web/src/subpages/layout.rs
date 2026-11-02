@@ -1,7 +1,7 @@
 //! A channel's pages written as its files (REQ-WEB-019, decision E.132;
 //! feature `std`): a page of one sub-page as `NNN.t42`; a page of several
 //! as `NNN.t42` holding its first sub-page, `NNN-SSSS.t42` for each
-//! sub-page and `NNN.sub` listing them; and `index.t42` holding first
+//! sub-page and the parts `NNN/P.sub` listing them; and `index.t42` holding first
 //! sub-pages only, so that a channel's opening costs the same at any
 //! number of sub-pages (`STANDARD-LIMITS.md` section 4 items 7 and 8).
 //!
@@ -17,7 +17,7 @@ use std::vec::Vec;
 
 use neoteletext_core::types::{PageAddress, SubCode};
 
-use super::{MAX_ENTRIES, MAX_LINE, Validator, write_entry};
+use super::{MAX_BYTES, MAX_ENTRIES, PartNumber, ROWS_PER_PART, Validator, write_entry, write_header};
 use crate::bytes::Writer;
 use crate::channel::{self, BUNDLE_FILE, ChannelFile, MAX_FILE_NAME};
 use crate::consts::DEFAULT_PAGE_LIMIT;
@@ -70,7 +70,7 @@ fn in_page_order<'a, 'b>(sub_pages: &'a [SubPageFile<'b>]) -> Vec<&'a SubPageFil
 
 /// The files of one page: `NNN.t42` for a page of one sub-page; otherwise
 /// `NNN.t42` holding the first, then each sub-page's `NNN-SSSS.t42` and
-/// `NNN.sub`, in the page's order.
+/// the parts of its list `NNN/P.sub`, in the page's order.
 pub fn page_files(page: PageAddress, sub_pages: &[SubPageFile<'_>]) -> Result<Vec<(String, Vec<u8>)>, LayoutError> {
     let sub_pages = in_page_order(sub_pages);
     let Some(first) = sub_pages.first() else { return Err(LayoutError::Empty) };
@@ -90,17 +90,26 @@ pub fn page_files(page: PageAddress, sub_pages: &[SubPageFile<'_>]) -> Result<Ve
     if sub_pages.len() == 1 {
         return Ok(files);
     }
-    let mut catalogue = std::vec![0u8; sub_pages.len().saturating_mul(MAX_LINE)];
-    let mut writer = Writer::new(&mut catalogue);
     for sub_page in &sub_pages {
         let file = ChannelFile::SubPage { page, subcode: sub_page.subcode };
         files.push((name(file), sub_page.t42.to_vec()));
-        // Room for every entry was made above.
-        let _ = write_entry(&mut writer, sub_page.subcode, &Validator::of(sub_page.t42), sub_page.title);
     }
-    let length = writer.len();
-    catalogue.truncate(length);
-    files.push((name(ChannelFile::SubPages { page }), catalogue));
+    let version = Validator::of_page(sub_pages.iter().map(|sub_page| sub_page.t42));
+    // MAX_ENTRIES was checked above, so the count fits and every part has a number.
+    let total = u16::try_from(sub_pages.len()).unwrap_or(u16::MAX);
+    for (number, rows) in sub_pages.chunks(ROWS_PER_PART).enumerate() {
+        let Some(part) = PartNumber::new(number) else { return Err(LayoutError::TooMany) };
+        let mut bytes = std::vec![0u8; MAX_BYTES];
+        let mut writer = Writer::new(&mut bytes);
+        // Room for the header and every row was made above.
+        let _ = write_header(&mut writer, total, &version);
+        for sub_page in rows {
+            let _ = write_entry(&mut writer, sub_page.subcode, &Validator::of(sub_page.t42), sub_page.title);
+        }
+        let length = writer.len();
+        bytes.truncate(length);
+        files.push((name(ChannelFile::SubPages { page, part }), bytes));
+    }
     Ok(files)
 }
 

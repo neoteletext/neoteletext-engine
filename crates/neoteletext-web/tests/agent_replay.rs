@@ -17,7 +17,7 @@ use neoteletext_core::types::{Instant, PageAddress, SubCode};
 use neoteletext_web::agent::InputMessage;
 use neoteletext_web::agent::{Config, Input, Output, Source, Storage, Subscription, UserAgent};
 use neoteletext_web::bytes::Writer;
-use neoteletext_web::channel::SETTINGS_FILE;
+use neoteletext_web::channel::{ChannelFile, SETTINGS_FILE};
 #[cfg(feature = "push")]
 use neoteletext_web::consts::{
     CLOSE_BROKE_PROTOCOL, CLOSE_RESTARTING, CLOSE_RETRY_LAST, CLOSE_STOP_FIRST, CLOSE_STOP_LAST, CLOSE_WRONG_VERSION,
@@ -31,6 +31,7 @@ use neoteletext_web::port::{ConnectionId, Pump, Security};
 use neoteletext_web::records::redirect::{RedirectRecord, encode};
 #[cfg(feature = "push")]
 use neoteletext_web::records::write_packets;
+use neoteletext_web::subpages::PartNumber;
 use neoteletext_web::url::IpAddress;
 
 const PUBLIC: IpAddress = IpAddress::V4([93, 184, 216, 34]);
@@ -1565,51 +1566,54 @@ fn contents_are_fetched_on_request() {
     assert!(has_event(&harness.take(), "ContentsFailed(MediaType)"));
 }
 
-/// A catalogue of the standard's 8,190 sub-pages of a page (REQ-NUM-020),
-/// each sub-page's file being `body`.
-fn full_catalogue(body: &[u8]) -> Vec<u8> {
-    use neoteletext_web::subpages::{self, Validator};
-    let mut catalogue = std::vec![0u8; subpages::MAX_BYTES];
-    let mut writer = Writer::new(&mut catalogue);
+/// Whether a file is a part of a page's list.
+const fn is_list(file: ChannelFile) -> bool {
+    matches!(file, ChannelFile::SubPages { .. })
+}
+
+/// The parts of the list of a page of the standard's 8,190 sub-pages
+/// (REQ-NUM-020), each sub-page's file being `body`, as the writer lays them
+/// out (REQ-1888).
+fn full_list(body: &[u8]) -> Vec<(String, Vec<u8>)> {
+    use neoteletext_web::subpages::{SubPageFile, page_files};
     let codes = (1..neoteletext_core::limits::SUBCODE_ANY)
         .filter(|&value| neoteletext_core::limits::is_sub_code(value))
         .map(SubCode::new);
-    for code in codes {
-        let title = format!("Story {:04X}", code.value());
-        subpages::write_entry(&mut writer, code, &Validator::of(body), &title).unwrap();
-    }
-    let length = writer.len();
-    catalogue.truncate(length);
-    catalogue
+    let sub_pages: Vec<SubPageFile<'_>> =
+        codes.map(|subcode| SubPageFile { subcode, t42: body, title: "A story" }).collect();
+    let page = PageAddress::from_mpp(0x100).unwrap();
+    let files = page_files(page, &sub_pages).unwrap();
+    files.into_iter().filter(|(name, _)| ChannelFile::from_name(name).is_some_and(is_list)).collect()
 }
 
-/// REQ-WEB-019 and REQ-WEB-034 (decision E.132): a page's catalogue is
-/// asked for when wanted, conditionally once its validators are held, and
-/// then one sub-page passes the wire when it is asked for, from its own
-/// file and nothing else. A page with no catalogue keeps its page file.
+/// A part of `list`, as a host answers it.
+fn list_reply(list: &[(String, Vec<u8>)], part: usize, validator: &str) -> Reply {
+    let etag = format!("ETag: \"{validator}\"");
+    Reply::Bytes(response("200 OK", &["Content-Type: text/plain", &etag], &list[part].1))
+}
+
+/// REQ-1888 (decisions E.122, DEC-2116): a part of a page's list is asked for
+/// when wanted, conditionally once its validators are held, and then one
+/// sub-page passes the wire when it is asked for, from its own file and
+/// nothing else. A page whose part 0 is missing keeps its page file.
 #[test]
 fn a_page_of_8190_sub_pages_is_fetched_one_sub_page_at_a_time() {
     let mut harness = site_harness(Config::default());
     harness.replay().reply("site.example:80", not_found());
     harness.replay().reply("site.example:80", not_found());
     harness.open_channel("http://site.example/news/");
-    // Large reads, so that the catalogue settles within the harness's
-    // bound on steps.
-    harness.replay().chunk = 4096;
     let page = PageAddress::from_mpp(0x100).unwrap();
     let interval = neoteletext_web::consts::DEFAULT_FETCH_INTERVAL_US;
-    // The catalogue: larger than a page response, within its own limit.
-    let catalogue = full_catalogue(&packet());
-    assert!(catalogue.len() > neoteletext_web::consts::DEFAULT_PAGE_LIMIT);
-    let reply = Reply::Bytes(response("200 OK", &["Content-Type: text/plain", "ETag: \"c1\""], &catalogue));
-    harness.replay().reply("site.example:80", reply);
-    harness.input(Input::FetchSubPages { page });
+    let parts = full_list(&packet());
+    assert_eq!(parts.len(), neoteletext_web::subpages::MAX_PARTS);
+    harness.replay().reply("site.example:80", list_reply(&parts, 0, "c1"));
+    harness.input(Input::FetchSubPages { page, part: PartNumber::FIRST });
     harness.advance(interval);
     let records = harness.take();
     let delivered = events(&records).into_iter().find(|event| event.starts_with("SubPages {")).unwrap();
-    let read = neoteletext_web::subpages::read(&catalogue).unwrap().flatten().count();
-    assert_eq!(read, 8190);
-    assert!(delivered.len() > catalogue.len(), "the whole catalogue is delivered");
+    let count = neoteletext_web::subpages::read(&parts[0].1).unwrap().total;
+    assert_eq!(count, 8190, "whichever part arrives first sizes the list");
+    assert!(delivered.len() > parts[0].1.len(), "the whole part is delivered");
     // One sub-page, from its own file.
     harness.replay().reply("site.example:80", ok("application/octet-stream", &packet()));
     harness.input(Input::FetchPage { page, subcode: Some(SubCode::new(0x2345)) });
@@ -1618,9 +1622,9 @@ fn a_page_of_8190_sub_pages_is_fetched_one_sub_page_at_a_time() {
     let Rec::Page { source, url, .. } = pages(&records)[0] else { unreachable!() };
     assert_eq!(*source, Source::Page { page, subcode: Some(SubCode::new(0x2345)) });
     assert_eq!(url, "http://site.example/news/100-2345.t42");
-    // The catalogue again: conditional, and unchanged.
+    // The part again: conditional, and unchanged.
     harness.replay().reply("site.example:80", Reply::Bytes(response("304 Not Modified", &["ETag: \"c1\""], b"")));
-    harness.input(Input::FetchSubPages { page });
+    harness.input(Input::FetchSubPages { page, part: PartNumber::FIRST });
     harness.advance(interval);
     assert!(has_event(&harness.take(), "SubPagesCurrent"));
     let last = harness.replay().requests_to("site.example:80").last().unwrap().clone();
@@ -1635,10 +1639,10 @@ fn a_page_of_8190_sub_pages_is_fetched_one_sub_page_at_a_time() {
     harness.input(Input::FetchPage { page, subcode: Some(SubCode::ANY) });
     harness.advance(interval);
     assert_eq!(pages(&harness.take()).len(), 1);
-    // A page with no catalogue: its sub-pages are in its page file.
+    // A page with no part 0: its sub-pages are in its page file.
     let other = PageAddress::from_mpp(0x200).unwrap();
     harness.replay().reply("site.example:80", not_found());
-    harness.input(Input::FetchSubPages { page: other });
+    harness.input(Input::FetchSubPages { page: other, part: PartNumber::FIRST });
     harness.advance(interval);
     assert!(has_event(&harness.take(), "SubPagesMissing"));
     harness.replay().reply("site.example:80", tti_response(&[]));
@@ -1650,38 +1654,88 @@ fn a_page_of_8190_sub_pages_is_fetched_one_sub_page_at_a_time() {
         [
             settings_path().as_str(),
             "/news/index.t42",
-            "/news/100.sub",
+            "/news/100/0.sub",
             "/news/100-2345.t42",
-            "/news/100.sub",
+            "/news/100/0.sub",
             "/news/100-0124.t42",
             "/news/100.tti",
-            "/news/200.sub",
+            "/news/200/0.sub",
             "/news/200.tti",
         ]
     );
 }
 
-/// REQ-WEB-027: a catalogue is text; anything else is refused, and the
-/// page's sub-pages stay in its page file.
-/// REQ-1903: a catalogue is text.
+/// REQ-1888: with the 128 parts of 8,190 sub-pages, showing rows 4,020 to
+/// 4,042 asks for parts 62 and 63 alone, each with its own validators, and a
+/// missing later part says nothing of the page's folder.
 #[test]
-fn a_catalogue_must_be_text() {
+fn showing_some_rows_asks_for_the_parts_they_fall_in_alone() {
+    let mut harness = site_harness(Config::default());
+    harness.replay().reply("site.example:80", not_found());
+    harness.replay().reply("site.example:80", not_found());
+    harness.open_channel("http://site.example/news/");
+    let page = PageAddress::from_mpp(0x100).unwrap();
+    let interval = neoteletext_web::consts::DEFAULT_FETCH_INTERVAL_US;
+    let list = full_list(&packet());
+    let parts: Vec<PartNumber> = neoteletext_web::subpages::parts_of_rows(4020, 23).collect();
+    for &part in &parts {
+        harness.replay().reply("site.example:80", list_reply(&list, usize::from(part.number()), "c"));
+        harness.input(Input::FetchSubPages { page, part });
+        harness.advance(interval);
+    }
+    let records = harness.take();
+    let delivered = events(&records).into_iter().filter(|event| event.starts_with("SubPages {")).count();
+    assert_eq!(delivered, 2);
+    assert_eq!(paths(&mut harness, "site.example:80")[2..], ["/news/100/62.sub", "/news/100/63.sub"]);
+    // Part 0 was never asked for, and a part past the page's end leaves it
+    // with its folder: a sub-page still comes from its own file.
+    harness.replay().reply("site.example:80", not_found());
+    harness.input(Input::FetchSubPages { page, part: PartNumber::new(127).unwrap() });
+    harness.advance(interval);
+    assert!(has_event(&harness.take(), "SubPagesMissing"));
+    harness.replay().reply("site.example:80", ok("application/octet-stream", &packet()));
+    harness.input(Input::FetchPage { page, subcode: Some(SubCode::new(1)) });
+    harness.advance(interval);
+    assert_eq!(paths(&mut harness, "site.example:80").last().unwrap(), "/news/100-0001.t42");
+}
+
+/// REQ-WEB-027: a part of a list is text; anything else is refused, and the
+/// page's sub-pages stay in its page file.
+/// REQ-1903: a part of a list is text.
+#[test]
+fn a_part_of_a_list_must_be_text() {
     let mut harness = site_harness(Config::default());
     harness.replay().reply("site.example:80", not_found());
     harness.replay().reply("site.example:80", not_found());
     harness.open_channel("http://site.example/");
     let page = PageAddress::from_mpp(0x100).unwrap();
-    harness.replay().reply("site.example:80", ok("text/html", b"0001\tv\n"));
-    harness.input(Input::FetchSubPages { page });
+    harness.replay().reply("site.example:80", ok("text/html", b"1\tv\n0001\tv\n"));
+    harness.input(Input::FetchSubPages { page, part: PartNumber::FIRST });
     harness.advance(neoteletext_web::consts::DEFAULT_FETCH_INTERVAL_US);
     assert!(has_event(
         &harness.take(),
-        "SubPagesFailed { page: PageAddress { magazine: Magazine(1), page: PageNumber(0) }, failure: MediaType }"
+        "SubPagesFailed { page: PageAddress { magazine: Magazine(1), page: PageNumber(0) }, part: PartNumber(0), failure: MediaType }"
     ));
     harness.replay().reply("site.example:80", tti_response(&[]));
     harness.input(Input::FetchPage { page, subcode: Some(SubCode::new(1)) });
     harness.advance(neoteletext_web::consts::DEFAULT_FETCH_INTERVAL_US);
     assert_eq!(paths(&mut harness, "site.example:80").last().unwrap(), "/100.tti");
+}
+
+/// REQ-1904: a part larger than its bound is abandoned whole, and the agent
+/// never holds more of it than that bound.
+#[test]
+fn a_part_of_a_list_past_its_bound_is_refused() {
+    let mut harness = site_harness(Config::default());
+    harness.replay().reply("site.example:80", not_found());
+    harness.replay().reply("site.example:80", not_found());
+    harness.open_channel("http://site.example/");
+    let page = PageAddress::from_mpp(0x100).unwrap();
+    let over = std::vec![b'x'; neoteletext_web::subpages::MAX_BYTES + 1];
+    harness.replay().reply("site.example:80", ok("text/plain", &over));
+    harness.input(Input::FetchSubPages { page, part: PartNumber::FIRST });
+    harness.advance(neoteletext_web::consts::DEFAULT_FETCH_INTERVAL_US);
+    assert!(has_event(&harness.take(), "SubPagesFailed"));
 }
 
 #[test]

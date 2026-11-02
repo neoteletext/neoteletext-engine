@@ -31,6 +31,7 @@ use crate::cookie::{CookieJar, Cookies, Site};
 use crate::descriptor::Descriptor;
 use crate::http::{BodyDecoder, HeadCollector, Method, ResponseHead};
 use crate::port::RandomSource;
+use crate::subpages::PartNumber;
 use crate::url::Url;
 use crate::ws::{FrameReader, HandshakeKey};
 
@@ -81,8 +82,8 @@ enum PageFile {
 enum Want {
     /// A page, or a sub-page of it.
     Page,
-    /// A page's catalogue of sub-pages, `NNN.sub` (REQ-WEB-034).
-    SubPages,
+    /// A part of a page's list of sub-pages, `NNN/P.sub` (REQ-1888).
+    SubPages(PartNumber),
 }
 
 /// A request waiting for the fetch connection.
@@ -100,12 +101,12 @@ enum Cached {
     Page,
     /// A sub-page's file, `NNN-SSSS.t42`.
     SubPage,
-    /// The page's catalogue, `NNN.sub`.
-    SubPages,
+    /// A part of the page's list, `NNN/P.sub`.
+    SubPages(PartNumber),
 }
 
 /// Page numbers of every magazine, 100 to 8FF, as bits from 100: the pages
-/// whose catalogues say their sub-pages are files of their own.
+/// whose lists say their sub-pages are files of their own.
 const PAGE_SLOTS: usize = neoteletext_core::limits::PAGE_NUMBERS;
 /// The first page number, 100.
 const FIRST_PAGE: u16 = neoteletext_core::limits::FIRST_PAGE_ADDRESS;
@@ -125,9 +126,10 @@ enum Purpose {
         file: PageFile,
     },
     Contents,
-    /// A page's catalogue of sub-pages (REQ-WEB-034).
+    /// A part of a page's list of sub-pages (REQ-1888).
     SubPages {
         page: PageAddress,
+        part: PartNumber,
     },
     /// Registers a device-bound session (REQ-WEB-017).
     #[cfg_attr(not(feature = "dbsc"), allow(dead_code, reason = "made only with the feature `dbsc`"))]
@@ -316,7 +318,7 @@ pub struct UserAgent<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES
     /// Close the fetch connection when the current response completes.
     close_fetch_after: bool,
     queue: [Option<Queued>; PAGE_QUEUE],
-    /// The pages of the open channel whose last catalogue answered: their
+    /// The pages of the open channel whose list last answered: their
     /// sub-pages are asked for as files of their own (REQ-WEB-019).
     catalogued: [u32; PAGE_SLOTS / WORD_BITS],
     next_fetch_at: Instant,

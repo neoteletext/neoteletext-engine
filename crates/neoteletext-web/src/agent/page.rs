@@ -1,5 +1,5 @@
 //! Pages (REQ-WEB-003, REQ-WEB-004): the queue of requests, the cache and
-//! its validators, a page response, and a page's catalogue of sub-pages
+//! its validators, a page response, and a part of a page's list of sub-pages
 //! and its sub-pages' files (REQ-WEB-019, REQ-WEB-034).
 
 use neoteletext_core::types::{Instant, PageAddress, SubCode};
@@ -12,6 +12,7 @@ use super::{
 use crate::consts::{MICROSECONDS_PER_SECOND, STATUS_GONE, STATUS_NOT_FOUND, STATUS_NOT_MODIFIED, STATUS_OK};
 use crate::http::{MediaType, ResponseHead};
 use crate::port::RandomSource;
+use crate::subpages::PartNumber;
 
 /// The file a page request's validators belong to.
 pub(super) const fn cached_as(file: PageFile) -> Cached {
@@ -31,7 +32,7 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
             Some(slot) => *slot = Some(wanted),
             None => match want {
                 Want::Page => event(sink, Event::FetchFailed { page, subcode, failure: Failure::QueueFull }),
-                Want::SubPages => event(sink, Event::SubPagesFailed { page, failure: Failure::QueueFull }),
+                Want::SubPages(part) => event(sink, Event::SubPagesFailed { page, part, failure: Failure::QueueFull }),
             },
         }
     }
@@ -52,7 +53,7 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
         (index / WORD_BITS, 1u32 << (index % WORD_BITS))
     }
 
-    /// True when the page's last catalogue answered, so its sub-pages are
+    /// True when the page's list last answered, so its sub-pages are
     /// files of their own.
     pub(super) fn is_catalogued(&self, page: PageAddress) -> bool {
         let (word, bit) = Self::catalogue_slot(page);
@@ -138,37 +139,41 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
         }
     }
 
-    /// A catalogue request is complete (REQ-WEB-034): its bytes, unchanged,
-    /// missing, or refused. A catalogue that answers makes the page's
-    /// sub-pages files of their own; a missing one makes them its page
-    /// file's again.
+    /// A request for a part of a page's list is complete (REQ-1888): its
+    /// bytes, unchanged, missing, or refused. A part that answers makes the
+    /// page's sub-pages files of their own. Part 0 missing means the page has
+    /// no folder, so its sub-pages are its page file's again; a later part
+    /// missing says nothing of the folder.
     pub(super) fn complete_subpages(
         &mut self,
         now: Instant,
         head: &ResponseHead,
         page: PageAddress,
+        part: PartNumber,
         sink: &mut Sink<'_>,
     ) {
         let status = head.status;
-        let key = (page, None, Cached::SubPages);
+        let key = (page, None, Cached::SubPages(part));
         if status == STATUS_NOT_MODIFIED {
             self.set_catalogued(page, true);
             self.update_cache(now, key, head, false);
-            event(sink, Event::SubPagesCurrent { page });
+            event(sink, Event::SubPagesCurrent { page, part });
         } else if status == STATUS_NOT_FOUND || status == STATUS_GONE {
-            self.set_catalogued(page, false);
+            if part == PartNumber::FIRST {
+                self.set_catalogued(page, false);
+            }
             self.drop_cache(key);
-            event(sink, Event::SubPagesMissing { page });
+            event(sink, Event::SubPagesMissing { page, part });
         } else if status != STATUS_OK {
-            event(sink, Event::SubPagesFailed { page, failure: Failure::Status(status) });
+            event(sink, Event::SubPagesFailed { page, part, failure: Failure::Status(status) });
         } else if !matches!(head.media, MediaType::TextPlain | MediaType::OctetStream) {
-            // REQ-WEB-027: a catalogue is text, as `contents.txt` is.
-            event(sink, Event::SubPagesFailed { page, failure: Failure::MediaType });
+            // REQ-1903: a part of a list is text, as `contents.txt` is.
+            event(sink, Event::SubPagesFailed { page, part, failure: Failure::MediaType });
         } else {
             self.set_catalogued(page, true);
             self.update_cache(now, key, head, false);
             let body = self.buffers.body.get(..self.fetch.body_len).unwrap_or(&[]);
-            event(sink, Event::SubPages { page, bytes: body });
+            event(sink, Event::SubPages { page, part, bytes: body });
         }
     }
 

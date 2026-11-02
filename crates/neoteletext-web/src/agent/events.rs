@@ -13,6 +13,7 @@ use crate::records::index::IndexRecord;
 use crate::records::links::LinksRecord;
 use crate::records::redirect::RedirectRecord;
 use crate::records::subpages::SubPagesRecord;
+use crate::subpages::PartNumber;
 use crate::url::UrlError;
 use crate::ws::WsError;
 use neoteletext_formats::log::LogLine;
@@ -56,7 +57,7 @@ pub enum Input<'a> {
         subcode: Option<SubCode>,
     },
     /// Fetch a page of the current service (REQ-WEB-003, REQ-WEB-007).
-    /// On a channel, a sub-page of a page whose catalogue last answered
+    /// On a channel, a sub-page of a page whose list last answered
     /// ([`Input::FetchSubPages`]) is fetched from its own file,
     /// `NNN-SSSS.t42`, and nothing else; any other request asks for the
     /// page's file, `NNN.tti` or `NNN.t42` (REQ-WEB-019), and so does
@@ -67,13 +68,17 @@ pub enum Input<'a> {
         /// The sub-page, if given.
         subcode: Option<SubCode>,
     },
-    /// Fetch the catalogue of a page of the open channel, `NNN.sub`
-    /// (REQ-WEB-034), conditionally when its validators are held,
-    /// answered by [`Event::SubPages`], [`Event::SubPagesCurrent`],
-    /// [`Event::SubPagesMissing`] or [`Event::SubPagesFailed`].
+    /// Fetch a part of the list of a page of the open channel, `NNN/P.sub`
+    /// (REQ-1888), conditionally when its validators are held, answered by
+    /// [`Event::SubPages`], [`Event::SubPagesCurrent`],
+    /// [`Event::SubPagesMissing`] or [`Event::SubPagesFailed`]. A reader asks
+    /// for the parts its rows fall in, [`crate::subpages::parts_of_rows`], and
+    /// part 0 says whether the page has a folder.
     FetchSubPages {
         /// The page.
         page: PageAddress,
+        /// The part.
+        part: PartNumber,
     },
     /// Change the push subscription.
     Subscribe(Subscription<'a>),
@@ -415,31 +420,40 @@ pub enum Event<'a> {
     ContentsMissing,
     /// The channel's `contents.txt` could not be fetched or used.
     ContentsFailed(Failure),
-    /// A page's catalogue of sub-pages, `NNN.sub`, unchecked: the caller
-    /// reads it with [`crate::subpages::read`]. From now on the page's
-    /// sub-pages are fetched from their own files (REQ-WEB-019).
+    /// A part of a page's list of sub-pages, `NNN/P.sub`, unchecked: the
+    /// caller reads it with [`crate::subpages::read`]. From now on the page's
+    /// sub-pages are fetched from their own files (REQ-1887).
     SubPages {
         /// The page.
         page: PageAddress,
-        /// The catalogue.
+        /// The part.
+        part: PartNumber,
+        /// The part's bytes.
         bytes: &'a [u8],
     },
-    /// A page's catalogue is unchanged (304), or still fresh by its cache
-    /// lifetime: the copy the caller holds is current.
+    /// A part of a page's list is unchanged (304), or still fresh by its
+    /// cache lifetime: the copy the caller holds is current.
     SubPagesCurrent {
         /// The page.
         page: PageAddress,
+        /// The part.
+        part: PartNumber,
     },
-    /// The page has no catalogue (404 or 410): its sub-pages, if any, are
-    /// in its page file, which is where they are fetched from.
+    /// A part of a page's list does not exist (404 or 410). For part 0 the
+    /// page has no folder: its sub-pages, if any, are in its page file, which
+    /// is where they are fetched from (DOC-2038).
     SubPagesMissing {
         /// The page.
         page: PageAddress,
+        /// The part.
+        part: PartNumber,
     },
-    /// A page's catalogue could not be fetched or used.
+    /// A part of a page's list could not be fetched or used.
     SubPagesFailed {
         /// The page.
         page: PageAddress,
+        /// The part.
+        part: PartNumber,
         /// Why.
         failure: Failure,
     },

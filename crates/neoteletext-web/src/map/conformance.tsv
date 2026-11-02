@@ -67,11 +67,17 @@ refuse	https://h.example/home/302?a=1&	place
 refuse	https://h.example/home/channel.ttx	receiver-file
 refuse	https://h.example/home/contents.txt	receiver-file
 refuse	https://h.example/home/index.t42	receiver-file
-refuse	https://h.example/home/302.sub	receiver-file
+refuse	https://h.example/home/302/0.sub	receiver-file
+refuse	https://h.example/home/302/127.sub	receiver-file
 
 # Not a channel at all: no final slash, and no place the map lists. The entry
 # file's old name (DEC-1726) is no name of a channel's.
 refuse	https://h.example/home/channel.json	channel
+refuse	https://h.example/home/302.sub	channel
+refuse	https://h.example/home/302/128.sub	channel
+refuse	https://h.example/home/302/00.sub	channel
+refuse	https://h.example/home/302/100.t42	channel
+refuse	https://h.example/home/302/channel.ttx	channel
 refuse	https://h.example/home	channel
 refuse	https://h.example/home/30	channel
 refuse	https://h.example/home/3021	channel
@@ -110,6 +116,7 @@ answer	/home/302.tti	404	-
 answer	/home/302.t42	404	-
 answer	/home/302-0002.t42	404	-
 answer	/home/302.sub	404	-
+answer	/home/302/0.sub	404	-
 answer	/home/contents.txt	404	-
 answer	/home/index.t42	404	-
 answer	/home/push/	404	-

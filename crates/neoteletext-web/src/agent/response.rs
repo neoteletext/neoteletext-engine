@@ -99,7 +99,7 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
             Purpose::Page { page, subcode, file } => {
                 self.complete_page(now, &exchange, &head, (page, subcode, file), sink);
             }
-            Purpose::SubPages { page } => self.complete_subpages(now, &head, page, sink),
+            Purpose::SubPages { page, part } => self.complete_subpages(now, &head, page, part, sink),
         }
     }
 

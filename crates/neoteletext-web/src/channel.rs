@@ -17,6 +17,8 @@ use neoteletext_core::ecc::hamming84;
 use neoteletext_core::types::{PageAddress, SubCode};
 
 use crate::bytes::{Overflow, Writer};
+use crate::map::SUBPAGE_MARK;
+use crate::subpages::PartNumber;
 use crate::url::{FRAGMENT_MARK, QUERY_MARK, Scheme, Url, UrlError};
 
 /// A channel's entry file: its settings, as JSON (REQ-WEB-024). The owner
@@ -33,11 +35,15 @@ pub const PUSH_NAME: &str = "push";
 pub const TTI_EXTENSION: &str = ".tti";
 /// The extension of a page file in T42 (REQ-INP-002).
 pub const T42_EXTENSION: &str = ".t42";
-/// The extension of a page's catalogue of sub-pages (REQ-WEB-034).
+/// The extension of a part of a page's list of sub-pages (REQ-1888).
 pub const SUBPAGES_EXTENSION: &str = ".sub";
 /// Between a page number and a sub-code in a sub-page's file name,
 /// `NNN-SSSS.t42` (REQ-WEB-019).
 pub const SUBPAGE_SEPARATOR: u8 = b'-';
+/// Between a page's folder and a file in it, the same mark that stands between
+/// a page and a sub-page in an address, so that a file's path is its address
+/// (DEC-2116).
+const PAGE_FOLDER_MARK: u8 = SUBPAGE_MARK;
 /// The longest file name of a channel: `NNN-SSSS.t42` and `contents.txt` are
 /// twelve characters.
 pub const MAX_FILE_NAME: usize = PAGE_DIGITS + 1 + crate::subpages::SUBCODE_DIGITS + T42_EXTENSION.len();
@@ -96,10 +102,12 @@ pub enum ChannelFile {
         /// The sub-page.
         subcode: SubCode,
     },
-    /// `NNN.sub`: the catalogue of a page's sub-pages (REQ-WEB-034).
+    /// `NNN/P.sub`: a part of a page's list of sub-pages (REQ-1888).
     SubPages {
         /// The page.
         page: PageAddress,
+        /// The part.
+        part: PartNumber,
     },
     /// `index.t42`.
     Bundle,
@@ -121,8 +129,8 @@ impl ChannelFile {
             CONTENTS_FILE => return Some(Self::Contents),
             _ => {}
         }
-        if let Some(digits) = name.strip_suffix(SUBPAGES_EXTENSION) {
-            return Some(Self::SubPages { page: page_of(digits.as_bytes())? });
+        if let Some((folder, file)) = before(name.as_bytes(), PAGE_FOLDER_MARK) {
+            return Self::in_page_folder(page_of(folder)?, file);
         }
         let (digits, t42) = if let Some(digits) = name.strip_suffix(TTI_EXTENSION) {
             (digits, false)
@@ -139,6 +147,19 @@ impl ChannelFile {
             _ => None,
         }
     }
+
+    /// Reads a name inside a page's folder (REQ-1885).
+    fn in_page_folder(page: PageAddress, name: &[u8]) -> Option<Self> {
+        let digits = name.strip_suffix(SUBPAGES_EXTENSION.as_bytes())?;
+        Some(Self::SubPages { page, part: PartNumber::parse(digits)? })
+    }
+}
+
+/// `text` split around the first `mark`, which is left out of both.
+fn before(text: &[u8], mark: u8) -> Option<(&[u8], &[u8])> {
+    let at = text.iter().position(|&byte| byte == mark)?;
+    let (head, tail) = text.split_at_checked(at)?;
+    Some((head, tail.get(1..)?))
 }
 
 /// True for the digits `0` to `9` and the capitals `A` to `F`, the only
@@ -169,8 +190,10 @@ pub fn write_file_name(writer: &mut Writer<'_>, file: ChannelFile) -> Result<(),
             crate::subpages::write_subcode(writer, subcode)?;
             writer.put(T42_EXTENSION.as_bytes())
         }
-        ChannelFile::SubPages { page } => {
+        ChannelFile::SubPages { page, part } => {
             writer.put(&page.ascii())?;
+            writer.byte(PAGE_FOLDER_MARK)?;
+            writer.decimal(u64::from(part.number()))?;
             writer.put(SUBPAGES_EXTENSION.as_bytes())
         }
         ChannelFile::Bundle => writer.put(BUNDLE_FILE.as_bytes()),
@@ -233,6 +256,29 @@ fn written_path(text: &[u8]) -> Option<&[u8]> {
     path.get(..end)
 }
 
+/// A written path split into the channel's folder and the name of a file in
+/// it, which is empty when the path is the folder. The name of a file in a
+/// page's folder is two segments, so that `602/0101.t42` is a file of the
+/// channel above `602/` (REQ-1885). A folder named as a place of the map
+/// cannot be a channel: any other file in one is no file of any channel, and
+/// `None` says so.
+fn split_written(written: &[u8]) -> Option<(&[u8], &[u8])> {
+    let Some(last) = written.iter().rposition(|&byte| byte == b'/') else { return Some((b"/", b"")) };
+    let (folder, name) = (written.get(..=last)?, written.get(last.saturating_add(1)..)?);
+    if name.is_empty() {
+        return Some((folder, name));
+    }
+    let above = last.checked_sub(1).and_then(|end| written.get(..=end)?.iter().rposition(|&byte| byte == b'/'));
+    let Some(above) = above else { return Some((folder, name)) };
+    let named = written.get(above.saturating_add(1)..)?;
+    if core::str::from_utf8(named).ok().and_then(ChannelFile::from_name).is_some() {
+        return Some((written.get(..=above)?, named));
+    }
+    let segment = written.get(above.saturating_add(1)..last)?;
+    let is_place = core::str::from_utf8(segment).ok().and_then(crate::map::Place::read).is_some();
+    (!is_place).then_some((folder, name))
+}
+
 /// A channel's address and the file it names, if any.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct ChannelAddress {
@@ -259,10 +305,7 @@ pub fn parse_address(text: &str) -> Result<ChannelAddress, ChannelError> {
         return Err(ChannelError::Address(UrlError::Fragment));
     }
     let written = written_path(text.as_bytes()).unwrap_or(b"/");
-    let (folder_path, last) = match written.iter().rposition(|&byte| byte == b'/') {
-        Some(slash) => (written.get(..=slash).unwrap_or(b"/"), written.get(slash.saturating_add(1)..).unwrap_or(b"")),
-        None => (&b"/"[..], &b""[..]),
-    };
+    let (folder_path, last) = split_written(written).ok_or(ChannelError::NotChannelFile)?;
     // The address parser accepted the whole address, so its path is ASCII.
     let folder_path = core::str::from_utf8(folder_path).map_err(|_| ChannelError::Character)?;
     let last = core::str::from_utf8(last).map_err(|_| ChannelError::Character)?;

@@ -218,7 +218,7 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
             Purpose::FrontDoor => event(sink, Event::BundleFailed(failure)),
             Purpose::Contents => event(sink, Event::ContentsFailed(failure)),
             Purpose::Page { page, subcode, .. } => event(sink, Event::FetchFailed { page, subcode, failure }),
-            Purpose::SubPages { page } => event(sink, Event::SubPagesFailed { page, failure }),
+            Purpose::SubPages { page, part } => event(sink, Event::SubPagesFailed { page, part, failure }),
             Purpose::Register | Purpose::Refresh { .. } => self.bound_failed(purpose, sink),
         }
     }

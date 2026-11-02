@@ -149,7 +149,7 @@ fn what_is_outside_the_map_is_refused() {
     assert_eq!(canonical(&format!("{CHANNEL}#")), Err(MapError::Place));
     assert_eq!(canonical(&format!("{CHANNEL}#302")), Err(MapError::Place));
     assert_eq!(canonical(&format!("{CHANNEL}302.tti#303")), Err(MapError::Place));
-    for name in [SETTINGS_FILE, "index.t42", "contents.txt", "302.sub"] {
+    for name in [SETTINGS_FILE, "index.t42", "contents.txt", "302/0.sub"] {
         assert_eq!(canonical(&format!("{CHANNEL}{name}")), Err(MapError::ReceiverFile), "{name}");
         let address = format!("{CHANNEL}{name}");
         let opened = MapAddress::read_opened(&address).unwrap();

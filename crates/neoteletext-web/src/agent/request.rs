@@ -8,15 +8,14 @@ use neoteletext_core::types::{Instant, PageAddress, SubCode};
 use super::bound;
 use super::cookies::{cookie_store, write_cookie_header};
 use super::page::cached_as;
-use super::{
-    Cached, Event, Exchange, Failure, Link, Output, PageFile, Purpose, Queued, Sink, Target, UserAgent, Want, event,
-};
+use super::{Cached, Event, Exchange, Failure, Link, Output, PageFile, Purpose, Sink, Target, UserAgent, Want, event};
 use crate::bytes::{Overflow, Writer};
 use crate::channel::{self, ChannelFile};
 use crate::consts::{ACCEPT_PAGES, CRLF, IDENTITY, header};
 use crate::cookie::Site;
 use crate::http::{self, Method};
 use crate::port::{ConnectionId, RandomSource, Security};
+use crate::subpages::PartNumber;
 use crate::url::{IpAddress, Url};
 
 impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'_, R, SLOTS, COOKIE_BYTES> {
@@ -78,7 +77,7 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
                 let Some(queued) = self.take_queued() else { return };
                 let request = match queued.want {
                     Want::Page => self.page_request(now, queued.page, queued.subcode, sink),
-                    Want::SubPages => self.subpages_request(now, queued, sink),
+                    Want::SubPages(part) => self.subpages_request(now, queued.page, part, sink),
                 };
                 let Some(request) = request else { continue };
                 request
@@ -151,7 +150,7 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
             event(sink, Event::FetchFailed { page, subcode, failure: Failure::NoService });
             return None;
         };
-        // A sub-page of a page whose catalogue answered is a file of its
+        // A sub-page of a page whose list answered is a file of its
         // own (REQ-WEB-019); any other request is for the page's file, and
         // so is 3F7F, which in a link names no particular sub-page
         // (EN 300 706 clause 9.6.1).
@@ -193,28 +192,29 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
         Some((Purpose::Page { page, subcode, file }, url, Method::Get, site))
     }
 
-    /// The request for a queued catalogue (REQ-WEB-034). `None` when no
-    /// channel is open, the cached copy is still fresh, or the address
+    /// The request for a queued part of a page's list (REQ-1888). `None` when
+    /// no channel is open, the cached copy is still fresh, or the address
     /// fails, each reported.
     fn subpages_request(
         &mut self,
         now: Instant,
-        Queued { page, .. }: Queued,
+        page: PageAddress,
+        part: PartNumber,
         sink: &mut Sink<'_>,
     ) -> Option<(Purpose, Url, Method, Site)> {
         let Some(folder) = self.channel else {
-            event(sink, Event::SubPagesFailed { page, failure: Failure::NoService });
+            event(sink, Event::SubPagesFailed { page, part, failure: Failure::NoService });
             return None;
         };
-        let entry = self.cache_entry(page, None, Cached::SubPages);
+        let entry = self.cache_entry(page, None, Cached::SubPages(part));
         if entry.is_some_and(|entry| entry.fresh_until.is_some_and(|until| now < until)) {
-            event(sink, Event::SubPagesCurrent { page });
+            event(sink, Event::SubPagesCurrent { page, part });
             return None;
         }
-        match channel::file_url(&folder, ChannelFile::SubPages { page }) {
-            Ok(url) => Some((Purpose::SubPages { page }, url, Method::Get, Site::SameService)),
+        match channel::file_url(&folder, ChannelFile::SubPages { page, part }) {
+            Ok(url) => Some((Purpose::SubPages { page, part }, url, Method::Get, Site::SameService)),
             Err(error) => {
-                event(sink, Event::SubPagesFailed { page, failure: Failure::Address(error) });
+                event(sink, Event::SubPagesFailed { page, part, failure: Failure::Address(error) });
                 None
             }
         }
@@ -256,7 +256,7 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
         http::write_header(&mut writer, header::ACCEPT_ENCODING, IDENTITY)?;
         let validated = match exchange.purpose {
             Purpose::Page { page, subcode, file } => Some((page, subcode, cached_as(file))),
-            Purpose::SubPages { page } => Some((page, None, Cached::SubPages)),
+            Purpose::SubPages { page, part } => Some((page, None, Cached::SubPages(part))),
             _ => None,
         };
         if let Some((page, subcode, file)) = validated

@@ -17,7 +17,7 @@
 //! - addresses and origins: [`url`];
 //! - protocols: [`http`], [`ws`], [`cookie`], and `dbsc` (feature
 //!   `dbsc`): Device Bound Session Credentials (REQ-WEB-017);
-//! - content: [`channel`], [`contents`], [`subpages`] (a page's catalogue
+//! - content: [`channel`], [`contents`], [`subpages`] (a page's list
 //!   of sub-pages, and with `std` a page written as a channel's files),
 //!   [`descriptor`], and `small_page` (feature `alloc`): what a web browser
 //!   is shown of a channel;

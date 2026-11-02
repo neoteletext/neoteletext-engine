@@ -43,7 +43,7 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
             Input::FetchContents => self.fetch_contents(sink),
             Input::FollowLink { service, page, subcode } => self.follow_link(service, page, subcode, sink),
             Input::FetchPage { page, subcode } => self.enqueue(page, subcode, Want::Page, sink),
-            Input::FetchSubPages { page } => self.enqueue(page, None, Want::SubPages, sink),
+            Input::FetchSubPages { page, part } => self.enqueue(page, None, Want::SubPages(part), sink),
             Input::Subscribe(subscription) => self.subscribe(subscription, sink),
             Input::WipeCookies => self.wipe_cookies(),
             Input::WallClock(unix) => self.wall_clock = Some((now, unix)),

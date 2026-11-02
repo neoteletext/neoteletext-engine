@@ -3,7 +3,7 @@
 //! decision E.132), up to the standard's 8,190 sub-pages (REQ-NUM-020).
 
 use super::*;
-use crate::subpages::{self, Entry};
+use crate::subpages::{self, Entry, MAX_PARTS, ROWS_PER_PART};
 use neoteletext_core::consts::{HEADER_DISPLAY_BYTES, PAGE_TIME_FILLING, SPACE};
 use neoteletext_core::ecc::with_odd_parity;
 use neoteletext_core::packet::encode;
@@ -63,8 +63,8 @@ fn a_page_of_8190_sub_pages_is_written_as_files_and_read_back() {
     let mut channel = ChannelFiles::new();
     channel.add_page(page, &sub_pages).unwrap();
     let files: BTreeMap<String, Vec<u8>> = channel.finish().into_iter().collect();
-    // NNN.t42, a file for each sub-page, NNN.sub and index.t42.
-    assert_eq!(files.len(), 1 + MAX_ENTRIES + 1 + 1);
+    // NNN.t42, a file for each sub-page, 128 parts and index.t42 (REQ-1887).
+    assert_eq!(files.len(), 1 + MAX_ENTRIES + MAX_PARTS + 1);
     assert_eq!(files["100.t42"], bodies[0], "100.t42 holds the first sub-page");
     assert_eq!(files["index.t42"], bodies[0], "the bundle holds first sub-pages only");
     for (code, body) in codes.iter().zip(&bodies) {
@@ -72,15 +72,56 @@ fn a_page_of_8190_sub_pages_is_written_as_files_and_read_back() {
         assert_eq!(&files[&name], body, "{name}");
         assert_eq!(ChannelFile::from_name(&name), Some(ChannelFile::SubPage { page, subcode: *code }));
     }
-    let catalogue = &files["100.sub"];
-    assert!(catalogue.len() > DEFAULT_PAGE_LIMIT, "larger than a page response, within its own limit");
-    let entries: Vec<Entry<'_>> = subpages::read(catalogue).unwrap().map(Result::unwrap).collect();
-    assert_eq!(entries.len(), MAX_ENTRIES);
-    for ((entry, (code, body)), title) in entries.iter().zip(codes.iter().zip(&bodies)).zip(&titles) {
+    let version = Validator::of_page(bodies.iter().map(Vec::as_slice));
+    let mut read: Vec<Entry<'_>> = Vec::new();
+    for number in 0..MAX_PARTS {
+        let name = std::format!("100/{number}.sub");
+        let bytes = &files[&name];
+        assert!(bytes.len() <= MAX_BYTES, "{name}");
+        let part = subpages::read(bytes).unwrap();
+        assert_eq!((usize::from(part.total), part.version), (MAX_ENTRIES, version), "{name}: one header in every part");
+        let rows: Vec<Entry<'_>> = part.entries.map(Result::unwrap).collect();
+        let expected = if number + 1 == MAX_PARTS { MAX_ENTRIES % ROWS_PER_PART } else { ROWS_PER_PART };
+        assert_eq!(rows.len(), expected, "{name}");
+        read.extend(rows);
+    }
+    assert_eq!(read.len(), MAX_ENTRIES);
+    for ((entry, (code, body)), title) in read.iter().zip(codes.iter().zip(&bodies)).zip(&titles) {
         assert_eq!(entry.subcode, *code);
         assert_eq!(entry.validator, Validator::of(body));
         assert_eq!(entry.title, Some(title.as_str()));
     }
+}
+
+/// REQ-1896: everything in a list is derived from the page data each time it
+/// is written, so a page written twice from the same pages gives the same
+/// files, and one sub-page changed changes the version in every part and that
+/// sub-page's row.
+#[test]
+fn a_list_is_derived_from_the_page() {
+    let address = page(0x100);
+    let bodies: Vec<Vec<u8>> = (1..=65).map(|value| sub_page_t42(address, SubCode::new(value))).collect();
+    let mut changed = bodies.clone();
+    changed[64] = full_sub_page_t42(address, SubCode::new(65));
+    let files = |bodies: &[Vec<u8>]| {
+        let sub_pages: Vec<SubPageFile<'_>> = bodies
+            .iter()
+            .zip(1..)
+            .map(|(t42, value)| SubPageFile { subcode: SubCode::new(value), t42, title: "" })
+            .collect();
+        page_files(address, &sub_pages).unwrap().into_iter().collect::<BTreeMap<String, Vec<u8>>>()
+    };
+    assert_eq!(files(&bodies), files(&bodies));
+    let (before, after) = (files(&bodies), files(&changed));
+    let version = |files: &BTreeMap<String, Vec<u8>>, name: &str| subpages::read(&files[name]).unwrap().version;
+    for name in ["100/0.sub", "100/1.sub"] {
+        assert_ne!(version(&before, name), version(&after, name), "{name}");
+    }
+    let rows = |files: &BTreeMap<String, Vec<u8>>, name: &str| {
+        subpages::read(&files[name]).unwrap().entries.flatten().map(|entry| entry.validator).collect::<Vec<_>>()
+    };
+    assert_eq!(rows(&before, "100/0.sub"), rows(&after, "100/0.sub"), "the unchanged part's rows");
+    assert_ne!(rows(&before, "100/1.sub"), rows(&after, "100/1.sub"), "the changed sub-page's row");
 }
 
 #[test]
@@ -177,9 +218,10 @@ fn sub_pages_given_out_of_order_are_laid_out_ascending() {
         codes.iter().zip(&bodies).map(|(&subcode, t42)| SubPageFile { subcode, t42, title: "" }).collect();
     let files = page_files(address, &sub_pages).unwrap();
     let names: Vec<&str> = files.iter().map(|(name, _)| name.as_str()).collect();
-    assert_eq!(names, ["100.t42", "100-0001.t42", "100-0002.t42", "100-0003.t42", "100.sub"]);
+    assert_eq!(names, ["100.t42", "100-0001.t42", "100-0002.t42", "100-0003.t42", "100/0.sub"]);
     assert_eq!(files[0].1, bodies[1], "the page's file holds the lowest sub-code");
-    let listed: Vec<u16> = subpages::read(&files[4].1).unwrap().flatten().map(|entry| entry.subcode.value()).collect();
+    let part = subpages::read(&files[4].1).unwrap();
+    let listed: Vec<u16> = part.entries.flatten().map(|entry| entry.subcode.value()).collect();
     assert_eq!(listed, [1, 2, 3]);
     let mut channel = ChannelFiles::new();
     channel.add_page(address, &sub_pages).unwrap();

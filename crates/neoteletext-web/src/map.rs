@@ -21,7 +21,7 @@ pub const CONTENTS: &str = "contents";
 /// The place that opens the wall of pages (REQ-1693 item 1).
 pub const WALL: &str = "wall";
 /// Between a page and its sub-page in a place (REQ-1693 item 1).
-const SUBPAGE_MARK: u8 = b'/';
+pub(crate) const SUBPAGE_MARK: u8 = b'/';
 /// What ends a scheme (RFC 3986 section 3).
 const SCHEME_MARK: &str = "://";
 /// What separates the segments of a path (RFC 3986 section 3.3).
@@ -159,10 +159,10 @@ fn capitals<const N: usize>(digits: &str) -> Option<[u8; N]> {
     Some(digits.map(|digit| digit.to_ascii_uppercase()))
 }
 
-/// A sub-page in a place: 3F7F means no particular sub-page, so it
-/// cannot name one (REQ-1693 item 4).
+/// A sub-page in a place, whose digits may be in either case. 3F7F means no
+/// particular sub-page, so it cannot name one (REQ-1693 item 4).
 fn subcode_of(digits: &str) -> Option<SubCode> {
-    parse_subcode(&capitals::<SUBCODE_DIGITS>(digits)?).filter(|subcode| !subcode.is_any())
+    parse_subcode(&capitals::<SUBCODE_DIGITS>(digits)?)
 }
 
 /// `name=value` pairs joined by `&` (REQ-1693 item 5). A value may be empty,

@@ -90,10 +90,7 @@ pub struct Buffers<'m> {
     pub fetch_head: &'m mut [u8],
     /// Requests on the fetch connection.
     pub fetch_request: &'m mut [u8],
-    /// Page, descriptor, bundle, contents and catalogue response bodies.
-    /// A page's catalogue may be larger than a page
-    /// ([`crate::subpages::MAX_BYTES`]); a body buffer smaller than that
-    /// reads only the catalogues that fit.
+    /// Page, descriptor, bundle, contents and list response bodies.
     pub body: &'m mut [u8],
     /// The push connection's handshake response head.
     pub push_head: &'m mut [u8],
@@ -103,11 +100,11 @@ pub struct Buffers<'m> {
     pub push_message: &'m mut [u8],
 }
 
-/// The default body buffer: a page response, or the largest catalogue of
-/// sub-pages, whichever is larger, so that every sub-page of a page of the
-/// standard's maximum is reachable (REQ-NUM-030).
-const BODY_BYTES: usize =
-    if DEFAULT_PAGE_LIMIT > crate::subpages::MAX_BYTES { DEFAULT_PAGE_LIMIT } else { crate::subpages::MAX_BYTES };
+/// The default body buffer: a page response. A part of a page's list is far
+/// smaller, so every sub-page of a page of the standard's maximum is reachable
+/// (REQ-NUM-030).
+const BODY_BYTES: usize = DEFAULT_PAGE_LIMIT;
+const _: () = assert!(crate::subpages::MAX_BYTES <= BODY_BYTES, "a part of a list fits the body buffer");
 
 /// Buffers of the default sizes, for callers that do not need to choose.
 #[derive(Debug)]
