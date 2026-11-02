@@ -81,12 +81,14 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
             let subprotocol = Some(PUSH_SUBPROTOCOL);
             ws::write_handshake_headers(&mut writer, &url, &self.push.key, self.named_as.as_bytes(), subprotocol)?;
             // Cookies go with the upgrade too (REQ-WEB-006).
-            let path = folder.as_ref().map_or(url.path(), Url::path);
+            let scope = folder.as_ref().map(Url::path);
+            let path = scope.unwrap_or(url.path());
             let truncated = write_cookie_header(
                 cookie_store(&mut self.jar, &mut self.port_cookies),
                 &mut writer,
                 &url,
                 path,
+                scope,
                 Site::SameService,
                 seconds,
             )?;

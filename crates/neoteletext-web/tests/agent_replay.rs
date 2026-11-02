@@ -962,13 +962,14 @@ impl Cookies for PortCookies {
         &mut self,
         host: &str,
         path: &str,
+        scope: Option<&str>,
         secure: bool,
         site: Site,
         now: u64,
         out: &mut Writer<'_>,
     ) -> (usize, bool) {
         self.log.borrow_mut().asked.push(std::format!("{host}{path}"));
-        self.jar.header_for(host, path, secure, site, now, out)
+        self.jar.header_for(host, path, scope, secure, site, now, out)
     }
 
     fn store_within(
@@ -989,9 +990,9 @@ impl Cookies for PortCookies {
         self.jar.reached_securely(host, now)
     }
 
-    fn clear_host(&mut self, host: &str) {
+    fn clear_site_data(&mut self, host: &str, scope: Option<&str>) {
         self.log.borrow_mut().cleared.push(host.to_string());
-        self.jar.clear_host(host);
+        self.jar.clear_site_data(host, scope);
     }
 
     fn wipe(&mut self) {
@@ -1855,7 +1856,8 @@ fn a_channel_cookie_set_for_the_whole_host_stays_in_its_folder() {
     let out = &mut [0u8; 64];
     store.store_within(b"s=1; Path=/", "h.example", "/one/x", Some("/one/"), false, 0, false).unwrap();
     let mut writer = Writer::new(out);
-    let (count, _) = store.header_for("h.example", "/two/100.tti", false, Site::SameService, 0, &mut writer);
+    let (count, _) =
+        store.header_for("h.example", "/two/100.tti", Some("/two/"), false, Site::SameService, 0, &mut writer);
     assert_eq!(count, 0, "never sent to another folder");
 }
 
@@ -1882,6 +1884,72 @@ fn a_push_handshake_cookie_stays_in_its_channel_folder() {
     let last = harness.replay().requests_to("site.example:80").last().unwrap().clone();
     assert_eq!(request_path(&last), "/b/100.tti");
     assert_eq!(header_value(&last, "Cookie"), None, "not sent to another channel's folder");
+}
+
+/// The `Cookie` header the agent sends for page 100 of the channel at
+/// `asked`, after a page of the channel at `setter` answered with
+/// `Set-Cookie: set_cookie`.
+#[cfg(feature = "cookies")]
+fn cookie_sent_across(setter: &str, set_cookie: &str, asked: &str) -> Option<String> {
+    let mut harness = site_harness(Config::default());
+    harness.replay().reply("site.example:80", not_found());
+    harness.replay().reply("site.example:80", not_found());
+    harness.open_channel(setter);
+    let header = std::format!("Set-Cookie: {set_cookie}");
+    harness.replay().reply("site.example:80", tti_response(&[header.as_str()]));
+    harness.fetch(0x100);
+    assert_eq!(harness.agent.cookies().len(), 1, "the setting channel kept its cookie");
+    harness.replay().reply("site.example:80", not_found());
+    harness.replay().reply("site.example:80", not_found());
+    harness.open_channel(asked);
+    harness.replay().reply("site.example:80", tti_response(&[]));
+    harness.fetch(0x100);
+    let last = harness.replay().requests_to("site.example:80").last().unwrap().clone();
+    let folder = asked.strip_prefix("http://site.example").unwrap();
+    assert_eq!(request_path(&last), std::format!("{folder}100.tti"), "the asked channel's page");
+    header_value(&last, "Cookie")
+}
+
+/// REQ-1883, REQ-515 (DOC-1863: a folder inside a channel's folder is a
+/// different channel, and each channel has its own cookie store): a cookie
+/// of the channel at `/one/` never reaches the channel at `/one/sub/`. Path
+/// matching alone sent it, since `/one/sub/100.tti` lies under `/one/`.
+#[test]
+#[cfg(feature = "cookies")]
+fn a_channel_cookie_never_reaches_a_channel_nested_in_its_folder() {
+    let outer = "http://site.example/one/";
+    let inner = "http://site.example/one/sub/";
+    assert_eq!(cookie_sent_across(outer, "s=1", outer).as_deref(), Some("s=1"), "sent in its own channel");
+    assert_eq!(cookie_sent_across(outer, "s=1", inner), None, "the default path, the outer folder");
+    assert_eq!(cookie_sent_across(outer, "s=1; Path=/", inner), None, "narrowed to the outer folder");
+    // A `Path` inside its folder is kept (REQ-515), and names the inner
+    // folder: the outer channel may not set the inner one's cookies so.
+    assert_eq!(cookie_sent_across(outer, "s=1; Path=/one/sub/", inner), None, "a path naming the nested folder");
+}
+
+/// REQ-1883, REQ-515: a cookie of the channel at `/one/sub/` never reaches
+/// the channel at `/one/` that holds its folder.
+#[test]
+#[cfg(feature = "cookies")]
+fn a_nested_channel_cookie_never_reaches_the_channel_around_it() {
+    let outer = "http://site.example/one/";
+    let inner = "http://site.example/one/sub/";
+    assert_eq!(cookie_sent_across(inner, "s=1", inner).as_deref(), Some("s=1"), "sent in its own channel");
+    assert_eq!(cookie_sent_across(inner, "s=1", outer), None, "the default path");
+    assert_eq!(cookie_sent_across(inner, "s=1; Path=/", outer), None, "narrowed to the inner folder");
+}
+
+/// REQ-1883, REQ-515: two sibling channels on one origin share no cookie,
+/// whatever `Path` either sets.
+#[test]
+#[cfg(feature = "cookies")]
+fn sibling_channels_share_no_cookie() {
+    let one = "http://site.example/one/";
+    let two = "http://site.example/two/";
+    for set_cookie in ["s=1", "s=1; Path=/", "s=1; Path=/two/"] {
+        assert_eq!(cookie_sent_across(one, set_cookie, two), None, "{set_cookie} from one to two");
+        assert_eq!(cookie_sent_across(two, set_cookie, one), None, "{set_cookie} from two to one");
+    }
 }
 
 /// The target of the push connection of the channel at `address`.

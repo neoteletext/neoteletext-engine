@@ -396,7 +396,8 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             return false;
         }
         let (seconds, _) = self.seconds(now);
-        let Self { bound, device_keys, jar, port_cookies, buffers, .. } = self;
+        let Self { bound, device_keys, jar, port_cookies, buffers, channel, .. } = self;
+        let scope = channel.as_ref().map(Url::path);
         bound.sessions.expire(seconds, |session| {
             if let Some(keys) = device_keys.as_deref_mut() {
                 keys.delete(session.key);
@@ -411,7 +412,7 @@ impl<'m, R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAge
             // which is free until the request is written.
             let mut cookies = Writer::new(buffers.fetch_request);
             let store = cookie_store(jar, port_cookies);
-            let _ = store.header_for(url.host_text(), url.path(), url.is_secure(), site, seconds, &mut cookies);
+            let _ = store.header_for(url.host_text(), url.path(), scope, url.is_secure(), site, seconds, &mut cookies);
             if session.missing(cookies.written()) {
                 due = Some(slot);
                 break;

@@ -9,6 +9,14 @@
 //! Cookies live in memory the caller provides: `SLOTS` cookie records and
 //! an arena of `BYTES` bytes for their host, name, value and path. Values
 //! are opaque and never interpreted.
+//!
+//! Each channel has its own cookie store (REQ-515, REQ-1883, DOC-1863): a
+//! cookie keeps the folder of the channel that set it, its scope, and is
+//! sent, replaced, shadowed, counted and cleared only within that scope. A
+//! folder inside a channel's folder is another channel, so path matching,
+//! which would carry a cookie of `/one/` to `/one/sub/`, never decides
+//! alone. A cookie set with no scope, outside any channel, is of no channel
+//! and is sent only with requests of no channel.
 
 mod date;
 mod header;
@@ -82,6 +90,11 @@ struct Record {
     name_len: u16,
     value_len: u16,
     path_len: u16,
+    /// The length of the leading part of the path that is the folder of
+    /// the channel the cookie belongs to; `None` for a cookie of no channel.
+    /// The path always starts with the folder, which is how the folder
+    /// is kept without bytes of its own.
+    scope_len: Option<u16>,
     /// Expiry in seconds of the jar's clock; `None` for a session cookie.
     expires: Option<u64>,
     secure: bool,
@@ -119,6 +132,8 @@ struct Parts<'a> {
     name: &'a [u8],
     value: &'a [u8],
     path: &'a [u8],
+    /// The folder of the cookie's channel, the start of `path`.
+    scope: Option<&'a [u8]>,
 }
 
 /// One stored cookie as a port may see it (decision E.104): which host it
@@ -127,6 +142,8 @@ struct Parts<'a> {
 pub struct CookieInfo<'a> {
     /// The host that set it.
     pub host: &'a [u8],
+    /// The folder of the channel that set it; `None` for no channel.
+    pub scope: Option<&'a [u8]>,
     /// The bytes it holds: host, name, value and path.
     pub bytes: usize,
     /// When it was first stored, in seconds of the jar's clock.
@@ -149,10 +166,12 @@ pub struct CookieInfo<'a> {
 pub trait Cookies {
     /// Writes the `Cookie` header value for a request: see
     /// [`CookieJar::header_for`].
+    #[allow(clippy::too_many_arguments, reason = "the arguments of `CookieJar::header_for`")]
     fn header_for(
         &mut self,
         host: &str,
         path: &str,
+        scope: Option<&str>,
         secure: bool,
         site: Site,
         now: u64,
@@ -173,9 +192,10 @@ pub trait Cookies {
     ) -> Result<(), CookieRejected>;
     /// See [`CookieJar::reached_securely`].
     fn reached_securely(&self, host: &str, now: u64) -> bool;
-    /// A response from `host` over an encrypted connection said
-    /// `Clear-Site-Data: "cookies"`: see [`CookieJar::clear_host`].
-    fn clear_host(&mut self, host: &str);
+    /// A response from `host`, in the channel whose folder is `scope`,
+    /// over an encrypted connection said `Clear-Site-Data: "cookies"`: see
+    /// [`CookieJar::clear_site_data`].
+    fn clear_site_data(&mut self, host: &str, scope: Option<&str>);
     /// Erases every cookie: see [`CookieJar::wipe`].
     fn wipe(&mut self);
 }
@@ -185,12 +205,13 @@ impl<const SLOTS: usize, const BYTES: usize> Cookies for CookieJar<SLOTS, BYTES>
         &mut self,
         host: &str,
         path: &str,
+        scope: Option<&str>,
         secure: bool,
         site: Site,
         now: u64,
         out: &mut Writer<'_>,
     ) -> (usize, bool) {
-        Self::header_for(self, host, path, secure, site, now, out)
+        Self::header_for(self, host, path, scope, secure, site, now, out)
     }
 
     fn store_within(
@@ -210,8 +231,8 @@ impl<const SLOTS: usize, const BYTES: usize> Cookies for CookieJar<SLOTS, BYTES>
         Self::reached_securely(self, host, now)
     }
 
-    fn clear_host(&mut self, host: &str) {
-        Self::clear_host(self, host);
+    fn clear_site_data(&mut self, host: &str, scope: Option<&str>) {
+        Self::clear_site_data(self, host, scope);
     }
 
     fn wipe(&mut self) {
@@ -247,7 +268,9 @@ impl<const SLOTS: usize, const BYTES: usize> CookieJar<SLOTS, BYTES> {
     }
 
     /// Sets the per-host and total limits (REQ-WEB-006), each at most
-    /// `SLOTS`.
+    /// `SLOTS`. The per-host limit holds for each channel of a host apart,
+    /// since each channel has its own store (REQ-515): one channel can
+    /// never evict another's cookies by setting its own.
     pub fn set_limits(&mut self, per_host: usize, total: usize) {
         self.total = total.min(SLOTS);
         self.per_host = per_host.min(self.total);
@@ -267,8 +290,10 @@ impl<const SLOTS: usize, const BYTES: usize> CookieJar<SLOTS, BYTES> {
     }
 
     fn info<'j>(&'j self, record: &Record) -> CookieInfo<'j> {
+        let parts = self.parts(record);
         CookieInfo {
-            host: self.parts(record).host,
+            host: parts.host,
+            scope: parts.scope,
             bytes: record.total_len(),
             created_at: record.created_at,
             used_at: record.used_at,
@@ -293,11 +318,13 @@ impl<const SLOTS: usize, const BYTES: usize> CookieJar<SLOTS, BYTES> {
         removed
     }
 
-    /// Removes every cookie of `host`: `Clear-Site-Data` naming
-    /// `"cookies"` (W3C Clear Site Data section 4.2), for the host the jar
-    /// is the store of (decision E.104).
-    pub fn clear_host(&mut self, host: &str) {
-        self.remove_where(&|cookie| cookie.host == host.as_bytes());
+    /// Removes every cookie of `host` in the channel whose folder is
+    /// `scope`: `Clear-Site-Data` naming `"cookies"` (W3C Clear Site Data
+    /// section 4.2, decision E.104), which clears the store of the channel
+    /// that sent it and no other (REQ-515).
+    pub fn clear_site_data(&mut self, host: &str, scope: Option<&str>) {
+        let scope = scope.map(str::as_bytes);
+        self.remove_where(&|cookie| cookie.host == host.as_bytes() && cookie.scope == scope);
     }
 
     /// The number of cookies held, expired ones included until evicted.
@@ -323,11 +350,13 @@ impl<const SLOTS: usize, const BYTES: usize> CookieJar<SLOTS, BYTES> {
         let name_end = host_end.saturating_add(usize::from(record.name_len));
         let value_end = name_end.saturating_add(usize::from(record.value_len));
         let path_end = value_end.saturating_add(usize::from(record.path_len));
+        let scope_end = record.scope_len.map(|len| value_end.saturating_add(usize::from(len)));
         Parts {
             host: self.arena.get(start..host_end).unwrap_or(&[]),
             name: self.arena.get(host_end..name_end).unwrap_or(&[]),
             value: self.arena.get(name_end..value_end).unwrap_or(&[]),
             path: self.arena.get(value_end..path_end).unwrap_or(&[]),
+            scope: scope_end.map(|end| self.arena.get(value_end..end).unwrap_or(&[])),
         }
     }
 
@@ -359,12 +388,14 @@ impl<const SLOTS: usize, const BYTES: usize> CookieJar<SLOTS, BYTES> {
         }
     }
 
-    /// Finds the record with the same name, host and path.
-    fn find(&self, host: &[u8], name: &[u8], path: &[u8]) -> Option<usize> {
+    /// Finds the record with the same name, host and path in the same
+    /// channel: a cookie of one channel never replaces another's, even
+    /// where their paths are the same (REQ-515).
+    fn find(&self, host: &[u8], scope: Option<&[u8]>, name: &[u8], path: &[u8]) -> Option<usize> {
         self.records.iter().position(|slot| {
             slot.as_ref().is_some_and(|record| {
                 let parts = self.parts(record);
-                parts.host == host && parts.name == name && parts.path == path
+                parts.host == host && parts.scope == scope && parts.name == name && parts.path == path
             })
         })
     }
@@ -391,14 +422,16 @@ impl<const SLOTS: usize, const BYTES: usize> CookieJar<SLOTS, BYTES> {
         self.records.iter().flatten().filter(|record| selected(&self.parts(record))).count()
     }
 
-    /// Evicts until a cookie of `needed` bytes for `host` fits within the
-    /// per-host limit, the total limit, the slots and the arena.
-    fn make_room(&mut self, host: &[u8], needed: usize, now: u64) -> Result<(), CookieRejected> {
+    /// Evicts until a cookie of `needed` bytes for `host` in the channel
+    /// `scope` fits within the per-host limit, counted for that channel
+    /// alone, the total limit, the slots and the arena.
+    fn make_room(&mut self, host: &[u8], scope: Option<&[u8]>, needed: usize, now: u64) -> Result<(), CookieRejected> {
         if needed > BYTES {
             return Err(CookieRejected::NoRoom);
         }
-        while self.count_where(&|parts| parts.host == host) >= self.per_host {
-            let index = self.victim(now, &|parts| parts.host == host).ok_or(CookieRejected::NoRoom)?;
+        let own = |parts: &Parts<'_>| parts.host == host && parts.scope == scope;
+        while self.count_where(&own) >= self.per_host {
+            let index = self.victim(now, &own).ok_or(CookieRejected::NoRoom)?;
             self.remove(index);
         }
         while self.len() >= self.total || BYTES.saturating_sub(self.used) < needed {

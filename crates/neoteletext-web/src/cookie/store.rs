@@ -16,11 +16,20 @@ pub(super) enum PathRule<'a> {
     /// RFC 6265bis section 5.6.4: the `Path` attribute, or the default
     /// path of `request_path`, kept inside `scope` when it is given.
     Request { request_path: &'a str, scope: Option<&'a str> },
-    /// The path a saved record names, used as it was saved.
-    Saved(&'a [u8]),
+    /// The path and the channel's folder a saved record names, used as
+    /// they were saved.
+    Saved { path: &'a [u8], scope: Option<&'a [u8]> },
 }
 
 impl<'a> PathRule<'a> {
+    /// The folder of the channel the cookie is stored in (REQ-515).
+    fn scope(self) -> Option<&'a [u8]> {
+        match self {
+            PathRule::Request { scope, .. } => scope.map(str::as_bytes),
+            PathRule::Saved { scope, .. } => scope,
+        }
+    }
+
     /// The path the cookie is stored with, given its `Path` attribute.
     fn path(self, attribute: Option<&'a [u8]>) -> &'a [u8] {
         match self {
@@ -31,7 +40,7 @@ impl<'a> PathRule<'a> {
                     _ => path,
                 }
             }
-            PathRule::Saved(saved) => saved,
+            PathRule::Saved { path, .. } => path,
         }
     }
 }
@@ -113,8 +122,9 @@ impl<const SLOTS: usize, const BYTES: usize> CookieJar<SLOTS, BYTES> {
 
     /// [`Self::store`], keeping the cookie inside `scope` when it is given:
     /// a path that is not inside it, including the default path, becomes
-    /// `scope` itself. A channel's cookies are scoped to its folder
-    /// (REQ-WEB-026).
+    /// `scope` itself. A channel's cookies are scoped to its folder, and
+    /// belong to that channel alone: [`Self::header_for`] sends them only
+    /// with a request given the same scope (REQ-515, REQ-1883).
     #[allow(clippy::too_many_arguments, reason = "the arguments of `store`, and the scope")]
     pub fn store_within(
         &mut self,
@@ -170,10 +180,16 @@ impl<const SLOTS: usize, const BYTES: usize> CookieJar<SLOTS, BYTES> {
     ) -> Result<(), CookieRejected> {
         check_fields(cookie)?;
         let mut attributes = *cookie;
-        if let PathRule::Saved(saved) = rule {
+        if let PathRule::Saved { path: saved, scope } = rule {
             // In a saved path as in the header it once came from.
             if has_control(saved) {
                 return Err(CookieRejected::ControlCharacter);
+            }
+            // A saved record holds its channel's folder as the start of its
+            // path, as every stored cookie does; one that does not was
+            // never stored so.
+            if scope.is_some_and(|scope| !saved.starts_with(scope)) {
+                return Err(CookieRejected::NotAHeader);
             }
             // The saved path stands as the attribute, so the prefix rules
             // see it as they did when the cookie was first stored.
@@ -190,21 +206,22 @@ impl<const SLOTS: usize, const BYTES: usize> CookieJar<SLOTS, BYTES> {
         }
 
         let path = rule.path(attributes.path);
+        let scope = rule.scope();
         let host = host.as_bytes();
 
         // Section 5.7 step 16: plain HTTP cannot touch a Secure cookie of
-        // the same name whose path covers this one.
-        if !secure && self.shadows_secure(host, name, path) {
+        // the same name whose path covers this one, in the same channel.
+        if !secure && self.shadows_secure(host, scope, name, path) {
             return Err(CookieRejected::WouldReplaceSecure);
         }
 
         let expires = expiry(&attributes, now);
-        let created = self.take_replaced(host, name, path);
+        let created = self.take_replaced(host, scope, name, path);
         if expires.is_some_and(|expires| expires <= now) {
             return Err(CookieRejected::Expired);
         }
 
-        let start = self.append([host, name, value, path], now)?;
+        let start = self.append([host, name, value, path], scope, now)?;
         let tick = self.next_tick();
         let narrow = |len: usize| u16::try_from(len).map_err(|_| CookieRejected::TooLarge);
         let record = Record {
@@ -213,6 +230,7 @@ impl<const SLOTS: usize, const BYTES: usize> CookieJar<SLOTS, BYTES> {
             name_len: narrow(name.len())?,
             value_len: narrow(value.len())?,
             path_len: narrow(path.len())?,
+            scope_len: scope.map(|scope| narrow(scope.len())).transpose()?,
             expires,
             secure: attributes.secure,
             http_only: attributes.http_only,
@@ -229,19 +247,23 @@ impl<const SLOTS: usize, const BYTES: usize> CookieJar<SLOTS, BYTES> {
         Ok(())
     }
 
-    /// Whether a Secure cookie of the same host and name has a path that
-    /// covers `path` (section 5.7 step 16).
-    fn shadows_secure(&self, host: &[u8], name: &[u8], path: &[u8]) -> bool {
+    /// Whether a Secure cookie of the same host, channel and name has a
+    /// path that covers `path` (section 5.7 step 16).
+    fn shadows_secure(&self, host: &[u8], scope: Option<&[u8]>, name: &[u8], path: &[u8]) -> bool {
         self.records.iter().flatten().any(|record| {
             let parts = self.parts(record);
-            record.secure && parts.name == name && parts.host == host && path_matches(path, parts.path)
+            record.secure
+                && parts.name == name
+                && parts.host == host
+                && parts.scope == scope
+                && path_matches(path, parts.path)
         })
     }
 
     /// Removes the cookie this one replaces, if there is one, and returns
     /// its creation tick and time, which the new cookie keeps.
-    fn take_replaced(&mut self, host: &[u8], name: &[u8], path: &[u8]) -> Option<(u64, u64)> {
-        let existing = self.find(host, name, path);
+    fn take_replaced(&mut self, host: &[u8], scope: Option<&[u8]>, name: &[u8], path: &[u8]) -> Option<(u64, u64)> {
+        let existing = self.find(host, scope, name, path);
         match existing {
             Some(index) => {
                 let created =
@@ -253,13 +275,13 @@ impl<const SLOTS: usize, const BYTES: usize> CookieJar<SLOTS, BYTES> {
         }
     }
 
-    /// Makes room for the cookie's host, name, value and path and copies
-    /// them, in that order, to the end of the arena; returns where they
-    /// start.
-    fn append(&mut self, parts: [&[u8]; 4], now: u64) -> Result<usize, CookieRejected> {
+    /// Makes room for the cookie's host, name, value and path in its
+    /// channel `scope` and copies them, in that order, to the end of the
+    /// arena; returns where they start.
+    fn append(&mut self, parts: [&[u8]; 4], scope: Option<&[u8]>, now: u64) -> Result<usize, CookieRejected> {
         let [host, name, value, path] = parts;
         let needed = host.len().saturating_add(name.len()).saturating_add(value.len()).saturating_add(path.len());
-        self.make_room(host, needed, now)?;
+        self.make_room(host, scope, needed, now)?;
         let start = self.used;
         for part in [host, name, value, path] {
             let end = self.used.saturating_add(part.len());

@@ -12,10 +12,18 @@ impl<const SLOTS: usize, const BYTES: usize> CookieJar<SLOTS, BYTES> {
     /// 5.8.3): `name=value` pairs joined by `; `, longest path first, then
     /// oldest first. Returns the number of cookies written, and whether
     /// some did not fit in `out`.
+    ///
+    /// `scope` is the folder of the channel the request is made for, as it
+    /// was given when the channel's cookies were stored, or `None` outside
+    /// any channel. Only cookies of that same channel are sent: a folder
+    /// inside a channel's folder is another channel, which path matching
+    /// alone would hand the outer channel's cookies (REQ-515, REQ-1883).
+    #[allow(clippy::too_many_arguments, reason = "a request's host, path, channel, security, site and time")]
     pub fn header_for(
         &mut self,
         host: &str,
         path: &str,
+        scope: Option<&str>,
         secure: bool,
         site: Site,
         now: u64,
@@ -27,6 +35,7 @@ impl<const SLOTS: usize, const BYTES: usize> CookieJar<SLOTS, BYTES> {
             let Some(record) = slot else { continue };
             let parts = self.parts(record);
             let wanted = parts.host == host.as_bytes()
+                && parts.scope == scope.map(str::as_bytes)
                 && path_matches(path.as_bytes(), parts.path)
                 && policy::may_send_cookie(record.secure, secure)
                 && !record.expired(now)

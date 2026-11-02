@@ -284,11 +284,14 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
         #[cfg(feature = "dbsc")]
         bound::write_headers(&mut self.bound, self.device_keys.as_deref_mut(), exchange, &mut writer)?;
         let path = exchange.url.path();
+        // The open channel's cookies alone, as they were stored (REQ-515).
+        let scope = self.channel.as_ref().map(Url::path);
         if write_cookie_header(
             cookie_store(&mut self.jar, &mut self.port_cookies),
             &mut writer,
             &exchange.url,
             path,
+            scope,
             exchange.site,
             seconds,
         )? {

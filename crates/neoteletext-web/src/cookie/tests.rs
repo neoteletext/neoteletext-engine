@@ -12,7 +12,7 @@ const NOW: u64 = 1_791_590_400; // 2026-10-10 00:00:00 UTC
 fn header(jar: &mut Jar, host: &str, path: &str, secure: bool, site: Site) -> std::string::String {
     let mut buffer = [0u8; 8192];
     let mut writer = Writer::new(&mut buffer);
-    jar.header_for(host, path, secure, site, NOW, &mut writer);
+    jar.header_for(host, path, None, secure, site, NOW, &mut writer);
     std::string::String::from_utf8(writer.written().to_vec()).unwrap()
 }
 
@@ -207,7 +207,7 @@ fn per_host_and_total_limits_evict_least_recently_used_expired_first() {
     // Use "a" so "b" becomes least recently used.
     let mut buffer = [0u8; 64];
     let mut writer = Writer::new(&mut buffer);
-    jar.header_for("h1.example", "/", true, Site::SameService, NOW, &mut writer);
+    jar.header_for("h1.example", "/", None, true, Site::SameService, NOW, &mut writer);
     jar.store(b"a=2; Path=/", "h1.example", "/", true, NOW, true).unwrap();
     jar.store(b"d=1; Path=/", "h1.example", "/", true, NOW, true).unwrap();
     assert_eq!(header(&mut jar, "h1.example", "/", true, Site::SameService), "a=2; c=1; d=1");
@@ -231,7 +231,7 @@ fn arena_compaction_keeps_other_cookies_intact() {
     jar.store(b"d=44444444; Path=/", "h.example", "/", true, NOW, true).unwrap();
     let mut buffer = [0u8; 128];
     let mut writer = Writer::new(&mut buffer);
-    jar.header_for("h.example", "/", true, Site::SameService, NOW, &mut writer);
+    jar.header_for("h.example", "/", None, true, Site::SameService, NOW, &mut writer);
     assert_eq!(writer.written(), b"b=22222222; c=33333333; d=44444444");
     assert_eq!(jar.store(&[b'x'; 70], "h.example", "/", true, NOW, true), Err(CookieRejected::NoRoom));
 }
@@ -257,8 +257,13 @@ fn wipe_and_persistence() {
     tampered[len - 1] = b'x';
     let mut fresh = Jar::new();
     assert_eq!(fresh.import(&tampered, NOW), 0);
-    assert_eq!(fresh.import(b"neoteletext-cookies 2\n9999999999 1 1 1 3 1 1 1 a bx1/\n", NOW), 0, "a bad host");
-    assert_eq!(fresh.import(b"neoteletext-cookies 2\n9999999999 1 1 9 3 1 1 1 a.bx1/\n", NOW), 1, "the same, good");
+    assert_eq!(fresh.import(b"neoteletext-cookies 3\n9999999999 1 1 1 3 1 1 1 0 a bx1/\n", NOW), 0, "a bad host");
+    assert_eq!(fresh.import(b"neoteletext-cookies 3\n9999999999 1 1 9 3 1 1 1 0 a.bx1/\n", NOW), 1, "the same, good");
+    assert_eq!(
+        fresh.import(b"neoteletext-cookies 2\n9999999999 1 1 9 3 1 1 1 a.bx1/\n", NOW),
+        0,
+        "version 2 is not read"
+    );
     assert_eq!(fresh.import(b"neoteletext-cookies 1\n9999999999 1 3 1 1 1 a.bx1/\n", NOW), 0, "version 1 is not read");
     assert_eq!(fresh.import(b"garbage", NOW), 0);
 }
@@ -273,7 +278,7 @@ fn times_listing_and_removal() {
     jar.store(b"b=1", "b.example", "/", true, NOW + 10, true).unwrap();
     jar.store(b"a=2; Max-Age=3600", "a.example", "/", true, NOW + 20, true).unwrap();
     let mut buffer = [0u8; 64];
-    let _ = jar.header_for("a.example", "/", true, Site::SameService, NOW + 30, &mut Writer::new(&mut buffer));
+    let _ = jar.header_for("a.example", "/", None, true, Site::SameService, NOW + 30, &mut Writer::new(&mut buffer));
     let listed = jar.cookies().map(|cookie| (cookie.host, cookie.created_at, cookie.used_at, cookie.expires.is_some()));
     assert!(
         listed.eq([(&b"a.example"[..], NOW, NOW + 30, true), (&b"b.example"[..], NOW + 10, NOW + 10, false)]),
@@ -294,7 +299,7 @@ fn times_listing_and_removal() {
     assert_eq!(jar.remove_where(&|cookie| cookie.created_at >= NOW + 5), 1);
     assert_eq!(jar.len(), 1);
     jar.store(b"c=1", "a.example", "/", true, NOW, true).unwrap();
-    jar.clear_host("a.example");
+    jar.clear_site_data("a.example", None);
     assert!(jar.is_empty());
 }
 
@@ -307,10 +312,13 @@ fn the_jar_is_a_cookies_store() {
     store.store_within(b"a=1", "a.example", "/channel/page", Some("/channel/"), true, NOW, true).unwrap();
     let mut buffer = [0u8; 64];
     let mut writer = Writer::new(&mut buffer);
-    assert_eq!(store.header_for("a.example", "/channel/x", true, Site::SameService, NOW, &mut writer), (1, false));
+    assert_eq!(
+        store.header_for("a.example", "/channel/x", Some("/channel/"), true, Site::SameService, NOW, &mut writer),
+        (1, false)
+    );
     assert_eq!(writer.written(), b"a=1");
     assert!(store.reached_securely("a.example", NOW));
-    store.clear_host("a.example");
+    store.clear_site_data("a.example", Some("/channel/"));
     assert!(!store.reached_securely("a.example", NOW));
 }
 
@@ -391,7 +399,7 @@ fn an_imported_path_longer_than_an_attribute_keeps_its_folder() {
 #[test]
 fn an_imported_path_with_a_control_character_is_refused() {
     let mut jar = Jar::new();
-    let data = b"neoteletext-cookies 2\n9999999999 1 1 9 3 1 1 3 a.bx1/\r\n\n9999999999 1 1 9 3 1 1 1 a.by2/\n";
+    let data = b"neoteletext-cookies 3\n9999999999 1 1 9 3 1 1 3 0 a.bx1/\r\n\n9999999999 1 1 9 3 1 1 1 0 a.by2/\n";
     assert_eq!(jar.import(data, NOW), 1, "the second record is restored");
     assert_eq!(header(&mut jar, "a.b", "/", true, Site::SameService), "y=2");
 }
@@ -482,4 +490,88 @@ fn the_rules_hold_for_fields() {
         jar.store_set_cookie(&fields("b=2"), "a.example", "/", None, false, NOW),
         Err(CookieRejected::WouldReplaceSecure)
     );
+}
+
+/// The `Cookie` header for `path` in the channel whose folder is `scope`.
+fn header_in(jar: &mut Jar, path: &str, scope: Option<&str>) -> std::string::String {
+    let mut buffer = [0u8; 8192];
+    let mut writer = Writer::new(&mut buffer);
+    jar.header_for("a.example", path, scope, true, Site::SameService, NOW, &mut writer);
+    std::string::String::from_utf8(writer.written().to_vec()).unwrap()
+}
+
+/// Stores `header` from a page of the channel whose folder is `scope`.
+fn set_in(jar: &mut Jar, header: &str, scope: &str) -> Result<(), CookieRejected> {
+    let page = std::format!("{scope}100.tti");
+    jar.store_within(header.as_bytes(), "a.example", &page, Some(scope), true, NOW, true)
+}
+
+/// REQ-515, REQ-1883: each channel has its own store. A cookie goes only
+/// with a request of the channel that set it, never to a channel nested in
+/// its folder, around it, beside it, or to a request of no channel; a
+/// cookie of no channel goes to no channel's request.
+#[test]
+fn a_cookie_goes_only_to_its_own_channel() {
+    let mut jar = Jar::new();
+    set_in(&mut jar, "outer=1; Path=/one/sub/", "/one/").unwrap();
+    set_in(&mut jar, "inner=1", "/one/sub/").unwrap();
+    jar.store(b"none=1; Path=/", "a.example", "/one/sub/100.tti", true, NOW, true).unwrap();
+    assert_eq!(header_in(&mut jar, "/one/sub/100.tti", Some("/one/sub/")), "inner=1");
+    assert_eq!(header_in(&mut jar, "/one/sub/100.tti", Some("/one/")), "outer=1", "its own, wherever its path");
+    assert_eq!(header_in(&mut jar, "/one/100.tti", Some("/one/")), "");
+    assert_eq!(header_in(&mut jar, "/two/100.tti", Some("/two/")), "");
+    assert_eq!(header_in(&mut jar, "/one/sub/100.tti", None), "none=1");
+}
+
+/// REQ-515: a cookie of one channel never replaces, shadows or clears
+/// another's of the same name and path, and one channel filling its
+/// per-host share evicts none of another's.
+#[test]
+fn one_channel_never_touches_another_channels_cookies() {
+    let mut jar = Jar::new();
+    set_in(&mut jar, "s=inner; Secure", "/one/sub/").unwrap();
+    // The same name and path, from the channel around it, over plain HTTP:
+    // neither a replacement nor shadowed by the other's `Secure` cookie.
+    jar.store_within(b"s=outer; Path=/one/sub/", "a.example", "/one/100.tti", Some("/one/"), false, NOW, true).unwrap();
+    assert_eq!(header_in(&mut jar, "/one/sub/100.tti", Some("/one/sub/")), "s=inner");
+    assert_eq!(header_in(&mut jar, "/one/sub/100.tti", Some("/one/")), "s=outer");
+    jar.clear_site_data("a.example", Some("/one/"));
+    assert_eq!(header_in(&mut jar, "/one/sub/100.tti", Some("/one/sub/")), "s=inner", "cleared its own alone");
+    assert_eq!(header_in(&mut jar, "/one/sub/100.tti", Some("/one/")), "");
+
+    let mut limited = Jar::new();
+    limited.set_limits(2, 120);
+    set_in(&mut limited, "kept=1", "/one/sub/").unwrap();
+    for name in ["a", "b", "c"] {
+        set_in(&mut limited, &std::format!("{name}=1"), "/one/").unwrap();
+    }
+    assert_eq!(header_in(&mut limited, "/one/sub/100.tti", Some("/one/sub/")), "kept=1");
+    assert_eq!(header_in(&mut limited, "/one/100.tti", Some("/one/")), "b=1; c=1", "its own share of the host");
+}
+
+/// REQ-515, REQ-SEC-013: a saved cookie keeps its channel, and a record
+/// whose channel is not the start of its path, or that names a folder
+/// without saying it is a channel's, is refused.
+#[test]
+fn a_saved_cookie_keeps_its_channel() {
+    let mut jar = Jar::new();
+    set_in(&mut jar, "s=1; Max-Age=3600", "/one/").unwrap();
+    let mut buffer = [0u8; 512];
+    let mut writer = Writer::new(&mut buffer);
+    assert_eq!(jar.export(NOW, &mut writer).unwrap(), 1);
+    let mut restored = Jar::new();
+    assert_eq!(restored.import(writer.written(), NOW), 1);
+    assert_eq!(header_in(&mut restored, "/one/100.tti", Some("/one/")), "s=1");
+    assert_eq!(header_in(&mut restored, "/one/sub/100.tti", Some("/one/sub/")), "");
+    assert_eq!(header_in(&mut restored, "/one/100.tti", None), "");
+
+    // Flags 73: Secure, sent securely, of a channel. The path is `/one/`.
+    let record = |flags: u8, scope_len: usize| {
+        std::format!("neoteletext-cookies 3\n9999999999 1 1 {flags} 9 1 1 5 {scope_len} a.examplex1/one/\n")
+    };
+    let mut fresh = Jar::new();
+    assert_eq!(fresh.import(record(73, 5).as_bytes(), NOW), 1, "a channel's folder, the whole path");
+    assert_eq!(header_in(&mut fresh, "/one/100.tti", Some("/one/")), "x=1");
+    assert_eq!(Jar::new().import(record(73, 6).as_bytes(), NOW), 0, "a folder longer than the path");
+    assert_eq!(Jar::new().import(record(9, 5).as_bytes(), NOW), 0, "a folder of no channel");
 }

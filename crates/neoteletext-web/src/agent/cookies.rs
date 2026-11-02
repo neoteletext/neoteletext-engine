@@ -53,7 +53,7 @@ pub(super) fn store_response_cookies(
         return Ok(head);
     }
     if head.clear_cookies && secure {
-        store.clear_host(host);
+        store.clear_site_data(host, scope);
     }
     if setting {
         let _ = http::parse_head(head_bytes, &mut |value| {
@@ -66,13 +66,16 @@ pub(super) fn store_response_cookies(
 }
 
 /// Writes the `Cookie` header for a request to `url`, if any cookie
-/// matches, keeping room for the empty line.
-/// Returns true when some matching cookies did not fit.
+/// matches, keeping room for the empty line. `scope` is the open channel's
+/// folder, whose cookies alone may go (REQ-515), as given when they were
+/// stored. Returns true when some matching cookies did not fit.
+#[allow(clippy::too_many_arguments, reason = "a request's cookie context: where, which channel, how, when")]
 pub(super) fn write_cookie_header(
     jar: &mut dyn Cookies,
     writer: &mut Writer<'_>,
     url: &Url,
     path: &str,
+    scope: Option<&str>,
     site: Site,
     seconds: u64,
 ) -> Result<bool, Overflow> {
@@ -84,7 +87,7 @@ pub(super) fn write_cookie_header(
     let mark = writer.len();
     let started = writer.put(header::COOKIE).and_then(|()| writer.put(b": "));
     let (count, truncated) = match started {
-        Ok(()) => jar.header_for(url.host_text(), path, url.is_secure(), site, seconds, writer),
+        Ok(()) => jar.header_for(url.host_text(), path, scope, url.is_secure(), site, seconds, writer),
         Err(Overflow) => (0, true),
     };
     writer.set_reserve(0);
