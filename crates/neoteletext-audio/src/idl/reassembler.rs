@@ -43,7 +43,7 @@ struct Slot<const BYTES: usize> {
     received: Received,
     /// The fragments the record needs, once fragment 0 has said.
     needed: Option<u8>,
-    /// Fragments received for this slot, for choosing the oldest.
+    /// When a fragment last came for this slot, for choosing the oldest.
     stamp: u32,
     bytes: [u8; BYTES],
 }
@@ -108,8 +108,10 @@ impl<const SLOTS: usize, const BYTES: usize> Reassembler<SLOTS, BYTES> {
         Some((service, bytes))
     }
 
-    /// The slot of a record, starting one if it is new, replacing the
-    /// oldest incomplete record when every slot is busy.
+    /// The slot of a record, starting one if it is new in a free slot, and
+    /// replacing the oldest incomplete record only when every slot is busy:
+    /// a service's records interleave, so a new one does not end the last
+    /// (REQ-AUD-007).
     fn slot_for(&mut self, service: u8, record: u8) -> Option<usize> {
         if let Some(found) = self.slots.iter().position(|slot| {
             slot.as_ref()
@@ -117,19 +119,16 @@ impl<const SLOTS: usize, const BYTES: usize> Reassembler<SLOTS, BYTES> {
         }) {
             return Some(found);
         }
-        // A new record of a service replaces that service's unfinished one
-        // with a different id, which was abandoned by the transmitter.
-        let index = self
-            .slots
-            .iter()
-            .position(|slot| slot.as_ref().is_none_or(|slot| slot.received.is_empty() || slot.service == service))
-            .or_else(|| {
-                self.slots
-                    .iter()
-                    .enumerate()
-                    .min_by_key(|(_, slot)| slot.as_ref().map_or(0, |slot| slot.stamp))
-                    .map(|(index, _)| index)
-            })?;
+        let index =
+            self.slots.iter().position(|slot| slot.as_ref().is_none_or(|slot| slot.received.is_empty())).or_else(
+                || {
+                    self.slots
+                        .iter()
+                        .enumerate()
+                        .min_by_key(|(_, slot)| slot.as_ref().map_or(0, |slot| slot.stamp))
+                        .map(|(index, _)| index)
+                },
+            )?;
         *self.slots.get_mut(index)? = Some(Slot {
             service,
             record,

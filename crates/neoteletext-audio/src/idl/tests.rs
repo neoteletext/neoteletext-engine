@@ -95,13 +95,16 @@ fn damaged_packets_are_dropped_and_other_channels_ignored() {
     assert_eq!(fragment(&bad_flag), Some(Err(IdlError::Control)), "fragment 0 must say it is first");
 }
 
-// Verifies REQ-AUD-007.
+// Verifies REQ-AUD-007: which two records survive, not only that the third
+// completes.
 #[test]
 fn a_further_record_replaces_the_oldest_incomplete_one() {
     let mut reassembler = Reassembler::<2>::new();
     // Records 1 and 2 of service 3 left incomplete, then record 3.
-    let one = packets(1, &record(100));
-    let two = packets(2, &record(100));
+    let whole_one = record(100);
+    let whole_two = record(100);
+    let one = packets(1, &whole_one);
+    let two = packets(2, &whole_two);
     reassembler.push(&fragment(&one[0]).unwrap().unwrap());
     reassembler.push(&fragment(&two[0]).unwrap().unwrap());
     let three = record(20);
@@ -109,6 +112,42 @@ fn a_further_record_replaces_the_oldest_incomplete_one() {
         .iter()
         .find_map(|packet| reassembler.push(&fragment(packet).unwrap().unwrap()).map(|(_, b)| b.to_vec()));
     assert_eq!(done, Some(three));
+    // Record 2 was kept and finishes; record 1 was the oldest, and is gone.
+    let finished = |reassembler: &mut Reassembler<2>, packets: &[Packet]| {
+        packets[1..]
+            .iter()
+            .find_map(|packet| reassembler.push(&fragment(packet).unwrap().unwrap()).map(|(_, b)| b.to_vec()))
+    };
+    assert_eq!(finished(&mut reassembler, &two), Some(whole_two));
+    assert_eq!(finished(&mut reassembler, &one), None);
+}
+
+/// Pushes two records' fragments alternately; the records completed.
+fn interleaved<const SLOTS: usize>(first: &[Packet], second: &[Packet]) -> Vec<Vec<u8>> {
+    let mut reassembler = Reassembler::<SLOTS>::new();
+    let mut done = Vec::new();
+    for (one, two) in first.iter().zip(second) {
+        for packet in [one, two] {
+            if let Some((_, bytes)) = reassembler.push(&fragment(packet).unwrap().unwrap()) {
+                done.push(bytes.to_vec());
+            }
+        }
+    }
+    done
+}
+
+// Verifies REQ-AUD-007: two records in flight, eight on a desktop. The same
+// service's records interleave: a new record takes a free slot, and replaces
+// another only when every slot is busy.
+#[test]
+fn two_interleaved_records_both_complete() {
+    let first = record(1000);
+    let second = record(1000);
+    let (one, two) = (packets(1, &first), packets(2, &second));
+    assert_eq!(one.len(), 30);
+    let both = std::vec![first, second];
+    assert_eq!(interleaved::<2>(&one, &two), both);
+    assert_eq!(interleaved::<8>(&one, &two), both);
 }
 
 /// DOC-1952: a record of the frame's largest length, in its 241
