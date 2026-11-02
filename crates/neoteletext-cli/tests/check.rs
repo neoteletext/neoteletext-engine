@@ -72,3 +72,20 @@ fn a_row_over_the_page_width_is_an_error() {
         "{over:?}"
     );
 }
+
+/// REQ-152: the descriptor is refused by its length, before it is read.
+#[test]
+fn a_descriptor_over_its_limit_is_refused_before_it_is_read() {
+    let folder = Path::new(env!("CARGO_TARGET_TMPDIR")).join("check-descriptor-limit");
+    let _ = fs::remove_dir_all(&folder);
+    fs::create_dir_all(&folder).unwrap();
+    let limit = neoteletext_web::consts::DEFAULT_DESCRIPTOR_LIMIT;
+    let descriptor = folder.join("service.json");
+    fs::File::create(&descriptor).unwrap().set_len(limit as u64 + 1).unwrap();
+    let page = folder.join("100.tti");
+    fs::write(&page, "PN,10000\nOL,1,HELLO\n").unwrap();
+    let output = neottx(&["check", "--descriptor", descriptor.to_str().unwrap(), page.to_str().unwrap()]);
+    assert_eq!(output.status.code(), Some(3));
+    let message = String::from_utf8_lossy(&output.stderr);
+    assert!(message.contains(&format!("larger than {limit} bytes")), "{message}");
+}

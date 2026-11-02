@@ -21,7 +21,6 @@
 
 mod ansi;
 mod args;
-mod bounded_file;
 #[cfg(any(feature = "view", feature = "keyboard"))]
 mod clock;
 mod commands;

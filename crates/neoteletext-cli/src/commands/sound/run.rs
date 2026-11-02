@@ -3,8 +3,8 @@
 
 use super::SoundOptions;
 use super::wave::read_wave;
-use crate::bounded_file::read_bounded;
 use crate::commands::{io_failure, page_number, sandbox_closed};
+use neoteletext_app::bounded_file::read_bounded;
 use neoteletext_app::{Failure, exit};
 use neoteletext_audio::Codec;
 use neoteletext_audio::encode::{Command, Sound, packets};

@@ -118,3 +118,19 @@ fn a_channel_reads_the_same_with_its_web_pages() {
     assert_eq!(page(), shown);
     assert_eq!(neoteletext_web::channel::ChannelFile::from_name("index.html"), None);
 }
+
+/// REQ-152: the entry file is refused by its length, before it is read:
+/// one byte over its limit says so, where the check used to follow the read.
+#[test]
+fn an_entry_file_over_its_limit_is_refused_before_it_is_read() {
+    let folder = Path::new(env!("CARGO_TARGET_TMPDIR")).join("html-entry-limit");
+    let _ = std::fs::remove_dir_all(&folder);
+    std::fs::create_dir_all(&folder).unwrap();
+    let limit = neoteletext_web::consts::DEFAULT_DESCRIPTOR_LIMIT;
+    let file = std::fs::File::create(folder.join(neoteletext_web::channel::SETTINGS_FILE)).unwrap();
+    file.set_len(limit as u64 + 1).unwrap();
+    let output = html(&folder, &[]);
+    assert_eq!(output.status.code(), Some(3));
+    let message = String::from_utf8_lossy(&output.stderr);
+    assert!(message.contains(&format!("larger than {limit} bytes")), "{message}");
+}

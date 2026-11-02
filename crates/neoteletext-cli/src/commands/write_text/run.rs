@@ -1,7 +1,7 @@
 //! `neottx write-text` in a build with it.
 
-use crate::bounded_file::read_bounded;
 use crate::commands::{io_failure, page_number, sandbox_closed};
+use neoteletext_app::bounded_file::read_bounded;
 use neoteletext_app::{Failure, exit};
 use std::fs::File;
 use std::io::Write;

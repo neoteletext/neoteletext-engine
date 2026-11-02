@@ -13,6 +13,7 @@
 use super::io_failure;
 use super::sandbox_closed;
 use crate::ansi::{MosaicStyle, plain};
+use neoteletext_app::bounded_file::read_bounded;
 use neoteletext_app::input::{self, Options};
 use neoteletext_app::session::Session;
 use neoteletext_app::{Failure, exit};
@@ -22,7 +23,7 @@ use neoteletext_web::consts::DEFAULT_PAGE_LIMIT;
 use neoteletext_web::contents::MAX_TITLE;
 use neoteletext_web::subpages::MAX_SUBPAGE_FILE;
 use std::collections::{BTreeMap, BTreeSet};
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
@@ -128,18 +129,6 @@ const fn largest(file: ChannelFile) -> usize {
     }
 }
 
-/// A file's bytes, at most `limit`, read no further than that.
-fn read_bounded(path: &Path, limit: usize) -> Result<Vec<u8>, String> {
-    let file = std::fs::File::open(path).map_err(|error| error.to_string())?;
-    let mut bytes = Vec::new();
-    let room = u64::try_from(limit).unwrap_or(u64::MAX).saturating_add(1);
-    file.take(room).read_to_end(&mut bytes).map_err(|error| error.to_string())?;
-    if bytes.len() > limit {
-        return Err(format!("larger than {limit} bytes"));
-    }
-    Ok(bytes)
-}
-
 /// Reads and decodes one file of the folder; `None`, with a diagnostic,
 /// when it cannot be read, is larger than it may be, or fails the check for
 /// its format (REQ-WEB-027, REQ-1904).
@@ -147,8 +136,8 @@ fn load(options: &Options, path: &Path, file: ChannelFile, modified: Option<Syst
     let report = |why: &str| eprintln!("neottx: {}: skipped: {why}", path.display());
     let bytes = match read_bounded(path, largest(file)) {
         Ok(bytes) => bytes,
-        Err(error) => {
-            report(&error);
+        Err((_, message)) => {
+            report(&message);
             return None;
         }
     };

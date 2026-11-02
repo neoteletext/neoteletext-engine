@@ -5,7 +5,7 @@
 
 use super::io_failure;
 use super::sandbox_closed;
-use crate::bounded_file::read_bounded;
+use neoteletext_app::bounded_file::read_bounded;
 use neoteletext_app::{Failure, exit};
 use neoteletext_core::consts::{FONT_MAX_CHARACTERS, FONT_MAX_FILE_BYTES};
 use neoteletext_core::glyphs::LoadedFont;

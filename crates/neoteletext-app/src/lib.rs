@@ -24,6 +24,7 @@
     clippy::unimplemented
 )]
 
+pub mod bounded_file;
 pub mod convert;
 #[cfg(feature = "live")]
 pub mod descriptor;

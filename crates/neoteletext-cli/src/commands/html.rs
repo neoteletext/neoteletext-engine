@@ -12,6 +12,7 @@
 use super::contents::{Folder, Found, pages_of, read_folder, skipped_files};
 use super::{io_failure, sandbox_writable};
 use crate::image::png_picture;
+use neoteletext_app::bounded_file::read_bounded;
 use neoteletext_app::input::Options;
 use neoteletext_app::present::{MosaicStyle, cell_text};
 use neoteletext_app::{Failure, exit};
@@ -47,10 +48,7 @@ fn public_pages(public: &[String]) -> Result<BTreeSet<PageAddress>, Failure> {
 /// The channel's name, from its entry file, read to its reader's limit.
 fn channel_name(folder: &Path, address: &str) -> Result<String, Failure> {
     let path = folder.join(SETTINGS_FILE);
-    let bytes = std::fs::read(&path).map_err(|error| io_failure(&path, error))?;
-    if bytes.len() > DEFAULT_DESCRIPTOR_LIMIT {
-        return Err((exit::INPUT, format!("{}: over {DEFAULT_DESCRIPTOR_LIMIT} bytes", path.display())));
-    }
+    let bytes = read_bounded(&path, DEFAULT_DESCRIPTOR_LIMIT)?;
     let base = Url::parse(address).map_err(|error| (exit::USAGE, format!("{address}: {error:?}")))?;
     let descriptor = Descriptor::parse_channel(&bytes, &base)
         .map_err(|error| (exit::INPUT, format!("{}: {error:?}", path.display())))?;

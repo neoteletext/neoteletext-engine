@@ -114,3 +114,18 @@ fn a_sub_pages_file_past_its_bound_is_skipped() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("0001.t42") && stderr.contains("larger than"), "{stderr}");
 }
+
+/// REQ-152: a page file over the largest page a reader accepts is skipped by
+/// its length, before it is read.
+#[test]
+fn a_page_file_over_the_limit_is_skipped_before_it_is_read() {
+    let folder = Path::new(env!("CARGO_TARGET_TMPDIR")).join("contents-limit");
+    let _ = std::fs::remove_dir_all(&folder);
+    std::fs::create_dir_all(&folder).unwrap();
+    let limit = neoteletext_web::consts::DEFAULT_PAGE_LIMIT;
+    let file = std::fs::File::create(folder.join("100.tti")).unwrap();
+    file.set_len(limit as u64 + 1).unwrap();
+    let output = neottx(&["contents", folder.to_str().unwrap()]);
+    let message = String::from_utf8_lossy(&output.stderr);
+    assert!(message.contains(&format!("larger than {limit} bytes")), "{message}");
+}
