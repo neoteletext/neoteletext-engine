@@ -3,6 +3,7 @@
 // Tests of REQ-AUD-005, REQ-AUD-009 and REQ-AUD-014.
 use super::*;
 use crate::record::Object;
+use std::vec::Vec;
 
 fn object(handle: u8, generation: u16, samples: u32) -> Object<'static> {
     // PCM in 100-byte blocks: 50 samples a block.
@@ -29,7 +30,7 @@ fn blocks_are_stored_and_a_sound_completes() {
     let mut store = Store::<4>::new(&mut arena);
     assert!(matches!(store.define(&object(1, 1, 120), IDLE), Defined::New { replaced: None, evicted: 0 }));
     // Three blocks: 50, 50 and a final 20 samples (40 bytes).
-    let blocks: std::vec::Vec<u8> = (0..240_u8).collect();
+    let blocks: Vec<u8> = (0..240_u8).collect();
     let sound = SoundId { handle: 1, generation: 1 };
     assert_eq!(
         store.put(&Data { handle: 1, generation: 1, first_block: 1, blocks: &blocks[100..] }),
@@ -60,6 +61,83 @@ fn wrong_lengths_and_generations_are_discarded() {
     assert_eq!(store.put(&Data { handle: 2, generation: 1, first_block: 0, blocks: &[0; 100] }), Stored::Unknown);
     assert_eq!(store.put(&Data { handle: 1, generation: 1, first_block: 0, blocks: &[0; 99] }), Stored::Malformed);
     assert_eq!(store.put(&Data { handle: 1, generation: 1, first_block: 3, blocks: &[0; 40] }), Stored::Malformed);
+}
+
+/// A snapshot of what a refused record must leave as it was.
+fn state(store: &Store<'_, 4>, sound: SoundId) -> (Option<Vec<u8>>, u16, u16, bool) {
+    let entry = store.entry(sound.handle).unwrap();
+    (store.block(sound, 0).map(<[u8]>::to_vec), store.contiguous(sound), entry.received, entry.conflict)
+}
+
+// Verifies REQ-AUD-003 and REQ-AUD-005: a record is refused whole, before
+// anything in it is stored, so the good record completes the sound.
+#[test]
+fn a_refused_record_stores_nothing_and_the_good_record_completes() {
+    let sound = SoundId { handle: 1, generation: 1 };
+    let good = [7_u8; 200];
+    for bad in [&[7_u8; 150][..], &[7_u8; 300][..]] {
+        let mut arena = [0_u8; 1000];
+        let mut store = Store::<4>::new(&mut arena);
+        store.define(&object(1, 1, 100), IDLE);
+        let before = state(&store, sound);
+        assert_eq!(store.put(&Data { handle: 1, generation: 1, first_block: 0, blocks: bad }), Stored::Malformed);
+        assert_eq!(state(&store, sound), before, "a record of {} bytes", bad.len());
+        assert_eq!(
+            store.put(&Data { handle: 1, generation: 1, first_block: 0, blocks: &good }),
+            Stored::Blocks { first: 0, count: 2 }
+        );
+        assert!(store.entry(1).unwrap().complete());
+    }
+}
+
+// Verifies REQ-AUD-005 and REQ-AUD-009: a discarded record cannot put a
+// sound in conflict, however its first block compares.
+#[test]
+fn a_refused_record_cannot_raise_a_conflict() {
+    let mut arena = [0_u8; 1000];
+    let mut store = Store::<4>::new(&mut arena);
+    let sound = SoundId { handle: 1, generation: 1 };
+    store.define(&object(1, 1, 100), IDLE);
+    assert_eq!(
+        store.put(&Data { handle: 1, generation: 1, first_block: 0, blocks: &[1; 100] }),
+        Stored::Blocks { first: 0, count: 1 }
+    );
+    let before = state(&store, sound);
+    let mut bad = [2_u8; 150];
+    bad[99] = 1;
+    assert_eq!(store.put(&Data { handle: 1, generation: 1, first_block: 0, blocks: &bad }), Stored::Malformed);
+    assert_eq!(state(&store, sound), before);
+}
+
+// Verifies REQ-AUD-009: the walk compares every block already stored before
+// it writes, so a conflict part way through stores none of the record.
+#[test]
+fn a_conflict_part_way_through_a_record_stores_none_of_it() {
+    let mut arena = [0_u8; 1000];
+    let mut store = Store::<4>::new(&mut arena);
+    let sound = SoundId { handle: 1, generation: 1 };
+    store.define(&object(1, 1, 150), IDLE);
+    store.put(&Data { handle: 1, generation: 1, first_block: 1, blocks: &[1; 100] });
+    let mut blocks = [0_u8; 200];
+    blocks[100..].fill(2);
+    assert_eq!(store.put(&Data { handle: 1, generation: 1, first_block: 0, blocks: &blocks }), Stored::Conflict);
+    let entry = store.entry(1).unwrap();
+    assert!(entry.conflict);
+    assert_eq!((store.block(sound, 0), entry.received), (None, 1));
+}
+
+// Verifies REQ-AUD-009 and REQ-AUD-014: the same order in a live sound's ring.
+#[test]
+fn a_conflict_part_way_through_a_live_record_stores_none_of_it() {
+    let mut arena = [0_u8; 3_300];
+    let mut store = Store::<2>::new(&mut arena);
+    let sound = SoundId { handle: 1, generation: 1 };
+    store.define(&Object { samples: 0, blocks: 0, ..object(1, 1, 0) }, IDLE);
+    store.put(&live(6, &[1; 100]));
+    let mut blocks = [0_u8; 200];
+    blocks[100..].fill(2);
+    assert_eq!(store.put(&live(5, &blocks)), Stored::Conflict);
+    assert_eq!((store.live_block(sound, 5), store.entry(1).unwrap().received), (None, 1));
 }
 
 // Verifies REQ-AUD-009.

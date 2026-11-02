@@ -45,10 +45,24 @@ impl<const OBJECTS: usize> Store<'_, OBJECTS> {
         if length == 0 || !data.blocks.len().is_multiple_of(length) {
             return Stored::Malformed;
         }
+        let blocks = (0_u16..)
+            .zip(data.blocks.chunks_exact(length))
+            .map(|(offset, bytes)| (data.first_block.wrapping_add(offset), bytes));
+        // Compared before any is written, as `put` does: a record in conflict
+        // stores nothing.
+        let differs = blocks
+            .clone()
+            .any(|(index, bytes)| self.live_block(entry.sound, index).is_some_and(|stored| stored != bytes));
+        if differs {
+            entry.conflict = true;
+            if let Some(place) = self.entries.get_mut(position) {
+                *place = Some(entry);
+            }
+            return Stored::Conflict;
+        }
         let mut fresh = false;
         let mut count: u16 = 0;
-        for (offset, bytes) in (0_u16..).zip(data.blocks.chunks_exact(length)) {
-            let index = data.first_block.wrapping_add(offset);
+        for (index, bytes) in blocks {
             count = count.saturating_add(1);
             if entry
                 .newest
@@ -58,14 +72,6 @@ impl<const OBJECTS: usize> Store<'_, OBJECTS> {
             }
             let Some(slot) = index.checked_rem(entry.blocks) else { return Stored::Malformed };
             if self.received(&entry, slot) && self.slot_index(&entry, slot) == Some(index) {
-                let start = entry.offset.saturating_add(usize::from(slot).saturating_mul(length));
-                if self.arena.get(start..start.saturating_add(length)) != Some(bytes) {
-                    entry.conflict = true;
-                    if let Some(place) = self.entries.get_mut(position) {
-                        *place = Some(entry);
-                    }
-                    return Stored::Conflict;
-                }
                 continue;
             }
             let start = entry.offset.saturating_add(usize::from(slot).saturating_mul(length));

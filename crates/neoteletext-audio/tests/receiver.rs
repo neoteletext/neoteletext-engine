@@ -95,6 +95,16 @@ impl VoiceSink for Recorder {
     }
 }
 
+/// A DATA record holding `blocks` of `sound` from `first`, framed.
+#[cfg(feature = "pcm16")]
+fn data_record(sound: &Sound, first: u16, blocks: &[u8]) -> Vec<u8> {
+    let mut body = vec![sound.handle];
+    body.extend_from_slice(&sound.generation.to_be_bytes());
+    body.extend_from_slice(&first.to_be_bytes());
+    body.extend_from_slice(blocks);
+    neoteletext_audio::encode::frame(neoteletext_audio::record::TYPE_DATA, &body)
+}
+
 /// A tone of `samples` samples.
 fn tone(samples: usize) -> Vec<i16> {
     (0..samples).map(|n| i16::try_from(i32::try_from(n % 50).unwrap() * 400 - 10_000).unwrap()).collect()
@@ -916,4 +926,59 @@ mod opus {
             "a packet beyond the sound's end"
         );
     }
+}
+
+// Verifies REQ-AUD-003, REQ-AUD-005 and REQ-AUD-021: a record refused for a
+// bad block stores nothing, is counted, and the good record completes the
+// sound for the play waiting on it.
+#[cfg(feature = "pcm16")]
+#[test]
+fn a_refused_record_leaves_a_play_to_start_on_the_good_one() {
+    let pcm = tone(100);
+    let sound = Sound::new(1, 1, Codec::Pcm16, 8_000, 100, &pcm).unwrap();
+    let bytes = sound.data.clone();
+    let mut arena = vec![0_u8; 4_096];
+    let mut receiver = Receiver::<8, 2>::new(&mut arena);
+    let mut sink = Recorder::new();
+    receiver.push_record(&sound.object_record().unwrap(), &mut sink);
+    receiver.push_record(&play(0, 1, &sound, None).record(), &mut sink);
+    receiver.push_record(&data_record(&sound, 0, &bytes[..150]), &mut sink);
+    assert_eq!(receiver.statistics().records_refused, 1, "the refused record is counted");
+    let good = data_record(&sound, 0, &bytes);
+    receiver.push_record(&good, &mut sink);
+    receiver.push_record(&good, &mut sink);
+    assert_eq!(sink.starts().len(), 1);
+    assert!(receiver.store().entry(1).unwrap().complete());
+}
+
+// Verifies REQ-AUD-005 and REQ-AUD-013: a block in a refused record is not
+// taken for one at the sink: its good record reaches the sink, with no hole.
+#[cfg(feature = "pcm16")]
+#[test]
+fn a_block_in_a_refused_record_reaches_the_sink_from_its_good_record() {
+    let (sound, records) = level_sound(1_000);
+    let mut arena = vec![0_u8; 16_384];
+    let mut receiver = Receiver::<8, 2>::new(&mut arena);
+    let mut sink = Recorder::new();
+    receiver.push_record(&sound.object_record().unwrap(), &mut sink);
+    let mut command = play(0, 1, &sound, None);
+    command.flags = FLAG_PROGRESSIVE;
+    receiver.push_record(&command.record(), &mut sink);
+    receiver.push_record(&records[0], &mut sink);
+    receiver.push_record(&records[1], &mut sink);
+    assert_eq!(sink.starts().len(), 1);
+    receiver.push_record(&records[3], &mut sink);
+    sink.take();
+    // Block 2 followed by two stray bytes.
+    let mut bad = sound.data[2_000..3_000].to_vec();
+    bad.extend_from_slice(&[0, 0]);
+    receiver.push_record(&data_record(&sound, 2, &bad), &mut sink);
+    receiver.push_record(&records[2], &mut sink);
+    receiver.push_record(&records[2], &mut sink);
+    assert!(
+        sink.calls.contains(&Call::Samples(SoundId { handle: sound.handle, generation: sound.generation }, 1_000, 500)),
+        "block 2's samples: {:?}",
+        sink.calls
+    );
+    assert!(receiver.store().entry(sound.handle).unwrap().complete());
 }

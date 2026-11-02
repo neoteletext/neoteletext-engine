@@ -32,7 +32,9 @@ pub struct Statistics {
     pub packets_dropped: u32,
     /// Records read.
     pub records: u32,
-    /// Records refused: a bad frame, CRC or field.
+    /// Records refused: a bad frame, CRC or field, or a DATA record with a
+    /// block of the wrong length or beyond its sound's end (REQ-AUD-005).
+    /// These last also count in `records`, as they were read.
     pub records_refused: u32,
     /// Objects or blocks in conflict with what was stored.
     pub conflicts: u32,
@@ -243,7 +245,8 @@ impl<'a, const OBJECTS: usize, const SLOTS: usize> Receiver<'a, OBJECTS, SLOTS> 
                     self.start_waiting(sink);
                 }
                 Stored::Conflict => bump(&mut self.statistics.conflicts),
-                Stored::Repeat | Stored::Unknown | Stored::Malformed => {}
+                Stored::Malformed => bump(&mut self.statistics.records_refused),
+                Stored::Repeat | Stored::Unknown => {}
             },
             Record::Control(control) => self.command(&control, sink),
         }

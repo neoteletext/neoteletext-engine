@@ -239,7 +239,11 @@ impl<'a, const OBJECTS: usize> Store<'a, OBJECTS> {
         index < entry.blocks && self.arena.get(at).is_some_and(|byte| byte & (1 << (index % 8)) != 0)
     }
 
-    /// Stores a DATA record's blocks.
+    /// Stores a DATA record's blocks. The record is judged whole before any
+    /// of it is written, first each block's place and length and then each
+    /// block already stored against the record's, so a record refused or in
+    /// conflict stores nothing and the bitmap and `received` keep agreeing
+    /// (REQ-AUD-003, REQ-AUD-005, REQ-AUD-009).
     pub fn put(&mut self, data: &Data<'_>) -> Stored {
         let Some(index) =
             self.entries.iter().position(|entry| entry.is_some_and(|entry| entry.sound.handle == data.handle))
@@ -253,50 +257,65 @@ impl<'a, const OBJECTS: usize> Store<'a, OBJECTS> {
         if entry.live {
             return self.put_live(index, entry, data);
         }
-        // The record's blocks: whole ones, then possibly the final, shorter one.
-        let mut position = 0;
-        let mut block = data.first_block;
+        if record_blocks(&entry, data).any(|block| block.is_none()) {
+            return Stored::Malformed;
+        }
+        let differs = record_blocks(&entry, data)
+            .flatten()
+            .any(|(block, bytes)| self.block(entry.sound, block).is_some_and(|stored| stored != bytes));
+        if differs {
+            entry.conflict = true;
+            if let Some(slot) = self.entries.get_mut(index) {
+                *slot = Some(entry);
+            }
+            return Stored::Conflict;
+        }
         let mut count: u16 = 0;
         let mut fresh = false;
-        while position < data.blocks.len() {
-            if block >= entry.blocks {
-                return Stored::Malformed;
-            }
-            let length = entry.block_length(block);
-            let Some(bytes) = data.blocks.get(position..position.saturating_add(length)) else {
-                return Stored::Malformed;
-            };
-            let start = entry.offset.saturating_add(usize::from(block).saturating_mul(usize::from(entry.block_bytes)));
-            let received = self.received(&entry, block);
-            let Some(target) = self.arena.get_mut(start..start.saturating_add(length)) else {
-                return Stored::Malformed;
-            };
-            if received {
-                if target != bytes {
-                    entry.conflict = true;
-                    if let Some(slot) = self.entries.get_mut(index) {
-                        *slot = Some(entry);
-                    }
-                    return Stored::Conflict;
-                }
-            } else {
-                target.copy_from_slice(bytes);
-                let bit = entry.offset.saturating_add(entry.data_bytes()).saturating_add(usize::from(block / 8));
-                if let Some(byte) = self.arena.get_mut(bit) {
-                    *byte |= 1 << (block % 8);
-                }
-                entry.received = entry.received.saturating_add(1);
-                fresh = true;
-            }
-            position = position.saturating_add(length);
-            block = block.saturating_add(1);
+        for (block, bytes) in record_blocks(&entry, data).flatten() {
             count = count.saturating_add(1);
+            if self.received(&entry, block) {
+                continue;
+            }
+            let start = entry.offset.saturating_add(usize::from(block).saturating_mul(usize::from(entry.block_bytes)));
+            if let Some(target) = self.arena.get_mut(start..start.saturating_add(bytes.len())) {
+                target.copy_from_slice(bytes);
+            }
+            let bit = entry.offset.saturating_add(entry.data_bytes()).saturating_add(usize::from(block / 8));
+            if let Some(byte) = self.arena.get_mut(bit) {
+                *byte |= 1 << (block % 8);
+            }
+            entry.received = entry.received.saturating_add(1);
+            fresh = true;
         }
         if let Some(slot) = self.entries.get_mut(index) {
             *slot = Some(entry);
         }
         if fresh { Stored::Blocks { first: data.first_block, count } } else { Stored::Repeat }
     }
+}
+
+/// A DATA record's blocks in order, whole ones then possibly the final,
+/// shorter one: each block's index and bytes, or `None` for a block past the
+/// sound's end or cut short, which ends the walk.
+fn record_blocks<'d>(entry: &Entry, data: &Data<'d>) -> impl Iterator<Item = Option<(u16, &'d [u8])>> + use<'d> {
+    let entry = *entry;
+    let mut rest = data.blocks;
+    let mut block = data.first_block;
+    core::iter::from_fn(move || {
+        if rest.is_empty() {
+            return None;
+        }
+        let parts = (block < entry.blocks).then(|| rest.split_at_checked(entry.block_length(block))).flatten();
+        let Some((bytes, after)) = parts else {
+            rest = &[];
+            return Some(None);
+        };
+        rest = after;
+        let index = block;
+        block = block.saturating_add(1);
+        Some(Some((index, bytes)))
+    })
 }
 
 #[cfg(test)]
