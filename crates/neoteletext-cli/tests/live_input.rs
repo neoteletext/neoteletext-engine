@@ -1,6 +1,7 @@
 //! What `neottx` says of an input: a live input that could not be read exits
 //! as any other that could not be read (REQ-CLI-005). No network is touched:
 //! the fetcher refuses a feed it does not know.
+#![cfg(feature = "live")]
 #![allow(clippy::unwrap_used, missing_docs, reason = "a test")]
 
 mod common;
