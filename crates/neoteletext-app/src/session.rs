@@ -117,6 +117,12 @@ impl Session {
         &mut self.decoder
     }
 
+    /// Packets whose address could be read, from every magazine.
+    #[must_use]
+    pub fn packets_received(&self) -> u64 {
+        self.decoder.statistics().per_magazine.iter().map(|&packets| u64::from(packets)).sum()
+    }
+
     /// Feeds one packet. Time advances by the packet's own time stamp when
     /// it has one, otherwise by one line period.
     pub fn push(&mut self, packet: &Packet, meta: &PacketMeta) {

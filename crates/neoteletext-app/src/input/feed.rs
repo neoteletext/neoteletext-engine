@@ -143,7 +143,12 @@ pub(super) fn load_live(options: &Options, wanted: Option<PageAddress>) -> Resul
         }
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
+    // Asked before `finish`, whose own headers count as packets.
+    let nothing_arrived = session.packets_received() == 0;
     session.finish();
+    if nothing_arrived {
+        return Err((crate::exit::INPUT, format!("{}: nothing arrived", options.input)));
+    }
     Ok(session)
 }
 

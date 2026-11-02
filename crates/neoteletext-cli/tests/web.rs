@@ -89,13 +89,14 @@ fn local_addresses_are_blocked_unless_named() {
 fn faults_do_not_crash_the_receiver() {
     let server = server();
     for fault in ["drop", "big", "media", "loop", "ambiguous"] {
-        // A descriptor address that misbehaves: neottx must fail cleanly.
+        // A descriptor address that misbehaves: neottx must fail cleanly,
+        // and as an input that could not be read (REQ-CLI-005).
         let url = format!("http://127.0.0.1:{}/fault/{fault}", server.port);
         let output = Command::new(env!("CARGO_BIN_EXE_neottx"))
             .args(["text", &url, "100", "--allow-local", "127.0.0.1", "--duration", "5"])
             .output()
             .expect("run neottx");
-        assert_eq!(output.status.code(), Some(1), "fault {fault}: {}", String::from_utf8_lossy(&output.stderr));
+        assert_eq!(output.status.code(), Some(3), "fault {fault}: {}", String::from_utf8_lossy(&output.stderr));
     }
 }
 
