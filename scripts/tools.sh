@@ -45,10 +45,12 @@ tools_out_of_date() {
             printf '%s %s\n' "$crate" "$version"
         fi
     done <<<"$TOOLS"
-    if ! rustup toolchain list | grep -q "^$FUZZ_NIGHTLY"; then
+    # grep reads to the end: stopping at the match would break the pipe rustup
+    # is still writing to, and pipefail would then call the tool missing.
+    if ! rustup toolchain list | grep "^$FUZZ_NIGHTLY" >/dev/null; then
         printf '%s\n' "$FUZZ_NIGHTLY"
     fi
-    if ! (cd "$tools_root/.." && rustup component list --installed) | grep -q "^$COVERAGE_COMPONENT"; then
+    if ! (cd "$tools_root/.." && rustup component list --installed) | grep "^$COVERAGE_COMPONENT" >/dev/null; then
         printf '%s\n' "$COVERAGE_COMPONENT"
     fi
 }
