@@ -307,3 +307,22 @@ fn channel_settings() {
     let named = br#"{"name":"S","initial_page":"100","page_template":"/{mpp}","services":[{"name":"w","display_name":"W","channel":"https://w.example/"}]}"#;
     assert_eq!(Descriptor::parse(named, &base).err(), Some(DescriptorError::Unknown));
 }
+
+/// REQ-513, REQ-1894, DOC-1865: a channel's `initial_page` is three decimal
+/// digits, the magazine 1 to 8 first, and anything else is an invalid
+/// member that refuses the file. It was read as hexadecimal, so `"1A0"`
+/// opened a channel.
+#[test]
+fn a_channels_initial_page_is_three_decimal_digits() {
+    let base = settings_address("https");
+    let initial = |page: &str| {
+        let json = std::format!(r#"{{"initial_page":"{page}"}}"#);
+        Descriptor::parse_channel(json.as_bytes(), &base).map(|descriptor| descriptor.initial_page.mpp())
+    };
+    assert_eq!(initial("100"), Ok(0x100));
+    assert_eq!(initial("899"), Ok(0x899));
+    let invalid = Err(DescriptorError::Invalid(Member::InitialPage));
+    for page in ["1A0", "1a0", "8FF", "10A", "099", "900", "10", "1000", "+10", " 10"] {
+        assert_eq!(initial(page), invalid, "{page}");
+    }
+}

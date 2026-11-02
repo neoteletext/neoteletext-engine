@@ -37,6 +37,16 @@ pub(super) fn parse_mpp(text: &[u8]) -> Option<PageAddress> {
     PageAddress::from_mpp(value)
 }
 
+/// Parses a channel's `initial_page`: three decimal digits, magazine 1 to 8
+/// first (REQ-513, DOC-1865). A page with a hexadecimal digit cannot be a
+/// channel's first page, which a viewer could not key (REQ-313).
+fn parse_decimal_mpp(text: &[u8]) -> Option<PageAddress> {
+    if !text.iter().all(u8::is_ascii_digit) {
+        return None;
+    }
+    parse_mpp(text)
+}
+
 /// Resolves an address member against the descriptor's address and applies
 /// REQ-SEC-007.
 pub(super) fn address(base: &Url, value: &str, member: Member) -> Result<Url, DescriptorError> {
@@ -91,8 +101,11 @@ impl Descriptor {
             } else if key.equals(b"initial_page") {
                 first(seen_page, Member::InitialPage)?;
                 let value = expect_string(reader.next_token()?, Member::InitialPage)?;
+                // A service's descriptor may name any page (REQ-491); a
+                // channel's `channel.ttx` a decimal one (REQ-513).
+                let read = if channel { parse_decimal_mpp } else { parse_mpp };
                 descriptor.initial_page =
-                    value.plain().and_then(parse_mpp).ok_or(DescriptorError::Invalid(Member::InitialPage))?;
+                    value.plain().and_then(read).ok_or(DescriptorError::Invalid(Member::InitialPage))?;
             } else if key.equals(b"page_template") {
                 if channel {
                     return Err(DescriptorError::NotForChannels(Member::PageTemplate));
