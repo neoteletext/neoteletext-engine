@@ -31,6 +31,8 @@ pub struct Options {
     pub profile: String,
     /// The transport stream packet identifier of the teletext stream.
     pub pid: Option<u16>,
+    /// The transport stream programme whose first teletext stream to use.
+    pub program: Option<u16>,
     /// Seconds to collect pages from a live feed before acting.
     pub duration: u64,
     /// Pages and sub-pages to keep in memory.
@@ -122,7 +124,7 @@ pub fn reader(options: &Options, encode_pages: bool) -> Box<AutoReader> {
     Box::new(AutoReader::new(AutoConfig {
         format: options.format,
         encode_pages,
-        transport: TsConfig { pid: options.pid, ..TsConfig::default() },
+        transport: TsConfig { pid: options.pid, program: options.program, ..TsConfig::default() },
         source: None,
     }))
 }
@@ -240,6 +242,7 @@ mod tests {
             format: None,
             profile: profile.to_owned(),
             pid: None,
+            program: None,
             duration: 0,
             pages: 0,
             region: None,

@@ -31,6 +31,9 @@ pub struct Common {
     /// Transport stream packet identifier of the teletext stream to use.
     #[arg(long)]
     pub pid: Option<u16>,
+    /// Transport stream programme whose first teletext stream to use.
+    #[arg(long)]
+    pub program: Option<u16>,
     /// Seconds to collect pages from a live feed before acting (REQ-CLI-002).
     #[arg(long, default_value_t = 20)]
     pub duration: u64,

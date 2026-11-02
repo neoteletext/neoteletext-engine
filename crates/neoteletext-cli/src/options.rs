@@ -38,6 +38,7 @@ impl Common {
             format: self.format.map(FormatChoice::format),
             profile: self.profile.clone(),
             pid: self.pid,
+            program: self.program,
             duration: self.duration,
             pages: self.pages,
             region: self.region,

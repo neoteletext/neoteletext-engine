@@ -95,7 +95,7 @@ The format of a file is detected from its content. `--format` overrides detectio
 | `edittf` | edit.tf and zxnet page addresses (the page is in the URL fragment). |
 | `dump` | Raw 40 by 25 screen dumps. |
 
-In a transport stream, the first teletext stream is used unless `--pid` names one. `neottx services` lists the choices.
+In a transport stream, the first teletext stream is used unless `--pid` names one, or `--program` names the programme whose first teletext stream to use. `neottx services` lists the choices.
 
 ### Live feeds and web services
 
