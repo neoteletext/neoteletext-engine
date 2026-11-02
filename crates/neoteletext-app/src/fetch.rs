@@ -5,6 +5,7 @@
 
 use neoteletext_core::types::Instant;
 use neoteletext_web::proxy::Proxy;
+use neoteletext_web::zxnet::{Channel, ChannelError, KNOWN_CHANNELS};
 use std::net::IpAddr;
 use std::sync::mpsc;
 use std::time::Instant as StdInstant;
@@ -37,18 +38,36 @@ pub fn run(address: &str, no_sandbox: bool, allow_local: &[IpAddr], proxy: Optio
         no_sandbox,
     )
     .map_err(|message| (crate::exit::INPUT, message))?;
-    if let Some(name) = address.strip_prefix("zxnet:") {
-        let channel = neoteletext_web::zxnet::Channel::from_short_name(name)
-            .map_err(|error| (crate::exit::USAGE, format!("unknown live feed: {error:?}")))?;
-        zxnet::run_zxnet(&channel, &mut wakes, wake, allow_local, proxy);
-    } else if address.starts_with("wss://") {
-        let channel = neoteletext_web::zxnet::Channel::from_identifier(address)
-            .map_err(|error| (crate::exit::USAGE, format!("unknown live feed: {error:?}")))?;
-        zxnet::run_zxnet(&channel, &mut wakes, wake, allow_local, proxy);
-    } else {
-        web::run_web(address, &mut wakes, wake, allow_local, proxy);
+    match feed(address) {
+        Some(channel) => {
+            let channel = channel.map_err(|error| (crate::exit::USAGE, format!("unknown live feed: {error:?}")))?;
+            zxnet::run_zxnet(&channel, &mut wakes, wake, allow_local, proxy);
+        }
+        None => web::run_web(address, &mut wakes, wake, allow_local, proxy),
     }
     Ok(())
+}
+
+/// The live feed an input names, if it names one (REQ-INP-022): a short
+/// name or a channel identifier after `zxnet:`, or a `wss` address.
+fn feed(address: &str) -> Option<Result<Channel, ChannelError>> {
+    if let Some(name) = address.strip_prefix("zxnet:") {
+        return Some(
+            Channel::from_short_name(name).or_else(|unknown| Channel::from_identifier(name).map_err(|_| unknown)),
+        );
+    }
+    address.starts_with("wss://").then(|| feed_at(address))
+}
+
+/// The feed at a `wss` address, which carries no service name: a known
+/// feed's own, or the last segment of the path (DEC-2134). A wrong guess
+/// draws `wrongname`, which stops the feed with its message.
+fn feed_at(address: &str) -> Result<Channel, ChannelError> {
+    let known = KNOWN_CHANNELS
+        .iter()
+        .filter_map(|(short, _)| Channel::from_short_name(short).ok())
+        .find(|channel| channel.address().as_str() == address);
+    known.map_or_else(|| Channel::from_address(address, address.rsplit('/').next().unwrap_or_default()), Ok)
 }
 
 /// `neottx` as it names itself to a channel (REQ-WEB-031): `neottx/0.1

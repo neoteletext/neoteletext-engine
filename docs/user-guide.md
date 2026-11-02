@@ -74,7 +74,7 @@ The toolchain is pinned in `rust-toolchain.toml`. `scripts/check.sh full` runs e
 
 - a file;
 - `-` for standard input;
-- `zxnet:NAME` for a live zxnet feed. The names are `teefax`, `nms-ceefax`, `chunkytext`, `spark`, `ch4` and `test`. A `wss://` channel address also works;
+- `zxnet:NAME` for a live zxnet feed. The names are `teefax`, `nms-ceefax`, `chunkytext`, `spark`, `ch4` and `test`. `zxnet:` also takes a channel identifier, and a `wss://` address works too: a known feed's by itself, and for any other the last part of its path names the service;
 - an `https://` or `http://` address of a channel, its folder ending in `/`, or its `channel.ttx`, such as `https://app.neottx.com/demosite/`. Any address of the channel URL map opens (DOC-1779): `<channel>302` starts at page 302, `<channel>302/0002` at that sub-page, and `<channel>302?name=value` sends the channel's program those parameters with that page, and no other. `<channel>contents` and `<channel>wall` start at the channel's first page, as the viewer shows neither. `<channel>302.tti` and `<channel>302/` read as `<channel>302`. An address with a fragment, such as `<channel>#302`, is refused: on the web a page is part of the path;
 - any other `https://` or `http://` address, of a web teletext service descriptor (REQUIREMENTS.md area WEB);
 - a `neottx://` link, which opens the `https://` or `http://` address it wraps, as in `neottx://https://app.neottx.com/demosite/`. `neottx` registers nothing with the operating system: the browser does that. A fragment after the address, which names a page in the browser, is refused here.

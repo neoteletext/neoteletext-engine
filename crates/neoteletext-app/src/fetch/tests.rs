@@ -7,6 +7,7 @@ use super::zxnet::live_loop;
 use neoteletext_core::types::Instant;
 use neoteletext_web::port::{ConnectionId, LinkState, Received, Security, Transport};
 use neoteletext_web::url::IpAddress;
+use neoteletext_web::zxnet::ChannelError;
 use std::collections::VecDeque;
 use std::io::Read;
 use std::sync::atomic::Ordering;
@@ -180,4 +181,25 @@ fn a_stopped_feed_sleeps_until_something_happens() {
     let woken = waits.load(Ordering::Relaxed) - before;
     assert!(woken <= 1, "the stopped loop woke {woken} times in a second");
     let _ = end.send(Wake::Ended);
+}
+
+/// REQ-186, DEC-2134: a known feed's address and identifier give that feed,
+/// whose service name need not be its path's; any other address's last
+/// segment names its service.
+#[test]
+fn a_feed_is_named_by_short_name_identifier_or_address() {
+    use neoteletext_web::zxnet::{Channel, KNOWN_CHANNELS};
+    let channel = |input: &str| super::feed(input).unwrap().unwrap();
+    let ch4 = Channel::from_short_name("ch4").unwrap();
+    assert_eq!(channel("zxnet:ch4").service(), "channel4-capture");
+    assert_eq!(channel(&format!("zxnet:{}", ch4.identifier())).identifier(), ch4.identifier());
+    assert_eq!(channel("wss://zxnet.co.uk/ws/ch4").service(), "channel4-capture", "not the path's ch4");
+    for (short, _) in KNOWN_CHANNELS {
+        let known = Channel::from_short_name(short).unwrap();
+        assert_eq!(channel(known.address().as_str()).identifier(), known.identifier());
+    }
+    assert_eq!(channel("wss://feed.example/ws/news").service(), "news");
+    assert_eq!(super::feed("zxnet:nosuchfeed").unwrap().map(|_| ()), Err(ChannelError::UnknownName));
+    assert_eq!(super::feed("wss://feed.example/").unwrap().map(|_| ()), Err(ChannelError::Json));
+    assert!(super::feed("https://feed.example/").is_none(), "a web address is no feed");
 }
