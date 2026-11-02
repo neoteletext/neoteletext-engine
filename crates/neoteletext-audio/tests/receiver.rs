@@ -1032,3 +1032,47 @@ fn a_left_pages_stalled_live_sound_does_not_restart() {
         assert_eq!(sink.starts().len(), 1, "no second start");
     }
 }
+
+// Verifies REQ-AUD-009: an evicted sound the sink holds is forgotten there.
+#[cfg(feature = "pcm16")]
+#[test]
+fn an_evicted_sound_is_forgotten_at_the_sink() {
+    let pcm = tone(50);
+    let first = Sound::new(1, 1, Codec::Pcm16, 8_000, 100, &pcm).unwrap();
+    let second = Sound::new(2, 1, Codec::Pcm16, 8_000, 100, &pcm).unwrap();
+    let mut arena = vec![0_u8; 120];
+    let mut receiver = Receiver::<8, 2>::new(&mut arena);
+    let mut sink = Recorder::new();
+    receiver.push_record(&first.object_record().unwrap(), &mut sink);
+    for record in first.data_records() {
+        receiver.push_record(&record, &mut sink);
+    }
+    receiver.push_record(&play(0, 1, &first, None).record(), &mut sink);
+    receiver.push_record(&stop(0, 2).record(), &mut sink);
+    sink.take();
+    receiver.push_record(&second.object_record().unwrap(), &mut sink);
+    assert!(receiver.store().entry(1).is_none() && receiver.store().entry(2).is_some());
+    assert_eq!(sink.take(), [Call::Forget(SoundId { handle: 1, generation: 1 })]);
+}
+
+// Verifies REQ-AUD-009 and DEC-2113: a newer generation that does not fit
+// leaves the older one in the store, playing at the sink.
+#[cfg(feature = "pcm16")]
+#[test]
+fn a_newer_generation_too_large_leaves_the_older_playing() {
+    let older = Sound::new(1, 1, Codec::Pcm16, 8_000, 100, &tone(50)).unwrap();
+    let newer = Sound::new(1, 2, Codec::Pcm16, 8_000, 100, &tone(500)).unwrap();
+    let mut arena = vec![0_u8; 120];
+    let mut receiver = Receiver::<8, 2>::new(&mut arena);
+    let mut sink = Recorder::new();
+    receiver.push_record(&older.object_record().unwrap(), &mut sink);
+    for record in older.data_records() {
+        receiver.push_record(&record, &mut sink);
+    }
+    receiver.push_record(&play(0, 1, &older, None).record(), &mut sink);
+    sink.take();
+    receiver.push_record(&newer.object_record().unwrap(), &mut sink);
+    assert_eq!(receiver.statistics().resource_limits, 1);
+    assert_eq!(receiver.store().entry(1).unwrap().sound.generation, 1);
+    assert_eq!(sink.take(), []);
+}

@@ -8,7 +8,7 @@ use crate::record::Object;
 impl<const OBJECTS: usize> Store<'_, OBJECTS> {
     /// Adds or refreshes a sound's definition. `busy` says whether the
     /// receiver still needs a sound, which protects it from eviction.
-    pub fn define(&mut self, object: &Object<'_>, busy: &dyn Fn(SoundId) -> bool) -> Defined {
+    pub fn define(&mut self, object: &Object<'_>, busy: &dyn Fn(SoundId) -> bool) -> Defined<OBJECTS> {
         let Some(codec) = object.codec else { return Defined::Ignored };
         let live = object.samples == 0;
         let sound = SoundId { handle: object.handle, generation: object.generation };
@@ -32,6 +32,7 @@ impl<const OBJECTS: usize> Store<'_, OBJECTS> {
             stamp: 0,
         };
         let mut replaced = None;
+        let mut leaving = [false; OBJECTS];
         if let Some(index) =
             self.entries.iter().position(|entry| entry.is_some_and(|entry| entry.sound.handle == object.handle))
         {
@@ -49,16 +50,21 @@ impl<const OBJECTS: usize> Store<'_, OBJECTS> {
                     return Defined::Conflict;
                 }
                 replaced = Some(existing);
-                if let Some(slot) = self.entries.get_mut(index) {
-                    *slot = None;
+                if let Some(flag) = leaving.get_mut(index) {
+                    *flag = true;
                 }
             }
         }
-        let size = fresh.size();
-        if size > self.arena.len() {
-            return Defined::ResourceLimit;
+        // Nothing leaves until the sound is known to fit: a sound refused
+        // costs neither an older generation nor anything evicted (DEC-2113).
+        let Some(offset) = self.make_space(fresh.size(), busy, &mut leaving) else { return Defined::ResourceLimit };
+        let mut evicted = [None; OBJECTS];
+        for ((place, &leaves), out) in self.entries.iter_mut().zip(&leaving).zip(&mut evicted) {
+            if leaves {
+                let gone = place.take().filter(|entry| entry.at_sink).map(|entry| entry.sound);
+                *out = gone.filter(|&sound| replaced.is_none_or(|old: Entry| old.sound != sound));
+            }
         }
-        let Some((offset, evicted)) = self.make_space(size, busy) else { return Defined::ResourceLimit };
         let Some(slot) = self.entries.iter().position(Option::is_none) else { return Defined::ResourceLimit };
         self.clock = self.clock.wrapping_add(1);
         let entry = Entry { offset, stamp: self.clock, ..fresh };
@@ -73,35 +79,38 @@ impl<const OBJECTS: usize> Store<'_, OBJECTS> {
         Defined::New { replaced, evicted }
     }
 
-    /// Finds `size` free bytes, evicting the oldest sounds nothing needs
-    /// until they are found. Returns their offset and how many sounds were
-    /// evicted, or `None` when every sound left is needed.
-    fn make_space(&mut self, size: usize, busy: &dyn Fn(SoundId) -> bool) -> Option<(usize, usize)> {
-        let mut evicted: usize = 0;
+    /// Finds a free entry and `size` free bytes, marking in `leaving` the
+    /// oldest sounds nothing needs until they are found. Returns the bytes'
+    /// offset, or `None` when every sound left is needed. The entries
+    /// themselves are not touched.
+    fn make_space(&self, size: usize, busy: &dyn Fn(SoundId) -> bool, leaving: &mut [bool; OBJECTS]) -> Option<usize> {
         loop {
-            if let Some(offset) = self.find_space(size) {
-                return Some((offset, evicted));
+            let entry_free = self.entries.iter().zip(leaving.iter()).any(|(entry, &leaves)| entry.is_none() || leaves);
+            if entry_free && let Some(offset) = self.find_space(size, leaving) {
+                return Some(offset);
             }
             // Evict the oldest sound nothing needs.
             let victim = self
                 .entries
                 .iter()
+                .zip(leaving.iter())
                 .enumerate()
-                .filter_map(|(index, entry)| entry.filter(|entry| !busy(entry.sound)).map(|entry| (index, entry.stamp)))
+                .filter(|&(_, (_, &leaves))| !leaves)
+                .filter_map(|(index, (entry, _))| {
+                    entry.filter(|entry| !busy(entry.sound)).map(|entry| (index, entry.stamp))
+                })
                 .min_by_key(|&(_, stamp)| stamp)
                 .map(|(index, _)| index)?;
-            if let Some(slot) = self.entries.get_mut(victim) {
-                *slot = None;
-            }
-            evicted = evicted.saturating_add(1);
+            *leaving.get_mut(victim)? = true;
         }
     }
 
     /// First fit: the lowest offset where `size` bytes are free.
-    fn find_space(&self, size: usize) -> Option<usize> {
+    fn find_space(&self, size: usize, leaving: &[bool; OBJECTS]) -> Option<usize> {
         let mut taken: [(usize, usize); OBJECTS] = [(0, 0); OBJECTS];
         let mut count = 0;
-        for entry in self.entries.iter().flatten() {
+        let staying = self.entries.iter().zip(leaving).filter(|&(_, &leaves)| !leaves);
+        for entry in staying.filter_map(|(entry, _)| entry.as_ref()) {
             if let Some(place) = taken.get_mut(count) {
                 *place = (entry.offset, entry.offset.saturating_add(entry.size()));
                 count = count.saturating_add(1);

@@ -217,12 +217,15 @@ impl<'a, const OBJECTS: usize, const SLOTS: usize> Receiver<'a, OBJECTS, SLOTS> 
                 let channels = self.channels;
                 let busy = |sound: SoundId| channels.iter().any(|channel| needs(channel, sound));
                 match self.store.define(&object, &busy) {
-                    Defined::New { replaced: Some(old), .. } if old.at_sink => {
-                        sink.forget(old.sound);
-                        #[cfg(feature = "opus")]
-                        self.opus.release(old.sound);
+                    Defined::New { replaced, evicted } => {
+                        let replaced = replaced.filter(|old| old.at_sink).map(|old| old.sound);
+                        for sound in evicted.into_iter().chain([replaced]).flatten() {
+                            sink.forget(sound);
+                            #[cfg(feature = "opus")]
+                            self.opus.release(sound);
+                        }
                     }
-                    Defined::New { .. } | Defined::Repeat => {}
+                    Defined::Repeat => {}
                     Defined::Ignored => bump(&mut self.statistics.unsupported),
                     Defined::Conflict => bump(&mut self.statistics.conflicts),
                     Defined::ResourceLimit => bump(&mut self.statistics.resource_limits),

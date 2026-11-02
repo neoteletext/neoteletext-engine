@@ -28,7 +28,7 @@ const IDLE: &dyn Fn(SoundId) -> bool = &|_| false;
 fn blocks_are_stored_and_a_sound_completes() {
     let mut arena = [0_u8; 1000];
     let mut store = Store::<4>::new(&mut arena);
-    assert!(matches!(store.define(&object(1, 1, 120), IDLE), Defined::New { replaced: None, evicted: 0 }));
+    assert!(matches!(store.define(&object(1, 1, 120), IDLE), Defined::New { replaced: None, .. }));
     // Three blocks: 50, 50 and a final 20 samples (40 bytes).
     let blocks: Vec<u8> = (0..240_u8).collect();
     let sound = SoundId { handle: 1, generation: 1 };
@@ -164,11 +164,55 @@ fn the_oldest_idle_sound_is_evicted_and_a_busy_one_never() {
     store.define(&object(1, 1, 100), IDLE);
     store.define(&object(2, 1, 100), IDLE);
     let busy_one: &dyn Fn(SoundId) -> bool = &|sound| sound.handle == 1;
-    assert!(matches!(store.define(&object(3, 1, 100), busy_one), Defined::New { evicted: 1, .. }));
+    assert!(matches!(store.define(&object(3, 1, 100), busy_one), Defined::New { .. }));
     assert!(store.entry(1).is_some() && store.entry(2).is_none() && store.entry(3).is_some());
     let all_busy: &dyn Fn(SoundId) -> bool = &|_| true;
     assert_eq!(store.define(&object(4, 1, 100), all_busy), Defined::ResourceLimit);
     assert_eq!(store.define(&object(5, 1, 1000), IDLE), Defined::ResourceLimit, "larger than the arena");
+}
+
+// Verifies REQ-AUD-009: a store that refuses a sound has changed nothing.
+#[test]
+fn a_refusal_evicts_nothing() {
+    // Two idle sounds and a busy one of 200 bytes and a 1-byte bitmap each.
+    let mut arena = [0_u8; 610];
+    let mut store = Store::<4>::new(&mut arena);
+    store.define(&object(1, 1, 100), IDLE);
+    store.define(&object(2, 1, 100), IDLE);
+    store.define(&object(3, 1, 100), IDLE);
+    let busy_last: &dyn Fn(SoundId) -> bool = &|sound| sound.handle == 3;
+    // 500 bytes do not fit beside the busy sound, so nothing is evicted for it.
+    assert_eq!(store.define(&object(4, 1, 250), busy_last), Defined::ResourceLimit);
+    assert!(store.entry(1).is_some() && store.entry(2).is_some() && store.entry(3).is_some());
+}
+
+// Verifies REQ-AUD-009 and DEC-2113: a newer generation that cannot be
+// admitted leaves the older one in place, and one that fits only in the
+// older one's room replaces it.
+#[test]
+fn a_newer_generation_that_does_not_fit_leaves_the_older_one() {
+    let mut arena = [0_u8; 201];
+    let mut store = Store::<4>::new(&mut arena);
+    store.define(&object(1, 1, 100), IDLE);
+    assert_eq!(store.define(&object(1, 2, 500), IDLE), Defined::ResourceLimit);
+    assert_eq!(store.entry(1).unwrap().sound.generation, 1);
+    assert!(matches!(
+        store.define(&object(1, 3, 100), IDLE),
+        Defined::New { replaced: Some(Entry { sound: SoundId { generation: 1, .. }, .. }), .. }
+    ));
+    assert_eq!(store.entry(1).unwrap().sound.generation, 3);
+}
+
+// Verifies REQ-AUD-009: a store out of slots evicts as it does when it is
+// out of bytes.
+#[test]
+fn a_store_out_of_slots_evicts_the_oldest() {
+    let mut arena = [0_u8; 1000];
+    let mut store = Store::<2>::new(&mut arena);
+    store.define(&object(1, 1, 10), IDLE);
+    store.define(&object(2, 1, 10), IDLE);
+    assert!(matches!(store.define(&object(3, 1, 10), IDLE), Defined::New { .. }));
+    assert!(store.entry(1).is_none() && store.entry(2).is_some() && store.entry(3).is_some());
 }
 
 #[test]

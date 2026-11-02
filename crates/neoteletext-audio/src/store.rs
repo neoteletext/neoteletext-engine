@@ -1,7 +1,7 @@
 //! The object store (REQ-AUD-009): sounds kept compressed in an arena the
 //! port provides, each with a bitmap of the blocks received. An object is
 //! admitted only if it fits once complete; the oldest objects nothing needs
-//! are evicted to make room.
+//! are evicted to make room, and nothing leaves for a sound that is refused.
 
 use crate::Codec;
 use crate::port::SoundId;
@@ -121,13 +121,14 @@ pub enum LiveEdge {
 
 /// What an OBJECT record did.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Defined {
+pub enum Defined<const OBJECTS: usize> {
     /// A new sound; it may replace an older generation of its handle.
     New {
         /// The older generation it replaced.
         replaced: Option<Entry>,
-        /// Sounds evicted to make room.
-        evicted: usize,
+        /// The sounds evicted to make room that the sink holds, for it to
+        /// forget (REQ-AUD-009).
+        evicted: [Option<SoundId>; OBJECTS],
     },
     /// The same definition again: nothing changes.
     Repeat,
@@ -136,7 +137,8 @@ pub enum Defined {
     /// An older generation, or a different definition of the same
     /// generation: refused.
     Conflict,
-    /// It would not fit even with every evictable sound gone.
+    /// It would not fit even with every evictable sound gone: the store is
+    /// as it was, an older generation of the handle included (DEC-2113).
     ResourceLimit,
 }
 
