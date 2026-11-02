@@ -44,6 +44,11 @@ $missing"
 $missing"
 }
 
+# The audio profile with PCM16 out and the encoder in, and the test of REQ-AUD-001
+# that needs both.
+readonly AUDIO_WITHOUT_PCM16="idl,opus,encode"
+readonly PCM16_OUT_TEST="without_pcm16_a_pcm_sound_is_unsupported_and_skipped"
+
 # DEVELOPMENT.md section 6 (REQ-SEC-003): every crate root reads input from
 # outside its process, and each carries one no-panic lint list, the same
 # in all of them.
@@ -124,6 +129,16 @@ push_steps() {
     step "the audio profile as the desktops build it: PCM16 and IMA ADPCM compiled out (decision E.131)"
     cargo clippy --quiet -p neoteletext-audio --all-targets --no-default-features --features idl,opus -- -D warnings
     cargo test --quiet -p neoteletext-audio --no-default-features --features idl,opus
+
+    # tests/receiver.rs writes its sounds with the encoder, so the shape above
+    # compiles it out, and with it the test REQ-AUD-001 names. The encoder brings
+    # IMA ADPCM and leaves PCM16 out, so this shape holds that test.
+    step "the audio profile without PCM16, with the encoder the receiver's tests need (REQ-AUD-001, decision E.131)"
+    cargo clippy --quiet -p neoteletext-audio --all-targets --no-default-features --features "$AUDIO_WITHOUT_PCM16" -- -D warnings
+    cargo test --quiet -p neoteletext-audio --no-default-features --features "$AUDIO_WITHOUT_PCM16" --test receiver
+    local listed
+    listed="$(cargo test --quiet -p neoteletext-audio --no-default-features --features "$AUDIO_WITHOUT_PCM16" --test receiver -- --list)"
+    [[ "$listed" == *"$PCM16_OUT_TEST: test"* ]] || fail "$PCM16_OUT_TEST is compiled out of this shape, so no gate runs it"
 
     # gates.md: a pass says nothing of a test that is ignored, so the gate says
     # which ones, each with what would make it run.
