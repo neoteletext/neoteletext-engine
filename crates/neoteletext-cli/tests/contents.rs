@@ -62,3 +62,55 @@ fn a_folder_of_page_files_gives_its_contents() {
     let entries = neoteletext_web::contents::read(text.as_bytes()).expect("within the limits");
     assert!(entries.into_iter().all(|entry| entry.is_ok()), "REQ-WEB-025 accepts every line");
 }
+
+// Verifies REQ-1885, REQ-1887: a page's folder belongs to its channel. A page
+// held only there is listed, from its lowest sub-page, and any other folder
+// is a channel of its own.
+#[test]
+fn a_page_in_its_own_folder_is_listed_from_its_first_sub_page() {
+    let folder = Path::new(env!("CARGO_TARGET_TMPDIR")).join("contents-page-folder");
+    let _ = std::fs::remove_dir_all(&folder);
+    for inner in ["602", "1FE", "other", "90A", "2fa"] {
+        std::fs::create_dir_all(folder.join(inner)).expect("make the test folders");
+    }
+    write(&folder, "100.tti", "PN,10000\nOL,1,INDEX\n");
+    write(&folder.join("602"), "0102.tti", "PN,60200\nSC,0102\nOL,1,SECOND\n");
+    write(&folder.join("602"), "0101.tti", "DE,Headlines\nPN,60200\nSC,0101\nOL,1,FIRST\n");
+    write(&folder.join("602"), "0.sub", "2\tv\n0101\tv\n0102\tv\n");
+    write(&folder.join("602"), "index.html", "<!doctype html>\n");
+    // A page file wins over its folder.
+    write(&folder, "103.tti", "PN,10300\nOL,1,PAGE FILE\n");
+    std::fs::create_dir_all(folder.join("103")).expect("make the test folder");
+    write(&folder.join("103"), "0001.tti", "PN,10300\nSC,0001\nOL,1,IN THE FOLDER\n");
+    // None of these is a page's folder or a file of one.
+    write(&folder.join("other"), "500.tti", "PN,50000\nOL,1,ELSEWHERE\n");
+    write(&folder.join("90A"), "0001.tti", "PN,70000\nSC,0001\nOL,1,NO SUCH MAGAZINE\n");
+    write(&folder.join("2fa"), "0001.tti", "PN,2FA00\nSC,0001\nOL,1,SMALL LETTERS\n");
+    write(&folder.join("1FE"), "notes.tti", "PN,1FE00\nOL,1,NOT A SUB-CODE\n");
+
+    let output = neottx(&["contents", folder.to_str().unwrap()]);
+    let text = String::from_utf8(output.stdout).expect("ASCII");
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    let pages: Vec<(&str, &str)> = text
+        .lines()
+        .map(|line| line.split('\t').collect::<Vec<_>>())
+        .filter(|fields| fields[0] == "p")
+        .map(|fields| (fields[1], fields[2]))
+        .collect();
+    assert_eq!(pages, [("100", "INDEX"), ("103", "PAGE FILE"), ("602", "Headlines")], "{text}");
+}
+
+// Verifies REQ-1904: a sub-page's file past its bound is skipped, whole.
+#[test]
+fn a_sub_pages_file_past_its_bound_is_skipped() {
+    let folder = Path::new(env!("CARGO_TARGET_TMPDIR")).join("contents-too-large");
+    let _ = std::fs::remove_dir_all(&folder);
+    std::fs::create_dir_all(folder.join("200")).expect("make the test folder");
+    let packet = [0x15u8; neoteletext_core::consts::PACKET_BYTES];
+    let packets = neoteletext_web::subpages::MAX_SUBPAGE_FILE / packet.len() + 1;
+    std::fs::write(folder.join("200").join("0001.t42"), packet.repeat(packets)).expect("write a test file");
+    let output = neottx(&["contents", folder.to_str().unwrap()]);
+    assert_eq!(output.status.code(), Some(4), "a file was skipped");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("0001.t42") && stderr.contains("larger than"), "{stderr}");
+}

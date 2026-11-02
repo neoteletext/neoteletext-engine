@@ -177,6 +177,13 @@ pub(crate) fn page_of(digits: &[u8]) -> Option<PageAddress> {
     PageAddress::from_mpp(crate::bytes::hex_number(digits)?)
 }
 
+/// The page a folder of a channel belongs to, by the folder's name: a page's
+/// folder is named as a page's file is, in capitals (REQ-1885).
+#[must_use]
+pub fn page_folder(name: &str) -> Option<PageAddress> {
+    page_of(name.as_bytes())
+}
+
 /// Writes a file's name (REQ-WEB-019).
 pub fn write_file_name(writer: &mut Writer<'_>, file: ChannelFile) -> Result<(), Overflow> {
     match file {

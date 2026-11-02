@@ -5,6 +5,10 @@
 //! sandbox is applied, as for every other command (REQ-SEC-017), and the
 //! titles are taken from the decoded pages. Nothing is written but
 //! standard output and standard error.
+//!
+//! A page's folder belongs to the channel (REQ-1885): a page held only there
+//! is found from its lowest sub-page's file. Any other folder is a channel of
+//! its own and is not read.
 
 use super::io_failure;
 use super::sandbox_closed;
@@ -14,9 +18,11 @@ use neoteletext_app::session::Session;
 use neoteletext_app::{Failure, exit};
 use neoteletext_core::types::PageAddress;
 use neoteletext_web::channel::{self, ChannelFile};
+use neoteletext_web::consts::DEFAULT_PAGE_LIMIT;
 use neoteletext_web::contents::MAX_TITLE;
-use std::collections::BTreeMap;
-use std::io::Write;
+use neoteletext_web::subpages::MAX_SUBPAGE_FILE;
+use std::collections::{BTreeMap, BTreeSet};
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
@@ -114,20 +120,40 @@ fn description(bytes: &[u8]) -> Option<String> {
     (!title.is_empty()).then_some(title)
 }
 
+/// The largest a file of a channel may be (REQ-1904).
+const fn largest(file: ChannelFile) -> usize {
+    match file {
+        ChannelFile::SubPage { t42: true, .. } => MAX_SUBPAGE_FILE,
+        _ => DEFAULT_PAGE_LIMIT,
+    }
+}
+
+/// A file's bytes, at most `limit`, read no further than that.
+fn read_bounded(path: &Path, limit: usize) -> Result<Vec<u8>, String> {
+    let file = std::fs::File::open(path).map_err(|error| error.to_string())?;
+    let mut bytes = Vec::new();
+    let room = u64::try_from(limit).unwrap_or(u64::MAX).saturating_add(1);
+    file.take(room).read_to_end(&mut bytes).map_err(|error| error.to_string())?;
+    if bytes.len() > limit {
+        return Err(format!("larger than {limit} bytes"));
+    }
+    Ok(bytes)
+}
+
 /// Reads and decodes one file of the folder; `None`, with a diagnostic,
-/// when it cannot be read or fails the check for its format
-/// (REQ-WEB-027).
+/// when it cannot be read, is larger than it may be, or fails the check for
+/// its format (REQ-WEB-027, REQ-1904).
 fn load(options: &Options, path: &Path, file: ChannelFile, modified: Option<SystemTime>) -> Option<Loaded> {
     let report = |why: &str| eprintln!("neottx: {}: skipped: {why}", path.display());
-    let bytes = match std::fs::read(path) {
+    let bytes = match read_bounded(path, largest(file)) {
         Ok(bytes) => bytes,
         Err(error) => {
-            report(&error.to_string());
+            report(&error);
             return None;
         }
     };
     let (page, t42) = match file {
-        ChannelFile::Page { page, t42 } => (Some(page), t42),
+        ChannelFile::Page { page, t42 } | ChannelFile::SubPage { page, t42, .. } => (Some(page), t42),
         _ => (None, true),
     };
     let valid = if t42 { channel::is_t42(&bytes) } else { channel::is_tti(&bytes) };
@@ -151,18 +177,46 @@ fn load(options: &Options, path: &Path, file: ChannelFile, modified: Option<Syst
     }
 }
 
+/// The file of a page's folder that stands for the page: its lowest sub-page's.
+/// Only the lowest is kept, so a folder of any length costs no memory.
+fn first_sub_page(folder: &Path, number: &str) -> Option<(PathBuf, ChannelFile, Option<SystemTime>)> {
+    let lowest = |file: ChannelFile| match file {
+        ChannelFile::SubPage { subcode, t42, .. } => Some((subcode, !t42)),
+        _ => None,
+    };
+    let mut first: Option<(PathBuf, ChannelFile, Option<SystemTime>)> = None;
+    for entry in std::fs::read_dir(folder).ok()?.flatten() {
+        if !entry.file_type().is_ok_and(|kind| kind.is_file()) {
+            continue;
+        }
+        let Some(name) = entry.file_name().to_str().map(|file| format!("{number}/{file}")) else { continue };
+        let Some(file) = ChannelFile::from_name(&name).filter(|&file| lowest(file).is_some()) else { continue };
+        if first.as_ref().is_none_or(|(_, held, _)| lowest(file) < lowest(*held)) {
+            first = Some((entry.path(), file, entry.metadata().and_then(|metadata| metadata.modified()).ok()));
+        }
+    }
+    first
+}
+
 /// Reads and decodes the page files of `wanted` and the bundle of
-/// `options.input`, the channel's folder. Only the folder's own files count:
-/// a subfolder holds no page.
+/// `options.input`, the channel's folder. Only the folder's own files and its
+/// pages' folders count: any other folder is a channel of its own.
 pub(super) fn read_folder(options: &Options, wanted: fn(PageAddress) -> bool) -> Result<Folder, Failure> {
     let folder = Path::new(&options.input);
     let listing = std::fs::read_dir(folder).map_err(|error| io_failure(folder, error))?;
     let mut files: Vec<(PathBuf, ChannelFile, Option<SystemTime>)> = Vec::new();
+    let mut page_folders: Vec<(PathBuf, PageAddress)> = Vec::new();
     for entry in listing.flatten() {
+        let name = entry.file_name();
+        if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+            if let Some(page) = name.to_str().and_then(channel::page_folder).filter(|&page| wanted(page)) {
+                page_folders.push((entry.path(), page));
+            }
+            continue;
+        }
         if !entry.file_type().is_ok_and(|kind| kind.is_file()) {
             continue;
         }
-        let name = entry.file_name();
         let file = match name.to_str().and_then(ChannelFile::from_name) {
             Some(file @ ChannelFile::Page { page, .. }) if wanted(page) => file,
             Some(file @ ChannelFile::Bundle) => file,
@@ -170,6 +224,17 @@ pub(super) fn read_folder(options: &Options, wanted: fn(PageAddress) -> bool) ->
         };
         let modified = entry.metadata().and_then(|metadata| metadata.modified()).ok();
         files.push((entry.path(), file, modified));
+    }
+    // A page file wins over its folder: it holds the page, or its first sub-page.
+    let held: BTreeSet<PageAddress> = files
+        .iter()
+        .filter_map(|(_, file, _)| match file {
+            ChannelFile::Page { page, .. } => Some(*page),
+            _ => None,
+        })
+        .collect();
+    for (path, page) in page_folders.iter().filter(|(_, page)| !held.contains(page)) {
+        files.extend(first_sub_page(path, &String::from_utf8_lossy(&page.ascii())));
     }
     files.sort_by(|a, b| a.0.cmp(&b.0));
     let mut read = Folder { loaded: Vec::new(), wanted, skipped: 0 };
