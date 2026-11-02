@@ -28,18 +28,18 @@ use std::time::Instant as Clock;
 /// REQ-GEN-013: twenty times 35 packets per frame at 25 frames per second.
 const REQUIRED_PACKETS_PER_SECOND: f64 = 17_500.0;
 
-fn capture() -> Option<Vec<u8>> {
-    let directory = std::env::var_os("NEOTELETEXT_CORPUS")?;
-    std::fs::read(std::path::Path::new(&directory).join("dan/bbc1_1991-10-31_Dan/bbc1_1991-10-31_v2.t42")).ok()
+#[path = "../../../tests/corpus_files.rs"]
+mod corpus_files;
+
+/// Dan Farrimond's BBC1 recovery; a test asked for without it fails.
+fn capture() -> Vec<u8> {
+    corpus_files::read("dan/bbc1_1991-10-31_Dan/bbc1_1991-10-31_v2.t42")
 }
 
 #[test]
-#[ignore = "measurement; run in release mode"]
+#[ignore = "measurement in release mode; needs Dan Farrimond's BBC1 recovery in $NEOTELETEXT_CORPUS"]
 fn packet_decoder_throughput() {
-    let Some(bytes) = capture() else {
-        eprintln!("SKIPPED: NEOTELETEXT_CORPUS with Dan's BBC1 capture is needed");
-        return;
-    };
+    let bytes = capture();
     let packets: Vec<Packet> =
         bytes.as_chunks::<PACKET_BYTES>().0.iter().map(|chunk| Packet { bytes: *chunk }).collect();
     let mut slots = vec![StoredPage::EMPTY; 4096];
@@ -58,12 +58,9 @@ fn packet_decoder_throughput() {
 }
 
 #[test]
-#[ignore = "measurement; run in release mode"]
+#[ignore = "measurement in release mode; needs Dan Farrimond's BBC1 recovery in $NEOTELETEXT_CORPUS"]
 fn presentation_and_drawing_costs() {
-    let Some(bytes) = capture() else {
-        eprintln!("SKIPPED: NEOTELETEXT_CORPUS with Dan's BBC1 capture is needed");
-        return;
-    };
+    let bytes = capture();
     let mut slots = vec![StoredPage::EMPTY; 4096];
     let mut decoder = Decoder::new(&mut slots, Config::default());
     for (index, chunk) in bytes.as_chunks::<PACKET_BYTES>().0.iter().enumerate() {
@@ -106,12 +103,9 @@ fn presentation_and_drawing_costs() {
 /// REQ-TST-050: the cost of the row renderer over whole screens, the hot
 /// path of every port, in screens per second.
 #[test]
-#[ignore = "measurement; run in release mode"]
+#[ignore = "measurement in release mode; needs Dan Farrimond's BBC1 recovery in $NEOTELETEXT_CORPUS"]
 fn row_renderer_cost() {
-    let Some(bytes) = capture() else {
-        eprintln!("SKIPPED: NEOTELETEXT_CORPUS with Dan's BBC1 capture is needed");
-        return;
-    };
+    let bytes = capture();
     let mut slots = vec![StoredPage::EMPTY; 4096];
     let mut decoder = Decoder::new(&mut slots, Config::default());
     for (index, chunk) in bytes.as_chunks::<PACKET_BYTES>().0.iter().enumerate() {
@@ -148,12 +142,9 @@ fn row_renderer_cost() {
 /// drawn from it. A test of its own: a second glyph set in the same
 /// function changes how the compiler builds the first measurement.
 #[test]
-#[ignore = "measurement; run in release mode"]
+#[ignore = "measurement in release mode; needs Dan Farrimond's BBC1 recovery in $NEOTELETEXT_CORPUS"]
 fn row_renderer_cost_with_a_loaded_font() {
-    let Some(bytes) = capture() else {
-        eprintln!("SKIPPED: NEOTELETEXT_CORPUS with Dan's BBC1 capture is needed");
-        return;
-    };
+    let bytes = capture();
     let mut slots = vec![StoredPage::EMPTY; 4096];
     let mut decoder = Decoder::new(&mut slots, Config::default());
     for (index, chunk) in bytes.as_chunks::<PACKET_BYTES>().0.iter().enumerate() {

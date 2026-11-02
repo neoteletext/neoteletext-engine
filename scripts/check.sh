@@ -125,6 +125,11 @@ push_steps() {
     cargo clippy --quiet -p neoteletext-audio --all-targets --no-default-features --features idl,opus -- -D warnings
     cargo test --quiet -p neoteletext-audio --no-default-features --features idl,opus
 
+    # gates.md: a pass says nothing of a test that is ignored, so the gate says
+    # which ones, each with what would make it run.
+    step "the tests that have not run: each ignored test and its reason (gates.md)"
+    git grep -n -A1 -F '#[ignore' -- 'crates/*.rs' 'xtask/*.rs'
+
     step "architecture and rule checks (REQ-ARCH-011, REQ-GEN-014, REQ-GEN-017, REQ-SEC-016)"
     cargo xtask check-layers
     cargo xtask check-constants
@@ -197,6 +202,17 @@ full_steps() {
     # cached in $NEOTELETEXT_CORPUS (or target/); a failed download or build fails the gate.
     step "the Opus decoder against libopus 1.5.2 fixed point, every stream bit for bit (REQ-AUD-023)"
     tests/oracles/run_opus.sh
+
+    # REQ-TST-022: the files of the corpus that can be fetched are, once, and
+    # the tests that read only those run. The other corpus tests stay ignored:
+    # no machine holds their recordings (TODO-2081).
+    step "the corpus tests whose recordings can be fetched (REQ-TST-012, REQ-TST-022, REQ-L25-010)"
+    local corpus="${NEOTELETEXT_CORPUS:-$PWD/target/corpus}"
+    NEOTELETEXT_CORPUS="$corpus" cargo xtask corpus
+    NEOTELETEXT_CORPUS="$corpus" cargo test --quiet -p neoteletext-formats --test corpus -- \
+        --ignored --exact national_option_order_matches_broadcast_languages
+    NEOTELETEXT_CORPUS="$corpus" cargo test --quiet -p neoteletext-cli --test level25_corpus -- \
+        --ignored --exact polish_letter_from_x26
 
     step "release tests, including the exhaustive error-code tests"
     cargo test --workspace --all-features --release --quiet

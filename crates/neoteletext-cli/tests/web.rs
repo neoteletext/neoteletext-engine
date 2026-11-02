@@ -20,19 +20,22 @@ impl Drop for Server {
     }
 }
 
-fn server() -> Option<Server> {
+/// The test server, which needs `python3`; a test fails without it.
+fn server() -> Server {
     let script = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/web-server/server.py");
-    let mut child = match Command::new("python3").arg("-I").arg(&script).arg("0").stdout(Stdio::piped()).spawn() {
-        Ok(child) => child,
-        Err(error) => {
-            eprintln!("SKIPPED: python3 is needed for the test server: {error}");
-            return None;
-        }
-    };
+    let mut child = Command::new("python3")
+        .arg("-I")
+        .arg(&script)
+        .arg("0")
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("python3 runs the test server");
     let mut line = String::new();
-    BufReader::new(child.stdout.take()?).read_line(&mut line).ok()?;
-    let port = line.trim().parse().ok()?;
-    Some(Server { child, port })
+    BufReader::new(child.stdout.take().expect("the server's output"))
+        .read_line(&mut line)
+        .expect("the server prints its port");
+    let port = line.trim().parse().expect("the server's port");
+    Server { child, port }
 }
 
 fn neottx(arguments: &[&str]) -> (bool, String, String) {
@@ -46,7 +49,7 @@ fn neottx(arguments: &[&str]) -> (bool, String, String) {
 
 #[test]
 fn page_is_fetched_from_a_web_service() {
-    let Some(server) = server() else { return };
+    let server = server();
     let url = format!("http://127.0.0.1:{}/service.json", server.port);
     let (ok, text, errors) = neottx(&["text", &url, "100", "--allow-local", "127.0.0.1", "--duration", "15"]);
     assert!(ok, "neottx failed: {errors}");
@@ -62,7 +65,7 @@ fn page_is_fetched_from_a_web_service() {
 /// `--region` stands above it.
 #[test]
 fn a_channels_region_is_the_group_of_its_pages() {
-    let Some(server) = server() else { return };
+    let server = server();
     let url = format!("http://127.0.0.1:{}/regional/", server.port);
     let page = ["text", &url, "100", "--allow-local", "127.0.0.1", "--duration", "15"];
     let (ok, text, errors) = neottx(&page);
@@ -75,7 +78,7 @@ fn a_channels_region_is_the_group_of_its_pages() {
 
 #[test]
 fn local_addresses_are_blocked_unless_named() {
-    let Some(server) = server() else { return };
+    let server = server();
     let url = format!("http://127.0.0.1:{}/service.json", server.port);
     let (ok, _, errors) = neottx(&["text", &url, "100", "--duration", "5"]);
     assert!(!ok);
@@ -84,7 +87,7 @@ fn local_addresses_are_blocked_unless_named() {
 
 #[test]
 fn faults_do_not_crash_the_receiver() {
-    let Some(server) = server() else { return };
+    let server = server();
     for fault in ["drop", "big", "media", "loop", "ambiguous"] {
         // A descriptor address that misbehaves: neottx must fail cleanly.
         let url = format!("http://127.0.0.1:{}/fault/{fault}", server.port);
@@ -99,7 +102,7 @@ fn faults_do_not_crash_the_receiver() {
 #[cfg(feature = "view")]
 #[test]
 fn viewer_shows_pages_and_follows_links() {
-    let Some(server) = server() else { return };
+    let server = server();
     let script = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/web-server/drive_viewer.py");
     let output = Command::new("python3")
         .arg("-I")
@@ -118,19 +121,13 @@ fn viewer_shows_pages_and_follows_links() {
 #[test]
 fn viewer_works_offline_and_recovers() {
     let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/web-server");
-    let output = match Command::new("python3")
+    let output = Command::new("python3")
         .arg("-I")
         .arg(directory.join("drive_offline.py"))
         .arg(env!("CARGO_BIN_EXE_neottx"))
         .arg(directory.join("server.py"))
         .output()
-    {
-        Ok(output) => output,
-        Err(error) => {
-            eprintln!("SKIPPED: python3 is needed for the offline test: {error}");
-            return;
-        }
-    };
+        .expect("python3 runs the offline driver");
     let report = String::from_utf8_lossy(&output.stdout);
     assert!(output.status.success(), "{report}");
 }

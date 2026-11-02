@@ -1,8 +1,8 @@
 //! The screen and the phone paired through a running qrkeyboard relay
 //! (REQ-INT-007):
 //! `QRKEYBOARD_RELAY=http://127.0.0.1:8791` names one, such as the relay's
-//! own `npm run dev -- --port 8791 --ip 127.0.0.1`. Without it these tests
-//! pass without running, and say so.
+//! own `npm run dev -- --port 8791 --ip 127.0.0.1`. These tests are ignored,
+//! and asked for without a relay they fail.
 #![allow(clippy::unwrap_used, clippy::panic)]
 
 use std::sync::mpsc;
@@ -15,12 +15,8 @@ use neoteletext_qrkeyboard::screen::{Event, Join, Screen};
 
 const LIMIT: Duration = Duration::from_secs(30);
 
-fn relay() -> Option<String> {
-    let relay = std::env::var("QRKEYBOARD_RELAY").ok();
-    if relay.is_none() {
-        eprintln!("QRKEYBOARD_RELAY is not set: no relay to pair through, test not run");
-    }
-    relay
+fn relay() -> String {
+    std::env::var("QRKEYBOARD_RELAY").expect("QRKEYBOARD_RELAY names the running relay to pair through")
 }
 
 /// Runs a screen in its own thread, sending its join details and then
@@ -57,11 +53,11 @@ fn until(events: &mpsc::Receiver<Event>, wanted: &Event) -> Vec<Event> {
 }
 
 #[test]
+#[ignore = "needs a running qrkeyboard relay named by QRKEYBOARD_RELAY"]
 fn a_phone_pairs_by_key_and_types() {
-    let Some(relay) = relay() else { return };
     let config =
         ScreenConfig { name: "neoteletext test".into(), layout: Layout::Terminal, pin: false, rejoin_seconds: Some(0) };
-    let (join, events) = screen(relay, config);
+    let (join, events) = screen(relay(), config);
     assert!(join.url.contains("&k=") && join.pin.is_none());
     let mut phone = Phone::join(&join.url, None).unwrap();
     // In no-PIN mode the phone is connected by its first sealed frame
@@ -79,15 +75,15 @@ fn a_phone_pairs_by_key_and_types() {
 }
 
 #[test]
+#[ignore = "needs a running qrkeyboard relay named by QRKEYBOARD_RELAY"]
 fn a_phone_pairs_by_pin_and_a_wrong_pin_fails() {
-    let Some(relay) = relay() else { return };
     let config = ScreenConfig {
         name: "neoteletext test".into(),
         layout: Layout::Preset("teletext"),
         pin: true,
         rejoin_seconds: Some(0),
     };
-    let (join, events) = screen(relay, config);
+    let (join, events) = screen(relay(), config);
     let pin = join.pin.clone().unwrap();
     assert!(!join.url.contains("&k="), "no key in a PIN code's QR");
     let wrong = if pin == "1234" { "4321" } else { "1234" };

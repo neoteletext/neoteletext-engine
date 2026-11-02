@@ -400,13 +400,13 @@ fn png_palette_bounds() {
     assert_eq!(result, Err(neoteletext_image::png::PngError::BadSize));
 }
 
-/// With `NEOTELETEXT_SAMPLES` set, writes every demonstration as a PNG at
-/// twice the size with the 4:3 correction, and the flash page at several
-/// units, for inspection by eye.
+/// Writes every demonstration into `$NEOTELETEXT_SAMPLES` as a PNG at twice
+/// the size with the 4:3 correction, and the flash page at several units, for
+/// inspection by eye.
 #[test]
+#[ignore = "writes images for inspection by eye into the folder NEOTELETEXT_SAMPLES names"]
 fn write_samples_when_asked() {
-    let Some(directory) = std::env::var_os("NEOTELETEXT_SAMPLES") else { return };
-    let directory = PathBuf::from(directory);
+    let directory = PathBuf::from(std::env::var_os("NEOTELETEXT_SAMPLES").expect("NEOTELETEXT_SAMPLES names a folder"));
     std::fs::create_dir_all(&directory).unwrap();
     let mut jobs: Vec<(String, Grid, RenderOptions)> = Vec::new();
     for (name, grid) in demonstrations() {

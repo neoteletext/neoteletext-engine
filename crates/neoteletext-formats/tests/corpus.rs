@@ -1,7 +1,7 @@
 //! Real broadcast captures (REQ-TST-022): Dan Farrimond's recovered T42
-//! recordings, read from `$NEOTELETEXT_CORPUS` or `~/devel/jellytext/dan/`.
-//! The files are never copied into the repository. Without them the tests
-//! print a note and pass.
+//! recordings and the recordings of `tests/corpus-manifest.txt`, read from
+//! `$NEOTELETEXT_CORPUS`. The files are never copied into the repository, so
+//! the tests that read them are ignored, and asked for without them they fail.
 //!
 //! The page checksum test settles the byte and bit order of the X/27/0
 //! checksum (REQ-ECC-007): for every received page that carries X/27/0, the
@@ -18,21 +18,14 @@ use neoteletext_formats::encode::{CHECKSUM_HEADER_BYTES, checksum_word, page_che
 use neoteletext_formats::item::{Item, Reader};
 use neoteletext_formats::t42::{T42Reader, T42Variant};
 
-fn corpus_directory() -> Option<PathBuf> {
-    if let Ok(path) = std::env::var("NEOTELETEXT_CORPUS") {
-        return Some(PathBuf::from(path));
-    }
-    let home = std::env::var("HOME").ok()?;
-    let path = Path::new(&home).join("devel/jellytext/dan");
-    path.is_dir().then_some(path)
-}
+#[path = "../../../tests/corpus_files.rs"]
+mod corpus_files;
 
 /// Every `.t42` file under the corpus directory, up to six levels deep (the
 /// teletext-restoration layout is year/date/channel/restored/page).
 fn t42_files() -> Vec<PathBuf> {
-    let Some(root) = corpus_directory() else { return Vec::new() };
     let mut files = Vec::new();
-    let mut directories = vec![root];
+    let mut directories = vec![corpus_files::directory()];
     for _ in 0..6 {
         let mut next = Vec::new();
         for directory in directories {
@@ -53,7 +46,8 @@ fn t42_files() -> Vec<PathBuf> {
 }
 
 fn read_packets(path: &Path) -> Vec<Packet> {
-    let data = std::fs::read(path).unwrap();
+    let name = path.strip_prefix(corpus_files::directory()).unwrap();
+    let data = corpus_files::read(name.to_str().unwrap());
     let mut reader = T42Reader::new(T42Variant::Plain, None);
     let mut packets = Vec::new();
     let mut out = |item: Item<'_>| {
@@ -196,12 +190,10 @@ fn tally_file(packets: &[Packet], tally: &mut Tally) {
 
 /// REQ-166: T42 files of the real-broadcast corpus.
 #[test]
+#[ignore = "needs T42 recordings that carry X/27/0, such as Dan Farrimond's recoveries, in $NEOTELETEXT_CORPUS"]
 fn corpus_packets_and_page_checksum_order() {
     let files = t42_files();
-    if files.is_empty() {
-        println!("note: no corpus found (set NEOTELETEXT_CORPUS); skipping the real-data test");
-        return;
-    }
+    assert!(!files.is_empty(), "no T42 file in the corpus directory");
     let mut total = Tally::default();
     for path in &files {
         let packets = read_packets(path);
@@ -234,10 +226,7 @@ fn corpus_packets_and_page_checksum_order() {
     println!("  the encoder's order: {} match", total.encoder_matches);
     // The encoder must use the order the broadcasts use: it has to match on
     // most pages that carry a checksum.
-    if total.pages == 0 {
-        println!("note: no page in the corpus carries a checksum; the order is not tested");
-        return;
-    }
+    assert!(total.pages > 0, "no page in the corpus carries a checksum, so the order is not tested");
     assert!(
         total.encoder_matches * 2 > total.pages,
         "encoder order matched {} of {}",
@@ -248,19 +237,14 @@ fn corpus_packets_and_page_checksum_order() {
 
 /// The national option index of a page in a transport stream recording
 /// from the corpus, read through the transport stream reader and the
-/// acquisition decoder. `None` (with a note) when the file is absent.
-fn national_index_in_recording(name: &str, mpp: u16) -> Option<u8> {
+/// acquisition decoder.
+fn national_index_in_recording(name: &str, mpp: u16) -> u8 {
     use neoteletext_core::acq::{Decoder, StoredPage};
     use neoteletext_core::config::Config;
     use neoteletext_core::types::{Instant, PageAddress, SubCode};
     use neoteletext_formats::detect::{AutoConfig, AutoReader};
 
-    let path = corpus_directory().map(|directory| directory.join(name)).filter(|path| path.is_file());
-    let Some(path) = path else {
-        eprintln!("SKIPPED: corpus file {name} not found; set NEOTELETEXT_CORPUS");
-        return None;
-    };
-    let data = std::fs::read(path).unwrap();
+    let data = corpus_files::read(name);
     let mut slots = vec![StoredPage::EMPTY; 64];
     let mut decoder = Decoder::new(&mut slots, Config::default());
     let mut reader = Box::new(AutoReader::new(AutoConfig::default()));
@@ -277,19 +261,68 @@ fn national_index_in_recording(name: &str, mpp: u16) -> Option<u8> {
     reader.finish(&mut out);
     let address = PageAddress::from_mpp(mpp).unwrap();
     let page = decoder.store().get(address, SubCode::ANY);
-    assert!(page.is_some(), "page {mpp:x} not received from {name}");
-    page.map(|page| page.control.national_index())
+    page.unwrap_or_else(|| panic!("page {mpp:x} not received from {name}")).control.national_index()
 }
 
 /// REQ-TST-012: the order of decision E.21, pinned by two off-air
 /// recordings whose language is known from their descriptors. The reversed
 /// order would give German and Czech.
 #[test]
+#[ignore = "needs $NEOTELETEXT_CORPUS with the files `cargo xtask corpus` fetches: ffmpeg-France2.m2ts and ffmpeg-teletextsubtitles.ts"]
 fn national_option_order_matches_broadcast_languages() {
-    if let Some(index) = national_index_in_recording("ffmpeg-France2.m2ts", 0x888) {
-        assert_eq!(index, 4, "France 2 subtitles are French (Table 32 index 4)");
+    let index = national_index_in_recording("ffmpeg-France2.m2ts", 0x888);
+    assert_eq!(index, 4, "France 2 subtitles are French (Table 32 index 4)");
+    let index = national_index_in_recording("ffmpeg-teletextsubtitles.ts", 0x777);
+    assert_eq!(index, 3, "Italian subtitles (Table 32 index 3)");
+}
+
+/// REQ-SEC-022: a corpus file is read only if it is there and matches its
+/// pin, and asked for with no corpus a test fails rather than passes.
+mod refusals {
+    use super::corpus_files::{Checked, check};
+    use std::path::Path;
+
+    /// SHA-256 of the three bytes `abc` (FIPS 180-4's example).
+    const PIN_OF_ABC: &str = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+    const NAME: &str = "a-recording.ts";
+
+    fn manifest() -> String {
+        format!("# a comment\n{NAME} 0 {PIN_OF_ABC} https://example.invalid/\n")
     }
-    if let Some(index) = national_index_in_recording("ffmpeg-teletextsubtitles.ts", 0x777) {
-        assert_eq!(index, 3, "Italian subtitles (Table 32 index 3)");
+
+    fn folder(test: &str, contents: &[u8]) -> std::path::PathBuf {
+        let folder = Path::new(env!("CARGO_TARGET_TMPDIR")).join(test);
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(folder.join(NAME), contents).unwrap();
+        folder
+    }
+
+    #[test]
+    fn a_file_that_matches_its_pin_is_read() {
+        assert_eq!(check(Some(&folder("pin-matches", b"abc")), NAME, &manifest()), Checked::Found);
+    }
+
+    #[test]
+    fn a_changed_file_is_refused() {
+        let found = check(Some(&folder("pin-differs", b"abd")), NAME, &manifest());
+        assert!(matches!(&found, Checked::Refused(why) if why.contains(PIN_OF_ABC)), "{found:?}");
+    }
+
+    #[test]
+    fn a_missing_file_is_refused() {
+        let found = check(Some(&folder("file-missing", b"abc")), "another.ts", &manifest());
+        assert!(matches!(&found, Checked::Refused(why) if why.contains("another.ts")), "{found:?}");
+    }
+
+    #[test]
+    fn no_corpus_directory_is_refused() {
+        let found = check(None, NAME, &manifest());
+        assert!(matches!(&found, Checked::Refused(why) if why.contains("NEOTELETEXT_CORPUS")), "{found:?}");
+    }
+
+    #[test]
+    fn a_file_with_no_pin_is_read() {
+        let manifest = format!("{NAME} 0 unpinned https://example.invalid/\n");
+        assert_eq!(check(Some(&folder("no-pin", b"abd")), NAME, &manifest), Checked::Found);
     }
 }

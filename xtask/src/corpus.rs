@@ -1,7 +1,8 @@
 //! Fetches the real-broadcast corpus into `$NEOTELETEXT_CORPUS` and pins each
 //! file's checksum (REQ-TST-022, REQ-SEC-022). Downloads use `curl` with
 //! ranged requests; files already present with the pinned checksum are
-//! kept. Missing sources are reported, not fatal.
+//! kept. A file that cannot be fetched fails; a local recording that is absent
+//! is reported, since no address can fetch it.
 
 use std::fmt::Write as _;
 use std::fs;
@@ -10,6 +11,9 @@ use std::process::Command;
 
 const MANIFEST: &str = "tests/corpus-manifest.txt";
 const UNPINNED: &str = "unpinned";
+/// The manifest's address for a recording no server has, which only a copy on
+/// this machine can provide.
+const LOCAL: &str = "local";
 
 fn corpus_dir() -> Result<PathBuf, String> {
     std::env::var_os("NEOTELETEXT_CORPUS")
@@ -44,6 +48,12 @@ pub fn fetch(root: &Path) -> Result<(), String> {
         }
         let target = directory.join(name);
         let have = target.exists() && sha256(&target).is_ok_and(|sum| sum == *pin);
+        if !have && *url == LOCAL {
+            println!("absent {name}: a local recording, which no address serves");
+            updated.push_str(line);
+            updated.push('\n');
+            continue;
+        }
         if !have {
             let mut command = Command::new("curl");
             command.args(["--fail", "--silent", "--show-error", "--location", "--max-time", "300", "-o"]).arg(&target);

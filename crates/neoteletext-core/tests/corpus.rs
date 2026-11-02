@@ -1,6 +1,6 @@
 //! Decoding real broadcast captures from the local corpus (REQ-TST-022).
-//! Skips, with a note, when `NEOTELETEXT_CORPUS` is not set or the file is
-//! missing.
+//! Ignored, because no machine holds the capture; asked for without it, the
+//! test fails.
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects, missing_docs)]
 
 use neoteletext_core::acq::{Decoder, StoredPage};
@@ -11,19 +11,9 @@ use neoteletext_core::fsm::PageState;
 use neoteletext_core::level1::{DisplayOptions, Glyph, Grid, build_grid};
 use neoteletext_core::packet::{Packet, PacketMeta};
 use neoteletext_core::types::{Instant, PageAddress, SubCode};
-use std::path::PathBuf;
 
-fn corpus(name: &str) -> Option<Vec<u8>> {
-    let Some(directory) = std::env::var_os("NEOTELETEXT_CORPUS").map(PathBuf::from) else {
-        eprintln!("SKIPPED: NEOTELETEXT_CORPUS is not set; corpus test for {name} not run");
-        return None;
-    };
-    let bytes = std::fs::read(directory.join(name)).ok();
-    if bytes.is_none() {
-        eprintln!("SKIPPED: corpus file {name} not found");
-    }
-    bytes
-}
+#[path = "../../../tests/corpus_files.rs"]
+mod corpus_files;
 
 fn row_text(grid: &Grid, row: usize) -> String {
     grid.cells[row]
@@ -37,8 +27,9 @@ fn row_text(grid: &Grid, row: usize) -> String {
 }
 
 #[test]
+#[ignore = "needs Dan Farrimond's recovery dan/bbc1_1991-10-31_Dan/bbc1_1991-10-31_v2_squashed.t42 in $NEOTELETEXT_CORPUS"]
 fn bbc1_1991_decodes() {
-    let Some(bytes) = corpus("dan/bbc1_1991-10-31_Dan/bbc1_1991-10-31_v2_squashed.t42") else { return };
+    let bytes = corpus_files::read("dan/bbc1_1991-10-31_Dan/bbc1_1991-10-31_v2_squashed.t42");
     let mut slots = vec![StoredPage::EMPTY; 4096];
     let mut decoder = Decoder::new(&mut slots, Config::default());
     for (index, chunk) in bytes.as_chunks::<PACKET_BYTES>().0.iter().enumerate() {

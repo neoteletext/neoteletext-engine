@@ -3,6 +3,8 @@
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects, clippy::panic)]
 
 mod common;
+#[path = "../../../tests/corpus_files.rs"]
+mod corpus_files;
 
 use std::string::{String, ToString};
 use std::vec::Vec;
@@ -381,18 +383,21 @@ fn page_walk_holds_each_page_until_its_rows_arrive() {
     assert!(harness.feed.page_exists(PageAddress::from_mpp(0x888).unwrap()));
 }
 
-/// Replays a recorded session from the corpus when one is present
-/// (REQ-TST-063; REQ-TST-022 keeps captures out of the repository). Each
-/// line of `$NEOTELETEXT_CORPUS/zxnet/*.jsonl` is one server message.
+/// Replays the recorded sessions of the corpus (REQ-TST-063; REQ-TST-022
+/// keeps captures out of the repository). Each line of
+/// `$NEOTELETEXT_CORPUS/zxnet/*.jsonl` is one server message.
 #[test]
+#[ignore = "needs a recorded session, zxnet/*.jsonl, in $NEOTELETEXT_CORPUS; no program writes one yet"]
 fn recorded_sessions_from_the_corpus() {
-    let Ok(corpus) = std::env::var("NEOTELETEXT_CORPUS") else { return };
-    let Ok(entries) = std::fs::read_dir(std::path::Path::new(&corpus).join("zxnet")) else { return };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.extension().is_none_or(|e| e != "jsonl") {
-            continue;
-        }
+    let folder = corpus_files::directory().join("zxnet");
+    let sessions: Vec<_> = std::fs::read_dir(&folder)
+        .unwrap()
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|extension| extension == "jsonl"))
+        .collect();
+    assert!(!sessions.is_empty(), "no recorded session in {}", folder.display());
+    for path in sessions {
         let text = std::fs::read_to_string(&path).unwrap();
         let mut harness = connected("teefax");
         let mut expected = 0;
