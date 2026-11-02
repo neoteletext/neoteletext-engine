@@ -8,6 +8,7 @@ use std::io::{self, Read, Write};
 const PACKET: u8 = b'P';
 const TTI: u8 = b'T';
 const T42: u8 = b'B';
+const UNDECLARED: u8 = b'E';
 const INITIAL: u8 = b'I';
 const UNENCRYPTED: u8 = b'U';
 const MESSAGE: u8 = b'N';
@@ -127,6 +128,7 @@ pub fn write(out: &mut dyn Write, frame: &Frame) -> io::Result<()> {
         Frame::Packet(bytes) => put(out, PACKET, bytes),
         Frame::Tti(page) => put(out, TTI, &page_payload(page)),
         Frame::T42(page) => put(out, T42, &page_payload(page)),
+        Frame::Undeclared(page) => put(out, UNDECLARED, &page_payload(page)),
         Frame::Notice(Notice::InitialPage(mpp)) => put(out, INITIAL, &mpp.to_be_bytes()),
         Frame::Notice(Notice::Unencrypted) => put(out, UNENCRYPTED, &[]),
         Frame::Notice(Notice::Message(text)) => put(out, MESSAGE, text.as_bytes()),
@@ -201,6 +203,7 @@ pub fn read(input: &mut dyn Read) -> io::Result<Option<Frame>> {
         PACKET => Frame::Packet(payload.as_slice().try_into().map_err(|_| invalid())?),
         TTI => Frame::Tti(page_data(&payload)?),
         T42 => Frame::T42(page_data(&payload)?),
+        UNDECLARED => Frame::Undeclared(page_data(&payload)?),
         INITIAL => Frame::Notice(Notice::InitialPage(u16::from_be_bytes(
             payload.as_slice().try_into().map_err(|_| invalid())?,
         ))),

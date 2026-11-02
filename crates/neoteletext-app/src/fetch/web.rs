@@ -228,7 +228,9 @@ fn send_page(page: &PageBytes<'_>) -> std::io::Result<()> {
     };
     match page.media {
         MediaType::T42 => send(&Frame::T42(data)),
-        _ => send(&Frame::Tti(data)),
+        MediaType::Tti => send(&Frame::Tti(data)),
+        // REQ-WEB-003: the declared type says nothing of the format.
+        _ => send(&Frame::Undeclared(data)),
     }
 }
 

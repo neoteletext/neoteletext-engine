@@ -131,6 +131,12 @@ DESCRIPTOR = """{{
 }}"""
 
 
+# A service whose pages are T42 under a media type that does not say so:
+# /undeclared/{octet,plain}/ (REQ-WEB-003).
+UNDECLARED_TYPES = {"octet": "application/octet-stream", "plain": "text/plain"}
+UNDECLARED_DESCRIPTOR = """{{"name": "T", "initial_page": "100", "page_template": "/undeclared/{kind}/{{mpp}}"}}"""
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -154,6 +160,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_header(name, value)
         self.end_headers()
         self.wfile.write(data)
+
+    def undeclared(self, path, cookies):
+        kind, _, name = path[len("/undeclared/"):].partition("/")
+        if kind not in UNDECLARED_TYPES:
+            return self.send(404, "", "text/plain", cookies)
+        if name == "service.json":
+            return self.send(200, UNDECLARED_DESCRIPTOR.format(kind=kind), "application/json", cookies)
+        if name not in PAGES:
+            return self.send(404, "", "text/plain", cookies)
+        return self.send(200, t42_page(PAGES[name]), UNDECLARED_TYPES[kind], cookies)
 
     def do_GET(self):
         path = self.path.split("?")[0]
@@ -185,6 +201,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.end_headers()
                 return None
             return self.send(200, body, "text/x-teletext-tti", cookies + [("ETag", etag)])
+        if path.startswith("/undeclared/"):
+            return self.undeclared(path, cookies)
         if path == "/push":
             return self.push_websocket()
         return self.fault(path)

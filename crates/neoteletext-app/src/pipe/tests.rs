@@ -7,6 +7,7 @@ fn frames_round_trip_and_bad_frames_are_rejected() {
         Frame::Packet([7; 42]),
         Frame::Tti(PageData { secure: true, origin: Origin::Page, bytes: b"PN,10000\n".to_vec() }),
         Frame::T42(PageData { secure: false, origin: Origin::Push, bytes: vec![1, 2, 3] }),
+        Frame::Undeclared(PageData { secure: true, origin: Origin::Page, bytes: vec![4] }),
         Frame::Notice(Notice::InitialPage(0x100)),
         Frame::Notice(Notice::Region(Some(neoteletext_core::consts::NIBBLE_MASK))),
         Frame::Notice(Notice::Region(None)),

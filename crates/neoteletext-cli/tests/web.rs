@@ -76,6 +76,19 @@ fn a_channels_region_is_the_group_of_its_pages() {
     assert!(!text.contains("\u{03B1}"), "the user's region stands: {text}");
 }
 
+// Verifies REQ-492: a page served as `application/octet-stream` or
+// `text/plain` is read by the detection of REQ-INP-005: these bytes are T42.
+#[test]
+fn a_page_of_undeclared_format_is_detected() {
+    let server = server();
+    for kind in ["octet", "plain"] {
+        let url = format!("http://127.0.0.1:{}/undeclared/{kind}/service.json", server.port);
+        let (ok, text, errors) = neottx(&["text", &url, "100", "--allow-local", "127.0.0.1", "--duration", "15"]);
+        assert!(ok, "{kind}: {errors}");
+        assert!(text.contains("NEOTELETEXT TEST SERVICE"), "{kind}: {text}");
+    }
+}
+
 #[test]
 fn local_addresses_are_blocked_unless_named() {
     let server = server();

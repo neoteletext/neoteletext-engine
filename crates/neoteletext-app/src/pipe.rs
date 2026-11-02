@@ -47,6 +47,10 @@ pub enum Frame {
     Tti(PageData),
     /// Fetcher to decoder: T42 page bytes.
     T42(PageData),
+    /// Fetcher to decoder: page bytes whose format the server did not name
+    /// (`text/plain`, `application/octet-stream`), for the decoder to detect
+    /// (REQ-WEB-003).
+    Undeclared(PageData),
     /// Fetcher to decoder: a notice for the viewer.
     Notice(Notice),
     /// Decoder to fetcher: request a page (`0xMPP`, sub-code or 0xFFFF).

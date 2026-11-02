@@ -37,7 +37,7 @@ pub struct Live {
     ended: bool,
     /// The bytes each page last arrived as, to take in again when the
     /// server confirms them current (REQ-WEB-009).
-    last_bytes: HashMap<u16, (Format, PageData)>,
+    last_bytes: HashMap<u16, (Option<Format>, PageData)>,
     /// The page the viewer asked for last.
     requested: Option<(PageAddress, SubCode)>,
     /// When the last fetch failed for want of a network, if it has not
@@ -110,16 +110,16 @@ impl Live {
     }
 
     /// Decodes page bytes into the session, keeping each page's extension
-    /// data. Returns the first page the bytes held.
+    /// data; with no `format`, the bytes say which it is (REQ-INP-005).
+    /// Returns the first page the bytes held.
     fn feed_page(
         &mut self,
         session: &mut Session,
-        format: Format,
+        format: Option<Format>,
         page: &PageData,
         now: Instant,
     ) -> Option<PageAddress> {
-        let mut reader =
-            Box::new(AutoReader::new(AutoConfig { format: Some(format), encode_pages: true, ..AutoConfig::default() }));
+        let mut reader = Box::new(AutoReader::new(AutoConfig { format, encode_pages: true, ..AutoConfig::default() }));
         let mut packets: Vec<(Packet, PacketMeta)> = Vec::new();
         let mut first = None;
         let services = self.services.clone();
@@ -163,7 +163,7 @@ impl Live {
         let _ = pipe::write(&mut self.requests, frame);
     }
 
-    fn receive(&mut self, session: &mut Session, format: Format, page: &PageData, now: Instant) {
+    fn receive(&mut self, session: &mut Session, format: Option<Format>, page: &PageData, now: Instant) {
         if !page.secure && page.origin != Origin::Push {
             self.notices.push(Notice::Unencrypted);
         }
@@ -201,8 +201,9 @@ impl Source for Live {
             };
             match frame {
                 Frame::Packet(bytes) => session.push_at(&Packet { bytes }, &PacketMeta::default(), now),
-                Frame::Tti(page) => self.receive(session, Format::Tti, &page, now),
-                Frame::T42(page) => self.receive(session, Format::T42(T42Variant::Plain), &page, now),
+                Frame::Tti(page) => self.receive(session, Some(Format::Tti), &page, now),
+                Frame::T42(page) => self.receive(session, Some(Format::T42(T42Variant::Plain)), &page, now),
+                Frame::Undeclared(page) => self.receive(session, None, &page, now),
                 Frame::Notice(Notice::Region(region)) => self.take_region(session, region),
                 Frame::Notice(Notice::Service(names)) => {
                     session.restart();
