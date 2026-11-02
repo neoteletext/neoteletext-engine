@@ -14,7 +14,8 @@ use neoteletext_audio::encode::{Command as SoundCommand, Sound, packets};
 use neoteletext_audio::idl::fragment;
 use neoteletext_audio::record::{MAX_LABEL, Record, parse, split};
 use neoteletext_core::consts::{
-    C11_SERIAL, HEADER_DISPLAY_BYTES, MODE_SET_ACTIVE_POSITION, PACKET_BYTES, TRIPLET_ADDRESS_BITS, TRIPLET_MODE_BITS,
+    C11_SERIAL, HEADER_DISPLAY_BYTES, MODE_CONTROL, MODE_SET_ACTIVE_POSITION, PACKET_BYTES, ROW_ADDRESS_BASE,
+    TRIPLET_ADDRESS_BITS, TRIPLET_MODE_BITS,
 };
 use neoteletext_core::ecc::{hamming84_encode, hamming2418, hamming2418_encode, with_odd_parity};
 use neoteletext_core::packet::{Packet, decode_address, encode};
@@ -22,6 +23,7 @@ use neoteletext_core::types::{ControlBits, Magazine, PageNumber, SubCode};
 use neoteletext_input::MAX_MESSAGE;
 use neoteletext_input::event::{Event, Item, Select, write};
 
+mod charsets;
 mod wire;
 
 /// The version of the file's format.
@@ -56,6 +58,13 @@ const HEADER_SUBCODE: u16 = 0x0002;
 const TRIPLET_ROW_ADDRESS: u32 = 41;
 /// The triplet example's column, carried as data by Set Active Position.
 const TRIPLET_COLUMN: u32 = 5;
+/// The control triplets example's row, an example value.
+const CONTROLS_ROW: u8 = 20;
+/// Its buttons' first columns, an example value: four buttons with a gap of
+/// one cell between them.
+const CONTROLS_COLUMNS: [u8; 4] = [1, 11, 21, 31];
+/// Its buttons' width in cells, an example value.
+const CONTROLS_WIDTH: u8 = 9;
 /// The audio examples' handle, an example value.
 const SOUND_HANDLE: u8 = 7;
 /// The audio examples' generation, an example value.
@@ -80,6 +89,8 @@ const SOUND_DUCK: u8 = 3;
 const OPERATION_PLAY: u8 = 1;
 /// The audio service the carriage example uses.
 const AUDIO_SERVICE: u8 = 0;
+/// Bytes of a Hamming 24/18 triplet.
+const TRIPLET_BYTES: usize = 3;
 /// The record header: version, type and a two-byte length.
 const RECORD_HEADER_FIELDS: [(usize, usize, &str); 3] = [(0, 1, "version"), (1, 1, "type"), (2, 2, "body length")];
 /// Bytes of a record's CRC-32.
@@ -215,6 +226,51 @@ fn triplet() -> Result<Example, String> {
             name: "address, mode and data",
             value: format!("address {TRIPLET_ROW_ADDRESS}, mode 00100, data {TRIPLET_COLUMN}"),
         }],
+    })
+}
+
+/// One triplet's value: address, mode and data, least significant first.
+fn triplet_value(address: u8, mode: u8, data: u8) -> u32 {
+    u32::from(address)
+        | (u32::from(mode) << TRIPLET_ADDRESS_BITS)
+        | (u32::from(data) << (TRIPLET_ADDRESS_BITS + TRIPLET_MODE_BITS))
+}
+
+/// Four buttons on a row, as X/26 triplets (`neoteletext-core`'s `controls`,
+/// REQ-INT-115): Set Active Position, then a control triplet of column mode
+/// 00101, which EN 300 706 Table 29 reserves, for each button.
+fn controls() -> Result<Example, String> {
+    let position = triplet_value(ROW_ADDRESS_BASE + CONTROLS_ROW, MODE_SET_ACTIVE_POSITION, 0);
+    let buttons = CONTROLS_COLUMNS.map(|column| triplet_value(column, MODE_CONTROL, CONTROLS_WIDTH));
+    let mut bytes = Vec::new();
+    for value in core::iter::once(position).chain(buttons) {
+        let encoded = hamming2418_encode(value);
+        if hamming2418(encoded) != Some(value) {
+            return Err("a control triplet does not decode".to_owned());
+        }
+        bytes.extend_from_slice(&encoded);
+    }
+    let width = TRIPLET_BYTES;
+    let button = |index: usize, column: u8| Field {
+        offset: (index + 1) * width,
+        length: width,
+        bits: None,
+        name: "control",
+        value: format!("column {column}, width {CONTROLS_WIDTH}"),
+    };
+    let mut fields = vec![Field {
+        offset: 0,
+        length: width,
+        bits: None,
+        name: "Set Active Position",
+        value: format!("row {CONTROLS_ROW}"),
+    }];
+    fields.extend(CONTROLS_COLUMNS.iter().enumerate().map(|(index, &column)| button(index, column)));
+    Ok(Example {
+        name: "controls-four-buttons-row-20",
+        caption: "Four buttons on row 20, nine cells each, as X/26 triplets in Hamming 24/18",
+        bytes,
+        fields,
     })
 }
 
@@ -374,8 +430,10 @@ fn all_examples() -> Result<Vec<Example>, String> {
         audio_data()?,
         audio_control()?,
         audio_packet()?,
+        controls()?,
     ];
     examples.append(&mut wire::examples()?);
+    examples.append(&mut charsets::examples());
     Ok(examples)
 }
 
@@ -453,6 +511,14 @@ mod tests {
                 assert!(field.offset + field.length <= example.bytes.len(), "{}: {}", example.name, field.name);
             }
         }
+    }
+
+    /// The bytes `INPUT.md` section 7.3 gave for these four buttons.
+    #[test]
+    fn the_control_triplets_are_the_four_buttons_of_the_input_protocol() {
+        let example = controls().expect("the example encodes");
+        let want = [0x60, 0x93, 0x80, 0x8F, 0x94, 0x89, 0xDD, 0x94, 0x09, 0x24, 0x95, 0x89, 0x76, 0x95, 0x09];
+        assert_eq!(example.bytes, want);
     }
 
     #[test]
