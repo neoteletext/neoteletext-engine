@@ -195,6 +195,15 @@ impl Default for RawGeometry {
     }
 }
 
+/// The partial line at the end of a raw file ([`RawReader::finish`]).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct CutLine {
+    /// Byte offset of the line from the start of the input.
+    pub offset: u64,
+    /// The bytes of it there were, which are dropped.
+    pub bytes: usize,
+}
+
 /// A streaming reader of raw sampled video files.
 #[derive(Clone, PartialEq, Debug)]
 pub struct RawReader {
@@ -202,6 +211,8 @@ pub struct RawReader {
     slicer: Slicer,
     line: [u8; MAX_LINE_BYTES],
     fill: usize,
+    /// Bytes of whole lines read so far: where the line being filled began.
+    lines_read: u64,
     /// Line index within the frame of the line being filled.
     line_in_frame: usize,
     /// Frames completed.
@@ -217,6 +228,7 @@ impl RawReader {
             slicer: Slicer::new(config),
             line: [0; MAX_LINE_BYTES],
             fill: 0,
+            lines_read: 0,
             line_in_frame: 0,
             frames: 0,
         })
@@ -251,6 +263,13 @@ impl RawReader {
         self.line_in_frame = 0;
     }
 
+    /// Ends the input: a partial line, which cannot be sliced, is reported
+    /// with its byte offset (REQ-184). Bytes are never dropped silently.
+    #[must_use]
+    pub const fn finish(&self) -> Option<CutLine> {
+        if self.fill == 0 { None } else { Some(CutLine { offset: self.lines_read, bytes: self.fill }) }
+    }
+
     /// Feeds the next chunk of the file, of any size, calling `on_packet`
     /// for each packet recovered.
     pub fn feed<P: FnMut(Packet, PacketMeta)>(&mut self, chunk: &[u8], on_packet: P) {
@@ -279,6 +298,7 @@ impl RawReader {
             if self.fill >= line_bytes {
                 self.line_complete(&mut on_packet, &mut on_trace);
                 self.fill = 0;
+                self.lines_read = self.lines_read.saturating_add(line_bytes as u64);
             }
         }
     }

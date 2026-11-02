@@ -15,6 +15,7 @@
 )]
 
 use super::*;
+use crate::CutLine;
 
 /// Builds `frames` bt8x8 frames; returns the file and, per line index in
 /// the file, the packet it carries.
@@ -148,4 +149,18 @@ fn raw_geometry_presets_and_validation() {
         Some(GeometryError::UsedLines)
     );
     assert_eq!(bad(|g| g.frame_trailer_bytes = 2048), Some(GeometryError::Trailer));
+}
+
+/// REQ-184: a file cut part-way through a line gives that line's offset and
+/// how much of it there was; a whole file gives nothing.
+#[test]
+fn a_file_cut_part_way_through_a_line_is_reported_with_its_offset() {
+    let geometry = RawGeometry::preset(Preset::Bt8x8);
+    let line = geometry.line_bytes();
+    let mut reader = RawReader::new(geometry, Config::default()).unwrap();
+    let whole = vec![0_u8; 2 * line];
+    reader.feed(&whole, |_, _| {});
+    assert_eq!(reader.finish(), None, "a whole number of lines");
+    reader.feed(&vec![0_u8; 904], |_, _| {});
+    assert_eq!(reader.finish(), Some(CutLine { offset: 2 * line as u64, bytes: 904 }));
 }

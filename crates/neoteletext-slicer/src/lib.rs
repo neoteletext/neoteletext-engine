@@ -32,7 +32,7 @@ pub mod math;
 pub mod raw;
 pub mod slicer;
 
-pub use raw::{GeometryError, Preset, RawGeometry, RawReader};
+pub use raw::{CutLine, GeometryError, Preset, RawGeometry, RawReader};
 pub use slicer::{Config, Counters, Line, Rejection, SampleFormat, Sliced, Slicer};
 
 #[cfg(test)]

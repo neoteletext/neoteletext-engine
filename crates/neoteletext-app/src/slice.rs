@@ -48,5 +48,11 @@ pub fn slice(options: &Options, output: &Path, preset: &str) -> Result<Counters,
         return Err((exit::INPUT, error.to_string()));
     }
     writer.into_inner().flush().map_err(|error| (exit::INPUT, error.to_string()))?;
+    // REQ-184, as the formats' readers report a fault under -v.
+    if let Some(cut) = raw.finish()
+        && options.verbose > 0
+    {
+        eprintln!("neottx: input byte {}: a partial line of {} bytes", cut.offset, cut.bytes);
+    }
     Ok(raw.slicer().counters())
 }
