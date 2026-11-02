@@ -67,8 +67,6 @@ pub struct Decoder<'a> {
     stats: Statistics,
     // The page shown: the rolling header follows its magazine, and its
     // latest sub-page is not evicted (REQ-NUM-030).
-    // The page shown: the rolling header follows its magazine, and its
-    // latest sub-page is not evicted (REQ-NUM-030).
     requested: Option<PageAddress>,
     rolling: [u8; CLOCK_COLUMN - HEADER_DISPLAY_COLUMN],
     clock: [u8; COLUMNS - CLOCK_COLUMN],
