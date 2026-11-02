@@ -518,7 +518,7 @@ fn every_page_number_is_received() {
 #[test]
 fn the_sub_codes_at_each_end_are_received() {
     const PAGE: u16 = 0x123;
-    for subcode in [0x0000, 0x0001, 0x3F7E, SUBCODE_ANY] {
+    for subcode in [0x0000, FIRST_SUBPAGE_CODE, LAST_SUBPAGE_CODE, SUBCODE_ANY] {
         let mut pages = vec![StoredPage::EMPTY; 4];
         let mut decoder = Decoder::new(&mut pages, Config::default());
         let mut stream = vec![header(PAGE, subcode), text_row(PAGE, 1)];
