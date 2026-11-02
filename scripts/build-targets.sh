@@ -82,7 +82,7 @@ while IFS='|' read -r target crates mode toolchain extra; do
     [ -z "$target" ] && continue
     row=$((row + 1))
     log="target/build-targets/$row.$target.$mode.log"
-    # A row that cannot run fails, as gates.md says of any step.
+    # A row that cannot run fails, as DEVELOPMENT.md section 9.2 says of any step.
     if ! rustup toolchain list | grep -q "^$toolchain"; then
         printf '%-32s %-6s %s\n' "$target" "$mode" "FAILED: toolchain $toolchain is not installed; rustup or espup installs it"
         failures=$((failures + 1))

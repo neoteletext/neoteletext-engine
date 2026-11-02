@@ -2,7 +2,7 @@
 # Every local gate (decision 4 of IMPLEMENTATION-LOG.md; tiers, row 96):
 # the engine's own steps, on the gate machinery every neoteletext
 # repository shares (scripts/gate.sh, copied from neoteletext-common;
-# gates.md there).
+# DEVELOPMENT.md section 9 there).
 #   scripts/check.sh commit  formatting, Clippy and the no-panic lint lists:
 #                            the code compiles clean, on what is staged
 #   scripts/check.sh push    the tests, the desktop audio profile, the
@@ -158,9 +158,10 @@ push_steps() {
     listed="$(cargo test --quiet -p neoteletext-audio --no-default-features --features "$AUDIO_WITHOUT_PCM16" --test receiver -- --list)"
     [[ "$listed" == *"$PCM16_OUT_TEST: test"* ]] || fail "$PCM16_OUT_TEST is compiled out of this shape, so no gate runs it"
 
-    # gates.md: a pass says nothing of a test that is ignored, so the gate says
+    # DEVELOPMENT.md section 9.2: a pass says nothing of a test that is
+    # ignored, so the gate says
     # which ones, each with what would make it run.
-    step "the tests that have not run: each ignored test and its reason (gates.md)"
+    step "the tests that have not run: each ignored test and its reason (DEVELOPMENT.md section 9.2)"
     git grep -n -A1 -F '#[ignore' -- 'crates/*.rs' 'xtask/*.rs'
 
     step "architecture and rule checks (REQ-ARCH-011, REQ-GEN-014, REQ-GEN-017, REQ-SEC-016)"

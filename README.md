@@ -40,7 +40,7 @@ Each crate's optional parts are Cargo features, on by default, so a port or a sm
 
 ## Checks
 
-`scripts/check.sh commit | push | full` runs the gates, and the git hooks in `.githooks` run it; `~/devel/neoteletext-common/gates.md` says how the gates and the work branch `livedevelopment` work. The full gate runs every target and fuzzing on the Linux build host (`NEOTELETEXT_REMOTE`). Tests that need the real broadcast corpus read it from `$NEOTELETEXT_CORPUS` (see `cargo xtask corpus`) and say so when it is absent.
+`scripts/check.sh commit | push | full` runs the gates, and the git hooks in `.githooks` run it; `~/devel/neoteletext-common/DEVELOPMENT.md` section 9 says how the gates and the work branch `livedevelopment` work. The full gate runs every target and fuzzing on the Linux build host (`NEOTELETEXT_REMOTE`). Tests that need the real broadcast corpus read it from `$NEOTELETEXT_CORPUS` (see `cargo xtask corpus`) and say so when it is absent.
 
 ## Licence
 
