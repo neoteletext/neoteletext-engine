@@ -13,7 +13,7 @@ use super::header::HEADER_UNITS;
 use crate::consts::{
     C4_ERASE, C8_UPDATE, C11_SERIAL, C12, C14, OBJECT_POINTER_DATA_BIT, OBJECT_POINTER_UNUSED, TRIPLET_BYTES,
 };
-use crate::ecc::{hamming2418_encode, with_odd_parity};
+use crate::ecc::{check_parity, hamming2418_encode, with_odd_parity};
 use crate::types::{ControlBits, DefaultColourFields, Designations, PageNumber, Rgb12, SidePanelFields, SubCode};
 
 fn mag(number: u8) -> Magazine {
@@ -42,6 +42,7 @@ fn uncorrectable_address_is_rejected() {
     assert_eq!(decode(&packet), Err(PacketError::BadAddress));
 }
 
+/// REQ-350: page number, sub-code, control bits and the 32 display bytes of a header built by the encoder.
 #[test]
 fn header_fields_round_trip() {
     let display = [with_odd_parity(b'A'); 32];
@@ -57,6 +58,8 @@ fn header_fields_round_trip() {
     assert_eq!(header.control.unwrap().national_index(), 0b101);
 }
 
+/// REQ-350: each control bit C4 to C14 at its own position. REQ-327: the
+/// encoder writes C9 and C11 among them.
 #[test]
 fn every_control_bit_round_trips() {
     for bit in 4..=14 {
@@ -67,6 +70,7 @@ fn every_control_bit_round_trips() {
     }
 }
 
+/// REQ-350: the page number has its own validity.
 #[test]
 fn header_with_bad_page_byte_is_incomplete() {
     let mut packet = encode::header(mag(1), PageNumber(0x23), SubCode::new(0), ControlBits(0), &[0x20; 32]).unwrap();
@@ -101,6 +105,7 @@ fn links_apply_relative_magazine_and_null() {
     }
 }
 
+/// REQ-352: the designation code and thirteen triplets, each split into address, mode and data.
 #[test]
 fn enhancement_triplets_round_trip() {
     let mut triplets = [Triplet::default(); 13];
@@ -115,6 +120,7 @@ fn enhancement_triplets_round_trip() {
     }
 }
 
+/// REQ-354: X/28/0 Format 1 gives the page function, the coding and both designations.
 #[test]
 fn page_enhancement_designations() {
     let [first, second] = encode::designation_triplets(0x2B, 0x55);
@@ -261,6 +267,8 @@ fn every_mode_has_its_fields() {
 
 /// REQ-PKT-011: the worked link of research/notes-level25-objects.md
 /// section 13.2, an encoded packet, and an injected error.
+/// REQ-321: an X/27/4 link gives a relative magazine, a page and sixteen sub-page flags, and page FF with every
+/// flag set is no link.
 #[test]
 fn compositional_links_decode_and_mark_damage() {
     let link = CompositionalLink::from_values(mag(1), 0x39CCD, 0x0000C);
@@ -314,6 +322,7 @@ fn sample_fields() -> PresentationFields {
 /// REQ-PKT-012 and REQ-PKT-015: every field of X/28/0 format 1 and
 /// X/28/4, the bit order of the colour words, and an error injected
 /// into each field group in turn (decision E.44).
+/// REQ-354: the page function, coding and designations of X/28/0 Format 1, and the fields REQ-PKT-012 adds.
 #[test]
 fn page_enhancement_fields_and_field_groups() {
     let fields = sample_fields();
@@ -368,6 +377,7 @@ fn page_enhancement_fields_and_field_groups() {
 
 /// REQ-PKT-016: M/29/0, M/29/1 and M/29/4, and the packet functions
 /// that are ignored.
+/// REQ-355: M/29/0 gives the fields of X/28/0, and M/29/1 and the other functions are ignored.
 #[test]
 fn magazine_packets() {
     let fields = sample_fields();
@@ -393,6 +403,7 @@ fn magazine_packets() {
 /// REQ-PKT-014, decision E.95: of X/28/3 only the page function and
 /// coding are read, so a pattern download page is still known not to be
 /// text; and X/28/1 is not decoded.
+/// REQ-354: X/28/3 is decoded for its page function alone, and X/28/1 is ignored.
 #[test]
 fn x28_3_gives_only_the_page_function() {
     let format = PageFormat { function: 0b0101, coding: 0 };
@@ -435,6 +446,7 @@ fn object_pages_and_pointers() {
 
 /// REQ-PKT-018: byte-pair positions of Figure 20, as
 /// research/notes-level25-objects.md sections 7.2 and 13.3 list them.
+/// REQ-323: the positions of Figure 20, sampled at each block's ends.
 #[test]
 fn mot_positions() {
     for (page, packet, byte) in [
@@ -458,6 +470,7 @@ fn mot_positions() {
 /// REQ-PKT-018: links, byte pairs, totals and fallback bits, the default
 /// object of research/notes-level25-objects.md section 13.4, and
 /// uncorrectable bytes.
+/// REQ-321: a table's link gives a magazine, a page and the number of sub-pages.
 #[test]
 fn mot_links_and_entries() {
     let mut row = [0u8; DATA_BYTES];
@@ -519,6 +532,7 @@ fn packets_30_outside_magazine_8_and_31_are_ignored() {
 /// Clause 9.3.1, decision E.7: an uncorrectable sub-code byte leaves the
 /// header without a sub-code but with its control bits, an uncorrectable
 /// control byte the reverse; either makes the header incomplete.
+/// REQ-350: the sub-code and the control bits have a validity each.
 #[test]
 fn header_sub_code_and_control_bits_fail_separately() {
     let control = ControlBits(C8_UPDATE | C11_SERIAL);
@@ -621,4 +635,90 @@ fn triplet_functions_are_named_as_tables_28_and_29() {
     for (name, expected) in named {
         assert_eq!(name, expected);
     }
+}
+
+/// REQ-351: packet numbers 1 to 25 give their 40 bytes, each one's 7-bit
+/// character and its parity status readable, a byte that fails kept.
+#[test]
+fn a_display_row_gives_forty_characters_and_their_parity() {
+    let mut bytes = [with_odd_parity(b'A'); DATA_BYTES];
+    bytes[0] ^= 0x80;
+    bytes[DATA_BYTES - 1] = with_odd_parity(b'z');
+    for row in 1..=25 {
+        let packet = encode::row(mag(3), row, &bytes);
+        let Ok(Decoded::Row(decoded)) = decode(&packet) else { panic!("row {row} is not a display row") };
+        assert_eq!((decoded.magazine.number(), decoded.row, decoded.bytes), (3, row, bytes));
+        assert_eq!(check_parity(decoded.bytes[0]), (b'A', false));
+        assert_eq!(check_parity(decoded.bytes[DATA_BYTES - 1]), (b'z', true));
+    }
+}
+
+/// REQ-352: a triplet Hamming 24/18 cannot correct is marked invalid, and
+/// the others keep their fields.
+#[test]
+fn a_damaged_triplet_of_x26_is_marked_invalid() {
+    let triplets = [Triplet { address: 5, mode: 0x10, data: 0x41 }; 13];
+    let mut packet = encode::triplet_packet(mag(1), 26, 3, &triplets);
+    break_triplet(&mut packet, 6);
+    let Ok(Decoded::Enhancement(decoded)) = decode(&packet) else { panic!("not an enhancement packet") };
+    assert_eq!(decoded.designation, 3);
+    for (index, got) in decoded.triplets.iter().enumerate() {
+        assert_eq!(*got, (index != 6).then_some(triplets[index]), "triplet {index}");
+    }
+}
+
+/// REQ-323: every page number X00 to XFE has a pair of its own in packets
+/// X/1 to X/14, and the decimal numbers come first.
+#[test]
+fn every_page_number_has_its_own_pair_in_the_table() {
+    const LAST_TABLE_PACKET: u8 = 14;
+    const DECIMAL_PACKETS: u8 = 5;
+    let mut taken = [[false; DATA_BYTES]; LAST_TABLE_PACKET as usize + 1];
+    for page in 0..=0xFE_u8 {
+        let MotPosition { packet, index } = mot_position(PageNumber(page));
+        assert!((1..=LAST_TABLE_PACKET).contains(&packet), "page {page:02X}: packet {packet}");
+        assert!(index % 2 == 0 && index + 1 < DATA_BYTES, "page {page:02X}: byte {index}");
+        assert!(!taken[usize::from(packet)][index], "page {page:02X}: packet {packet} byte {index} is taken");
+        taken[usize::from(packet)][index] = true;
+        let decimal = page >> 4 < 10 && page & 0xF < 10;
+        assert_eq!(packet <= DECIMAL_PACKETS, decimal, "page {page:02X}: packet {packet}");
+    }
+}
+
+/// REQ-309: a page's entry in the table names the magazine's GPOP or none,
+/// and one of its seven POPs or none.
+#[test]
+fn a_tables_entry_names_a_gpop_and_one_of_seven_pops() {
+    const MOST_POPS: u8 = 7;
+    let mut row = [0_u8; DATA_BYTES];
+    for pop_link in 0..=MOST_POPS {
+        for global_objects in [false, true] {
+            let entry = MotPageEntry { global_objects, pop_link };
+            row[0..2].copy_from_slice(&encode::mot_page_entry(entry));
+            let data = encode::nibble_packet(mag(2), 1, &row).data();
+            assert_eq!(mot_page_entry(&data, 0), Some(entry));
+        }
+    }
+}
+
+/// REQ-1462: a stream may carry a page's packets, the magazine's packet
+/// M/29, packet 8/30 and packet 4/31, and nothing else.
+#[test]
+fn only_the_allowed_kinds_of_packet_are_valid_on_a_stream() {
+    for magazine in 1..=8 {
+        for number in 0..=29 {
+            assert!(is_valid_stream_packet(&encode::address(mag(magazine), number)), "{magazine}/{number}");
+        }
+    }
+    assert!(is_valid_stream_packet(&encode::address(mag(8), 30)));
+    assert!(is_valid_stream_packet(&encode::address(mag(4), 31)), "data channel 12");
+    for magazine in 1..=7 {
+        assert!(!is_valid_stream_packet(&encode::address(mag(magazine), 30)), "{magazine}/30");
+    }
+    for magazine in (1..=8).filter(|&magazine| magazine != 4) {
+        assert!(!is_valid_stream_packet(&encode::address(mag(magazine), 31)), "{magazine}/31");
+    }
+    let mut undecodable = encode::address(mag(1), 1);
+    undecodable.bytes[0] ^= 0b11;
+    assert!(!is_valid_stream_packet(&undecodable));
 }

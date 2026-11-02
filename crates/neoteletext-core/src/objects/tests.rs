@@ -229,6 +229,7 @@ fn a_page_without_links_uses_no_enhancement_pages() {
 /// including the level and a link that is not null; at Level 3.5 links 4
 /// and 5 of X/27/4 and 0 and 1 of X/27/5 take their role from their
 /// function bits, and the first of two links for a role wins.
+/// REQ-321: how the links of X/27/4 and X/27/5 name their pages.
 #[test]
 fn compositional_links_by_position_function_and_level() {
     let gpop_25 = link(LINK_FUNCTION_GPOP, 0b01, 0x1B0);
@@ -347,6 +348,7 @@ fn magazine_organization_table_at_level_35() {
 /// neither a role, nor default objects, nor fallback bits; a POP link
 /// number of 0 means no POP; the byte pair of page xFF is ignored, and a
 /// page whose byte pair was not received gets nothing from the table.
+/// REQ-321, REQ-309: a link to page FF is not used, and a POP link number of 0 means no POP.
 #[test]
 fn table_links_that_are_not_used() {
     let default = Some(DefaultObject { kind: ObjectKind::Active, number: 1 });

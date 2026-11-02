@@ -14,7 +14,7 @@ use neoteletext_core::consts::{
 use neoteletext_core::ecc::{hamming84_encode, with_odd_parity};
 use neoteletext_core::limits::{
     DECIMAL_SUBCODES, FIRST_SUBPAGE_CODE, LAST_SUBPAGE_CODE, MAX_SUBPAGES, PAGE_MIP, PAGE_TIME_FILLING, SUBCODE_ANY,
-    data_sub_code, enhancement_sub_code,
+    data_sub_code, enhancement_sub_code, is_reserved_page,
 };
 use neoteletext_core::nav::{PageLinks, SubPageEntry, SubPageEntryResult, step_stored};
 use neoteletext_core::packet::{
@@ -488,4 +488,43 @@ fn a_page_of_8190_sub_pages_is_held_and_stepped() {
         viewer.show_subpage(SubCode::new(codes[122]));
         assert_eq!(&viewer.status(store), b"100/123");
     });
+}
+
+/// REQ-307, REQ-312: the decoder responds to a header on every page number
+/// 00 to FE, those with hexadecimal elements and those ending in F included:
+/// each is stored, a reserved number as the table it is and not as a page.
+#[test]
+fn every_page_number_is_received() {
+    const MAGAZINE: u16 = 2;
+    const PAGE_NUMBERS: usize = 0xFF;
+    let mut pages = vec![StoredPage::EMPTY; PAGE_NUMBERS];
+    let mut sub_pages = vec![EnhancementSubPage::EMPTY; 16];
+    let mut packets = vec![EnhancementPacket::EMPTY; 64];
+    let store = EnhancementStore::new(&mut sub_pages, &mut packets);
+    let mut decoder = Decoder::with_enhancement_store(&mut pages, store, Config::default());
+    let mpp_of = |page: u16| (MAGAZINE << 8) | page;
+    let mut stream: Vec<Packet> =
+        (0..=0xFE).flat_map(|page| [header(mpp_of(page), 0), text_row(mpp_of(page), 1)]).collect();
+    stream.extend(filling());
+    feed(&mut decoder, &stream);
+    for page in 0..=0xFE_u16 {
+        let stored = decoder.store().contains(address(mpp_of(page)));
+        assert_eq!(stored, !is_reserved_page(MAGAZINE as u8, page as u8), "{:03X}", mpp_of(page));
+    }
+}
+
+/// REQ-307: sub-codes 0000, 0001, 3F7E and 3F7F on a page that is not the
+/// null page are received, 3F7E the highest a link can name.
+#[test]
+fn the_sub_codes_at_each_end_are_received() {
+    const PAGE: u16 = 0x123;
+    for subcode in [0x0000, 0x0001, 0x3F7E, SUBCODE_ANY] {
+        let mut pages = vec![StoredPage::EMPTY; 4];
+        let mut decoder = Decoder::new(&mut pages, Config::default());
+        let mut stream = vec![header(PAGE, subcode), text_row(PAGE, 1)];
+        stream.extend(filling());
+        feed(&mut decoder, &stream);
+        let stored = decoder.store().get(address(PAGE), SubCode::ANY).map(|page| page.key.subcode.value());
+        assert_eq!(stored, Some(subcode), "{subcode:04X}");
+    }
 }

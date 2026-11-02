@@ -39,6 +39,7 @@ fn hamming84_exhaustive() {
 }
 
 /// REQ-TST-003: every 18-bit value, every single error, sampled doubles.
+/// REQ-118: every 18-bit value encodes to a triplet that decodes back to it.
 #[test]
 fn hamming2418_exhaustive() {
     let mut lcg: u32 = 0x1234_5678;
@@ -160,6 +161,7 @@ fn page_checksum_shift_register() {
     assert_eq!(whole.value(), checksum_by_recurrence(&message));
 }
 
+/// REQ-114: over all 256 bytes, whether the byte has odd parity, and its 7-bit value.
 #[test]
 fn parity_over_all_bytes() {
     for byte in 0..=255u8 {
@@ -171,6 +173,7 @@ fn parity_over_all_bytes() {
     }
 }
 
+/// REQ-119: every byte's bits reversed, over all 256 values.
 #[test]
 fn bit_reversal_over_all_bytes() {
     for byte in 0..=255u8 {

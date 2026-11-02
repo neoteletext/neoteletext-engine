@@ -174,6 +174,7 @@ fn subcode_listing_is_sorted() {
 /// REQ-ACQ-001, REQ-ACQ-002: parallel magazines interleave, the mode
 /// follows C11 of the latest header, and in serial mode rows of another
 /// magazine are discarded and counted.
+/// REQ-327: C11 decides whether a page ends at the next header of any magazine or of its own.
 #[test]
 fn interleaved_magazines_and_serial_mode_follow_c11() {
     let mut slots = std::vec![StoredPage::EMPTY; 8];
@@ -423,6 +424,8 @@ fn enhancement_store_capacity_and_eviction() {
 /// REQ-ACQ-018: M/29/0 and M/29/4 are kept per magazine, each
 /// replacing the last, and are discarded when the network
 /// identification changes or a new input starts.
+/// REQ-9, REQ-355: M/29/0 and M/29/4 are stored for each magazine, the latest kept, and discarded when the
+/// service changes.
 #[test]
 fn magazine_data_is_kept_until_the_service_changes() {
     let mut slots = std::vec![StoredPage::EMPTY; 4];
@@ -491,6 +494,7 @@ fn hexadecimal_pages_follow_the_level() {
 /// REQ-ACQ-011, decision E.11: the rolling header takes every magazine
 /// in serial mode and only the requested one in parallel mode, never a
 /// header with C9 set; the clock takes every valid header.
+/// REQ-327: a header with C9 set stays out of the rolling header.
 #[test]
 fn rolling_header_and_clock_follow_decision_e11() {
     let with_text = |m: u8, control: u16, rolling: &[u8], clock: &[u8]| {
@@ -739,6 +743,7 @@ fn the_latest_service_packet_is_kept() {
 /// an enhancement page (REQ-ACQ-016 names X/28/0 and X/28/3), X/28/3's
 /// does, and an X/28/3 whose triplet 1 is uncorrectable names no
 /// function and leaves the page where it is.
+/// REQ-7: X/27/1 to X/27/3 raw, and X/28/4, are kept with their page.
 #[test]
 fn page_related_packets_are_kept_with_their_page() {
     use crate::consts::{PAGE_FUNCTION_GDRCS, PAGE_FUNCTION_POP};
@@ -1025,4 +1030,54 @@ fn parity_policies_decide_what_a_failed_byte_replaces() {
         assert_eq!(page.merge(page.cells.len(), 0, &[failed], policy), 0);
         assert_eq!(page.rows_received, 1 << 1, "only row 1");
     }
+}
+
+/// REQ-7: a stored page keeps its header's address and control bits, the
+/// header's display bytes, its rows with their parity and which arrived, its
+/// X/26 packets, its links, its packets X/28, the time of its first and
+/// latest reception, how often it came, and its errors.
+#[test]
+fn a_stored_page_keeps_what_was_received() {
+    const CONTROL: u16 = C11_SERIAL;
+    let mut slots = std::vec![StoredPage::EMPTY; 4];
+    let mut decoder = Decoder::new(&mut slots, Config::default());
+    let mut events = Vec::new();
+    let mut triplets = [Triplet::default(); TRIPLETS_PER_PACKET];
+    triplets[0] = Triplet { address: 5, mode: 0x10, data: 0x41 };
+    let mut failed_row = text(b"GOOD");
+    failed_row[1] ^= 0x80;
+    let target = (mag(3), PageNumber(0x45), SubCode::ANY);
+    let format = PageFormat { function: 0, coding: 0 };
+    let page_packets = [
+        header(1, 0x00, 7, CONTROL),
+        encode::row(mag(1), 1, &text(b"ROW")),
+        encode::row(mag(1), 2, &failed_row),
+        encode::row(mag(1), 25, &text(b"LAST")),
+        encode::triplet_packet(mag(1), 26, 0, &triplets),
+        encode::triplet_packet(mag(1), 26, 15, &triplets),
+        encode::links(mag(1), &[Some(target), None, None, None, None, None], true, 0),
+        encode::page_enhancement(mag(1), 0, format, &PresentationFields::default()),
+        encode::page_enhancement(mag(1), 4, format, &PresentationFields::default()),
+    ];
+    feed(&mut decoder, &page_packets, &mut events);
+    feed(&mut decoder, &[header(1, 0x01, 0, CONTROL)], &mut events);
+    for (index, packet) in [header(1, 0x00, 7, CONTROL), header(1, 0x01, 0, CONTROL)].iter().enumerate() {
+        decoder.push(packet, &PacketMeta::default(), Instant(50_000 + index as u64), &mut |event| events.push(event));
+    }
+    let page = decoder.store().get(PageAddress::from_mpp(0x100).unwrap(), SubCode::new(7)).unwrap();
+    assert_eq!(page.key, key(0x100, 7));
+    assert_eq!(page.control, ControlBits(CONTROL));
+    assert_eq!(&page.cells[0][8..12], &text(b"HDR!")[..4], "the header's display bytes");
+    assert_eq!(&page.cells[1][..3], &text(b"ROW")[..3]);
+    assert_eq!(&page.cells[25][..4], &text(b"LAST")[..4]);
+    assert!(page.has_row(1) && page.has_row(2) && page.has_row(25) && !page.has_row(3));
+    assert_eq!(page.parity_ok[2] & 0b11, 0b01, "the failed byte's parity flag");
+    assert_eq!(page.enhancements_present, (1 << 0) | (1 << 15));
+    assert_eq!(page.enhancements[15][0], Some(triplets[0]));
+    assert!(page.links.is_some_and(|links| links.links[0].is_some()), "X/27/0 as decoded links");
+    assert_eq!(page.page_data.map(|data| data.format), Some(Some(format)), "X/28/0");
+    assert_eq!(page.page_data_level35.map(|data| data.format), Some(Some(format)), "X/28/4");
+    assert_eq!((page.first_received, page.last_received), (Instant(0), Instant(50_000)));
+    assert_eq!(page.receptions, 2);
+    assert_eq!(page.errors, 1);
 }
