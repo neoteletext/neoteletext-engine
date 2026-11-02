@@ -110,6 +110,28 @@ pub fn scale_rgb_smoothed(
 mod tests {
     use super::*;
 
+    /// REQ-399: the smoothed option: a whole-number scale whose edge pixels
+    /// blend their neighbours, and a flat image stays flat.
+    #[test]
+    fn smoothed_scaling_blends_at_edges() {
+        const RGB: usize = 3;
+        let input = [0_u8, 0, 0, 200, 100, 40];
+        let mut out = [0_u8; 4 * 2 * RGB];
+        assert_eq!(scale_rgb_smoothed(&input, 2, 1, 2, 2, false, &mut out).unwrap(), (4, 2));
+        let pixel = |x: usize, y: usize| &out[(y * 4 + x) * RGB..(y * 4 + x + 1) * RGB];
+        assert_eq!(pixel(0, 0), [0, 0, 0], "inside the first colour");
+        assert_eq!(pixel(1, 0), [100, 50, 20], "the edge blends the two");
+        assert_eq!(pixel(3, 1), [200, 100, 40], "inside the second colour");
+        let flat = [90_u8; 2 * RGB];
+        let mut out = [0_u8; 4 * 2 * RGB];
+        scale_rgb_smoothed(&flat, 2, 1, 2, 2, false, &mut out).unwrap();
+        assert_eq!(out, [90; 4 * 2 * RGB]);
+        assert_eq!(scale_rgb_smoothed(&flat, 2, 1, 0, 2, false, &mut out), Err(ScaleError::ZeroFactor));
+        assert_eq!(scale_rgb_smoothed(&flat, 2, 1, 4, 4, false, &mut out), Err(ScaleError::BufferTooSmall));
+    }
+
+    /// REQ-399: scaling by whole numbers, nearest pixel by default, and the
+    /// aspect stretch on request.
     #[test]
     fn nearest_scaling_and_aspect() {
         let input = [1u8, 2, 3, 4];

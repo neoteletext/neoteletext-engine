@@ -125,7 +125,8 @@ mod tests {
     use neoteletext_core::charset::{CharRef, CharSet, G0, G0Set, NationalOption};
     use neoteletext_core::colour::colour_index;
     use neoteletext_core::consts::COLOUR_TRANSPARENT;
-    use neoteletext_core::level1::CellAttributes;
+    use neoteletext_core::level1::{CellAttributes, Size};
+    use neoteletext_core::policy::is_safe_output_char;
     use neoteletext_core::types::Rgb12;
 
     fn grid_with(text: &str) -> Grid {
@@ -137,6 +138,48 @@ mod tests {
         grid
     }
 
+    /// REQ-381: flash uses the terminal's blink attribute, and a bottom half
+    /// is a blank cell in the background colour.
+    #[test]
+    fn flash_blinks_and_a_bottom_half_is_blank() {
+        let mut grid = grid_with("AB");
+        grid.cells[1][0].flash = true;
+        let text = ansi(&grid, false, MosaicStyle::Unicode16, ColourDepth::Eight);
+        assert!(text.lines().nth(1).unwrap().starts_with("\x1b[0;5;"), "{text:?}");
+        grid.cells[1][0].flash = false;
+        grid.cells[1][0].background = 4;
+        grid.cells[1][0].size = Size::DoubleBottom;
+        let text = ansi(&grid, false, MosaicStyle::Unicode16, ColourDepth::Eight);
+        assert!(text.lines().nth(1).unwrap().starts_with("\x1b[0;37;44m "), "{text:?}");
+    }
+
+    /// REQ-381, REQ-423: every code of every character set: the terminal is
+    /// given no escape sequence but the renderer's own, and no control.
+    #[test]
+    fn every_code_of_every_set_reaches_the_terminal_harmless() {
+        for (name, set) in neoteletext_core::glyphs::conformance::FONT_SETS {
+            for codes in (0..=u8::MAX).collect::<Vec<u8>>().chunks(40) {
+                let mut grid = Grid::EMPTY;
+                for (cell, &code) in grid.cells[1].iter_mut().zip(codes) {
+                    cell.glyph = Glyph::Char(CharRef::new(set, code));
+                }
+                let text = ansi(&grid, false, MosaicStyle::Unicode16, ColourDepth::TrueColour);
+                let mut rest = text.as_str();
+                while let Some(at) = rest.find('\u{1B}') {
+                    let (before, sequence) = rest.split_at(at);
+                    assert!(before.chars().all(|c| c == '\n' || is_safe_output_char(c)), "{name}: {before:?}");
+                    let (body, after) = sequence.split_once('m').unwrap();
+                    let parameters = body.strip_prefix("\u{1B}[").unwrap();
+                    assert!(parameters.chars().all(|c| c.is_ascii_digit() || c == ';'), "{name}: {body:?}");
+                    rest = after;
+                }
+                assert!(rest.chars().all(|c| c == '\n' || is_safe_output_char(c)), "{name}: {rest:?}");
+            }
+        }
+    }
+
+    /// REQ-381, REQ-423: a page's control codes never reach the terminal, and only the renderer's own escape
+    /// sequences do.
     #[test]
     fn page_control_codes_never_reach_the_terminal() {
         // Every control code a page can carry, in every cell.
@@ -156,6 +199,7 @@ mod tests {
     /// 8-colour mode takes the nearest Level 1 colour, transparent cells
     /// take the screen colour, invert swaps the colours, and underline uses
     /// its SGR code on text.
+    /// REQ-381: 24-bit colour and 8-colour modes.
     #[test]
     fn terminal_colours_and_attributes() {
         let mut grid = grid_with("A");

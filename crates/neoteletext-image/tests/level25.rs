@@ -329,6 +329,7 @@ fn level25_golden_rasters_match() {
 /// REQ-RND-007, REQ-RND-030: a page gives a 480 by 500 PNG with the 32
 /// colours of its Colour Map, index 8 transparent; scaling and aspect
 /// correction keep the width; the PPM has the same size.
+/// REQ-378: the PNG's index 8 is transparent.
 #[test]
 fn images_of_a_page() {
     let mut grid = colour_map();

@@ -102,6 +102,7 @@ mod tests {
 
     /// REQ-RND-030: every index converts as Table 30 gives, index 8 is the
     /// picture, and redefined CLUTs convert with their own values.
+    /// REQ-377: at Levels 2.5 and 3.5 all 32 entries of the Colour Map.
     #[test]
     fn colour_map_palette_follows_table_30() {
         let fill = Rgba::opaque(1, 2, 3);
@@ -125,6 +126,31 @@ mod tests {
         assert_eq!(palette[16 + 15], Rgba::opaque(255, 255, 0));
     }
 
+    /// REQ-230, REQ-377: colour number n has red if bit 0 is set, green if
+    /// bit 1 is set and blue if bit 2 is set, each primary 0 or 255.
+    #[test]
+    fn each_colour_number_is_its_primaries() {
+        for (number, colour) in (0_u8..).zip(CLUT0) {
+            let primary = |bit: u8| if number & bit != 0 { 255 } else { 0 };
+            assert_eq!(colour, Rgba::opaque(primary(1), primary(2), primary(4)), "colour {number}");
+        }
+    }
+
+    /// REQ-377: the colours are the caller's to choose, for users who want a
+    /// different palette: flash and reveal take them as they do Table 30's.
+    #[test]
+    fn a_palette_takes_the_colours_it_is_given() {
+        let mut chosen = CLUT0;
+        chosen[1] = Rgba::opaque(200, 10, 20);
+        let picture = Rgba::opaque(1, 2, 3);
+        let filled = palette(&chosen, picture, true, false);
+        assert_eq!(filled[1], chosen[1]);
+        assert_eq!(filled[usize::from(neoteletext_core::consts::PALETTE_TRANSPARENT)], picture);
+        let base = base_colours(&chosen, picture);
+        assert_eq!((base[1], base[COLOURS]), (chosen[1], picture));
+    }
+
+    /// REQ-377: the eight colours of Table 30, each primary 0 or 255. REQ-378: index 8 is transparent.
     #[test]
     fn clut0_primaries() {
         assert_eq!(CLUT0[0], Rgba::opaque(0, 0, 0));

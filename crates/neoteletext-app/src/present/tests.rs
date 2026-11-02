@@ -2,7 +2,9 @@
 use super::*;
 use neoteletext_core::charset::{CharRef, CharSet, G0, G0Set, NationalOption};
 use neoteletext_core::consts::{ALPHA_YELLOW, COLUMNS, ROWS, SPACE, STATUS_COLUMNS};
+use neoteletext_core::glyphs::conformance::FONT_SETS;
 use neoteletext_core::level1::CellAttributes;
+use neoteletext_core::policy::is_safe_output_char;
 
 fn grid_with(text: &str) -> Grid {
     let mut grid = Grid::EMPTY;
@@ -13,6 +15,7 @@ fn grid_with(text: &str) -> Grid {
     grid
 }
 
+/// REQ-380: a page is 25 lines of text.
 #[test]
 fn plain_text_has_25_lines() {
     let text = plain(&grid_with("HELLO"), false, MosaicStyle::Unicode16);
@@ -20,6 +23,7 @@ fn plain_text_has_25_lines() {
     assert_eq!(text.lines().nth(1), Some("HELLO"));
 }
 
+/// REQ-380: concealed characters are spaces unless reveal is on.
 #[test]
 fn concealed_text_needs_reveal() {
     let mut grid = grid_with("SECRET");
@@ -62,4 +66,33 @@ fn the_receivers_rows_read_back_as_written() {
     let lines: Vec<&str> = text.lines().collect();
     assert!(lines[0].starts_with("P100") && lines[0].contains("example.or"), "{text}");
     assert_eq!(lines[3].trim(), "HELLO");
+}
+
+/// REQ-380, REQ-423: every code of every character set, an injection attempt
+/// through each, comes out as 25 lines of the allow-list and nothing else.
+#[test]
+fn every_code_of_every_set_writes_only_allowed_characters() {
+    for (name, set) in FONT_SETS {
+        for codes in (0..=u8::MAX).collect::<Vec<u8>>().chunks(COLUMNS) {
+            let mut grid = Grid::EMPTY;
+            for (cell, &code) in grid.cells[1].iter_mut().zip(codes) {
+                cell.glyph = Glyph::Char(CharRef::new(set, code));
+            }
+            let text = plain(&grid, false, MosaicStyle::Unicode16);
+            assert_eq!(text.lines().count(), ROWS, "{name}");
+            for character in text.chars().filter(|&character| character != '\n') {
+                assert!(is_safe_output_char(character), "{name}: U+{:04X}", u32::from(character));
+            }
+        }
+    }
+}
+
+/// REQ-380: an attribute cell is written as a space, and a mosaic as its
+/// Unicode block character.
+#[test]
+fn attributes_are_spaces_and_mosaics_are_blocks() {
+    let mut grid = grid_with("A B");
+    grid.cells[1][1].glyph = Glyph::Space;
+    grid.cells[1][3].glyph = Glyph::Mosaic { pattern: 0x3F, separated: false };
+    assert_eq!(plain(&grid, false, MosaicStyle::Unicode16).lines().nth(1), Some("A B\u{2588}"));
 }

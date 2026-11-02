@@ -70,6 +70,7 @@ mod tests {
     use crate::SliceSink;
     use crate::palette::{CLUT0, palette};
 
+    /// REQ-378: a format with no transparency takes the configured fill colour.
     #[test]
     fn header_and_fill() {
         let colours = palette(&CLUT0, Rgba::TRANSPARENT, true, false);

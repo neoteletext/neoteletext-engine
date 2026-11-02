@@ -45,6 +45,8 @@ fn origins() {
     assert!(!may_send_cookie(true, false));
 }
 
+/// REQ-423: the allow-list keeps printable characters out of the strip list, and a file name byte is never a
+/// path separator.
 #[test]
 fn output_sanitising() {
     assert!(is_safe_output_char('A') && is_safe_output_char('\u{1FB00}'));
@@ -122,4 +124,29 @@ fn a_nat64_local_use_address_with_a_u_octet_is_read_as_96_only() {
     assert!(!ipv6_blocked([0x0064, 0xFF9B, 0x0001, 0, 0x010A, 0, 0x0800, 0]));
     // 64:ff9b:1:a00:101::808:808: /48 would read 10.0.1.1, /96 8.8.8.8.
     assert!(!ipv6_blocked([0x0064, 0xFF9B, 0x0001, 0x0A00, 0x0101, 0, 0x0808, 0x0808]));
+}
+
+/// REQ-423: every C0 and C1 control character, DEL and every Unicode
+/// bidirectional control the requirement names is refused, and the
+/// characters beside each range are kept.
+#[test]
+fn every_character_the_requirement_strips_is_refused() {
+    let stripped =
+        (0x00..=0x1F).chain(0x7F..=0x9F).chain([0x061C, 0x200E, 0x200F]).chain(0x202A..=0x202E).chain(0x2066..=0x2069);
+    for value in stripped {
+        assert!(char::from_u32(value).is_some_and(|c| !is_safe_output_char(c)), "U+{value:04X}");
+    }
+    for value in [0x20, 0x7E, 0xA0, 0x061B, 0x061D, 0x200D, 0x2010, 0x2029, 0x202F, 0x2065, 0x206A] {
+        assert!(char::from_u32(value).is_some_and(is_safe_output_char), "U+{value:04X}");
+    }
+}
+
+/// REQ-423: a file name derived from received content is reduced to letters,
+/// digits, hyphen, underscore and full stop, so it holds no path separator.
+#[test]
+fn a_safe_file_name_is_exactly_the_allow_list() {
+    for byte in 0..=u8::MAX {
+        let allowed = byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.');
+        assert_eq!(is_safe_file_name_byte(byte), allowed, "{byte:#04x}");
+    }
 }
