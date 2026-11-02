@@ -100,7 +100,7 @@ fn t42_round_trips_and_filters() {
     other.address = PageAddress::from_mpp(0x1B0).unwrap();
     let mut other_packets = Vec::new();
     encode_page(&other, &mut |packet| other_packets.push(packet));
-    let filter = PacketFilter { magazine: None, page: Some(pages[0].address.page) };
+    let filter = PacketFilter { magazine: None, page: Some(pages[0].address.page), subcode: None };
     let mut filtered = Vec::new();
     let mut writer = T42Writer::with_filter(&mut filtered, filter);
     let mut written = 0;

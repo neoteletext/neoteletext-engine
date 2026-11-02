@@ -179,8 +179,10 @@ pub fn magazine_page_file(magazine: Magazine, data: &MagazineData) -> Option<Pag
 /// that use them: magazine packets, tables, object pages, then display
 /// pages. With a filter, only that page's sub-pages.
 #[must_use]
-pub fn session_page_files(session: &Session, filter: Option<PageAddress>) -> Vec<PageFile> {
-    let wanted = |address: PageAddress| filter.is_none_or(|page| page == address);
+pub fn session_page_files(session: &Session, filter: Option<(PageAddress, SubCode)>) -> Vec<PageFile> {
+    let wanted = |address: PageAddress, subcode: SubCode| {
+        filter.is_none_or(|(page, sub_page)| page == address && (sub_page.is_any() || sub_page == subcode))
+    };
     let decoder = session.decoder();
     let mut files = Vec::new();
     if filter.is_none() {
@@ -193,10 +195,10 @@ pub fn session_page_files(session: &Session, filter: Option<PageAddress>) -> Vec
         decoder
             .enhancement_store()
             .sub_pages()
-            .filter(|page| wanted(page.key().address))
+            .filter(|page| wanted(page.key().address, page.subcode()))
             .map(|page| enhancement_page_file(&page)),
     );
-    files.extend(session.pages().into_iter().filter(|page| wanted(page.key.address)).map(page_file));
+    files.extend(session.pages().into_iter().filter(|page| wanted(page.key.address, page.key.subcode)).map(page_file));
     files.sort_by_key(transmission_class);
     files
 }

@@ -10,7 +10,7 @@ use std::path::Path;
 pub fn convert(options: &Options, output: &Path, to: ConvertTarget, page: Option<&str>) -> Result<(), Failure> {
     let filter = match page {
         Some(text) => match parse_selection(text)? {
-            Selection::Page(address, _) => Some(address),
+            Selection::Page(address, subcode) => Some((address, subcode)),
             Selection::All => None,
         },
         None => None,

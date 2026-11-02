@@ -5,7 +5,7 @@
 
 use crate::input::{self, Options};
 use crate::{Failure, exit};
-use neoteletext_core::types::PageAddress;
+use neoteletext_core::types::{PageAddress, SubCode};
 use neoteletext_formats::Item;
 use neoteletext_formats::page::PageFile;
 use std::fs::File;
@@ -26,14 +26,21 @@ pub enum Target {
 }
 
 /// Converts the input to `to`, written to `output`; with a filter, only
-/// that page (REQ-INP-014, REQ-INP-018).
-pub fn convert(options: &Options, output: &Path, to: Target, filter: Option<PageAddress>) -> Result<(), Failure> {
+/// that page, and with a sub-code other than `SubCode::ANY` only that
+/// sub-page (REQ-INP-014, REQ-INP-018).
+pub fn convert(
+    options: &Options,
+    output: &Path,
+    to: Target,
+    filter: Option<(PageAddress, SubCode)>,
+) -> Result<(), Failure> {
     let file = File::create(output).map_err(|error| (exit::INPUT, format!("{}: {error}", output.display())))?;
     match to {
         Target::T42 => {
             let filter = neoteletext_formats::write::PacketFilter {
-                magazine: filter.map(|address| address.magazine),
-                page: filter.map(|address| address.page),
+                magazine: filter.map(|(address, _)| address.magazine),
+                page: filter.map(|(address, _)| address.page),
+                subcode: filter.map(|(_, subcode)| subcode).filter(|subcode| !subcode.is_any()),
             };
             let mut writer = neoteletext_formats::write::T42Writer::with_filter(std::io::BufWriter::new(file), filter);
             let mut input = input::open(options)?;
