@@ -121,6 +121,33 @@ fn the_bundle_takes_first_sub_pages_while_it_has_room() {
     assert!(bundle.starts_with(&body), "an enhancement page is bundled whole");
 }
 
+/// REQ-1893: the bundle takes pages in ascending page order whatever order
+/// they were added in, and stops at the first page that does not fit, so that
+/// a smaller page after it stays out.
+#[test]
+fn the_bundle_follows_the_page_order_and_stops_at_the_first_page_that_does_not_fit() {
+    let full = |address| full_sub_page_t42(address, SubCode::new(0));
+    let small = sub_page_t42(page(0x700), SubCode::new(0));
+    let whole = full(page(0x100));
+    let fitting = DEFAULT_PAGE_LIMIT / whole.len();
+    let mut channel = ChannelFiles::new();
+    // Added in descending order: the last pages added are the first bundled.
+    channel.add_whole_page(page(0x700), &small).unwrap();
+    channel.add_whole_page(page(0x600), &whole).unwrap();
+    for index in (0..fitting).rev() {
+        let address = page(0x100 + u16::try_from(index).unwrap());
+        channel.add_whole_page(address, &full(address)).unwrap();
+    }
+    assert_eq!(channel.unbundled(), 2, "the page that does not fit and the smaller page after it");
+    let files = channel.finish();
+    let names: Vec<&str> = files.iter().map(|(name, _)| name.as_str()).collect();
+    assert_eq!(names[..2], ["100.t42", "101.t42"], "the files are written in page order");
+    let (name, bundle) = files.last().unwrap();
+    assert_eq!(name, "index.t42");
+    assert!(bundle.starts_with(&full(page(0x100))), "the lowest page comes first");
+    assert_eq!(bundle.len(), fitting * whole.len(), "page 700 would fit, and stays out");
+}
+
 #[test]
 fn what_cannot_be_laid_out_is_refused() {
     let address = page(0x100);

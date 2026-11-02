@@ -11,6 +11,7 @@
 //! the pages (the author API, a server) encodes them; this module only
 //! lays them out.
 
+use std::collections::BTreeMap;
 use std::string::String;
 use std::vec::Vec;
 
@@ -103,13 +104,18 @@ pub fn page_files(page: PageAddress, sub_pages: &[SubPageFile<'_>]) -> Result<Ve
     Ok(files)
 }
 
-/// A channel's files, page by page, with its bundle.
+/// One page's files, and what it would put in the bundle.
+#[derive(Clone, Debug)]
+struct LaidOut {
+    files: Vec<(String, Vec<u8>)>,
+    bundled: Vec<u8>,
+}
+
+/// A channel's files, page by page, in page order whatever order they were
+/// added in, so that the bundle does not depend on it (REQ-1893).
 #[derive(Clone, Debug, Default)]
 pub struct ChannelFiles {
-    files: Vec<(String, Vec<u8>)>,
-    bundle: Vec<u8>,
-    pages: std::collections::BTreeSet<PageAddress>,
-    unbundled: usize,
+    pages: BTreeMap<PageAddress, LaidOut>,
 }
 
 impl ChannelFiles {
@@ -119,60 +125,74 @@ impl ChannelFiles {
         Self::default()
     }
 
-    /// Adds a page's files ([`page_files`]), and its first sub-page to the
-    /// bundle while the bundle stays within a page response's limit
-    /// (REQ-WEB-019: a channel larger than that publishes page files).
+    /// Adds a page's files ([`page_files`]), with its first sub-page for the
+    /// bundle.
     pub fn add_page(&mut self, page: PageAddress, sub_pages: &[SubPageFile<'_>]) -> Result<(), LayoutError> {
-        if self.pages.contains(&page) {
+        if self.pages.contains_key(&page) {
             return Err(LayoutError::PageTwice(page));
         }
         let files = page_files(page, sub_pages)?;
-        self.pages.insert(page);
-        self.bundle_page(in_page_order(sub_pages).first().map_or(&[][..], |first| first.t42));
-        self.files.extend(files);
+        let bundled = in_page_order(sub_pages).first().map_or(&[][..], |first| first.t42).to_vec();
+        self.pages.insert(page, LaidOut { files, bundled });
         Ok(())
     }
 
     /// Adds a page whose sub-pages are not files of their own, as one
-    /// `NNN.t42` holding all of them, and bundles it whole while the bundle
-    /// has room: an enhancement data page, whose sub-pages a display page
-    /// asks for together (REQ-WEB-022) and which are never listed as
-    /// sub-pages (REQ-NUM-022).
+    /// `NNN.t42` holding all of them, to be bundled whole: an enhancement
+    /// data page, whose sub-pages a display page asks for together
+    /// (REQ-WEB-022) and which are never listed as sub-pages (REQ-NUM-022).
     pub fn add_whole_page(&mut self, page: PageAddress, t42: &[u8]) -> Result<(), LayoutError> {
-        if self.pages.contains(&page) {
+        if self.pages.contains_key(&page) {
             return Err(LayoutError::PageTwice(page));
         }
         if t42.len() > DEFAULT_PAGE_LIMIT || !channel::is_t42(t42) {
             return Err(LayoutError::Content(None));
         }
-        self.pages.insert(page);
-        self.bundle_page(t42);
-        self.files.push((name(ChannelFile::Page { page, t42: true }), t42.to_vec()));
+        let files = std::vec![(name(ChannelFile::Page { page, t42: true }), t42.to_vec())];
+        self.pages.insert(page, LaidOut { files, bundled: t42.to_vec() });
         Ok(())
     }
 
-    fn bundle_page(&mut self, t42: &[u8]) {
-        if self.bundle.len().saturating_add(t42.len()) <= DEFAULT_PAGE_LIMIT {
-            self.bundle.extend_from_slice(t42);
-        } else {
-            self.unbundled = self.unbundled.saturating_add(1);
+    /// How many pages, from the lowest, the bundle holds, and their bytes
+    /// (REQ-1893): it stops before the first page that would pass the bound,
+    /// so what it holds never depends on which later pages happen to be small.
+    fn bundled(&self) -> (usize, usize) {
+        let mut pages = 0usize;
+        let mut bytes = 0usize;
+        for laid_out in self.pages.values() {
+            let after = bytes.saturating_add(laid_out.bundled.len());
+            if after > DEFAULT_PAGE_LIMIT {
+                break;
+            }
+            bytes = after;
+            pages = pages.saturating_add(1);
         }
+        (pages, bytes)
     }
 
-    /// Pages left out of the bundle because it was full; each still has
-    /// its own files.
+    /// Pages left out of the bundle; each still has its own files
+    /// (REQ-WEB-019: a channel larger than the bundle publishes page files).
     #[must_use]
-    pub const fn unbundled(&self) -> usize {
-        self.unbundled
+    pub fn unbundled(&self) -> usize {
+        self.pages.len().saturating_sub(self.bundled().0)
     }
 
-    /// Every file, `index.t42` last when any page was bundled.
+    /// Every file in page order, `index.t42` last when any page was bundled.
     #[must_use]
-    pub fn finish(mut self) -> Vec<(String, Vec<u8>)> {
-        if !self.bundle.is_empty() {
-            self.files.push((String::from(BUNDLE_FILE), self.bundle));
+    pub fn finish(self) -> Vec<(String, Vec<u8>)> {
+        let (kept, bytes) = self.bundled();
+        let mut bundle = Vec::with_capacity(bytes);
+        let mut files = Vec::new();
+        for (index, laid_out) in self.pages.into_values().enumerate() {
+            if index < kept {
+                bundle.extend_from_slice(&laid_out.bundled);
+            }
+            files.extend(laid_out.files);
         }
-        self.files
+        if !bundle.is_empty() {
+            files.push((String::from(BUNDLE_FILE), bundle));
+        }
+        files
     }
 }
 
