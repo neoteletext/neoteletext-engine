@@ -608,7 +608,9 @@ fn mosaic_pattern_ignores_high_bits() {
 }
 
 /// REQ-82: every G0 set, neoteletext's own among them in a build with
-/// `extended-sets`, has the space at 2/0 and the block at 7/F.
+/// `extended-sets`, has the space at 2/0 and the block at 7/F. The list of sets
+/// is the font's, so the test needs `render`.
+#[cfg(feature = "render")]
 #[test]
 fn every_g0_set_has_the_space_and_the_block() {
     const SOLID_BLOCK: char = '\u{25A0}';

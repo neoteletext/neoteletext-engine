@@ -17,7 +17,9 @@ use neoteletext_core::types::{Instant, PageAddress, SubCode};
 use neoteletext_web::agent::InputMessage;
 use neoteletext_web::agent::{Config, Input, Output, Source, Storage, Subscription, UserAgent};
 use neoteletext_web::bytes::Writer;
-use neoteletext_web::channel::{ChannelFile, SETTINGS_FILE};
+#[cfg(feature = "std")]
+use neoteletext_web::channel::ChannelFile;
+use neoteletext_web::channel::SETTINGS_FILE;
 #[cfg(feature = "push")]
 use neoteletext_web::consts::{
     CLOSE_BROKE_PROTOCOL, CLOSE_RESTARTING, CLOSE_RETRY_LAST, CLOSE_STOP_FIRST, CLOSE_STOP_LAST, CLOSE_WRONG_VERSION,
@@ -1567,6 +1569,7 @@ fn contents_are_fetched_on_request() {
 }
 
 /// Whether a file is a part of a page's list.
+#[cfg(feature = "std")]
 const fn is_list(file: ChannelFile) -> bool {
     matches!(file, ChannelFile::SubPages { .. })
 }
@@ -1574,6 +1577,7 @@ const fn is_list(file: ChannelFile) -> bool {
 /// The parts of the list of a page of the standard's 8,190 sub-pages
 /// (REQ-NUM-020), each sub-page's file being `body`, as the writer lays them
 /// out (REQ-1888).
+#[cfg(feature = "std")]
 fn full_list(body: &[u8]) -> Vec<(String, Vec<u8>)> {
     use neoteletext_web::subpages::{SubPageFile, page_files};
     let codes = (1..neoteletext_core::limits::SUBCODE_ANY)
@@ -1587,6 +1591,7 @@ fn full_list(body: &[u8]) -> Vec<(String, Vec<u8>)> {
 }
 
 /// A part of `list`, as a host answers it.
+#[cfg(feature = "std")]
 fn list_reply(list: &[(String, Vec<u8>)], part: usize, validator: &str) -> Reply {
     let etag = format!("ETag: \"{validator}\"");
     Reply::Bytes(response("200 OK", &["Content-Type: text/plain", &etag], &list[part].1))
@@ -1597,6 +1602,7 @@ fn list_reply(list: &[(String, Vec<u8>)], part: usize, validator: &str) -> Reply
 /// sub-page passes the wire when it is asked for, from its own file and
 /// nothing else: keying a sub-code asks for one file. A page whose part 0 is
 /// missing keeps its page file.
+#[cfg(feature = "std")]
 #[test]
 fn a_page_of_8190_sub_pages_is_fetched_one_sub_page_at_a_time() {
     let mut harness = site_harness(Config::default());
@@ -1671,6 +1677,7 @@ fn a_page_of_8190_sub_pages_is_fetched_one_sub_page_at_a_time() {
 /// REQ-1888: with the 128 parts of 8,190 sub-pages, showing rows 4,020 to
 /// 4,042 asks for parts 62 and 63 alone, each with its own validators, and a
 /// missing later part says nothing of the page's folder.
+#[cfg(feature = "std")]
 #[test]
 fn showing_some_rows_asks_for_the_parts_they_fall_in_alone() {
     let mut harness = site_harness(Config::default());

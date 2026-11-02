@@ -21,8 +21,8 @@ mod contents;
 mod convert;
 mod fetch;
 mod font;
-#[cfg(feature = "keyboard")]
 mod html;
+#[cfg(feature = "keyboard")]
 mod keyboard;
 mod list;
 mod probe;
