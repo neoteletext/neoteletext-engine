@@ -88,9 +88,11 @@ while IFS='|' read -r target crates mode toolchain extra; do
         failures=$((failures + 1))
         continue
     fi
+    # This host's own target has no runner.
     runner_variable="CARGO_TARGET_$(tr 'a-z.-' 'A-Z__' <<<"$target")_RUNNER"
-    if [ "$mode" = test ] && ! command -v "${!runner_variable%% *}" >/dev/null; then
-        printf '%-32s %-6s %s\n' "$target" "$mode" "FAILED: ${!runner_variable%% *} is not installed; the host's package manager installs qemu-user"
+    runner="${!runner_variable:-}"
+    if [ "$mode" = test ] && [ -n "$runner" ] && ! command -v "${runner%% *}" >/dev/null; then
+        printf '%-32s %-6s %s\n' "$target" "$mode" "FAILED: ${runner%% *} is not installed; the host's package manager installs qemu-user"
         failures=$((failures + 1))
         continue
     fi
