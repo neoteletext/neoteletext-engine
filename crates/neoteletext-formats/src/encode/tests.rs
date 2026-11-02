@@ -172,7 +172,7 @@ fn page_enhancement_packet_names_the_second_set_the_designation_implies() {
     }
 }
 
-/// REQ-INP-019: `PF,0,0` alone needs no X/28/0, because a page without one
+/// REQ-INP-019, REQ-1640: `PF,0,0` alone needs no X/28/0, because a page without one
 /// is a basic Level 1 page with odd parity; an explicit `OL,28` line with
 /// designation code 0 always replaces the one `RE` and `PF` would give.
 #[test]
@@ -189,7 +189,7 @@ fn basic_function_alone_sends_no_page_enhancement_packet() {
     assert_eq!(data[0].fields.colours.unwrap().screen, 3);
 }
 
-/// REQ-INP-024 and Table 6: a page whose function is not basic gets
+/// REQ-INP-024, REQ-1640 and Table 6: a page whose function is not basic gets
 /// X/28/0 with its function and coding, bits 8 to 18 set to 11111111100
 /// read from bit 8, and triplets 2 to 13 reserved as 0.
 #[test]

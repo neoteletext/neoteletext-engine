@@ -10,7 +10,7 @@
 
 use super::*;
 
-/// REQ-INP-023: the rows of enhancement pages are coded by their page
+/// REQ-INP-023, REQ-1640: the rows of enhancement pages are coded by their page
 /// coding, X/28/3 and X/28/4 lines set the page function, page mFE is coded
 /// Hamming 8/4 without `PF`, and the magazine packets go out before the
 /// page mFF that carries them.
@@ -106,7 +106,7 @@ fn malformed_enhancement_lines_are_reported() {
     assert!(packets_of(page).iter().all(|packet| decode(packet).is_ok()));
 }
 
-/// REQ-INP-023: the page function a packet X/28 carries wins over a `PF`
+/// REQ-INP-023, REQ-1640: the page function a packet X/28 carries wins over a `PF`
 /// line, and X/28/0 over X/28/3, whatever order the lines come in, so a
 /// page read, written and read again keeps its function. The writer puts
 /// `PF` first; before this rule, a file with the `OL,28` line first read
