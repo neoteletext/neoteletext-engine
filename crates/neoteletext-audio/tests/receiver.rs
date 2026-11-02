@@ -982,3 +982,53 @@ fn a_block_in_a_refused_record_reaches_the_sink_from_its_good_record() {
     );
     assert!(receiver.store().entry(sound.handle).unwrap().complete());
 }
+
+// Verifies REQ-AUD-012 and REQ-AUD-021: a page's play waiting for its sound
+// does not start once the user has turned page sounds off.
+#[cfg(feature = "pcm16")]
+#[test]
+fn a_waiting_page_sound_does_not_start_after_the_setting_goes_off() {
+    let pcm = tone(100);
+    let sound = Sound::new(1, 1, Codec::Pcm16, 8_000, 100, &pcm).unwrap();
+    let mut arena = vec![0_u8; 4_096];
+    let mut receiver = Receiver::<8, 2>::new(&mut arena);
+    let mut sink = Recorder::new();
+    receiver.open_page(Some(0x100), &mut sink);
+    receiver.push_record(&sound.object_record().unwrap(), &mut sink);
+    receiver.push_record(&play(0, 1, &sound, Some(0x100)).record(), &mut sink);
+    receiver.set_page_sounds(false, &mut sink);
+    for record in sound.data_records() {
+        receiver.push_record(&record, &mut sink);
+    }
+    assert_eq!(sink.starts(), [], "the setting is off");
+    // Turned on again, the armed play starts: the page is still open.
+    receiver.set_page_sounds(true, &mut sink);
+    assert_eq!(sink.starts().len(), 1);
+}
+
+// Verifies REQ-AUD-012: a live page sound that stalls after its page was left
+// does not start again on another page, nor with page sounds off.
+#[cfg(feature = "pcm16")]
+#[test]
+fn a_left_pages_stalled_live_sound_does_not_restart() {
+    let sound = live_sound();
+    let mut arena = vec![0_u8; 32_768];
+    let mut sink = Recorder::new();
+    for by_opening_another in [true, false] {
+        let mut receiver = Receiver::<8, 2>::new(&mut arena);
+        sink.take();
+        receiver.open_page(Some(0x100), &mut sink);
+        push(&mut receiver, &broadcast(&sound, &[play(0, 1, &sound, Some(0x100))]), &mut sink);
+        push(&mut receiver, &live_blocks(&sound, 0, 2), &mut sink);
+        assert_eq!(sink.starts().len(), 1);
+        if by_opening_another {
+            receiver.open_page(Some(0x200), &mut sink);
+        } else {
+            receiver.set_page_sounds(false, &mut sink);
+        }
+        let later = neoteletext_audio::LIVE_STALL_MS + 1;
+        receiver.tick(later, &mut sink);
+        push(&mut receiver, &live_blocks(&sound, 2, 2), &mut sink);
+        assert_eq!(sink.starts().len(), 1, "no second start");
+    }
+}

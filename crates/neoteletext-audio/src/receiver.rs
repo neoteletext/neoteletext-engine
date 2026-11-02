@@ -261,17 +261,11 @@ impl<'a, const OBJECTS: usize, const SLOTS: usize> Receiver<'a, OBJECTS, SLOTS> 
         let left = self.opened;
         self.opened = page;
         for index in 0..CHANNELS {
-            let Some(channel) = self.channels.get_mut(usize::from(index)) else { continue };
+            let Some(channel) = self.channels.get(usize::from(index)) else { continue };
             if left.is_some() && channel.playing_page == left {
-                channel.playing_page = None;
-                sink.stop(index, crate::MIN_FADE_MS);
-                if let Some(progress) = self.progress.get_mut(usize::from(index)) {
-                    *progress = None;
-                }
+                self.stop_page_play(index, sink);
             }
-            if channel.waiting.is_some_and(|play| play.page.is_some()) {
-                channel.waiting = None;
-            }
+            self.drop_waiting_page_play(index);
         }
         if self.page_sounds {
             self.start_armed(sink);
@@ -288,17 +282,33 @@ impl<'a, const OBJECTS: usize, const SLOTS: usize> Receiver<'a, OBJECTS, SLOTS> 
             self.start_armed(sink);
         } else {
             for index in 0..CHANNELS {
-                if let Some(channel) = self.channels.get_mut(usize::from(index))
-                    && channel.playing_page.is_some()
-                {
-                    channel.playing_page = None;
-                    channel.waiting = None;
-                    sink.stop(index, crate::MIN_FADE_MS);
-                    if let Some(progress) = self.progress.get_mut(usize::from(index)) {
-                        *progress = None;
-                    }
+                if self.channels.get(usize::from(index)).is_some_and(|channel| channel.playing_page.is_some()) {
+                    self.stop_page_play(index, sink);
                 }
+                self.drop_waiting_page_play(index);
             }
+        }
+    }
+
+    /// Stops channel `index`'s page sound. `playing` goes too: left set, a
+    /// live sound that then stalls would be taken for one still playing and
+    /// wait to start again (REQ-AUD-012).
+    fn stop_page_play(&mut self, index: u8, sink: &mut dyn VoiceSink) {
+        if let Some(channel) = self.channels.get_mut(usize::from(index)) {
+            channel.playing_page = None;
+            channel.playing = None;
+        }
+        sink.stop(index, crate::MIN_FADE_MS);
+        self.end_progress(index);
+    }
+
+    /// Gives up channel `index`'s play waiting for its sound if it belongs to
+    /// a page: it is armed still, for when the page is shown (REQ-AUD-012).
+    fn drop_waiting_page_play(&mut self, index: u8) {
+        if let Some(channel) = self.channels.get_mut(usize::from(index))
+            && channel.waiting.is_some_and(|play| play.page.is_some())
+        {
+            channel.waiting = None;
         }
     }
 

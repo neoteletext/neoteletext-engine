@@ -62,7 +62,11 @@ impl<const OBJECTS: usize, const SLOTS: usize> Receiver<'_, OBJECTS, SLOTS> {
     pub(super) fn start_waiting(&mut self, sink: &mut dyn VoiceSink) {
         for index in 0..CHANNELS {
             if let Some(play) = self.channels.get(usize::from(index)).and_then(|channel| channel.waiting) {
-                self.try_start(index, play, sink);
+                if play.page.is_none() || (self.page_sounds && play.page == self.opened) {
+                    self.try_start(index, play, sink);
+                } else {
+                    self.drop_waiting_page_play(index);
+                }
             }
         }
     }
