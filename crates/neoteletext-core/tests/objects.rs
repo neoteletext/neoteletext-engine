@@ -15,11 +15,13 @@ use neoteletext_core::colour::colour_index;
 use neoteletext_core::config::{Config, PresentationLevel};
 use neoteletext_core::consts::{
     LINK_FUNCTION_GPOP, LINK_FUNCTION_POP, OBJECT_INVOCATIONS_PER_TYPE, OBJECTS_OPEN_AT_ONCE, PAGE_FUNCTION_DRCS,
+    PAGE_FUNCTION_POP,
 };
 use neoteletext_core::enhance::MAX_WALK_STEPS;
 use neoteletext_core::objects::{self, PageLink};
 use neoteletext_core::packet::{
-    ColourData, DefaultObject, MotPageEntry, ObjectKind, ObjectNumber, ObjectSource, Packet, TripletFunction,
+    ColourData, DefaultObject, MotPageEntry, ObjectKind, ObjectNumber, ObjectSource, Packet, PageFormat,
+    TripletFunction, encode,
 };
 use neoteletext_core::types::{FallbackFields, PageAddress, PresentationFields, SidePanelFields, SubCode};
 
@@ -708,4 +710,85 @@ fn missing_object_pages_leave_the_page() {
     let (grid, report) = build(&page_with_objects(&[(2, b"STILL HERE")], &local, &[]), L25);
     assert_eq!(text(&grid, 2).trim_end(), "STILL HERk");
     assert_eq!(report.unwrap().faults.absent_objects, 1);
+}
+
+/// Page 100: row 2 "HELLO", a link to the Public Object Page, and local data
+/// invoking its Passive object 0 at row 2, column 0.
+fn page_invoking_a_public_object() -> Vec<Packet> {
+    let local = [set_position(2, 0), invoke(ObjectSource::Public, ObjectKind::Passive, public_number(0, 0)), end()];
+    display_page(0, &[(2, b"HELLO")], vec![object_links(), x26(0, &local)])
+}
+
+/// The object page of [`page_invoking_a_public_object`]: "a" at column 0.
+fn page_of_a_passive_object() -> Vec<Packet> {
+    object_page(POP, 0, &[ObjectDef::new(ObjectKind::Passive, 0, vec![g0(0, b'a')])])
+}
+
+/// REQ-140: an object page may come before the link that names it. The grid
+/// is the one the standard order gives, in the same transmission.
+#[test]
+fn an_object_page_before_its_link_is_kept() {
+    let (page, objects) = (page_invoking_a_public_object(), page_of_a_passive_object());
+    let standard = [page.clone(), objects.clone()].concat();
+    assert_eq!(char_of(&build_25(&standard).cells[2][0]), 'a', "the order every other test uses");
+    let early = [objects, page].concat();
+    assert_eq!(char_of(&build_25(&early).cells[2][0]), 'a');
+}
+
+/// REQ-140: the Magazine Organization Table may come after the object page
+/// its default object is on, and either may come before the page.
+#[test]
+fn a_table_after_the_object_page_it_links_is_kept() {
+    let objects = object_page(POP, 0, &[ObjectDef::new(ObjectKind::Active, 0, vec![set_position(2, 0), g0(3, b'd')])]);
+    let mut pops = [None; 7];
+    let default = DefaultObject { kind: ObjectKind::Active, number: 0 };
+    pops[0] = Some(object_link(POP, FallbackFields::default(), [Some(default), None]));
+    let mot = Mot {
+        entries: vec![(0x00, MotPageEntry { global_objects: false, pop_link: 1 })],
+        pops,
+        level_25: true,
+        ..Mot::default()
+    };
+    let table = mot_packets(&mot);
+    let page = display_page(0, &[(2, b"HELLO")], vec![]);
+    let standard = [table.clone(), page.clone(), objects.clone()].concat();
+    assert_eq!(text(&build_25(&standard), 2).trim_end(), "HELdO");
+    let early = [objects, table, page].concat();
+    assert_eq!(text(&build_25(&early), 2).trim_end(), "HELdO");
+}
+
+/// REQ-140: packet X/28 may come after the rows of its page, and the packets
+/// before it are kept as received all the same.
+#[test]
+fn a_page_function_after_the_packets_it_describes_loses_none_of_them() {
+    let format = PageFormat { function: PAGE_FUNCTION_POP, coding: 0 };
+    let function = encode::page_enhancement(common::mag(1), 0, format, &PresentationFields::default());
+    let objects = [page_of_a_passive_object(), vec![function]].concat();
+    let page = page_invoking_a_public_object();
+    assert_eq!(char_of(&build_25(&[objects, page].concat()).cells[2][0]), 'a');
+}
+
+/// REQ-140 and REQ-ACQ-019: copies kept in case a link names them give way
+/// to one a link has named, however many there are.
+#[test]
+fn pages_no_link_names_do_not_displace_a_named_object_page() {
+    let (page, objects) = (page_invoking_a_public_object(), page_of_a_passive_object());
+    let mut packets = [page.clone(), objects].concat();
+    for mpp in 0x101..=0x190 {
+        packets.extend([common::header(mpp, 0, 0), common::row(1, b"A PAGE NO LINK NAMES")]);
+    }
+    packets.extend(page);
+    assert_eq!(char_of(&build_25(&packets).cells[2][0]), 'a');
+}
+
+/// REQ-140, REQ-ACQ-016: a page kept in case a link names it is no enhancement
+/// page: the store lists none, though it holds the packets.
+#[test]
+fn a_page_no_link_names_is_not_listed_as_an_enhancement_page() {
+    let config = Config { level: L25, ..Config::default() };
+    let packets = display_page(0, &[(1, b"A PAGE NO LINK NAMES")], vec![]);
+    Receiver::new().run(&packets, config, |decoder| {
+        assert!(decoder.enhancement_store().packets_used() > 0, "kept as received");
+        assert_eq!(decoder.enhancement_store().sub_pages().count(), 0);
+    });
 }

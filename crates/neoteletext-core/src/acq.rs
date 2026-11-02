@@ -100,6 +100,9 @@ struct Route {
     main: bool,
     /// In the enhancement store, as received (decision E.56).
     enhancement: bool,
+    /// In the enhancement store until something says it is not wanted there,
+    /// as it may yet be named (REQ-FSM-008).
+    provisional: bool,
 }
 
 impl<'a> Decoder<'a> {

@@ -58,9 +58,9 @@ impl Decoder<'_> {
 
     fn start(&mut self, magazine_index: usize, key: PageKey, erase: bool, now: Instant, events: &mut dyn FnMut(Event)) {
         let route = self.pending;
-        if route.enhancement {
+        if route.enhancement || route.provisional {
             let control = self.receiving_control.get(magazine_index).copied().unwrap_or_default();
-            self.start_enhancement(magazine_index, key, control, now);
+            self.start_enhancement(magazine_index, key, control, route.provisional, now);
         }
         if !route.main {
             return;
@@ -119,6 +119,7 @@ impl Decoder<'_> {
             let started = self.start_generation.get(magazine_index).copied().flatten();
             if let (Some(key), Some(generation)) = (self.enhancement.key(entry), self.enhancement.generation(entry))
                 && started != Some(generation)
+                && !self.enhancement.is_provisional(entry)
             {
                 events(Event::EnhancementPageChanged(key));
             }

@@ -65,6 +65,10 @@ pub struct EnhancementSubPage {
     subcode: SubCode,
     control: ControlBits,
     format: Option<PageFormat>,
+    /// Kept in case a link names it: nothing yet says that this is an
+    /// enhancement page (REQ-FSM-008, DEC-2119). It gives way to
+    /// every other sub-page, and displaces only its own kind.
+    provisional: bool,
     received: u64,
     generation: u32,
     last_received: Instant,
@@ -79,6 +83,7 @@ impl EnhancementSubPage {
         subcode: SubCode::new(0),
         control: ControlBits(0),
         format: None,
+        provisional: false,
         received: 0,
         generation: 0,
         last_received: Instant(0),
@@ -236,16 +241,47 @@ impl<'a> EnhancementStore<'a> {
         lookup(self.sub_pages, self.packets, key)
     }
 
-    /// Every stored sub-page, in directory order.
+    /// Every stored enhancement sub-page, in directory order: not one held
+    /// only in case a link names it.
     pub fn sub_pages(&self) -> impl Iterator<Item = EnhancementPage<'_>> {
         let packets = &*self.packets;
-        self.sub_pages.iter().filter(|entry| entry.used).map(move |entry| EnhancementPage { entry, packets })
+        self.sub_pages
+            .iter()
+            .filter(|entry| entry.used && !entry.provisional)
+            .map(move |entry| EnhancementPage { entry, packets })
     }
 
-    /// True when any sub-page of an address is stored.
+    /// True when a sub-page of an address is stored as an enhancement page,
+    /// and not only provisionally.
     #[must_use]
     pub fn contains_address(&self, address: PageAddress) -> bool {
-        self.sub_pages.iter().any(|entry| entry.used && entry.key.address == address)
+        self.sub_pages.iter().any(|entry| entry.used && !entry.provisional && entry.key.address == address)
+    }
+
+    /// Whether the entry at `index` holds a sub-page.
+    pub(super) fn is_used(&self, index: usize) -> bool {
+        self.entry(index).is_some()
+    }
+
+    /// Whether the entry at `index` is held only in case a link names it.
+    pub(super) fn is_provisional(&self, index: usize) -> bool {
+        self.entry(index).is_some_and(|entry| entry.provisional)
+    }
+
+    /// Makes the entry at `index` an enhancement page: its page function
+    /// says so.
+    pub(super) fn confirm(&mut self, index: usize) {
+        if let Some(entry) = self.sub_pages.get_mut(index) {
+            entry.provisional = false;
+        }
+    }
+
+    /// Makes every stored sub-page of an address an enhancement page: a link
+    /// has named it.
+    pub(super) fn confirm_address(&mut self, address: PageAddress) {
+        for entry in self.sub_pages.iter_mut().filter(|entry| entry.used && entry.key.address == address) {
+            entry.provisional = false;
+        }
     }
 
     /// The number of packets in use.
@@ -280,13 +316,20 @@ impl<'a> EnhancementStore<'a> {
         entry.received = 0;
     }
 
-    /// The least recently received entry that is not in `busy`.
-    fn victim(&self, busy: &[Option<usize>]) -> Option<usize> {
+    /// The entry to evict: the least recently received of those held
+    /// provisionally, then of those not being received (`busy`). A
+    /// provisional sub-page making room takes only another not being
+    /// received; one that is not takes a provisional one in reception too,
+    /// which [`Decoder`](super::Decoder) then stops receiving.
+    fn victim(&self, busy: &[Option<usize>], for_provisional: bool) -> Option<usize> {
         self.sub_pages
             .iter()
             .enumerate()
-            .filter(|(index, entry)| entry.used && !busy.contains(&Some(*index)))
-            .min_by_key(|(_, entry)| entry.last_received)
+            .filter(|(index, entry)| {
+                let free_to_go = !busy.contains(&Some(*index)) || (entry.provisional && !for_provisional);
+                entry.used && free_to_go && (entry.provisional || !for_provisional)
+            })
+            .min_by_key(|(_, entry)| (!entry.provisional, entry.last_received))
             .map(|(index, _)| index)
     }
 
@@ -299,14 +342,16 @@ impl<'a> EnhancementStore<'a> {
     }
 
     /// Starts a reception of a sub-page (REQ-ACQ-021): finds or allocates
-    /// its entry, evicting the least recently received sub-page that is not
-    /// being received when the directory is full, and erases its packets
-    /// when the header has C4 set. A change of S2 changes the generation.
+    /// its entry, evicting a sub-page that is not being received when the
+    /// directory is full ([`Self::victim`]), and erases its packets when the
+    /// header has C4 set. A change of S2 changes the generation. A reception
+    /// that is not `provisional` confirms an entry that was.
     pub(super) fn start(
         &mut self,
         address: PageAddress,
         subcode: SubCode,
         control: ControlBits,
+        provisional: bool,
         now: Instant,
         busy: &[Option<usize>],
     ) -> Option<usize> {
@@ -318,12 +363,12 @@ impl<'a> EnhancementStore<'a> {
             let index = if let Some(index) = self.sub_pages.iter().position(|entry| !entry.used) {
                 index
             } else {
-                let victim = self.victim(busy)?;
+                let victim = self.victim(busy, provisional)?;
                 self.evict(victim);
                 victim
             };
             if let Some(entry) = self.sub_pages.get_mut(index) {
-                *entry = EnhancementSubPage { used: true, key, subcode, ..EnhancementSubPage::EMPTY };
+                *entry = EnhancementSubPage { used: true, key, subcode, provisional, ..EnhancementSubPage::EMPTY };
             }
             index
         };
@@ -335,6 +380,7 @@ impl<'a> EnhancementStore<'a> {
             }
         }
         let entry = self.sub_pages.get_mut(index)?;
+        entry.provisional &= provisional;
         let update = |subcode: SubCode| enhancement_update(subcode.value());
         if update(entry.subcode) != update(subcode) {
             entry.generation = entry.generation.wrapping_add(1);
@@ -345,9 +391,9 @@ impl<'a> EnhancementStore<'a> {
         Some(index)
     }
 
-    /// A free pool slot, evicting least recently received sub-pages other
-    /// than `busy` ones until one is free.
-    fn free_slot(&mut self, busy: &[Option<usize>]) -> Option<usize> {
+    /// A free pool slot, evicting sub-pages other than `busy` ones
+    /// ([`Self::victim`]) until one is free.
+    fn free_slot(&mut self, busy: &[Option<usize>], for_provisional: bool) -> Option<usize> {
         loop {
             let length = self.packets.len();
             let found = (0..length)
@@ -357,7 +403,7 @@ impl<'a> EnhancementStore<'a> {
                 self.next_free = slot.saturating_add(1);
                 return Some(slot);
             }
-            let victim = self.victim(busy)?;
+            let victim = self.victim(busy, for_provisional)?;
             self.evict(victim);
         }
     }
@@ -375,7 +421,7 @@ impl<'a> EnhancementStore<'a> {
         let existing = self.sub_pages.get(index).and_then(|entry| entry.slots.get(packet)).copied();
         let Some(existing) = existing else { return Stored::Dropped };
         let (slot, changed) = if existing == FREE {
-            let Some(slot) = self.free_slot(busy) else { return Stored::Dropped };
+            let Some(slot) = self.free_slot(busy, self.is_provisional(index)) else { return Stored::Dropped };
             (slot, true)
         } else {
             let same = self.packets.get(usize::from(existing)).is_some_and(|stored| stored.bytes == *bytes);
@@ -413,12 +459,17 @@ impl<'a> EnhancementStore<'a> {
     }
 }
 
+/// A sub-page held provisionally is no enhancement page yet, so nothing
+/// reaches it until a link or its page function says it is one.
 fn lookup<'s>(
     sub_pages: &'s [EnhancementSubPage],
     packets: &'s [EnhancementPacket],
     key: EnhancementKey,
 ) -> Option<EnhancementPage<'s>> {
-    sub_pages.iter().find(|entry| entry.used && entry.key == key).map(|entry| EnhancementPage { entry, packets })
+    sub_pages
+        .iter()
+        .find(|entry| entry.used && !entry.provisional && entry.key == key)
+        .map(|entry| EnhancementPage { entry, packets })
 }
 
 /// The read-only lookup that the presentation layer uses to reach

@@ -16,8 +16,9 @@ use crate::types::{ControlBits, Instant, PageAddress};
 impl Decoder<'_> {
     /// Acts on the page function of a page being received: a page whose
     /// X/28/0 or X/28/3 function is not "basic Level 1 page" is an
-    /// enhancement page, stored as received from this packet on
-    /// (REQ-ACQ-016, decision E.56).
+    /// enhancement page, stored as received (REQ-ACQ-016, decision E.56),
+    /// with the packets before this one where it was kept provisionally
+    /// (REQ-FSM-008), and from this packet on where it was not.
     pub(super) fn page_format(
         &mut self,
         index: usize,
@@ -30,7 +31,13 @@ impl Decoder<'_> {
         }
         let receiving = self.receiving_enhancement.get(index).copied().flatten();
         let entry = match receiving {
-            Some(entry) => Some(entry),
+            Some(entry) => {
+                if self.enhancement.is_provisional(entry) {
+                    self.enhancement.confirm(entry);
+                    self.leave_page_store(index, now, events);
+                }
+                Some(entry)
+            }
             None => self.switch_to_enhancement(index, now, events),
         };
         if let Some(entry) = entry {
@@ -38,21 +45,26 @@ impl Decoder<'_> {
         }
     }
 
-    /// Moves the reception in magazine `index` to the enhancement store. A
-    /// copy in the page store holding only this reception is released; an
-    /// older one keeps its content and ends its reception here.
+    /// Moves the reception in magazine `index` to the enhancement store.
     fn switch_to_enhancement(&mut self, index: usize, now: Instant, events: &mut dyn FnMut(Event)) -> Option<usize> {
         if !self.enhancement.is_enabled() {
             return None;
         }
         let Some(MagazineState::Receiving(key)) = self.magazines.get(index).copied() else { return None };
         let control = self.receiving_control.get(index).copied().unwrap_or_default();
-        let entry = self.start_enhancement(index, key, control, now)?;
+        let entry = self.start_enhancement(index, key, control, false, now)?;
+        self.leave_page_store(index, now, events);
+        Some(entry)
+    }
+
+    /// Ends the reception in magazine `index` in the page store: a copy
+    /// holding only this reception is released; an older one keeps its
+    /// content.
+    fn leave_page_store(&mut self, index: usize, now: Instant, events: &mut dyn FnMut(Event)) {
         if let Some(slot) = self.receiving_slot.get_mut(index).and_then(Option::take) {
             let fresh = self.store.slot(slot).is_some_and(|page| page.receptions <= 1);
             self.page_event(slot, if fresh { PageEvent::Evicted } else { PageEvent::ReceptionEnded }, now, events);
         }
-        Some(entry)
     }
 
     /// Starts the reception of an enhancement sub-page in magazine `index`.
@@ -63,13 +75,20 @@ impl Decoder<'_> {
         index: usize,
         key: PageKey,
         control: ControlBits,
+        provisional: bool,
         now: Instant,
     ) -> Option<usize> {
         let before = self.enhancement.get(EnhancementKey::new(key.address, key.subcode)).map(|page| page.generation());
         let busy = self.receiving_enhancement;
-        let entry = self.enhancement.start(key.address, key.subcode, control, now, &busy)?;
-        if let Some(slot) = self.receiving_enhancement.get_mut(index) {
-            *slot = Some(entry);
+        let entry = self.enhancement.start(key.address, key.subcode, control, provisional, now, &busy)?;
+        // The entry may have been a provisional sub-page another magazine
+        // was receiving: that reception has given way.
+        for (magazine, slot) in self.receiving_enhancement.iter_mut().enumerate() {
+            if magazine == index {
+                *slot = Some(entry);
+            } else if *slot == Some(entry) {
+                *slot = None;
+            }
         }
         if let Some(generation) = self.start_generation.get_mut(index) {
             *generation = before;
@@ -86,6 +105,7 @@ impl Decoder<'_> {
             self.named.remove(0);
         }
         self.named.push(address);
+        self.enhancement.confirm_address(address);
     }
 
     /// Adds the pages that a stored packet X/19, X/20, X/22 or X/23 of a
@@ -114,13 +134,25 @@ impl Decoder<'_> {
     /// page: it is read only as the function it is reserved for, so it never
     /// goes to the page store (Annex A.10; REQ-NUM-008, REQ-NUM-010). The
     /// MOT and the MIP go to the enhancement store, as the tables they are.
+    ///
+    /// At Levels 2.5 and 3.5 a page nothing has named yet may still turn out
+    /// to be an enhancement page, once a link or its own X/28 arrives
+    /// (REQ-FSM-008). The bytes it needs cannot be had from the page store,
+    /// whose parity merge has changed them, so every hexadecimal page, and
+    /// any page with no stored copy, is kept as received too, provisionally
+    /// (DEC-2119).
     pub(super) fn route(&self, address: PageAddress) -> Route {
         let table = address.page.0 == PAGE_MOT || address.page.0 == PAGE_MIP;
-        let enhancement = self.enhancement.is_enabled()
+        let enabled = self.enhancement.is_enabled();
+        let enhancement = enabled
             && (table || self.enhancement.contains_address(address) || self.named.as_slice().contains(&address));
-        let hexadecimal = self.config.store_hexadecimal_pages || (self.config.level.is_enhanced() && !enhancement);
+        let enhanced_level = self.config.level.is_enhanced();
+        let hexadecimal = self.config.store_hexadecimal_pages || (enhanced_level && !enhancement);
         let reserved = is_reserved_page(address.magazine.number(), address.page.0);
-        Route { main: !reserved && (address.page.is_decimal() || hexadecimal), enhancement }
+        let decimal = address.page.is_decimal();
+        let unseen = !decimal || !self.store.contains(address);
+        let provisional = enabled && enhanced_level && !enhancement && !reserved && unseen;
+        Route { main: !reserved && (decimal || hexadecimal), enhancement, provisional }
     }
 
     /// Stores a packet of an enhancement sub-page as received (decision
@@ -135,7 +167,16 @@ impl Decoder<'_> {
                     self.name_from_table(packet.saturating_add(1) as u8, bytes);
                 }
             }
+            // A provisional page gives way: nothing was asked of it.
+            Stored::Dropped if self.enhancement.is_provisional(entry) => {}
             Stored::Dropped => self.stats.enhancement_dropped = self.stats.enhancement_dropped.saturating_add(1),
+        }
+        // Room may have been made by evicting a provisional sub-page in
+        // reception.
+        for slot in &mut self.receiving_enhancement {
+            if slot.is_some_and(|entry| !self.enhancement.is_used(entry)) {
+                *slot = None;
+            }
         }
     }
 }
