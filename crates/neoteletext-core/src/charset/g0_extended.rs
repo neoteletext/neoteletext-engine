@@ -1,5 +1,5 @@
-//! neoteletext's own G0 sets (decisions E.78 and E.81, REQ-CHR-013;
-//! docs/spec/design/languages.md section 8).
+//! neoteletext's own G0 sets (decisions E.78 and E.81, REQ-CHR-013: rdm
+//! DEC-602, DEC-605 and REQ-82).
 
 use super::code_table::CodeTable;
 

@@ -59,8 +59,8 @@ const SWEDISH_FINNISH_HUNGARIAN: NationalSubset =
 const TURKISH: NationalSubset =
     ['₺', 'ğ', 'İ', 'Ş', 'Ö', 'Ç', 'Ü', 'Ğ', 'ı', 'ş', 'ö', 'ç', 'ü'];
 
-// neoteletext's own options (decision E.78, docs/spec/design/languages.md
-// section 8.1): capitals at 4/0 and 5/B to 5/F, small letters at 6/0, 7/B
+// neoteletext's own options (decision E.78 and REQ-CHR-013: rdm DEC-602
+// and REQ-82): capitals at 4/0 and 5/B to 5/F, small letters at 6/0, 7/B
 // to 7/E and 2/3, so a capital and its small letter differ only in bit 6
 // wherever the positions allow; 2/4 holds a further letter or keeps ¤.
 const HAUSA_FULA: NationalSubset =

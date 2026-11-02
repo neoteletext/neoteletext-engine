@@ -1,5 +1,5 @@
 # How each script is drawn from Noto into the 12 x 20 cell (decision E.77,
-# docs/spec/design/languages.md section 5). The values were measured in the
+# rdm DEC-601, which gives the reasons). The values were measured in the
 # prototypes of October 2026.
 #
 # [script NAME]       a script; NAME matches the start of its characters'

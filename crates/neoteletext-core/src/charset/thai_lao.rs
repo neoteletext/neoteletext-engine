@@ -4,8 +4,9 @@ use super::code_table::CodeTable;
 use super::g2::LATIN_G2;
 
 /// Thai G0: the Philips SAA5246AP/S Thai page, Table 23 columns 2 to 7
-/// (`docs/spec/design/languages.md` section 7.3). 4/0 (ๅ), 7/9 (ใ),
-/// 7/A (ไ) and 7/C (็) are readings still to be confirmed (section 7.8).
+/// (REQ-CHR-016, decision E.80: rdm REQ-85 and DEC-604). 4/0 (ๅ), 7/9 (ใ),
+/// 7/A (ไ) and 7/C (็) are readings still to be confirmed (DEC-604,
+/// TODO-1170).
 pub(super) const THAI_G0: CodeTable = [
     '\u{0020}', '\u{0021}', '\u{0022}', '\u{0023}', '\u{0024}', '\u{0025}', '\u{0026}', '\u{0027}', '\u{0028}', '\u{0029}', '\u{002A}', '\u{002B}', '\u{002C}', '\u{002D}', '\u{002E}', '\u{002F}', //
     '\u{0030}', '\u{0031}', '\u{0032}', '\u{0033}', '\u{0034}', '\u{0035}', '\u{0036}', '\u{0037}', '\u{0038}', '\u{0039}', '\u{003A}', '\u{003B}', '\u{003C}', '\u{003D}', '\u{003E}', '\u{003F}', //

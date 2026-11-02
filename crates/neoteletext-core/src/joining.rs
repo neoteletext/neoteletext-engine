@@ -1,5 +1,5 @@
 //! Joining the letters of the Arabic-script sets of group 1001 (REQ-CHR-015,
-//! decision E.79, `docs/spec/design/languages.md` section 6).
+//! decision E.79: rdm REQ-84 and DEC-603).
 //!
 //! The sets hold plain letters, one code a letter. After the page's grid is
 //! composed at its presentation level, each row is passed once, right to

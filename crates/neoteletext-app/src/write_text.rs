@@ -1,5 +1,5 @@
 //! Writing a page from text in one of neoteletext's own character sets
-//! (REQ-CLI-010, decision E.82, `docs/spec/design/languages.md` section 9).
+//! (REQ-CLI-010, decision E.82: rdm REQ-95 and DEC-606).
 //!
 //! Each character is written, in order of preference, as:
 //! 1. a code of the current G0 set in the row;
@@ -18,7 +18,7 @@
 //! (REQ-CHR-015).
 //!
 //! Thai and Lao follow the Philips SAA5246AP/S scheme (decision E.80,
-//! `docs/spec/design/languages.md` section 7.5): each line takes a row of
+//! rdm DEC-604): each line takes a row of
 //! letters, with the marks above them on the row before and the lower
 //! vowels on the row after, each in its letter's column; a line's lower
 //! vowels share a row with the next line's upper marks unless a column

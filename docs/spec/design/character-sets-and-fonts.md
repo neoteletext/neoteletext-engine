@@ -175,4 +175,4 @@ EN 300 706 has sets for the Latin, Cyrillic, Greek, Arabic and Hebrew scripts. n
 - **Thai** follows Philips' Thai decoder chip, the SAA5246AP/S, with marks on rows of their own.
 - **Fonts** are 12 × 20, converted from Noto.
 
-`design/languages.md` is the design, with the reasons and the sources. Decisions E.77 to E.82 record the choices, and REQ-CHR-012 to REQ-CHR-016 the behaviour.
+Decisions E.77 to E.82 (rdm DEC-601 to DEC-606) hold the design, with its reasons and its sources, and REQ-CHR-012 to REQ-CHR-016 (rdm REQ-81 to REQ-85) the behaviour.

@@ -372,7 +372,7 @@ In privilege-separated mode (REQ-SEC-018), the dashed line between L7 and L0 is 
 
 ### 4.6 Languages beyond the standard's sets
 
-Decisions E.77 to E.82 extend the receiver to about 55 more languages without changing how a page is sent (`docs/spec/design/languages.md` is the design). Every row of every new set is still one byte per cell, read as EN 300 706 defines, so the flows above do not change. This is where each part lives:
+Decisions E.77 to E.82 extend the receiver to about 55 more languages without changing how a page is sent (rdm decisions DEC-601 to DEC-606 hold the design, its reasons and its sources). Every row of every new set is still one byte per cell, read as EN 300 706 defines, so the flows above do not change. This is where each part lives:
 
 | Part | Layer and module | Notes |
 |---|---|---|

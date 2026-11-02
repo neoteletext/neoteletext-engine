@@ -40,7 +40,6 @@ The design documents are:
 | `design/saa5050.md` | The Philips SAA5050 character generator, the rendering baseline |
 | `design/saa5246a.md` | The Philips SAA5246A decoder, the receiver baseline |
 | `design/character-sets-and-fonts.md` | How teletext chooses characters and how neoteletext turns them into glyphs |
-| `design/languages.md` | Languages beyond the standard's character sets: the sets, designations, Thai and Lao, joining, fonts and the page writer |
 | `design/capabilities.md` | The decoder's optional capabilities, switched at compile time, and the `modern-classic` profile |
 | `design/font-security.md` | The security analysis of the font strategy (decision E.72) |
 | `design/porting.md` | What a port supplies, and nothing else |

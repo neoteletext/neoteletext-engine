@@ -6,7 +6,7 @@
 into the core's character-set module, the file named by `TARGET` below:
 the eight code tables, the joining type of every letter and the code point
 drawn for each joined form (decision E.79, REQ-CHR-013 and REQ-CHR-015,
-`docs/spec/design/languages.md` sections 6 and 8.3).
+rdm DEC-603, REQ-82 and REQ-84).
 
     uv run scripts/arabic-sets.py
 
@@ -131,8 +131,9 @@ def generated():
             kind = shaping.get(letter, "U")
             assert kind in "DRUC", (name, letter, kind)
             types[letter] = kind
-        out.append(f"/// Group 1001 option {option}: `{name}` (REQ-CHR-013, `docs/spec/design/languages.md` section 8.3).")
-        out.append(f"const {name.upper()}_G0: CodeTable = [")
+        out.append(f"/// Group 1001 option {option}: `{name}` (REQ-CHR-013, rdm REQ-82).")
+        # The module that uses the tables is the parent, `charset`.
+        out.append(f"pub(super) const {name.upper()}_G0: CodeTable = [")
         for row in range(CODES // 16):
             out.append("    " + ", ".join(literal(c) for c in cells[row * 16 : (row + 1) * 16]) + ", //")
         out.append("];")

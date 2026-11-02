@@ -102,7 +102,25 @@ check_document_names() {
     echo "ok: the documents name $entry_file and $link_scheme"
 }
 
+# The language design document was carried into rdm and deleted on
+# 3 November 2026 (decisions DEC-601 to DEC-606, REQ-2160); a reference to it
+# sends a reader nowhere. The pattern cannot match itself, as a bracket
+# stands where the name's last letter would be. The dated record of the
+# reorganisation of 24 October 2026 keeps its mentions as history.
+readonly LANGUAGE_DESIGN_NAME='(^|[^-A-Za-z0-9_])language[s]\.md'
+readonly LANGUAGE_DESIGN_HISTORY='docs/spec/design/reorganisation-2026-10-24.md'
+check_language_design_deleted() {
+    local found status=0
+    found="$(git grep --cached -nIE "$LANGUAGE_DESIGN_NAME" -- . ":(exclude,literal)$LANGUAGE_DESIGN_HISTORY")" || status=$?
+    [[ "$status" -le 1 ]] || { echo "git grep failed looking for the deleted language design" >&2; return 1; }
+    [[ -z "$found" ]] || { printf 'these name the deleted language design; cite the rdm record that holds it (DEC-601 to DEC-606, REQ-81 to REQ-85, REQ-95, REQ-2160):\n%s\n' "$found" >&2; return 1; }
+    echo "ok: nothing names the deleted language design"
+}
+
 commit_steps() {
+    step "nothing names the deleted language design (DEC-602)"
+    check_language_design_deleted
+
     step "the wire vectors are neoteletext-common's table (DEC-1759 lesson 3)"
     cmp "$common/wire-vectors.tsv" crates/neoteletext-web/src/wire_vectors.tsv
 

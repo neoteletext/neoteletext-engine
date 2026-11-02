@@ -7,7 +7,7 @@
 | File | What it is |
 |---|---|
 | `convert.py` | The converter. It shapes every character with HarfBuzz and draws it with FreeType in monochrome at the weight, hinting and metrics of its script, then places it in the 12 × 20 cell. Its dependencies are pinned in its inline metadata. |
-| `settings.txt` | Each script's sources, weight, hinting and metrics, and each output font's characters. The values were measured in the prototypes of October 2026 (`docs/spec/design/languages.md` section 5). |
+| `settings.txt` | Each script's sources, weight, hinting and metrics, and each output font's characters. The values were measured in the prototypes of October 2026 (decision E.77, rdm DEC-601, which gives the reasons for them). |
 | `sources.txt` | The Noto source fonts: their addresses in the google/fonts repository, pinned to commit `47d54ca1ebb14fd864695f1d39dc734f39017c33` (16 October 2026), and their SHA-256. The converter downloads them to a cache outside the repository and refuses any file whose checksum differs. The sources are never committed. |
 | `*.bdf` | The converted fonts, 12 × 20, in the form of REQ-FNT-002: `noto-teletext.bdf`, the standard's 24 sets and neoteletext's Latin, Cyrillic, Georgian, Armenian and Tifinagh sets; `noto-teletext-composed.bdf`, every letter a Latin base and a diacritical mark compose to; `noto-teletext-arabic.bdf`, the Arabic-script sets and their joined forms; `noto-teletext-thai.bdf`, Thai and Lao. |
 | `fonts.txt` | The folder's index as a font library (REQ-FNT-004), with each font's conformance (REQ-FNT-011). |

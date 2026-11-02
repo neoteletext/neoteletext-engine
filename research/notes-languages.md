@@ -1,6 +1,6 @@
 # Teletext beyond the standard's character sets: sources and findings
 
-Research of 18 October 2026, behind decisions E.77 to E.82 and `docs/spec/design/languages.md`. Every source is in `~/devel/teletext-reference/`, whose folders' `SOURCES.json` give each file's address, size, checksum and licence. Page numbers are PDF pages unless marked "printed". "Inferred" marks a reading the source does not state in words.
+Research of 18 October 2026, behind decisions E.77 to E.82 (rdm DEC-601 to DEC-606), which since 3 November 2026 also hold the language design, carried into rdm from its own document. Every source is in `~/devel/teletext-reference/`, whose folders' `SOURCES.json` give each file's address, size, checksum and licence. Page numbers are PDF pages unless marked "printed". "Inferred" marks a reading the source does not state in words.
 
 ---------------------------------------------------------------------------------------------------
 
@@ -73,7 +73,7 @@ File: Philips, *Integrated VIP and Teletext (IVT1.0), SAA5246A*, product specifi
   - upper vowel signs, tone marks and their combinations are drawn at the bottom of the cell;
   - the lower vowel signs ุ ู are drawn at the top.
 - **The 32 combination glyphs** are in columns 8 and 9: ์ ๊ ๋ ํ, each upper vowel sign combined with each tone mark, and the tone marks combined with ํ. Codes 8/x and 9/x come from the chip's "7 bits with parity checking or 8-bit mode" setting (register text, p. 23), so they need 8-bit data. Inferred: they cannot be reached in 7-bit transmission.
-- **The transcription** of the Thai G0 and G2 sets is in `docs/spec/design/languages.md` sections 7.3 and 7.4. Seven glyphs are uncertain.
+- **The transcription** of the Thai G0 and G2 sets is the core's `crates/neoteletext-core/src/charset/thai_lao.rs`, shown as the protocol document's code tables (rdm DOC-2028); rdm REQ-85 and DEC-604 hold the rules. Seven glyphs are uncertain (DEC-604, TODO-1170).
 - **Other variants** in this specification: AP/E (West European), AP/H (East European), AP/T (West European and Turkish), AP/J (Yugoslav), AP/K (French and Arabic), AP/L (Arabic and Hebrew), AP/I (Greek and Turkish). AP/S is the only one with a script outside EN 300 706.
 
 ### 2.2 ARMTEXT and the Chulalongkorn theses
@@ -126,7 +126,7 @@ Files: `captions/china/teletext/`.
 
 ## 5. What the design takes from these findings
 
-Recorded in `docs/spec/design/languages.md` and decisions E.78 to E.81:
+Recorded in decisions E.78 to E.81 (rdm DEC-602 to DEC-605):
 - **Thai** follows the SAA5246AP/S. WST90's Thai set and Format B are the recorded alternative.
 - **Lao** keeps WST90 Figure 33's codes with the chip's layout.
 - **Arabic-script letters are joined by the receiver,** as EBU Tech 3232 proposed, and digits keep the codes 3/0 to 3/9.
