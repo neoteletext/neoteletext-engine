@@ -12,7 +12,7 @@ use neoteletext_web::agent::{
     Config, Event, Failure, Input, InputMessage, Output, PageBytes, PushStop, Source as Came, Storage, UserAgent,
 };
 use neoteletext_web::channel::is_channel_address;
-use neoteletext_web::consts::PUSH_SUBPROTOCOL;
+use neoteletext_web::consts::{INVALID_PACKET_REPORT_SECONDS, PUSH_SUBPROTOCOL};
 use neoteletext_web::descriptor::Descriptor;
 use neoteletext_web::http::MediaType;
 use neoteletext_web::port::{ConnectionId, Pump};
@@ -27,6 +27,11 @@ use std::time::Instant as StdInstant;
 /// Cookie slots and bytes of the jar: REQ-WEB-006's default total.
 const COOKIE_SLOTS: usize = 100;
 const COOKIE_BYTES: usize = 32 * 1024;
+
+/// Microseconds in a second.
+const MICROSECONDS_PER_SECOND: u64 = 1_000_000;
+/// The window of a report of invalid packets, in the clock's microseconds.
+const INVALID_WINDOW_US: u64 = INVALID_PACKET_REPORT_SECONDS * MICROSECONDS_PER_SECOND;
 
 /// The agent the loop runs.
 type Agent<'a> = UserAgent<'a, SystemRandom, COOKIE_SLOTS, COOKIE_BYTES>;
@@ -50,16 +55,14 @@ pub(super) fn run_web(
     // The push connection opened (true) or was lost (false), for the
     // decoder to know when keys may go (area INT).
     let push_state: Cell<Option<bool>> = Cell::new(None);
-    // When the push connection's invalid packets were last reported
-    // (REQ-1462): at most once in INVALID_PACKET_REPORT_SECONDS.
-    let invalid_reported: Cell<Option<StdInstant>> = Cell::new(None);
+    let invalid = Cell::new(InvalidReport::default());
     let mut next_tick: Option<Instant> = Some(Instant(0));
     let sink = |output: Output<'_>, pump: &mut Pump<StdTransport>, next_tick: &mut Option<Instant>| {
         if let Some(net) = output.net() {
             pump.execute(net);
             return;
         }
-        if forward(output, next_tick, &service_ready, &push_state, &invalid_reported).is_err() {
+        if forward(output, next_tick, &service_ready, &push_state, &invalid, clock(start)).is_err() {
             broken.set(true);
         }
     };
@@ -96,9 +99,54 @@ pub(super) fn run_web(
             next_tick = None;
             agent.handle(clock(start), Input::Tick, &mut |output| sink(output, &mut pump, &mut next_tick));
         }
-        if !busy {
-            wakes.wait(clock(start), next_tick);
+        let mut report = invalid.get();
+        let line = report.due(clock(start));
+        invalid.set(report);
+        if line.is_some_and(|line| send(&Frame::Notice(Notice::Message(line))).is_err()) {
+            break;
         }
+        if !busy {
+            let window_end = invalid.get().window_end;
+            wakes.wait(clock(start), [next_tick, window_end].into_iter().flatten().min());
+        }
+    }
+}
+
+/// The push connection's invalid packets, for the warning line of REQ-1462
+/// item 4: a rise opens a window of [`INVALID_PACKET_REPORT_SECONDS`], and at
+/// its end one line gives what it gathered and the total. So at most one line
+/// comes in any window, and none in a quiet one.
+#[derive(Clone, Copy, Debug, Default)]
+struct InvalidReport {
+    total: u64,
+    /// The total the last line gave.
+    reported: u64,
+    /// The end of the window the count rose in, while one is open.
+    window_end: Option<Instant>,
+}
+
+impl InvalidReport {
+    /// The count rose to `total`, at `now`. A new connection counts from 0.
+    fn rose(&mut self, total: u64, now: Instant) {
+        if total < self.total {
+            self.reported = 0;
+        }
+        self.total = total;
+        self.window_end.get_or_insert(Instant(now.0.saturating_add(INVALID_WINDOW_US)));
+    }
+
+    /// The warning line, when the window has ended at `now`.
+    fn due(&mut self, now: Instant) -> Option<String> {
+        self.window_end.filter(|end| now >= *end)?;
+        self.window_end = None;
+        let gathered = self.total.saturating_sub(self.reported);
+        self.reported = self.total;
+        (gathered > 0).then(|| {
+            format!(
+                "{gathered} invalid packets discarded in the last {INVALID_PACKET_REPORT_SECONDS} seconds, {} since the connection opened",
+                self.total
+            )
+        })
     }
 }
 
@@ -136,7 +184,8 @@ fn forward(
     next_tick: &mut Option<Instant>,
     service_ready: &Cell<bool>,
     push_state: &Cell<Option<bool>>,
-    invalid_reported: &Cell<Option<StdInstant>>,
+    invalid: &Cell<InvalidReport>,
+    now: Instant,
 ) -> std::io::Result<()> {
     match output {
         Output::Timer { at } => {
@@ -186,14 +235,10 @@ fn forward(
         }
         Output::Event(Event::ChannelConnecting) => send(&Frame::Notice(Notice::Message("connecting".into()))),
         Output::Event(Event::InvalidPackets { total }) => {
-            let due = invalid_reported
-                .get()
-                .is_none_or(|at| at.elapsed().as_secs() >= neoteletext_web::consts::INVALID_PACKET_REPORT_SECONDS);
-            if !due {
-                return Ok(());
-            }
-            invalid_reported.set(Some(StdInstant::now()));
-            send(&Frame::Notice(Notice::Message(format!("{total} invalid packets on the push connection"))))
+            let mut report = invalid.get();
+            report.rose(total, now);
+            invalid.set(report);
+            Ok(())
         }
         Output::Event(Event::PageCurrent { page, .. }) => send(&Frame::Notice(Notice::Current(page.mpp()))),
         Output::Event(Event::FetchFailed { page, failure: Failure::Network | Failure::Timeout, .. }) => {
@@ -287,5 +332,63 @@ fn hand_frame(agent: &mut Agent<'_>, now: Instant, frame: Frame, more: bool, out
             }
         }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::arithmetic_side_effects, reason = "a test")]
+mod report_tests {
+    use super::*;
+
+    /// A moment `seconds` after the clock's start.
+    fn at(seconds: u64) -> Instant {
+        Instant(seconds * MICROSECONDS_PER_SECOND)
+    }
+
+    // Verifies REQ-1462 item 4: nothing while the count is 0.
+    #[test]
+    fn no_line_while_the_count_is_0() {
+        let mut report = InvalidReport::default();
+        assert_eq!(report.due(at(1_000)), None);
+    }
+
+    // Verifies REQ-1462 item 4: one line after the window, with the total and
+    // the interval's count, gathered from every rise in it.
+    #[test]
+    fn one_line_ends_the_window_with_its_count_and_the_total() {
+        let mut report = InvalidReport::default();
+        report.rose(1, at(5));
+        report.rose(4, at(10));
+        assert_eq!(report.due(at(24)), None, "the window is still open");
+        let line = report.due(at(25)).unwrap();
+        assert!(line.starts_with("4 invalid packets"), "{line}");
+        assert!(line.contains("4 since the connection opened"), "{line}");
+        assert_eq!(report.due(at(26)), None, "one line");
+    }
+
+    // Verifies REQ-1462 item 4: none in a quiet interval, at most one in any
+    // 20 seconds, and the next line counts only its own window.
+    #[test]
+    fn the_next_window_counts_only_its_own() {
+        let mut report = InvalidReport::default();
+        report.rose(4, at(0));
+        assert!(report.due(at(20)).is_some());
+        assert_eq!(report.due(at(100)), None, "a quiet interval");
+        report.rose(6, at(101));
+        assert_eq!(report.due(at(120)), None, "fewer than 20 seconds after the rise");
+        let line = report.due(at(121)).unwrap();
+        assert!(line.starts_with("2 invalid packets") && line.contains("6 since"), "{line}");
+    }
+
+    // Verifies REQ-1462 item 4: the cumulative number is the connection's, so
+    // a new connection counts from nothing, and its first rise opens a window.
+    #[test]
+    fn a_new_connection_counts_again() {
+        let mut report = InvalidReport::default();
+        report.rose(9, at(0));
+        assert!(report.due(at(20)).is_some());
+        report.rose(1, at(30));
+        let line = report.due(at(50)).unwrap();
+        assert!(line.starts_with("1 invalid packets") && line.contains("1 since"), "{line}");
     }
 }

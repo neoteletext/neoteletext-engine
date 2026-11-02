@@ -89,6 +89,17 @@ fn a_page_of_undeclared_format_is_detected() {
     }
 }
 
+// Verifies REQ-1462 item 4: the count is gathered for 20 seconds, so a command
+// shorter than that writes no line at the first rise.
+#[test]
+fn an_invalid_packet_is_not_reported_at_once() {
+    let server = server();
+    let url = format!("http://127.0.0.1:{}/invalid.json", server.port);
+    let (ok, _, errors) = neottx(&["text", &url, "200", "--allow-local", "127.0.0.1", "--duration", "6"]);
+    assert!(ok, "neottx failed: {errors}");
+    assert!(!errors.contains("invalid packets"), "{errors}");
+}
+
 #[test]
 fn local_addresses_are_blocked_unless_named() {
     let server = server();

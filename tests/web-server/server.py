@@ -205,9 +205,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self.undeclared(path, cookies)
         if path == "/push":
             return self.push_websocket()
+        if path == "/invalid.json":
+            return self.send(200, DESCRIPTOR.format(port=port).replace("/push", "/push-invalid"), "application/json", cookies)
+        if path == "/push-invalid":
+            return self.push_websocket(invalid=True)
         return self.fault(path)
 
-    def push_websocket(self):
+    def push_websocket(self, invalid=False):
         key = self.headers.get("Sec-WebSocket-Key", "")
         accept = base64.b64encode(hashlib.sha1((key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode()).digest()).decode()
         self.send_response(101)
@@ -221,8 +225,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         page = PAGES["200"].replace("Sunny, 21 degrees.", "Pushed: rain, 15 degrees.")
         payload = t42_page(page)
         header = bytes([0x82, 126]) + len(payload).to_bytes(2, "big") if len(payload) >= 126 else bytes([0x82, len(payload)])
+        # REQ-1462: a text message is discarded and counts as one invalid
+        # packet, and comes first so that a report of it is seen at once.
+        discarded = bytes([0x81, 1]) + b"x" if invalid else b""
         try:
-            self.wfile.write(header + payload)
+            self.wfile.write(discarded + header + payload)
             self.wfile.flush()
             time.sleep(2)
         except (BrokenPipeError, ConnectionResetError):

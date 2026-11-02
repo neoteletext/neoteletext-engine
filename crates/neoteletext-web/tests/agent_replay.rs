@@ -2171,3 +2171,48 @@ fn a_rejected_response_sets_no_cookie() {
         assert_eq!(header_value(&last, "Cookie"), None, "{head}");
     }
 }
+
+/// A packet with the address of `magazine`/`number`, the rest of it spaces.
+#[cfg(feature = "push")]
+fn packet_at(magazine: u8, number: u8) -> [u8; 42] {
+    let mut packet =
+        neoteletext_core::packet::encode::address(neoteletext_core::types::Magazine::from_bits(magazine % 8), number);
+    packet.bytes[2..].fill(0x20);
+    packet.bytes
+}
+
+// Verifies REQ-1462 item 3: an undecodable address, packet 8/31 and packet 31
+// of another data channel are each discarded and counted, nothing of them
+// applied, and the connection is kept.
+#[test]
+#[cfg(feature = "push")]
+fn each_invalid_kind_is_discarded_and_counted() {
+    let mut harness = push_service("ws://tt.example/push");
+    let valid = packet_at(1, 1);
+    let mut undecodable = valid;
+    undecodable[0] ^= 0b11;
+    let message = [undecodable, valid, packet_at(8, 31), packet_at(1, 31)].concat();
+    harness.replay().reply("tt.example:80", Reply::WebSocket(server_frame(0x2, &message)));
+    let records = harness.open("http://tt.example/service.json");
+    assert!(has_event(&records, "InvalidPackets { total: 3 }"), "{records:?}");
+    let delivered = pages(&records);
+    assert_eq!(delivered.len(), 1);
+    assert!(matches!(delivered[0], Rec::Page { bytes, .. } if *bytes == valid[..]), "only the valid packet");
+    assert!(!has_event(&records, "PushLost"), "{records:?}");
+}
+
+// Verifies REQ-1462 item 3: a ragged message is discarded whole, counts as its
+// length in packets rounded up, and a page then arrives on the same connection.
+#[test]
+#[cfg(feature = "push")]
+fn a_ragged_message_leaves_the_connection_open() {
+    let mut harness = push_service("ws://tt.example/push");
+    let valid = packet_at(1, 1);
+    let mut frames = server_frame(0x2, &[0x15_u8; 50]);
+    frames.extend(server_frame(0x2, &valid));
+    harness.replay().reply("tt.example:80", Reply::WebSocket(frames));
+    let records = harness.open("http://tt.example/service.json");
+    assert!(has_event(&records, "InvalidPackets { total: 2 }"), "{records:?}");
+    assert_eq!(pages(&records).len(), 1, "{records:?}");
+    assert!(!has_event(&records, "PushLost"), "{records:?}");
+}
