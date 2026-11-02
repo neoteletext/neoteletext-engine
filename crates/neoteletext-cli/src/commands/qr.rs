@@ -13,6 +13,8 @@ const ESCAPE: char = '\x1b';
 const ESCAPE_OFFSET: u8 = 0x40;
 /// The last row a page's text may use; row 24 is the Fastext row.
 const LAST_ROW: usize = 23;
+/// The first row a code may stand on: row 0 is the page's header.
+const FIRST_ROW: usize = 1;
 
 /// A page whose rows from `row` hold the QR of `text` in mosaics, from
 /// `column`, as TTI.
@@ -20,7 +22,8 @@ fn qr_page(text: &str, page: u16, row: usize, column: usize) -> Result<String, F
     let matrix = Matrix::new(text, Correction::Low).map_err(|error| (exit::USAGE, error.to_string()))?;
     let rows = matrix.mosaic_rows();
     let width = rows.first().map_or(0, Vec::len);
-    if row.saturating_add(rows.len()).saturating_sub(1) > LAST_ROW
+    if row < FIRST_ROW
+        || row.saturating_add(rows.len()).saturating_sub(1) > LAST_ROW
         || column.saturating_add(width) > neoteletext_core::consts::COLUMNS
     {
         return Err((
@@ -76,5 +79,12 @@ mod tests {
         });
         assert_eq!(pages, [0x600]);
         assert!(qr_page(join, 0x600, 20, 0).is_err(), "too low on the page");
+    }
+
+    /// REQ-97: row 0 is the page's header, not a row of the page.
+    #[test]
+    fn a_code_on_row_0_is_refused() {
+        assert_eq!(qr_page("abc", 0x100, 0, 0).map_err(|(status, _)| status), Err(exit::USAGE));
+        assert!(qr_page("abc", 0x100, 1, 0).is_ok(), "row 1 is the first row of the page");
     }
 }
