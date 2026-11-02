@@ -8,7 +8,10 @@
 use super::*;
 
 use crate::charset;
-use crate::consts::{ALPHA_RED, ALPHA_YELLOW, DOUBLE_SIZE, DOUBLE_WIDTH, MOSAIC_FULL, MOSAIC_RED};
+use crate::consts::{
+    ALPHA_RED, ALPHA_WHITE, ALPHA_YELLOW, COLOUR_BLUE_BIT, COLOUR_GREEN_BIT, COLOUR_RED_BIT, DOUBLE_SIZE, DOUBLE_WIDTH,
+    MOSAIC_FULL, MOSAIC_RED, MOSAIC_WHITE,
+};
 
 fn context(config: &Config) -> RowContext<'_> {
     RowContext {
@@ -40,6 +43,7 @@ fn stored_spaces_are_blank_glyphs() {
     assert!(!cells[4].glyph.is_blank());
 }
 
+/// REQ-229: an attribute cell shows a space in the state in force at that cell.
 #[test]
 fn colour_attributes_are_set_after() {
     let cells = decode(&[ALPHA_RED, b'A']);
@@ -58,6 +62,7 @@ fn new_background_is_set_at() {
 }
 
 /// REQ-L1-007.
+/// REQ-229: under hold mosaics an attribute cell shows the held mosaic instead.
 #[test]
 fn hold_mosaics_annex_g33_style() {
     // Mosaic red, a mosaic, hold, a colour change: the attribute cell
@@ -100,6 +105,7 @@ fn blast_through_capitals_in_mosaic_mode() {
 }
 
 /// REQ-L1-010; REQ-TST-013's conceal ended by a colour attribute.
+/// REQ-226: a cell records whether it is concealed.
 #[test]
 fn conceal_ends_at_colour() {
     let cells = decode(&[CONCEAL, b'A', ALPHA_RED, b'B']);
@@ -108,6 +114,7 @@ fn conceal_ends_at_colour() {
 }
 
 /// REQ-L1-011, REQ-TST-013: the Annex G.3.1 boxing example.
+/// REQ-226: a cell records whether it lies in a box.
 #[test]
 fn start_box_needs_two_codes() {
     // Annex G.3.1: x 0B 0B 61 0A 0A — the second 0B, the "a" and the
@@ -120,6 +127,7 @@ fn start_box_needs_two_codes() {
 }
 
 /// REQ-L1-009.
+/// REQ-226: a cell records whether it flashes.
 #[test]
 fn flash_and_steady() {
     let cells = decode(&[FLASH, b'A', STEADY, b'B']);
@@ -158,6 +166,7 @@ fn black_codes_follow_the_profile() {
 
 /// REQ-L1-003, REQ-TST-013: every Table 26 attribute with a Level 1
 /// function, checked at its own cell and at the next one.
+/// REQ-230: codes 0/1 to 0/7 and 1/1 to 1/7 set the foreground colour.
 #[test]
 fn every_spacing_attribute_has_its_table_26_timing() {
     let colour = |code: u8| code & COLOUR_ATTRIBUTE_MASK;
@@ -253,4 +262,23 @@ fn hold_resets_on_size_change_only() {
     // Release then Hold again: the held mosaic survives.
     let cells = decode(&[MOSAIC_RED, 0x7F, HOLD_MOSAICS, RELEASE_MOSAICS, FLASH, HOLD_MOSAICS]);
     assert_eq!(cells.map(|cell| cell.glyph)[3..6], [held, Glyph::Space, held]);
+}
+
+/// REQ-230: a code of column 0 sets its colour and alphanumeric mode, a
+/// code of column 1 its colour and mosaic mode, whichever mode came before,
+/// and colour number n has red in bit 0, green in bit 1 and blue in bit 2.
+#[test]
+fn a_colour_code_sets_its_colour_and_its_mode() {
+    const FULL_MOSAIC_CODE: u8 = 0x7F;
+    let mosaic = Glyph::Mosaic { pattern: MOSAIC_FULL, separated: false };
+    for code in ALPHA_RED..=ALPHA_WHITE {
+        let cells = decode(&[MOSAIC_RED, code, FULL_MOSAIC_CODE]);
+        assert_eq!(cells[2].foreground, code - ALPHA_RED + 1, "{code:#04x}");
+        assert!(matches!(cells[2].glyph, Glyph::Char(_)), "{code:#04x}: {:?}", cells[2].glyph);
+    }
+    for code in MOSAIC_RED..=MOSAIC_WHITE {
+        let cells = decode(&[ALPHA_RED, code, FULL_MOSAIC_CODE]);
+        assert_eq!((cells[2].foreground, cells[2].glyph), (code - MOSAIC_RED + 1, mosaic), "{code:#04x}");
+    }
+    assert_eq!((COLOUR_RED_BIT, COLOUR_GREEN_BIT, COLOUR_BLUE_BIT), (1 << 0, 1 << 1, 1 << 2));
 }

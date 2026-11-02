@@ -49,6 +49,7 @@ const TABLE_36: [(NationalOption, &str); 13] = [
     (NationalOption::Turkish, "₺ğİŞÖÇÜĞışöçü"),
 ];
 
+/// REQ-71: the 13 national option subsets of Table 36.
 #[test]
 fn every_national_option_matches_table_36() {
     assert_eq!(TABLE_36.len(), NationalOption::ALL.len());
@@ -61,6 +62,7 @@ fn every_national_option_matches_table_36() {
     }
 }
 
+/// REQ-71: the four glyphs the standard draws too small to identify, and the Turkish lira sign.
 #[test]
 fn project_decided_national_glyphs() {
     let english = latin(Some(NationalOption::English));
@@ -72,6 +74,7 @@ fn project_decided_national_glyphs() {
     assert_eq!(base_unicode(latin(Some(NationalOption::Turkish)), 0x23), '\u{20BA}');
 }
 
+/// REQ-71: a national option changes only its 13 positions of Table 35.
 #[test]
 fn national_option_leaves_other_positions_alone() {
     for option in NationalOption::ALL {
@@ -85,6 +88,7 @@ fn national_option_leaves_other_positions_alone() {
     }
 }
 
+/// REQ-71: the base forms of Table 35, used when packet X/26 refers to a Latin G0 character.
 #[test]
 fn latin_g0_base_forms() {
     let base: std::string::String =
@@ -287,6 +291,7 @@ fn every_set() -> Vec<CharSet> {
     sets
 }
 
+/// REQ-79: every code of every set converts to a scalar value, never the replacement character or a control.
 #[test]
 fn no_replacement_characters_in_any_set() {
     for set in every_set() {
@@ -428,6 +433,7 @@ fn cyrillic_g2_rows() {
 /// REQ-CHR-011: every G3 position against the mapping of L2/19-025 and
 /// `TELTXTG3.TXT`, as `research/notes-level25-drcs.md` section 9.3
 /// lists it; 5/F and the unassigned positions are spaces.
+/// REQ-76, REQ-79: every G3 position's Unicode value, and the unassigned positions are spaces.
 #[test]
 fn g3_positions() {
     const MAPPING: [u32; 96] = [
@@ -598,5 +604,18 @@ fn mosaic_pattern_ignores_high_bits() {
     for n in 0..64_u8 {
         assert_eq!(mosaic_unicode(n | 0xC0, false), mosaic_unicode(n, false));
         assert_eq!(mosaic_unicode(n | 0xC0, true), mosaic_unicode(n, true));
+    }
+}
+
+/// REQ-82: every G0 set, neoteletext's own among them in a build with
+/// `extended-sets`, has the space at 2/0 and the block at 7/F.
+#[test]
+fn every_g0_set_has_the_space_and_the_block() {
+    const SOLID_BLOCK: char = '\u{25A0}';
+    for (name, set) in crate::glyphs::conformance::FONT_SETS {
+        if matches!(set, CharSet::G0(_)) {
+            assert_eq!(base_unicode(set, 0x20), ' ', "{name}");
+            assert_eq!(base_unicode(set, 0x7F), SOLID_BLOCK, "{name}");
+        }
     }
 }

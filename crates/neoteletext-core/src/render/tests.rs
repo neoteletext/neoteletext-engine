@@ -31,6 +31,7 @@ fn options() -> RenderOptions {
 }
 
 /// Decision E.13 as a doubled dot-matrix font gets it (REQ-FNT-008).
+/// REQ-385: decision E.13's rule on a doubled dot-matrix font.
 #[test]
 fn rounding_matches_decision_e13() {
     // A diagonal of doubled dots: line 0 has its dot at the right, line 1
@@ -61,6 +62,7 @@ fn separated_mosaic_geometry_matches_e14() {
     assert_eq!(mosaic_block(14, 20).0, 2);
 }
 
+/// REQ-398: the flashing and concealed ranges map to f or b by the flash phase and the reveal setting.
 #[test]
 fn palette_flash_and_reveal() {
     let mut palette = [0u8; PALETTE_SIZE];
@@ -116,6 +118,8 @@ fn change_tracking_reports_only_changed_rows() {
 
 /// REQ-L1-009, REQ-L1-010, REQ-L1-011: what the flash, conceal and box
 /// marks of a cell do to its pixels.
+/// REQ-398: a flashing or concealed cell's pixels take their index in those ranges. REQ-378: outside a box on a
+/// boxed page both index the picture.
 #[test]
 fn flash_conceal_and_box_marks_drive_the_palette() {
     // Colours 1 and 4 are the single-gun colours.
@@ -165,6 +169,7 @@ fn flash_timing_is_three_to_one() {
 /// the cell size and rounding from the configuration; Levels 1 and 1.5
 /// draw in the palette mode and Levels 2.5 and 3.5 in the resolved mode at
 /// the flash phase given; the underline is drawn unless turned off.
+/// REQ-398: Levels 1 and 1.5 draw in the palette mode, and Levels 2.5 and 3.5 in the resolved mode.
 #[test]
 fn render_options_follow_the_configuration_and_level() {
     let phase = FlashPhase::at_unit(9);
@@ -263,3 +268,25 @@ fn fields_zoom_and_bounds_of_the_row_renderer() {
 mod level25;
 // Loaded fonts fall back to the shipped glyph set.
 mod fonts;
+
+/// REQ-398: the index of a foreground pixel: a flashing cell's and a
+/// concealed cell's depend on neither the flash phase nor the reveal setting,
+/// and a cell both flashing and concealed uses the concealed range while
+/// reveal is off and the flashing range while it is on.
+#[test]
+fn a_flashing_concealed_cell_changes_range_with_reveal() {
+    const FOREGROUND: u8 = 3;
+    const BACKGROUND: u8 = 4;
+    let grid = Grid::EMPTY;
+    let pair = FOREGROUND * 8 + BACKGROUND;
+    let plain = Cell { foreground: FOREGROUND, background: BACKGROUND, ..Cell::BLANK };
+    let flashing = Cell { flash: true, ..plain };
+    let concealed = Cell { conceal: true, ..plain };
+    let both = Cell { flash: true, conceal: true, ..plain };
+    for reveal in [false, true] {
+        assert_eq!(foreground_index(&flashing, &grid, reveal), PALETTE_FLASH_BASE + pair);
+        assert_eq!(foreground_index(&concealed, &grid, reveal), PALETTE_CONCEAL_BASE + pair);
+    }
+    assert_eq!(foreground_index(&both, &grid, false), PALETTE_CONCEAL_BASE + pair);
+    assert_eq!(foreground_index(&both, &grid, true), PALETTE_FLASH_BASE + pair);
+}

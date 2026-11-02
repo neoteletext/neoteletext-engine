@@ -39,6 +39,7 @@ fn transparent_indices_agree() {
     assert_eq!(COLOUR_MAP_ENTRIES, 1 << (CLUT_SHIFT + 2));
 }
 
+/// REQ-398: the index ranges of the palette are apart.
 #[test]
 fn palette_ranges_do_not_overlap() {
     let flash_end = usize::from(PALETTE_FLASH_BASE) + COLOURS * COLOURS;

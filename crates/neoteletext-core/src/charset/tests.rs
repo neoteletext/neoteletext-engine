@@ -13,6 +13,7 @@ use crate::consts::{DESIGNATION_GROUP_SHIFT, SPACE};
 /// the Vietnamese G0 set with marks from the Vietnamese G2 set,
 /// composes to its precomposed letter. Tones: grave 4/1, acute 4/2,
 /// tilde 4/4, dot below 4/9, hook above 4/C.
+/// REQ-82: the Vietnamese set is a whole set, so that X/26 marks find its letters as bases.
 #[test]
 fn every_vietnamese_tone_composes() {
     const TONES: [u8; 5] = [0x1, 0x2, 0x4, 0x9, 0xC];
@@ -182,6 +183,7 @@ fn doubly_reserved_designation_is_english() {
 }
 
 /// REQ-CHR-005: G1 codes through the pattern to Unicode.
+/// REQ-79: a mosaic, which is no letter, converts through its pattern.
 #[test]
 fn mosaic_codes_to_unicode() {
     // 2/0 has no blocks; 7/F has all six.
@@ -226,6 +228,7 @@ fn latin_text_has_no_national_option() {
 /// private-use key: the requirement's example is Thai G2 5/C, which gives
 /// U+0E35 U+0E48. Every sequence is reached from one of the two G2 sets,
 /// and only from columns 5 and 6.
+/// REQ-79: a character may convert to a short sequence of scalar values.
 #[test]
 fn thai_and_lao_mark_pairs_give_combining_sequences() {
     let thai = |code| CharRef::new(CharSet::G2(G2Set::Thai), code);

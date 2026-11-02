@@ -97,6 +97,7 @@ fn normal_size_draws_each_line_as_given() {
 /// REQ-FNT-008, REQ-RND-038: double height draws glyph lines 0 to 4 in the
 /// upper row and 5 to 9 in the lower, each line on four output lines of the
 /// 12-by-20 cell and two of the 12-by-10.
+/// REQ-384: the 10-line form: the top half shows lines 1 to 5, and the bottom half lines 6 to 10.
 #[test]
 fn double_height_halves() {
     let top = Cell { size: Size::DoubleTop, ..cell(text(b'A')) };
@@ -125,6 +126,7 @@ const TALL_PATTERN: [u16; CELL_HEIGHT] = {
 /// REQ-FNT-008 as amended by decision E.77: a 12 by 20 glyph is drawn line
 /// for line in the 12-by-20 cell, never rounded, and its upper line of each
 /// pair in the 12-by-10 cell; double height draws each line twice.
+/// REQ-384: the 20-line form: each glyph line is drawn on two output lines in double height.
 #[test]
 fn a_tall_glyph_draws_line_for_line() {
     let table = [FontGlyph::tall(u32::from('A'), TALL_PATTERN)];
@@ -277,6 +279,7 @@ fn table_shape_is_checked() {
 
 /// Issue #209: only a font of doubled pixels is rounded, and only with
 /// rounding on.
+/// REQ-385: only a doubled dot-matrix font is rounded, and rounding can be turned off.
 #[test]
 fn only_doubled_dot_fonts_are_rounded() {
     assert!(!LoadedFont::new(&IN_USE).unwrap().is_dot_matrix(), "the half-dot pattern");

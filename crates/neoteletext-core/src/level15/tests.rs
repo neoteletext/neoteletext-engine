@@ -48,6 +48,7 @@ fn row_triplets_follow_annex_a3_by_default() {
 }
 
 /// REQ-L15-005, REQ-TST-014: the "@" case and data below 2/0.
+/// REQ-251: the G0 and G3 modes, the "@" of data value 2/A, a diacritical mark, and data below 2/0.
 #[test]
 fn character_modes_and_special_cases() {
     let start = WalkState::Walking { row: 2, column: 0 };
@@ -125,6 +126,7 @@ fn every_row_mode_in_both_settings() {
 /// REQ-L15-005, REQ-L15-007, REQ-TST-014: every column mode moves the
 /// column except the reserved modes and Programme Delivery Control, and
 /// only the G0, G2 and Level 1.5 G3 modes write.
+/// REQ-251: only the character modes write, and data below 2/0 still sets the column.
 #[test]
 fn every_column_mode_sets_the_column_and_only_character_modes_write() {
     let start = WalkState::Walking { row: 2, column: 0 };
@@ -142,6 +144,7 @@ fn every_column_mode_sets_the_column_and_only_character_modes_write() {
 
 /// REQ-TST-014: every diacritical mark, modes 10001 to 11111, on a G0
 /// character without national option substitution.
+/// REQ-251: modes 10001 to 11111 combine the mark the mode's low four bits number.
 #[test]
 fn every_diacritical_mark() {
     let start = WalkState::Walking { row: 2, column: 0 };
@@ -156,6 +159,8 @@ fn every_diacritical_mark() {
 
 /// REQ-TST-014: missing designation codes, the Termination Marker and
 /// the triplets after it, and X/26/15 under each profile.
+/// REQ-247: packets in ascending designation order past a missing one, up to the first Termination Marker, and
+/// X/26/15 under decision E.2.
 #[test]
 fn packets_with_gaps_termination_and_x26_15() {
     let write = |column: u8, data: u8| t(column, MODE_G0_NO_DIACRITIC, data);

@@ -6,12 +6,12 @@
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects, missing_docs)]
 
 use neoteletext_core::acq::{Decoder, MagazineData, StoredPage};
-use neoteletext_core::charset::{CharSet, G0Set};
+use neoteletext_core::charset::{CharSet, G0Set, G2Set};
 use neoteletext_core::config::Config;
 use neoteletext_core::consts::{
     ALPHA_RED, ALPHA_WHITE, C4_ERASE, C6_SUBTITLE, C10_INHIBIT_DISPLAY, COLOUR_ATTRIBUTE_MASK, DESIGNATION_CODES, ESC,
-    HOLD_MOSAICS, MODE_G0_NO_DIACRITIC, MODE_SET_ACTIVE_POSITION, MOSAIC_FULL, MOSAIC_RED, ROW_ADDRESS_BASE, START_BOX,
-    TRIPLETS_PER_PACKET,
+    HOLD_MOSAICS, MODE_G0_NO_DIACRITIC, MODE_G2, MODE_SET_ACTIVE_POSITION, MOSAIC_FULL, MOSAIC_RED, ROW_ADDRESS_BASE,
+    START_BOX, TRIPLETS_PER_PACKET,
 };
 use neoteletext_core::ecc::with_odd_parity;
 use neoteletext_core::level1::{DisplayOptions, Glyph, Grid, build_grid};
@@ -267,4 +267,44 @@ fn row_24_follows_the_profile() {
     assert!(row_24_shown(Config::default()));
     assert!(row_24_shown(Config::saa5246a()));
     assert!(!row_24_shown(Config::saa5050()));
+}
+
+/// REQ-255: an overwrite takes the designated default sets: a national
+/// option does not change its G0 character, and ESC, which moves the row
+/// to the second set, does not change the set it writes from.
+#[test]
+fn overwrites_take_the_designated_sets_whatever_esc_and_the_national_option_do() {
+    // Table 32: group 0110, option 111 is Greek G0 with Greek G2.
+    const GREEK_DESIGNATION: u8 = 0b011_0111;
+    // Table 33 value 0x24: Cyrillic option 2 in the group 0100 encoding.
+    const CYRILLIC_SECOND_SET: u8 = 0x24;
+    const OVERWRITTEN_ROW: u8 = 2;
+    let mut page = decode(&body()).0;
+    if let Some(designations) = page.page_data.as_mut().and_then(|data| data.fields.designations.as_mut()) {
+        *designations =
+            neoteletext_core::types::Designations { default: GREEK_DESIGNATION, second: CYRILLIC_SECOND_SET };
+    }
+    let row = usize::from(OVERWRITTEN_ROW);
+    page.cells[row][..3].copy_from_slice(&[b'A', ESC, b'A'].map(with_odd_parity));
+    let triplet = |address: u8, mode: u8, data: u8| Some(Triplet { address, mode, data });
+    page.enhancements = [[None; TRIPLETS_PER_PACKET]; DESIGNATION_CODES];
+    page.enhancements[0][..3].copy_from_slice(&[
+        triplet(ROW_ADDRESS_BASE + OVERWRITTEN_ROW, MODE_SET_ACTIVE_POSITION, 0),
+        triplet(2, MODE_G0_NO_DIACRITIC, b'B'),
+        triplet(3, MODE_G2, b'C'),
+    ]);
+    page.enhancements_present = 1;
+    let config = Config::default();
+    let mut grid = Grid::EMPTY;
+    build_grid(&mut grid, Some(&page), &MagazineData::default(), &config, &DisplayOptions::default());
+    let after_esc = grid.cells[row][4];
+    level15::apply(&mut grid, &page.enhancements, page.enhancements_present, &config, true);
+    let written = |column: usize| match grid.cells[row][column].glyph {
+        Glyph::Char(character) => (character.set, character.code),
+        other => panic!("column {column}: {other:?}"),
+    };
+    assert_eq!(after_esc, grid.cells[row][4], "the cell after ESC stays");
+    assert!(matches!(written(0).0, CharSet::G0(g0) if g0.set == G0Set::Greek), "the row's default set");
+    assert!(matches!(written(2), (CharSet::G0(g0), b'B') if g0.set == G0Set::Greek && g0.national.is_none()));
+    assert_eq!(written(3), (CharSet::G2(G2Set::Greek), b'C'));
 }

@@ -97,6 +97,7 @@ fn english_font(family: &str) -> Vec<u8> {
 
 /// REQ-FNT-011: `neottx font sets` reports each set, and the library line
 /// names exactly the sets the font conforms for; the name does not count.
+/// REQ-124: the `c` line of a library's index, as `neottx font sets` writes it. Nothing reads `fonts.txt` yet.
 #[test]
 fn font_sets_reports_conformance() {
     let folder = folder("font-sets");

@@ -11,10 +11,14 @@ use crate::charset;
 use crate::acq::{MagazineData, StoredPage};
 use crate::charset::{G0, second_g0};
 use crate::config::Config;
-use crate::consts::{COLUMNS, DESIGNATION_GROUP_SHIFT, DOUBLE_HEIGHT, ESC, NORMAL_SIZE, PAGE_FUNCTION_BASIC, ROWS};
+use crate::consts::{
+    ALPHA_RED, COLOUR_BLACK, COLOUR_WHITE, COLUMNS, CONCEAL, DESIGNATION_GROUP_SHIFT, DOUBLE_HEIGHT, ESC, FLASH,
+    HOLD_MOSAICS, MOSAIC_RED, NEW_BACKGROUND, NORMAL_SIZE, PAGE_FUNCTION_BASIC, ROWS, SEPARATED_MOSAICS, START_BOX,
+};
 
 /// REQ-1644: the grid holds 40 columns by 25 rows and no other cells: what
 /// it holds besides them is smaller than one row of cells.
+/// REQ-226: the grid holds 25 rows by 40 columns and no other cells.
 #[test]
 fn the_grid_has_no_panel_storage() {
     use core::mem::size_of;
@@ -187,6 +191,7 @@ fn an_extended_designation_has_english_second() {
 }
 
 /// REQ-TST-013's double height with its ignored lower row.
+/// REQ-233: a double-height row's lower row shows its bottom halves, and the row's own text is ignored.
 #[test]
 fn double_height_fills_the_row_below() {
     let mut page = StoredPage::EMPTY;
@@ -352,6 +357,7 @@ fn row_24_follows_decision_e23() {
 /// REQ-L1-018, decision E.8: a character that failed parity and never
 /// passed is a space, or under the diagnostic policy the solid block
 /// 7/F of Table 35, and its column is reported as failed.
+/// REQ-226: a column whose source byte failed parity is reported as failed.
 #[test]
 fn failed_characters_follow_the_parity_policy() {
     use crate::config::ParityPolicy;
@@ -382,4 +388,57 @@ fn a_reserved_receiver_region_falls_back_with_no_second_set() {
     let report = designation_report(None, &MagazineData::default(), &config);
     assert_eq!((report.source, report.group, report.fallback), (DesignationSource::Receiver, 0b1101, true));
     assert_eq!((report.designation, report.second), (charset::designation(0).unwrap(), None));
+}
+
+/// REQ-227: each row starts from the default state, whatever the row above
+/// left: white on black, alphanumeric, steady, no box, normal size, not
+/// concealed, contiguous, no hold, the held mosaic a space, the default G0.
+#[test]
+fn no_state_carries_over_to_the_next_row() {
+    let hostile: &[u8] =
+        &[MOSAIC_RED, NEW_BACKGROUND, FLASH, START_BOX, START_BOX, CONCEAL, SEPARATED_MOSAICS, 0x7F, HOLD_MOSAICS, ESC];
+    let page = page_with_rows(&[(1, hostile), (2, &[MOSAIC_RED, HOLD_MOSAICS]), (3, hostile), (4, b"A")]);
+    let plain = page_with_rows(&[(4, b"A")]);
+    let grid_of = |page: &StoredPage| {
+        let mut grid = Grid::EMPTY;
+        build_grid(&mut grid, Some(page), &MagazineData::default(), &Config::default(), &DisplayOptions::default());
+        grid
+    };
+    let (grid, alone) = (grid_of(&page), grid_of(&plain));
+    assert_eq!(grid.cells[4], alone.cells[4], "the row after a hostile one is the same row alone");
+    let first = grid.cells[4][0];
+    assert_eq!((first.foreground, first.background), (COLOUR_WHITE, COLOUR_BLACK));
+    assert!(!first.flash && !first.boxed && !first.conceal && !first.held);
+    assert_eq!(first.size, Size::Normal);
+    assert!(matches!(first.glyph, Glyph::Char(character) if character.code == b'A'));
+    assert_eq!(grid.cells[2][1].glyph, Glyph::Space, "the mosaic held in row 1 is not held in row 2");
+}
+
+/// REQ-233: the whole character takes the attributes in force at its top
+/// half, below a normal-height character the row shows background alone,
+/// and double height in rows 0, 23 and 24 is normal height.
+#[test]
+fn double_height_takes_its_top_half_and_is_normal_on_the_last_rows() {
+    let page = page_with_rows(&[
+        (0, &[b' ', b' ', b' ', b' ', b' ', b' ', b' ', b' ', DOUBLE_HEIGHT, b'H']),
+        (1, &[ALPHA_RED, DOUBLE_HEIGHT, b'D', NORMAL_SIZE, b'N']),
+        (2, b"XXXXXXXX"),
+        (23, &[DOUBLE_HEIGHT, b'E']),
+        (24, &[DOUBLE_HEIGHT, b'F']),
+    ]);
+    let config = Config { row24: crate::config::Row24Policy::WhenPresent, ..Config::default() };
+    let mut grid = Grid::EMPTY;
+    build_grid(&mut grid, Some(&page), &MagazineData::default(), &config, &DisplayOptions::default());
+    let (top, bottom) = (grid.cells[1][2], grid.cells[2][2]);
+    assert_eq!((top.size, bottom.size), (Size::DoubleTop, Size::DoubleBottom));
+    assert_eq!((bottom.glyph, bottom.foreground), (top.glyph, top.foreground));
+    assert_eq!(top.foreground, ALPHA_RED);
+    assert_eq!(grid.cells[2][4].glyph, Glyph::Space, "row 2's own X is ignored below a normal character");
+    assert_eq!(grid.cells[2][4].background, grid.cells[1][4].background);
+    for (row, column, code) in [(0, 9, b'H'), (23, 1, b'E'), (24, 1, b'F')] {
+        let cell = grid.cells[row][column];
+        assert!(matches!(cell.glyph, Glyph::Char(character) if character.code == code), "row {row}: {:?}", cell.glyph);
+        assert_eq!(cell.size, Size::Normal, "row {row}");
+        assert!(!grid.row_has_double_height(row), "row {row}");
+    }
 }

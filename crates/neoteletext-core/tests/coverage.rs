@@ -33,6 +33,7 @@ fn lacking(font: &GlyphSet<'_>, set: CharSet) -> Vec<(u8, char)> {
     characters(set).into_iter().filter(|&(code, _)| font.glyph(CharRef::new(set, code)) == PLACEHOLDER).collect()
 }
 
+/// REQ-383: every character of every set the compiled source must cover.
 #[test]
 fn every_character_of_every_set_is_in_the_font() {
     let font = GlyphSet::noto_teletext();
@@ -51,6 +52,7 @@ fn every_character_of_every_set_is_in_the_font() {
 /// Decision E.26: every spacing form of a mark, and every letter a base and
 /// a mark compose to, is in the font, so a mark is overlaid only on a letter
 /// Unicode does not compose.
+/// REQ-383: every spacing mark and composed letter.
 #[test]
 fn every_mark_and_composed_letter_is_in_the_font() {
     let font = GlyphSet::noto_teletext();
@@ -64,6 +66,7 @@ fn every_mark_and_composed_letter_is_in_the_font() {
 /// REQ-CHR-014, REQ-CHR-015, REQ-CHR-016: the composed letters of
 /// neoteletext's own sets, every joined form and every Thai and Lao glyph of
 /// two marks.
+/// REQ-383: the joined forms and mark glyphs of the extended sets.
 #[cfg(feature = "extended-sets")]
 #[test]
 fn every_form_of_the_extended_sets_is_in_the_font() {

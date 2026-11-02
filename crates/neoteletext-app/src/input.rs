@@ -234,6 +234,52 @@ mod tests {
         fn finish(&mut self, _out: &mut dyn FnMut(Item<'_>)) {}
     }
 
+    fn options(profile: &str) -> Options {
+        Options {
+            input: String::new(),
+            format: None,
+            profile: profile.to_owned(),
+            pid: None,
+            duration: 0,
+            pages: 0,
+            region: None,
+            parity: None,
+            level: None,
+            no_rounding: false,
+            single_start_box: false,
+            verbose: 0,
+            no_sandbox: false,
+            allow_local: Vec::new(),
+            proxy: None,
+        }
+    }
+
+    /// REQ-371: each option changes its setting after the profile is
+    /// applied, and leaves the profile's other settings as they were.
+    #[test]
+    #[allow(clippy::unwrap_used, reason = "a test")]
+    fn each_option_overrides_its_profile() {
+        let profile = Config::profile("saa5050").unwrap();
+        assert_eq!(config(&options("saa5050")).unwrap(), profile);
+        let given = Options {
+            parity: Some(ParityPolicy::ErrorMarker),
+            region: Some(3),
+            level: Some(PresentationLevel::Level35),
+            no_rounding: true,
+            single_start_box: true,
+            ..options("saa5050")
+        };
+        let changed = Config {
+            parity_policy: ParityPolicy::ErrorMarker,
+            default_region: 3,
+            level: PresentationLevel::Level35,
+            rounding: false,
+            double_start_box: false,
+            ..profile
+        };
+        assert_eq!(config(&given).unwrap(), changed);
+    }
+
     /// REQ-SEC-003: a broken input is refused, not a panic.
     #[test]
     fn an_input_reporting_more_than_it_was_given_is_refused() {

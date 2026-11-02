@@ -195,6 +195,7 @@ fn resolved_mode_matches_palette_mode_on_level1_pages() {
 
 /// REQ-RND-031, decision E.55: the palette mode is refused for each case
 /// that needs the resolved mode, by every drawing call.
+/// REQ-398: the palette mode is refused for what only the resolved mode can draw.
 #[test]
 fn palette_mode_is_refused_where_it_cannot_draw() {
     let glyphs = GlyphSet::noto_teletext();
@@ -557,6 +558,8 @@ fn the_underline_option_turns_underline_off_and_leaves_separated_mosaics() {
 /// REQ-RND-037: every G3 position draws in both cell sizes, from the
 /// generated data, without rounding and without panicking; the undefined
 /// positions and 5/F are spaces.
+/// REQ-76: every defined G3 position has a glyph.
+/// REQ-385: rounding on or off draws a G3 character the same.
 #[test]
 fn every_g3_position_draws() {
     let grid = Grid::EMPTY;
@@ -587,6 +590,7 @@ fn every_g3_position_draws() {
 /// the two halves of the cell cut by its diagonal; 3/F is the full block;
 /// 5/0 and 5/1 are the light lines through the centre; 5/D points up;
 /// 4/E is a disc.
+/// REQ-76: G3 glyphs drawn as REQ-RND-037 describes.
 #[test]
 fn g3_shapes_match_the_figure() {
     let glyphs = GlyphSet::noto_teletext();

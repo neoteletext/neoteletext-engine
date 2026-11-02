@@ -19,6 +19,7 @@ fn stored_g3_glyphs_are_up_to_date() {
 }
 
 /// REQ-RND-020: the stored font is the Noto Teletext files.
+/// REQ-132: the compiled table is the files of `third_party/noto`.
 #[test]
 fn stored_noto_glyphs_are_up_to_date() {
     let files = source_files(&crate::workspace_root()).unwrap();
@@ -27,6 +28,7 @@ fn stored_noto_glyphs_are_up_to_date() {
 
 /// REQ-FNT-001: a character has one shape, so files that disagree on one are
 /// refused, as is a file that does not hold the 12 by 20 form.
+/// REQ-132: where two font files hold the same character they agree.
 #[test]
 fn the_font_files_must_agree() {
     let font = |line: u16| {
