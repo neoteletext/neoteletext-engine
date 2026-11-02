@@ -144,24 +144,12 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
         let Some(exchange) = self.fetch.exchange else { return false };
         let (seconds, calendar) = self.seconds(now);
         let head_len = self.fetch.head.len();
-        let Self { buffers, jar, port_cookies, channel, .. } = self;
-        let head_bytes = buffers.fetch_head.get(..head_len).unwrap_or(&[]);
-        let host = exchange.url.host_text();
-        let path = exchange.url.path();
-        let secure = exchange.url.is_secure();
-        // A channel's cookies stay in its folder (REQ-WEB-026), and only a
-        // response from inside it, or from its upgrade to `https`, sets or
-        // clears any: a redirect elsewhere touches none (decision E.114
-        // item 2, finding F-42).
-        let inside =
-            channel.as_ref().is_none_or(|folder| crate::channel::redirect_keeps_channel(folder, &exchange.url));
-        let scope = channel.as_ref().map(Url::path);
-        let parsed = if inside {
-            let store = cookie_store(jar, port_cookies);
-            store_response_cookies(store, head_bytes, host, path, scope, secure, seconds, calendar, sink)
-        } else {
-            http::parse_head(head_bytes, &mut |_| {})
-        };
+        // A response outside the profile is never partly interpreted
+        // (REQ-503): its status and framing are judged before anything in
+        // it is acted on. A response refused only when its body is seen, for
+        // its media type or its size, has passed these and keeps its cookies,
+        // as a browser's does.
+        let parsed = http::parse_head(self.buffers.fetch_head.get(..head_len).unwrap_or(&[]), &mut |_| {});
         let head = match parsed {
             Ok(head) => head,
             Err(error) => {
@@ -188,18 +176,34 @@ impl<R: RandomSource, const SLOTS: usize, const COOKIE_BYTES: usize> UserAgent<'
             Purpose::Register | Purpose::Refresh { .. } => BOUND_INSTRUCTIONS_LIMIT,
         }
         .min(self.buffers.body.len());
-        self.bound_head(now, &exchange, &head, sink);
-        match BodyDecoder::new(head.framing, limit) {
-            Ok(decoder) => {
-                self.fetch.response = Some(head);
-                self.fetch.body = Some(decoder);
-                true
-            }
+        let decoder = match BodyDecoder::new(head.framing, limit) {
+            Ok(decoder) => decoder,
             Err(error) => {
                 self.abandon_fetch(Failure::Http(error), sink);
-                false
+                return false;
             }
+        };
+        let Self { buffers, jar, port_cookies, channel, .. } = self;
+        let head_bytes = buffers.fetch_head.get(..head_len).unwrap_or(&[]);
+        let host = exchange.url.host_text();
+        let path = exchange.url.path();
+        let secure = exchange.url.is_secure();
+        // A channel's cookies stay in its folder (REQ-WEB-026), and only a
+        // response from inside it, or from its upgrade to `https`, sets or
+        // clears any: a redirect elsewhere touches none (decision E.114
+        // item 2, finding F-42).
+        let inside =
+            channel.as_ref().is_none_or(|folder| crate::channel::redirect_keeps_channel(folder, &exchange.url));
+        let scope = channel.as_ref().map(Url::path);
+        if inside {
+            let store = cookie_store(jar, port_cookies);
+            // The head parsed above, so this reading of it cannot fail.
+            let _ = store_response_cookies(store, head_bytes, host, path, scope, secure, seconds, calendar, sink);
         }
+        self.bound_head(now, &exchange, &head, sink);
+        self.fetch.response = Some(head);
+        self.fetch.body = Some(decoder);
+        true
     }
 
     /// Closes the fetch connection and fails the exchange.

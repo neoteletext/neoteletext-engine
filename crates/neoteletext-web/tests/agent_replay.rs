@@ -2149,3 +2149,25 @@ fn the_push_socket_is_a_connection_of_its_own() {
         "after the upgrade, only WebSocket frames on the push socket: never a fetch"
     );
 }
+
+// Verifies REQ-503: a response outside the profile is never partly
+// interpreted: a 101 on the fetch connection, and one whose framing is
+// refused, leave no cookie, as they set none.
+#[test]
+fn a_rejected_response_sets_no_cookie() {
+    for head in [
+        "HTTP/1.1 101 Switching Protocols\r\nSet-Cookie: id=1; Path=/\r\n\r\n".to_owned(),
+        "HTTP/1.1 200 OK\r\nContent-Type: text/x-teletext-tti\r\nContent-Length: 1000000000\r\nSet-Cookie: id=1; Path=/\r\n\r\n"
+            .to_owned(),
+    ] {
+        let mut harness = plain_service();
+        harness.replay().reply("tt.example:80", Reply::Bytes(head.clone().into_bytes()));
+        let _ = harness.fetch(0x100);
+        // The next request carries no cookie.
+        harness.advance(SECOND);
+        harness.replay().reply("tt.example:80", tti_response(&[]));
+        let _ = harness.fetch(0x101);
+        let last = harness.replay().requests_to("tt.example:80").pop().unwrap();
+        assert_eq!(header_value(&last, "Cookie"), None, "{head}");
+    }
+}
