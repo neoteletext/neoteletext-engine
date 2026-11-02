@@ -7,10 +7,10 @@ use crate::acq::{EnhancementKey, EnhancementLookup, EnhancementReport, MagazineD
 use crate::colour::{self, ColourIndex, ColourMap, PagePresentation, PresentationSources};
 use crate::config::{Config, PresentationLevel};
 use crate::consts::{
-    C5_NEWSFLASH, C6_SUBTITLE, C7_SUPPRESS_HEADER, C10_INHIBIT_DISPLAY, COLUMNS, PAGE_FUNCTION_DRCS,
-    PAGE_FUNCTION_GDRCS, PAGE_FUNCTION_GPOP, PAGE_FUNCTION_MOT, PAGE_FUNCTION_POP, PAGE_MOT, RECEIVER_COLUMNS, ROWS,
+    C5_NEWSFLASH, C6_SUBTITLE, COLUMNS, PAGE_FUNCTION_DRCS, PAGE_FUNCTION_GDRCS, PAGE_FUNCTION_GPOP, PAGE_FUNCTION_MOT,
+    PAGE_FUNCTION_POP, PAGE_MOT, RECEIVER_COLUMNS, ROWS,
 };
-use crate::level1::{Cell, DisplayOptions, Grid, Size, resolve_designation, row_24_shown};
+use crate::level1::{Cell, DisplayOptions, Grid, PageRows, Size, resolve_designation};
 use crate::objects::{self, EnhancementLinks};
 use crate::trace::TraceSink;
 
@@ -100,7 +100,8 @@ fn process(
     let presentation = presentation(page, magazine, &links, level);
     let default_sets = (designation.g0.set, designation.g2);
     let inputs = Inputs { page, lookup, links: &links, build, level, default_sets };
-    let row_24_shown = row_24_shown(page, &config) && options.row24.is_none();
+    let shown = PageRows::of(page, &config, options);
+    let row_24_shown = crate::level1::row_24_shown(page, &config) && options.row24.is_none();
     let last_colour_row = if row_24_shown { ROWS.saturating_sub(1) } else { ROWS.saturating_sub(2) };
 
     // The page-level run: screen and row colours (decision E.45).
@@ -123,7 +124,7 @@ fn process(
         level_1_g0: designation.g0,
         boxed_page: control & (C5_NEWSFLASH | C6_SUBTITLE) != 0,
     };
-    rebuild_rows(grid, &rows, row_24_shown, &mut report);
+    rebuild_rows(grid, &rows, shown, &mut report);
 
     store_presentation(grid, &presentation, screen, row_colours);
     report
@@ -182,22 +183,14 @@ fn store_presentation(
 
 /// Rebuilds the rows the page shows, top to bottom, so that each row knows
 /// the row above it (REQ-L25-025, REQ-L25-026).
-fn rebuild_rows(grid: &mut Grid, rows: &Rows<'_, '_>, row_24_shown: bool, report: &mut EnhancementReport) {
-    let page = rows.inputs.page;
-    let control = page.control.0;
-    let inhibit = control & C10_INHIBIT_DISPLAY != 0 || !page.is_text_page();
+fn rebuild_rows(grid: &mut Grid, rows: &Rows<'_, '_>, shown: PageRows, report: &mut EnhancementReport) {
     let receiver_area: [Cell; RECEIVER_COLUMNS] = core::array::from_fn(|column| {
         grid.cells.first().and_then(|row| row.get(column)).copied().unwrap_or(Cell::BLANK)
     });
     let mut cells = RowCells::new();
     let mut lower = false;
     for row in 0..ROWS {
-        let shown = match row {
-            0 => control & C7_SUPPRESS_HEADER == 0,
-            _ if row == ROWS.saturating_sub(1) => !inhibit && row_24_shown,
-            _ => !inhibit,
-        };
-        if !shown {
+        if !shown.shows(row) {
             cells.forget();
             lower = false;
             continue;

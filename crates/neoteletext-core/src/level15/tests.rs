@@ -21,6 +21,9 @@ use crate::level1::Cell;
 use crate::trace::{TraceEntry, TraceSink};
 use crate::types::Instant;
 
+/// Every row showing the page.
+const ALL_ROWS: PageRows = PageRows { header: true, body: true, row_24: true };
+
 fn context(strict: bool) -> WalkContext {
     WalkContext {
         designation: Designation {
@@ -89,19 +92,20 @@ fn data_value_2a_is_at_in_every_g0_set() {
 #[test]
 fn overwrites_obey_decision_e5() {
     let mut grid = Grid::EMPTY;
+    grid.double_height_rows = 1 << 3;
     grid.cells[3][4] = Cell { foreground: 2, background: 4, size: Size::DoubleTop, ..Cell::BLANK };
     grid.cells[4][4] = Cell { size: Size::DoubleBottom, ..grid.cells[3][4] };
     let character = CharRef::new(CharSet::G3, 0x51);
-    write(&mut grid, 3, 4, character, true);
+    write(&mut grid, 3, 4, character, ALL_ROWS);
     assert_eq!(grid.cells[3][4].glyph, Glyph::Char(character));
     assert_eq!(grid.cells[3][4].foreground, 2, "(b) keeps colours");
     assert_eq!(grid.cells[4][4].glyph, Glyph::Char(character), "(e) bottom half");
     let other = CharRef::new(CharSet::G3, 0x5B);
-    write(&mut grid, 4, 4, other, true);
+    write(&mut grid, 4, 4, other, ALL_ROWS);
     assert_eq!(grid.cells[4][4].glyph, Glyph::Char(character), "(f) lower row ignored");
-    write(&mut grid, 0, 3, other, true);
+    write(&mut grid, 0, 3, other, ALL_ROWS);
     assert_eq!(grid.cells[0][3].glyph, Glyph::Space, "(j) receiver columns");
-    write(&mut grid, 0, 20, other, false);
+    write(&mut grid, 0, 20, other, PageRows { header: false, ..ALL_ROWS });
     assert_eq!(grid.cells[0][20].glyph, Glyph::Space, "(i) not on the rolling header");
 }
 
@@ -195,10 +199,10 @@ fn packets_with_gaps_termination_and_x26_15() {
         _ => None,
     };
     let mut grid = Grid::EMPTY;
-    apply(&mut grid, &packets, present, &Config::default(), true);
+    apply(&mut grid, &packets, present, &Config::default(), ALL_ROWS);
     assert_eq!([4, 6, 8].map(|column| glyph_code(&grid, column)), [Some(b'A'), Some(b'B'), None]);
     let mut grid = Grid::EMPTY;
-    apply(&mut grid, &packets, present, &Config::saa5246a(), true);
+    apply(&mut grid, &packets, present, &Config::saa5246a(), ALL_ROWS);
     assert_eq!([4, 6, 8].map(|column| glyph_code(&grid, column)), [Some(b'A'), None, None]);
 }
 
@@ -210,10 +214,10 @@ fn level_1_applies_nothing() {
     packets[0][..2]
         .copy_from_slice(&[t(ROW_ADDRESS_BASE + 3, MODE_SET_ACTIVE_POSITION, 0), t(4, MODE_G0_NO_DIACRITIC, b'A')]);
     let mut grid = Grid::EMPTY;
-    apply(&mut grid, &packets, 1, &Config::saa5050(), true);
+    apply(&mut grid, &packets, 1, &Config::saa5050(), ALL_ROWS);
     assert_eq!(grid, Grid::EMPTY);
     let level15 = Config { level: PresentationLevel::Level15, ..Config::saa5050() };
-    apply(&mut grid, &packets, 1, &level15, true);
+    apply(&mut grid, &packets, 1, &level15, ALL_ROWS);
     assert!(matches!(grid.cells[3][4].glyph, Glyph::Char(character) if character.code == b'A'));
 }
 
@@ -230,15 +234,15 @@ fn overwrites_obey_decision_e5_glyph_rules() {
     let first = CharRef::new(CharSet::G3, 0x51);
     let second = CharRef::new(CharSet::G3, 0x5B);
     // (c): a character replaces a mosaic, whatever the mosaic mode.
-    write(&mut grid, 5, 1, first, true);
+    write(&mut grid, 5, 1, first, ALL_ROWS);
     assert_eq!(grid.cells[5][1].glyph, Glyph::Char(first));
     // (d): the overwrite wins over a held mosaic and leaves the next
     // held cell alone.
-    write(&mut grid, 5, 2, first, true);
+    write(&mut grid, 5, 2, first, ALL_ROWS);
     assert_eq!((grid.cells[5][2].glyph, grid.cells[5][2].held), (Glyph::Char(first), false));
     assert_eq!((grid.cells[5][3].glyph, grid.cells[5][3].held), (held, true));
     // (g): shown over a byte that failed parity.
-    write(&mut grid, 5, 4, first, true);
+    write(&mut grid, 5, 4, first, ALL_ROWS);
     assert_eq!(grid.cells[5][4].glyph, Glyph::Char(first));
     // (h): the later of two overwrites wins.
     let mut packets: EnhancementPackets = [[None; crate::consts::TRIPLETS_PER_PACKET]; DESIGNATION_CODES];
@@ -247,7 +251,7 @@ fn overwrites_obey_decision_e5_glyph_rules() {
         t(4, MODE_G3_LEVEL_15, first.code),
         t(4, MODE_G3_LEVEL_15, second.code),
     ]);
-    apply(&mut grid, &packets, 1, &Config::default(), true);
+    apply(&mut grid, &packets, 1, &Config::default(), ALL_ROWS);
     assert_eq!(grid.cells[5][4].glyph, Glyph::Char(second));
 }
 
@@ -274,7 +278,7 @@ fn the_walk_reports_every_transition_when_tracing() {
     let mut grid = Grid::EMPTY;
     let mut record = |entry: TraceEntry| entries.push(entry);
     let mut sink = TraceSink { time: Instant(7), entries: &mut record };
-    apply_traced(&mut grid, &packets, 1, &strict, true, &mut sink);
+    apply_traced(&mut grid, &packets, 1, &strict, ALL_ROWS, &mut sink);
     let character = walk_event_name(write(6, b'B'));
     let expected = [
         ("Start", "Set Active Position", "none", "Walking"),
@@ -296,7 +300,7 @@ fn the_walk_reports_every_transition_when_tracing() {
     let mut counting = |_: TraceEntry| count += 1;
     let mut sink = TraceSink { time: Instant(0), entries: &mut counting };
     let mut untraced = Grid::EMPTY;
-    apply_traced(&mut untraced, &packets, 1, &Config::default(), true, &mut sink);
+    apply_traced(&mut untraced, &packets, 1, &Config::default(), ALL_ROWS, &mut sink);
     assert_eq!(count, 0);
     assert_eq!(walk_state_name(WalkState::Terminated), "Terminated");
     for triplet in [write(8, b'C'), t(ROW_ADDRESS_BASE + 2, MODE_SET_ACTIVE_POSITION, 0), None] {
@@ -312,7 +316,7 @@ fn the_walk_reports_every_transition_when_tracing() {
 #[test]
 fn overwrites_beyond_column_39_write_nothing() {
     let mut grid = Grid::EMPTY;
-    write(&mut grid, 5, COLUMNS as u8, CharRef::new(CharSet::G3, 0x51), true);
-    write(&mut grid, 5, 60, CharRef::new(CharSet::G3, 0x51), true);
+    write(&mut grid, 5, COLUMNS as u8, CharRef::new(CharSet::G3, 0x51), ALL_ROWS);
+    write(&mut grid, 5, 60, CharRef::new(CharSet::G3, 0x51), ALL_ROWS);
     assert_eq!(grid, Grid::EMPTY);
 }

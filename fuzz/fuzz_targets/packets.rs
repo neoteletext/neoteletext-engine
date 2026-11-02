@@ -9,7 +9,7 @@ use neoteletext_core::config::{CellMode, Config, PresentationLevel};
 use neoteletext_core::consts::{PACKET_BYTES, PAGE_WIDTH, ROWS};
 use neoteletext_core::fsm::PageState;
 use neoteletext_core::glyphs::GlyphSet;
-use neoteletext_core::level1::{DisplayOptions, Grid, build_grid};
+use neoteletext_core::level1::{DisplayOptions, Grid, PageRows, build_grid};
 use neoteletext_core::level15;
 use neoteletext_core::packet::{Packet, PacketMeta};
 use neoteletext_core::render::{ALL_ROWS, IndexBuffer, IndexFormat, RenderOptions, render_screen};
@@ -51,7 +51,9 @@ fuzz_target!(|data: &[u8]| {
         &config,
         &DisplayOptions::default(),
     );
-    level15::apply(&mut grid, &page.enhancements, page.enhancements_present, &config, settings & 16 != 0);
+    let shown = settings & 16 != 0;
+    let rows = PageRows { header: shown, body: true, row_24: shown };
+    level15::apply(&mut grid, &page.enhancements, page.enhancements_present, &config, rows);
     let options = RenderOptions::from_config(&config, settings & 32 != 0);
     let mut pixels = vec![0u8; PAGE_WIDTH * ROWS * options.row_height()];
     let mut buffer = IndexBuffer { format: IndexFormat::Bits8, data: &mut pixels, stride: PAGE_WIDTH };

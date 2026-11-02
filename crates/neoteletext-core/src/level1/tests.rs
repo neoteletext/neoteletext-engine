@@ -354,6 +354,116 @@ fn row_24_follows_decision_e23() {
     assert_eq!(row_codes(5, None, &config, &plain, config.parity_policy), ([SPACE; 40], 0));
 }
 
+/// A page of Level 1 rows whose X/26 data overwrites column 20 of row 0, of
+/// row 1 and of row 24, and column 0 of row 6.
+#[cfg(feature = "level15")]
+fn page_with_overwrites(rows: &[(usize, &[u8])]) -> StoredPage {
+    use crate::consts::{
+        MODE_ADDRESS_ROW_0, MODE_G0_NO_DIACRITIC, MODE_SET_ACTIVE_POSITION, MODE_TERMINATION, ROW_ADDRESS_BASE,
+        ROW_ADDRESS_LAST, ROW_ADDRESS_ROW_24,
+    };
+    use crate::packet::Triplet;
+    let triplet = |address, mode, data| Some(Triplet { address, mode, data });
+    let write = triplet(20, MODE_G0_NO_DIACRITIC, b'X');
+    let mut page = page_with_rows(rows);
+    page.enhancements[0][..9].copy_from_slice(&[
+        triplet(ROW_ADDRESS_LAST, MODE_ADDRESS_ROW_0, 0),
+        write,
+        triplet(ROW_ADDRESS_BASE + 1, MODE_SET_ACTIVE_POSITION, 0),
+        write,
+        triplet(ROW_ADDRESS_BASE + 6, MODE_SET_ACTIVE_POSITION, 0),
+        triplet(0, MODE_G0_NO_DIACRITIC, b'X'),
+        triplet(ROW_ADDRESS_ROW_24, MODE_SET_ACTIVE_POSITION, 0),
+        write,
+        triplet(ROW_ADDRESS_LAST, MODE_TERMINATION, 0),
+    ]);
+    page.enhancements_present = 1;
+    page
+}
+
+/// The Level 1 grid of `page` with its Level 1.5 overwrites.
+#[cfg(feature = "level15")]
+fn composed(page: &StoredPage, config: Config, options: &DisplayOptions) -> Grid {
+    use crate::acq::{Decoder, EnhancementPacket, EnhancementStore, EnhancementSubPage};
+    use crate::config::PresentationLevel;
+    let config = Config { level: PresentationLevel::Level15, ..config };
+    let mut pages = [StoredPage::EMPTY; 1];
+    let mut sub_pages = [EnhancementSubPage::EMPTY; 1];
+    let mut packets = [EnhancementPacket::EMPTY; 1];
+    let store = EnhancementStore::new(&mut sub_pages, &mut packets);
+    let decoder = Decoder::with_enhancement_store(&mut pages, store, config);
+    let magazine = MagazineData::default();
+    let mut grid = Grid::EMPTY;
+    build_grid(&mut grid, Some(page), &magazine, &config, options);
+    let lookup = decoder.enhancement_lookup();
+    let _ = crate::compose::compose_level(&mut grid, page, &magazine, &lookup, &config, options);
+    grid
+}
+
+/// REQ-239, REQ-240, REQ-L1-016: an overwrite reaches the rows the Level 1 grid
+/// shows of the page, and no other: not a suppressed header, an inhibited
+/// page, a row 24 not displayed, or one the receiver draws.
+#[cfg(feature = "level15")]
+#[test]
+fn a_level_15_overwrite_stays_out_of_rows_not_shown() {
+    use crate::config::Row24Policy;
+    use crate::consts::{C7_SUPPRESS_HEADER, C10_INHIBIT_DISPLAY};
+    use crate::types::ControlBits;
+    let mut header = [b' '; 40];
+    header[8..12].copy_from_slice(b"HEAD");
+    let mut page = page_with_overwrites(&[(0, &header), (1, b"ROW ONE"), (24, b"ROW 24")]);
+    let overwritten =
+        |grid: &Grid, row: usize| matches!(grid.cells[row][20].glyph, Glyph::Char(character) if character.code == b'X');
+    let row_24 = Config { row24: Row24Policy::WhenPresent, ..Config::default() };
+    let plain = DisplayOptions::default();
+    let grid = composed(&page, row_24, &plain);
+    assert!(overwritten(&grid, 0) && overwritten(&grid, 1) && overwritten(&grid, 24), "a shown page takes them");
+    page.control = ControlBits(C7_SUPPRESS_HEADER);
+    let grid = composed(&page, row_24, &plain);
+    assert!(!overwritten(&grid, 0) && overwritten(&grid, 1), "C7 hides row 0");
+    page.control = ControlBits(C10_INHIBIT_DISPLAY);
+    let grid = composed(&page, row_24, &plain);
+    assert!(overwritten(&grid, 0) && !overwritten(&grid, 1) && !overwritten(&grid, 24), "C10 hides rows 1 to 24");
+    page.control = ControlBits(0);
+    for row24 in [Row24Policy::Never, Row24Policy::AnnexH] {
+        let grid = composed(&page, Config { row24, ..Config::default() }, &plain);
+        assert!(!overwritten(&grid, 24), "{row24:?}: row 24 is left blank");
+    }
+    let mut drawn = [b' '; 40];
+    drawn[20] = b'R';
+    let receiver = DisplayOptions { row24: Some(drawn), ..DisplayOptions::default() };
+    let grid = composed(&page, row_24, &receiver);
+    assert!(
+        matches!(grid.cells[24][20].glyph, Glyph::Char(character) if character.code == b'R'),
+        "the row the receiver draws"
+    );
+}
+
+/// REQ-253, decision E.5 rule (i): an overwrite does not reach a rolling header.
+#[cfg(feature = "level15")]
+#[test]
+fn a_level_15_overwrite_stays_off_the_rolling_header() {
+    let page = page_with_overwrites(&[(1, b"ROW ONE")]);
+    let searching = DisplayOptions {
+        searching: true,
+        rolling_header: Some([crate::ecc::with_odd_parity(b'R'); 32]),
+        ..DisplayOptions::default()
+    };
+    let grid = composed(&page, Config::default(), &searching);
+    assert!(matches!(grid.cells[0][20].glyph, Glyph::Char(character) if character.code == b'R'));
+}
+
+/// REQ-253, decision E.5 rule (f): the whole row below a double-height row
+/// takes no overwrite, under a normal-height character as under a double one.
+#[cfg(feature = "level15")]
+#[test]
+fn a_level_15_overwrite_stays_out_of_the_row_below_double_height() {
+    let page = page_with_overwrites(&[(5, &[b'A', DOUBLE_HEIGHT, b'B'])]);
+    let grid = composed(&page, Config::default(), &DisplayOptions::default());
+    assert_eq!(grid.double_height_rows, 1 << 5);
+    assert_eq!(grid.cells[6][0].glyph, Glyph::Space);
+}
+
 /// REQ-L1-018, decision E.8: a character that failed parity and never
 /// passed is a space, or under the diagnostic policy the solid block
 /// 7/F of Table 35, and its column is reported as failed.

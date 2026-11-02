@@ -14,10 +14,13 @@ use neoteletext_core::consts::{
     START_BOX, TRIPLETS_PER_PACKET,
 };
 use neoteletext_core::ecc::with_odd_parity;
-use neoteletext_core::level1::{DisplayOptions, Glyph, Grid, build_grid};
+use neoteletext_core::level1::{DisplayOptions, Glyph, Grid, PageRows, build_grid};
 use neoteletext_core::level15;
 use neoteletext_core::packet::{Packet, PacketMeta, Triplet, encode};
 use neoteletext_core::types::{ControlBits, Instant, Magazine, PageAddress, PageNumber, SubCode};
+
+/// Every row showing the page.
+const ALL_ROWS: PageRows = PageRows { header: true, body: true, row_24: true };
 
 fn mag() -> Magazine {
     Magazine::new(2).unwrap()
@@ -80,7 +83,7 @@ fn decode(order: &[Packet]) -> (StoredPage, Grid) {
         &Config::default(),
         &DisplayOptions::default(),
     );
-    level15::apply(&mut grid, &page.enhancements, page.enhancements_present, &Config::default(), true);
+    level15::apply(&mut grid, &page.enhancements, page.enhancements_present, &Config::default(), ALL_ROWS);
     (page, grid)
 }
 
@@ -164,7 +167,7 @@ fn overwrites_keep_level1_attributes_and_the_held_mosaic() {
     let config = Config::default();
     let mut grid = Grid::EMPTY;
     build_grid(&mut grid, Some(&page), &MagazineData::default(), &config, &DisplayOptions::default());
-    level15::apply(&mut grid, &page.enhancements, page.enhancements_present, &config, true);
+    level15::apply(&mut grid, &page.enhancements, page.enhancements_present, &config, ALL_ROWS);
     let is_x = |cell: &neoteletext_core::level1::Cell| matches!(cell.glyph, Glyph::Char(c) if c.code == b'X');
     // (a): the overwritten red attribute still colours the next cell.
     assert!(is_x(&grid.cells[3][0]));
@@ -298,7 +301,7 @@ fn overwrites_take_the_designated_sets_whatever_esc_and_the_national_option_do()
     let mut grid = Grid::EMPTY;
     build_grid(&mut grid, Some(&page), &MagazineData::default(), &config, &DisplayOptions::default());
     let after_esc = grid.cells[row][4];
-    level15::apply(&mut grid, &page.enhancements, page.enhancements_present, &config, true);
+    level15::apply(&mut grid, &page.enhancements, page.enhancements_present, &config, ALL_ROWS);
     let written = |column: usize| match grid.cells[row][column].glyph {
         Glyph::Char(character) => (character.set, character.code),
         other => panic!("column {column}: {other:?}"),

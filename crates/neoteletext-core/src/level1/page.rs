@@ -56,7 +56,7 @@ pub fn build_grid(
     let policy = config.parity_policy;
     let suppress_header = control & C7_SUPPRESS_HEADER != 0;
     // REQ-L1-016 inhibit display; REQ-ACQ-014 non-text pages show no rows.
-    let inhibit = control & C10_INHIBIT_DISPLAY != 0 || page.is_some_and(|page| !page.is_text_page());
+    let inhibit = page.is_some_and(inhibited);
 
     let mut row = 0usize;
     while row < ROWS {
@@ -181,6 +181,50 @@ pub fn row_24_shown(page: &StoredPage, config: &Config) -> bool {
         Row24Policy::AnnexH => page.links.is_some_and(|links| links.display_row_24),
         Row24Policy::WhenPresent => page.has_row(24),
         Row24Policy::Never => false,
+    }
+}
+
+/// True when no row of `page` below row 0 is displayed: REQ-L1-016 inhibit
+/// display, REQ-ACQ-014 a page that is not text.
+fn inhibited(page: &StoredPage) -> bool {
+    page.control.0 & C10_INHIBIT_DISPLAY != 0 || !page.is_text_page()
+}
+
+/// Which rows of the grid show the page's own data. Enhancement data reaches
+/// only these: a row hidden or drawn by the receiver keeps its Level 1 cells
+/// (REQ-L1-014 to REQ-L1-016, decisions E.5 and E.23).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct PageRows {
+    /// Row 0 shows the page's header: C7 is clear and no rolling header
+    /// stands in its place.
+    pub header: bool,
+    /// Rows 1 to 23 are displayed.
+    pub body: bool,
+    /// Row 24 shows the page's own row, not a blank one or the receiver's.
+    pub row_24: bool,
+}
+
+impl PageRows {
+    /// The rows [`build_grid`] gives `page`.
+    #[must_use]
+    pub fn of(page: &StoredPage, config: &Config, options: &DisplayOptions) -> Self {
+        let rolling = options.searching && options.rolling_header.is_some();
+        let body = !inhibited(page);
+        Self {
+            header: page.control.0 & C7_SUPPRESS_HEADER == 0 && !rolling,
+            body,
+            row_24: body && row_24_shown(page, config) && options.row24.is_none(),
+        }
+    }
+
+    /// Whether display row `row` shows the page's own data.
+    #[must_use]
+    pub const fn shows(self, row: usize) -> bool {
+        match row {
+            0 => self.header,
+            _ if row == ROWS.saturating_sub(1) => self.row_24,
+            _ => self.body,
+        }
     }
 }
 

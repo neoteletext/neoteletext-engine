@@ -7,7 +7,7 @@ use crate::consts::{
     COLUMNS, DESIGNATION_CODES, DIACRITIC_NONE, RECEIVER_COLUMNS, ROW_ADDRESS_BASE, ROW_ADDRESS_LAST,
     ROW_ADDRESS_ROW_24, TRIPLET_AT_SIGN_CODE, TRIPLET_FIRST_CHARACTER,
 };
-use crate::level1::{CharSource, Glyph, Grid, Size};
+use crate::level1::{CharSource, Glyph, Grid, PageRows, Size};
 use crate::packet::{Triplet, TripletFunction};
 use crate::trace::{Machine, TraceSink};
 
@@ -168,14 +168,16 @@ fn character(function: TripletFunction, context: WalkContext) -> Option<CharRef>
 pub type EnhancementPackets = [[Option<Triplet>; crate::consts::TRIPLETS_PER_PACKET]; DESIGNATION_CODES];
 
 /// Applies a page's X/26 packets to its grid (REQ-L15-002 to 010). Bit d of
-/// `present` marks designation code d as received. `include_row_0` is false
-/// while row 0 shows the rolling header (E.5 (i)).
+/// `present` marks designation code d as received. `rows` says which rows
+/// show the page's own data: an overwrite reaches no other, so a rolling
+/// header (E.5 (i)), a hidden row, and a row 24 left blank or drawn by the
+/// receiver stay as they are (REQ-L1-014 to REQ-L1-016).
 ///
 /// REQ-L15-001: at Level 1 the packets are stored but not applied, so the
 /// pass does nothing. Choosing between this pass (Level 1.5) and the
 /// enhancement processor (Levels 2.5 and 3.5) is the caller's dispatch.
-pub fn apply(grid: &mut Grid, packets: &EnhancementPackets, present: u16, config: &Config, include_row_0: bool) {
-    walk(grid, packets, present, config, include_row_0, None);
+pub fn apply(grid: &mut Grid, packets: &EnhancementPackets, present: u16, config: &Config, rows: PageRows) {
+    walk(grid, packets, present, config, rows, None);
 }
 
 /// As [`apply`], and when `Config::trace` is on, reports every transition
@@ -185,10 +187,10 @@ pub fn apply_traced(
     packets: &EnhancementPackets,
     present: u16,
     config: &Config,
-    include_row_0: bool,
+    rows: PageRows,
     trace: &mut TraceSink<'_>,
 ) {
-    walk(grid, packets, present, config, include_row_0, config.trace.then_some(trace));
+    walk(grid, packets, present, config, rows, config.trace.then_some(trace));
 }
 
 /// The walk of [`apply`]; `trace` is `None` when tracing is off, so that
@@ -198,7 +200,7 @@ fn walk(
     packets: &EnhancementPackets,
     present: u16,
     config: &Config,
-    include_row_0: bool,
+    rows: PageRows,
     mut trace: Option<&mut TraceSink<'_>>,
 ) {
     if config.level == PresentationLevel::Level1 {
@@ -221,7 +223,7 @@ fn walk(
                 let out_of_order = previous.is_some_and(|before| (row, column) < before);
                 ignored = out_of_order && config.ignore_out_of_order_triplets;
                 if !ignored {
-                    write(grid, row, column, character, include_row_0);
+                    write(grid, row, column, character, rows);
                 }
                 previous = Some((row, column));
             }
@@ -240,20 +242,20 @@ fn walk(
 /// Places one overwrite under decision E.5 (REQ-L15-008). Rule (a) holds
 /// because the Level 1 pass is complete before [`apply`] runs, and rule (h)
 /// because later triplets simply overwrite earlier ones.
-fn write(grid: &mut Grid, row: u8, column: u8, character: CharRef, include_row_0: bool) {
+fn write(grid: &mut Grid, row: u8, column: u8, character: CharRef, rows: PageRows) {
     let (row, column) = (usize::from(row), usize::from(column));
-    // (j): row 0 columns 0 to 7 belong to the receiver (REQ-SEC-005).
-    if row == 0 && (column < RECEIVER_COLUMNS || !include_row_0) {
+    // (i), REQ-L1-014 to REQ-L1-016: nothing is drawn into a row not showing
+    // the page; (j): row 0 columns 0 to 7 belong to the receiver (REQ-SEC-005).
+    if !rows.shows(row) || (row == 0 && column < RECEIVER_COLUMNS) || column >= COLUMNS {
         return;
     }
-    if column >= COLUMNS {
+    // (f): the row below a double-height row is not transmitted content,
+    // under its normal-height characters as under its double-height ones.
+    let row_above = row.checked_sub(1).and_then(|above| 1u32.checked_shl(above as u32)).unwrap_or(0);
+    if grid.double_height_rows & row_above != 0 {
         return;
     }
     let Some(cell) = grid.cell_mut(row, column) else { return };
-    // (f): a cell in the lower row of a double-height row is not shown.
-    if cell.size == Size::DoubleBottom {
-        return;
-    }
     // (b), (c), (d), (g): only the glyph changes.
     cell.glyph = Glyph::Char(character);
     cell.attributes = cell.attributes.with_source(CharSource::Local);

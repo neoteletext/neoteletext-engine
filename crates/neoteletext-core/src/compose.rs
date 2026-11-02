@@ -6,6 +6,8 @@
 
 use crate::acq::{EnhancementLookup, EnhancementReport, MagazineData, StoredPage};
 use crate::config::{Config, PresentationLevel};
+#[cfg(feature = "level15")]
+use crate::level1::PageRows;
 use crate::level1::{DisplayOptions, Grid};
 use crate::trace::TraceSink;
 
@@ -28,7 +30,8 @@ pub fn compose_level(
         PresentationLevel::Level1 => None,
         #[cfg(feature = "level15")]
         PresentationLevel::Level15 => {
-            crate::level15::apply(grid, &page.enhancements, page.enhancements_present, config, true);
+            let rows = PageRows::of(page, config, options);
+            crate::level15::apply(grid, &page.enhancements, page.enhancements_present, config, rows);
             None
         }
         #[cfg(feature = "level25")]
@@ -63,7 +66,8 @@ pub fn compose_level_traced(
         PresentationLevel::Level1 => None,
         #[cfg(feature = "level15")]
         PresentationLevel::Level15 => {
-            crate::level15::apply_traced(grid, &page.enhancements, page.enhancements_present, config, true, trace);
+            let rows = PageRows::of(page, config, options);
+            crate::level15::apply_traced(grid, &page.enhancements, page.enhancements_present, config, rows, trace);
             None
         }
         #[cfg(feature = "level25")]

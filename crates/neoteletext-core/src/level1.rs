@@ -20,7 +20,7 @@ mod row;
 pub use cell::{Cell, CellAttributes, CharSource, FlashMode, FlashRate, Glyph, Size, Width};
 pub use designation::{DesignationReport, DesignationSource, NationalSource, designation_report, resolve_designation};
 pub use grid::{DisplayOptions, Grid, Zoom};
-pub use page::{build_grid, row_24_shown, row_codes};
+pub use page::{PageRows, build_grid, row_24_shown, row_codes};
 pub use row::RowState;
 
 #[cfg(test)]

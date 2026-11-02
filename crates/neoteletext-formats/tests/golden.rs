@@ -16,7 +16,7 @@ use neoteletext_core::acq::{Decoder, StoredPage};
 use neoteletext_core::config::{CellMode, Config};
 use neoteletext_core::consts::PAGE_WIDTH;
 use neoteletext_core::glyphs::GlyphSet;
-use neoteletext_core::level1::{DisplayOptions, Grid, build_grid};
+use neoteletext_core::level1::{DisplayOptions, Grid, PageRows, build_grid};
 use neoteletext_core::level15;
 use neoteletext_core::packet::PacketMeta;
 use neoteletext_core::render::{ALL_ROWS, IndexBuffer, IndexFormat, RenderOptions, render_screen};
@@ -60,7 +60,8 @@ fn grid_of(file: &str, config: &Config) -> Grid {
     let page = decoder.store().get(address, SubCode::ANY).unwrap();
     let mut grid = Grid::EMPTY;
     build_grid(&mut grid, Some(page), &decoder.magazine_data(address.magazine), config, &DisplayOptions::default());
-    level15::apply(&mut grid, &page.enhancements, page.enhancements_present, config, true);
+    let rows = PageRows::of(page, config, &DisplayOptions::default());
+    level15::apply(&mut grid, &page.enhancements, page.enhancements_present, config, rows);
     grid
 }
 

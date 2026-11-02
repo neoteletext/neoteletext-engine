@@ -8,7 +8,7 @@ use neoteletext_core::acq::{Decoder, StoredPage};
 use neoteletext_core::config::Config;
 use neoteletext_core::consts::{CELL_HEIGHT, PACKET_BYTES, PAGE_WIDTH};
 use neoteletext_core::glyphs::GlyphSet;
-use neoteletext_core::level1::{DisplayOptions, Grid, build_grid};
+use neoteletext_core::level1::{DisplayOptions, Grid, PageRows, build_grid};
 use neoteletext_core::level15;
 use neoteletext_core::packet::{Packet, PacketMeta};
 use neoteletext_core::port::{Clock, DataSource};
@@ -66,8 +66,10 @@ fn main() -> Result<(), std::io::Error> {
     };
     let config = Config::default();
     let mut grid = Grid::EMPTY;
-    build_grid(&mut grid, Some(page), &decoder.magazine_data(address.magazine), &config, &DisplayOptions::default());
-    level15::apply(&mut grid, &page.enhancements, page.enhancements_present, &config, true);
+    let options = DisplayOptions::default();
+    build_grid(&mut grid, Some(page), &decoder.magazine_data(address.magazine), &config, &options);
+    let rows = PageRows::of(page, &config, &options);
+    level15::apply(&mut grid, &page.enhancements, page.enhancements_present, &config, rows);
 
     // The port's buffer: one text row of 480 by 20 palette indices.
     let mut row = vec![0u8; PAGE_WIDTH * CELL_HEIGHT];
