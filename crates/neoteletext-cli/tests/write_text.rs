@@ -162,18 +162,18 @@ fn a_run_in_another_set_on_an_english_page() {
 }
 
 /// REQ-2190: the standard's Arabic set of Table 44, each letter in the
-/// joined form its neighbours call for, or the nearest form the table has
-/// (Table 44 has no final lam-alef or final meem); rows in visual order,
-/// right-aligned, with Latin reached by ESC.
+/// joined form its neighbours call for, from Table 44 or by X/26 from its
+/// G2 set (Table 45), or the nearest form they have (they have no final
+/// meem); rows in visual order, right-aligned, with Latin reached by ESC.
 #[test]
 fn arabic_in_the_standards_table_44() {
-    let (rows, triplets) = written("table44", &["--set", "arabic-table44"], "سلام عليكم\nلا 123 abc", "1");
+    let (rows, triplets) = written("table44", &["--set", "arabic-table44"], "سلام عليكم\nلا 123 abc", "1.5");
     let row = |index: usize| rows[index].trim_start().chars().map(u32::from).collect::<Vec<_>>();
-    assert_eq!(triplets, 0);
+    assert_eq!(triplets, 2, "a row address and the final lam-alef from G2");
     assert_eq!(
         row(0),
-        [0x645, 0xFEDB, 0xFEF4, 0xFEE0, 0xFECB, 0x20, 0x645, 0xFEFB, 0xFEB3],
-        "meem, kaf initial for medial, yeh and lam medial, ain initial; meem, lam-alef, seen initial"
+        [0x645, 0xFEDB, 0xFEF4, 0xFEE0, 0xFECB, 0x20, 0x645, 0xFEFC, 0xFEB3],
+        "meem, kaf initial for medial, yeh and lam medial, ain initial; meem, final lam-alef, seen initial"
     );
     assert_eq!(rows[1].trim_start(), "abc 123 \u{FEFB}");
 }

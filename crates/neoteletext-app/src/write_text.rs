@@ -181,7 +181,7 @@ pub fn write_text(choice: Choice<'_>, level: Level, mpp: u16, text: &str) -> Res
     let sets = page_sets(value, own_level).ok_or_else(unknown)?;
     let text = kana::normalise(text);
     let text = if matches!(sets.default, CharSet::G0(G0 { set: G0Set::Arabic, .. })) {
-        table44::join(&text, |character| sets.holds(character))
+        table44::join(&text, |character| sets.holds(character) || sets.g2_holds(character))
     } else {
         text
     };

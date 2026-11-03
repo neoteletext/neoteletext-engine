@@ -112,6 +112,11 @@ impl Sets {
         Self::code_in(self.default, character).is_some()
     }
 
+    /// True when the page's G2 set has a code for `character`.
+    pub(super) fn g2_holds(&self, character: char) -> bool {
+        Self::code_in(CharSet::G2(self.g2), character).is_some()
+    }
+
     pub(super) fn code_in(set: CharSet, character: char) -> Option<u8> {
         (SPACE..=LAST_CODE).find(|&code| to_unicode(CharRef::new(set, code)).base == character)
     }

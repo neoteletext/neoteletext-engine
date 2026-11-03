@@ -18,20 +18,22 @@ struct Letter {
     joining: Option<JoiningType>,
 }
 
-/// The forms tried for a letter, in order, when the set lacks the one its
-/// neighbours call for: Table 44 has two forms of many letters, so a
-/// medial form falls back to the initial, and a final to the isolated.
-const fn fallbacks(form: JoinForm) -> [JoinForm; 3] {
+/// The forms tried for a letter, in order, when the sets lack the one its
+/// neighbours call for: Table 44 and its G2 set (Table 45) hold only some
+/// forms of many letters, so each form falls back to the nearest the
+/// tables have, a form joining on the same side first.
+const fn fallbacks(form: JoinForm) -> [JoinForm; 4] {
     match form {
-        JoinForm::Medial => [JoinForm::Medial, JoinForm::Initial, JoinForm::Isolated],
-        JoinForm::Initial => [JoinForm::Initial, JoinForm::Isolated, JoinForm::Isolated],
-        JoinForm::Final => [JoinForm::Final, JoinForm::Isolated, JoinForm::Isolated],
-        JoinForm::Isolated => [JoinForm::Isolated, JoinForm::Isolated, JoinForm::Isolated],
+        JoinForm::Medial => [JoinForm::Medial, JoinForm::Initial, JoinForm::Final, JoinForm::Isolated],
+        JoinForm::Initial => [JoinForm::Initial, JoinForm::Medial, JoinForm::Isolated, JoinForm::Final],
+        JoinForm::Final => [JoinForm::Final, JoinForm::Isolated, JoinForm::Medial, JoinForm::Initial],
+        JoinForm::Isolated => [JoinForm::Isolated, JoinForm::Final, JoinForm::Initial, JoinForm::Medial],
     }
 }
 
 /// `text`, in reading order, with every Arabic letter in its joined form,
-/// the first of [`fallbacks`] that `holds` (the set has a code for it):
+/// the first of [`fallbacks`] that `holds` (the page's G0 or G2 set has a
+/// code for it):
 /// lam then alef as the lam-alef ligature.
 #[must_use]
 pub(super) fn join(text: &str, holds: impl Fn(char) -> bool) -> String {
