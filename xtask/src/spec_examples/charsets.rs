@@ -36,7 +36,7 @@ const RIGHT_TO_LEFT: [core::ops::RangeInclusive<char>; 2] = ['\u{0590}'..='\u{07
 const LEFT_TO_RIGHT_MARK: char = '\u{200E}';
 
 /// NeoTeletext's whole G0 sets, each with its example's name and caption.
-const G0_SETS: [(G0Set, &str, &str); 22] = [
+const G0_SETS: [(G0Set, &str, &str); 24] = [
     (G0Set::YorubaIgbo, "charset-g0-yoruba-igbo", "Yoruba and Igbo G0, designation 0101 110"),
     (G0Set::Vietnamese, "charset-g0-vietnamese", "Vietnamese G0, designation 0101 111"),
     (G0Set::Ukrainian, "charset-g0-ukrainian", "Ukrainian G0, designation 0111 000"),
@@ -59,6 +59,8 @@ const G0_SETS: [(G0Set, &str, &str); 22] = [
     (G0Set::Tifinagh, "charset-g0-tifinagh", "Tifinagh G0, designation 1011 010"),
     (G0Set::Thai, "charset-g0-thai", "Thai G0, designation 1100 010"),
     (G0Set::Lao, "charset-g0-lao", "Lao G0, designation 1100 100"),
+    (G0Set::Hiragana, "charset-g0-hiragana", "Japanese hiragana G0, designation 1101 001"),
+    (G0Set::Katakana, "charset-g0-katakana", "Japanese katakana G0, designation 1101 010"),
 ];
 /// NeoTeletext's own G2 sets.
 const G2_SETS: [(G2Set, &str, &str); 4] = [
@@ -76,6 +78,7 @@ const OPTIONS: [(&str, &str); NationalOption::EXTENDED.len()] = [
     ("charset-latin-kabyle-tamazight", "Latin, the Kabyle and Tamazight option, designation 0101 011"),
     ("charset-latin-azerbaijani", "Latin, the Azerbaijani option, designation 0101 100"),
     ("charset-latin-kanuri-mossi", "Latin, the Kanuri and Mossi option, designation 0101 101"),
+    ("charset-latin-japanese-romaji", "Latin, the Japanese rōmaji option, designation 1101 000"),
 ];
 
 /// One cell: its code points, then the character itself.

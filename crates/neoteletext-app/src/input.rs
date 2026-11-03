@@ -183,7 +183,8 @@ pub fn load_for(options: &Options, wanted: Option<PageAddress>) -> Result<Sessio
         && let Some(&(_, language)) = languages.iter().find(|(pid, _)| Some(*pid) == selected_pid)
     {
         let mut config = *session.decoder().config();
-        config.default_region = region_for_language(language);
+        // REQ-2181 item 5: the core's one table of languages.
+        config.default_region = neoteletext_core::charset::language::region_for_iso_639_2(language);
         if verbose > 0 {
             eprintln!("neottx: region {} from language {}", config.default_region, String::from_utf8_lossy(&language));
         }
@@ -196,23 +197,6 @@ pub fn load_for(options: &Options, wanted: Option<PageAddress>) -> Result<Sessio
         return Err((exit::INPUT, format!("{}: {reason}", options.input)));
     }
     Ok(session)
-}
-
-/// The Table 32 group for an ISO 639-2 language code (decision 25 of
-/// IMPLEMENTATION-LOG.md).
-fn region_for_language(language: [u8; 3]) -> u8 {
-    let mut lower = language;
-    lower.make_ascii_lowercase();
-    match &lower {
-        b"pol" => 1,
-        b"tur" => 2,
-        b"srp" | b"scc" | b"hrv" | b"scr" | b"slv" | b"ron" | b"rum" => 3,
-        b"rus" | b"bul" | b"ukr" | b"est" | b"lav" | b"lit" => 4,
-        b"gre" | b"ell" => 6,
-        b"ara" => 8,
-        b"heb" => 10,
-        _ => 0,
-    }
 }
 
 #[cfg(test)]

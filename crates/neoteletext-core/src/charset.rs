@@ -26,6 +26,7 @@ mod g0_standard;
 mod g2;
 #[rustfmt::skip]
 mod g3;
+pub mod language;
 #[rustfmt::skip]
 mod latin;
 #[rustfmt::skip]
@@ -99,6 +100,10 @@ pub enum G0Set {
     Thai,
     /// Lao: the 1990 World System Teletext specification's Figure 33.
     Lao,
+    /// Japanese hiragana, with katakana as its second set (DEC-2187).
+    Hiragana,
+    /// Japanese katakana, with hiragana as its second set (DEC-2187).
+    Katakana,
 }
 
 impl G0Set {
@@ -252,13 +257,22 @@ pub enum NationalOption {
     Azerbaijani,
     /// Kanuri and Mossi.
     KanuriMossi,
+    /// Japanese in rōmaji: the macron vowels and the yen sign (DEC-2184).
+    JapaneseRomaji,
 }
 
 impl NationalOption {
     /// neoteletext's own options (decision E.78), in the order of their
-    /// designations in group 0101.
-    pub const EXTENDED: [Self; 6] =
-        [Self::HausaFula, Self::WestAfrican, Self::Ewe, Self::KabyleTamazight, Self::Azerbaijani, Self::KanuriMossi];
+    /// designations in group 0101, then rōmaji in group 1101 (DEC-2184).
+    pub const EXTENDED: [Self; 7] = [
+        Self::HausaFula,
+        Self::WestAfrican,
+        Self::Ewe,
+        Self::KabyleTamazight,
+        Self::Azerbaijani,
+        Self::KanuriMossi,
+        Self::JapaneseRomaji,
+    ];
 
     /// Every national option of the standard, in the order of Table 36.
     pub const ALL: [Self; 13] = [

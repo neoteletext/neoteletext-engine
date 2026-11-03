@@ -11,8 +11,7 @@ use super::arabic_script::{
 };
 use super::g0_extended::{
     ARMENIAN_G0, BELARUSIAN_G0, GEORGIAN_G0, KYRGYZ_MONGOLIAN_G0, MACEDONIAN_G0, SERBIAN_G0, TAJIK_G0, TATAR_G0,
-    TIFINAGH_G0, UKRAINIAN_G0, VIETNAMESE_G0, YORUBA_IGBO_G0,
-};
+    TIFINAGH_G0, UKRAINIAN_G0, VIETNAMESE_G0, YORUBA_IGBO_G0, HIRAGANA_G0, KATAKANA_G0};
 use super::g0_standard::{ARABIC_G0, CYRILLIC_1_G0, CYRILLIC_2_G0, CYRILLIC_3_G0, GREEK_G0, HEBREW_G0};
 use super::g2::{ARABIC_G2, ARMENIAN_G2, CYRILLIC_G2, GREEK_G2, LATIN_G2, VIETNAMESE_G2};
 use super::g3::G3;
@@ -84,6 +83,8 @@ fn g0_unicode(g0: G0, code: u8) -> char {
         G0Set::ArabicPlain => &ARABICPLAIN_G0,
         G0Set::Thai => &THAI_G0,
         G0Set::Lao => &LAO_G0,
+        G0Set::Hiragana => &HIRAGANA_G0,
+        G0Set::Katakana => &KATAKANA_G0,
     };
     lookup(table, code)
 }

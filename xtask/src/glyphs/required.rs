@@ -74,6 +74,8 @@ fn sets() -> Vec<Set> {
         G0Set::ArabicPlain,
         G0Set::Thai,
         G0Set::Lao,
+        G0Set::Hiragana,
+        G0Set::Katakana,
     ];
     for (index, set) in whole.into_iter().enumerate() {
         g0.push((format!("G0 {set:?}"), index < STANDARD_WHOLE_G0, CharSet::G0(G0 { set, national: None })));

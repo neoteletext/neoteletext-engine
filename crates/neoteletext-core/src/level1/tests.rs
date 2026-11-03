@@ -162,7 +162,7 @@ fn the_designation_report() {
     let report = designation_report(Some(&page), &magazine, &config);
     assert_eq!((report.source, report.group), (DesignationSource::MagazineM29Format0, 0b0100));
     // A reserved entry falls back to group 0000 with the same option.
-    let reserved = MagazineData { data: Some(fields(0b1101 << DESIGNATION_GROUP_SHIFT, 0x7F)), ..magazine };
+    let reserved = MagazineData { data: Some(fields(0b1110 << DESIGNATION_GROUP_SHIFT, 0x7F)), ..magazine };
     let report = designation_report(Some(&page), &reserved, &config);
     assert!(report.fallback);
     assert_eq!(report.designation, charset::designation(1).unwrap());
@@ -494,9 +494,9 @@ fn failed_characters_follow_the_parity_policy() {
 /// and names no second G0 set.
 #[test]
 fn a_reserved_receiver_region_falls_back_with_no_second_set() {
-    let config = Config { default_region: 0b1101, ..Config::default() };
+    let config = Config { default_region: 0b1110, ..Config::default() };
     let report = designation_report(None, &MagazineData::default(), &config);
-    assert_eq!((report.source, report.group, report.fallback), (DesignationSource::Receiver, 0b1101, true));
+    assert_eq!((report.source, report.group, report.fallback), (DesignationSource::Receiver, 0b1110, true));
     assert_eq!((report.designation, report.second), (charset::designation(0).unwrap(), None));
 }
 

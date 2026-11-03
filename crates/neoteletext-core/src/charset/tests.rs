@@ -138,6 +138,9 @@ fn table_34_modified_designation() {
             (value(0b1100, 0), (S::Latin, G2Set::Thai)),
             (value(0b1100, 2), (S::Thai, G2Set::Thai)),
             (value(0b1100, 4), (S::Lao, G2Set::Lao)),
+            (value(0b1101, 0), (S::Latin, Latin)),
+            (value(0b1101, 1), (S::Hiragana, Latin)),
+            (value(0b1101, 2), (S::Katakana, Latin)),
             (value(0b1011, 0), (S::Georgian, Latin)),
             (value(0b1011, 1), (S::Armenian, Armenian)),
             (value(0b1011, 2), (S::Tifinagh, Latin)),
@@ -166,8 +169,8 @@ fn reserved_designation_retries_group_0000() {
     let (found, fallback) = designation_with_fallback(value(0b0011, 0b110));
     assert_eq!(found, Designation { g0: latin(NationalOption::CzechSlovak), g2: G2Set::Latin });
     assert!(fallback);
-    // Group 1101 is wholly reserved.
-    let (found, fallback) = designation_with_fallback(value(0b1101, 0b001));
+    // Group 1110 is wholly reserved.
+    let (found, fallback) = designation_with_fallback(value(0b1110, 0b001));
     assert_eq!(found.g0, latin(NationalOption::German));
     assert!(fallback);
 }
@@ -250,3 +253,107 @@ fn thai_and_lao_mark_pairs_give_combining_sequences() {
 // The table tests keep the layout of the tables they check.
 #[rustfmt::skip]
 mod tables;
+
+/// REQ-2188 item 1, DEC-2187 item 3: the kana tables. The 75 kana both
+/// scripts share are the same sound at the same code; the digits are at
+/// 3/0 to 3/9; hiragana keeps ! + - : ? at their ASCII codes; both put
+/// 、 and 。 at the comma's and the full stop's.
+#[cfg(feature = "extended-sets")]
+#[test]
+fn kana_tables() {
+    let hiragana = CharSet::G0(G0 { set: G0Set::Hiragana, national: None });
+    let katakana = CharSet::G0(G0 { set: G0Set::Katakana, national: None });
+    let at = |set, code: u8| to_unicode(CharRef::new(set, code)).base;
+    let mut shared = 0;
+    for code in 0x21..=0x7E_u8 {
+        let (h, k) = (at(hiragana, code), at(katakana, code));
+        if ('\u{3041}'..='\u{3096}').contains(&h) && ('\u{30A1}'..='\u{30F6}').contains(&k) {
+            assert_eq!(u32::from(k) - u32::from(h), 0x60, "{code:#04x}: {h} and {k} are one sound");
+            shared += 1;
+        }
+    }
+    assert_eq!(shared, 75);
+    for digit in 0..10_u8 {
+        assert_eq!(at(hiragana, 0x30 + digit), char::from(b'0' + digit));
+        assert_eq!(at(katakana, 0x30 + digit), char::from(b'0' + digit));
+    }
+    let hiragana_own = [(0x21, '!'), (0x28, '「'), (0x29, '」'), (0x2B, '+'), (0x2D, '-'), (0x3A, ':'), (0x3F, '?')];
+    for (code, expected) in hiragana_own {
+        assert_eq!(at(hiragana, code), expected);
+    }
+    let katakana_own =
+        [(0x21, 'ァ'), (0x28, 'ィ'), (0x29, 'ゥ'), (0x2B, 'ェ'), (0x2D, 'ー'), (0x3A, 'ォ'), (0x3F, 'ヴ')];
+    for (code, expected) in katakana_own {
+        assert_eq!(at(katakana, code), expected);
+    }
+    for set in [hiragana, katakana] {
+        assert_eq!((at(set, 0x2C), at(set, 0x2E), at(set, 0x7F)), ('、', '。', '■'));
+    }
+    assert_eq!((at(hiragana, 0x40), at(katakana, 0x40)), ('あ', 'ア'));
+    let romaji = CharSet::G0(G0 { set: G0Set::Latin, national: Some(NationalOption::JapaneseRomaji) });
+    let options: std::string::String = [0x23, 0x24, 0x40, 0x5B, 0x5C, 0x5D, 0x5E, 0x5F, 0x60, 0x7B, 0x7C, 0x7D, 0x7E]
+        .iter()
+        .map(|&code| at(romaji, code))
+        .collect();
+    assert_eq!(options, "¥$ĀĒĪŌŪ#āēīōū");
+}
+
+/// REQ-2181: the language table. Every entry's value resolves to a set;
+/// tags match on their language and script subtags, ignoring case and
+/// region; a tag naming no script takes the language's default; an
+/// unknown language has no set.
+#[cfg(feature = "extended-sets")]
+#[test]
+fn the_language_table() {
+    use super::language::{LANGUAGES, language, language_value, region_for_iso_639_2};
+    for entry in LANGUAGES {
+        assert!(designation(entry.value).is_some(), "{}-{}", entry.language, entry.script);
+        if let Some(standard) = entry.standard {
+            assert!(designation(standard).is_some(), "{}-{}", entry.language, entry.script);
+        }
+    }
+    let value_of = |tag: &str| language(tag).map(|found| found.value);
+    assert_eq!(value_of("sr"), Some(value(0b0111, 0b011)), "Serbian in its Cyrillic set");
+    assert_eq!(value_of("sr-Latn"), Some(value(0b0011, 0b101)));
+    assert_eq!(value_of("SR-cyrl-RS"), Some(value(0b0111, 0b011)));
+    assert_eq!(value_of("kk"), Some(value(0b0010, 0b110)), "Kazakh in the Turkish option, DEC-602");
+    assert_eq!(value_of("en-GB"), Some(0));
+    assert_eq!(value_of("ja"), Some(value(0b1101, 0b001)));
+    assert_eq!(value_of("ja-Kana"), Some(value(0b1101, 0b010)));
+    assert_eq!(value_of("ja-Latn"), Some(value(0b1101, 0b000)));
+    assert_eq!(value_of("xx"), None);
+    assert_eq!(value_of("ru-Latn"), None, "no Latin Russian is written");
+    // DEC-2184, DEC-2187 item 9: for Level 3.5 and below, rōmaji is Latin
+    // English and kana are refused; other languages keep their sets.
+    assert_eq!(language_value("ja-Latn", false), Some(0));
+    assert_eq!((language_value("ja", false), language_value("ja-Kana", false)), (None, None));
+    assert_eq!(language_value("yo", false), Some(value(0b0101, 0b110)));
+    // REQ-2181 item 5: the subtitle region of every code the input knew
+    // before is unchanged.
+    let before: [(&[u8; 3], u8); 21] = [
+        (b"pol", 1),
+        (b"tur", 2),
+        (b"srp", 3),
+        (b"scc", 3),
+        (b"hrv", 3),
+        (b"scr", 3),
+        (b"slv", 3),
+        (b"ron", 3),
+        (b"RUM", 3),
+        (b"rus", 4),
+        (b"bul", 4),
+        (b"ukr", 4),
+        (b"est", 4),
+        (b"lav", 4),
+        (b"lit", 4),
+        (b"gre", 6),
+        (b"ell", 6),
+        (b"ara", 8),
+        (b"heb", 10),
+        (b"eng", 0),
+        (b"zzz", 0),
+    ];
+    for (code, region) in before {
+        assert_eq!(region_for_iso_639_2(*code), region, "{}", core::str::from_utf8(code).unwrap_or("?"));
+    }
+}

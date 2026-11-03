@@ -81,6 +81,12 @@ const KABYLE_TAMAZIGHT: NationalSubset =
 const AZERBAIJANI: NationalSubset =
     ['ı', 'ü', 'Ə', 'Ğ', 'İ', 'Ç', 'Ö', 'Ş', 'ə', 'ğ', 'ç', 'ö', 'ş'];
 
+// Hepburn's long vowels (DEC-2184, REQ-2185): capitals at 4/0 and 5/B to
+// 5/E, small letters at 6/0 and 7/B to 7/E, the yen at English's pound, and
+// $ and # where English has them.
+const JAPANESE_ROMAJI: NationalSubset =
+    ['¥', '$', 'Ā', 'Ē', 'Ī', 'Ō', 'Ū', '#', 'ā', 'ē', 'ī', 'ō', 'ū'];
+
 
 const fn national_subset(option: NationalOption) -> &'static NationalSubset {
     match option {
@@ -103,6 +109,7 @@ const fn national_subset(option: NationalOption) -> &'static NationalSubset {
         NationalOption::KabyleTamazight => &KABYLE_TAMAZIGHT,
         NationalOption::Azerbaijani => &AZERBAIJANI,
         NationalOption::KanuriMossi => &KANURI_MOSSI,
+        NationalOption::JapaneseRomaji => &JAPANESE_ROMAJI,
     }
 }
 

@@ -25,8 +25,8 @@ const fn g0(set: G0Set) -> CharSet {
 }
 
 /// The number of character sets fonts draw (REQ-FNT-011): the standard's
-/// 24 and neoteletext's own 20 (REQ-CHR-012).
-pub const FONT_SET_COUNT: usize = 56;
+/// 24 and neoteletext's own 35 (REQ-CHR-012, DEC-2184, DEC-2187).
+pub const FONT_SET_COUNT: usize = 59;
 
 /// The character sets fonts draw, with the names libraries and reports give
 /// them: the standard's 24 in the order of REQ-FNT-011, then neoteletext's
@@ -89,6 +89,9 @@ pub const FONT_SETS: [(&str, CharSet); FONT_SET_COUNT] = [
     ("G0-Lao", g0(G0Set::Lao)),
     ("G2-Thai", CharSet::G2(G2Set::Thai)),
     ("G2-Lao", CharSet::G2(G2Set::Lao)),
+    ("G0-Latin-JapaneseRomaji", latin(Some(NationalOption::JapaneseRomaji))),
+    ("G0-Hiragana", g0(G0Set::Hiragana)),
+    ("G0-Katakana", g0(G0Set::Katakana)),
 ];
 
 /// The place in [`FONT_SETS`] of a set's name.
@@ -123,6 +126,7 @@ pub const fn font_set_of(set: CharSet) -> Option<usize> {
             NationalOption::KabyleTamazight => 27,
             NationalOption::Azerbaijani => 28,
             NationalOption::KanuriMossi => 29,
+            NationalOption::JapaneseRomaji => 56,
         },
         CharSet::G0(G0 { set: G0Set::Cyrillic1, .. }) => 14,
         CharSet::G0(G0 { set: G0Set::Cyrillic2, .. }) => 15,
@@ -160,6 +164,8 @@ pub const fn font_set_of(set: CharSet) -> Option<usize> {
         CharSet::G0(G0 { set: G0Set::Lao, .. }) => 53,
         CharSet::G2(G2Set::Thai) => 54,
         CharSet::G2(G2Set::Lao) => 55,
+        CharSet::G0(G0 { set: G0Set::Hiragana, .. }) => 57,
+        CharSet::G0(G0 { set: G0Set::Katakana, .. }) => 58,
         _ => return None,
     })
 }

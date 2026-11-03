@@ -175,7 +175,7 @@ fn damaged_and_out_of_order_triplets() {
 /// besides the default, Level 3.5 any number.
 #[test]
 fn modified_designation_lasts_to_the_end_of_the_row() {
-    // 0100000 Cyrillic 1, 0110111 Greek, 1010101 Hebrew; 0101000 reserved.
+    // 0100000 Cyrillic 1, 0110111 Greek, 1010101 Hebrew; 1110000 reserved.
     let local = [
         set_position(1, 0),
         TripletFunction::ModifiedDesignation { column: 2, designation: 0b010_0000 },
@@ -185,7 +185,7 @@ fn modified_designation_lasts_to_the_end_of_the_row() {
         g0(3, b'B'),
         TripletFunction::ModifiedDesignation { column: 4, designation: 0b011_0111 },
         g0(5, b'B'),
-        TripletFunction::ModifiedDesignation { column: 6, designation: 0b110_1000 },
+        TripletFunction::ModifiedDesignation { column: 6, designation: 0b111_0000 },
         g0(7, b'B'),
     ];
     let set = |grid: &Grid, row: usize, column: usize| set_of(&grid.cells[row][column]);

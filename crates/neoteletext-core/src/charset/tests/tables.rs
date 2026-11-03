@@ -195,6 +195,9 @@ fn extended_defined() -> Vec<(u8, u8, G0, G2Set)> {
         (0b1100, 0, latin_g0(N::English), G2Set::Thai),
         (0b1100, 2, whole_g0(G0Set::Thai), G2Set::Thai),
         (0b1100, 4, whole_g0(G0Set::Lao), G2Set::Lao),
+        (0b1101, 0, latin_g0(N::JapaneseRomaji), G2Set::Latin),
+        (0b1101, 1, whole_g0(G0Set::Hiragana), G2Set::Latin),
+        (0b1101, 2, whole_g0(G0Set::Katakana), G2Set::Latin),
     ]
 }
 
@@ -204,7 +207,12 @@ fn extended_defined() -> Vec<(u8, u8, G0, G2Set)> {
 fn extended_values_in_tables_33_and_34() {
     for (group, index, g0, g2) in extended_defined() {
         assert_eq!(modified_designation(value(group, index)), Some((g0.set, g2)));
-        let second = if (group, index) == (0b1100, 0) { whole_g0(G0Set::Thai) } else { ENGLISH_DESIGNATION.g0 };
+        let second = match (group, index) {
+            (0b1100, 0) => whole_g0(G0Set::Thai),
+            (0b1101, 1) => whole_g0(G0Set::Katakana),
+            (0b1101, 2) => whole_g0(G0Set::Hiragana),
+            _ => ENGLISH_DESIGNATION.g0,
+        };
         assert_eq!(default_second_g0(value(group, index)), Some(second), "{group:04b} {index:03b}");
     }
     for (group, index, _, _) in table_32_defined() {
@@ -241,7 +249,7 @@ fn table_32_decision_e21_examples() {
     assert_eq!(designation(0).unwrap(), ENGLISH_DESIGNATION);
     assert_eq!(designation(1).unwrap().g0, latin_g0(NationalOption::German));
     assert_eq!(designation(value(0b0000, 0b111)), None);
-    assert_eq!(designation(value(0b1101, 0b000)), None);
+    assert_eq!(designation(value(0b1110, 0b000)), None);
     assert_eq!(designation(0x7F), None);
 }
 
