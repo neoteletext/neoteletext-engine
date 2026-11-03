@@ -8,7 +8,14 @@
 //!    diacritical mark" triplet (REQ-CHR-014);
 //! 4. a G2 character as an X/26 triplet, over a stand-in in the row.
 //!
-//! Anything else is refused, naming the character and its line.
+//! 5. on a page for NeoTeletext's own receivers, a row set triplet (REQ-2180)
+//!    starting a run in the set that holds the most of what follows, and
+//!    in place of an ESC that no space can take (REQ-2148, REQ-2188).
+//!
+//! Anything else is refused, naming the character and its line. Half-width
+//! katakana and kana with combining voicing marks are taken as the
+//! full-width voiced kana (REQ-2188). The standard's Arabic set of Table 44
+//! is written with each letter in its joined form, chosen here (REQ-2190).
 //!
 //! The Arabic-script sets of group 1001 are written in visual order, as
 //! Table 44's rows are: each line is broken at the row width, then
@@ -25,17 +32,21 @@
 //! needs both. A vowel with a tone is one G2 glyph placed by X/26 over the
 //! vowel alone; ำ is written as ํ over the consonant and า beside it.
 
+use neoteletext_core::charset::language::language_value;
 use neoteletext_core::charset::{CharSet, G0, G0Set, G2Set};
-use neoteletext_core::consts::{COLUMNS, NATIONAL_INDEX_MASK, SPACE};
+use neoteletext_core::consts::{COLUMNS, MODE_ROW_SET, NATIONAL_INDEX_MASK, SPACE};
+use neoteletext_core::packet::TripletFunction;
 use neoteletext_core::types::Designations;
 use neoteletext_core::types::SubCode;
 use neoteletext_formats::author::{self, AuthorError, DisplayPage, Stream, neutral_fields};
 use rtl::break_line_rtl;
-use sets::{Cell, break_line, page_sets};
+use sets::{Cell, break_line, page_sets, set_value};
 use thai_lao::{marked_lines, marked_rows};
 
+mod kana;
 mod rtl;
 mod sets;
+mod table44;
 mod thai_lao;
 
 pub use sets::SETS;
@@ -48,12 +59,41 @@ const LAST_ROW: u8 = 23;
 
 /// What the page's sets can write.
 struct Sets {
+    /// The page's Table 32 value.
+    value: u8,
     default: CharSet,
     second: Option<CharSet>,
+    /// The Table 33 value of the second set.
+    second_value: Option<u8>,
     /// The G0 set without national option, whose base forms X/26 marks
     /// are placed on (REQ-CHR-002).
     base: CharSet,
     g2: G2Set,
+    /// Row set triplets may be written: the page is for NeoTeletext's own
+    /// receivers (REQ-2151).
+    runs: bool,
+}
+
+/// How a page's set is named.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Choice<'a> {
+    /// One of [`SETS`].
+    Set(&'a str),
+    /// A BCP 47 language tag, resolved by the core's table of languages
+    /// (REQ-2181).
+    Language(&'a str),
+}
+
+/// The presentation level a page is written for (REQ-2151).
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum Level {
+    /// NeoTeletext's own receivers: Level 3.5 with NeoTeletext's own
+    /// extensions, the row set triplet among them.
+    #[default]
+    NeoTeletext,
+    /// Level 3.5 and below: no row set triplets, and no set that needs
+    /// NeoTeletext's own receiver.
+    Standard,
 }
 
 /// Why a page could not be written.
@@ -61,6 +101,8 @@ struct Sets {
 pub enum WriteError {
     /// The set is not one of [`SETS`], or this build lacks it.
     UnknownSet(String),
+    /// The core's table of languages has no set for the tag at this level.
+    UnknownLanguage(String),
     /// The set cannot write a character: the character and its line,
     /// counted from 1.
     Missing {
@@ -82,6 +124,9 @@ impl core::fmt::Display for WriteError {
     fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::UnknownSet(name) => write!(formatter, "unknown set {name:?}; the sets are {}", set_names()),
+            Self::UnknownLanguage(tag) => {
+                write!(formatter, "no set writes the language {tag:?} on a page for this presentation level")
+            }
             Self::Missing { character, line } => {
                 write!(formatter, "line {line}: the set has no {character:?} (U+{:04X})", u32::from(*character))
             }
@@ -114,16 +159,38 @@ pub struct Written {
     pub triplets: usize,
 }
 
-/// Writes `text` as page `mpp` in the set named `name` (REQ-CLI-010).
+/// Writes `text` as page `mpp` in the set `choice` names, for `level`
+/// (REQ-CLI-010, REQ-2151).
 ///
 /// # Errors
 ///
-/// [`WriteError`] when the set is unknown, a character cannot be written,
-/// or the page is full.
-pub fn write_text(name: &str, mpp: u16, text: &str) -> Result<Written, WriteError> {
-    let (value, sets) = page_sets(name)?;
+/// [`WriteError`] when the set or language is unknown, a character cannot
+/// be written, or the page is full.
+pub fn write_text(choice: Choice<'_>, level: Level, mpp: u16, text: &str) -> Result<Written, WriteError> {
+    let own_level = level == Level::NeoTeletext;
+    let value = match choice {
+        Choice::Set(name) => set_value(name).ok_or_else(|| WriteError::UnknownSet(name.to_string()))?,
+        Choice::Language(tag) => {
+            language_value(tag, own_level).ok_or_else(|| WriteError::UnknownLanguage(tag.to_string()))?
+        }
+    };
+    let unknown = || match choice {
+        Choice::Set(name) => WriteError::UnknownSet(name.to_string()),
+        Choice::Language(tag) => WriteError::UnknownLanguage(tag.to_string()),
+    };
+    let sets = page_sets(value, own_level).ok_or_else(unknown)?;
+    let text = kana::normalise(text);
+    let text = if matches!(sets.default, CharSet::G0(G0 { set: G0Set::Arabic, .. })) {
+        table44::join(&text, |character| sets.holds(character))
+    } else {
+        text
+    };
+    let text = text.as_str();
     let mut rows = Vec::new();
-    let right_to_left = matches!(sets.default, CharSet::G0(G0 { set, .. }) if set.is_joined() || set == G0Set::Hebrew);
+    let right_to_left = matches!(
+        sets.default,
+        CharSet::G0(G0 { set, .. }) if set.is_joined() || set == G0Set::Hebrew || set == G0Set::Arabic
+    );
     let marked = matches!(sets.default, CharSet::G0(G0 { set: G0Set::Thai | G0Set::Lao, .. }));
     if marked {
         let mut lines = Vec::new();
@@ -159,8 +226,7 @@ pub fn write_text(name: &str, mpp: u16, text: &str) -> Result<Written, WriteErro
     // set that ESC reaches (REQ-CHR-012).
     page.national(value & NATIONAL_INDEX_MASK);
     let mut fields = neutral_fields(value);
-    let second =
-        neoteletext_core::charset::default_second_value(value).unwrap_or(neoteletext_core::consts::NO_SECOND_G0);
+    let second = sets.second_value.unwrap_or(neoteletext_core::consts::NO_SECOND_G0);
     fields.designations = Some(Designations { default: value, second });
     page.page_data(fields);
     let mut triplets = 0usize;
@@ -168,7 +234,7 @@ pub fn write_text(name: &str, mpp: u16, text: &str) -> Result<Written, WriteErro
         let codes: Vec<u8> = cells
             .iter()
             .map(|cell| match *cell {
-                Cell::Code(code) | Cell::Marked { code, .. } => code,
+                Cell::Code(code) | Cell::Marked { code, .. } | Cell::Run { code, .. } => code,
                 Cell::G2 { stand_in, .. } => stand_in,
             })
             .collect();
@@ -184,6 +250,9 @@ pub fn write_text(name: &str, mpp: u16, text: &str) -> Result<Written, WriteErro
             match cell {
                 Cell::Marked { code, mark } => page.local().diacritic(column, code, mark),
                 Cell::G2 { code, .. } => page.local().g2(column, code),
+                Cell::Run { value, .. } => {
+                    page.local().function(TripletFunction::ReservedColumn { column, mode: MODE_ROW_SET, data: value })
+                }
                 Cell::Code(_) => continue,
             };
             triplets = triplets.saturating_add(1);

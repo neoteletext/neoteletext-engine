@@ -58,7 +58,7 @@ pub use slice::slice;
 pub use sound::{PLAYER_PACKETS_PER_SECOND, SoundOptions, sound};
 pub use text::text;
 pub use view::view;
-pub use write_text::write_text;
+pub use write_text::{TextChoice, write_text};
 
 /// Image file formats (REQ-RND-007).
 #[derive(ValueEnum, Clone, Copy, Debug)]

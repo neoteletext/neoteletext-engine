@@ -47,8 +47,10 @@ pub fn run() -> ExitCode {
         }
         Command::Contents { common } => commands::contents(&common.options()),
         Command::Html { common, address, public } => commands::html(&common.options(), &address, &public),
-        Command::WriteText { set, page, input, output, no_sandbox } => {
-            commands::write_text(&set, &page, &input, &output, no_sandbox)
+        Command::WriteText { set, language, level, page, input, output, no_sandbox } => {
+            let choice =
+                commands::TextChoice { set: set.as_deref(), language: language.as_deref(), standard: level == "3.5" };
+            commands::write_text(choice, &page, &input, &output, no_sandbox)
         }
         Command::Sound {
             page,

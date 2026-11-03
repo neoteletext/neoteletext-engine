@@ -7,18 +7,31 @@
 )]
 
 use super::rtl::break_line_rtl;
-use super::sets::{Cell, encode, page_sets};
+use super::sets::{Cell, encode, page_sets, set_value};
 use super::thai_lao::{marked_lines, marked_rows};
 use super::*;
 use neoteletext_core::charset::{CharRef, G2Set, compose, default_second_g0, page_mark, to_unicode};
 use neoteletext_core::consts::{DESIGNATION_GROUP_SHIFT, ESC};
 
+/// The value and sets of the set named `name`, for a page for
+/// NeoTeletext's own receivers.
+fn named(name: &str) -> (u8, Sets) {
+    let value = set_value(name).unwrap();
+    (value, page_sets(value, true).unwrap())
+}
+
+/// Writes `text` in the set named `name` for NeoTeletext's own receivers.
+fn write(name: &str, mpp: u16, text: &str) -> Result<Written, WriteError> {
+    write_text(Choice::Set(name), Level::NeoTeletext, mpp, text)
+}
+
 /// What a decoder shows for cells written in `name`'s sets, ESC as a
 /// space (REQ-CHR-009): codes through the set in force, marks composed
 /// and G2 characters from the page's G2 set.
 fn shown(name: &str, cells: &[Cell]) -> String {
-    let (_, sets) = page_sets(name).unwrap();
+    let (_, sets) = named(name);
     let mut in_second = false;
+    let mut run = sets.default;
     cells
         .iter()
         .map(|cell| match *cell {
@@ -27,8 +40,13 @@ fn shown(name: &str, cells: &[Cell]) -> String {
                 ' '
             }
             Cell::Code(code) => {
-                let set = if in_second { sets.second.unwrap() } else { sets.default };
+                let set = if in_second { sets.second.unwrap() } else { run };
                 to_unicode(CharRef::new(set, code)).base
+            }
+            Cell::Run { code, value } => {
+                run = CharSet::G0(neoteletext_core::charset::designation(value).unwrap().g0);
+                in_second = false;
+                to_unicode(CharRef::new(run, code)).base
             }
             Cell::Marked { code, mark } => {
                 let placed = CharRef { diacritic: page_mark(sets.g2, mark), ..CharRef::new(sets.base, code) };
@@ -41,7 +59,7 @@ fn shown(name: &str, cells: &[Cell]) -> String {
 }
 
 fn cells(name: &str, text: &str) -> Vec<Cell> {
-    let (_, sets) = page_sets(name).unwrap();
+    let (_, sets) = named(name);
     let characters: Vec<char> = text.chars().collect();
     encode(&sets, &characters, false, 1).unwrap().0
 }
@@ -49,12 +67,15 @@ fn cells(name: &str, text: &str) -> Vec<Cell> {
 #[test]
 fn every_set_name_designates_its_set() {
     for (name, group, option) in SETS {
-        let (value, sets) = page_sets(name).unwrap();
+        let (value, sets) = named(name);
         assert_eq!(value, (group << DESIGNATION_GROUP_SHIFT) | option);
-        let own = default_second_g0(value).is_some();
-        assert_eq!(sets.second.is_some(), own, "{name}: only neoteletext's own sets imply English second");
+        // NeoTeletext's own sets imply their second set; the writer names
+        // Latin English for the standard's Arabic set of Table 44
+        // (REQ-2190); no other standard set has one.
+        let own = default_second_g0(value).is_some() || name == "arabic-table44";
+        assert_eq!(sets.second.is_some(), own, "{name}: only neoteletext's own sets and Table 44 have a second set");
     }
-    assert_eq!(page_sets("klingon").err(), Some(WriteError::UnknownSet("klingon".into())));
+    assert_eq!(write("klingon", 0x100, "a").unwrap_err(), WriteError::UnknownSet("klingon".into()));
 }
 
 /// Each set writes a sample and reads it back unchanged.
@@ -74,7 +95,7 @@ fn samples_round_trip() {
         ("tifinagh", "ⵜⴰⵎⴰⵣⵉⵖⵜ"),
     ];
     for (name, text) in samples {
-        let (_, sets) = page_sets(name).unwrap();
+        let (_, sets) = named(name);
         let characters: Vec<char> = text.chars().collect();
         let (written, _) = encode(&sets, &characters, false, 1).unwrap_or_else(|error| panic!("{name}: {error}"));
         assert_eq!(shown(name, &written), text, "{name}");
@@ -86,7 +107,7 @@ fn samples_round_trip() {
 fn a_tone_is_a_triplet_over_its_letter() {
     let written = cells("vietnamese", "ệ");
     let [Cell::Marked { code, mark }] = written[..] else { panic!("{written:?}") };
-    assert_eq!(to_unicode(CharRef::new(page_sets("vietnamese").unwrap().1.base, code)).base, 'ê');
+    assert_eq!(to_unicode(CharRef::new(named("vietnamese").1.base, code)).base, 'ê');
     assert_eq!(mark, 0x9, "dot below");
     let [Cell::Marked { mark, .. }] = cells("vietnamese", "ả")[..] else { panic!() };
     assert_eq!(mark, 0xC, "the hook above is 4/C of the Vietnamese G2 set");
@@ -110,14 +131,14 @@ fn latin_text_is_switched_with_esc() {
 fn a_combining_mark_marks_the_letter_before_it() {
     let written = cells("yoruba-igbo", "ọ\u{0300}");
     let [Cell::Marked { code, mark: 1 }] = written[..] else { panic!("{written:?}") };
-    assert_eq!(to_unicode(CharRef::new(page_sets("yoruba-igbo").unwrap().1.base, code)).base, 'ọ');
-    let error = write_text("yoruba-igbo", 0x100, "ọ\u{0300}\u{0301}").unwrap_err();
+    assert_eq!(to_unicode(CharRef::new(named("yoruba-igbo").1.base, code)).base, 'ọ');
+    let error = write("yoruba-igbo", 0x100, "ọ\u{0300}\u{0301}").unwrap_err();
     assert_eq!(error, WriteError::Missing { character: '\u{0301}', line: 1 });
 }
 
 #[test]
 fn a_missing_character_is_refused_with_its_line() {
-    let error = write_text("georgian", 0x100, "საქართველო\nok ☃").unwrap_err();
+    let error = write("georgian", 0x100, "საქართველო\nok ☃").unwrap_err();
     assert_eq!(error, WriteError::Missing { character: '☃', line: 2 });
 }
 
@@ -125,18 +146,18 @@ fn a_missing_character_is_refused_with_its_line() {
 fn lines_break_at_the_row_width_and_pages_end_at_row_23() {
     let word = "ა".repeat(10);
     let line = [word.as_str(); 8].join(" ");
-    let written = write_text("georgian", 0x100, &line).unwrap();
+    let written = write("georgian", 0x100, &line).unwrap();
     // Three words of ten cells and two spaces take 32 cells; a fourth
     // with its space would take 43.
     assert_eq!(written.rows, 3);
     let many = "ა\n".repeat(24);
-    assert_eq!(write_text("georgian", 0x100, &many).unwrap_err(), WriteError::TooManyRows(24));
+    assert_eq!(write("georgian", 0x100, &many).unwrap_err(), WriteError::TooManyRows(24));
 }
 
 /// The cells of a right-to-left row as shown, left to right, without
 /// the right-aligning indent.
 fn shown_rtl(name: &str, text: &str) -> String {
-    let (_, sets) = page_sets(name).unwrap();
+    let (_, sets) = named(name);
     let rows = break_line_rtl(&sets, text, 1).unwrap();
     shown(name, &rows[0])
 }
@@ -162,13 +183,13 @@ fn arabic_script_is_written_in_visual_order() {
 fn right_to_left_rows_break_and_align_right() {
     let word = "ب".repeat(12);
     let line = [word.as_str(); 4].join(" ");
-    let written = write_text("persian", 0x100, &line).unwrap();
+    let written = write("persian", 0x100, &line).unwrap();
     assert_eq!(written.rows, 2, "three words of 12 and two spaces fit 40 cells");
 }
 
 /// The rows of a Thai page as codes, and its X/26 cells.
 fn thai_rows(text: &str) -> Vec<Vec<Cell>> {
-    let (_, sets) = page_sets("thai").unwrap();
+    let (_, sets) = named("thai");
     let mut lines = Vec::new();
     for (index, line) in text.lines().enumerate() {
         lines.extend(marked_lines(&sets, line, index + 1).unwrap());
@@ -177,7 +198,7 @@ fn thai_rows(text: &str) -> Vec<Vec<Cell>> {
 }
 
 fn code(character: char) -> Cell {
-    let (_, sets) = page_sets("thai").unwrap();
+    let (_, sets) = named("thai");
     Cell::Code(Sets::code_in(sets.default, character).unwrap())
 }
 
@@ -225,8 +246,8 @@ fn lower_vowels_share_a_row_unless_a_column_needs_both() {
 fn the_x26_budget_is_enforced() {
     let row = "ả".repeat(COLUMNS);
     let fits = [row.as_str(); 5].join("\n");
-    let written = write_text("vietnamese", 0x100, &fits).unwrap();
+    let written = write("vietnamese", 0x100, &fits).unwrap();
     assert_eq!(written.triplets, 5 * (COLUMNS + 1));
     let over = [row.as_str(); 6].join("\n");
-    assert_eq!(write_text("vietnamese", 0x100, &over).unwrap_err(), WriteError::Author(AuthorError::LocalDataFull));
+    assert_eq!(write("vietnamese", 0x100, &over).unwrap_err(), WriteError::Author(AuthorError::LocalDataFull));
 }

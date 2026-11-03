@@ -11,15 +11,48 @@ use common::{folder, neottx};
 /// Writes `text` in `set` as page 100 and reads rows 1 onwards back at
 /// `level`, trailing spaces removed.
 fn round_trip(name: &str, set: &str, text: &str, level: &str) -> Vec<String> {
+    written(name, &["--set", set], text, level).0
+}
+
+/// Writes `text` with the options `choice` as page 100, and gives rows 1
+/// onwards read back at `level`, trailing spaces removed, and the number of
+/// X/26 triplets the writer reports.
+fn written(name: &str, choice: &[&str], text: &str, level: &str) -> (Vec<String>, usize) {
     let folder = folder(name);
     let input = folder.join("page.txt");
     let output = folder.join("P100.tti");
     std::fs::write(&input, text).unwrap();
-    let run = neottx(&["write-text", "--set", set, "--page", "100", input.to_str().unwrap(), output.to_str().unwrap()]);
-    assert!(run.status.success(), "{}", String::from_utf8_lossy(&run.stderr));
+    let mut arguments = std::vec!["write-text"];
+    arguments.extend_from_slice(choice);
+    arguments.extend_from_slice(&["--page", "100", input.to_str().unwrap(), output.to_str().unwrap()]);
+    let run = neottx(&arguments);
+    let message = String::from_utf8_lossy(&run.stderr).to_string();
+    assert!(run.status.success(), "{message}");
+    let triplets = message
+        .split(", ")
+        .nth(1)
+        .and_then(|part| part.split(' ').next())
+        .and_then(|count| count.parse().ok())
+        .unwrap_or_else(|| panic!("no triplet count in {message:?}"));
     let read = neottx(&["text", "--level", level, output.to_str().unwrap(), "100"]);
     assert!(read.status.success(), "{}", String::from_utf8_lossy(&read.stderr));
-    String::from_utf8(read.stdout).unwrap().lines().skip(1).map(|line| line.trim_end().to_string()).collect()
+    let rows =
+        String::from_utf8(read.stdout).unwrap().lines().skip(1).map(|line| line.trim_end().to_string()).collect();
+    (rows, triplets)
+}
+
+/// The writer's message when it refuses `text` written with `choice`.
+fn refused(name: &str, choice: &[&str], text: &str) -> String {
+    let folder = folder(name);
+    let input = folder.join("page.txt");
+    let output = folder.join("P100.tti");
+    std::fs::write(&input, text).unwrap();
+    let mut arguments = std::vec!["write-text"];
+    arguments.extend_from_slice(choice);
+    arguments.extend_from_slice(&["--page", "100", input.to_str().unwrap(), output.to_str().unwrap()]);
+    let run = neottx(&arguments);
+    assert!(!run.status.success());
+    String::from_utf8_lossy(&run.stderr).to_string()
 }
 
 #[test]
@@ -73,4 +106,74 @@ fn a_missing_character_is_named() {
 fn persian_reads_back_in_visual_order() {
     let rows = round_trip("persian", "persian", "سلام دنیا", "1");
     assert_eq!(rows[0].trim_start(), "ایند م\u{FEFB}س");
+}
+
+/// REQ-2185: the rōmaji set holds the macron vowels and the yen, so a page
+/// in it needs no X/26 at all, and reads back at every level; written for
+/// Level 3.5, `ja-Latn` is Latin English with X/26 macrons, which a Level 1
+/// decoder shows without them.
+#[test]
+fn romaji_in_its_own_set_and_with_the_standards_macrons() {
+    let text = "Tōkyō e yōkoso! ¥500\nŌsaka, Ūtsu, kin'en";
+    let (rows, triplets) = written("romaji", &["--set", "japanese-romaji"], text, "1");
+    assert_eq!(rows[..2], ["Tōkyō e yōkoso! ¥500", "Ōsaka, Ūtsu, kin'en"]);
+    assert_eq!(triplets, 0, "the long vowels are the set's own codes");
+    let (rows, triplets) = written("romaji-language", &["--language", "ja-Latn"], text, "1");
+    assert_eq!((rows[0].as_str(), triplets), ("Tōkyō e yōkoso! ¥500", 0));
+    let standard = ["--language", "ja-Latn", "--level", "3.5"];
+    let (rows, triplets) = written("romaji-standard", &standard, "Tōkyō e yōkoso", "1.5");
+    assert_eq!((rows[0].as_str(), triplets), ("Tōkyō e yōkoso", 4), "a row address and three macrons");
+    let (rows, _) = written("romaji-standard-1", &standard, "Tōkyō e yōkoso", "1");
+    assert_eq!(rows[0], "Tokyo e yokoso");
+}
+
+/// REQ-2188: kana. An ESC between the scripts takes the space between
+/// words; where there is no space a row set triplet switches with no cell;
+/// half-width katakana and voicing marks are joined into the voiced kana;
+/// a Latin character neither set has is a run in Latin English.
+#[test]
+fn kana_switch_scripts_and_reach_latin() {
+    let (rows, triplets) = written("kana-space", &["--set", "hiragana"], "きょうは テレビ", "3.5");
+    assert_eq!((rows[0].as_str(), triplets), ("きょうは テレビ", 0), "the ESC takes the space");
+    let (rows, triplets) = written("kana-joined", &["--set", "hiragana"], "コーヒーの ねだん", "3.5");
+    assert_eq!(rows[0], "コーヒーの ねだん");
+    assert_eq!(triplets, 3, "a row address and two row set triplets, and no cell lost");
+    let (rows, _) = written("kana-half", &["--language", "ja"], "ｺｰﾋｰ テ\u{3099}ﾚﾋﾞ", "3.5");
+    assert_eq!(rows[0], "コーヒー デレビ");
+    let (rows, triplets) = written("kana-latin", &["--language", "ja"], "こうすいかくりつ 20% です", "3.5");
+    assert_eq!((rows[0].as_str(), triplets), ("こうすいかくりつ 20% です", 3));
+    let (rows, _) = written("katakana", &["--language", "ja-Kana"], "テレビ と ラジオ", "3.5");
+    assert_eq!(rows[0], "テレビ と ラジオ");
+    let message = refused("kanji", &["--language", "ja"], "日本");
+    assert!(message.contains("U+65E5"), "{message}");
+    let message = refused("kana-standard", &["--language", "ja", "--level", "3.5"], "にほん");
+    assert!(message.contains("no set writes the language"), "{message}");
+}
+
+/// REQ-2180, REQ-2148 item 4: on a page for NeoTeletext's receivers, text
+/// in a set the page lacks is a row set run; at Level 3.5 it is refused.
+#[test]
+fn a_run_in_another_set_on_an_english_page() {
+    let (rows, triplets) = written("greek-run", &["--set", "english"], "News: Αθήνα today", "3.5");
+    assert_eq!(rows[0], "News: Αθήνα today");
+    assert_eq!(triplets, 3, "a row address, a run to Greek and one back");
+    let message = refused("greek-standard", &["--set", "english", "--level", "3.5"], "Αθήνα");
+    assert!(message.contains("U+0391"), "{message}");
+}
+
+/// REQ-2190: the standard's Arabic set of Table 44, each letter in the
+/// joined form its neighbours call for, or the nearest form the table has
+/// (Table 44 has no final lam-alef or final meem); rows in visual order,
+/// right-aligned, with Latin reached by ESC.
+#[test]
+fn arabic_in_the_standards_table_44() {
+    let (rows, triplets) = written("table44", &["--set", "arabic-table44"], "سلام عليكم\nلا 123 abc", "1");
+    let row = |index: usize| rows[index].trim_start().chars().map(u32::from).collect::<Vec<_>>();
+    assert_eq!(triplets, 0);
+    assert_eq!(
+        row(0),
+        [0x645, 0xFEDB, 0xFEF4, 0xFEE0, 0xFECB, 0x20, 0x645, 0xFEFB, 0xFEB3],
+        "meem, kaf initial for medial, yeh and lam medial, ain initial; meem, lam-alef, seen initial"
+    );
+    assert_eq!(rows[1].trim_start(), "abc 123 \u{FEFB}");
 }

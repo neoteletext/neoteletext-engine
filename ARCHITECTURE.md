@@ -234,7 +234,7 @@ Each module named below is one concept. Since the reorganisation of 24 October 2
   - `neoteletext-app` holds what any program needs. That is the session, reading inputs, both processes of live mode, sandboxing, conversion and slicing, and the `Source` trait a viewer reads pages through.
   - `neoteletext-cli` holds argument parsing, terminal output and the terminal viewer.
   - `neoteletext-app` also holds what viewers share: the row 24 messages (`interact`), and text and raster output (`present`).
-  - `neoteletext-app::write_text` (feature `write-text`) turns Unicode text into a page in any set: it encodes with the core's `charset` tables, reorders right-to-left text with the `unicode-bidi` crate, lays out Thai and Lao rows, and writes tones and rarer marks as X/26 triplets (decision E.82, REQ-CLI-010). `neottx write-text` is its command.
+  - `neoteletext-app::write_text` (feature `write-text`) turns Unicode text into a page in any set, named by its set or by a language tag through the core's `charset::language` table (REQ-2181): it encodes with the core's `charset` tables, reorders right-to-left text with the `unicode-bidi` crate, joins the letters of the standard's Arabic set itself (REQ-2190), takes half-width katakana and voicing marks as the kana sets hold them (REQ-2188), lays out Thai and Lao rows, writes tones and rarer marks as X/26 triplets, and on pages for NeoTeletext's own receivers writes text in other sets as row set runs (REQ-2180) (decision E.82, REQ-CLI-010). `neottx write-text` is its command.
 - **Requirements:** CLI, SEC-017 to SEC-019, GEN-018.
 
 ### Audio — `neoteletext-audio`, `neoteletext-audio-mix`, `neoteletext-opus` (area AUD)
@@ -381,6 +381,9 @@ Decisions E.77 to E.82 extend the receiver to about 55 more languages without ch
 | Marks from the page's G2 set (REQ-CHR-014) | L3, `charset`, used by `level15` and `enhance` | Column 4 of each G2 set that holds marks; the Vietnamese set's 4/C is the hook above. |
 | Arabic-script joining (REQ-CHR-015) | L3, new module `joining` | One bounded pass per row after the presentation level's pass, called from `compose`. It records each letter's form in the cell, and `glyphs` maps the letter and form to a presentation-form or private-use code point. |
 | Thai and Lao (REQ-CHR-016) | L3, `charset` only | Tables, designations, ESC and X/26 G2 characters. No receiver rule; marks are ordinary characters in their own cells. |
+| Japanese in rōmaji and kana (REQ-2185, REQ-2188) | L3, `charset` only | A Latin national option and two whole G0 sets in group 1101, each kana set the other's second set. No receiver rule. |
+| The row set triplet (REQ-2180) | L3, `enhance` (`walk/placement.rs`, `row.rs`) | Column mode 01010 in the local enhancement data changes the set the row resolver reads the row's own codes in, from its column; `Config::row_set_triplets` turns it off. |
+| The table of languages (REQ-2181) | L3, `charset::language` | Each language and script with its set's Table 32 value, and the standard's own set where there is one; the subtitle input's region comes from it. |
 | 12 × 20 loaded glyphs (REQ-FNT-002, REQ-FNT-008) | Foundation `types::FontGlyph`, L4 `glyphs` and `render`, L0 `bdf` | A glyph holds ten or twenty 12-bit rows; `LoadedGlyph` records which, and the cell raster draws a 20-row glyph line for line. |
 | The Noto-derived fonts (REQ-FNT-012) | Data in `third_party/noto/`, not code | Loaded at run time like any font. `xtask check-noto` checks them; the converter is a Python tool beside them, outside the workspace. |
 | Writing pages from text (REQ-CLI-010) | L9, `neoteletext-app::write_text` | Behind the feature `write-text`, which brings in the `unicode-bidi` crate. It uses the core's `charset` tables to encode and `neoteletext-formats`' page builders and TTI writer to write. It lives in L9 because L0 may not use `charset` (section 9). |
@@ -455,7 +458,7 @@ Where each crate's code lives, one sentence per directory (the reorganisation of
 - `types/`: the shared types: addresses, the fixed-capacity collection, a loaded font's glyph and the X/28 and M/29 field groups.
 - `packet/`: one file per packet kind: the header, X/26 triplets and their fields and functions, editorial and compositional links, X/28 and M/29, the Magazine Organization Table, the Magazine Inventory Page, object pages, broadcast service data, and the encoders.
 - `acq/`: the decoder's parts: reception of packets, the stored page, the cache-mode store, the enhancement pages and their store, the events and the statistics.
-- `charset/`: one file per table of clause 15 (Latin and national options, the standard's other G0 sets, G2, G3, mosaics, diacritics, designation, composition) and neoteletext's own sets (the extended designations, the extended G0 sets, Arabic script, Thai and Lao), with the code-table lookup.
+- `charset/`: one file per table of clause 15 (Latin and national options, the standard's other G0 sets, G2, G3, mosaics, diacritics, designation, composition) and neoteletext's own sets (the extended designations, the extended G0 sets, Arabic script, Thai and Lao, Japanese), with the code-table lookup and the table of languages (`language.rs`).
 - `level1/`: the cell, the grid, page assembly, the choice of character sets and the row attribute machine.
 - `colour/`: the page-level presentation data beside the Colour Map.
 - `objects/`: an object's links, its definition and where its triplets come from.

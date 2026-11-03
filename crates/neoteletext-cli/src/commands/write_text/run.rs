@@ -1,7 +1,9 @@
 //! `neottx write-text` in a build with it.
 
+use super::TextChoice;
 use crate::commands::{io_failure, page_number, sandbox_closed};
 use neoteletext_app::bounded_file::read_bounded;
+use neoteletext_app::write_text::{Choice, Level};
 use neoteletext_app::{Failure, exit};
 use std::fs::File;
 use std::io::Write;
@@ -13,14 +15,27 @@ use std::path::Path;
 const TEXT_MAX_FILE_BYTES: usize = 16 * 1024;
 
 /// `neottx write-text`.
-pub fn write_text(set: &str, page: &str, input: &Path, output: &Path, no_sandbox: bool) -> Result<(), Failure> {
+pub fn write_text(
+    choice: TextChoice<'_>,
+    page: &str,
+    input: &Path,
+    output: &Path,
+    no_sandbox: bool,
+) -> Result<(), Failure> {
     let mpp = page_number(page)?;
     let bytes = read_bounded(input, TEXT_MAX_FILE_BYTES)?;
     let text = String::from_utf8(bytes).map_err(|_| (exit::INPUT, format!("{}: not UTF-8", input.display())))?;
     let mut out = File::create(output).map_err(|error| io_failure(output, error))?;
     // Every file is open (REQ-SEC-017).
     sandbox_closed(no_sandbox)?;
-    let written = neoteletext_app::write_text::write_text(set, mpp, &text).map_err(|error| io_failure(input, error))?;
+    let named = match (choice.set, choice.language) {
+        (Some(set), _) => Choice::Set(set),
+        (None, Some(tag)) => Choice::Language(tag),
+        (None, None) => return Err((exit::USAGE, "write-text needs --set or --language".to_string())),
+    };
+    let level = if choice.standard { Level::Standard } else { Level::NeoTeletext };
+    let written =
+        neoteletext_app::write_text::write_text(named, level, mpp, &text).map_err(|error| io_failure(input, error))?;
     out.write_all(&written.tti).and_then(|()| out.flush()).map_err(|error| io_failure(output, error))?;
     eprintln!("{}: {} rows, {} X/26 triplets", output.display(), written.rows, written.triplets);
     Ok(())

@@ -336,14 +336,24 @@ pub(crate) enum Command {
         /// french, portuguese-spanish, czech-slovak, polish, turkish,
         /// serbian-croatian-slovenian, romanian, estonian,
         /// lettish-lithuanian, cyrillic-serbian-croatian, russian-bulgarian,
-        /// cyrillic-ukrainian, greek, hebrew, hausa-fula, west-african, ewe,
-        /// kabyle-tamazight, azerbaijani, kanuri-mossi, yoruba-igbo,
-        /// vietnamese, ukrainian, belarusian, macedonian, serbian,
-        /// kyrgyz-mongolian, tatar, tajik, georgian, armenian, tifinagh,
-        /// persian, urdu, pashto, sindhi, sorani, uyghur, balochi, arabic,
-        /// thai or lao.
+        /// cyrillic-ukrainian, greek, hebrew, arabic-table44, hausa-fula,
+        /// west-african, ewe, kabyle-tamazight, azerbaijani, kanuri-mossi,
+        /// yoruba-igbo, vietnamese, ukrainian, belarusian, macedonian,
+        /// serbian, kyrgyz-mongolian, tatar, tajik, georgian, armenian,
+        /// tifinagh, persian, urdu, pashto, sindhi, sorani, uyghur, balochi,
+        /// arabic, thai, lao, japanese-romaji, hiragana or katakana.
+        #[arg(long, required_unless_present = "language", conflicts_with = "language")]
+        set: Option<String>,
+        /// The language instead of a set, as a BCP 47 tag such as ru,
+        /// sr-Latn or ja-Latn, from the engine's table of languages
+        /// (REQ-2181).
         #[arg(long)]
-        set: String,
+        language: Option<String>,
+        /// The presentation level the page is written for: neoteletext
+        /// (NeoTeletext's own receivers, with row set triplets) or 3.5
+        /// (Level 3.5 and below, the standard's means only) (REQ-2151).
+        #[arg(long, value_parser = ["neoteletext", "3.5"], default_value = "neoteletext")]
+        level: String,
         /// The page number, 100 to 8FF.
         #[arg(long)]
         page: String,
