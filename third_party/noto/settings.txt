@@ -19,6 +19,9 @@
 #                     cell's edges (Arabic forms)
 #   mark_row          marks are drawn at the bottom or top of their own cell
 #                     (Thai and Lao, decision E.80)
+#   names             further starts of Unicode names the script draws,
+#                     separated by commas, for characters named without
+#                     the script's own name (REQ-2189)
 #
 # [font NAME]         an output font, NAME.bdf
 #   family, copyright the BDF properties
@@ -106,12 +109,35 @@ reference_width = 10
 baseline = 15
 mark_row = yes
 
+[script hiragana]
+# Japanese kana (DEC-2187, REQ-2189): sized as the Latin capitals are, and
+# at weight 900, where Noto Sans JP's strokes are two pixels wide like
+# Latin's; at 600 they are one pixel and look faint. The Japanese
+# punctuation is drawn here too.
+sources = jp
+weight = 900
+hinting = auto
+reference = あかさたな
+reference_height = 14
+reference_width = 10
+baseline = 16
+names = IDEOGRAPHIC, LEFT CORNER BRACKET, RIGHT CORNER BRACKET
+
+[script katakana]
+sources = jp
+weight = 900
+hinting = auto
+reference = アカサタナ
+reference_height = 14
+reference_width = 10
+baseline = 16
+
 [font noto-teletext]
 family = Noto Teletext
 copyright = Copyright 2022 The Noto Project Authors
 # Required, and Vietnamese precomposed letters (REQ-CHR-014). The letters
 # that exist only as a base and a mark are in noto-teletext-composed.
-characters = required range:1EA0-1EF9 except:G0_Thai,G0_Lao,G2_Thai,G2_Lao,G0_Persian,G0_Urdu,G0_Pashto,G0_Sindhi,G0_Sorani,G0_Uyghur,G0_Balochi,G0_ArabicPlain,Composed
+characters = required range:1EA0-1EF9 except:G0_Thai,G0_Lao,G2_Thai,G2_Lao,G0_Persian,G0_Urdu,G0_Pashto,G0_Sindhi,G0_Sorani,G0_Uyghur,G0_Balochi,G0_ArabicPlain,Composed,G0_Hiragana,G0_Katakana,G0_Latin_JapaneseRomaji
 scripts = latin hebrew arabic georgian armenian tifinagh
 
 [font noto-teletext-arabic]
@@ -138,3 +164,11 @@ family = Noto Teletext Composed
 copyright = Copyright 2022 The Noto Project Authors
 characters = uses:Composed
 scripts = latin
+
+[font noto-teletext-japanese]
+# Japanese (DEC-2184, DEC-2187, REQ-2189): the kana sets and the rōmaji
+# option, with Latin English for the pages' Latin runs.
+family = Noto Teletext Japanese
+copyright = Copyright 2022 The Noto Project Authors; (c) 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'
+characters = uses:G0_Hiragana uses:G0_Katakana uses:G0_Latin_JapaneseRomaji
+scripts = latin hiragana katakana

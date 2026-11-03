@@ -14,11 +14,12 @@ use std::path::Path;
 /// The Noto Teletext files. The font is spread over them because a font file
 /// holds at most [`FONT_MAX_CHARACTERS`] characters (REQ-FNT-002), and
 /// together they are the one font.
-pub(super) const SOURCES: [&str; 4] = [
+pub(super) const SOURCES: [&str; 5] = [
     "third_party/noto/noto-teletext.bdf",
     "third_party/noto/noto-teletext-composed.bdf",
     "third_party/noto/noto-teletext-arabic.bdf",
     "third_party/noto/noto-teletext-thai.bdf",
+    "third_party/noto/noto-teletext-japanese.bdf",
 ];
 pub(super) const TARGET: &str = "crates/neoteletext-core/src/glyphs/noto.rs";
 

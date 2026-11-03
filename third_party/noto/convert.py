@@ -155,6 +155,10 @@ class Script:
         self.rtl = section.getboolean("rtl", fallback=False)
         self.join = section.getboolean("join", fallback=False)
         self.mark_row = section.getboolean("mark_row", fallback=False)
+        # The starts of the Unicode names this script draws: its own name,
+        # and those `names` adds (REQ-2189).
+        extra = [part.strip().upper() for part in section.get("names", "").split(",") if part.strip()]
+        self.prefixes = [name.upper().replace("_", " ")] + extra
         reference = section["reference"]
         height = section.getint("reference_height")
         width = section.getint("reference_width", fallback=None)
@@ -418,8 +422,9 @@ def script_of(character, scripts, forms=None):
         character = forms[character][0]
     name = unicodedata.name(character[0], "")
     for script in scripts:
-        script_name = script.name.upper().replace("_", " ")
-        if script.name != "latin" and (name.startswith(script_name) or name.startswith("EXTENDED " + script_name)):
+        if script.name == "latin":
+            continue
+        if any(name.startswith(prefix) or name.startswith("EXTENDED " + prefix) for prefix in script.prefixes):
             return script
     return next(script for script in scripts if script.name == "latin")
 

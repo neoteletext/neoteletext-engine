@@ -27,11 +27,10 @@ use required::{FORMS, REQUIRED, forms_text, required_text};
 use std::fs;
 use std::path::Path;
 
-/// Regenerates every glyph table.
+/// Regenerates every glyph table. The lists the converter reads come first
+/// (REQ-2163's order), so that a set added to the core reaches
+/// `required.txt` even before the font files that will draw it exist.
 pub fn generate(root: &Path) -> Result<(), String> {
-    let (source, count) = noto_source(&source_files(root)?)?;
-    fs::write(root.join(TARGET), source).map_err(|e| format!("{TARGET}: {e}"))?;
-    println!("wrote {count} glyphs to {TARGET}");
     let required = required_text();
     fs::write(root.join(REQUIRED), &required).map_err(|e| format!("{REQUIRED}: {e}"))?;
     println!(
@@ -45,6 +44,9 @@ pub fn generate(root: &Path) -> Result<(), String> {
     fs::write(root.join(G3_TEXT), &g3_text).map_err(|e| format!("{G3_TEXT}: {e}"))?;
     fs::write(root.join(G3_TARGET), g3_source(&g3_text)?).map_err(|e| format!("{G3_TARGET}: {e}"))?;
     println!("wrote {} G3 glyphs to {G3_TEXT} and {G3_TARGET}", g3::CODES);
+    let (source, count) = noto_source(&source_files(root)?)?;
+    fs::write(root.join(TARGET), source).map_err(|e| format!("{TARGET}: {e}"))?;
+    println!("wrote {count} glyphs to {TARGET}");
     Ok(())
 }
 

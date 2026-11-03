@@ -7,3 +7,5 @@ f	noto-teletext-thai.bdf	Noto Teletext Thai	168f95b7ca735fd3a17bb5625a77ad4bf998
 c	noto-teletext-thai.bdf	G0-Latin-English G0-Thai G0-Lao G2-Thai G2-Lao
 f	noto-teletext-composed.bdf	Noto Teletext Composed	e500e27361addb68119d02834192206216a3fd672c6926d082947d9f6092fe87
 c	noto-teletext-composed.bdf
+f	noto-teletext-japanese.bdf	Noto Teletext Japanese	a6bcc0a95f0746cbba59a82cbc871fa6c2727611716e279fe589f2b5a7eea398
+c	noto-teletext-japanese.bdf	G0-Latin-JapaneseRomaji G0-Hiragana G0-Katakana
