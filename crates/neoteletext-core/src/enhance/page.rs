@@ -99,7 +99,7 @@ fn process(
 
     let presentation = presentation(page, magazine, &links, level);
     let default_sets = (designation.g0.set, designation.g2);
-    let inputs = Inputs { page, lookup, links: &links, build, level, default_sets };
+    let inputs = Inputs { page, lookup, links: &links, build, level, default_sets, row_sets: config.row_set_triplets };
     let shown = PageRows::of(page, &config, options);
     let row_24_shown = crate::level1::row_24_shown(page, &config) && options.row24.is_none();
     let last_colour_row = if row_24_shown { ROWS.saturating_sub(1) } else { ROWS.saturating_sub(2) };

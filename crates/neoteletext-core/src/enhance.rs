@@ -102,6 +102,10 @@ struct AttrChange {
     /// is still its own type (decision E.47), and a 0 bit cancels.
     display: Option<DisplayAttributes>,
     designation: Option<(G0Set, G2Set)>,
+    /// NeoTeletext's row set triplet (REQ-2180): the G0 set, with its
+    /// national option, that the row's own codes are read in from here,
+    /// and its G2 set.
+    row_set: Option<(G0, G2Set)>,
 }
 
 /// A walk record of REQ-FSM-011: one for the local enhancement data and one
@@ -189,6 +193,8 @@ struct Inputs<'a, 's> {
     level: PresentationLevel,
     /// The page's default G0 and G2 sets.
     default_sets: (G0Set, G2Set),
+    /// Whether NeoTeletext's row set triplet acts (REQ-2180).
+    row_sets: bool,
 }
 
 /// One run of the walk of REQ-FSM-011.

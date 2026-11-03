@@ -59,6 +59,9 @@ struct RowState {
     held: Option<(u8, bool)>,
     second_g0: bool,
     designation: Option<(G0Set, G2Set)>,
+    /// The set of a row set triplet run (REQ-2180), in place of the
+    /// page's default G0 set for the row's own codes.
+    row_g0: Option<G0>,
     /// A spacing double height or double size code acted in the row.
     spacing_double: bool,
 }
@@ -80,6 +83,7 @@ impl RowState {
             held: None,
             second_g0: false,
             designation: None,
+            row_g0: None,
             spacing_double: false,
         }
     }
@@ -168,6 +172,13 @@ impl RowState {
         }
         if let Some(sets) = change.designation {
             self.designation = Some(sets);
+        }
+        // REQ-2180 items 2 to 4: a run starts in its own set, whatever ESC
+        // did before it, and X/26 characters on it take its sets.
+        if let Some((g0, g2)) = change.row_set {
+            self.row_g0 = Some(g0);
+            self.second_g0 = false;
+            self.designation = Some((g0.set, g2));
         }
     }
 }
@@ -369,7 +380,8 @@ fn level_1_glyph(state: &RowState, code: u8, separated: bool, context: &RowConte
     if state.mosaic && code & MOSAIC_BIT5 != 0 {
         return (Glyph::Mosaic { pattern: mosaic_pattern(code), separated }, false);
     }
-    let g0 = if state.second_g0 { context.second_g0.unwrap_or(context.level_1_g0) } else { context.level_1_g0 };
+    let base = state.row_g0.unwrap_or(context.level_1_g0);
+    let g0 = if state.second_g0 { context.second_g0.unwrap_or(base) } else { base };
     (Glyph::Char(CharRef::new(CharSet::G0(g0), code)), false)
 }
 

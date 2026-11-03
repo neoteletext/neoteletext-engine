@@ -8,7 +8,7 @@ use super::super::attributes::{ATTRIBUTES, Flash, flash_of};
 use super::super::characters::EnhChar;
 use super::super::planes::Plane;
 use crate::charset::{self, G0Set, G2Set};
-use crate::consts::{COLUMNS, RECEIVER_COLUMNS, ROWS, TRIPLET_AT_SIGN_CODE, TRIPLET_FIRST_CHARACTER};
+use crate::consts::{COLUMNS, MODE_ROW_SET, RECEIVER_COLUMNS, ROWS, TRIPLET_AT_SIGN_CODE, TRIPLET_FIRST_CHARACTER};
 use crate::packet::TripletFunction;
 
 impl<'s> Walker<'_, 's> {
@@ -27,6 +27,10 @@ impl<'s> Walker<'_, 's> {
 
     /// A column triplet: its column, then its character or attribute.
     pub(super) fn column_triplet(&mut self, frame: &mut Frame<'s>, function: TripletFunction, out: &mut Collector) {
+        if let TripletFunction::ReservedColumn { column, mode: MODE_ROW_SET, data } = function {
+            self.row_set(frame, column, data, out);
+            return;
+        }
         // REQ-L25-004: reserved modes and Programme Delivery Control leave
         // the position; so do row triplets that reach here, which are
         // reserved or Programme Delivery Control, or restricted (REQ-L25-052,
@@ -94,6 +98,28 @@ impl<'s> Walker<'_, 's> {
             Some(character) => Self::character(frame, row, column, character, out),
             None => Self::attribute(frame, row, column, change, out),
         }
+    }
+
+    /// NeoTeletext's row set triplet (REQ-2180): from its column, the row's
+    /// own codes are read in the set its data designates, with that set's
+    /// national option, and X/26 characters there take its G0 and G2 sets.
+    /// It acts only in the local enhancement data, and leaves the active
+    /// position where it was, as a reserved mode does (clause 12.3.4). A
+    /// value no table holds falls back as the page's default designation
+    /// does (REQ-70). With row set triplets off it does nothing.
+    fn row_set(&mut self, frame: &mut Frame<'s>, column: u8, value: u8, out: &mut Collector) {
+        if !self.inputs.row_sets || frame.plane != Plane::Local {
+            return;
+        }
+        let (found, _) = charset::designation_with_fallback(value);
+        let active = frame.column;
+        frame.column = column;
+        let place = self.placeable(frame);
+        frame.column = active;
+        let Some((row, column)) = place else { return };
+        self.report.designations = self.report.designations.saturating_add(1);
+        let change = AttrChange { row_set: Some((found.g0, found.g2)), ..AttrChange::default() };
+        Self::attribute(frame, row, column, change, out);
     }
 
     /// A Modified G0 and G2 designation (REQ-L25-012): `None` when reserved,

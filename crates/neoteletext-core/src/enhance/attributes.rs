@@ -99,6 +99,7 @@ impl AttrChange {
             flash: later.flash.or(self.flash),
             display: later.display.or(self.display),
             designation: later.designation.or(self.designation),
+            row_set: later.row_set.or(self.row_set),
         }
     }
 }

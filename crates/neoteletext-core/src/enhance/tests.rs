@@ -1247,3 +1247,87 @@ fn an_absent_default_object_is_counted() {
     let entries = traced(&packets, true);
     assert_eq!(entries.last().unwrap().2, "none: the default objects left are absent or over a limit");
 }
+
+/// NeoTeletext's row set triplet, column mode 01010 (REQ-2180, DEC-2179).
+fn row_set(column: u8, designation: u8) -> TripletFunction {
+    TripletFunction::ReservedColumn { column, mode: crate::consts::MODE_ROW_SET, data: designation }
+}
+
+/// The G0 set and Unicode character a cell shows.
+fn g0_cell(grid: &Grid, row: usize, column: usize) -> (G0, char) {
+    match grid.cells[row][column].glyph {
+        Glyph::Char(character @ CharRef { set: CharSet::G0(g0), .. }) => (g0, to_unicode(character).base),
+        other => panic!("row {row} column {column}: {other:?}"),
+    }
+}
+
+/// REQ-2180 items 2, 4, 5 and 8: a row set triplet reads the row's own
+/// codes in its set from its column to the next one or the row's end; a
+/// run starts in its own set whatever ESC did before it, and ESC inside it
+/// reaches the page's second set; the next row is the page's again; with
+/// row set triplets off the mode is reserved and changes nothing. It names
+/// NeoTeletext's own kana and rōmaji sets, so it needs them compiled in.
+#[cfg(feature = "extended-sets")]
+#[test]
+fn row_set_triplets_read_the_rows_own_codes_in_their_set() {
+    let russian = designation(0b0100, 0b100);
+    let hiragana = designation(0b1101, 0b001);
+    let fields = PresentationFields {
+        designations: Some(Designations { default: LATIN, second: russian }),
+        ..PresentationFields::default()
+    };
+    let mut others = std::vec![x28_0(&fields)];
+    others.extend(local_data(&[
+        position(5, 0),
+        row_set(4, GREEK),
+        row_set(8, hiragana),
+        position(6, 0),
+        row_set(2, GREEK),
+        position(7, 0),
+        row_set(3, GREEK),
+    ]));
+    let row_7 = [ESC, b'a', b'a', b'a', b'a'];
+    let row_6 = [b'a', b'a', b'a', b'a', ESC, b'a', b'a'];
+    let packets = page(0, &[(5, b"aaaaaaaaaaaa"), (6, &row_6), (7, &row_7), (8, b"aa")], others);
+    let (grid, _) = build(&packets, &Config::default());
+    let shown_5: String = (0..12).map(|column| g0_cell(&grid, 5, column).1).collect();
+    assert_eq!(shown_5, "aaaaααααでででで", "Latin, then Greek from column 4, then hiragana from 8, where 6/1 is で");
+    assert_eq!(g0_cell(&grid, 5, 9).0.set, G0Set::Hiragana);
+    let row_6_shown: String = [0, 1, 2, 3, 5, 6].iter().map(|&column| g0_cell(&grid, 6, column).1).collect();
+    assert_eq!(row_6_shown, "aaααаа", "ESC in a Greek run reaches the second set, Russian");
+    let row_7_shown: String = (1..5).map(|column| g0_cell(&grid, 7, column).1).collect();
+    assert_eq!(row_7_shown, "ааαα", "a run starts in its own set after an ESC");
+    assert_eq!(g0_cell(&grid, 8, 0).1, 'a', "the next row is in the page's default set");
+
+    let strict = Config { row_set_triplets: false, ..Config::default() };
+    let (grid, _) = build(&packets, &strict);
+    let shown_5: String = (0..12).map(|column| g0_cell(&grid, 5, column).1).collect();
+    assert_eq!(shown_5, "aaaaaaaaaaaa", "off, the reserved mode changes nothing");
+}
+
+/// REQ-2180 item 3: on a run, a G0 letter with a mark takes its letter
+/// from the run's set, and the run's national option applies to its
+/// codes (rōmaji's macron vowels, REQ-2185).
+#[cfg(feature = "extended-sets")]
+#[test]
+fn row_set_runs_carry_their_national_option_and_their_marks() {
+    let romaji = designation(0b1101, 0b000);
+    let local = [
+        position(5, 0),
+        row_set(0, romaji),
+        TripletFunction::G0Diacritic { column: 3, code: b'a', diacritic: 2 },
+        row_set(6, GREEK),
+        TripletFunction::G0Diacritic { column: 7, code: b'a', diacritic: 2 },
+    ];
+    let packets = page(0, &[(5, b"\x60\x7b a a ")], local_data(&local));
+    let (grid, _) = build(&packets, &Config::default());
+    assert_eq!(g0_cell(&grid, 5, 0).1, 'ā');
+    assert_eq!(g0_cell(&grid, 5, 1).1, 'ē');
+    let marked = |column: usize| match grid.cells[5][column].glyph {
+        Glyph::Char(character) => (character.set, to_unicode(character).base, character.diacritic),
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(marked(3).1, 'a');
+    assert_ne!(marked(3).2, 0, "the mark is placed");
+    assert_eq!(marked(7).1, 'α', "the marked letter comes from the Greek run");
+}

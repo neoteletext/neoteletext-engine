@@ -162,6 +162,10 @@ pub struct Config {
     pub trace: bool,
     /// Show row 0's status area even on pages with C7 set (REQ-L1-014).
     pub status_on_suppressed_header: bool,
+    /// Apply NeoTeletext's row set triplet, column mode 01010, which reads
+    /// a row's own codes in another set from its column (DEC-2179,
+    /// REQ-2180). Off, the mode is reserved, as EN 300 706 Table 29 has it.
+    pub row_set_triplets: bool,
 }
 
 /// Flash shown and hidden durations derived from decision E.12's field
@@ -203,6 +207,7 @@ impl Config {
             cell_mode: CellMode::Saa5050,
             trace: false,
             status_on_suppressed_header: false,
+            row_set_triplets: true,
         }
     }
 

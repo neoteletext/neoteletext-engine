@@ -48,6 +48,10 @@ pub const MODE_COLUMN_PDC: u8 = 0x06;
 /// from 27 to 28 October 2026 (decision E.128), withdrawn by decision E.133
 /// (REQ-RCH-037): reserved again, as Table 29 has it.
 pub const MODE_COLUMN_RESERVED_3: u8 = 0x0A;
+/// Column mode 01010, reserved in Table 29, is NeoTeletext's row set
+/// triplet (DEC-2179, REQ-2180): from its column to the next one or the
+/// row's end, the row's own codes are read in the set its data designates.
+pub const MODE_ROW_SET: u8 = MODE_COLUMN_RESERVED_3;
 /// Column mode 01011: G3 character at Level 2.5, ignored at 1.5.
 pub const MODE_G3_LEVEL_25: u8 = 0x0B;
 /// Column mode 01111: G2 character.

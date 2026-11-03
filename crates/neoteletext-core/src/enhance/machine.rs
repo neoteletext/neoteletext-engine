@@ -2,7 +2,7 @@
 //! and actions, the transition table and the names it is traced with.
 
 use crate::acq::EnhancementFaults;
-use crate::consts::ROW_ADDRESS_LAST;
+use crate::consts::{MODE_ROW_SET, ROW_ADDRESS_LAST};
 use crate::objects::row_of;
 use crate::packet::{ColourData, ObjectKind, ObjectNumber, ObjectSource, TripletFunction};
 
@@ -144,12 +144,8 @@ const fn triplet_transition(function: TripletFunction) -> (WalkState, WalkAction
             }
         }
         F::SetActivePosition { address, column } => (walking, WalkAction::Position { row: row_of(address), column }),
-        // REQ-L25-052: Programme Delivery Control and reserved triplets do
-        // nothing, and do not move the position.
-        F::ProgrammeDeliveryRow { .. }
-        | F::ReservedRow { .. }
-        | F::ProgrammeDeliveryColumn { .. }
-        | F::ReservedColumn { .. } => (walking, WalkAction::None),
+        // NeoTeletext's row set triplet (REQ-2180) is placed too, though it
+        // leaves the position, as a reserved mode does.
         F::ForegroundColour { .. }
         | F::G1Character { .. }
         | F::G3Character { .. }
@@ -160,7 +156,14 @@ const fn triplet_transition(function: TripletFunction) -> (WalkState, WalkAction
         | F::DisplayAttributes { .. }
         | F::UnsupportedColumn { .. }
         | F::G2Character { .. }
-        | F::G0Diacritic { .. } => (walking, WalkAction::Column(function)),
+        | F::G0Diacritic { .. }
+        | F::ReservedColumn { mode: MODE_ROW_SET, .. } => (walking, WalkAction::Column(function)),
+        // REQ-L25-052: Programme Delivery Control and reserved triplets do
+        // nothing, and do not move the position.
+        F::ProgrammeDeliveryRow { .. }
+        | F::ReservedRow { .. }
+        | F::ProgrammeDeliveryColumn { .. }
+        | F::ReservedColumn { .. } => (walking, WalkAction::None),
     }
 }
 

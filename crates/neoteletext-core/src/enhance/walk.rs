@@ -11,8 +11,8 @@ use super::machine::{
 use super::planes::Plane;
 use crate::acq::{EnhancementFaults, EnhancementReport, StoredPage};
 use crate::consts::{
-    COLUMNS, LOCAL_TRIPLETS, OBJECT_TYPES, ROW_COLOUR_DOWN_TO_BOTTOM, ROW_COLOUR_THIS_ROW, ROWS, TRIPLETS_PER_PACKET,
-    WALK_DEPTH,
+    COLUMNS, LOCAL_TRIPLETS, MODE_ROW_SET, OBJECT_TYPES, ROW_COLOUR_DOWN_TO_BOTTOM, ROW_COLOUR_THIS_ROW, ROWS,
+    TRIPLETS_PER_PACKET, WALK_DEPTH,
 };
 use crate::objects::{Body, Fetch};
 use crate::packet::{ColourData, TripletFunction};
@@ -301,7 +301,8 @@ impl<'a, 's> Walker<'a, 's> {
 }
 
 /// True for a triplet that displays something: a character, an attribute,
-/// a screen or row colour, or an object (decision E.53).
+/// a screen or row colour, an object (decision E.53), or NeoTeletext's row
+/// set triplet, which changes how a row's codes are shown (REQ-2180).
 fn is_display(function: TripletFunction) -> bool {
     matches!(
         function,
@@ -309,6 +310,7 @@ fn is_display(function: TripletFunction) -> bool {
             | TripletFunction::FullRowColour { .. }
             | TripletFunction::AddressDisplayRow0 { .. }
             | TripletFunction::ObjectInvocation { .. }
+            | TripletFunction::ReservedColumn { mode: MODE_ROW_SET, .. }
     ) || function.active_column().is_some()
 }
 
