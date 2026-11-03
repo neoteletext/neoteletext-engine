@@ -322,6 +322,15 @@ fn the_language_table() {
     assert_eq!(value_of("ja-Kana"), Some(value(0b1101, 0b010)));
     assert_eq!(value_of("ja-Latn"), Some(value(0b1101, 0b000)));
     assert_eq!(value_of("xx"), None);
+    // REQ-2215: each entry's English name, direction and mark rows, for
+    // the server's list of languages.
+    let entry = |tag: &str| language(tag).unwrap();
+    assert_eq!((entry("ru").name, entry("sr-Latn").name), ("Russian", "Serbian (Latin script)"));
+    assert!(entry("ar").right_to_left() && entry("ur").right_to_left() && entry("he").right_to_left());
+    assert!(!entry("en").right_to_left() && !entry("th").right_to_left());
+    assert_eq!((entry("th").mark_rows(), entry("lo").mark_rows(), entry("vi").mark_rows()), (1, 1, 0));
+    assert_eq!((entry("sr").tag_parts(), entry("sr-Latn").tag_parts()), (("sr", None), ("sr", Some("Latn"))));
+    assert!(LANGUAGES.iter().all(|entry| !entry.name.is_empty()));
     assert_eq!(value_of("ru-Latn"), None, "no Latin Russian is written");
     // DEC-2184, DEC-2187 item 9: for Level 3.5 and below, rōmaji is Latin
     // English and kana are refused; other languages keep their sets.

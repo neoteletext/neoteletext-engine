@@ -12,6 +12,10 @@ pub struct LanguageSet {
     pub language: &'static str,
     /// The ISO 15924 script subtag of the script this entry writes.
     pub script: &'static str,
+    /// The language's English name, as a list of languages shows it
+    /// (REQ-2215), with the script where the language has an entry for
+    /// another.
+    pub name: &'static str,
     /// True for the script the language is written in when a tag names
     /// none.
     pub default: bool,
@@ -28,12 +32,55 @@ const fn value(group: u8, option: u8) -> u8 {
     (group << DESIGNATION_GROUP_SHIFT) | option
 }
 
-const fn entry(language: &'static str, script: &'static str, value: u8, standard: Option<u8>) -> LanguageSet {
-    LanguageSet { language, script, default: true, value, standard }
+const fn entry(
+    language: &'static str,
+    script: &'static str,
+    name: &'static str,
+    value: u8,
+    standard: Option<u8>,
+) -> LanguageSet {
+    LanguageSet { language, script, name, default: true, value, standard }
 }
 
-const fn other_script(language: &'static str, script: &'static str, value: u8, standard: Option<u8>) -> LanguageSet {
-    LanguageSet { language, script, default: false, value, standard }
+const fn other_script(
+    language: &'static str,
+    script: &'static str,
+    name: &'static str,
+    value: u8,
+    standard: Option<u8>,
+) -> LanguageSet {
+    LanguageSet { language, script, name, default: false, value, standard }
+}
+
+/// The ISO 15924 scripts written right to left among [`LANGUAGES`]: the
+/// Arabic-script sets and Hebrew, which the page writer puts in visual
+/// order (REQ-CHR-015, DEC-606).
+const RIGHT_TO_LEFT_SCRIPTS: [&str; 2] = ["Arab", "Hebr"];
+/// The scripts whose marks take the row above and the row below their
+/// letters: Thai and Lao (DEC-604).
+const MARK_ROW_SCRIPTS: [&str; 2] = ["Thai", "Laoo"];
+
+impl LanguageSet {
+    /// True when the language is written right to left.
+    #[must_use]
+    pub fn right_to_left(&self) -> bool {
+        RIGHT_TO_LEFT_SCRIPTS.contains(&self.script)
+    }
+
+    /// The rows above and below its letters the language's marks take: 1
+    /// for Thai and Lao (DEC-604), 0 for every other.
+    #[must_use]
+    pub fn mark_rows(&self) -> u8 {
+        u8::from(MARK_ROW_SCRIPTS.contains(&self.script))
+    }
+
+    /// The BCP 47 tag that names this entry exactly: its language subtag,
+    /// and its script subtag where the script is not the language's
+    /// default, such as `sr-Latn`.
+    #[must_use]
+    pub const fn tag_parts(&self) -> (&'static str, Option<&'static str>) {
+        (self.language, if self.default { None } else { Some(self.script) })
+    }
 }
 
 /// The standard's sets (Table 32).
@@ -60,87 +107,87 @@ const HEBREW: u8 = value(0b1010, 0b101);
 /// Every language NeoTeletext writes (DEC-602 item 1, DEC-2184,
 /// DEC-2187): the standard's sets, then NeoTeletext's own.
 pub const LANGUAGES: [LanguageSet; 76] = [
-    entry("en", "Latn", ENGLISH, Some(ENGLISH)),
-    entry("id", "Latn", ENGLISH, Some(ENGLISH)),
-    entry("sw", "Latn", ENGLISH, Some(ENGLISH)),
-    entry("de", "Latn", GERMAN, Some(GERMAN)),
-    entry("sv", "Latn", SWEDISH_FINNISH_HUNGARIAN, Some(SWEDISH_FINNISH_HUNGARIAN)),
-    entry("fi", "Latn", SWEDISH_FINNISH_HUNGARIAN, Some(SWEDISH_FINNISH_HUNGARIAN)),
-    entry("hu", "Latn", SWEDISH_FINNISH_HUNGARIAN, Some(SWEDISH_FINNISH_HUNGARIAN)),
-    entry("it", "Latn", ITALIAN, Some(ITALIAN)),
-    entry("fr", "Latn", FRENCH, Some(FRENCH)),
-    entry("pt", "Latn", PORTUGUESE_SPANISH, Some(PORTUGUESE_SPANISH)),
-    entry("es", "Latn", PORTUGUESE_SPANISH, Some(PORTUGUESE_SPANISH)),
-    entry("cs", "Latn", CZECH_SLOVAK, Some(CZECH_SLOVAK)),
-    entry("sk", "Latn", CZECH_SLOVAK, Some(CZECH_SLOVAK)),
-    entry("pl", "Latn", POLISH, Some(POLISH)),
-    entry("tr", "Latn", TURKISH, Some(TURKISH)),
+    entry("en", "Latn", "English", ENGLISH, Some(ENGLISH)),
+    entry("id", "Latn", "Indonesian", ENGLISH, Some(ENGLISH)),
+    entry("sw", "Latn", "Swahili", ENGLISH, Some(ENGLISH)),
+    entry("de", "Latn", "German", GERMAN, Some(GERMAN)),
+    entry("sv", "Latn", "Swedish", SWEDISH_FINNISH_HUNGARIAN, Some(SWEDISH_FINNISH_HUNGARIAN)),
+    entry("fi", "Latn", "Finnish", SWEDISH_FINNISH_HUNGARIAN, Some(SWEDISH_FINNISH_HUNGARIAN)),
+    entry("hu", "Latn", "Hungarian", SWEDISH_FINNISH_HUNGARIAN, Some(SWEDISH_FINNISH_HUNGARIAN)),
+    entry("it", "Latn", "Italian", ITALIAN, Some(ITALIAN)),
+    entry("fr", "Latn", "French", FRENCH, Some(FRENCH)),
+    entry("pt", "Latn", "Portuguese", PORTUGUESE_SPANISH, Some(PORTUGUESE_SPANISH)),
+    entry("es", "Latn", "Spanish", PORTUGUESE_SPANISH, Some(PORTUGUESE_SPANISH)),
+    entry("cs", "Latn", "Czech", CZECH_SLOVAK, Some(CZECH_SLOVAK)),
+    entry("sk", "Latn", "Slovak", CZECH_SLOVAK, Some(CZECH_SLOVAK)),
+    entry("pl", "Latn", "Polish", POLISH, Some(POLISH)),
+    entry("tr", "Latn", "Turkish", TURKISH, Some(TURKISH)),
     // DEC-602 item 1: Kazakh in the Latin alphabet Kazakhstan adopted.
-    entry("kk", "Latn", TURKISH, Some(TURKISH)),
-    entry("hr", "Latn", SERBIAN_CROATIAN_SLOVENIAN, Some(SERBIAN_CROATIAN_SLOVENIAN)),
-    entry("sl", "Latn", SERBIAN_CROATIAN_SLOVENIAN, Some(SERBIAN_CROATIAN_SLOVENIAN)),
-    other_script("sr", "Latn", SERBIAN_CROATIAN_SLOVENIAN, Some(SERBIAN_CROATIAN_SLOVENIAN)),
-    entry("ro", "Latn", ROMANIAN, Some(ROMANIAN)),
-    entry("et", "Latn", ESTONIAN, Some(ESTONIAN)),
-    entry("lv", "Latn", LETTISH_LITHUANIAN, Some(LETTISH_LITHUANIAN)),
-    entry("lt", "Latn", LETTISH_LITHUANIAN, Some(LETTISH_LITHUANIAN)),
-    entry("ru", "Cyrl", RUSSIAN_BULGARIAN, Some(RUSSIAN_BULGARIAN)),
-    entry("bg", "Cyrl", RUSSIAN_BULGARIAN, Some(RUSSIAN_BULGARIAN)),
-    entry("el", "Grek", GREEK, Some(GREEK)),
-    entry("he", "Hebr", HEBREW, Some(HEBREW)),
+    entry("kk", "Latn", "Kazakh", TURKISH, Some(TURKISH)),
+    entry("hr", "Latn", "Croatian", SERBIAN_CROATIAN_SLOVENIAN, Some(SERBIAN_CROATIAN_SLOVENIAN)),
+    entry("sl", "Latn", "Slovenian", SERBIAN_CROATIAN_SLOVENIAN, Some(SERBIAN_CROATIAN_SLOVENIAN)),
+    other_script("sr", "Latn", "Serbian (Latin script)", SERBIAN_CROATIAN_SLOVENIAN, Some(SERBIAN_CROATIAN_SLOVENIAN)),
+    entry("ro", "Latn", "Romanian", ROMANIAN, Some(ROMANIAN)),
+    entry("et", "Latn", "Estonian", ESTONIAN, Some(ESTONIAN)),
+    entry("lv", "Latn", "Latvian", LETTISH_LITHUANIAN, Some(LETTISH_LITHUANIAN)),
+    entry("lt", "Latn", "Lithuanian", LETTISH_LITHUANIAN, Some(LETTISH_LITHUANIAN)),
+    entry("ru", "Cyrl", "Russian", RUSSIAN_BULGARIAN, Some(RUSSIAN_BULGARIAN)),
+    entry("bg", "Cyrl", "Bulgarian", RUSSIAN_BULGARIAN, Some(RUSSIAN_BULGARIAN)),
+    entry("el", "Grek", "Greek", GREEK, Some(GREEK)),
+    entry("he", "Hebr", "Hebrew", HEBREW, Some(HEBREW)),
     // NeoTeletext's own sets (DEC-602): Ukrainian, Serbian and Arabic
     // have a set of the standard too, for the receiver's region.
-    entry("uk", "Cyrl", value(0b0111, 0b000), Some(CYRILLIC_UKRAINIAN)),
-    entry("sr", "Cyrl", value(0b0111, 0b011), Some(CYRILLIC_SERBIAN_CROATIAN)),
-    entry("ar", "Arab", value(0b1001, 0b111), Some(ARABIC_TABLE_44)),
-    entry("ha", "Latn", value(0b0101, 0b000), None),
-    entry("ff", "Latn", value(0b0101, 0b000), None),
-    entry("ak", "Latn", value(0b0101, 0b001), None),
-    entry("bm", "Latn", value(0b0101, 0b001), None),
-    entry("dyu", "Latn", value(0b0101, 0b001), None),
-    entry("din", "Latn", value(0b0101, 0b001), None),
-    entry("fon", "Latn", value(0b0101, 0b001), None),
-    entry("kri", "Latn", value(0b0101, 0b001), None),
-    entry("ln", "Latn", value(0b0101, 0b001), None),
-    entry("mnk", "Latn", value(0b0101, 0b001), None),
-    entry("men", "Latn", value(0b0101, 0b001), None),
-    entry("nus", "Latn", value(0b0101, 0b001), None),
-    entry("ee", "Latn", value(0b0101, 0b010), None),
-    entry("kab", "Latn", value(0b0101, 0b011), None),
-    entry("tzm", "Latn", value(0b0101, 0b011), None),
-    entry("az", "Latn", value(0b0101, 0b100), None),
-    entry("kr", "Latn", value(0b0101, 0b101), None),
-    entry("mos", "Latn", value(0b0101, 0b101), None),
-    entry("yo", "Latn", value(0b0101, 0b110), None),
-    entry("ig", "Latn", value(0b0101, 0b110), None),
-    entry("vi", "Latn", value(0b0101, 0b111), None),
-    entry("be", "Cyrl", value(0b0111, 0b001), None),
-    entry("mk", "Cyrl", value(0b0111, 0b010), None),
-    entry("ky", "Cyrl", value(0b0111, 0b101), None),
-    entry("mn", "Cyrl", value(0b0111, 0b101), None),
-    entry("tt", "Cyrl", value(0b0111, 0b110), None),
-    entry("tg", "Cyrl", value(0b0111, 0b111), None),
-    entry("fa", "Arab", value(0b1001, 0b000), None),
-    entry("prs", "Arab", value(0b1001, 0b000), None),
-    entry("ur", "Arab", value(0b1001, 0b001), None),
-    entry("ps", "Arab", value(0b1001, 0b010), None),
-    entry("sd", "Arab", value(0b1001, 0b011), None),
-    entry("ckb", "Arab", value(0b1001, 0b100), None),
-    entry("ug", "Arab", value(0b1001, 0b101), None),
-    entry("bal", "Arab", value(0b1001, 0b110), None),
-    entry("ka", "Geor", value(0b1011, 0b000), None),
-    entry("hy", "Armn", value(0b1011, 0b001), None),
-    entry("zgh", "Tfng", value(0b1011, 0b010), None),
-    other_script("tzm", "Tfng", value(0b1011, 0b010), None),
-    entry("th", "Thai", value(0b1100, 0b010), None),
-    entry("lo", "Laoo", value(0b1100, 0b100), None),
+    entry("uk", "Cyrl", "Ukrainian", value(0b0111, 0b000), Some(CYRILLIC_UKRAINIAN)),
+    entry("sr", "Cyrl", "Serbian", value(0b0111, 0b011), Some(CYRILLIC_SERBIAN_CROATIAN)),
+    entry("ar", "Arab", "Arabic", value(0b1001, 0b111), Some(ARABIC_TABLE_44)),
+    entry("ha", "Latn", "Hausa", value(0b0101, 0b000), None),
+    entry("ff", "Latn", "Fula", value(0b0101, 0b000), None),
+    entry("ak", "Latn", "Akan", value(0b0101, 0b001), None),
+    entry("bm", "Latn", "Bambara", value(0b0101, 0b001), None),
+    entry("dyu", "Latn", "Dyula", value(0b0101, 0b001), None),
+    entry("din", "Latn", "Dinka", value(0b0101, 0b001), None),
+    entry("fon", "Latn", "Fon", value(0b0101, 0b001), None),
+    entry("kri", "Latn", "Krio", value(0b0101, 0b001), None),
+    entry("ln", "Latn", "Lingala", value(0b0101, 0b001), None),
+    entry("mnk", "Latn", "Mandinka", value(0b0101, 0b001), None),
+    entry("men", "Latn", "Mende", value(0b0101, 0b001), None),
+    entry("nus", "Latn", "Nuer", value(0b0101, 0b001), None),
+    entry("ee", "Latn", "Ewe", value(0b0101, 0b010), None),
+    entry("kab", "Latn", "Kabyle", value(0b0101, 0b011), None),
+    entry("tzm", "Latn", "Central Atlas Tamazight", value(0b0101, 0b011), None),
+    entry("az", "Latn", "Azerbaijani", value(0b0101, 0b100), None),
+    entry("kr", "Latn", "Kanuri", value(0b0101, 0b101), None),
+    entry("mos", "Latn", "Mossi", value(0b0101, 0b101), None),
+    entry("yo", "Latn", "Yoruba", value(0b0101, 0b110), None),
+    entry("ig", "Latn", "Igbo", value(0b0101, 0b110), None),
+    entry("vi", "Latn", "Vietnamese", value(0b0101, 0b111), None),
+    entry("be", "Cyrl", "Belarusian", value(0b0111, 0b001), None),
+    entry("mk", "Cyrl", "Macedonian", value(0b0111, 0b010), None),
+    entry("ky", "Cyrl", "Kyrgyz", value(0b0111, 0b101), None),
+    entry("mn", "Cyrl", "Mongolian", value(0b0111, 0b101), None),
+    entry("tt", "Cyrl", "Tatar", value(0b0111, 0b110), None),
+    entry("tg", "Cyrl", "Tajik", value(0b0111, 0b111), None),
+    entry("fa", "Arab", "Persian", value(0b1001, 0b000), None),
+    entry("prs", "Arab", "Dari", value(0b1001, 0b000), None),
+    entry("ur", "Arab", "Urdu", value(0b1001, 0b001), None),
+    entry("ps", "Arab", "Pashto", value(0b1001, 0b010), None),
+    entry("sd", "Arab", "Sindhi", value(0b1001, 0b011), None),
+    entry("ckb", "Arab", "Central Kurdish", value(0b1001, 0b100), None),
+    entry("ug", "Arab", "Uyghur", value(0b1001, 0b101), None),
+    entry("bal", "Arab", "Balochi", value(0b1001, 0b110), None),
+    entry("ka", "Geor", "Georgian", value(0b1011, 0b000), None),
+    entry("hy", "Armn", "Armenian", value(0b1011, 0b001), None),
+    entry("zgh", "Tfng", "Standard Moroccan Tamazight", value(0b1011, 0b010), None),
+    other_script("tzm", "Tfng", "Central Atlas Tamazight (Tifinagh script)", value(0b1011, 0b010), None),
+    entry("th", "Thai", "Thai", value(0b1100, 0b010), None),
+    entry("lo", "Laoo", "Lao", value(0b1100, 0b100), None),
     // Japanese (DEC-2184, DEC-2187): kana by default; rōmaji is the
     // standard's Latin English with marks on pages for Level 3.5 and below.
-    entry("ja", "Jpan", value(0b1101, 0b001), None),
-    other_script("ja", "Hira", value(0b1101, 0b001), None),
-    other_script("ja", "Hrkt", value(0b1101, 0b001), None),
-    other_script("ja", "Kana", value(0b1101, 0b010), None),
-    other_script("ja", "Latn", value(0b1101, 0b000), Some(ENGLISH)),
+    entry("ja", "Jpan", "Japanese", value(0b1101, 0b001), None),
+    other_script("ja", "Hira", "Japanese (hiragana)", value(0b1101, 0b001), None),
+    other_script("ja", "Hrkt", "Japanese (kana)", value(0b1101, 0b001), None),
+    other_script("ja", "Kana", "Japanese (katakana)", value(0b1101, 0b010), None),
+    other_script("ja", "Latn", "Japanese (rōmaji)", value(0b1101, 0b000), Some(ENGLISH)),
 ];
 
 /// The group of NeoTeletext's Japanese sets, which need its own receiver
