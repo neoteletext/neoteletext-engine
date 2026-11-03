@@ -3,6 +3,8 @@
 //! in reading order, as the receiver does for NeoTeletext's plain-letter
 //! sets (REQ-2190, REQ-84), and the encoder then finds the form's code.
 
+use alloc::string::String;
+use alloc::vec::Vec;
 use neoteletext_core::charset::{JoinForm, JoiningType, joined_form, joining_type};
 
 /// Lam, alef, and the lam-alef ligature in its two forms.

@@ -21,8 +21,6 @@ neoteletext-web = { workspace = true, optional = true, features = ["default", "s
 embedded-io = { workspace = true, optional = true }
 neoteletext-transport = { workspace = true, optional = true }
 rustls = { version = "0.23.32", default-features = false, features = ["ring", "std", "tls12", "logging"], optional = true }
-# The page writer's right-to-left reordering (UAX #9, decision E.82).
-unicode-bidi = { version = "0.3.18", optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 # REQ-SEC-017: every build sandboxes itself.
@@ -40,8 +38,8 @@ live = ["dep:neoteletext-web", "dep:embedded-io", "dep:neoteletext-transport", "
 # Raw sampled video through the software data slicer (area SLC).
 slice = ["dep:neoteletext-slicer"]
 # Writing pages from text in neoteletext's own sets (REQ-CLI-010,
-# decision E.82).
-write-text = ["neoteletext-core/extended-sets", "dep:unicode-bidi"]
+# decision E.82): the writer is `neoteletext-formats`' since REQ-2214.
+write-text = ["neoteletext-formats/write-text"]
 
 [dev-dependencies]
 # The conversion tests compose the authored Level 2.5 and 3.5 stream.

@@ -1,14 +1,21 @@
 //! Thai and Lao pages in the Philips SAA5246AP/S scheme (decision E.80):
 //! letter rows with their marks on the rows above and below.
 
-use super::sets::{Cell, LAST_CODE, encode};
+use super::sets::{Cell, LAST_CODE};
 use super::{Sets, WriteError};
+use alloc::vec::Vec;
 use neoteletext_core::charset::{CharRef, CharSet, to_unicode};
-use neoteletext_core::consts::{COLUMNS, ESC, SPACE};
+use neoteletext_core::consts::SPACE;
+#[cfg(all(feature = "std", feature = "tti"))]
+use {
+    super::sets::encode,
+    alloc::vec,
+    neoteletext_core::consts::{COLUMNS, ESC},
+};
 
 /// Thai and Lao marks written below their letter; every other mark is
 /// written above.
-const LOWER_MARKS: [char; 6] = ['\u{0E38}', '\u{0E39}', '\u{0E3A}', '\u{0EB8}', '\u{0EB9}', '\u{0EBC}'];
+pub(super) const LOWER_MARKS: [char; 6] = ['\u{0E38}', '\u{0E39}', '\u{0E3A}', '\u{0EB8}', '\u{0EB9}', '\u{0EBC}'];
 /// The tone marks and the thanthakhat, written after a vowel sign in a
 /// two-mark glyph.
 const SECOND_MARKS: [char; 9] =
@@ -30,6 +37,7 @@ fn is_mark(character: char) -> bool {
         | '\u{0EB1}' | '\u{0EB4}'..='\u{0EBC}' | '\u{0EC8}'..='\u{0ECD}')
 }
 
+#[cfg(all(feature = "std", feature = "tti"))]
 /// One line of a Thai or Lao page: its letter row, and the marks above
 /// and below by column.
 pub(super) struct MarkedLine {
@@ -40,7 +48,7 @@ pub(super) struct MarkedLine {
 
 /// The cell of one or two marks: a code of the default set, or a G2
 /// glyph placed by X/26 over the first mark alone (REQ-CHR-016).
-fn mark_cell(sets: &Sets, marks: &[char], line: usize) -> Result<Cell, WriteError> {
+pub(super) fn mark_cell(sets: &Sets, marks: &[char], line: usize) -> Result<Cell, WriteError> {
     let missing = |character: char| WriteError::Missing { character, line };
     let g2 = CharSet::G2(sets.g2);
     match *marks {
@@ -64,7 +72,7 @@ fn mark_cell(sets: &Sets, marks: &[char], line: usize) -> Result<Cell, WriteErro
 
 /// A Thai or Lao line in clusters: each spacing character with the marks
 /// that follow it, sara am split and Thai digits made Western.
-fn clusters(text: &str, line: usize) -> Result<Vec<(char, Vec<char>)>, WriteError> {
+pub(super) fn clusters(text: &str, line: usize) -> Result<Vec<(char, Vec<char>)>, WriteError> {
     let mut out: Vec<(char, Vec<char>)> = Vec::new();
     for character in text.chars() {
         if is_mark(character) {
@@ -88,6 +96,7 @@ fn clusters(text: &str, line: usize) -> Result<Vec<(char, Vec<char>)>, WriteErro
     Ok(out)
 }
 
+#[cfg(all(feature = "std", feature = "tti"))]
 /// Lays out one input line of a Thai or Lao page as lines of at most 40
 /// letter cells, broken at spaces.
 pub(super) fn marked_lines(sets: &Sets, text: &str, line: usize) -> Result<Vec<MarkedLine>, WriteError> {
@@ -139,6 +148,7 @@ pub(super) fn marked_lines(sets: &Sets, text: &str, line: usize) -> Result<Vec<M
     Ok(lines)
 }
 
+#[cfg(all(feature = "std", feature = "tti"))]
 /// A row of 40 spaces with the given cells placed.
 fn mark_row(cells: &[(usize, Cell)]) -> Vec<Cell> {
     let mut row = vec![Cell::Code(SPACE); COLUMNS];
@@ -150,6 +160,7 @@ fn mark_row(cells: &[(usize, Cell)]) -> Vec<Cell> {
     row
 }
 
+#[cfg(all(feature = "std", feature = "tti"))]
 /// The rows of a Thai or Lao page (DEC-604): each line's mark row and
 /// letter row, a line's lower vowels sharing the next line's mark row
 /// unless a column needs both.

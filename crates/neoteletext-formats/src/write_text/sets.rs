@@ -3,10 +3,13 @@
 //! REQ-CHR-014), and the breaking of a left-to-right line into rows.
 
 use super::{Sets, WriteError};
+use alloc::vec::Vec;
 use neoteletext_core::charset::{
     CharRef, CharSet, G0, compose, default_second_value, designation, page_mark, to_unicode,
 };
-use neoteletext_core::consts::{COLUMNS, DESIGNATION_GROUP_SHIFT, ESC, MODE_DIACRITIC_MASK, SPACE};
+#[cfg(all(feature = "std", feature = "tti"))]
+use neoteletext_core::consts::COLUMNS;
+use neoteletext_core::consts::{DESIGNATION_GROUP_SHIFT, ESC, MODE_DIACRITIC_MASK, SPACE};
 
 /// The sets the writer names, with their Table 32 groups and options: the
 /// standard's, then neoteletext's own (REQ-CHR-012).
@@ -178,6 +181,7 @@ fn switch(cells: &mut Vec<Cell>) {
     cells.push(Cell::Code(ESC));
 }
 
+#[cfg(all(feature = "std", feature = "tti"))]
 /// Encodes `characters` from the set state `in_second`, giving the cells
 /// and the state after them, with no row set runs: for callers that encode
 /// a row a piece at a time without carrying a run between pieces.
@@ -306,6 +310,7 @@ impl Sets {
     }
 }
 
+#[cfg(all(feature = "std", feature = "tti"))]
 /// Breaks one line of text into rows of at most 40 cells, at spaces where
 /// it can.
 pub(super) fn break_line(sets: &Sets, text: &str, line: usize) -> Result<Vec<Vec<Cell>>, WriteError> {
@@ -343,6 +348,7 @@ pub(super) fn break_line(sets: &Sets, text: &str, line: usize) -> Result<Vec<Vec
     Ok(rows)
 }
 
+#[cfg(all(feature = "std", feature = "tti"))]
 /// The Table 32 value of the set named `name`.
 pub(super) fn set_value(name: &str) -> Option<u8> {
     SETS.iter().find(|(set, ..)| *set == name).map(|&(_, group, option)| (group << DESIGNATION_GROUP_SHIFT) | option)

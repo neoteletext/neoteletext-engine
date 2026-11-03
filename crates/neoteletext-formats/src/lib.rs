@@ -31,6 +31,10 @@
 //!   the TTI writer (REQ-INP-014).
 //! - `author` (features `std` and `tti`): the builder for Level 2.5 and 3.5
 //!   test pages and the authored test streams (REQ-INP-025, REQ-TST-024).
+//! - `write_text` (feature `write-text`): the one encoder of Unicode text
+//!   in any language (REQ-2148): text runs at their places on a page
+//!   (REQ-2214), and with `std` and `tti` whole pages as TTI files
+//!   (REQ-CLI-010).
 //!
 //! Decision E.61: every format but T42 is a Cargo feature, all on by
 //! default. Detection recognises only the formats compiled in, and a format
@@ -105,6 +109,8 @@ pub mod write;
 
 #[cfg(all(feature = "std", feature = "tti"))]
 pub mod author;
+#[cfg(feature = "write-text")]
+pub mod write_text;
 
 #[cfg(test)]
 mod testing;

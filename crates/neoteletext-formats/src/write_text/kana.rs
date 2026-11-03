@@ -3,6 +3,8 @@
 //! characters, and a kana followed by a voicing mark, half-width or
 //! combining, as the one voiced kana.
 
+use alloc::string::String;
+
 /// The full-width characters of U+FF61 to U+FF9D, in order.
 const HALF_WIDTH: &str = "。「」、・ヲァィゥェォャュョッーアイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワン";
 /// The first half-width character [`HALF_WIDTH`] gives.

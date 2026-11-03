@@ -639,7 +639,6 @@ dependencies = [
  "neoteletext-web",
  "rustls",
  "seccompiler",
- "unicode-bidi",
 ]
 
 [[package]]
@@ -687,6 +686,7 @@ version = "0.1.0"
 dependencies = [
  "neoteletext-core",
  "proptest",
+ "unicode-bidi",
 ]
 
 [[package]]

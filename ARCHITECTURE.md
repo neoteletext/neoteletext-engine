@@ -92,7 +92,8 @@ Each module named below is one concept. Since the reorganisation of 24 October 2
   - page files (TTI, EP1, edit.tf addresses and screen dumps), through the page encoder, so that page files take the same path as broadcasts (REQ-ARCH-004);
   - format detection;
   - the links a page file's TTI Link Extension lines give a receiver (`links`, feature `pages`): each key's, page number's and text run's destination with its service resolved, and the row 24 the receiver draws (REQ-NAV-011), drawn by the same code as the encoder's broadcast row (decision E.108). `neoteletext-app::extras` and NeoTeletext's decoder both use it.
-- **Must not know about:** pages, characters, rendering or the web.
+  - the text writer (`write_text`, feature `write-text`): Unicode text in any language to a page's codes and triplets, through the core's `charset` tables (section 4.6; REQ-2148, REQ-2214).
+- **Must not know about:** rendering or the web; characters only through the core's `charset` tables, in the page encoder and the text writer.
 - **Key types:** `Packet`, `PacketMeta`, `Reader` (streaming, fed bytes in any chunk size), `Encoder`.
 - **Requirements:** INP, SLC, FSM-002.
 
@@ -234,7 +235,7 @@ Each module named below is one concept. Since the reorganisation of 24 October 2
   - `neoteletext-app` holds what any program needs. That is the session, reading inputs, both processes of live mode, sandboxing, conversion and slicing, and the `Source` trait a viewer reads pages through.
   - `neoteletext-cli` holds argument parsing, terminal output and the terminal viewer.
   - `neoteletext-app` also holds what viewers share: the row 24 messages (`interact`), and text and raster output (`present`).
-  - `neoteletext-app::write_text` (feature `write-text`) turns Unicode text into a page in any set, named by its set or by a language tag through the core's `charset::language` table (REQ-2181): it encodes with the core's `charset` tables, reorders right-to-left text with the `unicode-bidi` crate, joins the letters of the standard's Arabic set itself (REQ-2190), takes half-width katakana and voicing marks as the kana sets hold them (REQ-2188), lays out Thai and Lao rows, writes tones and rarer marks as X/26 triplets, and on pages for NeoTeletext's own receivers writes text in other sets as row set runs (REQ-2180) (decision E.82, REQ-CLI-010). `neottx write-text` is its command.
+  - `neoteletext-app::write_text` (feature `write-text`) is `neoteletext-formats::write_text` under the name `neottx write-text` uses (decision E.82, REQ-CLI-010); the writer itself is in L0 (section 4.6).
 - **Requirements:** CLI, SEC-017 to SEC-019, GEN-018.
 
 ### Audio — `neoteletext-audio`, `neoteletext-audio-mix`, `neoteletext-opus` (area AUD)
@@ -386,10 +387,10 @@ Decisions E.77 to E.82 extend the receiver to about 55 more languages without ch
 | The table of languages (REQ-2181) | L3, `charset::language` | Each language and script with its set's Table 32 value, and the standard's own set where there is one; the subtitle input's region comes from it. |
 | 12 × 20 loaded glyphs (REQ-FNT-002, REQ-FNT-008) | Foundation `types::FontGlyph`, L4 `glyphs` and `render`, L0 `bdf` | A glyph holds ten or twenty 12-bit rows; `LoadedGlyph` records which, and the cell raster draws a 20-row glyph line for line. |
 | The Noto-derived fonts (REQ-FNT-012) | Data in `third_party/noto/`, not code | Loaded at run time like any font. `xtask check-noto` checks them; the converter is a Python tool beside them, outside the workspace. |
-| Writing pages from text (REQ-CLI-010) | L9, `neoteletext-app::write_text` | Behind the feature `write-text`, which brings in the `unicode-bidi` crate. It uses the core's `charset` tables to encode and `neoteletext-formats`' page builders and TTI writer to write. It lives in L9 because L0 may not use `charset` (section 9). |
+| Writing pages from text (REQ-CLI-010, REQ-2148) | L0, `neoteletext-formats::write_text` | The one encoder of Unicode text, behind the feature `write-text`, which brings in the `unicode-bidi` crate (`no_std` with `alloc`). It turns text into a page in any set, named by its set or by a language tag through the core's `charset::language` table (REQ-2181): it encodes with the core's `charset` tables, reorders right-to-left text, joins the letters of the standard's Arabic set itself (REQ-2190), takes half-width katakana and voicing marks as the kana sets hold them (REQ-2188), lays out Thai and Lao rows, writes tones and rarer marks as X/26 triplets, and on pages for NeoTeletext's own receivers writes text in other sets as row set runs (REQ-2180). `write_runs` writes runs of text at their places over a program's page and merges their triplets with the program's in Annex A.4's order, for the server (REQ-2214); `write_text`, with `std` and `tti`, writes whole pages as TTI through the page builders and the TTI writer, for `neottx write-text`. It is in L0 because the server, which depends on no application crate, needs it; section 9 lets `neoteletext-formats` use `charset`. |
 
 ```
-UTF-8 text ──► L9 write_text (encode with L3 charset tables; reorder with unicode-bidi;
+UTF-8 text ──► L0 write_text (encode with L3 charset tables; reorder with unicode-bidi;
                                  Thai rows; X/26 tones and G2 marks)
                └─► L0 author::DisplayPage ──► TTI writer ──► page file
 page file ──► flow 4.1 ──► L3 compose (level pass, then joining) ──► L4 (Noto 12 × 20 glyphs)
@@ -479,6 +480,7 @@ Where each crate's code lives, one sentence per directory (the reorganisation of
 - `bdf/`: the BDF reader, the converter's source fonts and the font converter.
 - `write/`: the TTI writer, the T42 page writer and the font writer.
 - `author/`: the authored Level 2.5 and 3.5 stream: display pages, object pages, the MOT and triplets, with `author/streams/` holding one file per magazine of the stream.
+- `write_text/`: the writer's set table and encoding, right-to-left lines, Thai and Lao rows, and `runs`, text runs at their places with their triplets merged into a program's.
 
 **`neoteletext-slicer`**
 - `slicer/`: the line slicer's parts: the line, its settings, black level, run-in, framing code, bits, the transition driver and the outcome.
@@ -538,7 +540,6 @@ Where each crate's code lives, one sentence per directory (the reorganisation of
 - `present/`: the palette-index raster and the receiver-drawn page.
 - `convert/`: stored pages back to page files.
 - `sandbox/`: the Linux sandbox and the platforms without one.
-- `write_text/`: the writer's set table and encoding, right-to-left lines, and Thai and Lao rows.
 
 **`neoteletext-cli`** (the program is the library `lib.rs`; `main.rs` calls its `run`)
 - `args/`: the tests of the command-line specification `args.rs`.
@@ -568,9 +569,9 @@ Decision E.61 makes each crate's optional areas Cargo features, all on by defaul
 | Crate | Features |
 |---|---|
 | `neoteletext-core` | Default (decision E.105): `level15`, `level25`, `nonspacing-attributes`, `level25-32colors`, `level35-32colors`, `render`, `viewer`, `extended-sets` (neoteletext's own character sets, the joining pass and the part of the compiled font only they use, decision E.78, REQ-FNT-001). Not default: the capabilities `objects` and `additional-flash-functions` (decision E.71), and the profile `modern-classic` |
-| `neoteletext-formats` | `transport`, `sliced`, `pages`, `tti`, `ep1`, `edittf`, `dump`, `check`, `bdf` (the font reader of REQ-FNT-002), and `std` (not default) |
+| `neoteletext-formats` | `transport`, `sliced`, `pages`, `tti`, `ep1`, `edittf`, `dump`, `check`, `bdf` (the font reader of REQ-FNT-002), and, not default, `std` and `write-text` (the text writer and its `unicode-bidi` dependency) |
 | `neoteletext-web` | `push`, `cookies`; not default: `dbsc` (REQ-WEB-017, decision E.110), `error-trait` and `std` |
-| `neoteletext-app` | `live`, `slice`, `write-text` (the text-to-page writer and its `unicode-bidi` dependency) |
+| `neoteletext-app` | `live`, `slice`, `write-text` (`neoteletext-formats`' text writer, for `neottx write-text`) |
 | `neoteletext-audio` | `idl`, `ima`, `pcm16`, `opus`, and `encode` (not default). The desktop builds name `idl` and `opus` alone: PCM16 and IMA ADPCM are compiled out of them and kept for microcontrollers (decision E.131) |
 | `neoteletext-opus` | None: the profile is the whole decoder |
 | `neoteletext-transport` | None: a program that has no network leaves the whole crate out, as `neoteletext-app` does without `live` |

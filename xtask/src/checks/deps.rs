@@ -10,7 +10,10 @@ use std::process::Command;
 /// decision E.38). `std`-only crates are not listed.
 const PERMITTED: &[(&str, &[&str])] = &[
     ("neoteletext-core", &[]),
-    ("neoteletext-formats", &["neoteletext-core"]),
+    // The page writer's right-to-left reordering (UAX #9), behind
+    // `write-text`: decision E.82 (rdm DEC-606) approved it for the writer,
+    // which moved here so the server can encode text (REQ-2214, DEC-2199).
+    ("neoteletext-formats", &["neoteletext-core", "unicode-bidi"]),
     ("neoteletext-slicer", &["neoteletext-core"]),
     // The channel's records share the audio profile's frame, and a LOG
     // record the TTI reader's rules for an `LG` line (DOC-1956).

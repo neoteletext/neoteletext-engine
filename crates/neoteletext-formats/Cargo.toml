@@ -7,9 +7,14 @@ rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 
-# REQ-GEN-017 and decision E.38: no dependencies outside `neoteletext-core`.
+# REQ-GEN-017 and decision E.38: no dependencies outside `neoteletext-core`,
+# but for the page writer's right-to-left reordering (UAX #9, decision E.82,
+# rdm DEC-606), behind `write-text`, which moved here from `neoteletext-app`
+# so that the server can encode a program's text (REQ-2148, REQ-2214). No
+# default features: `no_std` with `alloc`.
 [dependencies]
 neoteletext-core.workspace = true
+unicode-bidi = { version = "0.3.18", default-features = false, features = ["hardcoded-data"], optional = true }
 
 [features]
 # Decision E.61: each format beyond T42 is a feature, all on by default.
@@ -39,6 +44,10 @@ bdf = []
 # long as an address may be (REQ-1661, DEC-1708). Without it they share a
 # fixed 8,004 bytes. Not a default because the crate allocates nothing.
 alloc = []
+# The page writer: Unicode text in any language to a page's codes and
+# triplets (REQ-CLI-010, REQ-2148), and text runs at their places on a page
+# (REQ-2214). With `std` and `tti`, whole pages as TTI files.
+write-text = ["alloc", "neoteletext-core/extended-sets", "dep:unicode-bidi"]
 # REQ-GEN-010: the writers need `std::io`. It is not a default because the
 # crate is `no_std`. The page writers also need `pages`, the TTI writer and
 # the authoring module `tti`.

@@ -2,10 +2,14 @@
 //! Algorithm, brackets mirrored and lam-alef joined, broken into rows
 //! (REQ-CHR-015).
 
-use super::Sets;
-use super::WriteError;
-use super::sets::{Cell, encode};
-use neoteletext_core::consts::COLUMNS;
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
+#[cfg(all(feature = "std", feature = "tti"))]
+use {
+    super::sets::{Cell, encode},
+    super::{Sets, WriteError},
+    neoteletext_core::consts::COLUMNS,
+};
 
 /// Lam followed by alef, written as the sets' one lam-alef code.
 const LAM: char = '\u{0644}';
@@ -40,6 +44,13 @@ fn visual(text: &str) -> Vec<char> {
     out
 }
 
+/// One run of text in visual order, lam then alef written as the lam-alef
+/// code, for a run placed on a row (REQ-2214).
+pub(super) fn visual_line(text: &str) -> Vec<char> {
+    visual(&text.replace(&[LAM, ALEF][..].iter().collect::<String>(), &LAM_ALEF.to_string()))
+}
+
+#[cfg(all(feature = "std", feature = "tti"))]
 /// Breaks one line of a right-to-left page into rows of at most 40 cells,
 /// each in visual order.
 pub(super) fn break_line_rtl(sets: &Sets, text: &str, line: usize) -> Result<Vec<Vec<Cell>>, WriteError> {
