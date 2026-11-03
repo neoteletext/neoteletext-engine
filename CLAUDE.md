@@ -16,7 +16,7 @@ That is the one document of how we work, for every NeoTeletext repository, with 
 ## Key documents
 
 - **Requirements and decisions are in rdm:** the requirements (Part F, area SEC overriding every other), the decisions (Part E), the phase plan and milestones (decisions `F.0.1`, `F.0.2`), what is out of scope (decisions `G.n`), the owner's open questions (decisions waiting for confirmation) and the work owed (to-dos).
-- **`docs/spec/`** holds how things work: `design/*.md` (Levels 1.0 and 1.5, the SAA5050 and SAA5246A, character sets and fonts, the TTI Link and Form Extensions; the languages beyond the standard's sets are in rdm, decisions DEC-601 to DEC-606), `glossary.md`, `source-documents.md` and `module-sources.md`; `docs/spec/README.md` is the map.
+- **`docs/spec/`** holds how things work: `design/*.md` (Levels 1.0 and 1.5, the SAA5050 and SAA5246A, the TTI Link and Form Extensions; character sets and languages, including those beyond the standard's sets, are in rdm only: decisions DEC-599 and DEC-601 to DEC-606 with their evidence, the requirements they decide, and the protocol document's items under DOC-1845), `glossary.md`, `source-documents.md` and `module-sources.md`; `docs/spec/README.md` is the map.
 
   **Each fact has one home.** A requirement states behaviour; a decision states the choice and its reason and links to the design; a design document explains; `ARCHITECTURE.md` says where code lives; `research/` holds the evidence. Link rather than restate.
 

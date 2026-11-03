@@ -39,7 +39,6 @@ The design documents are:
 | `design/level15.md` | Walkthrough of Presentation Level 1.5 |
 | `design/saa5050.md` | The Philips SAA5050 character generator, the rendering baseline |
 | `design/saa5246a.md` | The Philips SAA5246A decoder, the receiver baseline |
-| `design/character-sets-and-fonts.md` | How teletext chooses characters and how neoteletext turns them into glyphs |
 | `design/capabilities.md` | The decoder's optional capabilities, switched at compile time, and the `modern-classic` profile |
 | `design/font-security.md` | The security analysis of the font strategy (decision E.72) |
 | `design/porting.md` | What a port supplies, and nothing else |
